@@ -9,3 +9,5 @@ plugins {
     alias(libs.plugins.sqldelight) apply false
     alias(libs.plugins.roborazzi) apply false
 }
+
+// Dependency CVE posture: see docs/DEPENDENCY_AUDIT.md (OSV spot-check; prefer Renovate over OWASP plugin).

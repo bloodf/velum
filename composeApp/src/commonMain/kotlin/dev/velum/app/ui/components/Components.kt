@@ -70,6 +70,7 @@ fun OutlineButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     leading: ImageVector? = null,
+    enabled: Boolean = true,
 ) {
     Row(
         modifier = modifier
@@ -78,16 +79,26 @@ fun OutlineButton(
             .clip(RoundedCornerShape(12.dp))
             .border(1.dp, VelumDivider, RoundedCornerShape(12.dp))
             .background(VelumSurface)
-            .clickable(onClick = onClick)
+            .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center,
     ) {
         if (leading != null) {
-            Icon(leading, contentDescription = null, tint = VelumInk, modifier = Modifier.size(20.dp))
+            Icon(
+                leading,
+                contentDescription = null,
+                tint = if (enabled) VelumInk else VelumInkSecondary,
+                modifier = Modifier.size(20.dp),
+            )
             Spacer(Modifier.width(8.dp))
         }
-        Text(text, color = VelumInk, fontWeight = FontWeight.Medium, fontSize = 15.sp)
+        Text(
+            text,
+            color = if (enabled) VelumInk else VelumInkSecondary,
+            fontWeight = FontWeight.Medium,
+            fontSize = 15.sp,
+        )
     }
 }
 

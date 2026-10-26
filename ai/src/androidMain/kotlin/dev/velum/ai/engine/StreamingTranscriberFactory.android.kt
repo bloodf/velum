@@ -12,6 +12,7 @@ import com.k2fsa.sherpa.onnx.OnlineRecognizer
 import com.k2fsa.sherpa.onnx.OnlineRecognizerConfig
 import com.k2fsa.sherpa.onnx.OnlineStream
 import com.k2fsa.sherpa.onnx.OnlineTransducerModelConfig
+import dev.velum.ai.pipeline.BoundedPcmRingBuffer
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -165,17 +166,19 @@ class OverlappingChunkedOfflineStreamingTranscriber(
     private val modelId: String,
     private val windowSeconds: Int = 12,
     private val hopSeconds: Int = 3,
+    private val maxBufferedSeconds: Int = 10 * 60,
 ) : StreamingTranscriber {
     override val engineId: String = "local-streaming-asr"
     override var onPartial: (markdown: String) -> Unit = {}
 
     private var sampleRate = 16_000
     private var languageHint: String? = "auto"
-    private val pcm = ArrayList<Byte>()
+    private var pcm = BoundedPcmRingBuffer.forMaxDuration(16_000, maxBufferedSeconds)
     private var lastEmitBytes = 0
     private var lastCommittedEnd = 0
     private val committed = StringBuilder()
     private var started = false
+    private var totalPushedBytes = 0
 
     override fun start(
         sampleRateHz: Int,
@@ -185,18 +188,26 @@ class OverlappingChunkedOfflineStreamingTranscriber(
         started = true
         sampleRate = sampleRateHz
         this.languageHint = languageHint
-        pcm.clear()
+        pcm = BoundedPcmRingBuffer.forMaxDuration(sampleRateHz, maxBufferedSeconds)
         lastEmitBytes = 0
         lastCommittedEnd = 0
+        totalPushedBytes = 0
         committed.clear()
         onPartial("**partial** · 0:00\n")
     }
 
     override fun pushPcm(pcm16Le: ByteArray) {
         check(started) { "start() required" }
-        for (b in pcm16Le) pcm.add(b)
-        val hopBytes = hopBytes()
-        if (pcm.size - lastEmitBytes >= hopBytes) {
+        val before = pcm.size
+        pcm.write(pcm16Le)
+        totalPushedBytes += pcm16Le.size
+        if (pcm.size < before + pcm16Le.size) {
+            val dropped = (before + pcm16Le.size) - pcm.size
+            lastCommittedEnd = (lastCommittedEnd - dropped).coerceAtLeast(0)
+            lastEmitBytes = (lastEmitBytes - dropped).coerceAtLeast(0)
+        }
+        val hop = hopBytes()
+        if (pcm.size - lastEmitBytes >= hop) {
             emitPartial()
             lastEmitBytes = pcm.size
         }
@@ -224,7 +235,6 @@ class OverlappingChunkedOfflineStreamingTranscriber(
     private fun emitPartial() {
         val window = windowBytes()
         val hop = hopBytes()
-        // Commit audio that has left the overlapping live window.
         val commitUntil = (pcm.size - (window - hop)).coerceAtLeast(0)
         if (commitUntil > lastCommittedEnd) {
             val segment = decodeRange(lastCommittedEnd, commitUntil)
@@ -236,7 +246,7 @@ class OverlappingChunkedOfflineStreamingTranscriber(
         }
         val liveStart = (pcm.size - window).coerceAtLeast(lastCommittedEnd)
         val live = decodeRange(liveStart, pcm.size)
-        val elapsedMs = if (sampleRate <= 0) 0L else (pcm.size / 2) * 1000L / sampleRate
+        val elapsedMs = if (sampleRate <= 0) 0L else (totalPushedBytes / 2) * 1000L / sampleRate
         val body = buildString {
             if (committed.isNotEmpty()) append(committed).append('\n')
             if (live.isNotBlank()) append(live)
@@ -245,12 +255,11 @@ class OverlappingChunkedOfflineStreamingTranscriber(
     }
 
     private fun decodeRange(startByte: Int, endByte: Int): String {
-        if (endByte <= startByte || pcm.isEmpty()) return ""
+        if (endByte <= startByte || pcm.size == 0) return ""
         val from = startByte.coerceIn(0, pcm.size)
         val to = endByte.coerceIn(from, pcm.size)
-        if (to - from < sampleRate) return "" // need ≥0.5s
-        val bytes = ByteArray(to - from) { i -> pcm[from + i] }
-        return decodeSamples(pcm16LeToFloats(bytes))
+        if (to - from < sampleRate) return ""
+        return decodeSamples(pcm16LeToFloats(pcm.copyRange(from, to)))
     }
 
     private fun decodeSamples(samples: FloatArray): String {
@@ -272,6 +281,10 @@ class OverlappingChunkedOfflineStreamingTranscriber(
         } finally {
             recognizer.release()
         }
+    }
+
+    companion object {
+        const val MAX_LIVE_BUFFER_SECONDS: Int = 10 * 60
     }
 }
 

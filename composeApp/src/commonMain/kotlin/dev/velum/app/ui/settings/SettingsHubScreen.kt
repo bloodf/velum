@@ -25,9 +25,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -39,6 +41,7 @@ import dev.velum.app.ui.theme.VelumBg
 import dev.velum.app.ui.theme.VelumInk
 import dev.velum.app.ui.theme.VelumInkSecondary
 import dev.velum.app.ui.theme.VelumSurface
+import dev.velum.core.data.epochSecondsNow
 
 @Composable
 fun SettingsHubScreen(
@@ -88,7 +91,7 @@ fun SettingsHubScreen(
             StatCell(strings.totalTime, "${"%.1f".format(totalMins)}h")
         }
         Spacer(Modifier.height(16.dp))
-        Heatmap()
+        Heatmap(createdAtEpochSeconds = count.map { it.created_at })
         Spacer(Modifier.height(24.dp))
         ChevronRow(
             strings.currentWorkspace,
@@ -113,24 +116,53 @@ private fun StatCell(label: String, value: String) {
 }
 
 @Composable
-private fun Heatmap() {
+private fun Heatmap(createdAtEpochSeconds: List<Long>) {
+    val cells = remember(createdAtEpochSeconds) {
+        activityBuckets(createdAtEpochSeconds, rows = 4, cols = 16)
+    }
     Column(Modifier.padding(horizontal = 28.dp)) {
         repeat(4) { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 repeat(16) { col ->
-                    val active = row == 1 && col == 14
+                    val level = cells[row * 16 + col]
+                    val color = when {
+                        level <= 0 -> Color(0xFFECECF0)
+                        level == 1 -> Color(0xFFB8E7FF)
+                        level == 2 -> Color(0xFF7AD3FF)
+                        else -> Color(0xFF64D2FF)
+                    }
                     Box(
                         Modifier
                             .size(14.dp)
                             .clip(RoundedCornerShape(2.dp))
-                            .background(
-                                if (active) androidx.compose.ui.graphics.Color(0xFF64D2FF)
-                                else androidx.compose.ui.graphics.Color(0xFFECECF0),
-                            ),
+                            .background(color),
                     )
                 }
             }
             Spacer(Modifier.height(4.dp))
         }
     }
+}
+
+/** Last [rows]*[cols] UTC days of recording created_at counts (oldest → newest). */
+internal fun activityBuckets(
+    createdAtEpochSeconds: List<Long>,
+    rows: Int,
+    cols: Int,
+    nowEpochSeconds: Long = epochSecondsNow(),
+): IntArray {
+    val n = rows * cols
+    val out = IntArray(n)
+    if (createdAtEpochSeconds.isEmpty()) return out
+    val daySec = 86_400L
+    val today = nowEpochSeconds / daySec
+    for (ts in createdAtEpochSeconds) {
+        val day = ts / daySec
+        val age = (today - day).toInt()
+        if (age in 0 until n) {
+            val idx = n - 1 - age
+            out[idx] = (out[idx] + 1).coerceAtMost(3)
+        }
+    }
+    return out
 }

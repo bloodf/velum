@@ -21,6 +21,10 @@ import dev.velum.protocol.Sessions
 import dev.velum.protocol.Unlock
 import dev.velum.protocol.UnlockChunk
 import dev.velum.protocol.UnlockSecretLayout
+import dev.velum.ble.wifi.WifiFastTransferSession
+import dev.velum.ble.wifi.WifiTransferCoordinator
+import dev.velum.ble.wifi.WifiTransferPreamble
+import dev.velum.ble.wifi.WifiTransferServer
 import kotlin.coroutines.coroutineContext
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
@@ -160,7 +164,74 @@ class PlaudDeviceClient(
         return Sessions.parseSessionList(payload, protocolVersion)
     }
 
+
+    /**
+     * SoftAP + WebSocket :8081 fast path (Plaud parity); on any Wi-Fi failure
+     * falls back to BLE [downloadSession]. [assemble] collects sealed WS frames
+     * into the session payload (see [WifiTransferCoordinator]).
+     */
+    suspend fun downloadSessionPreferWifi(
+        sessionId: Long,
+        sizeBytes: Long,
+        wifiSessionFactory: () -> WifiFastTransferSession,
+        ssid: String,
+        password: String,
+        preamble: ByteArray = WifiTransferPreamble.defaultToken(),
+        bindHost: String? = null,
+        port: Int = WifiTransferServer.DEFAULT_PORT,
+        ssidIsPattern: Boolean = false,
+        wifiTimeout: Duration = 45.seconds,
+        assemble: suspend (WifiFastTransferSession) -> ByteArray,
+    ): WifiTransferCoordinator.Outcome {
+        val coordinator = WifiTransferCoordinator(
+            sessionFactory = wifiSessionFactory,
+            bleDownload = { downloadSession(sessionId, sizeBytes) },
+            wifiTimeout = wifiTimeout,
+        )
+        return coordinator.transferOrFallback(
+            ssid = ssid,
+            password = password,
+            ssidIsPattern = ssidIsPattern,
+            port = port,
+            preamble = preamble,
+            bindHost = bindHost,
+            assemble = assemble,
+        )
+    }
+
+    /**
+     * Download a session. Large transfers stream to a temp file when available,
+     * then return bytes (still capped by [MAX_SESSION_DOWNLOAD_BYTES]).
+     * Prefer [downloadSessionTo] when the caller already has a disk sink.
+     */
     suspend fun downloadSession(sessionId: Long, sizeBytes: Long): ByteArray {
+        require(sizeBytes in 0..MAX_SESSION_DOWNLOAD_BYTES) {
+            "Session sizeBytes=$sizeBytes exceeds cap of $MAX_SESSION_DOWNLOAD_BYTES"
+        }
+        val useFile = sizeBytes <= 0L || sizeBytes >= STREAM_TO_FILE_THRESHOLD_BYTES
+        val temp = if (useFile) createTempSessionFile() else null
+        if (temp != null) {
+            try {
+                downloadSessionTo(sessionId, sizeBytes, temp)
+                require(temp.size() <= MAX_SESSION_DOWNLOAD_BYTES) {
+                    "Session download exceeded ${MAX_SESSION_DOWNLOAD_BYTES}-byte cap"
+                }
+                return temp.readAll()
+            } finally {
+                temp.delete()
+            }
+        }
+        val buffer = SessionDownloadBuffer(MAX_SESSION_DOWNLOAD_BYTES)
+        downloadSessionTo(sessionId, sizeBytes, SessionByteSink { buffer.write(it) })
+        return buffer.toByteArray()
+    }
+
+    /** Stream session bytes into [sink] without retaining the full payload in a Byte list. */
+    suspend fun downloadSessionTo(
+        sessionId: Long,
+        sizeBytes: Long,
+        sink: SessionByteSink,
+    ) {
         require(sizeBytes in 0..MAX_SESSION_DOWNLOAD_BYTES) {
             "Session sizeBytes=$sizeBytes exceeds cap of $MAX_SESSION_DOWNLOAD_BYTES"
         }
@@ -169,17 +240,18 @@ class PlaudDeviceClient(
         val startRsp = Sessions.parseSyncStartResponse(startPayload)
         require(!startRsp.refused) { "Sync start refused status=${startRsp.status}" }
 
-        val out = ArrayList<Byte>()
+        var written = 0L
         while (true) {
             val raw = awaitDecryptedFrame(responseTimeout) { true }
             when (val inboundPacket = Framing.decodeInbound(raw)) {
                 is InboundPacket.RecordingData -> {
                     when (val data = Sessions.parseRecordingData(raw, protocolVersion)) {
                         is RecordingDataPacket.Chunk -> {
-                            require(out.size.toLong() + data.data.size <= MAX_SESSION_DOWNLOAD_BYTES) {
+                            require(written + data.data.size <= MAX_SESSION_DOWNLOAD_BYTES) {
                                 "Session download exceeded ${MAX_SESSION_DOWNLOAD_BYTES}-byte cap"
                             }
-                            out.addAll(data.data.asList())
+                            sink.write(data.data)
+                            written += data.data.size
                         }
                         is RecordingDataPacket.End -> break
                     }
@@ -189,12 +261,11 @@ class PlaudDeviceClient(
                 }
                 else -> Unit
             }
-            if (sizeBytes > 0 && out.size.toLong() >= sizeBytes) break
+            if (sizeBytes > 0 && written >= sizeBytes) break
         }
 
         val stopPayload = transactCommand(Commands.SYNC_FILE_STOP, Sessions.encodeSyncStop())
         Sessions.parseSyncStopResponse(stopPayload)
-        return out.toByteArray()
     }
 
     suspend fun readBattery(): BatteryReading {
@@ -310,5 +381,8 @@ class PlaudDeviceClient(
     companion object {
         /** Hard cap for a single session download (512 MiB). */
         const val MAX_SESSION_DOWNLOAD_BYTES: Long = 512L * 1024 * 1024
+
+        /** Stream to a temp file when declared size is unknown or at/above this. */
+        const val STREAM_TO_FILE_THRESHOLD_BYTES: Long = 8L * 1024 * 1024
     }
 }

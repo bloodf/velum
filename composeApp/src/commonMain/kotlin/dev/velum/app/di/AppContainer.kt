@@ -14,8 +14,10 @@ import dev.velum.ai.openai.OpenAiLlmEngine
 import dev.velum.ai.openai.OpenAiTranscriber
 import dev.velum.ai.pipeline.AskAiChat
 import dev.velum.ai.pipeline.AutoFlowRunner
+import dev.velum.ai.pipeline.NoOpThermalPolicy
 import dev.velum.ai.pipeline.RecordingJobScheduler
 import dev.velum.ai.pipeline.RecordingProcessor
+import dev.velum.ai.pipeline.ThermalPolicy
 import dev.velum.ai.pipeline.createCoroutineRecordingJobScheduler
 import dev.velum.app.platform.MicCapture
 import dev.velum.app.platform.createMicCapture
@@ -52,6 +54,7 @@ class AppContainer(
      */
     recordingJobSchedulerFactory: ((RecordingProcessor, CoroutineScope) -> RecordingJobScheduler)? = null,
     val micCapture: MicCapture = createMicCapture(),
+    thermalPolicy: ThermalPolicy = NoOpThermalPolicy,
 ) {
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -88,6 +91,7 @@ class AppContainer(
         aiRouter = aiRouter,
         repository = repository,
         settings = settingsRepository,
+        thermal = thermalPolicy,
     )
 
     val recordingJobs: RecordingJobScheduler =

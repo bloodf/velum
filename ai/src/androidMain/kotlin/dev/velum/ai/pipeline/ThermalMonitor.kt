@@ -4,7 +4,7 @@ import android.os.Build
 import android.os.PowerManager
 import kotlinx.coroutines.delay
 
-internal object ThermalMonitor {
+object ThermalMonitor {
     fun isSevereOrCritical(powerManager: PowerManager?): Boolean {
         if (powerManager == null) return false
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return false
@@ -12,6 +12,17 @@ internal object ThermalMonitor {
         return status == PowerManager.THERMAL_STATUS_SEVERE ||
             status == PowerManager.THERMAL_STATUS_CRITICAL
     }
+
+    /** Alias used by pipeline stage gates (Y16). */
+    fun isHot(powerManager: PowerManager?): Boolean = isSevereOrCritical(powerManager)
+
+    fun asPolicy(powerManager: PowerManager?): ThermalPolicy =
+        object : ThermalPolicy {
+            override fun isHot(): Boolean = ThermalMonitor.isHot(powerManager)
+            override suspend fun awaitCool(onPaused: suspend (message: String) -> Unit) {
+                ThermalMonitor.awaitCool(powerManager, onPaused)
+            }
+        }
 
     /**
      * Suspend until thermal status drops below SEVERE, using exponential backoff.

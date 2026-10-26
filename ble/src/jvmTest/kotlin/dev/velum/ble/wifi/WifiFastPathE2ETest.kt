@@ -6,6 +6,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -37,6 +38,11 @@ class WifiFastPathE2ETest {
             bindHost = "127.0.0.1",
         )
         try {
+            // Subscribe before send — SharedFlow has no replay; avoid lost-frame race.
+            val receive = async {
+                withTimeout(5_000) { server.incomingEncryptedFrames().first() }
+            }
+            delay(20)
             val device = FakeWifiDeviceClient(port = 18081)
             device.connect()
             device.sendPreamble(preamble)
@@ -44,7 +50,7 @@ class WifiFastPathE2ETest {
             val plaintext = byteArrayOf(0x01, 0x1A, 0x00, 0x01, 0x02, 0x03)
             val sealed = cipher.seal(0, plaintext)
             device.sendBinary(sealed)
-            val received = withTimeout(5_000) { server.incomingEncryptedFrames().first() }
+            val received = receive.await()
             val opened = session.openIncoming(received)
             assertTrue(opened.contentEquals(plaintext))
             device.close()

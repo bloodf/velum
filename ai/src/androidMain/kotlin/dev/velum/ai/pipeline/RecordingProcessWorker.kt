@@ -13,12 +13,14 @@ import androidx.work.CoroutineWorker
 import androidx.work.Data
 import androidx.work.ExistingWorkPolicy
 import androidx.work.ForegroundInfo
+import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import dev.velum.ai.R
 import dev.velum.ai.engine.JobProgress
+import dev.velum.core.model.ComputeMode
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
 
@@ -184,6 +186,11 @@ class RecordingProcessWorker(
                 .build()
             val constraints = Constraints.Builder()
                 .setRequiresBatteryNotLow(true)
+                .apply {
+                    if (requiresNetworkForApiModes()) {
+                        setRequiredNetworkType(NetworkType.CONNECTED)
+                    }
+                }
                 .build()
             val request = OneTimeWorkRequestBuilder<RecordingProcessWorker>()
                 .setInputData(data)
@@ -196,6 +203,14 @@ class RecordingProcessWorker(
                 ExistingWorkPolicy.KEEP,
                 request,
             )
+        }
+
+        /** Y18: API transcription/summary/diarization needs connectivity. */
+        fun requiresNetworkForApiModes(): Boolean {
+            val cfg = AiRuntimeHolder.settings?.settings?.value ?: return false
+            return cfg.transcriptionMode == ComputeMode.Api ||
+                cfg.summaryMode == ComputeMode.Api ||
+                cfg.diarizationMode == ComputeMode.Api
         }
 
         fun ensureProcessingChannel(context: Context) {

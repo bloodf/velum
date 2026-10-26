@@ -20,7 +20,8 @@ actual fun createWifiFrameCipher(
  * AES-GCM Wi-Fi frames with the BLE session key / fixed 12-byte nonce as IV /
  * fixed aad (APK bit 0x08 path). Plaintext = seq u32 LE ‖ packet.
  *
- * Fixed nonce is **required Plaud / Note Pro parity** (same session IV as BLE).
+ * Fixed nonce is Plaud parity debt — required for Note Pro SoftAP;
+ * Velum SoftAP path uses the same cipher for interoperability.
  */
 internal class AesGcmWifiFrameCipher(
     private val secret: Protocol20SessionSecret,

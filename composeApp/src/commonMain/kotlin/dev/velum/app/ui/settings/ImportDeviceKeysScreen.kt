@@ -20,21 +20,26 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.velum.app.di.AppContainer
 import dev.velum.app.i18n.LocalStrings
+import dev.velum.app.platform.rememberJsonFileImporter
 import dev.velum.app.ui.components.BlackButton
 import dev.velum.app.ui.components.OutlineButton
 import dev.velum.app.ui.components.ScreenTopBar
 import dev.velum.app.ui.theme.VelumBg
 import dev.velum.app.ui.theme.VelumInk
 import dev.velum.app.ui.theme.VelumInkSecondary
+import dev.velum.core.security.PlaudExportImporter
+import dev.velum.core.security.PlaudExportParseResult
 import kotlinx.coroutines.launch
 
 /**
- * One-time paste of Plaud-minted identity material into Android Keystore-backed storage.
+ * Import from Plaud: paste identity fields and/or paste/import a version-1 JSON export
+ * (see docs/PLAUD_IMPORT.md). Stored in Android Keystore via [SecureStore].
  * sn-sign cannot be generated locally (blocked-on-owner).
  */
 @Composable
@@ -49,6 +54,7 @@ fun ImportDeviceKeysScreen(
     var bindToken by remember { mutableStateOf("") }
     var publicPem by remember { mutableStateOf("") }
     var privatePem by remember { mutableStateOf("") }
+    var jsonDraft by remember { mutableStateOf("") }
     var status by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var hasKeys by remember { mutableStateOf(false) }
@@ -56,6 +62,49 @@ fun ImportDeviceKeysScreen(
     LaunchedEffect(Unit) {
         hasKeys = container.deviceKeyImporter.hasKeys()
     }
+
+    fun applyJson(raw: String) {
+        scope.launch {
+            error = null
+            status = null
+            try {
+                when (
+                    val parsed = PlaudExportImporter.importInto(
+                        rawJson = raw,
+                        keys = container.deviceKeyImporter,
+                        upsertTemplate = { tpl ->
+                            container.repository.upsertTemplate(
+                                id = tpl.localId,
+                                name = tpl.name,
+                                category = tpl.category,
+                                description = tpl.description,
+                                systemPrompt = tpl.systemPrompt,
+                                builtin = false,
+                            )
+                        },
+                    )
+                ) {
+                    is PlaudExportParseResult.Success -> {
+                        serial = parsed.device.serial
+                        snSignature = parsed.device.snSignatureBase64
+                        bindToken = parsed.device.bindToken
+                        publicPem = parsed.device.publicKeyPem.orEmpty()
+                        privatePem = parsed.device.privateKeyPem.orEmpty()
+                        hasKeys = true
+                        jsonDraft = raw
+                        status = strings.importFromPlaudJsonOk
+                    }
+                    is PlaudExportParseResult.Failure -> {
+                        error = parsed.message
+                    }
+                }
+            } catch (t: Throwable) {
+                error = t.message ?: t.toString()
+            }
+        }
+    }
+
+    val pickJsonFile = rememberJsonFileImporter { text -> applyJson(text) }
 
     Column(
         Modifier
@@ -70,6 +119,32 @@ fun ImportDeviceKeysScreen(
             fontSize = 13.sp,
             lineHeight = 18.sp,
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+        )
+        Text(
+            strings.importFromPlaudJsonHint,
+            color = VelumInkSecondary,
+            fontSize = 12.sp,
+            lineHeight = 17.sp,
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+        )
+        OutlineButton(
+            strings.importFromPlaudJson,
+            { pickJsonFile() },
+            Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+        )
+        OutlinedTextField(
+            value = jsonDraft,
+            onValueChange = { jsonDraft = it },
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
+            label = { Text(strings.importFromPlaudJsonPaste) },
+            shape = RoundedCornerShape(10.dp),
+            minLines = 4,
+        )
+        OutlineButton(
+            strings.importFromPlaudJsonApply,
+            { if (jsonDraft.isNotBlank()) applyJson(jsonDraft) },
+            Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+            enabled = jsonDraft.isNotBlank(),
         )
         if (hasKeys) {
             Text(
@@ -161,7 +236,7 @@ fun ImportDeviceKeysScreen(
             Text(it, color = VelumInk, modifier = Modifier.padding(20.dp, 8.dp))
         }
         error?.let {
-            Text(it, color = androidx.compose.ui.graphics.Color(0xFFFF3B30), modifier = Modifier.padding(20.dp, 8.dp))
+            Text(it, color = Color(0xFFFF3B30), modifier = Modifier.padding(20.dp, 8.dp))
         }
         Spacer(Modifier.height(40.dp))
     }

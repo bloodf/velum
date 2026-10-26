@@ -8,6 +8,8 @@ import dev.velum.ai.engine.AudioInput
 import dev.velum.ai.engine.DEFAULT_LOCAL_DIARIZATION_MODEL_ID
 import dev.velum.ai.engine.DEFAULT_LOCAL_LLM_MODEL_ID
 import dev.velum.ai.engine.JobProgress
+import dev.velum.ai.engine.Transcriber
+import dev.velum.ai.engine.TranscriptionResult
 import dev.velum.ai.engine.LlmRequest
 import dev.velum.ai.engine.requiredLocalModelId
 import dev.velum.ai.local.ModelNotReadyException
@@ -28,6 +30,7 @@ class RecordingProcessor(
     private val repository: VelumRepository,
     private val settings: SettingsRepository,
     private val readFileBytes: (String) -> ByteArray = { path -> ModelStoreDir(path).readBytes() },
+    private val thermal: ThermalPolicy = NoOpThermalPolicy,
 ) {
     fun process(
         recordingId: String,
@@ -48,6 +51,7 @@ class RecordingProcessor(
             val localPath = recording.local_path
             if (!localPath.isNullOrBlank()) {
                 emit(JobProgress.Running(0.1f, "Decoding audio"))
+                awaitThermalGate { emit(it) }
                 val raw = readFileBytes(localPath)
                 ensureAudioByteBudget(raw.size.toLong(), "file read")
                 filename = localPath.substringAfterLast('/')
@@ -92,25 +96,26 @@ class RecordingProcessor(
                     emit(JobProgress.Running(0.35f, "Using existing transcript (no audio file)"))
                 } else {
                     emit(JobProgress.Running(0.25f, "Transcribing"))
+                    awaitThermalGate { emit(it) }
                     ensureApiKeyIfNeeded(cfg.transcriptionMode, "transcription")
                     val asr = aiRouter.transcriber()
                     val asrModel = when (cfg.transcriptionMode) {
                         ComputeMode.Local -> requiredLocalModelId(AiTask.Transcription, cfg)
                         ComputeMode.Api -> cfg.transcriptionModel.orEmpty()
                     }
-                    val transcription = asr.transcribe(
-                        AudioInput(
-                            filename = filename,
-                            bytes = audioBytes,
-                            sampleRateHz = sampleRate,
-                            languageHint = cfg.audioLanguage,
-                            recordingId = recordingId,
-                            initialPrompt = personalization.takeIf { it.isNotBlank() },
-                        ),
-                        asrModel,
+                    val transcription = transcribeWindowed(
+                        asr = asr,
+                        asrModel = asrModel,
+                        filename = filename,
+                        audioBytes = audioBytes,
+                        sampleRate = sampleRate,
+                        languageHint = cfg.audioLanguage,
+                        recordingId = recordingId,
+                        initialPrompt = personalization.takeIf { it.isNotBlank() },
                     )
 
                     emit(JobProgress.Running(0.45f, "Diarizing"))
+                    awaitThermalGate { emit(it) }
                     ensureApiKeyIfNeeded(cfg.diarizationMode, "diarization")
                     val diar = aiRouter.diarizer()
                     val diarModel = when (cfg.diarizationMode) {
@@ -164,6 +169,7 @@ class RecordingProcessor(
             }
 
             emit(JobProgress.Running(0.7f, "Summarizing"))
+            awaitThermalGate { emit(it) }
             ensureApiKeyIfNeeded(cfg.summaryMode, "summaries")
             val summaryLang = SummaryLocalization.resolveLanguage(
                 outputLanguage = cfg.outputLanguage,
@@ -216,6 +222,7 @@ class RecordingProcessor(
             emit(JobProgress.Failed(t.message ?: t.toString()))
         }
     }
+
 
     private fun ensureAudioByteBudget(byteCount: Long, stage: String) {
         if (byteCount > MAX_AUDIO_BYTES) {
@@ -273,6 +280,59 @@ class RecordingProcessor(
                 "API key required for $task. Add your OpenAI-compatible key in Account settings.",
             )
         }
+    }
+
+    private suspend fun awaitThermalGate(emit: suspend (JobProgress) -> Unit) {
+        if (!thermal.isHot()) return
+        emit(JobProgress.PausedThermal("Device thermal status severe/critical — pausing AI work"))
+        thermal.awaitCool { message ->
+            emit(JobProgress.PausedThermal(message))
+        }
+    }
+
+    private suspend fun transcribeWindowed(
+        asr: Transcriber,
+        asrModel: String,
+        filename: String,
+        audioBytes: ByteArray,
+        sampleRate: Int,
+        languageHint: String?,
+        recordingId: String,
+        initialPrompt: String?,
+    ): TranscriptionResult {
+        val windows = WindowedAsr.windows(audioBytes.size, sampleRate)
+        if (windows.size <= 1) {
+            return asr.transcribe(
+                AudioInput(
+                    filename = filename,
+                    bytes = audioBytes,
+                    sampleRateHz = sampleRate,
+                    languageHint = languageHint,
+                    recordingId = recordingId,
+                    initialPrompt = initialPrompt,
+                ),
+                asrModel,
+            )
+        }
+        val parts = ArrayList<TranscriptionResult>(windows.size)
+        val starts = ArrayList<Long>(windows.size)
+        for (w in windows) {
+            thermal.awaitCool { }
+            val slice = audioBytes.copyOfRange(w.startByte, w.endByte)
+            parts += asr.transcribe(
+                AudioInput(
+                    filename = filename,
+                    bytes = slice,
+                    sampleRateHz = sampleRate,
+                    languageHint = languageHint,
+                    recordingId = recordingId,
+                    initialPrompt = if (parts.isEmpty()) initialPrompt else null,
+                ),
+                asrModel,
+            )
+            starts += w.startMs
+        }
+        return WindowedAsr.mergeWindowResults(parts, starts)
     }
 
     private fun looksLikeOgg(bytes: ByteArray): Boolean =

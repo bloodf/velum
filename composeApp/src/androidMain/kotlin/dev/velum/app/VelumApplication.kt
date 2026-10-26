@@ -1,9 +1,11 @@
 package dev.velum.app
 
 import android.app.Application
+import android.os.PowerManager
 import android.util.Log
 import dev.velum.ai.local.ModelStoreDir
 import dev.velum.ai.pipeline.AiRuntimeHolder
+import dev.velum.ai.pipeline.ThermalMonitor
 import dev.velum.ai.pipeline.createWorkManagerRecordingJobScheduler
 import dev.velum.app.di.AppContainer
 import dev.velum.app.platform.MicRecordingService
@@ -39,6 +41,7 @@ class VelumApplication : Application() {
         installRecordingFilesDir(filesDir.absolutePath)
         MicRecordingService.ensureNotificationChannel(this)
         val modelsDir = File(filesDir, "models")
+        val powerManager = getSystemService(PowerManager::class.java)
         val built = AppContainer(
             secureStore = AndroidSecureStore(applicationContext),
             driverFactory = DriverFactory(applicationContext),
@@ -47,9 +50,14 @@ class VelumApplication : Application() {
             recordingJobSchedulerFactory = { _, _ ->
                 createWorkManagerRecordingJobScheduler(applicationContext)
             },
+            thermalPolicy = ThermalMonitor.asPolicy(powerManager),
         )
         container = built
-        AiRuntimeHolder.install(built.recordingProcessor, built.repository)
+        AiRuntimeHolder.install(
+            processor = built.recordingProcessor,
+            repository = built.repository,
+            settings = built.settingsRepository,
+        )
         appScope.launch {
             runCatching {
                 recoverPartialMicRecordings(
