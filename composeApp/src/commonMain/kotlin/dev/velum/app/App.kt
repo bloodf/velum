@@ -216,6 +216,7 @@ private fun VelumRoot(container: AppContainer) {
                             container = container,
                             onBack = { navController.popBackStack() },
                             onAiProcessing = { navController.navigate(Routes.AI_PROCESSING) },
+                            onCustomVocabulary = { navController.navigate(Routes.MEMORY) },
                         )
                     }
                     composable(Routes.ACCOUNT) {

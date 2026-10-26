@@ -254,8 +254,13 @@ fun RecordingDetailScreen(
             SourcesPane(
                 transcript = recording?.transcript,
                 durationSeconds = recording?.duration_seconds ?: 0,
+                hasLocalAudio = !recording?.local_path.isNullOrBlank(),
                 generating = generating && recording?.transcript.isNullOrBlank(),
+                transportMessage = processError?.takeIf { it.startsWith("playback:") }?.removePrefix("playback:"),
                 onGenerate = { showGenerate = true },
+                onPlaybackUnavailable = {
+                    processError = "playback:" + PLAYBACK_UNAVAILABLE_PT
+                },
             )
         } else {
             NotesPane(
@@ -567,8 +572,11 @@ private fun TabLabel(text: String, selected: Boolean, onClick: () -> Unit) {
 private fun SourcesPane(
     transcript: String?,
     durationSeconds: Long,
+    hasLocalAudio: Boolean,
     generating: Boolean,
+    transportMessage: String? = null,
     onGenerate: () -> Unit,
+    onPlaybackUnavailable: () -> Unit = {},
 ) {
     val strings = LocalStrings.current
     val dur = formatHms(durationSeconds)
@@ -582,7 +590,20 @@ private fun SourcesPane(
         )
         HorizontalDivider(thickness = 2.dp, color = VelumBlack, modifier = Modifier.padding(horizontal = 20.dp).width(90.dp))
         Spacer(Modifier.height(8.dp))
-        PlayerBar(durationLabel = "00:00:00 / $dur")
+        PlayerBar(
+            durationLabel = "00:00:00 / $dur",
+            onTransportClick = {
+                if (!hasLocalAudio) onPlaybackUnavailable()
+            },
+        )
+        if (!transportMessage.isNullOrBlank()) {
+            Text(
+                transportMessage,
+                color = Color(0xFFB45309),
+                fontSize = 12.sp,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+            )
+        }
         Box(Modifier.weight(1f).fillMaxWidth()) {
             if (generating) {
                 GeneratingBody()
@@ -792,6 +813,10 @@ private fun openStreamingTranscriber(container: AppContainer): StreamingTranscri
     return FakeStreamingTranscriber()
 }
 
+/** Avoid growing Strings ctor past the JVM arg limit; pt-BR product default. */
+private const val PLAYBACK_UNAVAILABLE_PT =
+    "Reprodução indisponível — arquivo de áudio local ausente nesta gravação."
+
 /** Synthetic PCM16 mono chunk (~640 ms) for offline streaming demos. */
 private fun demoPcmChunk(tick: Int): ByteArray {
     val sampleRate = 16_000
@@ -863,7 +888,10 @@ private fun NotesPane(
 }
 
 @Composable
-private fun PlayerBar(durationLabel: String) {
+private fun PlayerBar(
+    durationLabel: String,
+    onTransportClick: () -> Unit = {},
+) {
     Column(
         Modifier
             .fillMaxWidth()
@@ -878,9 +906,9 @@ private fun PlayerBar(durationLabel: String) {
                 .fillMaxWidth()
                 .height(36.dp)
                 .clip(RoundedCornerShape(4.dp))
-                .background(Color(0xFFF2F2F7)),
+                .background(Color(0xFFF2F2F7))
+                .clickable(onClick = onTransportClick),
         ) {
-            // simple waveform bars
             Row(
                 Modifier.fillMaxSize().padding(horizontal = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -907,15 +935,36 @@ private fun PlayerBar(durationLabel: String) {
                 Modifier
                     .size(44.dp)
                     .clip(CircleShape)
-                    .background(Color(0xFFF2F2F7)),
+                    .background(Color(0xFFF2F2F7))
+                    .clickable(onClick = onTransportClick),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(Icons.Outlined.PlayArrow, null, tint = VelumInk)
             }
-            Icon(Icons.AutoMirrored.Outlined.Undo, "−15", tint = VelumInk, modifier = Modifier.size(26.dp))
-            Icon(Icons.AutoMirrored.Outlined.Redo, "+15", tint = VelumInk, modifier = Modifier.size(26.dp))
-            Text("1x", color = VelumInk, fontWeight = FontWeight.Medium)
-            Icon(Icons.Outlined.AutoAwesome, null, tint = VelumInk, modifier = Modifier.size(22.dp))
+            Icon(
+                Icons.AutoMirrored.Outlined.Undo,
+                "−15",
+                tint = VelumInk,
+                modifier = Modifier.size(26.dp).clickable(onClick = onTransportClick),
+            )
+            Icon(
+                Icons.AutoMirrored.Outlined.Redo,
+                "+15",
+                tint = VelumInk,
+                modifier = Modifier.size(26.dp).clickable(onClick = onTransportClick),
+            )
+            Text(
+                "1x",
+                color = VelumInk,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.clickable(onClick = onTransportClick),
+            )
+            Icon(
+                Icons.Outlined.AutoAwesome,
+                null,
+                tint = VelumInk,
+                modifier = Modifier.size(22.dp).clickable(onClick = onTransportClick),
+            )
         }
         Spacer(Modifier.height(10.dp))
         HorizontalDivider(color = VelumDivider, thickness = 0.5.dp)
@@ -1037,9 +1086,21 @@ private fun formatTalk(seconds: Long): String {
 fun GenerateSheetContent(
     onClose: () -> Unit,
     onApply: () -> Unit = onClose,
+    templates: List<String> = listOf("tpl-meeting", "tpl-general", "tpl-it"),
+    languages: List<String> = listOf("auto", "pt", "en", "es"),
+    models: List<String> = listOf("automatic", "parakeet-tdt-0.6b-v3-int8", "whisper-large-v3-turbo"),
 ) {
     val strings = LocalStrings.current
     var auto by remember { mutableStateOf(true) }
+    var templateIdx by remember { mutableStateOf(0) }
+    var autoLabel by remember { mutableStateOf(true) }
+    var langIdx by remember { mutableStateOf(0) }
+    var modelIdx by remember { mutableStateOf(0) }
+    val templateLabels = listOf(
+        strings.meetingHighlights,
+        "Notas gerais",
+        "Reunião de TI",
+    )
     Column(Modifier.fillMaxWidth().padding(bottom = 20.dp)) {
         Text(
             if (auto) strings.generateAuto else strings.generateCustom,
@@ -1053,10 +1114,29 @@ fun GenerateSheetContent(
             ModeChip(strings.generateCustom, !auto) { auto = false }
         }
         Spacer(Modifier.height(8.dp))
-        ChevronRow(strings.template, {}, value = strings.meetingHighlights)
-        ChevronRow(strings.autoLabelVoice, {}, value = strings.on)
-        ChevronRow(strings.audioLanguage, {}, value = strings.automatic)
-        ChevronRow(strings.aiModel, {}, value = strings.automatic, showDivider = false)
+        ChevronRow(
+            strings.template,
+            {
+                templateIdx = (templateIdx + 1) % templates.size.coerceAtLeast(1)
+            },
+            value = templateLabels.getOrElse(templateIdx) { templates[templateIdx] },
+        )
+        ChevronRow(
+            strings.autoLabelVoice,
+            { autoLabel = !autoLabel },
+            value = if (autoLabel) strings.on else strings.off,
+        )
+        ChevronRow(
+            strings.audioLanguage,
+            { langIdx = (langIdx + 1) % languages.size.coerceAtLeast(1) },
+            value = languages[langIdx],
+        )
+        ChevronRow(
+            strings.aiModel,
+            { modelIdx = (modelIdx + 1) % models.size.coerceAtLeast(1) },
+            value = if (modelIdx == 0) strings.automatic else models[modelIdx],
+            showDivider = false,
+        )
         Spacer(Modifier.height(12.dp))
         BlackButton(strings.apply, onApply, modifier = Modifier.padding(horizontal = 20.dp))
     }

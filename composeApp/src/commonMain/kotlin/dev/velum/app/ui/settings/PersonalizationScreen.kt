@@ -48,7 +48,6 @@ import kotlinx.coroutines.launch
 fun PersonalizationScreen(
     container: AppContainer,
     onBack: () -> Unit,
-    onProfile: () -> Unit = {},
     onMemory: () -> Unit,
 ) {
     val strings = LocalStrings.current
@@ -82,7 +81,7 @@ fun PersonalizationScreen(
             .verticalScroll(rememberScrollState()),
     ) {
         ScreenTopBar(strings.personalization, onBack = onBack)
-        ChevronRow(strings.profile, onProfile, showDivider = false)
+        // Profile fields live on this screen (display name / focus / instructions).
         Spacer(Modifier.height(8.dp))
         SectionTitle(strings.displayName)
         HintField(displayName, strings.displayName) { displayName = it }

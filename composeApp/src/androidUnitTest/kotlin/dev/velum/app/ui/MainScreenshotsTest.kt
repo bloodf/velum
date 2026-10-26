@@ -63,6 +63,8 @@ class MainScreenshotsTest {
     @Before
     fun setUp() {
         val context = ApplicationProvider.getApplicationContext<Context>()
+        // Fresh DB so SeedData v3 Markdown fixtures always land for Roborazzi.
+        context.deleteDatabase("velum.db")
         container = AppContainer(
             secureStore = InMemorySecureStore(),
             driverFactory = DriverFactory(context),
@@ -84,11 +86,13 @@ class MainScreenshotsTest {
 
     @Test
     fun recordingFontes() = capture("03-recording-fontes") {
+        // Seeded diarized Markdown transcript rendered via MarkdownPreview.
         RecordingDetailScreen(container, "rec-demo-1", onBack = {}, initialTab = 0)
     }
 
     @Test
     fun recordingNotas() = capture("04-recording-notas") {
+        // Seeded meeting summary Markdown (headings + lists) in Notas.
         RecordingDetailScreen(container, "rec-demo-1", onBack = {}, initialTab = 1)
     }
 

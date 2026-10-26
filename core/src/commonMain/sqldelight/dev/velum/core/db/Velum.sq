@@ -111,6 +111,9 @@ UPDATE recording SET status = ?, transcript = ?, summary_markdown = ? WHERE id =
 trashRecording:
 UPDATE recording SET trashed = 1 WHERE id = ?;
 
+deleteRecordingHard:
+DELETE FROM recording WHERE id = ?;
+
 updateRecordingFolder:
 UPDATE recording SET folder_id = ? WHERE id = ?;
 

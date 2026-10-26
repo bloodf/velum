@@ -8,18 +8,22 @@ object DemoFlags {
 }
 
 object SeedData {
-    private const val META_SEEDED = "demo_seeded_v2"
+    private const val META_SEEDED = "demo_seed_version"
+    private const val SEED_VERSION = "3"
 
     fun maybeSeed(db: VelumDatabase) {
         if (!DemoFlags.SEED_DEMO_DATA) return
         val q = db.velumQueries
-        if (q.getMeta(META_SEEDED).executeAsOneOrNull() != null) return
+        if (q.getMeta(META_SEEDED).executeAsOneOrNull() == SEED_VERSION) return
 
         val now = 1_729_942_755L
         db.transaction {
             q.insertFolder("folder-inbox", "Inbox", now)
             q.insertFolder("folder-meetings", "Reuniões", now)
 
+            // Upsert demo recordings so upgraded seed versions refresh Markdown fixtures.
+            q.deleteRecordingHard("rec-demo-1")
+            q.deleteRecordingHard("rec-demo-2")
             q.insertRecording(
                 id = "rec-demo-1",
                 session_id = now - 3600,
@@ -84,7 +88,7 @@ object SeedData {
                 post_action = null,
             )
 
-            q.setMeta(META_SEEDED, "1")
+            q.setMeta(META_SEEDED, SEED_VERSION)
         }
     }
 
@@ -151,44 +155,65 @@ object SeedData {
 }
 
 private val DEMO_TRANSCRIPT_PT = """
-**Speaker 1** · 0:00
-Bom dia a todos. Vamos começar?
+**Heitor** · 0:00
+Bom dia a todos. Vamos começar pela revisão do Velum no Note Pro?
 
-**Speaker 2** · 0:08
-Bom dia. Vamos começar pelo status do sprint.
+**Marina** · 0:12
+Bom dia. Status do sprint: a transcrição diarizada em Markdown já está no pipeline local.
 
-**Speaker 1** · 0:15
-O MVP Android está quase fechado. Falta o sync BLE.
+**Heitor** · 0:28
+Ótimo. O sync BLE com FE10 a cada connect ficou estável nos testes com Fake BLE?
 
-**Speaker 2** · 0:28
-Concordo. iOS fica para depois do Android estar completo.
+**Marina** · 0:41
+Sim. Unlock → download → decrypt no CI. Falta só o import das chaves reais do Note Pro.
+
+**Heitor** · 1:05
+Combinado. Resumo local com Gemma E4B e fallback de API por tarefa.
+
+**Marina** · 1:22
+Também: mapa mental a partir dos H2 do resumo, e gravação pelo microfone em WAV 16 kHz.
 
 ### Decisões
-- Priorizar Android
-- Revisar templates Velum nesta semana
+- Priorizar Android com modelos locais (Parakeet + pyannote + 3D-Speaker + Gemma E4B)
+- Manter API só como override por tarefa
+- iOS depois do Android estar completo
+
+### Pendências
+- Importar `snSignature` / bind token do app Plaud oficial
+- Confirmar Ogg Opus + decrypt numa captura real do Note Pro
 """.trimIndent()
 
 private val DEMO_TRANSCRIPT_GENERATING_PT = """
-**Speaker 1** · 0:00
-Precisamos fechar o MVP Android.
+**Heitor** · 0:00
+Precisamos fechar o MVP Android com Fontes e Notas em Markdown.
 
-**Speaker 2** · 0:12
-Concordo, iOS fica para depois.
+**Marina** · 0:14
+Concordo. iOS fica para depois do pipeline local estar completo.
 """.trimIndent()
 
 private val DEMO_SUMMARY_PT = """
 ## Meeting Information
 - **Date:** 2026-10-26
 - **Location:** Remoto
-- **Participants:** Speaker 1, Speaker 2
+- **Participants:** Heitor, Marina
 
 ## Meeting Notes
-### Status do sprint
-- Alinhamento sobre o MVP Android
-- iOS adiado até o Android estar completo
+### Pipeline local
+- Transcrição diarizada → Markdown em **Fontes**
+- Resumo estruturado em **Notas** (Gemma E4B / API override)
+- WorkManager com pausa térmica e retomada
+
+### BLE / Note Pro
+- Fake BLE E2E no CI (FE10 obrigatório)
+- Chaves reais ainda bloqueadas no owner
+
+## Decisions
+- Default **Local** quando o modelo estiver Ready
+- Embedding preferido: **3D-Speaker ERes2Net**
 
 ## Next Arrangements
-- [ ] Fechar sync BLE no Android
+- [ ] Importar identidade do Note Pro
+- [ ] Validar Ogg Opus numa captura real
 - [ ] Revisar templates Velum
 
 ## AI Suggestions
