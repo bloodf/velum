@@ -20,12 +20,15 @@ class VelumRepository(
 ) {
     private val q get() = db.velumQueries
 
+    /** False on hosts without SQLite FTS5 (e.g. Robolectric). Search falls back to ListSearch. */
+    val ftsAvailable: Boolean
+
     constructor(handle: DatabaseHandle) : this(handle.database, handle.driver)
 
     init {
-        FtsIndex.ensureSchema(driver)
+        ftsAvailable = FtsIndex.ensureSchema(driver)
         SeedData.maybeSeed(db)
-        rebuildFtsIndex()
+        if (ftsAvailable) rebuildFtsIndex()
     }
 
     fun observeRecordings(): Flow<List<Recording>> =
@@ -62,12 +65,12 @@ class VelumRepository(
 
     suspend fun searchRecordingIdsFts(matchQuery: String): List<String> =
         withContext(Dispatchers.Default) {
-            FtsIndex.searchRecordingIds(driver, matchQuery)
+            if (!ftsAvailable) emptyList() else FtsIndex.searchRecordingIds(driver, matchQuery)
         }
 
     suspend fun searchTemplateIdsFts(matchQuery: String): List<String> =
         withContext(Dispatchers.Default) {
-            FtsIndex.searchTemplateIds(driver, matchQuery)
+            if (!ftsAvailable) emptyList() else FtsIndex.searchTemplateIds(driver, matchQuery)
         }
 
     suspend fun setAutoflowEnabled(id: String, enabled: Boolean) = withContext(Dispatchers.Default) {
@@ -296,6 +299,7 @@ class VelumRepository(
 
     /** Reindex every recording/template into FTS (after seed or migration). */
     fun rebuildFtsIndex() {
+        if (!ftsAvailable) return
         db.transaction {
             q.selectAllRecordings().executeAsList().forEach { r ->
                 indexRecording(r.id, r.title, r.transcript, r.summary_markdown)
@@ -307,6 +311,7 @@ class VelumRepository(
     }
 
     private fun reindexRecording(id: String) {
+        if (!ftsAvailable) return
         val r = q.selectRecordingById(id).executeAsOneOrNull() ?: return
         indexRecording(r.id, r.title, r.transcript, r.summary_markdown)
     }
@@ -317,6 +322,7 @@ class VelumRepository(
         transcript: String?,
         summaryMarkdown: String?,
     ) {
+        if (!ftsAvailable) return
         FtsIndex.upsertRecording(driver, id, title, transcript, summaryMarkdown)
     }
 
@@ -327,6 +333,7 @@ class VelumRepository(
         category: String,
         systemPrompt: String,
     ) {
+        if (!ftsAvailable) return
         FtsIndex.upsertTemplate(driver, id, name, description, category, systemPrompt)
     }
 

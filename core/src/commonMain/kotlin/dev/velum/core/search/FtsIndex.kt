@@ -7,36 +7,45 @@ import app.cash.sqldelight.db.SqlDriver
  * SQLite FTS5 index managed outside SQLDelight .sq files.
  * SQLDelight 2.0's default dialect stack-overflows on VIRTUAL TABLE / MATCH,
  * so DDL + search run through [SqlDriver] directly. Real FTS5 on Android/JVM.
+ *
+ * Returns false when the host SQLite has no `fts5` module (e.g. Robolectric) —
+ * callers must fall back to [ListSearch].
  */
 object FtsIndex {
-    fun ensureSchema(driver: SqlDriver) {
-        driver.execute(
-            identifier = null,
-            sql = """
-                CREATE VIRTUAL TABLE IF NOT EXISTS recording_fts USING fts5(
-                  recording_id UNINDEXED,
-                  title,
-                  transcript,
-                  summary_markdown,
-                  tokenize = 'porter unicode61'
-                )
-            """.trimIndent(),
-            parameters = 0,
-        )
-        driver.execute(
-            identifier = null,
-            sql = """
-                CREATE VIRTUAL TABLE IF NOT EXISTS template_fts USING fts5(
-                  template_id UNINDEXED,
-                  name,
-                  description,
-                  category,
-                  system_prompt,
-                  tokenize = 'porter unicode61'
-                )
-            """.trimIndent(),
-            parameters = 0,
-        )
+    fun ensureSchema(driver: SqlDriver): Boolean {
+        return try {
+            driver.execute(
+                identifier = null,
+                sql = """
+                    CREATE VIRTUAL TABLE IF NOT EXISTS recording_fts USING fts5(
+                      recording_id UNINDEXED,
+                      title,
+                      transcript,
+                      summary_markdown,
+                      tokenize = 'porter unicode61'
+                    )
+                """.trimIndent(),
+                parameters = 0,
+            )
+            driver.execute(
+                identifier = null,
+                sql = """
+                    CREATE VIRTUAL TABLE IF NOT EXISTS template_fts USING fts5(
+                      template_id UNINDEXED,
+                      name,
+                      description,
+                      category,
+                      system_prompt,
+                      tokenize = 'porter unicode61'
+                    )
+                """.trimIndent(),
+                parameters = 0,
+            )
+            true
+        } catch (_: Exception) {
+            // Robolectric / stripped SQLite: "no such module: fts5"
+            false
+        }
     }
 
     fun upsertRecording(
