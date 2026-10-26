@@ -60,7 +60,7 @@ API transcription uses the user’s chosen OpenAI-compatible `/audio/transcripti
 ### Diarization (local)
 
 - Segmentation: **sherpa-onnx** + **pyannote-3.0**
-- Embeddings: evaluate **WeSpeaker** / **TitaNet** vs **3D-Speaker**; prefer a multilingual-trained embedding
+- Embeddings: prefer **`3dspeaker-eres2net-base`** (3D-Speaker multilingual training) over VoxCeleb-only WeSpeaker; TitaNet / WeSpeaker stay as catalog alternates
 - **Named voice profiles** — store embeddings per person; cosine-match clusters to names
 
 API diarization throws until a compatible remote contract is chosen; Local remains the default.
@@ -80,13 +80,17 @@ API diarization throws until a compatible remote contract is chosen; Local remai
 
 - Models are **downloaded on demand** (not in the APK, not in git) via `LocalModelManager` (Ktor → `models/`).
 - Catalog entries without a known release URL stay **BlockedOnUrl** (never fake Ready).
-- Processing runs through `RecordingProcessor` (decode → ASR → diarize → markdown → summarize → DB). WorkManager + thermal monitoring still to land.
+- Processing runs through `RecordingProcessor` (decode → ASR → diarize → markdown → summarize → DB) on Android via **WorkManager** (`RecordingProcessWorker`) with **thermal pause/resume** (`ThermalMonitor` + exponential backoff) and DB checkpoints (`paused_thermal`).
+- Product default for every task is **Local** when the required model is Ready; otherwise the UI prompts **Download** or switch to **API** (`resolveModeOrPrompt`). Per-task override remains in Settings.
 
 ## 3. Code shape
 
 ```
 Transcriber  ── LocalTranscriber (sherpa-onnx OfflineRecognizer on Android)
              └─ OpenAiTranscriber (MissingApiKeyException when key absent)
+
+Streaming    ── OnlineRecognizer when streaming pack detected; else overlapping Offline windows
+             └─ FakeStreamingTranscriber on JVM (tests / live demo without models)
 
 Diarizer     ── LocalDiarizer (OfflineSpeakerDiarization + VoiceProfileStore cosine match)
              └─ OpenAiDiarizer (UnsupportedOperationException — Local required)
@@ -107,7 +111,5 @@ OpusDecoder  ── Ogg demux (common) + kopus (Android/JVM); iOS unsupported fo
 ## 4. Non-goals (remaining)
 
 - Bundling or committing model weights
-- Streaming ASR UI
 - iOS on-device ASR / Opus decode / LLM runtimes (Android-first; same interfaces later)
-- WorkManager thermal checkpoints
 - Any Plaud-hosted auth, billing, telemetry, or OTA catalogue

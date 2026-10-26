@@ -224,6 +224,44 @@ class VelumRepository(
         q.updateStatus(status, id)
     }
 
+    suspend fun updateLocalPath(
+        id: String,
+        localPath: String,
+        durationSeconds: Long,
+        sizeBytes: Long,
+    ) = withContext(Dispatchers.Default) {
+        q.updateLocalPath(localPath, durationSeconds, sizeBytes, id)
+    }
+
+    /**
+     * Checkpoint mid-job (status + optional partial transcript/summary).
+     * Null transcript/summary leaves the previous column value unchanged via coalesce in callers.
+     */
+    suspend fun updateProcessingCheckpoint(
+        id: String,
+        status: String,
+        transcript: String? = null,
+        summaryMarkdown: String? = null,
+    ) = withContext(Dispatchers.Default) {
+        val current = q.selectRecordingById(id).executeAsOneOrNull() ?: return@withContext
+        val nextTranscript = transcript ?: current.transcript
+        val nextSummary = summaryMarkdown ?: current.summary_markdown
+        q.updateProcessingCheckpoint(status, nextTranscript, nextSummary, id)
+        reindexRecording(id)
+    }
+
+    suspend fun getMeta(key: String): String? = withContext(Dispatchers.Default) {
+        q.getMeta(key).executeAsOneOrNull()
+    }
+
+    suspend fun setMeta(key: String, value: String) = withContext(Dispatchers.Default) {
+        q.setMeta(key, value)
+    }
+
+    suspend fun isFirstRunDone(): Boolean = getMeta(META_FIRST_RUN_DONE) == "1"
+
+    suspend fun markFirstRunDone() = setMeta(META_FIRST_RUN_DONE, "1")
+
     /**
      * Persist a local template as name + Markdown/plain prompt JSON body.
      * [systemPrompt] is the LLM instruction; may be plain Markdown or a JSON object string.
@@ -257,7 +295,7 @@ class VelumRepository(
 
     suspend fun deleteTemplate(id: String) = withContext(Dispatchers.Default) {
         q.deleteTemplate(id)
-        FtsIndex.deleteTemplate(driver, id)
+        if (ftsAvailable) FtsIndex.deleteTemplate(driver, id)
     }
 
     suspend fun insertRecording(
@@ -396,6 +434,10 @@ class VelumRepository(
     }
 
     private fun epochSeconds(): Long = epochSecondsNow()
+
+    companion object {
+        const val META_FIRST_RUN_DONE = "first_run_done"
+    }
 }
 
 expect fun epochSecondsNow(): Long

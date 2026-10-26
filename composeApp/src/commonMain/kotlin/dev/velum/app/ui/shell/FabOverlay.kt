@@ -33,6 +33,7 @@ fun FabOverlay(
     onStartRecording: () -> Unit,
     onImportAudio: () -> Unit,
     onDismiss: () -> Unit,
+    isCapturing: Boolean = false,
 ) {
     val strings = LocalStrings.current
     Column(
@@ -49,7 +50,11 @@ fun FabOverlay(
                 .padding(bottom = 96.dp)
                 .clickable(enabled = false) {},
         ) {
-            FabAction(Icons.Outlined.Mic, strings.startRecording, onStartRecording)
+            FabAction(
+                Icons.Outlined.Mic,
+                if (isCapturing) strings.stopRecording else strings.startRecording,
+                onStartRecording,
+            )
             Spacer(Modifier.height(8.dp))
             HorizontalDivider(color = VelumDivider, thickness = 0.5.dp)
             Spacer(Modifier.height(8.dp))

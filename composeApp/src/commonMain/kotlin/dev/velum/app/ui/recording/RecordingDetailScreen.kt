@@ -38,6 +38,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -53,25 +54,42 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import dev.velum.ai.engine.JobProgress
+import dev.velum.ai.engine.AiTask
+import dev.velum.ai.engine.FakeStreamingTranscriber
+import dev.velum.ai.engine.ModeResolution
+import dev.velum.ai.engine.StreamingTranscriber
+import dev.velum.ai.engine.createStreamingTranscriber
+import dev.velum.ai.local.LocalAsrRouter
+import dev.velum.ai.local.LocalModelStatus
 import dev.velum.app.di.AppContainer
 import dev.velum.app.i18n.LocalStrings
+import dev.velum.app.platform.MicStopResult
+import dev.velum.app.platform.createLivePcmCapture
+import dev.velum.app.platform.recordingsDirectoryPath
 import dev.velum.app.platform.shareText
+import dev.velum.app.platform.WavWriter
 import dev.velum.app.ui.components.AiGlowFooter
 import dev.velum.app.ui.components.BlackButton
 import dev.velum.app.ui.components.ChevronRow
 import dev.velum.app.ui.components.DualActionRow
+import dev.velum.app.ui.components.LocalModelMissingDialog
 import dev.velum.app.ui.components.OutlineButton
 import dev.velum.app.ui.components.ThinDivider
 import dev.velum.app.ui.markdown.MarkdownPreview
+import dev.velum.app.ui.mindmap.MindMapView
+import dev.velum.app.ui.mindmap.buildMindMap
 import dev.velum.app.ui.theme.VelumBg
 import dev.velum.app.ui.theme.VelumBlack
 import dev.velum.app.ui.theme.VelumDivider
 import dev.velum.app.ui.theme.VelumInk
 import dev.velum.app.ui.theme.VelumInkSecondary
 import dev.velum.app.ui.theme.VelumSurface
-import kotlinx.coroutines.flow.collect
+import dev.velum.core.model.ComputeMode
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -79,6 +97,7 @@ fun RecordingDetailScreen(
     container: AppContainer,
     recordingId: String,
     onBack: () -> Unit,
+    onOpenModelManager: () -> Unit = {},
     initialTab: Int = 0,
     showSpeakersInitially: Boolean = false,
     showGenerateInitially: Boolean = false,
@@ -93,30 +112,47 @@ fun RecordingDetailScreen(
     var showMove by remember { mutableStateOf(false) }
     var showFindReplace by remember { mutableStateOf(false) }
     var showAskAi by remember { mutableStateOf(false) }
+    var showMindMap by remember { mutableStateOf(false) }
     var askDraft by remember { mutableStateOf("") }
     var askAnswer by remember { mutableStateOf<String?>(null) }
     var askBusy by remember { mutableStateOf(false) }
     var askError by remember { mutableStateOf<String?>(null) }
     var processError by remember { mutableStateOf<String?>(null) }
+    var pendingRetranscribe by remember { mutableStateOf<Boolean?>(null) }
+    var modelPrompt by remember { mutableStateOf<ModeResolution.NeedLocalModel?>(null) }
     val scope = rememberCoroutineScope()
-    val generating = recording?.status == "generating" ||
-        (recording?.summary_markdown.isNullOrBlank() && recording?.status != "failed")
+    val isLiveRecording = recording?.status == "recording"
+    val pausedThermal = recording?.status == "paused_thermal"
+    val generating = !isLiveRecording && (
+        recording?.status == "generating" ||
+            pausedThermal ||
+            (recording?.summary_markdown.isNullOrBlank() &&
+                recording?.status != "failed" &&
+                recording?.status != "ready" &&
+                recording?.status != "queued")
+        )
 
-    fun launchProcessing(retranscribe: Boolean) {
+    fun enqueueAfterGate(retranscribe: Boolean) {
         processError = null
-        scope.launch {
-            container.recordingProcessor.process(
-                recordingId = recordingId,
-                templateId = "tpl-meeting",
-                retranscribe = retranscribe,
-            ).collect { progress ->
-                when (progress) {
-                    is JobProgress.Failed -> processError = progress.message
-                    else -> Unit
+        val tasks = listOf(AiTask.Transcription, AiTask.Diarization, AiTask.Summary)
+        for (task in tasks) {
+            when (val resolution = container.aiRouter.resolveModeOrPrompt(task, container.localModelManager)) {
+                is ModeResolution.NeedLocalModel -> {
+                    pendingRetranscribe = retranscribe
+                    modelPrompt = resolution
+                    return
                 }
+                is ModeResolution.Proceed -> Unit
             }
         }
+        container.enqueueProcessing(
+            recordingId = recordingId,
+            templateId = "tpl-meeting",
+            retranscribe = retranscribe,
+        )
     }
+
+    fun launchProcessing(retranscribe: Boolean) = enqueueAfterGate(retranscribe)
 
     fun exportMarkdown() {
         val rec = recording ?: return
@@ -198,7 +234,23 @@ fun RecordingDetailScreen(
             Spacer(Modifier.width(8.dp))
         }
 
-        if (tab == 0) {
+        if (pausedThermal) {
+            Text(
+                strings.pausedThermal,
+                color = Color(0xFFB45309),
+                fontSize = 13.sp,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+            )
+        }
+
+        if (isLiveRecording) {
+            LiveTranscriptPane(
+                container = container,
+                recordingId = recordingId,
+                title = recording?.title.orEmpty(),
+                onStoppedAndQueued = { /* status observed via Flow */ },
+            )
+        } else if (tab == 0) {
             SourcesPane(
                 transcript = recording?.transcript,
                 durationSeconds = recording?.duration_seconds ?: 0,
@@ -212,7 +264,31 @@ fun RecordingDetailScreen(
                 processError = processError,
                 onAskAi = { showAskAi = true },
                 onGenerate = { showGenerate = true },
+                onMindMap = { showMindMap = true },
             )
+        }
+    }
+
+    if (showMindMap) {
+        val title = recording?.title.orEmpty().ifBlank { strings.summary }
+        val map = remember(recording?.summary_markdown, title) {
+            buildMindMap(recording?.summary_markdown.orEmpty(), title)
+        }
+        ModalBottomSheet(
+            onDismissRequest = { showMindMap = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = VelumSurface,
+        ) {
+            Column(Modifier.fillMaxWidth().height(520.dp)) {
+                Text(
+                    strings.mindMap,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 18.sp,
+                    color = VelumInk,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+                )
+                MindMapView(map, Modifier.weight(1f))
+            }
         }
     }
 
@@ -325,6 +401,35 @@ fun RecordingDetailScreen(
                 },
             )
         }
+    }
+    modelPrompt?.let { need ->
+        LocalModelMissingDialog(
+            modelDisplayName = need.displayName,
+            onDownload = {
+                modelPrompt = null
+                onOpenModelManager()
+            },
+            onSwitchToApi = {
+                scope.launch {
+                    when (need.task) {
+                        AiTask.Transcription ->
+                            container.settingsRepository.setTranscriptionMode(ComputeMode.Api)
+                        AiTask.Diarization ->
+                            container.settingsRepository.setDiarizationMode(ComputeMode.Api)
+                        AiTask.Summary ->
+                            container.settingsRepository.setSummaryMode(ComputeMode.Api)
+                    }
+                    modelPrompt = null
+                    val retranscribe = pendingRetranscribe ?: true
+                    pendingRetranscribe = null
+                    enqueueAfterGate(retranscribe)
+                }
+            },
+            onDismiss = {
+                modelPrompt = null
+                pendingRetranscribe = null
+            },
+        )
     }
     if (showMove) {
         ModalBottomSheet(
@@ -501,12 +606,217 @@ private fun SourcesPane(
 }
 
 @Composable
+private fun LiveTranscriptPane(
+    container: AppContainer,
+    recordingId: String,
+    title: String,
+    onStoppedAndQueued: () -> Unit = {},
+) {
+    val strings = LocalStrings.current
+    var partial by remember { mutableStateOf("**partial** · 0:00\n") }
+    var usingMic by remember { mutableStateOf(false) }
+    var stopping by remember { mutableStateOf(false) }
+    val finished = remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val streamer = remember {
+        openStreamingTranscriber(container)
+    }
+    val wavPath = remember(recordingId) {
+        "${recordingsDirectoryPath()}/$recordingId.wav"
+    }
+    val wavWriter = remember(recordingId) { WavWriter(wavPath, sampleRateHz = 16_000) }
+
+    fun finishOnce(): String {
+        if (finished.value) return partial
+        finished.value = true
+        return runCatching { streamer.finish() }.getOrDefault(partial)
+    }
+
+    DisposableEffect(recordingId) {
+        streamer.onPartial = { md -> partial = md }
+        val settingsLang = container.settingsRepository.settings.value.audioLanguage
+        streamer.start(16_000, settingsLang, null)
+
+        val push: (ByteArray) -> Unit = { pcm ->
+            try {
+                // When FAB MicCapture owns the WAV, skip duplicate WavWriter.
+                if (!container.micCapture.isCapturing) {
+                    wavWriter.writePcm(pcm)
+                }
+                streamer.pushPcm(pcm)
+            } catch (_: Throwable) {
+            }
+        }
+
+        var liveMic: dev.velum.app.platform.LivePcmCapture? = null
+        val fromActiveMic = container.micCapture.isCapturing
+        if (fromActiveMic) {
+            container.micCapture.onPcmChunk = push
+            usingMic = true
+        } else {
+            liveMic = createLivePcmCapture()
+            val micStarted = liveMic?.start(push) == true
+            usingMic = micStarted
+            if (!micStarted) liveMic = null
+        }
+
+        val demoJob = if (!usingMic) {
+            scope.launch {
+                var tick = 0
+                while (isActive && !finished.value) {
+                    val chunk = demoPcmChunk(tick)
+                    wavWriter.writePcm(chunk)
+                    streamer.pushPcm(chunk)
+                    tick++
+                    delay(400)
+                }
+            }
+        } else {
+            null
+        }
+
+        onDispose {
+            demoJob?.cancel()
+            if (fromActiveMic) container.micCapture.onPcmChunk = null
+            liveMic?.stop()
+            finishOnce()
+        }
+    }
+
+    Column(Modifier.fillMaxSize()) {
+        Text(
+            strings.liveTranscript,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 16.sp,
+            color = VelumInk,
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+        )
+        HorizontalDivider(
+            thickness = 2.dp,
+            color = VelumBlack,
+            modifier = Modifier.padding(horizontal = 20.dp).width(110.dp),
+        )
+        if (!usingMic) {
+            Text(
+                strings.streamingDemoHint,
+                color = VelumInkSecondary,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+            )
+            Text(
+                strings.micUnsupported,
+                color = VelumInkSecondary,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+            )
+        }
+        Column(
+            Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+                .padding(20.dp),
+        ) {
+            if (title.isNotBlank()) {
+                Text(title, fontWeight = FontWeight.Medium, fontSize = 14.sp, color = VelumInkSecondary)
+                Spacer(Modifier.height(8.dp))
+            }
+            MarkdownPreview(partial)
+        }
+        BlackButton(
+            if (stopping) strings.generating else strings.stopRecording,
+            {
+                if (stopping) return@BlackButton
+                stopping = true
+                scope.launch {
+                    val finalMd = withContext(Dispatchers.Default) { finishOnce() }
+                    container.repository.updateTranscript(recordingId, finalMd)
+                    if (container.micCapture.isCapturing &&
+                        container.activeMicRecordingId == recordingId
+                    ) {
+                        when (val stopped = container.micCapture.stop()) {
+                            is MicStopResult.Stopped -> {
+                                container.repository.updateLocalPath(
+                                    id = recordingId,
+                                    localPath = stopped.absolutePath,
+                                    durationSeconds = stopped.durationSeconds,
+                                    sizeBytes = stopped.sizeBytes,
+                                )
+                            }
+                            else -> Unit
+                        }
+                        container.activeMicRecordingId = null
+                    } else {
+                        val finishedWav = withContext(Dispatchers.IO) { wavWriter.finish() }
+                        container.repository.updateLocalPath(
+                            id = recordingId,
+                            localPath = finishedWav.absolutePath,
+                            durationSeconds = finishedWav.durationSeconds,
+                            sizeBytes = finishedWav.sizeBytes,
+                        )
+                    }
+                    container.repository.updateStatus(recordingId, "queued")
+                    container.enqueueProcessing(
+                        recordingId = recordingId,
+                        templateId = "tpl-meeting",
+                        retranscribe = true,
+                    )
+                    onStoppedAndQueued()
+                }
+            },
+            modifier = Modifier.padding(20.dp),
+        )
+    }
+}
+
+private fun openStreamingTranscriber(container: AppContainer): StreamingTranscriber {
+    val lang = container.settingsRepository.settings.value.audioLanguage
+    val offlineId = LocalAsrRouter.chooseModelId(lang)
+    val preferredIds = listOf(
+        // Prefer true OnlineRecognizer packs when downloaded.
+        "streaming-zipformer-es-kroko".takeIf {
+            lang?.lowercase()?.startsWith("es") == true
+        },
+        "streaming-zipformer-en-20m-mobile".takeIf {
+            lang.isNullOrBlank() || lang.lowercase().startsWith("en")
+        },
+        "streaming-zipformer-multilang-2025-02",
+        "streaming-zipformer-en-20m-mobile",
+        offlineId,
+    ).filterNotNull().distinct()
+    for (modelId in preferredIds) {
+        val path = container.localModelManager.modelPath(modelId)?.absolutePath ?: continue
+        if (container.localModelManager.stateFor(modelId)?.status != LocalModelStatus.Ready) continue
+        val created = runCatching { createStreamingTranscriber(path, modelId) }.getOrNull()
+        if (created != null) return created
+    }
+    return FakeStreamingTranscriber()
+}
+
+/** Synthetic PCM16 mono chunk (~640 ms) for offline streaming demos. */
+private fun demoPcmChunk(tick: Int): ByteArray {
+    val sampleRate = 16_000
+    val samples = sampleRate * 2 / 5
+    val out = ByteArray(samples * 2)
+    val freq = 220.0 + (tick % 7) * 40.0
+    var i = 0
+    while (i < samples) {
+        val t = i.toDouble() / sampleRate
+        val sample = (kotlin.math.sin(2.0 * kotlin.math.PI * freq * t) * 4000).toInt().toShort()
+        out[i * 2] = (sample.toInt() and 0xFF).toByte()
+        out[i * 2 + 1] = (sample.toInt() shr 8 and 0xFF).toByte()
+        i++
+    }
+    return out
+}
+
+@Composable
 private fun NotesPane(
     summary: String?,
     generating: Boolean,
     processError: String? = null,
     onAskAi: () -> Unit,
     onGenerate: () -> Unit,
+    onMindMap: () -> Unit,
 ) {
     val strings = LocalStrings.current
     Box(Modifier.fillMaxSize()) {
@@ -541,7 +851,7 @@ private fun NotesPane(
                 ) {
                     MarkdownPreview(summary)
                     Spacer(Modifier.height(20.dp))
-                    OutlineButton(strings.mindMap, {})
+                    OutlineButton(strings.mindMap, onMindMap)
                     Spacer(Modifier.height(12.dp))
                     BlackButton(strings.askAi, onAskAi)
                     Spacer(Modifier.height(12.dp))

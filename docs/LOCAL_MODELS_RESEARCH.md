@@ -93,3 +93,29 @@ Multilingual WER evidence: Yap FLEURS on-device benchmark (25 langs, Whisper tur
 - Watch list: Omnilingual ASR (long tail), MOSS-Transcribe-Diarize (end-to-end diarization 50+ langs) when mobile builds exist.
 - Diarization: sherpa-onnx pyannote-3.0 + multilingual embedding (test TitaNet/WeSpeaker vs 3D-Speaker).
 - LLM: Gemma 4 E4B (default) / E2B (light); Qwen3-4B-2507 as fallback for languages outside Gemma's 35 tuned ones. Prompt: "answer in the transcript's language" or user-chosen language.
+
+## 7. Embedding choice (catalog default)
+
+**Preferred embedding id:** `3dspeaker-eres2net-base`
+(`3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx` from sherpa-onnx `speaker-recongition-models`).
+
+**Why not WeSpeaker / TitaNet as default:** WeSpeaker CAM++ and NeMo TitaNet-small in the sherpa release are **VoxCeleb / English-centric**. 3D-Speaker ERes2Net is trained on the 3D-Speaker corpus (broader speaker variety beyond VoxCeleb EN). Language-independent clustering still benefits from a less EN-narrow embedding for PT-BR meetings. WeSpeaker and TitaNet remain catalog alternates; `LocalDiarizer` picks the first Ready id in order: 3dspeaker → WeSpeaker → TitaNet.
+
+## 8. Verified catalog SHA-256 (2026-10-26)
+
+Computed locally from official downloads (k2-fsa GitHub release assets) or Hugging Face LFS oid (identical to content SHA-256):
+
+| Catalog id | Source | SHA-256 |
+|---|---|---|
+| `pyannote-segmentation-3.0` | k2-fsa `speaker-segmentation-models` / `sherpa-onnx-pyannote-segmentation-3-0.tar.bz2` | `24615ee884c897d9d2ba09bb4d30da6bb1b15e685065962db5b02e76e4996488` |
+| `3dspeaker-eres2net-base` | k2-fsa `speaker-recongition-models` ONNX | `1a331345f04805badbb495c775a6ddffcdd1a732567d5ec8b3d5749e3c7a5e4b` |
+| `wespeaker-voxceleb` | same release / `wespeaker_en_voxceleb_CAM++.onnx` | `c46fad10b5f81e1aa4a60c162714208577093655076c5450f8c469e522ec54ef` |
+| `titanet-small` | same release / `nemo_en_titanet_small.onnx` | `ad4a1802485d8b34c722d2a9d04249662f2ece5d28a7a039063ca22f515a789e` |
+| `streaming-zipformer-en-20m-mobile` | k2-fsa `asr-models` mobile pack | `753a5362538539212442efbfb8dd5748db82e35e7deaec5330f49c56e81e40fd` |
+| `streaming-zipformer-es-kroko` | k2-fsa `asr-models` | `31b2230a95d23290b308b393da930015a4b2105cb3abb9367aed35f7fcf29cf1` |
+| `streaming-zipformer-multilang-2025-02` | k2-fsa `asr-models` ar/en/id/ja/ru/th/vi/zh | `28044b67324f7f831689f0a3761473dd2ade380e93aa53f1dbcd479ef71c40d4` |
+| `gemma-4-e4b` | HF `litert-community/gemma-4-E4B-it-litert-lm` LFS oid | `0b2a8980ce155fd97673d8e820b4d29d9c7d99b8fa6806f425d969b145bd52e0` |
+| `gemma-4-e2b` | HF `litert-community/gemma-4-E2B-it-litert-lm` LFS oid | `181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c` |
+| `qwen3-4b-instruct-2507` | HF `unsloth/Qwen3-4B-Instruct-2507-GGUF` Q4_K_M LFS oid | `3605803b982cb64aead44f6c1b2ae36e3acdb41d8e46c8a94c6533bc4c67e597` |
+
+`LocalModelManager` verifies `sha256` after download and rejects mismatches. Gemma/Qwen downloads still need the user to accept HF gated licenses where applicable.

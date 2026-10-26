@@ -102,6 +102,12 @@ UPDATE recording SET summary_markdown = ? WHERE id = ?;
 updateStatus:
 UPDATE recording SET status = ? WHERE id = ?;
 
+updateLocalPath:
+UPDATE recording SET local_path = ?, duration_seconds = ?, size_bytes = ? WHERE id = ?;
+
+updateProcessingCheckpoint:
+UPDATE recording SET status = ?, transcript = ?, summary_markdown = ? WHERE id = ?;
+
 trashRecording:
 UPDATE recording SET trashed = 1 WHERE id = ?;
 

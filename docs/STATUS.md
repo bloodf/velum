@@ -20,21 +20,29 @@ Owner standing rule: nothing may remain stub/demo-only. Prefer **blocked-on-owne
 ### Audio / AI
 - [x] Ogg demux + Opus decode (kopus) → PCM
 - [x] OpenAI-compatible API: URL / key / model list refresh / transcribe / chat (BYO URL only; no Plaud hosts)
-- [x] Per-task Local vs API settings (mix allowed)
+- [x] Per-task Local vs API settings (mix allowed); **default Local** for every task
+- [x] `resolveModeOrPrompt`: Local when model Ready, else UI prompts Download or switch to API
 - [x] `RecordingProcessor`: decode → ASR → diarize → Markdown transcript → summarize → DB
 - [x] Glossary + memory injected into ASR `initial_prompt` / LLM system prompts
 - [x] Map-reduce summarization for long transcripts
-- [x] LocalModelManager: real Ktor download + archive extract + disk Ready checks
+- [x] LocalModelManager: real Ktor download + archive extract + disk Ready checks + **SHA-256 verify**
 - [x] ASR catalog URLs (Parakeet / Whisper turbo / SenseVoice from k2-fsa)
+- [x] Streaming ASR catalog packs (Zipformer EN mobile / ES Kroko / multilingual) with verified SHA-256
+- [x] Diarization + embedding + LLM catalog URLs + verified SHA-256 (pyannote, 3D-Speaker preferred, WeSpeaker, TitaNet, Gemma E4B/E2B LiteRT-LM, Qwen3-4B GGUF) — see `docs/LOCAL_MODELS_RESEARCH.md` §8
 - [x] Android sherpa-onnx `OfflineRecognizer` (Parakeet / Whisper / SenseVoice)
-- [x] `StreamingTranscriber` (Android chunked OfflineRecognizer; JVM `FakeStreamingTranscriber` test double)
-- [x] Local diarization + cosine voice profiles (`VoiceProfileStore`)
-- [x] Local LLM LiteRT-LM on Android when Gemma Ready
+- [x] `StreamingTranscriber` (Android OnlineRecognizer when streaming pack Ready; else overlapping Offline windows; JVM `FakeStreamingTranscriber`)
+- [x] Phone mic: runtime RECORD_AUDIO + rationale → PCM WAV (`MicCapture` / `WavWriter`) → process via WorkManager
+- [x] Live record UI with partial Markdown (mic when permitted; else PCM demo stream)
+- [x] Mind-map from summary H2 + list items ("Mapa mental" sheet)
+- [x] Local diarization + cosine voice profiles (`VoiceProfileStore`); preferred embedding `3dspeaker-eres2net-base`
+- [x] Local LLM LiteRT-LM on Android when Gemma Ready (default catalog id `gemma-4-e4b`)
 - [x] Ask AI on recording notes via local/`AiTaskRouter` LLM (no Plaud ask endpoints)
 - [x] Compose Markdown preview for Fontes / Notas
 - [x] Generate sheet + retranscribe launch processor
 - [x] AutoFlow matcher + runner on matching recordings
 - [x] AutoFlow post-actions: share Markdown intent / calendar ACTION_INSERT
+- [x] WorkManager (`RecordingProcessWorker`) + `ThermalMonitor` pause/resume + DB checkpoints (`paused_thermal`)
+- [x] First-run UX guiding model downloads (or Use API / Skip) → Model manager / Account
 - [x] CI E2E: Fake BLE → mock API ASR/LLM → Markdown in DB (`DeviceToSummaryE2ETest`)
 
 ### Local data / search / templates
@@ -42,12 +50,13 @@ Owner standing rule: nothing may remain stub/demo-only. Prefer **blocked-on-owne
 - [x] Glossary + memory tables in `Velum.sq`; CRUD under Personalization / Memory
 - [x] Local JSON/Markdown templates create/edit persist locally (community/cloud templates removed)
 - [x] CalendarProvider read current/next event title to name recordings after sync (permission-denied reported clearly)
+- [x] Runtime READ_CALENDAR permission with rationale (Integrations + AutoFlow blocked path)
 
 ### App surfaces
 - [x] Search (Files / Templates)
 - [x] Share / export Markdown (Android share sheet; desktop clipboard/file)
 - [x] Trash + move-to-folder
-- [x] FAB start recording (insert row) + import audio → processor
+- [x] FAB start recording (mic WAV) + import audio → processor
 - [x] Find/replace on transcript
 - [x] Preferences / personalization / languages persist
 - [x] Key import UI (Settings → paste serial + snSignature + bind token + optional RSA PEMs → Keystore)
@@ -59,19 +68,12 @@ Owner standing rule: nothing may remain stub/demo-only. Prefer **blocked-on-owne
 
 ## In progress
 
-- [ ] WorkManager + thermal monitoring for multi-hour on-device jobs
-- [ ] First-run UX guiding model downloads
-- [ ] Mic capture while “Start recording” (row is created; live PCM capture next)
-- [ ] Mind-map renderer (CTA present; summary path covers notes)
-- [ ] Android OnlineRecognizer (true low-latency stream) when model packs support it
+_(none)_
 
 ## Blocked on owner
 
 - [ ] **One-time device identity import** (`snSignature` / `sn-sign` + bind token + optional RSA key pair) from official Plaud app storage/logs — **cannot be generated locally** (Plaud-signed). Import UI is ready; values must come from the owner.
-- [ ] Download URLs (+ SHA-256) for pyannote / WeSpeaker / TitaNet / Gemma / Qwen weights
 - [ ] Confirm Ogg Opus rate/channels + PLAUD.AI decrypt against a real Note Pro capture
-- [ ] Product default Local vs API after first-run download UX is agreed
-- [ ] Grant READ_CALENDAR on device to enable calendar naming / insert intents (runtime permission)
 
 ## Removed (server inventory → local)
 

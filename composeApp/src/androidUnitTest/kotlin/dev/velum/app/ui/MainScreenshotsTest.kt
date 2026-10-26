@@ -21,6 +21,9 @@ import dev.velum.app.ui.autoflow.AutoFlowListScreen
 import dev.velum.app.ui.explore.ExploreScreen
 import dev.velum.app.ui.files.FilesScreen
 import dev.velum.app.ui.integrations.IntegrationsScreen
+import dev.velum.app.ui.mindmap.MindMapView
+import dev.velum.app.ui.mindmap.buildMindMap
+import dev.velum.app.ui.onboarding.FirstRunScreen
 import dev.velum.app.ui.recording.GenerateSheetContent
 import dev.velum.app.ui.recording.RecordingDetailScreen
 import dev.velum.app.ui.recording.SpeakerLabelSheetContent
@@ -149,6 +152,26 @@ class MainScreenshotsTest {
     @Test
     fun modelManager() = capture("13-model-manager") {
         ModelManagerScreen(container, onBack = {})
+    }
+
+    @Test
+    fun firstRun() = capture("14-first-run") {
+        FirstRunScreen(onDownload = {}, onUseApi = {}, onSkip = {})
+    }
+
+    @Test
+    fun mindMap() = capture("15-mind-map") {
+        val map = buildMindMap(
+            markdown = """
+                ## Decisões
+                - Usar Parakeet local
+                - Resumo com Gemma E4B
+                ## Próximos passos
+                - Importar chaves do Note Pro
+            """.trimIndent(),
+            rootTitle = "Reunião demo",
+        )
+        MindMapView(map)
     }
 
     @Composable

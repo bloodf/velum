@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Velum</string>
+    <string name="permission_mic_rationale">O Velum precisa gravar áudio do microfone para criar gravações no aparelho.</string>
+    <string name="permission_calendar_rationale">O Velum lê o evento atual/próximo para nomear gravações e pode inserir eventos. Sem envio a servidores Plaud/Google.</string>
+</resources>

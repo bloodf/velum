@@ -2,10 +2,14 @@ package dev.velum.ai.pipeline
 
 import dev.velum.ai.MissingApiKeyException
 import dev.velum.ai.audio.createOpusDecoder
+import dev.velum.ai.engine.AiTask
 import dev.velum.ai.engine.AiTaskRouter
 import dev.velum.ai.engine.AudioInput
+import dev.velum.ai.engine.DEFAULT_LOCAL_DIARIZATION_MODEL_ID
+import dev.velum.ai.engine.DEFAULT_LOCAL_LLM_MODEL_ID
 import dev.velum.ai.engine.JobProgress
 import dev.velum.ai.engine.LlmRequest
+import dev.velum.ai.engine.requiredLocalModelId
 import dev.velum.ai.local.ModelNotReadyException
 import dev.velum.ai.local.ModelStoreDir
 import dev.velum.core.data.VelumRepository
@@ -51,6 +55,10 @@ class RecordingProcessor(
                     val pcm = createOpusDecoder().decodeToPcm(raw)
                     audioBytes = pcm.toByteArray()
                     sampleRate = pcm.sampleRateHz
+                } else if (filename.endsWith(".wav", ignoreCase = true) || looksLikeWav(raw)) {
+                    val wav = stripWavToPcm(raw)
+                    audioBytes = wav.pcm
+                    sampleRate = wav.sampleRateHz
                 } else {
                     audioBytes = raw
                     sampleRate = 16_000
@@ -81,7 +89,7 @@ class RecordingProcessor(
                     ensureApiKeyIfNeeded(cfg.transcriptionMode, "transcription")
                     val asr = aiRouter.transcriber()
                     val asrModel = when (cfg.transcriptionMode) {
-                        ComputeMode.Local -> cfg.localAsrModelId.orEmpty()
+                        ComputeMode.Local -> requiredLocalModelId(AiTask.Transcription, cfg)
                         ComputeMode.Api -> cfg.transcriptionModel.orEmpty()
                     }
                     val transcription = asr.transcribe(
@@ -100,7 +108,9 @@ class RecordingProcessor(
                     ensureApiKeyIfNeeded(cfg.diarizationMode, "diarization")
                     val diar = aiRouter.diarizer()
                     val diarModel = when (cfg.diarizationMode) {
-                        ComputeMode.Local -> cfg.localDiarizationModelId.orEmpty()
+                        ComputeMode.Local ->
+                            cfg.localDiarizationModelId?.takeIf { it.isNotBlank() }
+                                ?: DEFAULT_LOCAL_DIARIZATION_MODEL_ID
                         ComputeMode.Api -> ""
                     }
                     val diarization = try {
@@ -166,7 +176,8 @@ class RecordingProcessor(
             }
             val llm = aiRouter.llm()
             val llmModel = when (cfg.summaryMode) {
-                ComputeMode.Local -> cfg.localLlmModelId.orEmpty()
+                ComputeMode.Local ->
+                    cfg.localLlmModelId?.takeIf { it.isNotBlank() } ?: DEFAULT_LOCAL_LLM_MODEL_ID
                 ComputeMode.Api -> cfg.chatModel.orEmpty()
             }
             val summary = summarizeWithMapReduce(
@@ -237,6 +248,71 @@ class RecordingProcessor(
             bytes[1] == 'g'.code.toByte() &&
             bytes[2] == 'g'.code.toByte() &&
             bytes[3] == 'S'.code.toByte()
+
+    private fun looksLikeWav(bytes: ByteArray): Boolean =
+        bytes.size >= 12 &&
+            bytes[0] == 'R'.code.toByte() &&
+            bytes[1] == 'I'.code.toByte() &&
+            bytes[2] == 'F'.code.toByte() &&
+            bytes[3] == 'F'.code.toByte() &&
+            bytes[8] == 'W'.code.toByte() &&
+            bytes[9] == 'A'.code.toByte() &&
+            bytes[10] == 'V'.code.toByte() &&
+            bytes[11] == 'E'.code.toByte()
+
+    private data class WavPcm(val pcm: ByteArray, val sampleRateHz: Int)
+
+    /** Minimal PCM WAV reader (fmt + data chunks). */
+    private fun stripWavToPcm(bytes: ByteArray): WavPcm {
+        if (!looksLikeWav(bytes)) return WavPcm(bytes, 16_000)
+        var offset = 12
+        var sampleRate = 16_000
+        var dataStart = -1
+        var dataSize = 0
+        while (offset + 8 <= bytes.size) {
+            val id = fourCc(bytes, offset)
+            val size = u32le(bytes, offset + 4)
+            val body = offset + 8
+            when (id) {
+                "fmt " -> {
+                    if (body + 16 <= bytes.size) {
+                        sampleRate = u32le(bytes, body + 4)
+                    }
+                }
+                "data" -> {
+                    dataStart = body
+                    dataSize = size.coerceAtMost(bytes.size - body)
+                    break
+                }
+            }
+            offset = body + size + (size % 2) // word-align
+        }
+        if (dataStart < 0) {
+            // Classic 44-byte header fallback
+            val pcm = if (bytes.size > 44) bytes.copyOfRange(44, bytes.size) else ByteArray(0)
+            return WavPcm(pcm, sampleRate)
+        }
+        val end = (dataStart + dataSize).coerceAtMost(bytes.size)
+        return WavPcm(bytes.copyOfRange(dataStart, end), sampleRate)
+    }
+
+    private fun u32le(bytes: ByteArray, at: Int): Int {
+        if (at + 4 > bytes.size) return 0
+        return (bytes[at].toInt() and 0xFF) or
+            ((bytes[at + 1].toInt() and 0xFF) shl 8) or
+            ((bytes[at + 2].toInt() and 0xFF) shl 16) or
+            ((bytes[at + 3].toInt() and 0xFF) shl 24)
+    }
+
+    private fun fourCc(bytes: ByteArray, at: Int): String {
+        if (at + 4 > bytes.size) return ""
+        return buildString(4) {
+            append(bytes[at].toInt().toChar())
+            append(bytes[at + 1].toInt().toChar())
+            append(bytes[at + 2].toInt().toChar())
+            append(bytes[at + 3].toInt().toChar())
+        }
+    }
 
     companion object {
         /** Rough ~4k tokens; map-reduce when longer. */

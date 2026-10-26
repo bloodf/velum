@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Velum</string>
+    <string name="permission_mic_rationale">Velum needs microphone access to capture phone recordings.</string>
+    <string name="permission_calendar_rationale">Velum reads the current/next calendar event to name recordings and can insert events. Nothing is sent to Plaud/Google servers.</string>
 </resources>

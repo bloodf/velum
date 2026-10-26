@@ -51,6 +51,10 @@ data class LocalModelSpec(
 
 private const val ASR_MODELS =
     "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models"
+private const val SPEAKER_SEG_MODELS =
+    "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-segmentation-models"
+private const val SPEAKER_EMB_MODELS =
+    "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models"
 
 val DefaultLocalCatalog: List<LocalModelSpec> = listOf(
     LocalModelSpec(
@@ -90,31 +94,93 @@ val DefaultLocalCatalog: List<LocalModelSpec> = listOf(
         id = "pyannote-segmentation-3.0",
         displayName = "pyannote segmentation 3.0",
         kind = LocalModelKind.Diarization,
-        approxBytes = 50L * 1024 * 1024,
+        approxBytes = 5L * 1024 * 1024,
         license = "MIT",
-        notes = "Speaker-change segmentation via sherpa-onnx — packaging URL TBD",
+        notes = "Speaker-change segmentation via sherpa-onnx",
         languages = "language-independent",
-        downloadUrl = null,
+        downloadUrl =
+            "$SPEAKER_SEG_MODELS/sherpa-onnx-pyannote-segmentation-3-0.tar.bz2",
+        sha256 = "24615ee884c897d9d2ba09bb4d30da6bb1b15e685065962db5b02e76e4996488",
+        archiveFileName = "sherpa-onnx-pyannote-segmentation-3-0.tar.bz2",
+    ),
+    LocalModelSpec(
+        id = "3dspeaker-eres2net-base",
+        displayName = "3D-Speaker ERes2Net base",
+        kind = LocalModelKind.Embedding,
+        approxBytes = 38L * 1024 * 1024,
+        license = "Apache-2.0",
+        notes = "Preferred embedding: multilingual 3D-Speaker training " +
+            "(vs VoxCeleb-only WeSpeaker). Single ONNX for sherpa SpeakerEmbeddingExtractor.",
+        languages = "multilingual (3D-Speaker)",
+        downloadUrl =
+            "$SPEAKER_EMB_MODELS/3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx",
+        sha256 = "1a331345f04805badbb495c775a6ddffcdd1a732567d5ec8b3d5749e3c7a5e4b",
+        archiveFileName = "3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx",
     ),
     LocalModelSpec(
         id = "wespeaker-voxceleb",
         displayName = "WeSpeaker (VoxCeleb)",
         kind = LocalModelKind.Embedding,
-        approxBytes = 30L * 1024 * 1024,
+        approxBytes = 28L * 1024 * 1024,
         license = "Apache-2.0",
-        notes = "Multilingual speaker embedding candidate — packaging URL TBD",
-        languages = "multilingual (evaluate)",
-        downloadUrl = null,
+        notes = "Alternate embedding (VoxCeleb-trained). Prefer 3dspeaker-eres2net-base when Ready.",
+        languages = "en (VoxCeleb)",
+        downloadUrl = "$SPEAKER_EMB_MODELS/wespeaker_en_voxceleb_CAM++.onnx",
+        sha256 = "c46fad10b5f81e1aa4a60c162714208577093655076c5450f8c469e522ec54ef",
+        archiveFileName = "wespeaker_en_voxceleb_CAM++.onnx",
     ),
     LocalModelSpec(
         id = "titanet-small",
         displayName = "NeMo TitaNet-small",
         kind = LocalModelKind.Embedding,
-        approxBytes = 30L * 1024 * 1024,
+        approxBytes = 39L * 1024 * 1024,
         license = "CC-BY-4.0",
-        notes = "Embedding candidate vs WeSpeaker / 3D-Speaker — packaging URL TBD",
-        languages = "multilingual (evaluate)",
-        downloadUrl = null,
+        notes = "Alternate NeMo embedding vs 3D-Speaker / WeSpeaker.",
+        languages = "en (NeMo)",
+        downloadUrl = "$SPEAKER_EMB_MODELS/nemo_en_titanet_small.onnx",
+        sha256 = "ad4a1802485d8b34c722d2a9d04249662f2ece5d28a7a039063ca22f515a789e",
+        archiveFileName = "nemo_en_titanet_small.onnx",
+    ),
+    LocalModelSpec(
+        id = "streaming-zipformer-en-20m-mobile",
+        displayName = "Streaming Zipformer EN 20M (mobile)",
+        kind = LocalModelKind.Asr,
+        approxBytes = 103L * 1024 * 1024,
+        license = "Apache-2.0",
+        notes = "Low-latency OnlineRecognizer pack (EN). Prefer for live mic when Ready; " +
+            "PT/EU live still uses overlapping Offline Parakeet windows until a PT streaming pack exists.",
+        languages = "en",
+        downloadUrl =
+            "$ASR_MODELS/sherpa-onnx-streaming-zipformer-en-20M-2023-02-17-mobile.tar.bz2",
+        sha256 = "753a5362538539212442efbfb8dd5748db82e35e7deaec5330f49c56e81e40fd",
+        archiveFileName = "sherpa-onnx-streaming-zipformer-en-20M-2023-02-17-mobile.tar.bz2",
+    ),
+    LocalModelSpec(
+        id = "streaming-zipformer-es-kroko",
+        displayName = "Streaming Zipformer ES (Kroko)",
+        kind = LocalModelKind.Asr,
+        approxBytes = 119L * 1024 * 1024,
+        license = "Apache-2.0",
+        notes = "OnlineRecognizer Spanish streaming pack from k2-fsa asr-models.",
+        languages = "es",
+        downloadUrl =
+            "$ASR_MODELS/sherpa-onnx-streaming-zipformer-es-kroko-2025-08-06.tar.bz2",
+        sha256 = "31b2230a95d23290b308b393da930015a4b2105cb3abb9367aed35f7fcf29cf1",
+        archiveFileName = "sherpa-onnx-streaming-zipformer-es-kroko-2025-08-06.tar.bz2",
+    ),
+    LocalModelSpec(
+        id = "streaming-zipformer-multilang-2025-02",
+        displayName = "Streaming Zipformer multilingual",
+        kind = LocalModelKind.Asr,
+        approxBytes = 247L * 1024 * 1024,
+        license = "Apache-2.0",
+        notes = "OnlineRecognizer pack: ar/en/id/ja/ru/th/vi/zh (no PT — Parakeet offline windows cover PT).",
+        languages = "ar, en, id, ja, ru, th, vi, zh",
+        downloadUrl =
+            "$ASR_MODELS/sherpa-onnx-streaming-zipformer-ar_en_id_ja_ru_th_vi_zh-2025-02-10.tar.bz2",
+        sha256 = "28044b67324f7f831689f0a3761473dd2ade380e93aa53f1dbcd479ef71c40d4",
+        archiveFileName =
+            "sherpa-onnx-streaming-zipformer-ar_en_id_ja_ru_th_vi_zh-2025-02-10.tar.bz2",
     ),
     LocalModelSpec(
         id = "gemma-4-e4b",
@@ -122,9 +188,12 @@ val DefaultLocalCatalog: List<LocalModelSpec> = listOf(
         kind = LocalModelKind.Llm,
         approxBytes = 3650L * 1024 * 1024,
         license = "Apache-2.0",
-        notes = "Default summaries on LiteRT-LM — download URL TBD",
+        notes = "Default summaries on LiteRT-LM (.litertlm). SHA-256 = HF LFS oid.",
         languages = "140+ pretrained / 35+ tuned",
-        downloadUrl = null,
+        downloadUrl =
+            "https://huggingface.co/litert-community/gemma-4-E4B-it-litert-lm/resolve/main/gemma-4-E4B-it.litertlm",
+        sha256 = "0b2a8980ce155fd97673d8e820b4d29d9c7d99b8fa6806f425d969b145bd52e0",
+        archiveFileName = "gemma-4-E4B-it.litertlm",
     ),
     LocalModelSpec(
         id = "gemma-4-e2b",
@@ -132,9 +201,12 @@ val DefaultLocalCatalog: List<LocalModelSpec> = listOf(
         kind = LocalModelKind.Llm,
         approxBytes = 2580L * 1024 * 1024,
         license = "Apache-2.0",
-        notes = "Light summaries on LiteRT-LM — download URL TBD",
+        notes = "Light summaries on LiteRT-LM (.litertlm). SHA-256 = HF LFS oid.",
         languages = "140+ pretrained / 35+ tuned",
-        downloadUrl = null,
+        downloadUrl =
+            "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it.litertlm",
+        sha256 = "181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c",
+        archiveFileName = "gemma-4-E2B-it.litertlm",
     ),
     LocalModelSpec(
         id = "qwen3-4b-instruct-2507",
@@ -142,9 +214,12 @@ val DefaultLocalCatalog: List<LocalModelSpec> = listOf(
         kind = LocalModelKind.Llm,
         approxBytes = 2500L * 1024 * 1024,
         license = "Apache-2.0",
-        notes = "llama.cpp GGUF fallback — download URL TBD",
+        notes = "llama.cpp GGUF fallback (Q4_K_M, unsloth). SHA-256 = HF LFS oid.",
         languages = "119 languages/dialects",
-        downloadUrl = null,
+        downloadUrl =
+            "https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+        sha256 = "3605803b982cb64aead44f6c1b2ae36e3acdb41d8e46c8a94c6533bc4c67e597",
+        archiveFileName = "Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
     ),
 )
 

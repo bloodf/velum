@@ -47,6 +47,7 @@ kotlin {
             implementation(libs.kopus)
             implementation(libs.commons.compress)
             implementation(libs.litertlm.android)
+            implementation(libs.androidx.work.runtime)
         }
         iosMain.dependencies {
             implementation(libs.ktor.client.darwin)

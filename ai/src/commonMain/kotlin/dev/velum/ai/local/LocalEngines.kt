@@ -70,9 +70,9 @@ class LocalDiarizer(
         }
         val embeddingId = chooseReadyEmbeddingId()
             ?: throw ModelNotReadyException(
-                "wespeaker-voxceleb",
+                "3dspeaker-eres2net-base",
                 "Local speaker embedding model is not Ready. " +
-                    "Download WeSpeaker or TitaNet in Model manager for diarization.",
+                    "Download 3D-Speaker (preferred), WeSpeaker, or TitaNet in Model manager.",
             )
         val modelPath = modelManager.modelPath(resolved)
             ?: throw ModelNotReadyException(resolved)
@@ -90,7 +90,12 @@ class LocalDiarizer(
     }
 
     private fun chooseReadyEmbeddingId(): String? {
-        val candidates = listOf("wespeaker-voxceleb", "titanet-small")
+        // Prefer 3D-Speaker ERes2Net (multilingual training) over VoxCeleb-only WeSpeaker.
+        val candidates = listOf(
+            "3dspeaker-eres2net-base",
+            "wespeaker-voxceleb",
+            "titanet-small",
+        )
         return candidates.firstOrNull { modelManager.isReady(it) }
     }
 }

@@ -14,7 +14,11 @@ import dev.velum.ai.openai.OpenAiLlmEngine
 import dev.velum.ai.openai.OpenAiTranscriber
 import dev.velum.ai.pipeline.AskAiChat
 import dev.velum.ai.pipeline.AutoFlowRunner
+import dev.velum.ai.pipeline.RecordingJobScheduler
 import dev.velum.ai.pipeline.RecordingProcessor
+import dev.velum.ai.pipeline.createCoroutineRecordingJobScheduler
+import dev.velum.app.platform.MicCapture
+import dev.velum.app.platform.createMicCapture
 import dev.velum.app.ui.DeviceViewModel
 import dev.velum.app.ui.SettingsViewModel
 import dev.velum.ble.BleTransport
@@ -43,6 +47,11 @@ class AppContainer(
     modelStoreRoot: ModelStoreDir = defaultModelStoreRoot(),
     val integrationConfig: IntegrationConfig = IntegrationConfig.defaults(),
     val calendarProvider: CalendarEventProvider = createCalendarEventProvider(),
+    /**
+     * Android passes WorkManager; null keeps the in-process coroutine fallback (JVM/desktop/iOS).
+     */
+    recordingJobSchedulerFactory: ((RecordingProcessor, CoroutineScope) -> RecordingJobScheduler)? = null,
+    val micCapture: MicCapture = createMicCapture(),
 ) {
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -81,6 +90,10 @@ class AppContainer(
         settings = settingsRepository,
     )
 
+    val recordingJobs: RecordingJobScheduler =
+        recordingJobSchedulerFactory?.invoke(recordingProcessor, appScope)
+            ?: createCoroutineRecordingJobScheduler(recordingProcessor, appScope)
+
     val askAiChat = AskAiChat(
         aiRouter = aiRouter,
         repository = repository,
@@ -95,11 +108,23 @@ class AppContainer(
         calendar = calendarProvider,
     )
 
+    /** Active phone mic session recording id, if any. */
+    @Volatile
+    var activeMicRecordingId: String? = null
+
     init {
         appScope.launch {
             settingsRepository.load()
             autoFlowRunner.start()
         }
+    }
+
+    fun enqueueProcessing(
+        recordingId: String,
+        templateId: String? = null,
+        retranscribe: Boolean = true,
+    ) {
+        recordingJobs.enqueue(recordingId, templateId, retranscribe)
     }
 
     suspend fun createLocalRecording(
@@ -129,7 +154,6 @@ class AppContainer(
     }
 
     private fun formatRecordingTitle(epochSeconds: Long): String {
-        // Stable local timestamp label without platform date APIs.
         val day = (epochSeconds / 86_400L)
         val tod = epochSeconds % 86_400L
         val h = tod / 3600

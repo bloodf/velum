@@ -30,6 +30,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.velum.app.di.AppContainer
 import dev.velum.app.i18n.LocalStrings
+import dev.velum.app.platform.AppPermission
+import dev.velum.app.platform.PermissionOutcome
+import dev.velum.app.platform.rememberPermissionRequester
+import dev.velum.app.ui.components.BlackButton
 import dev.velum.app.ui.components.ScreenTopBar
 import dev.velum.app.ui.theme.VelumBg
 import dev.velum.app.ui.theme.VelumDivider
@@ -47,10 +51,19 @@ fun IntegrationsScreen(
     val strings = LocalStrings.current
     var statusLabel by remember { mutableStateOf(strings.localCalendarHint) }
     var statusColor by remember { mutableStateOf(VelumInkSecondary) }
+    var needsPermission by remember { mutableStateOf(false) }
+    var refreshTick by remember { mutableStateOf(0) }
 
-    LaunchedEffect(container) {
+    val requestCalendar = rememberPermissionRequester(
+        permission = AppPermission.ReadCalendar,
+        rationaleTitle = strings.calendarPermissionTitle,
+        rationaleBody = strings.calendarPermissionRationale,
+    )
+
+    LaunchedEffect(container, refreshTick) {
         when (val result = container.calendarProvider.currentOrNextEvent(epochSecondsNow() * 1000)) {
             is CalendarLookupResult.Ok -> {
+                needsPermission = false
                 val title = result.currentOrNext?.title
                 if (title.isNullOrBlank()) {
                     statusLabel = strings.oauthDisconnected
@@ -61,10 +74,12 @@ fun IntegrationsScreen(
                 }
             }
             CalendarLookupResult.PermissionDenied -> {
+                needsPermission = true
                 statusLabel = strings.calendarPermissionBlocked
                 statusColor = Color(0xFFB45309)
             }
             is CalendarLookupResult.Unavailable -> {
+                needsPermission = false
                 statusLabel = result.reason
                 statusColor = Color(0xFFB45309)
             }
@@ -109,6 +124,21 @@ fun IntegrationsScreen(
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Medium,
             )
+            if (needsPermission) {
+                Spacer(Modifier.height(12.dp))
+                BlackButton(
+                    strings.grantCalendarPermission,
+                    {
+                        requestCalendar { outcome ->
+                            if (outcome == PermissionOutcome.Granted ||
+                                outcome == PermissionOutcome.NotRequired
+                            ) {
+                                refreshTick++
+                            }
+                        }
+                    },
+                )
+            }
         }
         Spacer(Modifier.weight(1f))
         Column(

@@ -18,6 +18,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -33,9 +34,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.velum.ai.engine.AiTask
+import dev.velum.ai.engine.ModeResolution
 import dev.velum.app.di.AppContainer
 import dev.velum.app.i18n.LocalStrings
 import dev.velum.app.ui.components.ChevronRow
+import dev.velum.app.ui.components.LocalModelMissingDialog
 import dev.velum.app.ui.components.ScreenTopBar
 import dev.velum.app.ui.components.SectionLabel
 import dev.velum.app.ui.theme.VelumBg
@@ -58,9 +62,11 @@ fun AiProcessingScreen(
 ) {
     val strings = LocalStrings.current
     val settings by container.settingsRepository.settings.collectAsState()
+    val modelStates by container.localModelManager.states.collectAsState()
     val scope = rememberCoroutineScope()
     var pickAudio by remember { mutableStateOf(false) }
     var pickOutput by remember { mutableStateOf(false) }
+    var modelPrompt by remember { mutableStateOf<ModeResolution.NeedLocalModel?>(null) }
 
     val languages = listOf(
         LangOption("auto", strings.languageAuto),
@@ -70,6 +76,15 @@ fun AiProcessingScreen(
 
     fun labelFor(code: String): String =
         languages.firstOrNull { it.code == code }?.label ?: code
+
+    val missingLocal = remember(settings, modelStates) {
+        listOf(AiTask.Transcription, AiTask.Diarization, AiTask.Summary).mapNotNull { task ->
+            when (val r = container.aiRouter.resolveModeOrPrompt(task, container.localModelManager)) {
+                is ModeResolution.NeedLocalModel -> r
+                is ModeResolution.Proceed -> null
+            }
+        }
+    }
 
     Column(
         Modifier
@@ -85,23 +100,108 @@ fun AiProcessingScreen(
             lineHeight = 20.sp,
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
         )
+        if (missingLocal.isNotEmpty()) {
+            val first = missingLocal.first()
+            Column(
+                Modifier
+                    .padding(horizontal = 20.dp, vertical = 8.dp)
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Color(0xFFFFF7ED))
+                    .padding(12.dp),
+            ) {
+                Text(
+                    strings.localModelMissingTitle,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFFB45309),
+                    fontSize = 14.sp,
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    strings.localModelMissingBody.replace("%s", first.displayName),
+                    color = Color(0xFF9A3412),
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = onModelManager) { Text(strings.downloadModel) }
+                    TextButton(
+                        onClick = {
+                            scope.launch {
+                                container.settingsRepository.setTranscriptionMode(ComputeMode.Api)
+                                container.settingsRepository.setDiarizationMode(ComputeMode.Api)
+                                container.settingsRepository.setSummaryMode(ComputeMode.Api)
+                            }
+                        },
+                    ) { Text(strings.switchToApi) }
+                }
+            }
+        }
         Spacer(Modifier.height(12.dp))
         SectionLabel(strings.taskTranscription)
         ModePicker(
             selected = settings.transcriptionMode,
-            onSelect = { mode -> scope.launch { container.settingsRepository.setTranscriptionMode(mode) } },
+            onSelect = { mode ->
+                if (mode == ComputeMode.Local) {
+                    when (
+                        val r = container.aiRouter.resolveModeOrPrompt(
+                            AiTask.Transcription,
+                            container.localModelManager,
+                        )
+                    ) {
+                        is ModeResolution.NeedLocalModel -> {
+                            modelPrompt = r
+                            return@ModePicker
+                        }
+                        is ModeResolution.Proceed -> Unit
+                    }
+                }
+                scope.launch { container.settingsRepository.setTranscriptionMode(mode) }
+            },
         )
         Spacer(Modifier.height(16.dp))
         SectionLabel(strings.taskDiarization)
         ModePicker(
             selected = settings.diarizationMode,
-            onSelect = { mode -> scope.launch { container.settingsRepository.setDiarizationMode(mode) } },
+            onSelect = { mode ->
+                if (mode == ComputeMode.Local) {
+                    when (
+                        val r = container.aiRouter.resolveModeOrPrompt(
+                            AiTask.Diarization,
+                            container.localModelManager,
+                        )
+                    ) {
+                        is ModeResolution.NeedLocalModel -> {
+                            modelPrompt = r
+                            return@ModePicker
+                        }
+                        is ModeResolution.Proceed -> Unit
+                    }
+                }
+                scope.launch { container.settingsRepository.setDiarizationMode(mode) }
+            },
         )
         Spacer(Modifier.height(16.dp))
         SectionLabel(strings.taskSummaries)
         ModePicker(
             selected = settings.summaryMode,
-            onSelect = { mode -> scope.launch { container.settingsRepository.setSummaryMode(mode) } },
+            onSelect = { mode ->
+                if (mode == ComputeMode.Local) {
+                    when (
+                        val r = container.aiRouter.resolveModeOrPrompt(
+                            AiTask.Summary,
+                            container.localModelManager,
+                        )
+                    ) {
+                        is ModeResolution.NeedLocalModel -> {
+                            modelPrompt = r
+                            return@ModePicker
+                        }
+                        is ModeResolution.Proceed -> Unit
+                    }
+                }
+                scope.launch { container.settingsRepository.setSummaryMode(mode) }
+            },
         )
         Spacer(Modifier.height(20.dp))
         ChevronRow(
@@ -153,6 +253,29 @@ fun AiProcessingScreen(
                 pickOutput = false
             },
             onDismiss = { pickOutput = false },
+        )
+    }
+    modelPrompt?.let { need ->
+        LocalModelMissingDialog(
+            modelDisplayName = need.displayName,
+            onDownload = {
+                modelPrompt = null
+                onModelManager()
+            },
+            onSwitchToApi = {
+                scope.launch {
+                    when (need.task) {
+                        AiTask.Transcription ->
+                            container.settingsRepository.setTranscriptionMode(ComputeMode.Api)
+                        AiTask.Diarization ->
+                            container.settingsRepository.setDiarizationMode(ComputeMode.Api)
+                        AiTask.Summary ->
+                            container.settingsRepository.setSummaryMode(ComputeMode.Api)
+                    }
+                    modelPrompt = null
+                }
+            },
+            onDismiss = { modelPrompt = null },
         )
     }
 }

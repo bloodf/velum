@@ -13,12 +13,18 @@ object ModelReadiness {
         }
         val archive = modelDir.resolve(spec.archiveFileName)
         val layout = layoutFor(spec)
-        if (layout == ModelLayout.OpaqueFile) {
-            return if (archive.exists() && archive.length() > 0L) {
-                emptyList()
-            } else {
-                listOf("expected file ${spec.archiveFileName}")
+        when (layout) {
+            is ModelLayout.OpaqueFile,
+            is ModelLayout.SingleOnnxFile,
+            is ModelLayout.SingleLlmFile,
+            -> {
+                return if (archive.exists() && archive.length() > 0L) {
+                    emptyList()
+                } else {
+                    listOf("expected file ${spec.archiveFileName}")
+                }
             }
+            else -> Unit
         }
         val root = resolveWeightsDir(modelDir, spec)
             ?: return listOf(
@@ -33,14 +39,30 @@ object ModelReadiness {
      */
     fun resolveWeightsDir(modelDir: ModelStoreDir, spec: LocalModelSpec): ModelStoreDir? {
         val layout = layoutFor(spec)
-        if (layout == ModelLayout.OpaqueFile) {
-            return if (modelDir.resolve(spec.archiveFileName).exists()) modelDir else null
+        when (layout) {
+            is ModelLayout.OpaqueFile,
+            is ModelLayout.SingleOnnxFile,
+            is ModelLayout.SingleLlmFile,
+            -> {
+                return if (modelDir.resolve(spec.archiveFileName).exists()) modelDir else null
+            }
+            else -> Unit
         }
         return modelDir.walkDirectories().firstOrNull { layout.missing(it).isEmpty() }
     }
 
     fun layoutFor(spec: LocalModelSpec): ModelLayout {
-        if (!spec.usesArchiveExtract()) return ModelLayout.OpaqueFile
+        val name = spec.archiveFileName.lowercase()
+        // Single-file catalog artifacts (.onnx embeddings, .litertlm / .gguf LLMs).
+        if (!spec.usesArchiveExtract()) {
+            return when {
+                name.endsWith(".onnx") -> ModelLayout.SingleOnnxFile(spec.archiveFileName)
+                name.endsWith(".litertlm") || name.endsWith(".gguf") ||
+                    name.endsWith(".task") || name.endsWith(".tflite") ->
+                    ModelLayout.SingleLlmFile(spec.archiveFileName)
+                else -> ModelLayout.OpaqueFile
+            }
+        }
         return when (spec.kind) {
             LocalModelKind.Asr -> when {
                 spec.id.contains("whisper", ignoreCase = true) -> ModelLayout.Whisper
@@ -127,6 +149,15 @@ sealed class ModelLayout {
         }
     }
 
+    /** Direct download of one embedding / segmentation .onnx (no archive extract). */
+    data class SingleOnnxFile(val fileName: String) : ModelLayout() {
+        override fun describe(): String = fileName
+        override fun missing(dir: ModelStoreDir): List<String> {
+            val f = dir.resolve(fileName)
+            return if (f.exists() && f.length() > 0L) emptyList() else listOf(fileName)
+        }
+    }
+
     data object LlmWeights : ModelLayout() {
         override fun describe(): String = "*.litertlm / *.task / *.gguf / *.bin"
 
@@ -138,6 +169,15 @@ sealed class ModelLayout {
                     it.endsWith(".tflite")
             }
             return if (ok) emptyList() else listOf(describe())
+        }
+    }
+
+    /** Direct download of one LLM weight file (.litertlm / .gguf / …). */
+    data class SingleLlmFile(val fileName: String) : ModelLayout() {
+        override fun describe(): String = fileName
+        override fun missing(dir: ModelStoreDir): List<String> {
+            val f = dir.resolve(fileName)
+            return if (f.exists() && f.length() > 0L) emptyList() else listOf(fileName)
         }
     }
 

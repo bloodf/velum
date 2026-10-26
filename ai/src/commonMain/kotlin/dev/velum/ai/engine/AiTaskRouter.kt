@@ -1,5 +1,6 @@
 package dev.velum.ai.engine
 
+import dev.velum.ai.local.LocalModelManager
 import dev.velum.core.model.AiProviderSettings
 import dev.velum.core.model.ComputeMode
 import kotlinx.coroutines.flow.StateFlow
@@ -30,4 +31,10 @@ class AiTaskRouter(
         AiTask.Diarization -> settings.value.diarizationMode
         AiTask.Summary -> settings.value.summaryMode
     }
+
+    fun providerSettings(): AiProviderSettings = settings.value
+
+    /** Local-when-ready gate: prompts when Local is set but weights are missing. */
+    fun resolveModeOrPrompt(task: AiTask, modelManager: LocalModelManager): ModeResolution =
+        resolveModeOrPrompt(task, settings.value, modelManager)
 }
