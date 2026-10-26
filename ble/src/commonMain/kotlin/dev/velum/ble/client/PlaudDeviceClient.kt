@@ -21,6 +21,9 @@ import dev.velum.protocol.Sessions
 import dev.velum.protocol.Unlock
 import dev.velum.protocol.UnlockChunk
 import dev.velum.protocol.UnlockSecretLayout
+import dev.velum.protocol.FeatureFlags
+import dev.velum.ble.wifi.WifiTransferCoordinator
+import dev.velum.ble.wifi.WifiTransferServer
 import kotlin.coroutines.coroutineContext
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
@@ -159,6 +162,32 @@ class PlaudDeviceClient(
         val payload = transactCommand(Commands.GET_SESSIONS, packet)
         return Sessions.parseSessionList(payload, protocolVersion)
     }
+
+
+    /**
+     * Prefer SoftAP Wi-Fi fast path when FeatureRequest bit 0x08 is set; on any
+     * Wi-Fi failure fall back to BLE [downloadSession] via [wifi]'s bleDownload.
+     */
+    suspend fun downloadSessionPreferWifi(
+        sessionId: Long,
+        sizeBytes: Long,
+        featureFlags: FeatureFlags,
+        wifi: WifiTransferCoordinator,
+        ssid: String,
+        password: String,
+        expectedPreamble: ByteArray,
+        bindAddress: String? = null,
+        port: Int = WifiTransferServer.DEFAULT_PORT,
+    ): WifiTransferCoordinator.Outcome =
+        wifi.transferOrFallback(
+            featureFlags = featureFlags,
+            ssid = ssid,
+            password = password,
+            expectedPreamble = expectedPreamble,
+            port = port,
+            bindAddress = bindAddress,
+            sizeBytes = sizeBytes,
+        )
 
     suspend fun downloadSession(sessionId: Long, sizeBytes: Long): ByteArray {
         require(sizeBytes in 0..MAX_SESSION_DOWNLOAD_BYTES) {

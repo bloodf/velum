@@ -9,7 +9,7 @@ Owner standing rule: nothing may remain stub/demo-only. Prefer **blocked-on-owne
 - [x] Forbidden opcodes never sent: **5, 104, 128, 0xFE20, 143 (OTA)**; never write settings **4 / 26**
 - [x] Unused cmds left alone: 5, 13, 38, 50, 51, 109, 141, 142, 145, 151
 - [x] Fixed session key/nonce/aad; plaintext = `seq ‖ packet`; FE10 snSignature on every connect (prot ≥ 20)
-- [x] Cmd 138 feature bit 0x08 (AES-GCM Wi-Fi); SoftAP + TCP `:8081` transfer skeleton (no process-wide SoftAP bind; Wi‑Fi path still owner-blocked)
+- [x] Cmd 138 feature bit 0x08 (AES-GCM Wi-Fi); SoftAP + length-prefixed TCP `:8081` with SoftAP per-socket bind, token preamble, BLE fallback (JVM fake E2E green; confirm on hardware)
 - [x] Android: `allowBackup=false`, cleartext off, networkSecurityConfig + dataExtractionRules; release R8 on
 - [x] Model downloads: HTTPS + SHA-256 required (streaming hash + atomic rename); ASR catalog pins included
 - [x] BYO API base URL validated (`AiBaseUrl`: HTTPS except localhost; block link-local metadata)
@@ -85,7 +85,7 @@ Owner standing rule: nothing may remain stub/demo-only. Prefer **blocked-on-owne
 
 - [ ] Chunked / windowed ASR + BLE-to-file sync (OOM guard at 200 MiB is interim)
 - [x] Mic + processing foreground services (FOREGROUND_SERVICE) — mic `microphone` + processing `dataSync`
-- [ ] Owner-approved Wi‑Fi SoftAP: per-socket bind + AEAD nonce/TLS strategy
+- [x] SoftAP per-socket bind + token preamble + BLE fallback (fixed AEAD nonce kept for Plaud SoftAP parity — see `docs/protocol/WIFI_FAST_PATH.md`)
 
 ## Blocked on owner
 
@@ -104,4 +104,4 @@ Owner standing rule: nothing may remain stub/demo-only. Prefer **blocked-on-owne
 - Full multi-hour download resume + CRC
 - On-device Parakeet/Whisper/Gemma quality + thermal throttling on physical silicon
 - Whether FE10 alone works with E2EE off (no FE11) after one-time key import
-- Wi-Fi fast path (explicitly out of scope until approved)
+- Wi-Fi SoftAP against real Note Pro hardware (JVM fake path is green)
