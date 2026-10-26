@@ -2,6 +2,7 @@ package dev.velum.ble.wifi
 
 import android.content.Context
 import android.net.ConnectivityManager
+import android.net.LinkProperties
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
@@ -13,15 +14,11 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 /**
- * SoftAP join skeleton (APK uses WifiNetworkSpecifier + WPA2).
+ * SoftAP join — Plaud APK parity (`WifiNetworkSpecifier` + WPA2).
  *
- * Compiles on Android 10+; does not contact Plaud servers. Full transfer UX
- * remains blocked on owner hardware approval.
- *
- * Intentionally does **not** call [ConnectivityManager.bindProcessToNetwork]:
- * process-wide binding would hijack all sockets onto SoftAP (DNS/API breakage).
- * Callers that need SoftAP routing should bind individual sockets via
- * [boundNetwork] once the Wi-Fi path is owner-approved.
+ * Does **not** call [ConnectivityManager.bindProcessToNetwork]. Exposes
+ * [boundNetwork] / [softApHostAddress] so the WebSocket :8081 server can bind
+ * sockets to the SoftAP [Network] via [Network.bindSocket] / [Network.socketFactory].
  */
 class AndroidWifiSoftApJoiner(
     private val context: Context,
@@ -29,9 +26,19 @@ class AndroidWifiSoftApJoiner(
     private var connectivityManager: ConnectivityManager? = null
     private var callback: ConnectivityManager.NetworkCallback? = null
     private var boundNetwork: Network? = null
+    private var linkProperties: LinkProperties? = null
 
-    /** SoftAP [Network] for future per-socket binding; null when not joined. */
     fun boundNetwork(): Network? = boundNetwork
+
+    /** IPv4 host on the SoftAP network for binding the WS listener, if known. */
+    fun softApHostAddress(): String? {
+        val props = linkProperties ?: return null
+        return props.linkAddresses
+            .asSequence()
+            .map { it.address }
+            .firstOrNull { !it.isLoopbackAddress && it.hostAddress?.contains(':') != true }
+            ?.hostAddress
+    }
 
     override suspend fun join(ssid: String, password: String, ssidIsPattern: Boolean) {
         check(Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -56,7 +63,14 @@ class AndroidWifiSoftApJoiner(
             val cb = object : ConnectivityManager.NetworkCallback() {
                 override fun onAvailable(network: Network) {
                     boundNetwork = network
+                    linkProperties = cm.getLinkProperties(network)
                     if (cont.isActive) cont.resume(Unit)
+                }
+
+                override fun onLinkPropertiesChanged(network: Network, properties: LinkProperties) {
+                    if (network == boundNetwork) {
+                        linkProperties = properties
+                    }
                 }
 
                 override fun onUnavailable() {
@@ -85,6 +99,7 @@ class AndroidWifiSoftApJoiner(
         }
         callback = null
         boundNetwork = null
+        linkProperties = null
         connectivityManager = null
     }
 }

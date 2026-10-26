@@ -20,8 +20,8 @@ actual fun createWifiFrameCipher(
  * AES-GCM Wi-Fi frames with the BLE session key / fixed 12-byte nonce as IV /
  * fixed aad (APK bit 0x08 path). Plaintext = seq u32 LE ‖ packet.
  *
- * Fixed nonce is Plaud protocol parity debt — intentional until a Velum-only
- * transfer path can rotate IVs per frame.
+ * Fixed nonce is **required Plaud / Note Pro parity** (same session IV as BLE).
+ * Do not rotate per frame — the device will fail open.
  */
 internal class AesGcmWifiFrameCipher(
     private val secret: Protocol20SessionSecret,

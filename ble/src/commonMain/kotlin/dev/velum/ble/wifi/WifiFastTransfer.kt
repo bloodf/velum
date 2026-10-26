@@ -8,9 +8,10 @@ import kotlinx.coroutines.flow.Flow
 /**
  * Cipher for Wi-Fi fast-transfer frames.
  *
- * APK 3.30.0: every WebSocket frame uses the **same BLE session** key/nonce/aad
- * (ChaCha20-Poly1305 by default, or AES-GCM when FeatureRequest bit 0x08 is set),
- * with its own sequence. No Plaud cloud is involved.
+ * APK 3.30.0 (Plaud parity): every WebSocket frame uses the **same BLE session**
+ * key/nonce/aad (ChaCha20-Poly1305 by default, or AES-GCM when FeatureRequest bit
+ * `0x08` is set), with its own sequence. Fixed nonce is required for Note Pro —
+ * do not "fix" it. No Plaud cloud is involved.
  */
 enum class WifiPayloadCipher {
     ChaCha20Poly1305,
@@ -30,11 +31,21 @@ interface WifiSoftApJoiner {
 }
 
 /**
- * Phone-side WebSocket server the device connects to after SoftAP join.
- * Official app listens on port **8081**.
+ * Phone-side **WebSocket** server the device connects to after SoftAP join.
+ * Official Plaud app listens on port **8081** (`org.java_websocket`).
  */
 interface WifiTransferServer {
-    suspend fun start(port: Int = DEFAULT_PORT)
+    /**
+     * @param bindHost SoftAP interface host when known (e.g. `"192.168.43.1"`);
+     *   null = platform default; JVM fake uses loopback.
+     * @param preamble required first binary WS message before encrypted frames.
+     */
+    suspend fun start(
+        port: Int = DEFAULT_PORT,
+        bindHost: String? = null,
+        preamble: ByteArray = WifiTransferPreamble.defaultToken(),
+    )
+
     suspend fun stop()
 
     /** Encrypted frames from the device (still sealed — open with [WifiFrameCipher]). */
@@ -54,8 +65,8 @@ interface WifiFrameCipher {
 }
 
 /**
- * ChaCha20-Poly1305 Wi-Fi frames via the BLE [SessionCipher] (fixed key/nonce/aad).
- * AES-GCM mode is provided by platform JCA helpers ([createWifiFrameCipher]).
+ * ChaCha20-Poly1305 Wi-Fi frames via the BLE [SessionCipher] (fixed key/nonce/aad —
+ * Plaud session parity).
  */
 class BleSessionWifiFrameCipher(
     private val cipher: SessionCipher,
@@ -70,23 +81,22 @@ class BleSessionWifiFrameCipher(
         cipher.openPacket(secret, sequence, ciphertextAndTag)
 }
 
-/**
- * SoftAP joiner that refuses to run (JVM / desktop tests skip SoftAP).
- */
+/** SoftAP joiner that refuses to run (JVM / desktop tests use [FakeWifiSoftApJoiner]). */
 object UnsupportedWifiSoftApJoiner : WifiSoftApJoiner {
     override suspend fun join(ssid: String, password: String, ssidIsPattern: Boolean) {
-        error("SoftAP join is Android-only — JVM tests skip Wi-Fi SoftAP")
+        error("SoftAP join is Android-only — use FakeWifiSoftApJoiner in JVM tests")
     }
 
     override suspend fun leave() = Unit
 }
 
 /**
- * Coordinates local SoftAP + WS :8081 + frame cipher without contacting Plaud servers.
+ * Coordinates SoftAP + WebSocket :8081 + frame cipher (Plaud APK parity).
+ * Never contacts Plaud servers.
  */
 class WifiFastTransferSession(
     private val softAp: WifiSoftApJoiner,
-    private val server: WifiTransferServer,
+    val server: WifiTransferServer,
     val frameCipher: WifiFrameCipher,
 ) {
     private var sendSeq: Long = 0
@@ -97,8 +107,11 @@ class WifiFastTransferSession(
         password: String,
         port: Int = WifiTransferServer.DEFAULT_PORT,
         ssidIsPattern: Boolean = false,
+        preamble: ByteArray = WifiTransferPreamble.defaultToken(),
+        bindHost: String? = null,
     ) {
-        server.start(port)
+        // Start WS listener first so the device can connect as soon as SoftAP is up.
+        server.start(port = port, bindHost = bindHost, preamble = preamble)
         softAp.join(ssid, password, ssidIsPattern)
         sendSeq = 0
         recvSeq = 0
