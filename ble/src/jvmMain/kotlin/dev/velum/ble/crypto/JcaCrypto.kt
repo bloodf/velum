@@ -74,7 +74,7 @@ class JcaSessionCipher : SessionCipher {
     /**
      * plaintext = seq_u32_le || packet;
      * nonce / aad fixed for the whole session (APK 3.30.0 — do not fold seq into nonce).
-     * Fixed nonce is Plaud protocol parity debt — intentional until a Velum-only path.
+     * Fixed nonce is required Plaud / Note Pro session parity (BLE + Wi-Fi WS).
      */
     override fun sealPacket(
         secret: Protocol20SessionSecret,
