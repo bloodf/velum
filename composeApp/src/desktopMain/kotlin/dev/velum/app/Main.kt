@@ -1,5 +1,6 @@
 package dev.velum.app
 
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
@@ -19,6 +20,7 @@ fun main() = application {
         onCloseRequest = ::exitApplication,
         title = "Velum",
         state = rememberWindowState(width = 400.dp, height = 720.dp),
+        icon = painterResource("icons/velum-256.png"),
     ) {
         App(container)
     }

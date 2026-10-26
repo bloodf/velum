@@ -11,11 +11,13 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.velum.app.i18n.LocalStrings
+import dev.velum.app.ui.brand.VelumLogo
 import dev.velum.app.ui.components.BlackButton
 import dev.velum.app.ui.components.OutlineButton
 import dev.velum.app.ui.theme.VelumBg
@@ -36,6 +38,8 @@ fun FirstRunScreen(
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 24.dp, vertical = 40.dp),
     ) {
+        VelumLogo(size = 88.dp, modifier = Modifier.align(Alignment.Start))
+        Spacer(Modifier.height(16.dp))
         Text("Velum", fontWeight = FontWeight.Bold, fontSize = 32.sp, color = VelumInk)
         Spacer(Modifier.height(12.dp))
         Text(strings.firstRun.title, fontWeight = FontWeight.SemiBold, fontSize = 22.sp, color = VelumInk)

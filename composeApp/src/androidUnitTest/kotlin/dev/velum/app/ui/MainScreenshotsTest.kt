@@ -3,13 +3,23 @@ package dev.velum.app.ui
 import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.takahirom.roborazzi.RoborazziRule
@@ -18,6 +28,7 @@ import dev.velum.app.di.AppContainer
 import dev.velum.app.i18n.LocalStrings
 import dev.velum.app.i18n.PtBr
 import dev.velum.app.ui.autoflow.AutoFlowListScreen
+import dev.velum.app.ui.brand.VelumLogo
 import dev.velum.app.ui.explore.ExploreScreen
 import dev.velum.app.ui.files.FilesScreen
 import dev.velum.app.ui.integrations.IntegrationsScreen
@@ -161,6 +172,40 @@ class MainScreenshotsTest {
     @Test
     fun firstRun() = capture("14-first-run") {
         FirstRunScreen(onDownload = {}, onUseApi = {}, onSkip = {})
+    }
+
+    @Test
+    fun brandLauncherLight() = capture("16-brand-launcher-light") {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                VelumLogo(
+                    size = 160.dp,
+                    dark = false,
+                    modifier = Modifier.clip(RoundedCornerShape(36.dp)),
+                )
+                Spacer(Modifier.height(16.dp))
+                Text("Velum", fontWeight = FontWeight.SemiBold, fontSize = 22.sp)
+            }
+        }
+    }
+
+    @Test
+    fun brandSplashDark() {
+        captureRoboImage("velum-17-brand-splash-dark.png") {
+            CompositionLocalProvider(
+                LocalStrings provides PtBr,
+                LocalDensity provides Density(density = 3f, fontScale = 1f),
+            ) {
+                VelumTheme(darkTheme = true) {
+                    Box(
+                        Modifier.fillMaxSize().background(Color.Black),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        VelumLogo(size = 160.dp, dark = true)
+                    }
+                }
+            }
+        }
     }
 
     @Test

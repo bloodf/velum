@@ -132,6 +132,12 @@ roborazzi {
     outputDir.set(file("build/outputs/roborazzi"))
 }
 
+compose {
+    resources {
+        packageOfResClass = "dev.velum.app.resources"
+    }
+}
+
 compose.desktop {
     application {
         mainClass = "dev.velum.app.MainKt"
@@ -142,6 +148,16 @@ compose.desktop {
             description = "Open-source local-first companion for Plaud Note Pro"
             copyright = "Copyright © 2026 Velum contributors"
             vendor = "Velum"
+            linux {
+                iconFile.set(project.file("src/desktopMain/resources/icons/velum-512.png"))
+            }
+            windows {
+                iconFile.set(project.file("src/desktopMain/resources/icons/velum.ico"))
+            }
+            macOS {
+                iconFile.set(project.file("src/desktopMain/resources/icons/velum-512.png"))
+            }
         }
     }
 }
+

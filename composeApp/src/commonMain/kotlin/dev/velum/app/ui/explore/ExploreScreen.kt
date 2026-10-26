@@ -37,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.velum.app.di.AppContainer
 import dev.velum.app.i18n.LocalStrings
+import dev.velum.app.ui.brand.VelumLogo
 import dev.velum.app.ui.components.ChevronRow
 import dev.velum.app.ui.components.DisplayTitle
 import dev.velum.app.ui.theme.VelumBg
@@ -62,10 +63,19 @@ fun ExploreScreen(
     var infoBody by remember { mutableStateOf("") }
 
     if (infoTitle != null) {
+        val about = infoTitle == strings.aboutVelum
         AlertDialog(
             onDismissRequest = { infoTitle = null },
             title = { Text(infoTitle.orEmpty()) },
-            text = { Text(infoBody) },
+            text = {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    if (about) {
+                        VelumLogo(size = 96.dp)
+                        Spacer(Modifier.height(12.dp))
+                    }
+                    Text(infoBody)
+                }
+            },
             confirmButton = {
                 TextButton(onClick = { infoTitle = null }) { Text(strings.close) }
             },

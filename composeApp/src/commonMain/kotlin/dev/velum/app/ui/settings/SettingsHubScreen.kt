@@ -20,7 +20,6 @@ import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.ViewAgenda
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -35,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.velum.app.di.AppContainer
 import dev.velum.app.i18n.LocalStrings
+import dev.velum.app.ui.brand.VelumLogo
 import dev.velum.app.ui.components.ChevronRow
 import dev.velum.app.ui.components.ScreenTopBar
 import dev.velum.app.ui.theme.VelumBg
@@ -63,16 +63,12 @@ fun SettingsHubScreen(
     ) {
         ScreenTopBar(strings.settings, onBack = onBack)
         Spacer(Modifier.height(8.dp))
-        Box(
-            Modifier
-                .size(88.dp)
+        VelumLogo(
+            size = 88.dp,
+            modifier = Modifier
                 .align(Alignment.CenterHorizontally)
-                .clip(CircleShape)
-                .background(VelumBg),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(Icons.Outlined.Person, null, tint = VelumInk, modifier = Modifier.size(40.dp))
-        }
+                .clip(RoundedCornerShape(20.dp)),
+        )
         Spacer(Modifier.height(12.dp))
         Text(
             "Velum",
