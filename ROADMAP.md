@@ -9,7 +9,9 @@ Milestones are capability-based, not calendar estimates.
 - [x] `ai` OpenAI-compatible client (`/models`, transcription, chat)
 - [x] `ble` transport interface + Kable (mobile) / stub (desktop)
 - [x] Compose shell: Device, Recordings (empty), Settings
+- [x] Android Keystore AES-GCM secure store (API keys / device identity)
 - [x] OSS hygiene: LICENSE, README, CONTRIBUTING, docs, CI
+- [x] **Android-first process:** CI = JVM tests + Android assemble; iOS CI / Xcode deferred to M3
 
 ## M1 — Android BLE sync + transcription + templates + Markdown export
 
