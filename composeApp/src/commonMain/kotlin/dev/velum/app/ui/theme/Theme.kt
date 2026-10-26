@@ -1,89 +1,90 @@
 package dev.velum.app.ui.theme
 
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
-// Soft mist / ink — light, AI-flavored, not purple-default.
-private val Mist = Color(0xFFF4F7FB)
-private val MistElevated = Color(0xFFFFFFFF)
-private val Ink = Color(0xFF142033)
-private val InkMuted = Color(0xFF5A6B7F)
-private val Accent = Color(0xFF0F766E) // teal
-private val AccentSoft = Color(0xFFCCFBF1)
-private val OutlineSoft = Color(0xFFD5DEE8)
+// Matched to Plaud screenshot visual language (Velum branding).
+val VelumBg = Color(0xFFF9F9F9)
+val VelumSurface = Color(0xFFFFFFFF)
+val VelumInk = Color(0xFF000000)
+val VelumInkSecondary = Color(0xFF8E8E93)
+val VelumDivider = Color(0xFFE5E5EA)
+val VelumBlack = Color(0xFF000000)
+val VelumAiPurple = Color(0xFF8B5CF6)
+val VelumAiCyan = Color(0xFF22D3EE)
 
-private val VelumLightColors = lightColorScheme(
-    primary = Accent,
+private val colors = lightColorScheme(
+    primary = VelumBlack,
     onPrimary = Color.White,
-    primaryContainer = AccentSoft,
-    onPrimaryContainer = Color(0xFF042F2E),
-    secondary = Color(0xFF334155),
+    secondary = VelumInkSecondary,
     onSecondary = Color.White,
-    background = Mist,
-    onBackground = Ink,
-    surface = MistElevated,
-    onSurface = Ink,
-    onSurfaceVariant = InkMuted,
-    outline = OutlineSoft,
-    surfaceVariant = Color(0xFFE8EEF5),
+    background = VelumBg,
+    onBackground = VelumInk,
+    surface = VelumSurface,
+    onSurface = VelumInk,
+    onSurfaceVariant = VelumInkSecondary,
+    outline = VelumDivider,
+    surfaceVariant = Color(0xFFF2F2F7),
+    error = Color(0xFFFF3B30),
 )
 
-private val VelumTypography = Typography(
+private val type = Typography(
     displayLarge = TextStyle(
-        fontFamily = FontFamily.Serif,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 40.sp,
-        lineHeight = 46.sp,
+        fontFamily = FontFamily.SansSerif,
+        fontWeight = FontWeight.Thin,
+        fontSize = 36.sp,
+        lineHeight = 42.sp,
         letterSpacing = (-0.5).sp,
+        color = VelumInk,
     ),
     headlineMedium = TextStyle(
-        fontFamily = FontFamily.Serif,
-        fontWeight = FontWeight.SemiBold,
+        fontFamily = FontFamily.SansSerif,
+        fontWeight = FontWeight.Thin,
         fontSize = 28.sp,
         lineHeight = 34.sp,
     ),
     titleLarge = TextStyle(
         fontFamily = FontFamily.SansSerif,
         fontWeight = FontWeight.SemiBold,
-        fontSize = 20.sp,
+        fontSize = 17.sp,
+        lineHeight = 22.sp,
+    ),
+    titleMedium = TextStyle(
+        fontFamily = FontFamily.SansSerif,
+        fontWeight = FontWeight.Medium,
+        fontSize = 16.sp,
     ),
     bodyLarge = TextStyle(
         fontFamily = FontFamily.SansSerif,
         fontWeight = FontWeight.Normal,
         fontSize = 16.sp,
-        lineHeight = 24.sp,
+        lineHeight = 22.sp,
     ),
     bodyMedium = TextStyle(
         fontFamily = FontFamily.SansSerif,
         fontWeight = FontWeight.Normal,
         fontSize = 14.sp,
         lineHeight = 20.sp,
+        color = VelumInkSecondary,
     ),
     labelLarge = TextStyle(
         fontFamily = FontFamily.SansSerif,
         fontWeight = FontWeight.Medium,
-        fontSize = 14.sp,
+        fontSize = 15.sp,
     ),
 )
 
+val AiGradientBrush = Brush.horizontalGradient(listOf(VelumAiPurple, VelumAiCyan))
+
 @Composable
 fun VelumTheme(content: @Composable () -> Unit) {
-    // Foundation ships a deliberate light look; dark theme comes later.
-    val dark = isSystemInDarkTheme()
-    MaterialTheme(
-        colorScheme = VelumLightColors,
-        typography = VelumTypography,
-        content = content,
-    )
-    // Suppress unused warning without branching UI yet.
-    @Suppress("UNUSED_EXPRESSION")
-    dark
+    MaterialTheme(colorScheme = colors, typography = type, content = content)
 }

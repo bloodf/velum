@@ -1,0 +1,212 @@
+package dev.velum.app.ui.files
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.ExpandMore
+import androidx.compose.material.icons.outlined.Headphones
+import androidx.compose.material.icons.outlined.MicExternalOn
+import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.Sync
+import androidx.compose.material.icons.outlined.TravelExplore
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import dev.velum.app.di.AppContainer
+import dev.velum.app.i18n.LocalStrings
+import dev.velum.app.ui.components.DisplayTitle
+import dev.velum.app.ui.components.ThinDivider
+import dev.velum.app.ui.theme.VelumBg
+import dev.velum.app.ui.theme.VelumInk
+import dev.velum.app.ui.theme.VelumInkSecondary
+import dev.velum.app.ui.theme.VelumSurface
+import dev.velum.core.db.Recording
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun FilesScreen(
+    container: AppContainer,
+    onOpenRecording: (String) -> Unit,
+    onOpenSettings: () -> Unit,
+) {
+    val strings = LocalStrings.current
+    val recordings by container.repository.observeRecordings().collectAsState(emptyList())
+    var showFilter by remember { mutableStateOf(false) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(VelumBg),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Outlined.MicExternalOn, null, tint = VelumInk, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(6.dp))
+            Icon(Icons.Outlined.Sync, null, tint = VelumInkSecondary, modifier = Modifier.size(16.dp))
+            Icon(Icons.Outlined.ExpandMore, null, tint = VelumInkSecondary, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.weight(1f))
+            Icon(
+                Icons.Outlined.TravelExplore,
+                contentDescription = strings.search,
+                tint = VelumInk,
+                modifier = Modifier.size(22.dp).clickable { },
+            )
+            Spacer(Modifier.width(14.dp))
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .background(VelumInk.copy(alpha = 0.08f))
+                    .clickable(onClick = onOpenSettings),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Outlined.Person, null, tint = VelumInk, modifier = Modifier.size(18.dp))
+            }
+        }
+
+        Spacer(Modifier.height(8.dp))
+        DisplayTitle(
+            text = strings.allFiles,
+            trailing = {
+                Icon(
+                    Icons.Outlined.ExpandMore,
+                    null,
+                    tint = VelumInkSecondary,
+                    modifier = Modifier
+                        .padding(start = 4.dp)
+                        .size(28.dp)
+                        .clickable { showFilter = true },
+                )
+            },
+        )
+        Spacer(Modifier.height(16.dp))
+        ThinDivider(0)
+
+        if (recordings.isEmpty()) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text(strings.noRecordingsYet, color = VelumInkSecondary)
+            }
+        } else {
+            LazyColumn(modifier = Modifier.fillMaxSize()) {
+                items(recordings, key = { it.id }) { rec ->
+                    RecordingRow(rec) { onOpenRecording(rec.id) }
+                }
+            }
+        }
+    }
+
+    if (showFilter) {
+        ModalBottomSheet(
+            onDismissRequest = { showFilter = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = VelumSurface,
+        ) {
+            FilterSortSheet(
+                total = recordings.size,
+                onClose = { showFilter = false },
+            )
+        }
+    }
+}
+
+@Composable
+private fun RecordingRow(rec: Recording, onClick: () -> Unit) {
+    val mins = (rec.duration_seconds / 60).toInt()
+    val timeLabel = formatClock(rec.started_at)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 14.dp),
+    ) {
+        Text(rec.title, color = VelumInk, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+        Spacer(Modifier.height(4.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("$timeLabel | $mins min", color = VelumInkSecondary, fontSize = 13.sp)
+            Spacer(Modifier.width(8.dp))
+            Icon(
+                if (rec.source == "note_pro") Icons.Outlined.MicExternalOn else Icons.Outlined.Headphones,
+                null,
+                tint = VelumInkSecondary,
+                modifier = Modifier.size(14.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun FilterSortSheet(total: Int, onClose: () -> Unit) {
+    val strings = LocalStrings.current
+    Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
+        Text(strings.filterSort, fontWeight = FontWeight.Thin, fontSize = 28.sp, color = VelumInk)
+        Spacer(Modifier.height(20.dp))
+        Text(strings.sortByCreated, fontSize = 16.sp, color = VelumInk)
+        Spacer(Modifier.height(16.dp))
+        ThinDivider(0)
+        FilterLine(strings.allFiles, "$total", selected = true)
+        FilterLine(strings.unclassified, "0", selected = false)
+        FilterLine(strings.trash, "0", selected = false)
+        Spacer(Modifier.height(12.dp))
+        Text(strings.folders, fontWeight = FontWeight.Medium, fontSize = 15.sp)
+        Spacer(Modifier.height(8.dp))
+        Text(strings.comesFrom, fontWeight = FontWeight.Medium, fontSize = 15.sp)
+        FilterLine("Note Pro", "1", selected = false)
+        Spacer(Modifier.height(32.dp))
+    }
+}
+
+@Composable
+private fun FilterLine(label: String, count: String, selected: Boolean) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 14.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(label, color = VelumInk, fontSize = 16.sp)
+        Text(
+            if (selected) "✓  $count" else count,
+            color = if (selected) VelumInk else VelumInkSecondary,
+            fontSize = 15.sp,
+        )
+    }
+    ThinDivider(0)
+}
+
+private fun formatClock(epochSeconds: Long): String {
+    val mins = ((epochSeconds % 86400) / 60) % 60
+    val hours = ((epochSeconds % 86400) / 3600)
+    return "%02d:%02d".format(hours.toInt(), mins.toInt())
+}

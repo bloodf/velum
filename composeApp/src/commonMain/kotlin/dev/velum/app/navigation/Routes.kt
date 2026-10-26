@@ -1,0 +1,22 @@
+package dev.velum.app.navigation
+
+object Routes {
+    const val FILES = "files"
+    const val EXPLORE = "explore"
+    const val RECORDING = "recording/{id}"
+    fun recording(id: String) = "recording/$id"
+    const val SETTINGS = "settings"
+    const val PERSONALIZATION = "personalization"
+    const val PREFERENCES = "preferences"
+    const val ACCOUNT = "account"
+    const val MEMORY = "memory"
+    const val TEMPLATES = "templates"
+    const val TEMPLATE_DETAIL = "template/{id}"
+    fun template(id: String) = "template/$id"
+    const val AUTOFLOW = "autoflow"
+    const val AUTOFLOW_EDIT = "autoflow/{id}"
+    fun autoflowEdit(id: String) = "autoflow/$id"
+    const val INTEGRATIONS = "integrations"
+    const val SPEAKER_LABELING = "speaker_labeling"
+    const val DEVICE = "device"
+}
