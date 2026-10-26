@@ -30,6 +30,7 @@ import dev.velum.ai.local.LocalModelState
 import dev.velum.ai.local.LocalModelStatus
 import dev.velum.app.di.AppContainer
 import dev.velum.app.i18n.LocalStrings
+import dev.velum.app.i18n.Strings
 import dev.velum.app.ui.components.BlackButton
 import dev.velum.app.ui.components.OutlineButton
 import dev.velum.app.ui.components.ScreenTopBar
@@ -103,7 +104,7 @@ private fun ModelCard(
         Text(state.spec.displayName, fontWeight = FontWeight.SemiBold, fontSize = 16.sp, color = VelumInk)
         Spacer(Modifier.height(4.dp))
         Text(
-            kindLabel(state.spec.kind),
+            kindLabel(state.spec.kind, strings),
             color = VelumInkSecondary,
             fontSize = 12.sp,
         )
@@ -151,9 +152,9 @@ private fun ModelCard(
     }
 }
 
-private fun kindLabel(kind: LocalModelKind): String = when (kind) {
-    LocalModelKind.Asr -> "ASR"
-    LocalModelKind.Diarization -> "Diarization"
+private fun kindLabel(kind: LocalModelKind, strings: Strings): String = when (kind) {
+    LocalModelKind.Asr -> strings.ux.modelKindAsr
+    LocalModelKind.Diarization -> strings.ux.modelKindDiarization
     LocalModelKind.Embedding -> "Embedding"
     LocalModelKind.Llm -> "LLM"
 }

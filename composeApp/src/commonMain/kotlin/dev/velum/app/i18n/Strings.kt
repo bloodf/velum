@@ -246,6 +246,22 @@ data class Strings(
     val downloadModel: String,
     val pausedThermal: String,
     val recordingInProgress: String,
+    // Nested: Strings primary ctor is near the JVM/Robolectric 255-arg limit.
+    val ux: UxStrings,
+)
+
+data class UxStrings(
+    val back: String,
+    val speakerLabel: String,
+    val photoToTemplateHint: String,
+    val typeToTemplateHint: String,
+    val categoryMine: String,
+    val androidContextUnavailable: String,
+    val modelKindAsr: String,
+    val modelKindDiarization: String,
+    val mindMapEmpty: String,
+    val noRecordingsHint: String,
+    val playbackUnavailable: String,
 )
 
 val PtBr = Strings(
@@ -492,6 +508,19 @@ val PtBr = Strings(
     downloadModel = "Baixar modelo",
     pausedThermal = "Pausado — aparelho aquecido; retoma automaticamente",
     recordingInProgress = "Gravando…",
+    ux = UxStrings(
+        back = "Voltar",
+        speakerLabel = "Orador %d",
+        photoToTemplateHint = "Foto para template precisa de um LLM com visão — ainda não disponível.",
+        typeToTemplateHint = "Descreva o que precisa e monte seu próprio template.",
+        categoryMine = "Meus",
+        androidContextUnavailable = "Contexto Android indisponível",
+        modelKindAsr = "ASR",
+        modelKindDiarization = "Diarização",
+        mindMapEmpty = "Nenhum heading H2 no resumo.",
+        noRecordingsHint = "Toque em gravar para capturar áudio no aparelho, ou importe um arquivo.",
+        playbackUnavailable = "Reprodução indisponível — arquivo de áudio local ausente nesta gravação.",
+    ),
 )
 
 val En = Strings(
@@ -738,6 +767,19 @@ val En = Strings(
     downloadModel = "Download model",
     pausedThermal = "Paused — device is hot; will resume automatically",
     recordingInProgress = "Recording…",
+    ux = UxStrings(
+        back = "Back",
+        speakerLabel = "Speaker %d",
+        photoToTemplateHint = "Photo-to-template needs a vision LLM — not wired yet.",
+        typeToTemplateHint = "Describe what you need and craft your own template.",
+        categoryMine = "Mine",
+        androidContextUnavailable = "Android context unavailable",
+        modelKindAsr = "ASR",
+        modelKindDiarization = "Diarization",
+        mindMapEmpty = "No H2 headings in the summary.",
+        noRecordingsHint = "Tap record to capture on-device audio, or import a file.",
+        playbackUnavailable = "Playback unavailable — local audio file missing for this recording.",
+    ),
 )
 
 val LocalStrings = staticCompositionLocalOf { PtBr }

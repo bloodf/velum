@@ -1,20 +1,30 @@
 package dev.velum.app.ui.markdown
 
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -22,8 +32,11 @@ import com.mikepenz.markdown.m3.Markdown
 import com.mikepenz.markdown.m3.markdownColor
 import com.mikepenz.markdown.m3.markdownTypography
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.background
+import dev.velum.app.ui.theme.VelumBlack
 import dev.velum.app.ui.theme.VelumInk
 import dev.velum.app.ui.theme.VelumInkSecondary
+import dev.velum.app.ui.theme.VelumSurface
 
 /**
  * Markdown preview for transcripts and notes (speakers as bold, timestamps,
@@ -128,6 +141,23 @@ internal fun ComposeMarkdownDocument(
                         )
                     }
                 }
+                is MdBlock.Checkbox -> {
+                    Row(
+                        Modifier.padding(vertical = 3.dp),
+                        verticalAlignment = Alignment.Top,
+                    ) {
+                        MarkdownCheckboxGlyph(checked = block.checked)
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = inlineMarkdown(block.text),
+                            color = if (block.checked) VelumInkSecondary else VelumInk,
+                            fontSize = 15.sp,
+                            lineHeight = 22.sp,
+                            textDecoration = if (block.checked) TextDecoration.LineThrough else null,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                }
                 is MdBlock.Ordered -> {
                     Row(Modifier.padding(vertical = 2.dp)) {
                         Text(
@@ -160,9 +190,32 @@ internal fun ComposeMarkdownDocument(
     }
 }
 
+@Composable
+private fun MarkdownCheckboxGlyph(checked: Boolean) {
+    Box(
+        Modifier
+            .padding(top = 2.dp)
+            .size(18.dp)
+            .clip(RoundedCornerShape(3.dp))
+            .background(if (checked) VelumBlack else VelumSurface)
+            .border(1.5.dp, if (checked) VelumBlack else VelumInkSecondary, RoundedCornerShape(3.dp)),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (checked) {
+            Icon(
+                Icons.Outlined.Check,
+                contentDescription = null,
+                tint = VelumSurface,
+                modifier = Modifier.size(12.dp),
+            )
+        }
+    }
+}
+
 internal sealed class MdBlock {
     data class Heading(val level: Int, val text: String) : MdBlock()
     data class Bullet(val text: String) : MdBlock()
+    data class Checkbox(val checked: Boolean, val text: String) : MdBlock()
     data class Ordered(val index: Int, val text: String) : MdBlock()
     data class Paragraph(val text: String) : MdBlock()
     data object Spacer : MdBlock()
@@ -193,6 +246,7 @@ internal fun parseMarkdownBlocks(markdown: String): List<MdBlock> {
                 i++
             }
             trimmed.startsWith("- [ ]") || trimmed.startsWith("- [x]") || trimmed.startsWith("- [X]") -> {
+                val checked = trimmed.startsWith("- [x]") || trimmed.startsWith("- [X]")
                 val text = trimmed
                     .removePrefix("- [ ] ")
                     .removePrefix("- [x] ")
@@ -201,7 +255,7 @@ internal fun parseMarkdownBlocks(markdown: String): List<MdBlock> {
                     .removePrefix("- [x]")
                     .removePrefix("- [X]")
                     .trim()
-                out += MdBlock.Bullet(if (text.isEmpty()) "☐" else "☐ $text")
+                out += MdBlock.Checkbox(checked, text)
                 i++
             }
             trimmed.startsWith("- ") || trimmed.startsWith("* ") || trimmed.startsWith("+ ") -> {

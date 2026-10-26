@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -27,6 +28,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.velum.app.i18n.LocalStrings
 import dev.velum.app.ui.theme.VelumBlack
 import dev.velum.app.ui.theme.VelumDivider
 import dev.velum.app.ui.theme.VelumInk
@@ -40,6 +42,7 @@ fun ScreenTopBar(
     onClose: (() -> Unit)? = null,
     trailing: @Composable (() -> Unit)? = null,
 ) {
+    val strings = LocalStrings.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -48,28 +51,36 @@ fun ScreenTopBar(
     ) {
         when {
             onBack != null -> {
-                Icon(
-                    Icons.AutoMirrored.Outlined.ArrowBack,
-                    contentDescription = null,
-                    tint = VelumInk,
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clickable(onClick = onBack)
-                        .padding(8.dp),
-                )
+                Box(
+                    Modifier
+                        .defaultMinSize(48.dp, 48.dp)
+                        .clickable(onClick = onBack),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.AutoMirrored.Outlined.ArrowBack,
+                        contentDescription = strings.ux.back,
+                        tint = VelumInk,
+                        modifier = Modifier.size(24.dp),
+                    )
+                }
             }
             onClose != null -> {
-                Icon(
-                    Icons.Outlined.Close,
-                    contentDescription = null,
-                    tint = VelumInk,
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clickable(onClick = onClose)
-                        .padding(8.dp),
-                )
+                Box(
+                    Modifier
+                        .defaultMinSize(48.dp, 48.dp)
+                        .clickable(onClick = onClose),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.Outlined.Close,
+                        contentDescription = strings.close,
+                        tint = VelumInk,
+                        modifier = Modifier.size(24.dp),
+                    )
+                }
             }
-            else -> Spacer(Modifier.width(40.dp))
+            else -> Spacer(Modifier.width(48.dp))
         }
         Text(
             title,
@@ -79,7 +90,7 @@ fun ScreenTopBar(
             modifier = Modifier.weight(1f),
             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
         )
-        Box(modifier = Modifier.width(40.dp), contentAlignment = Alignment.CenterEnd) {
+        Box(modifier = Modifier.width(48.dp), contentAlignment = Alignment.CenterEnd) {
             trailing?.invoke()
         }
     }
@@ -166,7 +177,12 @@ fun MetaRow(label: String, value: String) {
 }
 
 @Composable
-fun EmptyState(title: String, subtitle: String) {
+fun EmptyState(
+    title: String,
+    subtitle: String,
+    actionLabel: String? = null,
+    onAction: (() -> Unit)? = null,
+) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -182,6 +198,10 @@ fun EmptyState(title: String, subtitle: String) {
             lineHeight = 20.sp,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
         )
+        if (actionLabel != null && onAction != null) {
+            Spacer(Modifier.height(20.dp))
+            OutlineActionButton(actionLabel, onAction)
+        }
     }
 }
 

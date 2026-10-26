@@ -22,6 +22,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.velum.app.i18n.LocalStrings
 import dev.velum.app.ui.theme.VelumInk
 import dev.velum.app.ui.theme.VelumInkSecondary
 
@@ -33,6 +34,7 @@ fun MindMapView(
     root: MindMapNode,
     modifier: Modifier = Modifier,
 ) {
+    val strings = LocalStrings.current
     Column(
         modifier
             .fillMaxSize()
@@ -55,7 +57,7 @@ fun MindMapView(
         }
         if (root.children.isEmpty()) {
             Text(
-                "Nenhum heading H2 no resumo.",
+                strings.ux.mindMapEmpty,
                 color = VelumInkSecondary,
                 fontSize = 14.sp,
             )

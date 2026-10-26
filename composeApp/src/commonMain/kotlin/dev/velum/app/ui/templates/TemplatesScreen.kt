@@ -204,13 +204,13 @@ fun TemplatesScreen(
                 CreateOption(
                     title = { GradientTitle(strings.photoToTemplate) },
                     icon = { Icon(Icons.Outlined.AutoAwesome, null, tint = Color(0xFF8B5CF6)) },
-                    subtitle = "Photo-to-template needs a vision LLM — not wired yet.",
+                    subtitle = strings.ux.photoToTemplateHint,
                 ) { showCreate = false }
                 Spacer(Modifier.height(8.dp))
                 CreateOption(
                     title = { Text(strings.typeToTemplate, fontWeight = FontWeight.SemiBold, fontSize = 16.sp) },
                     icon = { Icon(Icons.Outlined.Edit, null, tint = VelumInk) },
-                    subtitle = "Describe what you need and craft your own template.",
+                    subtitle = strings.ux.typeToTemplateHint,
                 ) {
                     showCreate = false
                     showTypeCreate = true
@@ -358,6 +358,11 @@ private fun RankingCard(tpl: Template, rank: Int, onClick: () -> Unit) {
 
 @Composable
 private fun CategoryCard(name: String, modifier: Modifier, onClick: () -> Unit) {
+    val strings = LocalStrings.current
+    val label = when (name) {
+        "Mine", "Meus" -> strings.ux.categoryMine
+        else -> name
+    }
     Row(
         modifier
             .height(72.dp)
@@ -369,7 +374,7 @@ private fun CategoryCard(name: String, modifier: Modifier, onClick: () -> Unit) 
     ) {
         Icon(Icons.Outlined.AutoAwesome, null, tint = VelumInk, modifier = Modifier.size(22.dp))
         Spacer(Modifier.width(10.dp))
-        Text(name, fontWeight = FontWeight.Medium, fontSize = 14.sp, maxLines = 2)
+        Text(label, fontWeight = FontWeight.Medium, fontSize = 14.sp, maxLines = 2)
     }
 }
 

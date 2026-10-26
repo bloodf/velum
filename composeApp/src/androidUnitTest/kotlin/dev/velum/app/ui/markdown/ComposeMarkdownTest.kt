@@ -38,7 +38,10 @@ class ComposeMarkdownTest {
         )
         assertTrue(blocks.first() is MdBlock.Heading)
         assertEquals("Próximos passos", (blocks.first() as MdBlock.Heading).text)
-        assertTrue(blocks.any { it is MdBlock.Bullet && it.text.contains("Importar") })
+        assertTrue(blocks.any { it is MdBlock.Checkbox && !it.checked && it.text.contains("Importar") })
         assertTrue(blocks.any { it is MdBlock.Bullet && it.text.contains("Fechar") })
+        val checked = parseMarkdownBlocks("- [x] Done\n- [ ] Todo")
+        assertTrue(checked.any { it is MdBlock.Checkbox && it.checked && it.text == "Done" })
+        assertTrue(checked.any { it is MdBlock.Checkbox && !it.checked && it.text == "Todo" })
     }
 }

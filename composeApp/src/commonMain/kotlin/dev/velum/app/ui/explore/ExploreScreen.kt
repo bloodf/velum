@@ -111,7 +111,11 @@ fun ExploreScreen(
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    text = if (settings.hasApiKey) "BYOK · $modelLabel" else strings.aiProvider,
+                    text = if (settings.hasApiKey) {
+                        "${strings.aiProvider} · $modelLabel"
+                    } else {
+                        strings.aiProvider
+                    },
                     color = VelumBlack,
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 15.sp,

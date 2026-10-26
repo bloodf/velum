@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -44,6 +45,7 @@ import androidx.compose.ui.unit.sp
 import dev.velum.app.di.AppContainer
 import dev.velum.app.i18n.LocalStrings
 import dev.velum.app.ui.components.DisplayTitle
+import dev.velum.app.ui.components.EmptyState
 import dev.velum.app.ui.components.SearchSheet
 import dev.velum.app.ui.components.ThinDivider
 import dev.velum.app.ui.theme.VelumBg
@@ -98,24 +100,39 @@ fun FilesScreen(
             Icon(Icons.Outlined.Sync, null, tint = VelumInkSecondary, modifier = Modifier.size(16.dp))
             Icon(Icons.Outlined.ExpandMore, null, tint = VelumInkSecondary, modifier = Modifier.size(18.dp))
             Spacer(Modifier.weight(1f))
-            Icon(
-                Icons.Outlined.TravelExplore,
-                contentDescription = strings.search,
-                tint = VelumInk,
-                modifier = Modifier.size(22.dp).clickable {
-                    showSearch = true
-                },
-            )
-            Spacer(Modifier.width(14.dp))
+            Box(
+                Modifier
+                    .defaultMinSize(48.dp, 48.dp)
+                    .clickable { showSearch = true },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Outlined.TravelExplore,
+                    contentDescription = strings.search,
+                    tint = VelumInk,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
             Box(
                 modifier = Modifier
-                    .size(32.dp)
-                    .clip(CircleShape)
-                    .background(VelumInk.copy(alpha = 0.08f))
+                    .defaultMinSize(48.dp, 48.dp)
                     .clickable(onClick = onOpenSettings),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(Icons.Outlined.Person, null, tint = VelumInk, modifier = Modifier.size(18.dp))
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .background(VelumInk.copy(alpha = 0.08f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.Outlined.Person,
+                        contentDescription = strings.settings,
+                        tint = VelumInk,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
             }
         }
 
@@ -123,15 +140,19 @@ fun FilesScreen(
         DisplayTitle(
             text = strings.allFiles,
             trailing = {
-                Icon(
-                    Icons.Outlined.ExpandMore,
-                    null,
-                    tint = VelumInkSecondary,
-                    modifier = Modifier
-                        .padding(start = 4.dp)
-                        .size(28.dp)
+                Box(
+                    Modifier
+                        .defaultMinSize(48.dp, 48.dp)
                         .clickable { showFilter = true },
-                )
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.Outlined.ExpandMore,
+                        contentDescription = strings.filterSort,
+                        tint = VelumInkSecondary,
+                        modifier = Modifier.size(28.dp),
+                    )
+                }
             },
         )
         if (searchQuery.isNotBlank()) {
@@ -147,7 +168,10 @@ fun FilesScreen(
 
         if (visible.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(strings.noRecordingsYet, color = VelumInkSecondary)
+                EmptyState(
+                    title = strings.noRecordingsYet,
+                    subtitle = strings.ux.noRecordingsHint,
+                )
             }
         } else {
             LazyColumn(modifier = Modifier.fillMaxSize()) {

@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
@@ -27,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import dev.velum.app.i18n.LocalStrings
 import dev.velum.app.ui.theme.VelumBlack
 import dev.velum.app.ui.theme.VelumDivider
 import dev.velum.app.ui.theme.VelumInkSecondary
@@ -42,6 +44,7 @@ fun VelumBottomBar(
     onExplore: () -> Unit,
     onFab: () -> Unit,
 ) {
+    val strings = LocalStrings.current
     Box(modifier = Modifier.fillMaxWidth().background(VelumSurface)) {
         HorizontalDivider(thickness = 0.5.dp, color = VelumDivider)
         Row(
@@ -52,19 +55,33 @@ fun VelumBottomBar(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(
-                if (selected == ShellTab.Files && !fabOpen) Icons.Filled.Folder else Icons.Outlined.Folder,
-                contentDescription = "Files",
-                tint = if (selected == ShellTab.Files && !fabOpen) VelumBlack else VelumInkSecondary,
-                modifier = Modifier.size(26.dp).clickable(onClick = onFiles),
-            )
+            Box(
+                Modifier
+                    .defaultMinSize(48.dp, 48.dp)
+                    .clickable(onClick = onFiles),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    if (selected == ShellTab.Files && !fabOpen) Icons.Filled.Folder else Icons.Outlined.Folder,
+                    contentDescription = strings.allFiles,
+                    tint = if (selected == ShellTab.Files && !fabOpen) VelumBlack else VelumInkSecondary,
+                    modifier = Modifier.size(26.dp),
+                )
+            }
             SpacerFab()
-            Icon(
-                if (selected == ShellTab.Explore && !fabOpen) Icons.Filled.Apps else Icons.Outlined.Apps,
-                contentDescription = "Explore",
-                tint = if (selected == ShellTab.Explore && !fabOpen) VelumBlack else VelumInkSecondary,
-                modifier = Modifier.size(26.dp).clickable(onClick = onExplore),
-            )
+            Box(
+                Modifier
+                    .defaultMinSize(48.dp, 48.dp)
+                    .clickable(onClick = onExplore),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    if (selected == ShellTab.Explore && !fabOpen) Icons.Filled.Apps else Icons.Outlined.Apps,
+                    contentDescription = strings.explore,
+                    tint = if (selected == ShellTab.Explore && !fabOpen) VelumBlack else VelumInkSecondary,
+                    modifier = Modifier.size(26.dp),
+                )
+            }
         }
         Box(
             modifier = Modifier
@@ -79,7 +96,7 @@ fun VelumBottomBar(
         ) {
             Icon(
                 imageVector = if (fabOpen) Icons.Outlined.Close else Icons.Outlined.AutoAwesome,
-                contentDescription = if (fabOpen) "Close" else "Create",
+                contentDescription = if (fabOpen) strings.close else strings.create,
                 tint = Color.White,
                 modifier = Modifier.size(26.dp),
             )

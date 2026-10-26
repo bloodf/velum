@@ -80,7 +80,11 @@ fun IntegrationsScreen(
             }
             is CalendarLookupResult.Unavailable -> {
                 needsPermission = false
-                statusLabel = result.reason
+                statusLabel = if (result.reason.contains("No Android context", ignoreCase = true)) {
+                    strings.ux.androidContextUnavailable
+                } else {
+                    result.reason.ifBlank { strings.ux.androidContextUnavailable }
+                }
                 statusColor = Color(0xFFB45309)
             }
         }

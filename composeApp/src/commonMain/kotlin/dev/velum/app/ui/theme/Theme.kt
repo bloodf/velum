@@ -1,9 +1,15 @@
 package dev.velum.app.ui.theme
 
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
+import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
@@ -11,29 +17,93 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
-// Matched to Plaud screenshot visual language (Velum branding).
-val VelumBg = Color(0xFFF9F9F9)
-val VelumSurface = Color(0xFFFFFFFF)
-val VelumInk = Color(0xFF000000)
-val VelumInkSecondary = Color(0xFF8E8E93)
-val VelumDivider = Color(0xFFE5E5EA)
-val VelumBlack = Color(0xFF000000)
-val VelumAiPurple = Color(0xFF8B5CF6)
-val VelumAiCyan = Color(0xFF22D3EE)
+data class VelumColors(
+    val bg: Color,
+    val surface: Color,
+    val ink: Color,
+    val inkSecondary: Color,
+    val divider: Color,
+    val black: Color,
+    val surfaceVariant: Color,
+    val aiPurple: Color,
+    val aiCyan: Color,
+)
 
-private val colors = lightColorScheme(
-    primary = VelumBlack,
-    onPrimary = Color.White,
-    secondary = VelumInkSecondary,
-    onSecondary = Color.White,
-    background = VelumBg,
-    onBackground = VelumInk,
-    surface = VelumSurface,
-    onSurface = VelumInk,
-    onSurfaceVariant = VelumInkSecondary,
-    outline = VelumDivider,
+/** Light palette. Secondary ink ≥4.5:1 on white (#6C6C70 ≈ 5.3:1). */
+val LightVelumColors = VelumColors(
+    bg = Color(0xFFF9F9F9),
+    surface = Color(0xFFFFFFFF),
+    ink = Color(0xFF000000),
+    inkSecondary = Color(0xFF6C6C70),
+    divider = Color(0xFFE5E5EA),
+    black = Color(0xFF000000),
     surfaceVariant = Color(0xFFF2F2F7),
+    aiPurple = Color(0xFF8B5CF6),
+    aiCyan = Color(0xFF22D3EE),
+)
+
+/** Dark surfaces: charcoal, not purple glow. Secondary ≥4.5:1 on #121212. */
+val DarkVelumColors = VelumColors(
+    bg = Color(0xFF121212),
+    surface = Color(0xFF1C1C1E),
+    ink = Color(0xFFF5F5F7),
+    inkSecondary = Color(0xFFAEAEB2),
+    divider = Color(0xFF38383A),
+    black = Color(0xFFF5F5F7),
+    surfaceVariant = Color(0xFF2C2C2E),
+    aiPurple = Color(0xFFA78BFA),
+    aiCyan = Color(0xFF67E8F9),
+)
+
+val LocalVelumColors = staticCompositionLocalOf { LightVelumColors }
+
+/** Active palette bridge so existing Velum* call sites follow [VelumTheme]. */
+internal object VelumTokenBridge {
+    @Volatile
+    var current: VelumColors = LightVelumColors
+}
+
+val VelumBg: Color get() = VelumTokenBridge.current.bg
+val VelumSurface: Color get() = VelumTokenBridge.current.surface
+val VelumInk: Color get() = VelumTokenBridge.current.ink
+val VelumInkSecondary: Color get() = VelumTokenBridge.current.inkSecondary
+val VelumDivider: Color get() = VelumTokenBridge.current.divider
+val VelumBlack: Color get() = VelumTokenBridge.current.black
+val VelumAiPurple: Color get() = VelumTokenBridge.current.aiPurple
+val VelumAiCyan: Color get() = VelumTokenBridge.current.aiCyan
+
+@Composable
+@ReadOnlyComposable
+fun velumColors(): VelumColors = LocalVelumColors.current
+
+private val lightScheme = lightColorScheme(
+    primary = LightVelumColors.black,
+    onPrimary = Color.White,
+    secondary = LightVelumColors.inkSecondary,
+    onSecondary = Color.White,
+    background = LightVelumColors.bg,
+    onBackground = LightVelumColors.ink,
+    surface = LightVelumColors.surface,
+    onSurface = LightVelumColors.ink,
+    onSurfaceVariant = LightVelumColors.inkSecondary,
+    outline = LightVelumColors.divider,
+    surfaceVariant = LightVelumColors.surfaceVariant,
     error = Color(0xFFFF3B30),
+)
+
+private val darkScheme = darkColorScheme(
+    primary = DarkVelumColors.black,
+    onPrimary = Color(0xFF121212),
+    secondary = DarkVelumColors.inkSecondary,
+    onSecondary = Color(0xFF121212),
+    background = DarkVelumColors.bg,
+    onBackground = DarkVelumColors.ink,
+    surface = DarkVelumColors.surface,
+    onSurface = DarkVelumColors.ink,
+    onSurfaceVariant = DarkVelumColors.inkSecondary,
+    outline = DarkVelumColors.divider,
+    surfaceVariant = DarkVelumColors.surfaceVariant,
+    error = Color(0xFFFF453A),
 )
 
 private val type = Typography(
@@ -43,7 +113,7 @@ private val type = Typography(
         fontSize = 36.sp,
         lineHeight = 42.sp,
         letterSpacing = (-0.5).sp,
-        color = VelumInk,
+        color = LightVelumColors.ink,
     ),
     headlineMedium = TextStyle(
         fontFamily = FontFamily.SansSerif,
@@ -73,7 +143,7 @@ private val type = Typography(
         fontWeight = FontWeight.Normal,
         fontSize = 14.sp,
         lineHeight = 20.sp,
-        color = VelumInkSecondary,
+        color = LightVelumColors.inkSecondary,
     ),
     labelLarge = TextStyle(
         fontFamily = FontFamily.SansSerif,
@@ -82,9 +152,27 @@ private val type = Typography(
     ),
 )
 
-val AiGradientBrush = Brush.horizontalGradient(listOf(VelumAiPurple, VelumAiCyan))
+val AiGradientBrush: Brush
+    get() {
+        val c = VelumTokenBridge.current
+        return Brush.horizontalGradient(listOf(c.aiPurple, c.aiCyan))
+    }
 
 @Composable
-fun VelumTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = colors, typography = type, content = content)
+fun VelumTheme(
+    darkTheme: Boolean = isSystemInDarkTheme(),
+    content: @Composable () -> Unit,
+) {
+    val palette = if (darkTheme) DarkVelumColors else LightVelumColors
+    DisposableEffect(palette) {
+        VelumTokenBridge.current = palette
+        onDispose { }
+    }
+    CompositionLocalProvider(LocalVelumColors provides palette) {
+        MaterialTheme(
+            colorScheme = if (darkTheme) darkScheme else lightScheme,
+            typography = type,
+            content = content,
+        )
+    }
 }

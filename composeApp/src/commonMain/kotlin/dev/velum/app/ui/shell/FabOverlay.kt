@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -25,8 +26,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.velum.app.i18n.LocalStrings
-import dev.velum.app.ui.theme.VelumDivider
-import dev.velum.app.ui.theme.VelumInk
 
 @Composable
 fun FabOverlay(
@@ -36,10 +35,11 @@ fun FabOverlay(
     isCapturing: Boolean = false,
 ) {
     val strings = LocalStrings.current
+    val onScrim = Color.White
     Column(
         Modifier
             .fillMaxSize()
-            .background(Color(0xFFF9F9F9).copy(alpha = 0.96f))
+            .background(Color.Black.copy(alpha = 0.42f))
             .clickable(onClick = onDismiss),
     ) {
         Spacer(Modifier.weight(1f))
@@ -53,12 +53,13 @@ fun FabOverlay(
             FabAction(
                 Icons.Outlined.Mic,
                 if (isCapturing) strings.stopRecording else strings.startRecording,
+                onScrim,
                 onStartRecording,
             )
             Spacer(Modifier.height(8.dp))
-            HorizontalDivider(color = VelumDivider, thickness = 0.5.dp)
+            HorizontalDivider(color = onScrim.copy(alpha = 0.28f), thickness = 0.5.dp)
             Spacer(Modifier.height(8.dp))
-            FabAction(Icons.Outlined.FileDownload, strings.importAudio, onImportAudio)
+            FabAction(Icons.Outlined.FileDownload, strings.importAudio, onScrim, onImportAudio)
         }
     }
 }
@@ -67,17 +68,19 @@ fun FabOverlay(
 private fun FabAction(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     label: String,
+    tint: Color,
     onClick: () -> Unit,
 ) {
     Row(
         Modifier
             .fillMaxWidth()
+            .defaultMinSize(minHeight = 48.dp)
             .clickable(onClick = onClick)
             .padding(vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(icon, null, tint = VelumInk, modifier = Modifier.size(24.dp))
+        Icon(icon, contentDescription = label, tint = tint, modifier = Modifier.size(24.dp))
         Spacer(Modifier.width(16.dp))
-        Text(label, color = VelumInk, fontWeight = FontWeight.Medium, fontSize = 17.sp)
+        Text(label, color = tint, fontWeight = FontWeight.Medium, fontSize = 17.sp)
     }
 }

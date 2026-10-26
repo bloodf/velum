@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -47,6 +48,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -177,34 +179,51 @@ fun RecordingDetailScreen(
                 .padding(horizontal = 8.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(
-                Icons.AutoMirrored.Outlined.ArrowBack,
-                null,
-                tint = VelumInk,
-                modifier = Modifier
-                    .size(40.dp)
-                    .clickable(onClick = onBack)
-                    .padding(8.dp),
-            )
+            Box(
+                Modifier
+                    .defaultMinSize(48.dp, 48.dp)
+                    .clickable(onClick = onBack),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.AutoMirrored.Outlined.ArrowBack,
+                    contentDescription = strings.ux.back,
+                    tint = VelumInk,
+                    modifier = Modifier.size(24.dp),
+                )
+            }
             Row(modifier = Modifier.weight(1f), horizontalArrangement = Arrangement.Center) {
                 TabLabel(strings.sources, selected = tab == 0) { tab = 0 }
                 Spacer(Modifier.width(28.dp))
                 TabLabel(strings.notes, selected = tab == 1) { tab = 1 }
             }
-            Icon(
-                Icons.Outlined.IosShare,
-                strings.share,
-                tint = VelumInk,
-                modifier = Modifier.size(22.dp).clickable { exportMarkdown() },
-            )
-            Spacer(Modifier.width(12.dp))
-            Box {
+            Box(
+                Modifier
+                    .defaultMinSize(48.dp, 48.dp)
+                    .clickable { exportMarkdown() },
+                contentAlignment = Alignment.Center,
+            ) {
                 Icon(
-                    Icons.Outlined.MoreHoriz,
-                    strings.more,
+                    Icons.Outlined.IosShare,
+                    contentDescription = strings.share,
                     tint = VelumInk,
-                    modifier = Modifier.size(22.dp).clickable { showMenu = true },
+                    modifier = Modifier.size(22.dp),
                 )
+            }
+            Box {
+                Box(
+                    Modifier
+                        .defaultMinSize(48.dp, 48.dp)
+                        .clickable { showMenu = true },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.Outlined.MoreHoriz,
+                        contentDescription = strings.more,
+                        tint = VelumInk,
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
                 DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
                     DropdownMenuItem({ Text(strings.moveToFolder) }, {
                         showMenu = false
@@ -259,7 +278,7 @@ fun RecordingDetailScreen(
                 transportMessage = processError?.takeIf { it.startsWith("playback:") }?.removePrefix("playback:"),
                 onGenerate = { showGenerate = true },
                 onPlaybackUnavailable = {
-                    processError = "playback:" + PLAYBACK_UNAVAILABLE_PT
+                    processError = "playback:" + strings.ux.playbackUnavailable
                 },
             )
         } else {
@@ -592,13 +611,17 @@ private fun SourcesPane(
         Spacer(Modifier.height(8.dp))
         PlayerBar(
             durationLabel = "00:00:00 / $dur",
-            onTransportClick = {
-                if (!hasLocalAudio) onPlaybackUnavailable()
-            },
+            enabled = hasLocalAudio,
+            onTransportClick = onPlaybackUnavailable,
         )
-        if (!transportMessage.isNullOrBlank()) {
+        val playbackHint = when {
+            !hasLocalAudio -> strings.ux.playbackUnavailable
+            !transportMessage.isNullOrBlank() -> transportMessage
+            else -> null
+        }
+        if (!playbackHint.isNullOrBlank()) {
             Text(
-                transportMessage,
+                playbackHint,
                 color = Color(0xFFB45309),
                 fontSize = 12.sp,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
@@ -665,7 +688,8 @@ private fun LiveTranscriptPane(
                     wavWriter.writePcm(pcm)
                 }
                 streamer.pushPcm(pcm)
-            } catch (_: Throwable) {
+            } catch (t: Throwable) {
+                println("VelumLivePcm: push failed: ${t.message ?: t}")
             }
         }
 
@@ -813,10 +837,6 @@ private fun openStreamingTranscriber(container: AppContainer): StreamingTranscri
     return FakeStreamingTranscriber()
 }
 
-/** Avoid growing Strings ctor past the JVM arg limit; pt-BR product default. */
-private const val PLAYBACK_UNAVAILABLE_PT =
-    "Reprodução indisponível — arquivo de áudio local ausente nesta gravação."
-
 /** Synthetic PCM16 mono chunk (~640 ms) for offline streaming demos. */
 private fun demoPcmChunk(tick: Int): ByteArray {
     val sampleRate = 16_000
@@ -890,12 +910,16 @@ private fun NotesPane(
 @Composable
 private fun PlayerBar(
     durationLabel: String,
+    enabled: Boolean = true,
     onTransportClick: () -> Unit = {},
 ) {
+    val strings = LocalStrings.current
+    val tint = if (enabled) VelumInk else VelumInkSecondary
     Column(
         Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .alpha(if (enabled) 1f else 0.45f),
     ) {
         HorizontalDivider(color = VelumDivider, thickness = 0.5.dp)
         Spacer(Modifier.height(10.dp))
@@ -907,7 +931,7 @@ private fun PlayerBar(
                 .height(36.dp)
                 .clip(RoundedCornerShape(4.dp))
                 .background(Color(0xFFF2F2F7))
-                .clickable(onClick = onTransportClick),
+                .clickable(enabled = enabled, onClick = onTransportClick),
         ) {
             Row(
                 Modifier.fillMaxSize().padding(horizontal = 4.dp),
@@ -933,38 +957,67 @@ private fun PlayerBar(
         ) {
             Box(
                 Modifier
-                    .size(44.dp)
+                    .defaultMinSize(48.dp, 48.dp)
                     .clip(CircleShape)
                     .background(Color(0xFFF2F2F7))
-                    .clickable(onClick = onTransportClick),
+                    .clickable(enabled = enabled, onClick = onTransportClick),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(Icons.Outlined.PlayArrow, null, tint = VelumInk)
+                Icon(
+                    Icons.Outlined.PlayArrow,
+                    contentDescription = strings.play,
+                    tint = tint,
+                    modifier = Modifier.size(24.dp),
+                )
             }
-            Icon(
-                Icons.AutoMirrored.Outlined.Undo,
-                "−15",
-                tint = VelumInk,
-                modifier = Modifier.size(26.dp).clickable(onClick = onTransportClick),
-            )
-            Icon(
-                Icons.AutoMirrored.Outlined.Redo,
-                "+15",
-                tint = VelumInk,
-                modifier = Modifier.size(26.dp).clickable(onClick = onTransportClick),
-            )
+            Box(
+                Modifier
+                    .defaultMinSize(48.dp, 48.dp)
+                    .clickable(enabled = enabled, onClick = onTransportClick),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.AutoMirrored.Outlined.Undo,
+                    contentDescription = "−15",
+                    tint = tint,
+                    modifier = Modifier.size(26.dp),
+                )
+            }
+            Box(
+                Modifier
+                    .defaultMinSize(48.dp, 48.dp)
+                    .clickable(enabled = enabled, onClick = onTransportClick),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.AutoMirrored.Outlined.Redo,
+                    contentDescription = "+15",
+                    tint = tint,
+                    modifier = Modifier.size(26.dp),
+                )
+            }
             Text(
                 "1x",
-                color = VelumInk,
+                color = tint,
                 fontWeight = FontWeight.Medium,
-                modifier = Modifier.clickable(onClick = onTransportClick),
+                modifier = Modifier
+                    .defaultMinSize(48.dp, 48.dp)
+                    .clickable(enabled = enabled, onClick = onTransportClick)
+                    .padding(horizontal = 8.dp, vertical = 12.dp),
             )
-            Icon(
-                Icons.Outlined.AutoAwesome,
-                null,
-                tint = VelumInk,
-                modifier = Modifier.size(22.dp).clickable(onClick = onTransportClick),
-            )
+            Box(
+                Modifier
+                    .defaultMinSize(48.dp, 48.dp)
+                    .clickable(enabled = enabled, onClick = onTransportClick),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Outlined.AutoAwesome,
+                    contentDescription = strings.askAi,
+                    tint = tint,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
         }
         Spacer(Modifier.height(10.dp))
         HorizontalDivider(color = VelumDivider, thickness = 0.5.dp)
@@ -1016,17 +1069,21 @@ fun SpeakerLabelSheetContent(
     onConfirm: (Map<String, String>) -> Unit = { onClose() },
 ) {
     val strings = LocalStrings.current
+    fun defaultSpeakerName(label: String): String {
+        val n = label.trimStart('S', 's').toIntOrNull() ?: 1
+        return strings.ux.speakerLabel.replace("%d", n.toString())
+    }
     val rows = speakers.ifEmpty {
         listOf(
-            SpeakerLabelRow("demo-1", "S1", "Speaker 1", 312),
-            SpeakerLabelRow("demo-2", "S2", "Speaker 2", 220),
+            SpeakerLabelRow("demo-1", "S1", defaultSpeakerName("S1"), 312),
+            SpeakerLabelRow("demo-2", "S2", defaultSpeakerName("S2"), 220),
         )
     }
-    var names by remember(rows) {
+    var names by remember(rows, strings.localeTag) {
         mutableStateOf(
             rows.associate { row ->
                 row.id to (row.displayName?.takeIf { it.isNotBlank() }
-                    ?: "Speaker ${row.label.trimStart('S', 's')}")
+                    ?: defaultSpeakerName(row.label))
             },
         )
     }
@@ -1037,7 +1094,14 @@ fun SpeakerLabelSheetContent(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(strings.nameSpeakers, fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
-            Text("×", fontSize = 22.sp, color = VelumInkSecondary, modifier = Modifier.clickable(onClick = onClose))
+            Box(
+                Modifier
+                    .defaultMinSize(48.dp, 48.dp)
+                    .clickable(onClick = onClose),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("×", fontSize = 22.sp, color = VelumInkSecondary)
+            }
         }
         rows.forEach { row ->
             val dur = formatTalk(row.talkSeconds)
