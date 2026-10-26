@@ -49,6 +49,8 @@ kotlin {
             implementation(libs.androidx.lifecycle.runtime)
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.kotlinx.serialization.json)
+            implementation(libs.markdown.renderer)
+            implementation(libs.markdown.renderer.m3)
         }
         androidMain.dependencies {
             implementation(compose.preview)

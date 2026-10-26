@@ -3,6 +3,7 @@ package dev.velum.app.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dev.velum.ai.AiApiException
+import dev.velum.ai.MissingApiKeyException
 import dev.velum.ai.OpenAiCompatibleClient
 import dev.velum.core.model.AiProviderSettings
 import dev.velum.core.settings.SettingsRepository
@@ -57,14 +58,26 @@ class SettingsViewModel(
         viewModelScope.launch {
             _ui.value = SettingsUiState(refreshing = true)
             try {
-                val key = settingsRepository.getApiKey()
-                    ?: throw AiApiException(401, "Add an API key first")
+                val key = settingsRepository.getApiKey()?.takeIf { it.isNotBlank() }
+                    ?: throw MissingApiKeyException(
+                        "API key required to refresh models. Add your OpenAI-compatible key first.",
+                    )
                 val base = settings.value.baseUrl
                 val models = aiClient.listModels(base, key)
                 settingsRepository.setModels(models)
                 _ui.value = SettingsUiState(
                     refreshing = false,
                     message = "Loaded ${models.size} models",
+                )
+            } catch (t: MissingApiKeyException) {
+                _ui.value = SettingsUiState(
+                    refreshing = false,
+                    error = t.message,
+                )
+            } catch (t: AiApiException) {
+                _ui.value = SettingsUiState(
+                    refreshing = false,
+                    error = t.message,
                 )
             } catch (t: Throwable) {
                 _ui.value = SettingsUiState(

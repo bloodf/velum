@@ -10,6 +10,7 @@ object Framing {
     const val APP_PREFIX: Byte = 0x01
 
     fun encodeCommand(cmd: Int, params: ByteArray = ByteArray(0)): ByteArray {
+        ForbiddenOpcodes.requireAllowed(cmd)
         val raw = ByteArray(1 + 2 + params.size)
         raw[0] = APP_PREFIX
         Bytes.u16Le(cmd).copyInto(raw, 1)

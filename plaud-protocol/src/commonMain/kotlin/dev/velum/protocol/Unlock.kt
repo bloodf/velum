@@ -13,6 +13,7 @@ object Unlock {
     const val MAX_CHUNK_PAYLOAD: Int = 100
 
     fun encodeChunks(opcode: Int, data: ByteArray): List<ByteArray> {
+        ForbiddenOpcodes.requireAllowed(opcode)
         require(data.isNotEmpty()) { "Unlock payload must not be empty" }
         val total = (data.size + MAX_CHUNK_PAYLOAD - 1) / MAX_CHUNK_PAYLOAD
         require(total in 1..255) { "Payload too large for u8 total ($total)" }
@@ -189,6 +190,9 @@ interface SessionCipher {
     /** RSA PKCS#1 v1.5 decrypt of the unlock secret. */
     fun rsaDecryptPkcs1(privateKeyPem: String, ciphertext: ByteArray): ByteArray
 
+    /** RSA PKCS#1 v1.5 encrypt (device → app unlock secret, tests / fake peripheral). */
+    fun rsaEncryptPkcs1(publicKeyPem: String, plaintext: ByteArray): ByteArray
+
     /** ChaCha20-Poly1305 open; returns plaintext or null on auth failure. */
     fun chacha20Poly1305Open(
         key: ByteArray,
@@ -197,8 +201,21 @@ interface SessionCipher {
         ciphertextAndTag: ByteArray,
     ): ByteArray?
 
+    /** ChaCha20-Poly1305 seal; returns ciphertext ‖ 16-byte tag. */
+    fun chacha20Poly1305Seal(
+        key: ByteArray,
+        nonce: ByteArray,
+        aad: ByteArray,
+        plaintext: ByteArray,
+    ): ByteArray
+
     /**
-     * Encrypt `seq u32 LE || packet` for the encrypted link.
+     * Encrypt a link-layer packet after protocol-20 unlock.
+     *
+     * - plaintext = `seq_u32_le || packet`
+     * - nonce = first 8 bytes of [Protocol20SessionSecret.nonce] ‖ `u32Le(seq)`
+     * - aad = [Protocol20SessionSecret.aad]
+     *
      * App send counter starts at 2 after unlock.
      */
     fun sealPacket(
@@ -207,8 +224,16 @@ interface SessionCipher {
         packet: ByteArray,
     ): ByteArray
 
+    /**
+     * Decrypt a sealed link packet.
+     *
+     * Rebuilds the nonce as `secret.nonce[0..8) || u32Le(sequence)` and verifies
+     * the plaintext leading u32 matches [sequence]. Returns `(sequence, packet)`
+     * or null on auth failure / mismatch.
+     */
     fun openPacket(
         secret: Protocol20SessionSecret,
+        sequence: Long,
         ciphertextAndTag: ByteArray,
     ): Pair<Long, ByteArray>?
 }

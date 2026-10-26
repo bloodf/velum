@@ -127,6 +127,11 @@ class OpenAiCompatibleClient(
 
 class AiApiException(val status: Int, override val message: String) : Exception(message)
 
+/** Thrown when an API-mode task runs without a configured key. */
+class MissingApiKeyException(
+    override val message: String = "API key required. Add your OpenAI-compatible key in Account settings.",
+) : IllegalStateException(message)
+
 @Serializable
 data class ChatMessage(
     val role: String,

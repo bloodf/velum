@@ -30,14 +30,24 @@ kotlin {
             implementation(libs.kotlinx.coroutines.test)
             implementation(libs.ktor.client.mock)
         }
+        val jvmTest by getting {
+            dependencies {
+                implementation(libs.kotlin.test)
+                implementation(libs.kotlinx.coroutines.test)
+                implementation(libs.ktor.client.mock)
+            }
+        }
         androidMain.dependencies {
             implementation(libs.ktor.client.okhttp)
+            implementation(libs.sherpa.onnx.android)
+            implementation(libs.kopus)
         }
         iosMain.dependencies {
             implementation(libs.ktor.client.darwin)
         }
         jvmMain.dependencies {
             implementation(libs.ktor.client.cio)
+            implementation(libs.kopus)
         }
     }
 }

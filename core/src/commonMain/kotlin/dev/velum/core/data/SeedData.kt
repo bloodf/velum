@@ -8,7 +8,7 @@ object DemoFlags {
 }
 
 object SeedData {
-    private const val META_SEEDED = "demo_seeded_v1"
+    private const val META_SEEDED = "demo_seeded_v2"
 
     fun maybeSeed(db: VelumDatabase) {
         if (!DemoFlags.SEED_DEMO_DATA) return
@@ -31,7 +31,7 @@ object SeedData {
                 duration_seconds = 36 * 60,
                 size_bytes = 8_500_000,
                 local_path = null,
-                transcript = "Speaker 1: Bom dia a todos.\nSpeaker 2: Vamos começar pelo status do sprint.",
+                transcript = DEMO_TRANSCRIPT_PT,
                 summary_markdown = DEMO_SUMMARY_PT,
                 status = "ready",
                 trashed = 0,
@@ -48,7 +48,7 @@ object SeedData {
                 duration_seconds = 26 * 60 + 5,
                 size_bytes = 6_200_000,
                 local_path = null,
-                transcript = "Speaker 1: Precisamos fechar o MVP Android.\nSpeaker 2: Concordo, iOS fica para depois.",
+                transcript = DEMO_TRANSCRIPT_GENERATING_PT,
                 summary_markdown = null,
                 status = "generating",
                 trashed = 0,
@@ -149,7 +149,33 @@ object SeedData {
     )
 }
 
-private const val DEMO_SUMMARY_PT = """
+private val DEMO_TRANSCRIPT_PT = """
+**Speaker 1** · 0:00
+Bom dia a todos. Vamos começar?
+
+**Speaker 2** · 0:08
+Bom dia. Vamos começar pelo status do sprint.
+
+**Speaker 1** · 0:15
+O MVP Android está quase fechado. Falta o sync BLE.
+
+**Speaker 2** · 0:28
+Concordo. iOS fica para depois do Android estar completo.
+
+### Decisões
+- Priorizar Android
+- Revisar templates Velum nesta semana
+""".trimIndent()
+
+private val DEMO_TRANSCRIPT_GENERATING_PT = """
+**Speaker 1** · 0:00
+Precisamos fechar o MVP Android.
+
+**Speaker 2** · 0:12
+Concordo, iOS fica para depois.
+""".trimIndent()
+
+private val DEMO_SUMMARY_PT = """
 ## Meeting Information
 - **Date:** 2026-10-26
 - **Location:** Remoto
@@ -166,4 +192,4 @@ private const val DEMO_SUMMARY_PT = """
 
 ## AI Suggestions
 - Confirmar firmware 1.5 / protocolo 20 no aparelho do usuário
-"""
+""".trimIndent()

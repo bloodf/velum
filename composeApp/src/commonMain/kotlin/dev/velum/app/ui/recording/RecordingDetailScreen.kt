@@ -39,6 +39,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -47,6 +48,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.velum.ai.engine.JobProgress
 import dev.velum.app.di.AppContainer
 import dev.velum.app.i18n.LocalStrings
 import dev.velum.app.ui.components.AiGlowFooter
@@ -54,12 +56,15 @@ import dev.velum.app.ui.components.BlackButton
 import dev.velum.app.ui.components.ChevronRow
 import dev.velum.app.ui.components.DualActionRow
 import dev.velum.app.ui.components.OutlineButton
+import dev.velum.app.ui.markdown.MarkdownPreview
 import dev.velum.app.ui.theme.VelumBg
 import dev.velum.app.ui.theme.VelumBlack
 import dev.velum.app.ui.theme.VelumDivider
 import dev.velum.app.ui.theme.VelumInk
 import dev.velum.app.ui.theme.VelumInkSecondary
 import dev.velum.app.ui.theme.VelumSurface
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -77,7 +82,26 @@ fun RecordingDetailScreen(
     var showMenu by remember { mutableStateOf(false) }
     var showSpeakers by remember { mutableStateOf(showSpeakersInitially) }
     var showGenerate by remember { mutableStateOf(showGenerateInitially) }
-    val generating = recording?.status == "generating" || recording?.summary_markdown.isNullOrBlank()
+    var processError by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    val generating = recording?.status == "generating" ||
+        (recording?.summary_markdown.isNullOrBlank() && recording?.status != "failed")
+
+    fun launchProcessing(retranscribe: Boolean) {
+        processError = null
+        scope.launch {
+            container.recordingProcessor.process(
+                recordingId = recordingId,
+                templateId = "tpl-meeting",
+                retranscribe = retranscribe,
+            ).collect { progress ->
+                when (progress) {
+                    is JobProgress.Failed -> processError = progress.message
+                    else -> Unit
+                }
+            }
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -123,7 +147,7 @@ fun RecordingDetailScreen(
                     DropdownMenuItem({ Text(strings.findReplace) }, { showMenu = false })
                     DropdownMenuItem({ Text(strings.retranscribe) }, {
                         showMenu = false
-                        showGenerate = true
+                        launchProcessing(retranscribe = true)
                     })
                     DropdownMenuItem({ Text(strings.nameSpeakers) }, {
                         showMenu = false
@@ -149,6 +173,7 @@ fun RecordingDetailScreen(
             NotesPane(
                 summary = recording?.summary_markdown,
                 generating = generating,
+                processError = processError,
                 onAskAi = { },
                 onGenerate = { showGenerate = true },
             )
@@ -170,7 +195,13 @@ fun RecordingDetailScreen(
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
             containerColor = VelumSurface,
         ) {
-            GenerateSheetContent(onClose = { showGenerate = false })
+            GenerateSheetContent(
+                onClose = { showGenerate = false },
+                onApply = {
+                    showGenerate = false
+                    launchProcessing(retranscribe = true)
+                },
+            )
         }
     }
 }
@@ -227,12 +258,7 @@ private fun SourcesPane(
                         .verticalScroll(rememberScrollState())
                         .padding(20.dp),
                 ) {
-                    Text(
-                        transcript.orEmpty().ifBlank { "—" },
-                        color = VelumInk,
-                        fontSize = 15.sp,
-                        lineHeight = 22.sp,
-                    )
+                    MarkdownPreview(transcript.orEmpty())
                     Spacer(Modifier.height(24.dp))
                     OutlineButton(strings.retranscribe, onGenerate)
                 }
@@ -248,6 +274,7 @@ private fun SourcesPane(
 private fun NotesPane(
     summary: String?,
     generating: Boolean,
+    processError: String? = null,
     onAskAi: () -> Unit,
     onGenerate: () -> Unit,
 ) {
@@ -262,6 +289,14 @@ private fun NotesPane(
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
             )
             HorizontalDivider(thickness = 2.dp, color = VelumBlack, modifier = Modifier.padding(horizontal = 20.dp).width(70.dp))
+            if (!processError.isNullOrBlank()) {
+                Text(
+                    processError,
+                    color = Color(0xFFFF3B30),
+                    fontSize = 13.sp,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+                )
+            }
             if (generating || summary.isNullOrBlank()) {
                 Box(Modifier.weight(1f).fillMaxWidth()) {
                     GeneratingBody()
@@ -274,7 +309,7 @@ private fun NotesPane(
                         .verticalScroll(rememberScrollState())
                         .padding(20.dp),
                 ) {
-                    Text(summary, color = VelumInk, fontSize = 15.sp, lineHeight = 22.sp)
+                    MarkdownPreview(summary)
                     Spacer(Modifier.height(20.dp))
                     OutlineButton(strings.mindMap, {})
                     Spacer(Modifier.height(12.dp))
@@ -424,7 +459,10 @@ fun SpeakerLabelSheetContent(onClose: () -> Unit) {
 }
 
 @Composable
-fun GenerateSheetContent(onClose: () -> Unit) {
+fun GenerateSheetContent(
+    onClose: () -> Unit,
+    onApply: () -> Unit = onClose,
+) {
     val strings = LocalStrings.current
     var auto by remember { mutableStateOf(true) }
     Column(Modifier.fillMaxWidth().padding(bottom = 20.dp)) {
@@ -445,7 +483,7 @@ fun GenerateSheetContent(onClose: () -> Unit) {
         ChevronRow(strings.audioLanguage, {}, value = strings.automatic)
         ChevronRow(strings.aiModel, {}, value = strings.automatic, showDivider = false)
         Spacer(Modifier.height(12.dp))
-        BlackButton(strings.apply, onClose, modifier = Modifier.padding(horizontal = 20.dp))
+        BlackButton(strings.apply, onApply, modifier = Modifier.padding(horizontal = 20.dp))
     }
 }
 
@@ -467,5 +505,6 @@ private fun formatHms(seconds: Long): String {
     val h = seconds / 3600
     val m = (seconds % 3600) / 60
     val s = seconds % 60
-    return "%02d:%02d:%02d".format(h, m, s)
+    fun two(n: Long) = if (n < 10) "0$n" else "$n"
+    return "${two(h)}:${two(m)}:${two(s)}"
 }

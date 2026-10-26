@@ -85,8 +85,30 @@ INSERT OR REPLACE INTO recording(
 updateRecordingTitle:
 UPDATE recording SET title = ? WHERE id = ?;
 
+updateTranscript:
+UPDATE recording SET transcript = ? WHERE id = ?;
+
+updateSummary:
+UPDATE recording SET summary_markdown = ? WHERE id = ?;
+
+updateStatus:
+UPDATE recording SET status = ? WHERE id = ?;
+
 trashRecording:
 UPDATE recording SET trashed = 1 WHERE id = ?;
+
+selectSpeakersForRecording:
+SELECT * FROM speaker WHERE recording_id = ? ORDER BY label ASC;
+
+insertSpeaker:
+INSERT OR REPLACE INTO speaker(id, recording_id, label, display_name, talk_seconds)
+VALUES (?, ?, ?, ?, ?);
+
+deleteSpeakersForRecording:
+DELETE FROM speaker WHERE recording_id = ?;
+
+selectTemplateById:
+SELECT * FROM template WHERE id = ?;
 
 countRecordings:
 SELECT COUNT(*) FROM recording WHERE trashed = 0;

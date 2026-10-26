@@ -1,5 +1,9 @@
 package dev.velum.core.security
 
+import dev.velum.protocol.DeviceIdentityKeys
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
+
 /**
  * Platform secure storage (Android Keystore / iOS Keychain / OS keyring on desktop).
  * Implementations must never write secrets to logs or plaintext prefs.
@@ -36,8 +40,12 @@ interface DeviceKeyImporter {
     suspend fun clearKeys()
 
     suspend fun hasKeys(): Boolean
+
+    /** Load imported identity material, or null when incomplete. */
+    suspend fun loadKeys(): DeviceIdentityKeys?
 }
 
+@OptIn(ExperimentalEncodingApi::class)
 class SecureDeviceKeyImporter(
     private val store: SecureStore,
 ) : DeviceKeyImporter {
@@ -69,4 +77,21 @@ class SecureDeviceKeyImporter(
         store.contains(SecureKeys.DEVICE_PRIVATE_KEY_PEM) &&
             store.contains(SecureKeys.DEVICE_SERIAL_SIGNATURE) &&
             store.contains(SecureKeys.DEVICE_BIND_TOKEN)
+
+    override suspend fun loadKeys(): DeviceIdentityKeys? {
+        val serial = store.getString(SecureKeys.DEVICE_SERIAL) ?: return null
+        val sigB64 = store.getString(SecureKeys.DEVICE_SERIAL_SIGNATURE) ?: return null
+        val publicPem = store.getString(SecureKeys.DEVICE_PUBLIC_KEY_PEM) ?: return null
+        val privatePem = store.getString(SecureKeys.DEVICE_PRIVATE_KEY_PEM) ?: return null
+        val bind = store.getString(SecureKeys.DEVICE_BIND_TOKEN) ?: return null
+        val signature = Base64.decode(sigB64)
+        if (signature.size != 256) return null
+        return DeviceIdentityKeys(
+            serialNumber = serial,
+            serialSignature = signature,
+            publicKeyPem = publicPem,
+            privateKeyPem = privatePem,
+            bindToken = bind,
+        )
+    }
 }

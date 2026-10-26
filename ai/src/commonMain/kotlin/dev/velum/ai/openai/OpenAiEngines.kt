@@ -1,6 +1,7 @@
 package dev.velum.ai.openai
 
 import dev.velum.ai.ChatMessage
+import dev.velum.ai.MissingApiKeyException
 import dev.velum.ai.OpenAiCompatibleClient
 import dev.velum.ai.engine.AudioInput
 import dev.velum.ai.engine.DiarizationResult
@@ -21,7 +22,11 @@ class OpenAiTranscriber(
     override suspend fun transcribe(input: AudioInput, modelId: String): TranscriptionResult {
         val cfg = settings.settings.value
         val key = settings.getApiKey().orEmpty()
-        require(cfg.hasApiKey && key.isNotBlank()) { "API key required for API transcription" }
+        if (!cfg.hasApiKey || key.isBlank()) {
+            throw MissingApiKeyException(
+                "API key required for API transcription. Add your OpenAI-compatible key in Account settings.",
+            )
+        }
         val model = modelId.ifBlank { cfg.transcriptionModel ?: "whisper-1" }
         val lang = input.languageHint?.takeIf { it != "auto" }
         val result = client.transcribe(
@@ -65,7 +70,11 @@ class OpenAiLlmEngine(
     override suspend fun complete(request: LlmRequest, modelId: String): LlmResult {
         val cfg = settings.settings.value
         val key = settings.getApiKey().orEmpty()
-        require(cfg.hasApiKey && key.isNotBlank()) { "API key required for API summaries" }
+        if (!cfg.hasApiKey || key.isBlank()) {
+            throw MissingApiKeyException(
+                "API key required for API summaries. Add your OpenAI-compatible key in Account settings.",
+            )
+        }
         val model = modelId.ifBlank { cfg.chatModel ?: "gpt-4o-mini" }
         val system = buildString {
             append(request.systemPrompt)

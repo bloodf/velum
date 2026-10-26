@@ -8,12 +8,14 @@ import dev.velum.ai.engine.LlmRequest
 import dev.velum.ai.engine.LlmResult
 import dev.velum.ai.engine.Transcriber
 import dev.velum.ai.engine.TranscriptionResult
+import dev.velum.ai.local.asr.LocalAsrRuntime
 
 /**
- * On-device ASR stub. Real path: decode → VAD → [LocalAsrRouter] → sherpa-onnx.
+ * On-device ASR. Requires a Ready model; never returns placeholder text.
  */
 class LocalTranscriber(
-    private val modelManager: LocalModelManager = LocalModelManager(),
+    private val modelManager: LocalModelManager,
+    private val runtime: LocalAsrRuntime = LocalAsrRuntime(),
 ) : Transcriber {
     override val engineId: String = "local-asr"
 
@@ -21,50 +23,85 @@ class LocalTranscriber(
         val resolved = modelId.ifBlank {
             LocalAsrRouter.chooseModelId(input.languageHint)
         }
-        val state = modelManager.stateFor(resolved)
-        if (state?.status != LocalModelStatus.Ready) {
-            // Stub still returns text so UI can be exercised without downloads.
-        }
-        return TranscriptionResult(
-            text = "[local/$resolved] Transcription pending native sherpa-onnx wiring.",
-            detectedLanguage = input.languageHint?.takeIf { it != "auto" },
-            engineId = engineId,
+        ensureReady(resolved)
+        val modelPath = modelManager.modelPath(resolved)
+            ?: throw ModelNotReadyException(resolved)
+        return runtime.transcribe(
+            pcmOrEncoded = input.bytes,
+            sampleRateHz = input.sampleRateHz,
+            languageHint = input.languageHint,
             modelId = resolved,
+            modelPath = modelPath.absolutePath,
         )
+    }
+
+    private fun ensureReady(modelId: String) {
+        val state = modelManager.stateFor(modelId)
+        if (state?.status != LocalModelStatus.Ready) {
+            throw ModelNotReadyException(
+                modelId,
+                "Local ASR model '$modelId' is not Ready (status=${state?.status}). " +
+                    "Download it in Model manager before using Local transcription.",
+            )
+        }
     }
 }
 
 /**
- * On-device diarization stub: pyannote-3.0 + multilingual embedding + voice profiles.
+ * On-device diarization. Requires Ready segmentation model.
  */
-class LocalDiarizer : Diarizer {
+class LocalDiarizer(
+    private val modelManager: LocalModelManager,
+    private val runtime: LocalAsrRuntime = LocalAsrRuntime(),
+) : Diarizer {
     override val engineId: String = "local-diarizer"
 
     override suspend fun diarize(input: AudioInput, modelId: String): DiarizationResult {
         val resolved = modelId.ifBlank { "pyannote-segmentation-3.0" }
-        return DiarizationResult(
-            spans = emptyList(),
-            namedSpeakers = emptyMap(),
-            engineId = engineId,
+        val state = modelManager.stateFor(resolved)
+        if (state?.status != LocalModelStatus.Ready) {
+            throw ModelNotReadyException(
+                resolved,
+                "Local diarization model '$resolved' is not Ready (status=${state?.status}). " +
+                    "Download it in Model manager, or switch Diarization to API.",
+            )
+        }
+        val modelPath = modelManager.modelPath(resolved)
+            ?: throw ModelNotReadyException(resolved)
+        return runtime.diarize(
+            pcmOrEncoded = input.bytes,
+            sampleRateHz = input.sampleRateHz,
             modelId = resolved,
+            modelPath = modelPath.absolutePath,
         )
     }
 }
 
 /**
- * On-device LLM stub: Gemma 4 E4B/E2B (LiteRT-LM) or Qwen3-4B (llama.cpp) with map-reduce.
+ * On-device LLM. Requires Ready weights; never returns placeholder summaries.
  */
-class LocalLlmEngine : LlmEngine {
+class LocalLlmEngine(
+    private val modelManager: LocalModelManager,
+    private val runtime: LocalAsrRuntime = LocalAsrRuntime(),
+) : LlmEngine {
     override val engineId: String = "local-llm"
 
     override suspend fun complete(request: LlmRequest, modelId: String): LlmResult {
         val resolved = modelId.ifBlank { "gemma-4-e4b" }
-        val needsMapReduce = request.userPrompt.length > 24_000
-        return LlmResult(
-            text = "[local/$resolved] Summary pending LiteRT-LM / llama.cpp wiring.",
-            engineId = engineId,
+        val state = modelManager.stateFor(resolved)
+        if (state?.status != LocalModelStatus.Ready) {
+            throw ModelNotReadyException(
+                resolved,
+                "Local LLM '$resolved' is not Ready (status=${state?.status}). " +
+                    "Download it in Model manager, or switch Summaries to API.",
+            )
+        }
+        val modelPath = modelManager.modelPath(resolved)
+            ?: throw ModelNotReadyException(resolved)
+        return runtime.complete(
+            request = request,
             modelId = resolved,
-            usedMapReduce = needsMapReduce,
+            modelPath = modelPath.absolutePath,
         )
     }
 }

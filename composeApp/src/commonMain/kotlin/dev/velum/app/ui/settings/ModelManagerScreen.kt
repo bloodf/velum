@@ -91,6 +91,7 @@ private fun ModelCard(
         LocalModelStatus.Downloading -> strings.modelDownloading
         LocalModelStatus.Failed -> strings.modelFailed
         LocalModelStatus.NotDownloaded -> strings.modelNotDownloaded
+        LocalModelStatus.BlockedOnUrl -> strings.modelBlockedOnUrl
     }
     Column(
         Modifier
@@ -117,6 +118,10 @@ private fun ModelCard(
         Text(state.spec.languages, color = VelumInkSecondary, fontSize = 12.sp)
         Spacer(Modifier.height(8.dp))
         Text(statusLabel, fontWeight = FontWeight.Medium, fontSize = 13.sp, color = VelumInk)
+        state.error?.let { err ->
+            Spacer(Modifier.height(4.dp))
+            Text(err, color = VelumInkSecondary, fontSize = 12.sp, lineHeight = 16.sp)
+        }
         if (state.status == LocalModelStatus.Downloading) {
             Spacer(Modifier.height(8.dp))
             LinearProgressIndicator(
@@ -131,7 +136,10 @@ private fun ModelCard(
                     OutlineButton(strings.delete, onDelete, Modifier.weight(1f))
                 }
                 LocalModelStatus.Downloading -> {
-                    // no actions while stub download runs
+                    Spacer(Modifier.weight(1f))
+                }
+                LocalModelStatus.BlockedOnUrl -> {
+                    // No fake download — URL must be supplied in the catalog.
                     Spacer(Modifier.weight(1f))
                 }
                 LocalModelStatus.NotDownloaded, LocalModelStatus.Failed -> {
@@ -153,7 +161,8 @@ private fun kindLabel(kind: LocalModelKind): String = when (kind) {
 private fun formatBytes(bytes: Long): String {
     val mb = bytes / (1024.0 * 1024.0)
     return if (mb >= 1024) {
-        "${"%.1f".format(mb / 1024.0)} GB"
+        val gb = (mb / 1024.0 * 10).toInt() / 10.0
+        "$gb GB"
     } else {
         "${mb.toInt()} MB"
     }

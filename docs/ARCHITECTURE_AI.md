@@ -53,29 +53,36 @@ API diarization is a stub until a compatible remote contract is chosen; Local re
 
 ### Delivery & jobs
 
-- Models are **downloaded on demand** (not in the APK, not in git).
-- Processing runs in a **resumable WorkManager** job with **thermal monitoring** (Android `PowerManager` thermal status) and checkpoint resume.
+- Models are **downloaded on demand** (not in the APK, not in git) via `LocalModelManager` (Ktor → `models/`).
+- Catalog entries without a known release URL stay **BlockedOnUrl** (never fake Ready).
+- Processing runs through `RecordingProcessor` (decode → ASR → diarize → markdown → summarize → DB). WorkManager + thermal monitoring still to land.
 
 ## 3. Code shape
 
 ```
-Transcriber  ── LocalTranscriber (stub → sherpa-onnx)
-             └─ OpenAiTranscriber
+Transcriber  ── LocalTranscriber (ModelNotReadyException / sherpa-onnx Android skeleton)
+             └─ OpenAiTranscriber (MissingApiKeyException when key absent)
 
-Diarizer     ── LocalDiarizer (stub → sherpa-onnx + profiles)
-             └─ OpenAiDiarizer (stub)
+Diarizer     ── LocalDiarizer (ModelNotReadyException; OfflineSpeakerDiarization TBD)
+             └─ OpenAiDiarizer (remote contract TBD)
 
-LlmEngine    ── LocalLlmEngine (stub → LiteRT-LM / llama.cpp)
+LlmEngine    ── LocalLlmEngine (ModelNotReadyException; LiteRT-LM TBD)
              └─ OpenAiLlmEngine
+
+OpusDecoder  ── Ogg demux (common) + kopus (Android/JVM); iOS unsupported for now
 ```
 
-- `LocalModelCatalog` / `LocalModelManager` — download, delete, status for on-device weights.
-- Settings UI: per-task Local/API toggles + **Model manager** screen (Plaud-style list / black CTAs).
+- `LocalModelCatalog` / `LocalModelManager` — download, delete, disk Ready check for on-device weights.
+- `RecordingProcessor` — pipeline orchestrator wired from Generate / re-transcribe.
+- Settings UI: per-task Local/API toggles + **Model manager** screen.
 - Weights stay under device storage / `models/` (gitignored); never committed.
+- UI: `MarkdownPreview` for transcripts and notes.
 
-## 4. Non-goals (this slice)
+## 4. Non-goals (remaining)
 
 - Bundling or committing model weights
-- Full sherpa-onnx / LiteRT-LM JNI wiring (interfaces + stubs only)
+- Full OfflineRecognizer config mapping after `.tar.bz2` extract (Android AAR linked; mapping incomplete)
+- LiteRT-LM / llama.cpp on-device LLM wiring
 - Streaming ASR UI
-- iOS on-device runtimes (Android-first; same interfaces later)
+- iOS on-device ASR / Opus decode / LLM runtimes (Android-first; same interfaces later)
+- WorkManager thermal checkpoints

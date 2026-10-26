@@ -177,6 +177,7 @@ data class Strings(
     val modelNotDownloaded: String,
     val modelDownloading: String,
     val modelFailed: String,
+    val modelBlockedOnUrl: String,
     val outputLanguage: String,
     val approxSize: String,
 )
@@ -356,6 +357,7 @@ val PtBr = Strings(
     modelNotDownloaded = "Não baixado",
     modelDownloading = "Baixando…",
     modelFailed = "Falhou",
+    modelBlockedOnUrl = "Sem URL de download",
     outputLanguage = "Idioma de saída",
     approxSize = "Tamanho aprox.",
 )
@@ -535,6 +537,7 @@ val En = Strings(
     modelNotDownloaded = "Not downloaded",
     modelDownloading = "Downloading…",
     modelFailed = "Failed",
+    modelBlockedOnUrl = "Blocked — no download URL",
     outputLanguage = "Output language",
     approxSize = "Approx. size",
 )

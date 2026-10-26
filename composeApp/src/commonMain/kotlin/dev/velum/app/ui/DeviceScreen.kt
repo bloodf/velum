@@ -41,6 +41,7 @@ fun DeviceScreen(
 ) {
     val state by viewModel.connectionState.collectAsState()
     val devices by viewModel.devices.collectAsState()
+    val sessionUi by viewModel.sessionUi.collectAsState()
 
     Column(
         modifier = Modifier
@@ -69,6 +70,31 @@ fun DeviceScreen(
         Spacer(Modifier.height(20.dp))
 
         StatusBanner(state = state, bleAvailable = ble.isAvailable)
+        sessionUi.statusMessage?.let { msg ->
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = buildString {
+                    append(msg)
+                    sessionUi.batteryPercent?.let { append(" · battery $it%") }
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        if (sessionUi.sessions.isNotEmpty()) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = "Sessions on device",
+                style = MaterialTheme.typography.titleLarge,
+            )
+            sessionUi.sessions.take(8).forEach { entry ->
+                Text(
+                    text = "#${entry.sessionId} · ${entry.sizeBytes} bytes",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
 
         Spacer(Modifier.height(16.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
