@@ -1,0 +1,1 @@
+Companion open source do Plaud Note Pro — local-first, sua própria API de IA.

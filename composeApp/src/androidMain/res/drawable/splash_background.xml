@@ -1,9 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Pre–Android 12 / windowSplashScreen exit frame: full-bleed brand splash. -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:drawable="@color/splash_background" />
-    <item
-        android:drawable="@drawable/ic_velum_logo_light"
-        android:gravity="center"
-        android:width="120dp"
-        android:height="120dp" />
+    <item android:drawable="@drawable/splash_screen_light" />
 </layer-list>

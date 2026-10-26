@@ -6,7 +6,10 @@
         <item name="android:windowLightStatusBar">false</item>
     </style>
 
-    <style name="Theme.Velum.Splash" parent="Theme.Velum">
+    <style name="Theme.Velum.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/splash_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_splash_dark</item>
+        <item name="postSplashScreenTheme">@style/Theme.Velum</item>
         <item name="android:windowBackground">@drawable/splash_background</item>
     </style>
 </resources>

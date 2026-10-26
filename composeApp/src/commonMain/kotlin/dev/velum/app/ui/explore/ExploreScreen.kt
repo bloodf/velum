@@ -37,7 +37,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.velum.app.di.AppContainer
 import dev.velum.app.i18n.LocalStrings
-import dev.velum.app.ui.brand.VelumLogo
+import dev.velum.app.ui.brand.VelumHero
+import dev.velum.app.ui.brand.VelumWordmark
 import dev.velum.app.ui.components.ChevronRow
 import dev.velum.app.ui.components.DisplayTitle
 import dev.velum.app.ui.theme.VelumBg
@@ -70,7 +71,13 @@ fun ExploreScreen(
             text = {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     if (about) {
-                        VelumLogo(size = 96.dp)
+                        VelumHero(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(16.dp)),
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        VelumWordmark(height = 48.dp)
                         Spacer(Modifier.height(12.dp))
                     }
                     Text(infoBody)

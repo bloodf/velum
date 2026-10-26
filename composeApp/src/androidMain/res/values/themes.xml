@@ -6,7 +6,11 @@
         <item name="android:windowLightStatusBar">true</item>
     </style>
 
-    <style name="Theme.Velum.Splash" parent="Theme.Velum">
+    <!-- Android 12+ SplashScreen API; icon from splash-light artwork. -->
+    <style name="Theme.Velum.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/splash_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_splash_light</item>
+        <item name="postSplashScreenTheme">@style/Theme.Velum</item>
         <item name="android:windowBackground">@drawable/splash_background</item>
     </style>
 </resources>

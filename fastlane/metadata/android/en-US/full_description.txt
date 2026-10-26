@@ -1,0 +1,8 @@
+Velum is an independent, open-source companion for the Plaud Note Pro.
+
+• Talk to your recorder over BLE — no Velum cloud
+• Bring your own OpenAI-compatible API (or local models)
+• Transcription, templates, and notes stay on your device
+• Phone microphone recording with a proper foreground service
+
+Not affiliated with Plaud Inc. Source: https://github.com/bloodf/velum

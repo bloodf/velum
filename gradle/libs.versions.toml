@@ -26,6 +26,7 @@ commons-compress = "1.28.0"
 # 0.18.x needs Kotlin 2.4 metadata; pin to 0.16.1 for Kotlin 2.2.21.
 litertlm = "0.16.1"
 work = "2.10.0"
+splashscreen = "1.0.1"
 # Same stack Plaud uses for SoftAP WS :8081 (`org.java_websocket`).
 java-websocket = "1.5.7"
 
@@ -51,6 +52,7 @@ ktor-client-mock = { module = "io.ktor:ktor-client-mock", version.ref = "ktor" }
 kable-core = { module = "com.juul.kable:kable-core", version.ref = "kable" }
 
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidx-activity" }
+androidx-core-splashscreen = { module = "androidx.core:core-splashscreen", version.ref = "splashscreen" }
 androidx-lifecycle-viewmodel = { module = "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "androidx-lifecycle" }
 androidx-lifecycle-runtime = { module = "org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose", version.ref = "androidx-lifecycle" }
 compose-navigation = { module = "org.jetbrains.androidx.navigation:navigation-compose", version.ref = "compose-navigation" }

@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/brand/sized/readme-banner-1600.png" alt="Velum — your recorder, your models, your notes" width="100%" />
+</p>
+
 # Velum
 
 **Your recorder, your models, your notes.**
@@ -24,9 +28,32 @@ ai/                  OpenAI-compatible client (Ktor): /models, transcriptions, c
 ble/                 BleTransport + Kable (Android/iOS) + desktop stub
 iosApp/              Thin SwiftUI host for the Compose framework
 docs/                Protocol notes, legal / interoperability
+docs/brand/          Brand masters + web/exact-size exports
+fastlane/metadata/   Play / F-Droid listing assets
 ```
 
 Stack: **Kotlin Multiplatform + Compose Multiplatform**, **Kable** (mobile BLE), **Ktor**, local-first SQLite planned via SQLDelight. License: **Apache-2.0**.
+
+## Brand
+
+All brand art is black & white 3D, matching the launcher icon. Catalog: [docs/brand/README.md](docs/brand/README.md).
+
+| Asset | Path |
+|-------|------|
+| README banner (~1600 px) | [docs/brand/sized/readme-banner-1600.png](docs/brand/sized/readme-banner-1600.png) |
+| Launcher (light) | [docs/brand/icon-3d-light.jpg](docs/brand/icon-3d-light.jpg) — **always** used for the home-screen icon |
+| Dark mark | [docs/brand/icon-3d-dark.jpg](docs/brand/icon-3d-dark.jpg) — splash / in-app when the system theme is dark |
+| Splash light / dark | [docs/brand/splash-light.jpg](docs/brand/splash-light.jpg) · [docs/brand/splash-dark.jpg](docs/brand/splash-dark.jpg) |
+| Wordmark (About) | [docs/brand/wordmark-light.jpg](docs/brand/wordmark-light.jpg) |
+| Flat V (monochrome / notification) | [docs/brand/velum-v.svg](docs/brand/velum-v.svg) |
+| Play feature graphic 1024×500 | [docs/brand/sized/play-feature-graphic-1024x500.png](docs/brand/sized/play-feature-graphic-1024x500.png) |
+| GitHub social 1280×640 | [docs/brand/sized/github-social-preview-1280x640.png](docs/brand/sized/github-social-preview-1280x640.png) |
+| WebP / PNG exports | [docs/brand/web/](docs/brand/web/) |
+| Store listing pack | [fastlane/metadata/android/](fastlane/metadata/android/) |
+
+**Dark vs light:** the Android launcher cannot switch icons by theme — keep the light 3D icon on the home screen. Splash, first-run hero, and About hero follow the system theme (`splash-light` / `splash-dark`). The About dialog also shows the light wordmark.
+
+> **GitHub social preview:** upload `docs/brand/sized/github-social-preview-1280x640.png` manually under **Settings → General → Social preview**. Git does not set this for you.
 
 ## Build
 
