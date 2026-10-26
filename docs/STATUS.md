@@ -6,11 +6,16 @@ Owner standing rule: nothing may remain stub/demo-only. Prefer **blocked-on-owne
 
 ### Protocol / BLE
 - [x] Protocol-20 framing, unlock (FE10/FE11/FE12), handshake, list (26), download (28/type-2/29), battery (9)
-- [x] Forbidden opcodes never sent: **5, 104, 0xFE20, 143 (OTA)**
+- [x] Forbidden opcodes never sent: **5, 104, 128, 0xFE20, 143 (OTA)**; never write settings **4 / 26**
+- [x] Unused cmds left alone: 5, 13, 38, 50, 51, 109, 141, 142, 145, 151
+- [x] Fixed session key/nonce/aad; plaintext = `seq ‖ packet`; FE10 snSignature on every connect (prot ≥ 20)
+- [x] Cmd 138 feature bit 0x08 (AES-GCM Wi-Fi); SoftAP + WS `:8081` transfer skeleton
+- [x] Project **881/883** Note Pro family (no OTA)
 - [x] Per-model command tables (`DeviceModel` / `CommandTable`)
 - [x] `PlaudDeviceClient` + JCA `SessionCipher` / `FileDecryptor` (Android + JVM)
-- [x] `FakeBleTransport` / `FakePlaudPeripheral` + JVM E2E unlock→download→decrypt
+- [x] `FakeBleTransport` / `FakePlaudPeripheral` + JVM E2E unlock→download→decrypt (rejects empty FE10)
 - [x] Device screen: scan / connect / sessions / battery when identity keys imported
+- [x] Static analysis notes: `docs/APK_ANALYSIS.md`
 
 ### Audio / AI
 - [x] Ogg demux + Opus decode (kopus) → PCM
