@@ -11,7 +11,7 @@ class AutoFlowMatcherTest {
         durationMinSeconds = 0,
         durationMaxSeconds = 3 * 3600,
         sourceFilter = "note_pro",
-        templateId = "tpl-meeting",
+        templateId = "velum.meeting",
     )
 
     @Test

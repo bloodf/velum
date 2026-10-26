@@ -1,6 +1,7 @@
 package dev.velum.core.data
 
 import dev.velum.core.db.VelumDatabase
+import dev.velum.core.templates.BuiltinTemplateCatalog
 
 object DemoFlags {
     /** When true, seed sample recordings/templates on first launch. */
@@ -9,7 +10,8 @@ object DemoFlags {
 
 object SeedData {
     private const val META_SEEDED = "demo_seed_version"
-    private const val SEED_VERSION = "4"
+    /** v5: replace tpl-* builtins with velum.* catalog (15 Plaud category keys). */
+    private const val SEED_VERSION = "5"
 
     fun maybeSeed(db: VelumDatabase) {
         if (!DemoFlags.SEED_DEMO_DATA) return
@@ -59,6 +61,10 @@ object SeedData {
                 created_at = now - 86400,
             )
 
+            q.deleteAllBuiltinTemplates()
+            BuiltinTemplateCatalog.LegacyAliases.keys.forEach { legacyId ->
+                q.deleteTemplateHard(legacyId)
+            }
             builtinTemplates().forEach { t ->
                 q.insertTemplate(
                     id = t.id,
@@ -81,7 +87,7 @@ object SeedData {
                 duration_min_seconds = 0,
                 duration_max_seconds = 3 * 3600,
                 source_filter = "note_pro",
-                template_id = "tpl-meeting",
+                template_id = BuiltinTemplateCatalog.DEFAULT_ID,
                 auto_label_voice = 1,
                 language = "auto",
                 notify = 1,
@@ -102,59 +108,17 @@ object SeedData {
         val uses: Long = 0,
     )
 
-    fun builtinTemplates(): List<BuiltinTemplate> = listOf(
-        // system_prompt bodies are locale-neutral outlines; RecordingProcessor +
-        // SummaryLocalization pin pt-BR / en headings (or instruct the LLM for other langs).
-        BuiltinTemplate("tpl-general", "Notas gerais", "General",
-            "Resumo estruturado com pontos-chave e próximos passos.",
-            systemPrompt = "Summarize into sections: overview, key points, action items."),
-        BuiltinTemplate("tpl-meeting", "Destaques da reunião", "Meeting",
-            "Informações da reunião, notas por tópico, decisões e checklist.",
-            systemPrompt = "Meeting summary covering meeting information, notes by topic, " +
-                "decisions, next arrangements, and AI suggestions.",
-            uses = 942),
-        BuiltinTemplate("tpl-speech", "Discurso", "Speech",
-            "Tema central, argumentos e citações memoráveis.",
-            systemPrompt = "Extract thesis, arguments, memorable quotes."),
-        BuiltinTemplate("tpl-call", "Ligação", "Call",
-            "Objetivo da chamada, acordos e follow-ups.",
-            systemPrompt = "Purpose, agreements, follow-ups with owners."),
-        BuiltinTemplate("tpl-interview", "Entrevista", "Interview",
-            "Perguntas, respostas e insights.",
-            systemPrompt = "Structure as Q&A with key insights."),
-        BuiltinTemplate("tpl-medical", "Consulta (rascunho)", "Medical",
-            "Rascunho de anamnese — não substitui prontuário clínico.",
-            systemPrompt = "Draft clinical note. Flag uncertainties. Not a medical record."),
-        BuiltinTemplate("tpl-sales", "Reunião de vendas", "Sales",
-            "Dor do cliente, proposta de valor e próximos passos.",
-            systemPrompt = "Pain, value prop, objections, next commercial steps.",
-            uses = 401),
-        BuiltinTemplate("tpl-consulting", "Consultoria", "Consulting",
-            "Diagnóstico, recomendações e riscos.",
-            systemPrompt = "Diagnosis, recommendations, risks, open questions."),
-        BuiltinTemplate("tpl-education", "Aula / workshop", "Education",
-            "Objetivos de aprendizagem e resumo didático.",
-            systemPrompt = "Learning objectives, core concepts, didactic summary."),
-        BuiltinTemplate("tpl-construction", "Obra / campo", "Construction",
-            "Pendências de obra, segurança e responsáveis.",
-            systemPrompt = "Site issues, safety notes, owners, deadlines."),
-        BuiltinTemplate("tpl-it", "Reunião de TI", "IT & Engineering",
-            "Decisões técnicas, riscos e action items com donos.",
-            systemPrompt = "Decisions, risks, action items (owner, due).",
-            uses = 512),
-        BuiltinTemplate("tpl-accounting", "Aprovação / contábil", "Accounting/Approval",
-            "Itens para aprovação e evidências citadas.",
-            systemPrompt = "Pending approvals, amounts, cited evidence."),
-        BuiltinTemplate("tpl-realestate", "Imóveis", "Real estate",
-            "Preferências do cliente, imóveis citados e follow-ups.",
-            systemPrompt = "Client preferences, properties, follow-ups."),
-        BuiltinTemplate("tpl-financial", "Financeiro", "Financial",
-            "Números mencionados, riscos e ações.",
-            systemPrompt = "Figures, financial risks, action items."),
-        BuiltinTemplate("tpl-functional", "Fluxo funcional", "Functional",
-            "Requisitos, regras de negócio e critérios de aceite.",
-            systemPrompt = "Requirements, business rules, acceptance criteria."),
-    )
+    fun builtinTemplates(): List<BuiltinTemplate> =
+        BuiltinTemplateCatalog.All.map { spec ->
+            BuiltinTemplate(
+                id = spec.id,
+                name = spec.namePtBr,
+                category = spec.categoryKey,
+                description = spec.description("pt-BR"),
+                systemPrompt = spec.systemPrompt,
+                uses = spec.uses,
+            )
+        }
 }
 
 private val DEMO_TRANSCRIPT_PT = """
@@ -195,12 +159,13 @@ Concordo. iOS fica para depois do pipeline local estar completo.
 """.trimIndent()
 
 private val DEMO_SUMMARY_PT = """
-## Informações da reunião
-- **Data:** 2026-10-26
-- **Local:** Remoto
-- **Participantes:** Heitor, Marina
+## Participantes
+- Heitor, Marina
 
-## Notas da reunião
+## Pauta
+- Revisão do pipeline local Velum / Note Pro
+
+## Discussão por tópico
 ### Pipeline local
 - Transcrição diarizada → Markdown em **Fontes**
 - Resumo estruturado em **Notas** (Gemma E4B / API override)
@@ -214,11 +179,11 @@ private val DEMO_SUMMARY_PT = """
 - Default **Local** quando o modelo estiver Ready
 - Embedding preferido: **3D-Speaker ERes2Net**
 
-## Próximos passos
-- [ ] Importar identidade do Note Pro
-- [ ] Validar Ogg Opus numa captura real
-- [ ] Revisar templates Velum
+## Ações (responsável, prazo)
+- [ ] Importar identidade do Note Pro — Heitor
+- [ ] Validar Ogg Opus numa captura real — Marina
+- [ ] Revisar templates Velum — equipe
 
-## Sugestões da IA
+## Pendências
 - Confirmar firmware 1.5 / protocolo 20 no aparelho do usuário
 """.trimIndent()

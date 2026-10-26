@@ -1,5 +1,6 @@
 package dev.velum.ai.pipeline
 
+import dev.velum.core.templates.BuiltinTemplateCatalog
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -15,34 +16,50 @@ class SummaryLocalizationTest {
     }
 
     @Test
-    fun meeting_prompt_pins_pt_headings() {
+    fun catalog_meeting_uses_section_list_and_language() {
+        val prompt = SummaryLocalization.enhanceTemplatePrompt(
+            templateId = "velum.meeting",
+            basePrompt = BuiltinTemplateCatalog.get("velum.meeting")!!.systemPrompt,
+            language = "pt",
+        )
+        assertContains(prompt, "Participantes")
+        assertContains(prompt, "Decisões")
+        assertContains(prompt, "omit")
+        assertContains(prompt, "Brazilian Portuguese")
+        assertContains(prompt, "pt-BR")
+        assertFalse(prompt.contains("{output_language}"))
+        assertFalse(prompt.contains("{transcript}"))
+    }
+
+    @Test
+    fun legacy_tpl_meeting_alias_resolves_to_catalog() {
         val prompt = SummaryLocalization.enhanceTemplatePrompt(
             templateId = "tpl-meeting",
+            basePrompt = BuiltinTemplateCatalog.get("velum.meeting")!!.systemPrompt,
+            language = "en",
+        )
+        assertContains(prompt, "Participantes")
+        assertContains(prompt, "English")
+        assertFalse(prompt.contains("{output_language}"))
+    }
+
+    @Test
+    fun custom_meeting_like_prompt_still_pins_classic_h2() {
+        val prompt = SummaryLocalization.enhanceTemplatePrompt(
+            templateId = "tpl-user-custom",
             basePrompt = "Meeting Information, Notes, Decisions, Next Arrangements, AI Suggestions.",
             language = "pt",
         )
         assertContains(prompt, "## Informações da reunião")
         assertContains(prompt, "## Decisões")
         assertContains(prompt, "## Próximos passos")
-        assertContains(prompt, "Brazilian Portuguese")
         assertFalse(prompt.contains("## Meeting Information"))
-    }
-
-    @Test
-    fun meeting_prompt_pins_en_headings() {
-        val prompt = SummaryLocalization.enhanceTemplatePrompt(
-            templateId = "tpl-meeting",
-            basePrompt = "Meeting Information, Notes, Decisions.",
-            language = "en-US",
-        )
-        assertContains(prompt, "## Meeting Information")
-        assertContains(prompt, "## Next Arrangements")
     }
 
     @Test
     fun other_language_asks_llm_to_translate_headings() {
         val prompt = SummaryLocalization.enhanceTemplatePrompt(
-            templateId = "tpl-meeting",
+            templateId = "tpl-user-custom",
             basePrompt = "Meeting Information, Notes, Decisions, Next Arrangements, AI Suggestions.",
             language = "ja",
         )

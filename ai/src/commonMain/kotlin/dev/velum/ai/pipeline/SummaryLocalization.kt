@@ -1,5 +1,7 @@
 package dev.velum.ai.pipeline
 
+import dev.velum.core.templates.BuiltinTemplateCatalog
+
 /**
  * Localizes summary / template section headings and LLM language instructions.
  *
@@ -8,9 +10,10 @@ package dev.velum.ai.pipeline
  * 2. else [audioLanguage] when not blank/auto
  * 3. else `pt` (product default pt-BR)
  *
- * For `pt` / `en`, prompts pin exact Markdown H2 headings.
- * For any other language, the LLM is instructed to write headings + body in that language
- * (no English heading defaults).
+ * Built-in [BuiltinTemplateCatalog] prompts already list sections and ask to omit empty ones;
+ * this helper substitutes `{output_language}` and reinforces the language rule.
+ * For unknown/custom templates, pins meeting H2s when the prompt looks like the legacy
+ * meeting outline; otherwise asks for localized generic headings.
  */
 object SummaryLocalization {
     const val DEFAULT_LANGUAGE = "pt"
@@ -76,7 +79,9 @@ object SummaryLocalization {
 
     /**
      * Wraps a stored template system prompt with language + heading rules.
-     * [templateId] selects meeting-specific heading pins when known.
+     * Substitutes `{output_language}` / strips leftover `{transcript}` placeholders.
+     * Catalog builtins keep their own section lists (omit empty); legacy meeting prompts
+     * still get pinned H2s for pt/en.
      */
     fun enhanceTemplatePrompt(
         templateId: String?,
@@ -84,20 +89,65 @@ object SummaryLocalization {
         language: String,
     ): String {
         val lang = normalizeLang(language) ?: DEFAULT_LANGUAGE
-        val body = basePrompt.trim().ifBlank {
-            "Summarize into Overview, Key points, Action items."
+        val resolvedId = BuiltinTemplateCatalog.resolveId(templateId)
+        val catalog = BuiltinTemplateCatalog.get(resolvedId)
+        val raw = basePrompt.trim().ifBlank {
+            catalog?.systemPrompt
+                ?: "Summarize into Overview, Key points, Action items."
         }
+        val body = applyPlaceholders(raw, lang)
         return buildString {
             append(body)
             append("\n\n")
             append(languageInstruction(lang))
-            if (templateId == "tpl-meeting" || looksLikeMeetingPrompt(body)) {
-                append("\n")
-                append(meetingHeadingInstruction(lang))
-            } else {
-                append("\n")
-                append(genericHeadingInstruction(lang))
+            when {
+                catalog != null -> {
+                    append("\n")
+                    append(catalogSectionInstruction(catalog.sectionsPtBr, lang))
+                }
+                resolvedId == "velum.meeting" ||
+                    templateId == "tpl-meeting" ||
+                    looksLikeMeetingPrompt(body) -> {
+                    append("\n")
+                    append(meetingHeadingInstruction(lang))
+                }
+                else -> {
+                    append("\n")
+                    append(genericHeadingInstruction(lang))
+                }
             }
+            append("\nOmit any section that has no supporting material in the transcript.")
+            append(" Output Markdown only.")
+        }
+    }
+
+    fun applyPlaceholders(prompt: String, language: String): String {
+        val lang = normalizeLang(language) ?: DEFAULT_LANGUAGE
+        val outputLabel = when (lang) {
+            "pt" -> "pt-BR"
+            "en" -> "en"
+            else -> lang
+        }
+        return prompt
+            .replace("{output_language}", outputLabel)
+            .replace("{transcript}", "")
+            .replace(Regex("\\n{3,}"), "\n\n")
+            .trim()
+    }
+
+    fun catalogSectionInstruction(sectionsPtBr: List<String>, language: String): String {
+        val lang = normalizeLang(language) ?: DEFAULT_LANGUAGE
+        val joined = sectionsPtBr.joinToString("; ")
+        return when (lang) {
+            "pt" ->
+                "Use estas seções como headings Markdown nível 2 (## …), traduzidas para pt-BR " +
+                    "quando necessário, e omita seções sem conteúdo: $joined."
+            "en" ->
+                "Use these sections as Markdown H2 headings (## …), translated into English, " +
+                    "and omit empty ones: $joined."
+            else ->
+                "Use these sections as Markdown H2 headings translated into language \"$lang\", " +
+                    "and omit empty ones: $joined."
         }
     }
 

@@ -1,0 +1,132 @@
+{
+  "apk": "Plaud Android 3.30.0",
+  "conclusion": "No template content (names, prompts, sections) is bundled. Templates are fetched from Plaud's server at runtime. Only category icon keys, endpoint paths, entity class names and JSON field names exist in the APK. No server was contacted.",
+  "templates_found": [],
+  "category_icon_keys": [
+    {
+      "key": "general",
+      "source": "jadx/resources/assets/flutter_assets/packages/plaud_flutter_common/assets/svg/template_v3/icon_tem_com_graph_general.svg"
+    },
+    {
+      "key": "meeting",
+      "source": "jadx/resources/assets/flutter_assets/packages/plaud_flutter_common/assets/svg/template_v3/icon_tem_com_graph_meeting.svg"
+    },
+    {
+      "key": "call",
+      "source": "jadx/resources/assets/flutter_assets/packages/plaud_flutter_common/assets/svg/template_v3/icon_tem_com_graph_call.svg"
+    },
+    {
+      "key": "sales",
+      "source": "jadx/resources/assets/flutter_assets/packages/plaud_flutter_common/assets/svg/template_v3/icon_tem_com_graph_sales.svg"
+    },
+    {
+      "key": "interview",
+      "source": "jadx/resources/assets/flutter_assets/packages/plaud_flutter_common/assets/svg/template_v3/icon_tem_com_graph_interview.svg"
+    },
+    {
+      "key": "consulting",
+      "source": "jadx/resources/assets/flutter_assets/packages/plaud_flutter_common/assets/svg/template_v3/icon_tem_com_graph_consulting.svg"
+    },
+    {
+      "key": "education",
+      "source": "jadx/resources/assets/flutter_assets/packages/plaud_flutter_common/assets/svg/template_v3/icon_tem_com_graph_education.svg"
+    },
+    {
+      "key": "speech",
+      "source": "jadx/resources/assets/flutter_assets/packages/plaud_flutter_common/assets/svg/template_v3/icon_tem_com_graph_speech.svg"
+    },
+    {
+      "key": "medical",
+      "source": "jadx/resources/assets/flutter_assets/packages/plaud_flutter_common/assets/svg/template_v3/icon_tem_com_graph_medical.svg"
+    },
+    {
+      "key": "legal",
+      "source": "jadx/resources/assets/flutter_assets/packages/plaud_flutter_common/assets/svg/template_v3/icon_tem_com_graph_legal.svg"
+    },
+    {
+      "key": "financial",
+      "source": "jadx/resources/assets/flutter_assets/packages/plaud_flutter_common/assets/svg/template_v3/icon_tem_com_graph_financial.svg"
+    },
+    {
+      "key": "estate",
+      "source": "jadx/resources/assets/flutter_assets/packages/plaud_flutter_common/assets/svg/template_v3/icon_tem_com_graph_estate.svg"
+    },
+    {
+      "key": "construction",
+      "source": "jadx/resources/assets/flutter_assets/packages/plaud_flutter_common/assets/svg/template_v3/icon_tem_com_graph_construction.svg"
+    },
+    {
+      "key": "it",
+      "source": "jadx/resources/assets/flutter_assets/packages/plaud_flutter_common/assets/svg/template_v3/icon_tem_com_graph_it.svg"
+    },
+    {
+      "key": "extractive",
+      "source": "jadx/resources/assets/flutter_assets/packages/plaud_flutter_common/assets/svg/template_v3/icon_tem_com_graph_extractive.svg"
+    }
+  ],
+  "endpoints": [
+    "/ai/chatllm/templates",
+    "/ai/chatllm/templates-simple",
+    "/ai/customtemplates",
+    "/ai/customtemplates/{template_id}",
+    "/summary/chatllm/templates",
+    "/summary/chatllm/templates/recommend",
+    "/summary/v2/chatllm/templates/recommend",
+    "/summary/v2/chatllm/templates/recommend/specified",
+    "/summary/community/templates/categorys",
+    "/summary/community/templates/home",
+    "/summary/community/templates/detail",
+    "/summary/community/templates/mine",
+    "/summary/community/templates/create",
+    "/summary/community/templates/delete",
+    "/summary/community/templates/favorite",
+    "/summary/community/templates/favorite/cancel",
+    "/summary/community/templates/favorite/list",
+    "/summary/community/templates/recently_used",
+    "/summary/community/templates/daily_recommend",
+    "/summary/community/templates/weekly_recommend"
+  ],
+  "endpoint_source": "apk/libapp.str (strings of lib/arm64-v8a/libapp.so)",
+  "entity_classes": [
+    "RspCatllmTemplatesEntity",
+    "RspCatllmTemplatesSimpleEntity",
+    "RspCustomTemplateEntity",
+    "RspCustomTemplatesEntity",
+    "RspTemplateCategoryEntity",
+    "RspTemplatesChatLlmSummaryEntity",
+    "RspTemplatesGuideRecommendEntity",
+    "RspTemplatesHomeEntity",
+    "RspTemplatesListEntity",
+    "RspTemplatesMineEntity",
+    "RspTemplatesRecentlyUsedEntity",
+    "RspTemplatesSearchEntity",
+    "RspSuggestionTemplatesListEntity",
+    "RspWelcomeFileDataFilesSummariesTemplatesDefault",
+    "CommunityTemplateEntity",
+    "CustomTemplateEntity",
+    "PreloadSummaryTemplate",
+    "TemplateCacheEntity"
+  ],
+  "likely_response_fields_unconfirmed": [
+    "template_id",
+    "template_name",
+    "template_type",
+    "description",
+    "category",
+    "industry",
+    "prompt",
+    "content",
+    "outline",
+    "example",
+    "preview",
+    "language",
+    "icon_color",
+    "is_favorite",
+    "usage_count",
+    "version",
+    "versions",
+    "latest_published_version",
+    "default"
+  ],
+  "note": "Field names are standalone strings in libapp.so; their mapping to specific classes was not decompiled (no blutter run), so the response shape is inferred."
+}

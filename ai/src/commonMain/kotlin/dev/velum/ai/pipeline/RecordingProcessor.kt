@@ -15,6 +15,7 @@ import dev.velum.ai.local.ModelStoreDir
 import dev.velum.core.data.VelumRepository
 import dev.velum.core.model.ComputeMode
 import dev.velum.core.settings.SettingsRepository
+import dev.velum.core.templates.BuiltinTemplateCatalog
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -168,11 +169,13 @@ class RecordingProcessor(
                 outputLanguage = cfg.outputLanguage,
                 audioLanguage = cfg.audioLanguage,
             )
-            val baseTemplate = templateId?.let { repository.getTemplate(it)?.system_prompt }
-                ?: repository.getTemplate("tpl-meeting")?.system_prompt
+            val resolvedTemplateId = BuiltinTemplateCatalog.resolveId(templateId)
+            val baseTemplate = repository.getTemplate(resolvedTemplateId)?.system_prompt
+                ?: repository.getTemplate(templateId.orEmpty())?.system_prompt
+                ?: BuiltinTemplateCatalog.get(resolvedTemplateId)?.systemPrompt
                 ?: "Summarize into Overview, Key points, Action items."
             val localizedTemplate = SummaryLocalization.enhanceTemplatePrompt(
-                templateId = templateId ?: "tpl-meeting",
+                templateId = resolvedTemplateId,
                 basePrompt = baseTemplate,
                 language = summaryLang,
             )

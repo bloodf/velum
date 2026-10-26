@@ -87,6 +87,7 @@ import dev.velum.app.ui.theme.VelumInk
 import dev.velum.app.ui.theme.VelumInkSecondary
 import dev.velum.app.ui.theme.VelumSurface
 import dev.velum.core.model.ComputeMode
+import dev.velum.core.templates.BuiltinTemplateCatalog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -149,7 +150,7 @@ fun RecordingDetailScreen(
         }
         container.enqueueProcessing(
             recordingId = recordingId,
-            templateId = "tpl-meeting",
+            templateId = "velum.meeting",
             retranscribe = retranscribe,
         )
     }
@@ -802,7 +803,7 @@ private fun LiveTranscriptPane(
                     container.repository.updateStatus(recordingId, "queued")
                     container.enqueueProcessing(
                         recordingId = recordingId,
-                        templateId = "tpl-meeting",
+                        templateId = "velum.meeting",
                         retranscribe = true,
                     )
                     onStoppedAndQueued()
@@ -1150,7 +1151,7 @@ private fun formatTalk(seconds: Long): String {
 fun GenerateSheetContent(
     onClose: () -> Unit,
     onApply: () -> Unit = onClose,
-    templates: List<String> = listOf("tpl-meeting", "tpl-general", "tpl-it"),
+    templates: List<String> = listOf("velum.meeting", "velum.general", "velum.it"),
     languages: List<String> = listOf("auto", "pt", "en", "es"),
     models: List<String> = listOf("automatic", "parakeet-tdt-0.6b-v3-int8", "whisper-large-v3-turbo"),
 ) {
@@ -1160,11 +1161,9 @@ fun GenerateSheetContent(
     var autoLabel by remember { mutableStateOf(true) }
     var langIdx by remember { mutableStateOf(0) }
     var modelIdx by remember { mutableStateOf(0) }
-    val templateLabels = listOf(
-        strings.meetingHighlights,
-        "Notas gerais",
-        "Reunião de TI",
-    )
+    val templateLabels = templates.map { id ->
+        BuiltinTemplateCatalog.get(id)?.displayName(strings.localeTag) ?: id
+    }
     Column(Modifier.fillMaxWidth().padding(bottom = 20.dp)) {
         Text(
             if (auto) strings.generateAuto else strings.generateCustom,

@@ -1,0 +1,289 @@
+{
+  "version": 1,
+  "note": "All templates are Velum originals. One per Plaud category key; no Plaud template text exists in the APK.",
+  "templates": [
+    {
+      "id": "velum.general",
+      "origin": "velum_original",
+      "plaud_category_parity": "general",
+      "name": {
+        "pt-BR": "Resumo geral",
+        "en": "General summary"
+      },
+      "sections_pt_BR": [
+        "Visão geral",
+        "Pontos principais",
+        "Decisões",
+        "Próximos passos"
+      ],
+      "output": "markdown",
+      "language": "recording_language",
+      "system_prompt": "You will receive a transcript of a recording, possibly with speaker labels and timestamps. Write a general summary in Markdown. Write everything, including headings, in the same language as the transcript unless an output language is specified: {output_language}. Use these sections as level-2 headings, translated into the output language, and leave out any section the transcript gives no material for: Visão geral; Pontos principais; Decisões; Próximos passos. Rely only on what the transcript says. Never invent facts, names or figures. Where something is unclear, mark it as unclear. Use bullet lists, bold for names and key terms, and keep it concise.\n\nTranscript:\n{transcript}"
+    },
+    {
+      "id": "velum.meeting",
+      "origin": "velum_original",
+      "plaud_category_parity": "meeting",
+      "name": {
+        "pt-BR": "Ata de reunião",
+        "en": "Meeting minutes"
+      },
+      "sections_pt_BR": [
+        "Participantes",
+        "Pauta",
+        "Discussão por tópico",
+        "Decisões",
+        "Ações (responsável, prazo)",
+        "Pendências"
+      ],
+      "output": "markdown",
+      "language": "recording_language",
+      "system_prompt": "You will receive a transcript of a recording, possibly with speaker labels and timestamps. Write a meeting minutes in Markdown. Write everything, including headings, in the same language as the transcript unless an output language is specified: {output_language}. Use these sections as level-2 headings, translated into the output language, and leave out any section the transcript gives no material for: Participantes; Pauta; Discussão por tópico; Decisões; Ações (responsável, prazo); Pendências. Rely only on what the transcript says. Never invent facts, names or figures. Where something is unclear, mark it as unclear. Use bullet lists, bold for names and key terms, and keep it concise.\n\nTranscript:\n{transcript}"
+    },
+    {
+      "id": "velum.call",
+      "origin": "velum_original",
+      "plaud_category_parity": "call",
+      "name": {
+        "pt-BR": "Resumo de ligação",
+        "en": "Call summary"
+      },
+      "sections_pt_BR": [
+        "Objetivo da ligação",
+        "Pontos discutidos",
+        "Acordos",
+        "Follow-up"
+      ],
+      "output": "markdown",
+      "language": "recording_language",
+      "system_prompt": "You will receive a transcript of a recording, possibly with speaker labels and timestamps. Write a call summary in Markdown. Write everything, including headings, in the same language as the transcript unless an output language is specified: {output_language}. Use these sections as level-2 headings, translated into the output language, and leave out any section the transcript gives no material for: Objetivo da ligação; Pontos discutidos; Acordos; Follow-up. Rely only on what the transcript says. Never invent facts, names or figures. Where something is unclear, mark it as unclear. Use bullet lists, bold for names and key terms, and keep it concise.\n\nTranscript:\n{transcript}"
+    },
+    {
+      "id": "velum.sales",
+      "origin": "velum_original",
+      "plaud_category_parity": "sales",
+      "name": {
+        "pt-BR": "Chamada de vendas",
+        "en": "Sales call"
+      },
+      "sections_pt_BR": [
+        "Perfil do cliente",
+        "Necessidades e dores",
+        "Objeções",
+        "Orçamento e prazo",
+        "Concorrentes citados",
+        "Próximos passos"
+      ],
+      "output": "markdown",
+      "language": "recording_language",
+      "system_prompt": "You will receive a transcript of a recording, possibly with speaker labels and timestamps. Write a sales call in Markdown. Write everything, including headings, in the same language as the transcript unless an output language is specified: {output_language}. Use these sections as level-2 headings, translated into the output language, and leave out any section the transcript gives no material for: Perfil do cliente; Necessidades e dores; Objeções; Orçamento e prazo; Concorrentes citados; Próximos passos. Rely only on what the transcript says. Never invent facts, names or figures. Where something is unclear, mark it as unclear. Use bullet lists, bold for names and key terms, and keep it concise.\n\nTranscript:\n{transcript}"
+    },
+    {
+      "id": "velum.interview",
+      "origin": "velum_original",
+      "plaud_category_parity": "interview",
+      "name": {
+        "pt-BR": "Entrevista",
+        "en": "Interview"
+      },
+      "sections_pt_BR": [
+        "Contexto",
+        "Perguntas e respostas principais",
+        "Pontos fortes",
+        "Pontos de atenção",
+        "Avaliação geral"
+      ],
+      "output": "markdown",
+      "language": "recording_language",
+      "system_prompt": "You will receive a transcript of a recording, possibly with speaker labels and timestamps. Write a interview in Markdown. Write everything, including headings, in the same language as the transcript unless an output language is specified: {output_language}. Use these sections as level-2 headings, translated into the output language, and leave out any section the transcript gives no material for: Contexto; Perguntas e respostas principais; Pontos fortes; Pontos de atenção; Avaliação geral. Rely only on what the transcript says. Never invent facts, names or figures. Where something is unclear, mark it as unclear. Use bullet lists, bold for names and key terms, and keep it concise.\n\nTranscript:\n{transcript}"
+    },
+    {
+      "id": "velum.consulting",
+      "origin": "velum_original",
+      "plaud_category_parity": "consulting",
+      "name": {
+        "pt-BR": "Sessão de consultoria",
+        "en": "Consulting session"
+      },
+      "sections_pt_BR": [
+        "Situação atual",
+        "Problemas identificados",
+        "Recomendações",
+        "Plano de ação"
+      ],
+      "output": "markdown",
+      "language": "recording_language",
+      "system_prompt": "You will receive a transcript of a recording, possibly with speaker labels and timestamps. Write a consulting session in Markdown. Write everything, including headings, in the same language as the transcript unless an output language is specified: {output_language}. Use these sections as level-2 headings, translated into the output language, and leave out any section the transcript gives no material for: Situação atual; Problemas identificados; Recomendações; Plano de ação. Rely only on what the transcript says. Never invent facts, names or figures. Where something is unclear, mark it as unclear. Use bullet lists, bold for names and key terms, and keep it concise.\n\nTranscript:\n{transcript}"
+    },
+    {
+      "id": "velum.education",
+      "origin": "velum_original",
+      "plaud_category_parity": "education",
+      "name": {
+        "pt-BR": "Aula / palestra",
+        "en": "Lecture notes"
+      },
+      "sections_pt_BR": [
+        "Tema",
+        "Conceitos-chave",
+        "Explicações e exemplos",
+        "Termos e definições",
+        "Perguntas para revisão"
+      ],
+      "output": "markdown",
+      "language": "recording_language",
+      "system_prompt": "You will receive a transcript of a recording, possibly with speaker labels and timestamps. Write a lecture notes in Markdown. Write everything, including headings, in the same language as the transcript unless an output language is specified: {output_language}. Use these sections as level-2 headings, translated into the output language, and leave out any section the transcript gives no material for: Tema; Conceitos-chave; Explicações e exemplos; Termos e definições; Perguntas para revisão. Rely only on what the transcript says. Never invent facts, names or figures. Where something is unclear, mark it as unclear. Use bullet lists, bold for names and key terms, and keep it concise.\n\nTranscript:\n{transcript}"
+    },
+    {
+      "id": "velum.speech",
+      "origin": "velum_original",
+      "plaud_category_parity": "speech",
+      "name": {
+        "pt-BR": "Discurso / apresentação",
+        "en": "Speech / talk"
+      },
+      "sections_pt_BR": [
+        "Mensagem central",
+        "Argumentos",
+        "Citações marcantes",
+        "Conclusão"
+      ],
+      "output": "markdown",
+      "language": "recording_language",
+      "system_prompt": "You will receive a transcript of a recording, possibly with speaker labels and timestamps. Write a speech / talk in Markdown. Write everything, including headings, in the same language as the transcript unless an output language is specified: {output_language}. Use these sections as level-2 headings, translated into the output language, and leave out any section the transcript gives no material for: Mensagem central; Argumentos; Citações marcantes; Conclusão. Rely only on what the transcript says. Never invent facts, names or figures. Where something is unclear, mark it as unclear. Use bullet lists, bold for names and key terms, and keep it concise.\n\nTranscript:\n{transcript}"
+    },
+    {
+      "id": "velum.medical",
+      "origin": "velum_original",
+      "plaud_category_parity": "medical",
+      "name": {
+        "pt-BR": "Consulta médica",
+        "en": "Medical consultation"
+      },
+      "sections_pt_BR": [
+        "Queixa principal",
+        "Histórico relatado",
+        "Exame / achados",
+        "Avaliação",
+        "Plano e orientações"
+      ],
+      "output": "markdown",
+      "language": "recording_language",
+      "system_prompt": "You will receive a transcript of a recording, possibly with speaker labels and timestamps. Write a medical consultation in Markdown. Write everything, including headings, in the same language as the transcript unless an output language is specified: {output_language}. Use these sections as level-2 headings, translated into the output language, and leave out any section the transcript gives no material for: Queixa principal; Histórico relatado; Exame / achados; Avaliação; Plano e orientações. Rely only on what the transcript says. Never invent facts, names or figures. Where something is unclear, mark it as unclear. Use bullet lists, bold for names and key terms, and keep it concise.\n\nTranscript:\n{transcript}"
+    },
+    {
+      "id": "velum.legal",
+      "origin": "velum_original",
+      "plaud_category_parity": "legal",
+      "name": {
+        "pt-BR": "Reunião jurídica",
+        "en": "Legal meeting"
+      },
+      "sections_pt_BR": [
+        "Partes envolvidas",
+        "Fatos relatados",
+        "Questões jurídicas",
+        "Riscos",
+        "Próximas providências"
+      ],
+      "output": "markdown",
+      "language": "recording_language",
+      "system_prompt": "You will receive a transcript of a recording, possibly with speaker labels and timestamps. Write a legal meeting in Markdown. Write everything, including headings, in the same language as the transcript unless an output language is specified: {output_language}. Use these sections as level-2 headings, translated into the output language, and leave out any section the transcript gives no material for: Partes envolvidas; Fatos relatados; Questões jurídicas; Riscos; Próximas providências. Rely only on what the transcript says. Never invent facts, names or figures. Where something is unclear, mark it as unclear. Use bullet lists, bold for names and key terms, and keep it concise.\n\nTranscript:\n{transcript}"
+    },
+    {
+      "id": "velum.financial",
+      "origin": "velum_original",
+      "plaud_category_parity": "financial",
+      "name": {
+        "pt-BR": "Reunião financeira",
+        "en": "Financial review"
+      },
+      "sections_pt_BR": [
+        "Indicadores citados",
+        "Análise",
+        "Riscos e oportunidades",
+        "Decisões",
+        "Ações"
+      ],
+      "output": "markdown",
+      "language": "recording_language",
+      "system_prompt": "You will receive a transcript of a recording, possibly with speaker labels and timestamps. Write a financial review in Markdown. Write everything, including headings, in the same language as the transcript unless an output language is specified: {output_language}. Use these sections as level-2 headings, translated into the output language, and leave out any section the transcript gives no material for: Indicadores citados; Análise; Riscos e oportunidades; Decisões; Ações. Rely only on what the transcript says. Never invent facts, names or figures. Where something is unclear, mark it as unclear. Use bullet lists, bold for names and key terms, and keep it concise.\n\nTranscript:\n{transcript}"
+    },
+    {
+      "id": "velum.estate",
+      "origin": "velum_original",
+      "plaud_category_parity": "estate",
+      "name": {
+        "pt-BR": "Visita / negociação imobiliária",
+        "en": "Real estate meeting"
+      },
+      "sections_pt_BR": [
+        "Imóvel",
+        "Requisitos do cliente",
+        "Condições e valores",
+        "Pontos de negociação",
+        "Próximos passos"
+      ],
+      "output": "markdown",
+      "language": "recording_language",
+      "system_prompt": "You will receive a transcript of a recording, possibly with speaker labels and timestamps. Write a real estate meeting in Markdown. Write everything, including headings, in the same language as the transcript unless an output language is specified: {output_language}. Use these sections as level-2 headings, translated into the output language, and leave out any section the transcript gives no material for: Imóvel; Requisitos do cliente; Condições e valores; Pontos de negociação; Próximos passos. Rely only on what the transcript says. Never invent facts, names or figures. Where something is unclear, mark it as unclear. Use bullet lists, bold for names and key terms, and keep it concise.\n\nTranscript:\n{transcript}"
+    },
+    {
+      "id": "velum.construction",
+      "origin": "velum_original",
+      "plaud_category_parity": "construction",
+      "name": {
+        "pt-BR": "Reunião de obra",
+        "en": "Construction site meeting"
+      },
+      "sections_pt_BR": [
+        "Andamento",
+        "Problemas e riscos",
+        "Segurança",
+        "Materiais e recursos",
+        "Ações e prazos"
+      ],
+      "output": "markdown",
+      "language": "recording_language",
+      "system_prompt": "You will receive a transcript of a recording, possibly with speaker labels and timestamps. Write a construction site meeting in Markdown. Write everything, including headings, in the same language as the transcript unless an output language is specified: {output_language}. Use these sections as level-2 headings, translated into the output language, and leave out any section the transcript gives no material for: Andamento; Problemas e riscos; Segurança; Materiais e recursos; Ações e prazos. Rely only on what the transcript says. Never invent facts, names or figures. Where something is unclear, mark it as unclear. Use bullet lists, bold for names and key terms, and keep it concise.\n\nTranscript:\n{transcript}"
+    },
+    {
+      "id": "velum.it",
+      "origin": "velum_original",
+      "plaud_category_parity": "it",
+      "name": {
+        "pt-BR": "Reunião técnica (TI)",
+        "en": "Technical / IT meeting"
+      },
+      "sections_pt_BR": [
+        "Contexto técnico",
+        "Problemas e incidentes",
+        "Soluções discutidas",
+        "Decisões de arquitetura",
+        "Tarefas"
+      ],
+      "output": "markdown",
+      "language": "recording_language",
+      "system_prompt": "You will receive a transcript of a recording, possibly with speaker labels and timestamps. Write a technical / it meeting in Markdown. Write everything, including headings, in the same language as the transcript unless an output language is specified: {output_language}. Use these sections as level-2 headings, translated into the output language, and leave out any section the transcript gives no material for: Contexto técnico; Problemas e incidentes; Soluções discutidas; Decisões de arquitetura; Tarefas. Rely only on what the transcript says. Never invent facts, names or figures. Where something is unclear, mark it as unclear. Use bullet lists, bold for names and key terms, and keep it concise.\n\nTranscript:\n{transcript}"
+    },
+    {
+      "id": "velum.extractive",
+      "origin": "velum_original",
+      "plaud_category_parity": "extractive",
+      "name": {
+        "pt-BR": "Extração de itens",
+        "en": "Key item extraction"
+      },
+      "sections_pt_BR": [
+        "Datas e prazos",
+        "Números e valores",
+        "Nomes e entidades",
+        "Tarefas",
+        "Citações literais relevantes"
+      ],
+      "output": "markdown",
+      "language": "recording_language",
+      "system_prompt": "You will receive a transcript of a recording, possibly with speaker labels and timestamps. Write a key item extraction in Markdown. Write everything, including headings, in the same language as the transcript unless an output language is specified: {output_language}. Use these sections as level-2 headings, translated into the output language, and leave out any section the transcript gives no material for: Datas e prazos; Números e valores; Nomes e entidades; Tarefas; Citações literais relevantes. Rely only on what the transcript says. Never invent facts, names or figures. Where something is unclear, mark it as unclear. Use bullet lists, bold for names and key terms, and keep it concise.\n\nTranscript:\n{transcript}"
+    }
+  ]
+}

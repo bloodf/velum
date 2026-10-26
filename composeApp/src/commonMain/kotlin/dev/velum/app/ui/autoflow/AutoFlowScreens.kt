@@ -195,7 +195,9 @@ fun AutoFlowEditScreen(
     var name by remember(flow) { mutableStateOf(flow?.name ?: strings.newAutoFlow) }
     var wakePhrase by remember(flow) { mutableStateOf(flow?.wake_phrase.orEmpty()) }
     var sourceFilter by remember(flow) { mutableStateOf(flow?.source_filter ?: "note_pro") }
-    var templateId by remember(flow) { mutableStateOf(flow?.template_id ?: "tpl-meeting") }
+    var templateId by remember(flow) {
+        mutableStateOf(flow?.template_id ?: "velum.meeting")
+    }
     var language by remember(flow) { mutableStateOf(flow?.language ?: "auto") }
     var autoLabel by remember(flow) { mutableStateOf(flow?.auto_label_voice == 1L) }
     var notify by remember(flow) { mutableStateOf(flow?.notify == 1L) }
