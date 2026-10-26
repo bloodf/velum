@@ -178,10 +178,12 @@ class LocalModelManager(
 
     fun isReady(id: String): Boolean = stateFor(id)?.status == LocalModelStatus.Ready
 
+    /** Weights directory (extracted) when Ready; null otherwise. */
     fun modelPath(id: String): ModelStoreDir? {
         val spec = stateFor(id)?.spec ?: return null
-        val artifact = storeRoot.resolve(id).resolve(spec.archiveFileName)
-        return if (artifact.exists()) artifact else null
+        if (!isReady(id)) return null
+        val dir = storeRoot.resolve(id)
+        return ModelReadiness.resolveWeightsDir(dir, spec)
     }
 
     fun refreshFromDisk() {
@@ -246,6 +248,22 @@ class LocalModelManager(
             dest.writeBytes(bytes)
             partial.deleteRecursively()
 
+            if (ModelArchiveExtractor.isArchive(current.spec.archiveFileName)) {
+                update(id) {
+                    it.copy(status = LocalModelStatus.Downloading, progress = 0.99f, error = null)
+                }
+                emit(requireNotNull(stateFor(id)))
+                ModelArchiveExtractor.extract(dest, dir)
+            }
+
+            val missing = ModelReadiness.missingRequirements(current.spec, dir)
+            if (missing.isNotEmpty()) {
+                throw IllegalStateException(
+                    "Model '$id' downloaded but not Ready — missing ${missing.joinToString(", ")}. " +
+                        "Expected layout: ${ModelReadiness.layoutFor(current.spec).describe()}",
+                )
+            }
+
             update(id) { it.copy(status = LocalModelStatus.Ready, progress = 1f, error = null) }
             emit(requireNotNull(stateFor(id)))
         } catch (t: Throwable) {
@@ -268,15 +286,22 @@ class LocalModelManager(
     }
 
     private fun initialState(spec: LocalModelSpec): LocalModelState {
-        val artifact = storeRoot.resolve(spec.id).resolve(spec.archiveFileName)
+        val dir = storeRoot.resolve(spec.id)
         return when {
-            artifact.exists() && artifact.length() > 0L ->
+            ModelReadiness.isReady(spec, dir) ->
                 LocalModelState(spec, LocalModelStatus.Ready, progress = 1f)
             spec.downloadUrl.isNullOrBlank() ->
                 LocalModelState(
                     spec,
                     LocalModelStatus.BlockedOnUrl,
                     error = "No download URL. Blocked until a release URL is set.",
+                )
+            dir.exists() && dir.listChildren().isNotEmpty() ->
+                LocalModelState(
+                    spec,
+                    LocalModelStatus.Failed,
+                    error = "Incomplete model files under ${dir.absolutePath}: " +
+                        ModelReadiness.missingRequirements(spec, dir).joinToString(", "),
                 )
             else -> LocalModelState(spec, LocalModelStatus.NotDownloaded)
         }

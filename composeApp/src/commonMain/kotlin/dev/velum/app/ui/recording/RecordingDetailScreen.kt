@@ -26,6 +26,8 @@ import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.IosShare
 import androidx.compose.material.icons.outlined.MoreHoriz
 import androidx.compose.material.icons.outlined.PlayArrow
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -33,6 +35,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -45,17 +48,21 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.velum.ai.engine.JobProgress
 import dev.velum.app.di.AppContainer
 import dev.velum.app.i18n.LocalStrings
+import dev.velum.app.platform.shareText
 import dev.velum.app.ui.components.AiGlowFooter
 import dev.velum.app.ui.components.BlackButton
 import dev.velum.app.ui.components.ChevronRow
 import dev.velum.app.ui.components.DualActionRow
 import dev.velum.app.ui.components.OutlineButton
+import dev.velum.app.ui.components.ThinDivider
 import dev.velum.app.ui.markdown.MarkdownPreview
 import dev.velum.app.ui.theme.VelumBg
 import dev.velum.app.ui.theme.VelumBlack
@@ -78,10 +85,13 @@ fun RecordingDetailScreen(
 ) {
     val strings = LocalStrings.current
     val recording by container.repository.observeRecording(recordingId).collectAsState(null)
+    val folders by container.repository.observeFolders().collectAsState(emptyList())
     var tab by remember { mutableStateOf(initialTab) } // 0 fontes, 1 notas
     var showMenu by remember { mutableStateOf(false) }
     var showSpeakers by remember { mutableStateOf(showSpeakersInitially) }
     var showGenerate by remember { mutableStateOf(showGenerateInitially) }
+    var showMove by remember { mutableStateOf(false) }
+    var showFindReplace by remember { mutableStateOf(false) }
     var processError by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val generating = recording?.status == "generating" ||
@@ -101,6 +111,18 @@ fun RecordingDetailScreen(
                 }
             }
         }
+    }
+
+    fun exportMarkdown() {
+        val rec = recording ?: return
+        val md = buildString {
+            append("# ").append(rec.title).append('\n').append('\n')
+            append("## ").append(strings.transcription).append('\n').append('\n')
+            append(rec.transcript.orEmpty().ifBlank { "—" }).append('\n').append('\n')
+            append("## ").append(strings.summary).append('\n').append('\n')
+            append(rec.summary_markdown.orEmpty().ifBlank { "—" }).append('\n')
+        }
+        shareText(rec.title, md)
     }
 
     Column(
@@ -132,7 +154,7 @@ fun RecordingDetailScreen(
                 Icons.Outlined.IosShare,
                 strings.share,
                 tint = VelumInk,
-                modifier = Modifier.size(22.dp).clickable { },
+                modifier = Modifier.size(22.dp).clickable { exportMarkdown() },
             )
             Spacer(Modifier.width(12.dp))
             Box {
@@ -143,8 +165,14 @@ fun RecordingDetailScreen(
                     modifier = Modifier.size(22.dp).clickable { showMenu = true },
                 )
                 DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-                    DropdownMenuItem({ Text(strings.moveToFolder) }, { showMenu = false })
-                    DropdownMenuItem({ Text(strings.findReplace) }, { showMenu = false })
+                    DropdownMenuItem({ Text(strings.moveToFolder) }, {
+                        showMenu = false
+                        showMove = true
+                    })
+                    DropdownMenuItem({ Text(strings.findReplace) }, {
+                        showMenu = false
+                        showFindReplace = true
+                    })
                     DropdownMenuItem({ Text(strings.retranscribe) }, {
                         showMenu = false
                         launchProcessing(retranscribe = true)
@@ -155,7 +183,10 @@ fun RecordingDetailScreen(
                     })
                     DropdownMenuItem({ Text(strings.moveToTrash) }, {
                         showMenu = false
-                        // fire-and-forget via rememberCoroutineScope would be better; keep simple
+                        scope.launch {
+                            container.repository.trashRecording(recordingId)
+                            onBack()
+                        }
                     })
                 }
             }
@@ -186,7 +217,34 @@ fun RecordingDetailScreen(
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
             containerColor = VelumSurface,
         ) {
-            SpeakerLabelSheetContent(onClose = { showSpeakers = false })
+            val speakers by container.repository.observeSpeakers(recordingId).collectAsState(emptyList())
+            SpeakerLabelSheetContent(
+                speakers = speakers.map {
+                    SpeakerLabelRow(
+                        id = it.id,
+                        label = it.label,
+                        displayName = it.display_name,
+                        talkSeconds = it.talk_seconds,
+                    )
+                },
+                onClose = { showSpeakers = false },
+                onConfirm = { renames ->
+                    scope.launch {
+                        renames.forEach { (speakerId, name) ->
+                            val trimmed = name.trim()
+                            if (trimmed.isEmpty()) return@forEach
+                            val row = speakers.firstOrNull { it.id == speakerId } ?: return@forEach
+                            container.voiceProfileStore.promoteCached(
+                                recordingId = recordingId,
+                                speakerId = row.label,
+                                displayName = trimmed,
+                            )
+                            container.repository.renameSpeaker(recordingId, speakerId, trimmed)
+                        }
+                        showSpeakers = false
+                    }
+                },
+            )
         }
     }
     if (showGenerate) {
@@ -204,6 +262,114 @@ fun RecordingDetailScreen(
             )
         }
     }
+    if (showMove) {
+        ModalBottomSheet(
+            onDismissRequest = { showMove = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = VelumSurface,
+        ) {
+            Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
+                Text(strings.moveToFolder, fontWeight = FontWeight.SemiBold, fontSize = 18.sp)
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    strings.noFolder,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            scope.launch {
+                                container.repository.moveRecordingToFolder(recordingId, null)
+                                showMove = false
+                            }
+                        }
+                        .padding(vertical = 14.dp),
+                    fontSize = 16.sp,
+                    color = VelumInk,
+                )
+                ThinDivider(0)
+                folders.forEach { folder ->
+                    Text(
+                        folder.name,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                scope.launch {
+                                    container.repository.moveRecordingToFolder(recordingId, folder.id)
+                                    showMove = false
+                                }
+                            }
+                            .padding(vertical = 14.dp),
+                        fontSize = 16.sp,
+                        color = VelumInk,
+                    )
+                    ThinDivider(0)
+                }
+                Spacer(Modifier.height(24.dp))
+            }
+        }
+    }
+    if (showFindReplace) {
+        FindReplaceDialog(
+            onDismiss = { showFindReplace = false },
+            onReplaceAll = { find, replace ->
+                val current = recording?.transcript.orEmpty()
+                if (find.isNotEmpty()) {
+                    val updated = current.replace(find, replace)
+                    scope.launch {
+                        container.repository.updateTranscript(recordingId, updated)
+                        showFindReplace = false
+                    }
+                } else {
+                    showFindReplace = false
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun FindReplaceDialog(
+    onDismiss: () -> Unit,
+    onReplaceAll: (find: String, replace: String) -> Unit,
+) {
+    val strings = LocalStrings.current
+    var find by remember { mutableStateOf("") }
+    var replace by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(strings.findReplace) },
+        text = {
+            Column {
+                Text(strings.find, color = VelumInkSecondary, fontSize = 13.sp)
+                BasicTextField(
+                    value = find,
+                    onValueChange = { find = it },
+                    singleLine = true,
+                    cursorBrush = SolidColor(VelumInk),
+                    textStyle = TextStyle(color = VelumInk, fontSize = 16.sp),
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                )
+                ThinDivider(0)
+                Spacer(Modifier.height(8.dp))
+                Text(strings.replace, color = VelumInkSecondary, fontSize = 13.sp)
+                BasicTextField(
+                    value = replace,
+                    onValueChange = { replace = it },
+                    singleLine = true,
+                    cursorBrush = SolidColor(VelumInk),
+                    textStyle = TextStyle(color = VelumInk, fontSize = 16.sp),
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onReplaceAll(find, replace) }) {
+                Text(strings.replaceAll)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(strings.cancel) }
+        },
+    )
 }
 
 @Composable
@@ -413,13 +579,34 @@ private fun GeneratingBody() {
     }
 }
 
+data class SpeakerLabelRow(
+    val id: String,
+    val label: String,
+    val displayName: String?,
+    val talkSeconds: Long,
+)
+
 @Composable
-fun SpeakerLabelSheetContent(onClose: () -> Unit) {
+fun SpeakerLabelSheetContent(
+    onClose: () -> Unit,
+    speakers: List<SpeakerLabelRow> = emptyList(),
+    onConfirm: (Map<String, String>) -> Unit = { onClose() },
+) {
     val strings = LocalStrings.current
-    val demos = listOf(
-        "Speaker 1" to "5m 12s",
-        "Speaker 2" to "3m 40s",
-    )
+    val rows = speakers.ifEmpty {
+        listOf(
+            SpeakerLabelRow("demo-1", "S1", "Speaker 1", 312),
+            SpeakerLabelRow("demo-2", "S2", "Speaker 2", 220),
+        )
+    }
+    var names by remember(rows) {
+        mutableStateOf(
+            rows.associate { row ->
+                row.id to (row.displayName?.takeIf { it.isNotBlank() }
+                    ?: "Speaker ${row.label.trimStart('S', 's')}")
+            },
+        )
+    }
     Column(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
@@ -429,7 +616,8 @@ fun SpeakerLabelSheetContent(onClose: () -> Unit) {
             Text(strings.nameSpeakers, fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
             Text("×", fontSize = 22.sp, color = VelumInkSecondary, modifier = Modifier.clickable(onClick = onClose))
         }
-        demos.forEach { (name, dur) ->
+        rows.forEach { row ->
+            val dur = formatTalk(row.talkSeconds)
             Column(Modifier.padding(horizontal = 20.dp, vertical = 10.dp)) {
                 Box(
                     Modifier
@@ -437,7 +625,14 @@ fun SpeakerLabelSheetContent(onClose: () -> Unit) {
                         .border(1.dp, VelumDivider, RoundedCornerShape(8.dp))
                         .padding(14.dp),
                 ) {
-                    Text(name, color = VelumInkSecondary, fontSize = 15.sp)
+                    BasicTextField(
+                        value = names[row.id].orEmpty(),
+                        onValueChange = { value -> names = names + (row.id to value) },
+                        singleLine = true,
+                        textStyle = TextStyle(color = VelumInk, fontSize = 15.sp),
+                        cursorBrush = SolidColor(VelumInk),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
                 }
                 Spacer(Modifier.height(8.dp))
                 Text(
@@ -454,8 +649,14 @@ fun SpeakerLabelSheetContent(onClose: () -> Unit) {
             fontSize = 12.sp,
             modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
         )
-        DualActionRow(strings.cancel, strings.confirm, onClose, onClose)
+        DualActionRow(strings.cancel, strings.confirm, onClose, { onConfirm(names) })
     }
+}
+
+private fun formatTalk(seconds: Long): String {
+    val m = seconds / 60
+    val s = seconds % 60
+    return "${m}m ${s}s"
 }
 
 @Composable

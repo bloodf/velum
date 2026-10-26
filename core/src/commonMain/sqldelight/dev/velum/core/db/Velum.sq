@@ -97,12 +97,18 @@ UPDATE recording SET status = ? WHERE id = ?;
 trashRecording:
 UPDATE recording SET trashed = 1 WHERE id = ?;
 
+updateRecordingFolder:
+UPDATE recording SET folder_id = ? WHERE id = ?;
+
 selectSpeakersForRecording:
 SELECT * FROM speaker WHERE recording_id = ? ORDER BY label ASC;
 
 insertSpeaker:
 INSERT OR REPLACE INTO speaker(id, recording_id, label, display_name, talk_seconds)
 VALUES (?, ?, ?, ?, ?);
+
+updateSpeakerDisplayName:
+UPDATE speaker SET display_name = ? WHERE id = ?;
 
 deleteSpeakersForRecording:
 DELETE FROM speaker WHERE recording_id = ?;
@@ -141,6 +147,23 @@ INSERT OR REPLACE INTO autoflow(
 
 updateAutoflowEnabled:
 UPDATE autoflow SET enabled = ? WHERE id = ?;
+
+updateAutoflow:
+UPDATE autoflow SET
+  name = ?,
+  enabled = ?,
+  wake_phrase = ?,
+  duration_min_seconds = ?,
+  duration_max_seconds = ?,
+  source_filter = ?,
+  template_id = ?,
+  auto_label_voice = ?,
+  language = ?,
+  notify = ?
+WHERE id = ?;
+
+updateAutoflowNotify:
+UPDATE autoflow SET notify = ? WHERE id = ?;
 
 selectMemories:
 SELECT * FROM memory_item ORDER BY created_at DESC;

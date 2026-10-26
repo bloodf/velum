@@ -4,6 +4,7 @@ import app.cash.sqldelight.coroutines.asFlow
 import app.cash.sqldelight.coroutines.mapToList
 import app.cash.sqldelight.coroutines.mapToOneOrNull
 import dev.velum.core.db.Recording
+import dev.velum.core.db.Speaker
 import dev.velum.core.db.Template
 import dev.velum.core.db.VelumDatabase
 import kotlinx.coroutines.Dispatchers
@@ -50,8 +51,44 @@ class VelumRepository(private val db: VelumDatabase) {
         q.updateAutoflowEnabled(if (enabled) 1 else 0, id)
     }
 
+    suspend fun setAutoflowNotify(id: String, notify: Boolean) = withContext(Dispatchers.Default) {
+        q.updateAutoflowNotify(if (notify) 1 else 0, id)
+    }
+
+    suspend fun updateAutoflow(
+        id: String,
+        name: String,
+        enabled: Boolean,
+        wakePhrase: String?,
+        durationMinSeconds: Long,
+        durationMaxSeconds: Long,
+        sourceFilter: String,
+        templateId: String?,
+        autoLabelVoice: Boolean,
+        language: String,
+        notify: Boolean,
+    ) = withContext(Dispatchers.Default) {
+        q.updateAutoflow(
+            name = name,
+            enabled = if (enabled) 1 else 0,
+            wake_phrase = wakePhrase,
+            duration_min_seconds = durationMinSeconds,
+            duration_max_seconds = durationMaxSeconds,
+            source_filter = sourceFilter,
+            template_id = templateId,
+            auto_label_voice = if (autoLabelVoice) 1 else 0,
+            language = language,
+            notify = if (notify) 1 else 0,
+            id = id,
+        )
+    }
+
     suspend fun trashRecording(id: String) = withContext(Dispatchers.Default) {
         q.trashRecording(id)
+    }
+
+    suspend fun moveRecordingToFolder(id: String, folderId: String?) = withContext(Dispatchers.Default) {
+        q.updateRecordingFolder(folderId, id)
     }
 
     suspend fun addMemory(id: String, content: String) = withContext(Dispatchers.Default) {
@@ -117,6 +154,13 @@ class VelumRepository(private val db: VelumDatabase) {
         val talkSeconds: Long,
     )
 
+    fun observeSpeakers(recordingId: String): Flow<List<Speaker>> =
+        q.selectSpeakersForRecording(recordingId).asFlow().mapToList(Dispatchers.Default)
+
+    suspend fun getSpeakers(recordingId: String): List<Speaker> = withContext(Dispatchers.Default) {
+        q.selectSpeakersForRecording(recordingId).executeAsList()
+    }
+
     suspend fun updateSpeakers(recordingId: String, speakers: List<SpeakerUpsert>) =
         withContext(Dispatchers.Default) {
             db.transaction {
@@ -132,6 +176,28 @@ class VelumRepository(private val db: VelumDatabase) {
                 }
             }
         }
+
+    suspend fun renameSpeaker(
+        recordingId: String,
+        speakerId: String,
+        displayName: String,
+    ) = withContext(Dispatchers.Default) {
+        val speakers = q.selectSpeakersForRecording(recordingId).executeAsList()
+        val target = speakers.firstOrNull { it.id == speakerId } ?: return@withContext
+        val previous = target.display_name?.takeIf { it.isNotBlank() }
+            ?: "Speaker ${target.label.trimStart('S', 's')}"
+        q.updateSpeakerDisplayName(displayName, speakerId)
+        val recording = q.selectRecordingById(recordingId).executeAsOneOrNull() ?: return@withContext
+        val transcript = recording.transcript
+        if (!transcript.isNullOrBlank() && previous != displayName) {
+            val updated = transcript
+                .replace("**$previous**", "**$displayName**")
+                .replace("**${target.label}**", "**$displayName**")
+            if (updated != transcript) {
+                q.updateTranscript(updated, recordingId)
+            }
+        }
+    }
 
     private fun epochSeconds(): Long = epochSecondsNow()
 }

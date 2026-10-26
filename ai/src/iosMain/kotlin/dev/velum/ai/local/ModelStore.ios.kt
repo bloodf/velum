@@ -15,6 +15,8 @@ import platform.posix.memcpy
 actual class ModelStoreDir actual constructor(absolutePath: String) {
     actual val absolutePath: String = absolutePath.trimEnd('/')
 
+    actual val name: String = absolutePath.substringAfterLast('/')
+
     actual fun resolve(child: String): ModelStoreDir =
         ModelStoreDir("$absolutePath/${child.trim('/')}")
 

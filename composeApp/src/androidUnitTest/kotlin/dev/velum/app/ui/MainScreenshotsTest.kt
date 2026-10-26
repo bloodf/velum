@@ -127,7 +127,7 @@ class MainScreenshotsTest {
 
     @Test
     fun integrations() = capture("10-integrations") {
-        IntegrationsScreen(onBack = {})
+        IntegrationsScreen(container = container, onBack = {})
     }
 
     @Test

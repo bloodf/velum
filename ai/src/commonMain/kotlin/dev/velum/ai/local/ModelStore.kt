@@ -5,6 +5,7 @@ package dev.velum.ai.local
  */
 expect class ModelStoreDir(absolutePath: String) {
     val absolutePath: String
+    val name: String
     fun resolve(child: String): ModelStoreDir
     fun exists(): Boolean
     fun isDirectory(): Boolean
@@ -18,3 +19,18 @@ expect class ModelStoreDir(absolutePath: String) {
 }
 
 expect fun defaultModelStoreRoot(): ModelStoreDir
+
+/** Depth-first file walk (files only). */
+fun ModelStoreDir.walkFiles(): List<ModelStoreDir> {
+    if (!exists()) return emptyList()
+    if (!isDirectory()) return listOf(this)
+    return listChildren().flatMap { child ->
+        if (child.isDirectory()) child.walkFiles() else listOf(child)
+    }
+}
+
+/** Depth-first directory walk including this node when it is a directory. */
+fun ModelStoreDir.walkDirectories(): List<ModelStoreDir> {
+    if (!exists() || !isDirectory()) return emptyList()
+    return listOf(this) + listChildren().filter { it.isDirectory() }.flatMap { it.walkDirectories() }
+}

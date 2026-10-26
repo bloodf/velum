@@ -180,6 +180,19 @@ data class Strings(
     val modelBlockedOnUrl: String,
     val outputLanguage: String,
     val approxSize: String,
+    val searchHint: String,
+    val searchResultsCount: String,
+    val find: String,
+    val replace: String,
+    val replaceAll: String,
+    val noFolder: String,
+    val oauthBlocked: String,
+    val oauthDisconnected: String,
+    val oauthConnected: String,
+    val displayName: String,
+    val languageAuto: String,
+    val languagePtBr: String,
+    val languageEn: String,
 )
 
 val PtBr = Strings(
@@ -360,6 +373,19 @@ val PtBr = Strings(
     modelBlockedOnUrl = "Sem URL de download",
     outputLanguage = "Idioma de saída",
     approxSize = "Tamanho aprox.",
+    searchHint = "Buscar por título ou texto…",
+    searchResultsCount = "%d resultado(s)",
+    find = "Localizar",
+    replace = "Substituir",
+    replaceAll = "Substituir tudo",
+    noFolder = "Sem pasta",
+    oauthBlocked = "Bloqueado — o dono precisa registrar o cliente OAuth",
+    oauthDisconnected = "Desconectado",
+    oauthConnected = "Conectado",
+    displayName = "Nome de exibição",
+    languageAuto = "Automático",
+    languagePtBr = "Português (Brasil)",
+    languageEn = "English",
 )
 
 val En = Strings(
@@ -540,6 +566,19 @@ val En = Strings(
     modelBlockedOnUrl = "Blocked — no download URL",
     outputLanguage = "Output language",
     approxSize = "Approx. size",
+    searchHint = "Search by title or text…",
+    searchResultsCount = "%d result(s)",
+    find = "Find",
+    replace = "Replace",
+    replaceAll = "Replace all",
+    noFolder = "No folder",
+    oauthBlocked = "Blocked — owner must register OAuth client",
+    oauthDisconnected = "Disconnected",
+    oauthConnected = "Connected",
+    displayName = "Display name",
+    languageAuto = "Automatic",
+    languagePtBr = "Portuguese (Brazil)",
+    languageEn = "English",
 )
 
 val LocalStrings = staticCompositionLocalOf { PtBr }

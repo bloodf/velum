@@ -53,6 +53,7 @@ import dev.velum.app.i18n.LocalStrings
 import dev.velum.app.ui.components.BlackButton
 import dev.velum.app.ui.components.DisplayTitle
 import dev.velum.app.ui.components.GradientTitle
+import dev.velum.app.ui.components.SearchSheet
 import dev.velum.app.ui.theme.VelumBg
 import dev.velum.app.ui.theme.VelumBlack
 import dev.velum.app.ui.theme.VelumDivider
@@ -60,6 +61,7 @@ import dev.velum.app.ui.theme.VelumInk
 import dev.velum.app.ui.theme.VelumInkSecondary
 import dev.velum.app.ui.theme.VelumSurface
 import dev.velum.core.db.Template
+import dev.velum.core.search.ListSearch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -72,7 +74,14 @@ fun TemplatesScreen(
     val templates by container.repository.observeTemplates().collectAsState(emptyList())
     var tab by remember { mutableStateOf(1) } // 0 my space, 1 discover
     var showCreate by remember { mutableStateOf(false) }
-    val categories = templates.map { it.category }.distinct()
+    var showSearch by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
+    val filtered = remember(templates, searchQuery) {
+        ListSearch.filter(templates, searchQuery) {
+            listOf(it.name, it.description, it.category, it.author)
+        }
+    }
+    val categories = filtered.map { it.category }.distinct()
 
     Column(Modifier.fillMaxSize().background(VelumBg)) {
         Row(
@@ -86,7 +95,12 @@ fun TemplatesScreen(
                 tint = VelumInk,
             )
             Spacer(Modifier.weight(1f))
-            Icon(Icons.Outlined.Search, strings.search, tint = VelumInk, modifier = Modifier.size(22.dp))
+            Icon(
+                Icons.Outlined.Search,
+                strings.search,
+                tint = VelumInk,
+                modifier = Modifier.size(22.dp).clickable { showSearch = true },
+            )
             Spacer(Modifier.width(12.dp))
             Row(
                 Modifier
@@ -122,7 +136,7 @@ fun TemplatesScreen(
                 Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                templates.sortedByDescending { it.uses }.take(5).forEachIndexed { index, tpl ->
+                filtered.sortedByDescending { it.uses }.take(5).forEachIndexed { index, tpl ->
                     RankingCard(tpl, index + 1) { onOpenTemplate(tpl.id) }
                 }
             }
@@ -136,13 +150,22 @@ fun TemplatesScreen(
                 ) {
                     row.forEach { cat ->
                         CategoryCard(cat, Modifier.weight(1f)) {
-                            templates.firstOrNull { it.category == cat }?.let { onOpenTemplate(it.id) }
+                            filtered.firstOrNull { it.category == cat }?.let { onOpenTemplate(it.id) }
                         }
                     }
                     if (row.size == 1) Spacer(Modifier.weight(1f))
                 }
             }
         }
+    }
+
+    if (showSearch) {
+        SearchSheet(
+            query = searchQuery,
+            onQueryChange = { searchQuery = it },
+            onDismiss = { showSearch = false },
+            resultCount = filtered.size,
+        )
     }
 
     if (showCreate) {

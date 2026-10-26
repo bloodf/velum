@@ -30,10 +30,10 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Protocol + AI unit tests (JVM)
-        run: ./gradlew :plaud-protocol:jvmTest :ai:jvmTest --stacktrace
+      - name: Protocol + BLE + AI + core unit tests (JVM)
+        run: ./gradlew :plaud-protocol:jvmTest :ble:jvmTest :core:jvmTest :ai:jvmTest --stacktrace
 
-      - name: Assemble Android debug APK
+      - name: Assemble signed debug APK
         run: ./gradlew :composeApp:assembleDebug --stacktrace
 
       - name: Record Compose UI screenshots (Roborazzi)
@@ -42,12 +42,12 @@ jobs:
       - name: Compile desktop JVM (shared shell)
         run: ./gradlew :composeApp:compileKotlinDesktop --stacktrace
 
-      - name: Upload APK
+      - name: Upload signed debug APK
         uses: actions/upload-artifact@v4
         with:
           name: velum-debug-apk
           path: composeApp/build/outputs/apk/debug/*.apk
-          if-no-files-found: warn
+          if-no-files-found: error
 
       - name: Upload UI screenshots
         uses: actions/upload-artifact@v4

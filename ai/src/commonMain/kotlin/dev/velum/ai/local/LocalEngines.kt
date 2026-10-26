@@ -48,10 +48,11 @@ class LocalTranscriber(
 }
 
 /**
- * On-device diarization. Requires Ready segmentation model.
+ * On-device diarization via sherpa-onnx OfflineSpeakerDiarization + voice profile match.
  */
 class LocalDiarizer(
     private val modelManager: LocalModelManager,
+    private val voiceProfiles: VoiceProfileStore,
     private val runtime: LocalAsrRuntime = LocalAsrRuntime(),
 ) : Diarizer {
     override val engineId: String = "local-diarizer"
@@ -66,14 +67,30 @@ class LocalDiarizer(
                     "Download it in Model manager, or switch Diarization to API.",
             )
         }
+        val embeddingId = chooseReadyEmbeddingId()
+            ?: throw ModelNotReadyException(
+                "wespeaker-voxceleb",
+                "Local speaker embedding model is not Ready. " +
+                    "Download WeSpeaker or TitaNet in Model manager for diarization.",
+            )
         val modelPath = modelManager.modelPath(resolved)
             ?: throw ModelNotReadyException(resolved)
+        val embeddingPath = modelManager.modelPath(embeddingId)
+            ?: throw ModelNotReadyException(embeddingId)
         return runtime.diarize(
             pcmOrEncoded = input.bytes,
             sampleRateHz = input.sampleRateHz,
             modelId = resolved,
             modelPath = modelPath.absolutePath,
+            embeddingModelPath = embeddingPath.absolutePath,
+            voiceProfiles = voiceProfiles,
+            recordingId = input.recordingId,
         )
+    }
+
+    private fun chooseReadyEmbeddingId(): String? {
+        val candidates = listOf("wespeaker-voxceleb", "titanet-small")
+        return candidates.firstOrNull { modelManager.isReady(it) }
     }
 }
 

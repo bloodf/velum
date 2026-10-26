@@ -8,6 +8,8 @@ kotlin {
     androidTarget {
         compilerOptions {
             jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+            // litertlm-android ships Kotlin 2.4 metadata; keep compiling on 2.2.x toolchain.
+            freeCompilerArgs.add("-Xskip-metadata-version-check")
         }
     }
     jvm()
@@ -35,12 +37,16 @@ kotlin {
                 implementation(libs.kotlin.test)
                 implementation(libs.kotlinx.coroutines.test)
                 implementation(libs.ktor.client.mock)
+                implementation(project(":ble"))
+                implementation(project(":plaud-protocol"))
             }
         }
         androidMain.dependencies {
             implementation(libs.ktor.client.okhttp)
             implementation(libs.sherpa.onnx.android)
             implementation(libs.kopus)
+            implementation(libs.commons.compress)
+            implementation(libs.litertlm.android)
         }
         iosMain.dependencies {
             implementation(libs.ktor.client.darwin)
@@ -48,6 +54,7 @@ kotlin {
         jvmMain.dependencies {
             implementation(libs.ktor.client.cio)
             implementation(libs.kopus)
+            implementation(libs.commons.compress)
         }
     }
 }

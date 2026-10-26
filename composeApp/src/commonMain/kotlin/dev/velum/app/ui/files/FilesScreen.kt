@@ -43,12 +43,14 @@ import androidx.compose.ui.unit.sp
 import dev.velum.app.di.AppContainer
 import dev.velum.app.i18n.LocalStrings
 import dev.velum.app.ui.components.DisplayTitle
+import dev.velum.app.ui.components.SearchSheet
 import dev.velum.app.ui.components.ThinDivider
 import dev.velum.app.ui.theme.VelumBg
 import dev.velum.app.ui.theme.VelumInk
 import dev.velum.app.ui.theme.VelumInkSecondary
 import dev.velum.app.ui.theme.VelumSurface
 import dev.velum.core.db.Recording
+import dev.velum.core.search.ListSearch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -60,6 +62,12 @@ fun FilesScreen(
     val strings = LocalStrings.current
     val recordings by container.repository.observeRecordings().collectAsState(emptyList())
     var showFilter by remember { mutableStateOf(false) }
+    var showSearch by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
+
+    val visible = remember(recordings, searchQuery) {
+        ListSearch.filter(recordings, searchQuery) { listOf(it.title, it.transcript, it.summary_markdown) }
+    }
 
     Column(
         modifier = Modifier
@@ -81,7 +89,9 @@ fun FilesScreen(
                 Icons.Outlined.TravelExplore,
                 contentDescription = strings.search,
                 tint = VelumInk,
-                modifier = Modifier.size(22.dp).clickable { },
+                modifier = Modifier.size(22.dp).clickable {
+                    showSearch = true
+                },
             )
             Spacer(Modifier.width(14.dp))
             Box(
@@ -111,16 +121,24 @@ fun FilesScreen(
                 )
             },
         )
+        if (searchQuery.isNotBlank()) {
+            Text(
+                strings.searchResultsCount.replace("%d", visible.size.toString()),
+                color = VelumInkSecondary,
+                fontSize = 13.sp,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+            )
+        }
         Spacer(Modifier.height(16.dp))
         ThinDivider(0)
 
-        if (recordings.isEmpty()) {
+        if (visible.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(strings.noRecordingsYet, color = VelumInkSecondary)
             }
         } else {
             LazyColumn(modifier = Modifier.fillMaxSize()) {
-                items(recordings, key = { it.id }) { rec ->
+                items(visible, key = { it.id }) { rec ->
                     RecordingRow(rec) { onOpenRecording(rec.id) }
                 }
             }
@@ -138,6 +156,14 @@ fun FilesScreen(
                 onClose = { showFilter = false },
             )
         }
+    }
+    if (showSearch) {
+        SearchSheet(
+            query = searchQuery,
+            onQueryChange = { searchQuery = it },
+            onDismiss = { showSearch = false },
+            resultCount = visible.size,
+        )
     }
 }
 

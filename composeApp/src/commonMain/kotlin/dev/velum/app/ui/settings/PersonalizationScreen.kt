@@ -15,15 +15,20 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.velum.app.di.AppContainer
 import dev.velum.app.i18n.LocalStrings
 import dev.velum.app.ui.components.ChevronRow
 import dev.velum.app.ui.components.ScreenTopBar
@@ -33,17 +38,42 @@ import dev.velum.app.ui.theme.VelumDivider
 import dev.velum.app.ui.theme.VelumInk
 import dev.velum.app.ui.theme.VelumInkSecondary
 import dev.velum.app.ui.theme.VelumSurface
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
 
+@OptIn(FlowPreview::class)
 @Composable
 fun PersonalizationScreen(
+    container: AppContainer,
     onBack: () -> Unit,
     onProfile: () -> Unit = {},
     onMemory: () -> Unit,
 ) {
     val strings = LocalStrings.current
-    var focus by remember { mutableStateOf("") }
-    var instructions by remember { mutableStateOf("") }
-    var useMemory by remember { mutableStateOf(false) }
+    val prefs by container.settingsRepository.preferences.collectAsState()
+    val scope = rememberCoroutineScope()
+    var displayName by remember { mutableStateOf(prefs.displayName) }
+    var focus by remember { mutableStateOf(prefs.contentFocus) }
+    var instructions by remember { mutableStateOf(prefs.customInstructions) }
+
+    LaunchedEffect(prefs.displayName, prefs.contentFocus, prefs.customInstructions) {
+        displayName = prefs.displayName
+        focus = prefs.contentFocus
+        instructions = prefs.customInstructions
+    }
+
+    LaunchedEffect(Unit) {
+        snapshotFlow { Triple(displayName, focus, instructions) }
+            .debounce(400)
+            .distinctUntilChanged()
+            .collect { (name, contentFocus, custom) ->
+                container.settingsRepository.setDisplayName(name)
+                container.settingsRepository.setContentFocus(contentFocus)
+                container.settingsRepository.setCustomInstructions(custom)
+            }
+    }
 
     Column(
         Modifier
@@ -54,6 +84,9 @@ fun PersonalizationScreen(
         ScreenTopBar(strings.personalization, onBack = onBack)
         ChevronRow(strings.profile, onProfile, showDivider = false)
         Spacer(Modifier.height(8.dp))
+        SectionTitle(strings.displayName)
+        HintField(displayName, strings.displayName) { displayName = it }
+        Spacer(Modifier.height(16.dp))
         SectionTitle(strings.contentFocus)
         HintField(focus, strings.contentFocusHint) { focus = it }
         Spacer(Modifier.height(10.dp))
@@ -98,7 +131,12 @@ fun PersonalizationScreen(
             modifier = Modifier.padding(horizontal = 20.dp),
         )
         Spacer(Modifier.height(4.dp))
-        ToggleRow(strings.useSavedMemory, useMemory, { useMemory = it }, strings.useMemoryHint)
+        ToggleRow(
+            strings.useSavedMemory,
+            prefs.useSavedMemory,
+            { enabled -> scope.launch { container.settingsRepository.setUseSavedMemory(enabled) } },
+            strings.useMemoryHint,
+        )
         ChevronRow(strings.manageMemory, onMemory, showDivider = false)
         Text(
             strings.manageMemoryHint,

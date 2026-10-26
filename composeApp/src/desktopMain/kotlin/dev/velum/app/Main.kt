@@ -6,12 +6,14 @@ import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import dev.velum.app.di.AppContainer
 import dev.velum.core.data.DriverFactory
+import dev.velum.core.integrations.IntegrationConfig
 import dev.velum.core.security.DesktopSecureStore
 
 fun main() = application {
     val container = AppContainer(
         secureStore = DesktopSecureStore(),
         driverFactory = DriverFactory(),
+        integrationConfig = IntegrationConfig.fromEnv { key -> System.getenv(key) },
     )
     Window(
         onCloseRequest = ::exitApplication,

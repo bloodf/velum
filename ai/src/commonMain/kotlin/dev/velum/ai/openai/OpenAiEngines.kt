@@ -47,16 +47,17 @@ class OpenAiTranscriber(
 }
 
 /**
- * No standard OpenAI diarization endpoint yet — stub for a future remote contract.
+ * No standard OpenAI-compatible diarization contract yet.
+ * Local diarization is required — do not fake an empty success.
  */
 class OpenAiDiarizer : Diarizer {
     override val engineId: String = "openai-diarizer"
 
     override suspend fun diarize(input: AudioInput, modelId: String): DiarizationResult {
-        return DiarizationResult(
-            spans = emptyList(),
-            engineId = engineId,
-            modelId = modelId.ifBlank { "remote-diarization" },
+        throw UnsupportedOperationException(
+            "API diarization has no remote contract yet. " +
+                "Switch Speaker diarization to Local and download pyannote + an embedding model " +
+                "(WeSpeaker / TitaNet) in Model manager.",
         )
     }
 }

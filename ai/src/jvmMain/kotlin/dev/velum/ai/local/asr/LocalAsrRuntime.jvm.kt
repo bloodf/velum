@@ -4,6 +4,7 @@ import dev.velum.ai.engine.DiarizationResult
 import dev.velum.ai.engine.LlmRequest
 import dev.velum.ai.engine.LlmResult
 import dev.velum.ai.engine.TranscriptionResult
+import dev.velum.ai.local.VoiceProfileStore
 
 actual class LocalAsrRuntime actual constructor() {
     actual suspend fun transcribe(
@@ -24,6 +25,9 @@ actual class LocalAsrRuntime actual constructor() {
         sampleRateHz: Int,
         modelId: String,
         modelPath: String,
+        embeddingModelPath: String,
+        voiceProfiles: VoiceProfileStore?,
+        recordingId: String?,
     ): DiarizationResult {
         throw UnsupportedOperationException(
             "Local diarization is not supported on JVM desktop yet. modelId=$modelId",
@@ -36,8 +40,8 @@ actual class LocalAsrRuntime actual constructor() {
         modelPath: String,
     ): LlmResult {
         throw UnsupportedOperationException(
-            "Local LLM (LiteRT-LM / llama.cpp) is not supported on JVM desktop yet. " +
-                "Use API summaries. modelId=$modelId",
+            "Local LLM (LiteRT-LM) is not supported on JVM desktop. " +
+                "Use API summaries (OpenAI-compatible). modelId=$modelId",
         )
     }
 }

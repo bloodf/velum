@@ -15,6 +15,8 @@ data class AudioInput(
     val sampleRateHz: Int = 16_000,
     /** BCP-47 / ISO code, or "auto". */
     val languageHint: String? = "auto",
+    /** Optional recording id for voice-profile cluster cache. */
+    val recordingId: String? = null,
 )
 
 data class TranscriptSegment(

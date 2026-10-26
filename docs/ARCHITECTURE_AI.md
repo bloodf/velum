@@ -38,7 +38,7 @@ API transcription uses the user’s chosen OpenAI-compatible `/audio/transcripti
 - Embeddings: evaluate **WeSpeaker** / **TitaNet** vs **3D-Speaker**; prefer a multilingual-trained embedding
 - **Named voice profiles** — store embeddings per person; cosine-match clusters to names
 
-API diarization is a stub until a compatible remote contract is chosen; Local remains the default.
+API diarization throws until a compatible remote contract is chosen; Local remains the default.
 
 ### Summaries / templates / agents (local)
 
@@ -60,20 +60,21 @@ API diarization is a stub until a compatible remote contract is chosen; Local re
 ## 3. Code shape
 
 ```
-Transcriber  ── LocalTranscriber (ModelNotReadyException / sherpa-onnx Android skeleton)
+Transcriber  ── LocalTranscriber (sherpa-onnx OfflineRecognizer on Android)
              └─ OpenAiTranscriber (MissingApiKeyException when key absent)
 
-Diarizer     ── LocalDiarizer (ModelNotReadyException; OfflineSpeakerDiarization TBD)
-             └─ OpenAiDiarizer (remote contract TBD)
+Diarizer     ── LocalDiarizer (OfflineSpeakerDiarization + VoiceProfileStore cosine match)
+             └─ OpenAiDiarizer (UnsupportedOperationException — Local required)
 
-LlmEngine    ── LocalLlmEngine (ModelNotReadyException; LiteRT-LM TBD)
+LlmEngine    ── LocalLlmEngine (LiteRT-LM on Android when Ready; JVM unsupported)
              └─ OpenAiLlmEngine
 
 OpusDecoder  ── Ogg demux (common) + kopus (Android/JVM); iOS unsupported for now
 ```
 
-- `LocalModelCatalog` / `LocalModelManager` — download, delete, disk Ready check for on-device weights.
-- `RecordingProcessor` — pipeline orchestrator wired from Generate / re-transcribe.
+- `LocalModelCatalog` / `LocalModelManager` — download, extract archives, delete, Ready only when expected files exist.
+- `VoiceProfileStore` — embeddings + display names under `models/voices/`.
+- `RecordingProcessor` — pipeline + map-reduce summarization for long transcripts.
 - Settings UI: per-task Local/API toggles + **Model manager** screen.
 - Weights stay under device storage / `models/` (gitignored); never committed.
 - UI: `MarkdownPreview` for transcripts and notes.
@@ -81,8 +82,6 @@ OpusDecoder  ── Ogg demux (common) + kopus (Android/JVM); iOS unsupported fo
 ## 4. Non-goals (remaining)
 
 - Bundling or committing model weights
-- Full OfflineRecognizer config mapping after `.tar.bz2` extract (Android AAR linked; mapping incomplete)
-- LiteRT-LM / llama.cpp on-device LLM wiring
 - Streaming ASR UI
 - iOS on-device ASR / Opus decode / LLM runtimes (Android-first; same interfaces later)
 - WorkManager thermal checkpoints

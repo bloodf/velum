@@ -9,8 +9,22 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+
+@Serializable
+data class AppPreferences(
+    val cleanTranscript: Boolean = true,
+    val helpImprove: Boolean = false,
+    val autoSpeakerLabel: Boolean = false,
+    val displayName: String = "",
+    val contentFocus: String = "",
+    val customInstructions: String = "",
+    val useSavedMemory: Boolean = false,
+    /** Global AutoFlow notification preference mirrored from UI toggle. */
+    val autoflowNotify: Boolean = true,
+)
 
 class SettingsRepository(
     private val store: SecureStore,
@@ -18,6 +32,9 @@ class SettingsRepository(
 ) {
     private val _settings = MutableStateFlow(AiProviderSettings())
     val settings: StateFlow<AiProviderSettings> = _settings.asStateFlow()
+
+    private val _preferences = MutableStateFlow(AppPreferences())
+    val preferences: StateFlow<AppPreferences> = _preferences.asStateFlow()
 
     suspend fun load() {
         val baseUrl = store.getString(KEY_BASE_URL) ?: DEFAULT_BASE_URL
@@ -41,6 +58,16 @@ class SettingsRepository(
             localAsrModelId = store.getString(KEY_LOCAL_ASR_MODEL),
             localDiarizationModelId = store.getString(KEY_LOCAL_DIARIZATION_MODEL),
             localLlmModelId = store.getString(KEY_LOCAL_LLM_MODEL),
+        )
+        _preferences.value = AppPreferences(
+            cleanTranscript = store.getString(KEY_CLEAN_TRANSCRIPT)?.toBooleanStrictOrNull() ?: true,
+            helpImprove = store.getString(KEY_HELP_IMPROVE)?.toBooleanStrictOrNull() ?: false,
+            autoSpeakerLabel = store.getString(KEY_AUTO_SPEAKER)?.toBooleanStrictOrNull() ?: false,
+            displayName = store.getString(KEY_DISPLAY_NAME).orEmpty(),
+            contentFocus = store.getString(KEY_CONTENT_FOCUS).orEmpty(),
+            customInstructions = store.getString(KEY_CUSTOM_INSTRUCTIONS).orEmpty(),
+            useSavedMemory = store.getString(KEY_USE_MEMORY)?.toBooleanStrictOrNull() ?: false,
+            autoflowNotify = store.getString(KEY_AUTOFLOW_NOTIFY)?.toBooleanStrictOrNull() ?: true,
         )
     }
 
@@ -122,6 +149,46 @@ class SettingsRepository(
         _settings.update { it.copy(localLlmModelId = id) }
     }
 
+    suspend fun setCleanTranscript(enabled: Boolean) {
+        store.putString(KEY_CLEAN_TRANSCRIPT, enabled.toString())
+        _preferences.update { it.copy(cleanTranscript = enabled) }
+    }
+
+    suspend fun setHelpImprove(enabled: Boolean) {
+        store.putString(KEY_HELP_IMPROVE, enabled.toString())
+        _preferences.update { it.copy(helpImprove = enabled) }
+    }
+
+    suspend fun setAutoSpeakerLabel(enabled: Boolean) {
+        store.putString(KEY_AUTO_SPEAKER, enabled.toString())
+        _preferences.update { it.copy(autoSpeakerLabel = enabled) }
+    }
+
+    suspend fun setDisplayName(name: String) {
+        store.putString(KEY_DISPLAY_NAME, name)
+        _preferences.update { it.copy(displayName = name) }
+    }
+
+    suspend fun setContentFocus(text: String) {
+        store.putString(KEY_CONTENT_FOCUS, text)
+        _preferences.update { it.copy(contentFocus = text) }
+    }
+
+    suspend fun setCustomInstructions(text: String) {
+        store.putString(KEY_CUSTOM_INSTRUCTIONS, text)
+        _preferences.update { it.copy(customInstructions = text) }
+    }
+
+    suspend fun setUseSavedMemory(enabled: Boolean) {
+        store.putString(KEY_USE_MEMORY, enabled.toString())
+        _preferences.update { it.copy(useSavedMemory = enabled) }
+    }
+
+    suspend fun setAutoflowNotify(enabled: Boolean) {
+        store.putString(KEY_AUTOFLOW_NOTIFY, enabled.toString())
+        _preferences.update { it.copy(autoflowNotify = enabled) }
+    }
+
     private suspend fun writeOptional(key: String, value: String?) {
         if (value.isNullOrBlank()) store.remove(key) else store.putString(key, value)
     }
@@ -145,5 +212,13 @@ class SettingsRepository(
         private const val KEY_LOCAL_ASR_MODEL = "ai.local_asr_model"
         private const val KEY_LOCAL_DIARIZATION_MODEL = "ai.local_diarization_model"
         private const val KEY_LOCAL_LLM_MODEL = "ai.local_llm_model"
+        private const val KEY_CLEAN_TRANSCRIPT = "prefs.clean_transcript"
+        private const val KEY_HELP_IMPROVE = "prefs.help_improve"
+        private const val KEY_AUTO_SPEAKER = "prefs.auto_speaker_label"
+        private const val KEY_DISPLAY_NAME = "prefs.display_name"
+        private const val KEY_CONTENT_FOCUS = "prefs.content_focus"
+        private const val KEY_CUSTOM_INSTRUCTIONS = "prefs.custom_instructions"
+        private const val KEY_USE_MEMORY = "prefs.use_saved_memory"
+        private const val KEY_AUTOFLOW_NOTIFY = "prefs.autoflow_notify"
     }
 }

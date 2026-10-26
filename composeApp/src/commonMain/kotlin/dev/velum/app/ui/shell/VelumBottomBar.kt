@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Apps
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.outlined.Apps
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Folder
@@ -51,14 +53,14 @@ fun VelumBottomBar(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
-                Icons.Outlined.Folder,
+                if (selected == ShellTab.Files && !fabOpen) Icons.Filled.Folder else Icons.Outlined.Folder,
                 contentDescription = "Files",
                 tint = if (selected == ShellTab.Files && !fabOpen) VelumBlack else VelumInkSecondary,
                 modifier = Modifier.size(26.dp).clickable(onClick = onFiles),
             )
             SpacerFab()
             Icon(
-                Icons.Outlined.Apps,
+                if (selected == ShellTab.Explore && !fabOpen) Icons.Filled.Apps else Icons.Outlined.Apps,
                 contentDescription = "Explore",
                 tint = if (selected == ShellTab.Explore && !fabOpen) VelumBlack else VelumInkSecondary,
                 modifier = Modifier.size(26.dp).clickable(onClick = onExplore),

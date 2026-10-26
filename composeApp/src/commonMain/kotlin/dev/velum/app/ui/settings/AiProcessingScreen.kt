@@ -15,11 +15,17 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -41,6 +47,9 @@ import dev.velum.app.ui.theme.VelumSurface
 import dev.velum.core.model.ComputeMode
 import kotlinx.coroutines.launch
 
+private data class LangOption(val code: String, val label: String)
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AiProcessingScreen(
     container: AppContainer,
@@ -50,6 +59,17 @@ fun AiProcessingScreen(
     val strings = LocalStrings.current
     val settings by container.settingsRepository.settings.collectAsState()
     val scope = rememberCoroutineScope()
+    var pickAudio by remember { mutableStateOf(false) }
+    var pickOutput by remember { mutableStateOf(false) }
+
+    val languages = listOf(
+        LangOption("auto", strings.languageAuto),
+        LangOption("pt-BR", strings.languagePtBr),
+        LangOption("en", strings.languageEn),
+    )
+
+    fun labelFor(code: String): String =
+        languages.firstOrNull { it.code == code }?.label ?: code
 
     Column(
         Modifier
@@ -86,13 +106,13 @@ fun AiProcessingScreen(
         Spacer(Modifier.height(20.dp))
         ChevronRow(
             strings.audioLanguage,
-            {},
-            value = settings.audioLanguage,
+            { pickAudio = true },
+            value = labelFor(settings.audioLanguage),
         )
         ChevronRow(
             strings.outputLanguage,
-            {},
-            value = settings.outputLanguage,
+            { pickOutput = true },
+            value = labelFor(settings.outputLanguage),
             showDivider = false,
         )
         Spacer(Modifier.height(12.dp))
@@ -109,6 +129,65 @@ fun AiProcessingScreen(
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
         )
         Spacer(Modifier.height(40.dp))
+    }
+
+    if (pickAudio) {
+        LanguagePickerSheet(
+            title = strings.audioLanguage,
+            options = languages,
+            selected = settings.audioLanguage,
+            onSelect = { code ->
+                scope.launch { container.settingsRepository.setAudioLanguage(code) }
+                pickAudio = false
+            },
+            onDismiss = { pickAudio = false },
+        )
+    }
+    if (pickOutput) {
+        LanguagePickerSheet(
+            title = strings.outputLanguage,
+            options = languages,
+            selected = settings.outputLanguage,
+            onSelect = { code ->
+                scope.launch { container.settingsRepository.setOutputLanguage(code) }
+                pickOutput = false
+            },
+            onDismiss = { pickOutput = false },
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun LanguagePickerSheet(
+    title: String,
+    options: List<LangOption>,
+    selected: String,
+    onSelect: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = VelumSurface,
+    ) {
+        Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
+            Text(title, fontWeight = FontWeight.SemiBold, fontSize = 18.sp, color = VelumInk)
+            Spacer(Modifier.height(12.dp))
+            options.forEach { opt ->
+                Text(
+                    opt.label,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onSelect(opt.code) }
+                        .padding(vertical = 14.dp),
+                    color = if (opt.code == selected) VelumInk else VelumInkSecondary,
+                    fontWeight = if (opt.code == selected) FontWeight.SemiBold else FontWeight.Normal,
+                    fontSize = 16.sp,
+                )
+            }
+            Spacer(Modifier.height(24.dp))
+        }
     }
 }
 

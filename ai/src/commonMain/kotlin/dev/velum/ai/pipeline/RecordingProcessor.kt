@@ -85,6 +85,7 @@ class RecordingProcessor(
                             bytes = audioBytes,
                             sampleRateHz = sampleRate,
                             languageHint = cfg.audioLanguage,
+                            recordingId = recordingId,
                         ),
                         asrModel,
                     )
@@ -98,13 +99,20 @@ class RecordingProcessor(
                     }
                     val diarization = try {
                         diar.diarize(
-                            AudioInput(filename, audioBytes, sampleRate, cfg.audioLanguage),
+                            AudioInput(
+                                filename = filename,
+                                bytes = audioBytes,
+                                sampleRateHz = sampleRate,
+                                languageHint = cfg.audioLanguage,
+                                recordingId = recordingId,
+                            ),
                             diarModel,
                         )
-                    } catch (t: ModelNotReadyException) {
-                        // Diarization optional when local model missing — keep ASR text.
+                    } catch (_: ModelNotReadyException) {
+                        // Optional when local weights missing — keep ASR text.
                         null
-                    } catch (t: UnsupportedOperationException) {
+                    } catch (_: UnsupportedOperationException) {
+                        // API diarization / JVM-without-native — keep ASR text.
                         null
                     }
 
@@ -143,13 +151,11 @@ class RecordingProcessor(
                 ComputeMode.Local -> cfg.localLlmModelId.orEmpty()
                 ComputeMode.Api -> cfg.chatModel.orEmpty()
             }
-            val summary = llm.complete(
-                LlmRequest(
-                    systemPrompt = templatePrompt,
-                    userPrompt = transcriptMarkdown,
-                    outputLanguage = cfg.outputLanguage,
-                ),
-                llmModel,
+            val summary = summarizeWithMapReduce(
+                llmComplete = { req -> llm.complete(req, llmModel) },
+                templatePrompt = templatePrompt,
+                transcriptMarkdown = transcriptMarkdown,
+                outputLanguage = cfg.outputLanguage,
             )
             repository.updateSummary(recordingId, summary.text)
             repository.updateStatus(recordingId, "ready")
@@ -158,6 +164,43 @@ class RecordingProcessor(
             repository.updateStatus(recordingId, "failed")
             emit(JobProgress.Failed(t.message ?: t.toString()))
         }
+    }
+
+    private suspend fun summarizeWithMapReduce(
+        llmComplete: suspend (LlmRequest) -> dev.velum.ai.engine.LlmResult,
+        templatePrompt: String,
+        transcriptMarkdown: String,
+        outputLanguage: String,
+    ): dev.velum.ai.engine.LlmResult {
+        if (transcriptMarkdown.length <= MAP_REDUCE_CHAR_THRESHOLD) {
+            return llmComplete(
+                LlmRequest(
+                    systemPrompt = templatePrompt,
+                    userPrompt = transcriptMarkdown,
+                    outputLanguage = outputLanguage,
+                ),
+            )
+        }
+        val chunks = chunkText(transcriptMarkdown, MAP_REDUCE_CHUNK_CHARS)
+        val partials = chunks.mapIndexed { index, chunk ->
+            llmComplete(
+                LlmRequest(
+                    systemPrompt = "Summarize this transcript section ($index/${chunks.lastIndex}) " +
+                        "into concise bullets. Keep speaker names and action items.",
+                    userPrompt = chunk,
+                    outputLanguage = outputLanguage,
+                    maxOutputTokens = 512,
+                ),
+            ).text
+        }
+        val reduced = llmComplete(
+            LlmRequest(
+                systemPrompt = templatePrompt,
+                userPrompt = partials.joinToString("\n\n---\n\n"),
+                outputLanguage = outputLanguage,
+            ),
+        )
+        return reduced.copy(usedMapReduce = true)
     }
 
     private suspend fun ensureApiKeyIfNeeded(mode: ComputeMode, task: String) {
@@ -176,4 +219,26 @@ class RecordingProcessor(
             bytes[1] == 'g'.code.toByte() &&
             bytes[2] == 'g'.code.toByte() &&
             bytes[3] == 'S'.code.toByte()
+
+    companion object {
+        /** Rough ~4k tokens; map-reduce when longer. */
+        const val MAP_REDUCE_CHAR_THRESHOLD = 12_000
+        const val MAP_REDUCE_CHUNK_CHARS = 8_000
+
+        fun chunkText(text: String, chunkChars: Int): List<String> {
+            if (text.length <= chunkChars) return listOf(text)
+            val chunks = mutableListOf<String>()
+            var start = 0
+            while (start < text.length) {
+                var end = (start + chunkChars).coerceAtMost(text.length)
+                if (end < text.length) {
+                    val nl = text.lastIndexOf('\n', end)
+                    if (nl > start + chunkChars / 2) end = nl + 1
+                }
+                chunks += text.substring(start, end)
+                start = end
+            }
+            return chunks
+        }
+    }
 }

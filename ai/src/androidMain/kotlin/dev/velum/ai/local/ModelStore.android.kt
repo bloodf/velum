@@ -7,6 +7,8 @@ actual class ModelStoreDir actual constructor(absolutePath: String) {
 
     actual val absolutePath: String = file.absolutePath
 
+    actual val name: String = file.name
+
     actual fun resolve(child: String): ModelStoreDir =
         ModelStoreDir(File(file, child).absolutePath)
 

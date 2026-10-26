@@ -9,6 +9,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavType
@@ -22,6 +23,7 @@ import dev.velum.app.di.AppContainer
 import dev.velum.app.i18n.LocalStrings
 import dev.velum.app.i18n.PtBr
 import dev.velum.app.navigation.Routes
+import dev.velum.app.platform.rememberAudioImporter
 import dev.velum.app.ui.DeviceScreen
 import dev.velum.app.ui.autoflow.AutoFlowEditScreen
 import dev.velum.app.ui.autoflow.AutoFlowListScreen
@@ -42,6 +44,8 @@ import dev.velum.app.ui.shell.VelumBottomBar
 import dev.velum.app.ui.templates.TemplateDetailScreen
 import dev.velum.app.ui.templates.TemplatesScreen
 import dev.velum.app.ui.theme.VelumTheme
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
 
 @Composable
 fun App(container: AppContainer) {
@@ -58,6 +62,24 @@ private fun VelumRoot(container: AppContainer) {
     val backStack by navController.currentBackStackEntryAsState()
     val route = backStack?.destination?.route.orEmpty()
     var fabOpen by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
+    val importAudio = rememberAudioImporter { path ->
+        scope.launch {
+            val id = container.createLocalRecording(
+                source = "import",
+                localPath = path,
+                status = "queued",
+            )
+            fabOpen = false
+            navController.navigate(Routes.recording(id))
+            container.recordingProcessor.process(
+                recordingId = id,
+                templateId = null,
+                retranscribe = true,
+            ).collect { }
+        }
+    }
 
     val onShell = route == Routes.FILES ||
         route == Routes.EXPLORE ||
@@ -134,12 +156,14 @@ private fun VelumRoot(container: AppContainer) {
                 }
                 composable(Routes.PERSONALIZATION) {
                     PersonalizationScreen(
+                        container = container,
                         onBack = { navController.popBackStack() },
                         onMemory = { navController.navigate(Routes.MEMORY) },
                     )
                 }
                 composable(Routes.PREFERENCES) {
                     PreferencesScreen(
+                        container = container,
                         onBack = { navController.popBackStack() },
                         onAiProcessing = { navController.navigate(Routes.AI_PROCESSING) },
                     )
@@ -207,7 +231,10 @@ private fun VelumRoot(container: AppContainer) {
                     )
                 }
                 composable(Routes.INTEGRATIONS) {
-                    IntegrationsScreen(onBack = { navController.popBackStack() })
+                    IntegrationsScreen(
+                        container = container,
+                        onBack = { navController.popBackStack() },
+                    )
                 }
                 composable(Routes.DEVICE) {
                     DeviceScreen(container.ble, container.deviceViewModel)
@@ -217,8 +244,19 @@ private fun VelumRoot(container: AppContainer) {
 
         if (fabOpen && onShell) {
             FabOverlay(
-                onStartRecording = { fabOpen = false },
-                onImportAudio = { fabOpen = false },
+                onStartRecording = {
+                    scope.launch {
+                        val id = container.createLocalRecording(
+                            source = "phone",
+                            status = "recording",
+                        )
+                        fabOpen = false
+                        navController.navigate(Routes.recording(id))
+                    }
+                },
+                onImportAudio = {
+                    importAudio()
+                },
                 onDismiss = { fabOpen = false },
             )
         }
@@ -227,4 +265,3 @@ private fun VelumRoot(container: AppContainer) {
 
 private fun androidx.navigation.NavBackStackEntry.arg(key: String): String =
     arguments?.read { getStringOrNull(key) }.orEmpty()
-
