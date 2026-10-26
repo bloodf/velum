@@ -1,1 +1,72 @@
-# velum
+# Velum
+
+**Your recorder, your models, your notes.**
+
+Velum is an open-source, subscription-free companion for the [Plaud Note Pro](https://www.plaud.ai/) (and, over time, other Plaud models/firmwares). It runs **standalone with no Velum server**: the phone talks to the device over BLE, you bring your own OpenAI-compatible base URL + API key, refresh `/models`, and get transcription, template summaries, and agents — local-first.
+
+> **Independent project.** Velum is not affiliated with, endorsed by, or sponsored by Plaud Inc. “Plaud” and “Note Pro” are used only to describe device compatibility. See [docs/LEGAL.md](docs/LEGAL.md).
+
+## Status
+
+**Foundation (M0)** — repository, KMP modules, protocol codec + tests, AI client, BLE interface (Kable on mobile, stub on desktop), Compose Multiplatform shell (Device / Recordings / Settings).
+
+Not yet: full BLE sync/download/decrypt on device, templates, desktop system-audio recorder, sync, integrations, speaker ID.
+
+## Architecture
+
+```
+composeApp/          Compose Multiplatform UI (Android, iOS, Desktop JVM)
+core/                Domain models, settings, secure-storage abstractions
+plaud-protocol/      Pure Kotlin BLE protocol codec (framing, unlock types, sessions, PLAUD.AI header)
+ai/                  OpenAI-compatible client (Ktor): /models, transcriptions, chat
+ble/                 BleTransport + Kable (Android/iOS) + desktop stub
+iosApp/              Thin SwiftUI host for the Compose framework
+docs/                Protocol notes, legal / interoperability
+```
+
+Stack: **Kotlin Multiplatform + Compose Multiplatform**, **Kable** (mobile BLE), **Ktor**, local-first SQLite planned via SQLDelight. License: **Apache-2.0**.
+
+## Build
+
+Requirements:
+
+- JDK 17+
+- Android SDK 35 (for Android targets)
+- Xcode (for iOS, macOS only)
+
+```bash
+./gradlew :plaud-protocol:jvmTest :ai:jvmTest
+./gradlew :composeApp:assembleDebug
+./gradlew :composeApp:run          # desktop
+```
+
+CI builds JVM tests + Android debug APK on Linux; iOS is optional on macOS runners.
+
+## Configure AI
+
+In **Settings**:
+
+1. Set your OpenAI-compatible **base URL** (e.g. `https://api.openai.com/v1`, Groq, OpenRouter, LM Studio, Ollama).
+2. Paste an **API key** (stored via platform secure storage abstraction — never committed).
+3. Tap **Refresh** to call `GET /models` and pick a model.
+
+## Device keys
+
+Plaud Note Pro protocol 20 needs a one-time import of identity material from *your* Plaud account (serial signature, RSA key pair, bind token). Velum exposes a `DeviceKeyImporter` interface and **never ships secrets**. Import UI arrives with M1.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) and [ROADMAP.md](ROADMAP.md).
+
+## Português (resumo)
+
+Velum é um app open source, **sem assinatura e sem servidor obrigatório**, para o Plaud Note Pro: BLE direto no aparelho, você coloca a URL/chave da API OpenAI-compatível, atualiza a lista de modelos e usa transcrição/resumo localmente. Stack: Kotlin Multiplatform + Compose (Android, iOS, desktop). Status atual: fundação (protocolo, cliente de IA, shell da UI). Não somos afiliados à Plaud — ver `docs/LEGAL.md`.
+
+## Credits
+
+Protocol understanding builds on community work (MIT), especially:
+
+- [plaude-archiver](https://github.com/roopen219/plaude-archiver)
+- [OpenPlod](https://github.com/OpenPlod/OpenPlod)
+
+Adapted notes: [docs/protocol/](docs/protocol/).

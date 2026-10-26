@@ -1,0 +1,71 @@
+# Gradle
+.gradle/
+build/
+**/build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+*.swp
+*~
+
+# Local config / secrets
+local.properties
+*.keystore
+*.jks
+.env
+.env.*
+!.env.example
+secrets/
+**/secrets.*
+**/api_key*
+**/apikey*
+
+# Kotlin / Native
+.kotlin/
+kotlin-js-store/
+*.klib
+
+# Android
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# iOS / Xcode
+iosApp/Pods/
+iosApp/**/xcuserdata/
+iosApp/**/*.xcworkspace/xcuserdata/
+DerivedData/
+*.xcuserstate
+*.moved-aside
+*.hmap
+*.ipa
+
+# Desktop
+composeApp/out/
+*.dmg
+*.exe
+*.msi
+*.deb
+*.rpm
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test / coverage
+*.exec
+*.ec
+coverage/
+test-results/
+
+# Logs
+*.log
