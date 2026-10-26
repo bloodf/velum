@@ -2,6 +2,7 @@ package dev.velum.app.platform
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.AlertDialog
@@ -25,6 +26,12 @@ actual fun rememberPermissionRequester(
     val manifestPermission = when (permission) {
         AppPermission.RecordAudio -> Manifest.permission.RECORD_AUDIO
         AppPermission.ReadCalendar -> Manifest.permission.READ_CALENDAR
+        AppPermission.PostNotifications ->
+            if (Build.VERSION.SDK_INT >= 33) {
+                Manifest.permission.POST_NOTIFICATIONS
+            } else {
+                null
+            }
     }
     var pendingCallback by remember { mutableStateOf<((PermissionOutcome) -> Unit)?>(null) }
     var showRationale by remember { mutableStateOf(false) }
@@ -37,7 +44,7 @@ actual fun rememberPermissionRequester(
         cb?.invoke(if (granted) PermissionOutcome.Granted else PermissionOutcome.Denied)
     }
 
-    if (showRationale) {
+    if (showRationale && manifestPermission != null) {
         AlertDialog(
             onDismissRequest = {
                 showRationale = false
@@ -70,6 +77,10 @@ actual fun rememberPermissionRequester(
 
     return remember(manifestPermission, rationaleTitle, rationaleBody) {
         { onResult ->
+            if (manifestPermission == null) {
+                onResult(PermissionOutcome.NotRequired)
+                return@remember
+            }
             val granted = ContextCompat.checkSelfPermission(context, manifestPermission) ==
                 PackageManager.PERMISSION_GRANTED
             if (granted) {

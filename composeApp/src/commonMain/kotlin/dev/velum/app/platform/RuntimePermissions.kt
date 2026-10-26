@@ -5,12 +5,13 @@ import androidx.compose.runtime.Composable
 enum class AppPermission {
     RecordAudio,
     ReadCalendar,
+    PostNotifications,
 }
 
 sealed class PermissionOutcome {
     data object Granted : PermissionOutcome()
     data object Denied : PermissionOutcome()
-    /** Permission not applicable on this platform (desktop). */
+    /** Permission not applicable on this platform (desktop) or below API 33. */
     data object NotRequired : PermissionOutcome()
 }
 

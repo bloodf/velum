@@ -53,10 +53,14 @@ kotlin {
             implementation(libs.markdown.renderer)
             implementation(libs.markdown.renderer.m3)
         }
+        commonTest.dependencies {
+            implementation(libs.kotlin.test)
+        }
         androidMain.dependencies {
             implementation(compose.preview)
             implementation(libs.androidx.activity.compose)
             implementation(libs.androidx.work.runtime)
+            implementation("androidx.core:core-ktx:1.15.0")
         }
         val androidUnitTest by getting {
             dependencies {

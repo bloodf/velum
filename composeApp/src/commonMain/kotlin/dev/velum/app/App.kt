@@ -85,6 +85,11 @@ private fun VelumRoot(container: AppContainer) {
         rationaleTitle = strings.micPermissionTitle,
         rationaleBody = strings.micPermissionRationale,
     )
+    val requestNotifications = rememberPermissionRequester(
+        permission = AppPermission.PostNotifications,
+        rationaleTitle = strings.ux.notificationsPermissionTitle,
+        rationaleBody = strings.ux.notificationsPermissionRationale,
+    )
     val requestCalendar = rememberPermissionRequester(
         permission = AppPermission.ReadCalendar,
         rationaleTitle = strings.calendarPermissionTitle,
@@ -345,7 +350,10 @@ private fun VelumRoot(container: AppContainer) {
                         when (outcome) {
                             PermissionOutcome.Granted,
                             PermissionOutcome.NotRequired,
-                            -> startPhoneRecording()
+                            -> requestNotifications {
+                                // FGS still starts if notifications are denied; chrome may be limited.
+                                startPhoneRecording()
+                            }
                             PermissionOutcome.Denied -> {
                                 scope.launch {
                                     snackbar.showSnackbar(strings.micPermissionRationale)

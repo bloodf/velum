@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="velum_processing_channel_name">Processamento de gravação</string>
+    <string name="velum_processing_notification_title">Processando gravação</string>
+    <string name="velum_processing_notification_body">Transcrevendo e resumindo no aparelho</string>
+</resources>

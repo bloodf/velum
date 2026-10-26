@@ -31,6 +31,35 @@ class WavWriter(
         val duration = if (sampleRateHz <= 0) 0L else dataBytes / (2L * sampleRateHz)
         return WavFinish(path, duration, file.length().coerceAtLeast(dataBytes + 44))
     }
+
+    companion object {
+        const val HEADER_BYTES = 44
+
+        /**
+         * True when [fileLength] has PCM past the 44-byte header but [headerDataSize]
+         * does not match (0, stale, or truncated header after a crash).
+         */
+        fun needsHeaderRewrite(fileLength: Long, headerDataSize: Long): Boolean {
+            if (fileLength < HEADER_BYTES) return false
+            val actual = recoveredDataSize(fileLength)
+            return headerDataSize != actual
+        }
+
+        fun recoveredDataSize(fileLength: Long): Long =
+            (fileLength - HEADER_BYTES).coerceAtLeast(0)
+
+        fun durationSeconds(dataBytes: Long, sampleRateHz: Int): Long =
+            if (sampleRateHz <= 0) 0L else dataBytes / (2L * sampleRateHz)
+
+        /**
+         * Fix an incomplete / crashed WAV (or `.wav.partial`) from on-disk length.
+         * Returns null when the path is missing or has no recoverable PCM.
+         */
+        fun recoverOrFinalize(
+            absolutePath: String,
+            sampleRateHz: Int = 16_000,
+        ): WavFinish? = recoverOrFinalizeWav(absolutePath, sampleRateHz)
+    }
 }
 
 data class WavFinish(
@@ -47,3 +76,8 @@ internal interface WavFileHandle {
 }
 
 internal expect fun openWavFile(absolutePath: String): WavFileHandle
+
+internal expect fun recoverOrFinalizeWav(
+    absolutePath: String,
+    sampleRateHz: Int,
+): WavFinish?

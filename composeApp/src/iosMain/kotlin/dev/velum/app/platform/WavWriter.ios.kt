@@ -6,3 +6,8 @@ internal actual fun openWavFile(absolutePath: String): WavFileHandle = object : 
     override fun close() = Unit
     override fun length(): Long = 0
 }
+
+internal actual fun recoverOrFinalizeWav(
+    absolutePath: String,
+    sampleRateHz: Int,
+): WavFinish? = null

@@ -48,6 +48,7 @@ kotlin {
             implementation(libs.commons.compress)
             implementation(libs.litertlm.android)
             implementation(libs.androidx.work.runtime)
+            implementation("androidx.core:core-ktx:1.15.0")
         }
         iosMain.dependencies {
             implementation(libs.ktor.client.darwin)

@@ -3,4 +3,18 @@
     <string name="app_name">Velum</string>
     <string name="permission_mic_rationale">O Velum precisa gravar áudio do microfone para criar gravações no aparelho.</string>
     <string name="permission_calendar_rationale">O Velum lê o evento atual/próximo para nomear gravações e pode inserir eventos. Sem envio a servidores Plaud/Google.</string>
+    <string name="permission_notifications_rationale">O Velum mostra uma notificação persistente durante a gravação para continuar em segundo plano.</string>
+    <string name="mic_recording_channel_name">Gravação pelo microfone</string>
+    <string name="mic_recording_channel_desc">Exibida enquanto o Velum grava pelo microfone</string>
+    <string name="mic_recording_title">Gravando</string>
+    <string name="mic_recording_body">O Velum está capturando áudio</string>
+    <string name="mic_recording_paused_title">Pausado</string>
+    <string name="mic_recording_paused_body">Gravação pausada — toque em Retomar ou abra o Velum</string>
+    <string name="mic_recording_pause">Pausar</string>
+    <string name="mic_recording_resume">Retomar</string>
+    <string name="mic_recording_stop">Parar</string>
+    <string name="processing_channel_name">Processamento de gravação</string>
+    <string name="processing_channel_desc">Exibida enquanto o Velum transcreve ou resume uma gravação</string>
+    <string name="processing_notification_title">Processando gravação</string>
+    <string name="processing_notification_body">Transcrevendo e resumindo no aparelho</string>
 </resources>

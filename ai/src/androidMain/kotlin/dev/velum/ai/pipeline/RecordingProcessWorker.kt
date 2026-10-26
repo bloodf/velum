@@ -1,16 +1,23 @@
 package dev.velum.ai.pipeline
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.content.Context
+import android.content.pm.ServiceInfo
+import android.os.Build
 import android.os.PowerManager
+import androidx.core.app.NotificationCompat
 import androidx.work.BackoffPolicy
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.Data
 import androidx.work.ExistingWorkPolicy
+import androidx.work.ForegroundInfo
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
+import dev.velum.ai.R
 import dev.velum.ai.engine.JobProgress
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
@@ -18,13 +25,17 @@ import kotlinx.coroutines.CancellationException
 /**
  * Runs [RecordingProcessor] for one recording under WorkManager with thermal backoff.
  * Checkpoints status + partial transcript/summary via [VelumRepository].
+ * Uses a dataSync foreground notification for long on-device jobs.
  */
 class RecordingProcessWorker(
     appContext: Context,
     params: WorkerParameters,
 ) : CoroutineWorker(appContext, params) {
 
+    override suspend fun getForegroundInfo(): ForegroundInfo = buildForegroundInfo()
+
     override suspend fun doWork(): Result {
+        setForeground(buildForegroundInfo())
         val recordingId = inputData.getString(KEY_RECORDING_ID) ?: return Result.failure()
         val templateId = inputData.getString(KEY_TEMPLATE_ID)
         val retranscribe = inputData.getBoolean(KEY_RETRANSCRIBE, true)
@@ -126,6 +137,27 @@ class RecordingProcessWorker(
         }
     }
 
+    private fun buildForegroundInfo(): ForegroundInfo {
+        ensureProcessingChannel(applicationContext)
+        val notification = NotificationCompat.Builder(applicationContext, PROCESSING_CHANNEL_ID)
+            .setContentTitle(applicationContext.getString(R.string.velum_processing_notification_title))
+            .setContentText(applicationContext.getString(R.string.velum_processing_notification_body))
+            .setSmallIcon(android.R.drawable.stat_sys_download)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setCategory(NotificationCompat.CATEGORY_PROGRESS)
+            .build()
+        return if (Build.VERSION.SDK_INT >= 29) {
+            ForegroundInfo(
+                PROCESSING_NOTIFICATION_ID,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
+            )
+        } else {
+            ForegroundInfo(PROCESSING_NOTIFICATION_ID, notification)
+        }
+    }
+
     companion object {
         const val UNIQUE_PREFIX = "velum-recording-process-"
         const val KEY_RECORDING_ID = "recordingId"
@@ -134,6 +166,8 @@ class RecordingProcessWorker(
         const val KEY_ERROR = "error"
         const val STATUS_PAUSED_THERMAL = "paused_thermal"
         const val MAX_HOLDER_RETRIES = 5
+        const val PROCESSING_CHANNEL_ID = "velum_recording_processing"
+        const val PROCESSING_NOTIFICATION_ID = 0x56454C02
 
         fun enqueue(
             context: Context,
@@ -161,6 +195,19 @@ class RecordingProcessWorker(
                 UNIQUE_PREFIX + recordingId,
                 ExistingWorkPolicy.KEEP,
                 request,
+            )
+        }
+
+        fun ensureProcessingChannel(context: Context) {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+            val nm = context.getSystemService(NotificationManager::class.java) ?: return
+            if (nm.getNotificationChannel(PROCESSING_CHANNEL_ID) != null) return
+            nm.createNotificationChannel(
+                NotificationChannel(
+                    PROCESSING_CHANNEL_ID,
+                    context.getString(R.string.velum_processing_channel_name),
+                    NotificationManager.IMPORTANCE_LOW,
+                ),
             )
         }
     }

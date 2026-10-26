@@ -36,6 +36,8 @@ Owner standing rule: nothing may remain stub/demo-only. Prefer **blocked-on-owne
 - [x] Android sherpa-onnx `OfflineRecognizer` (Parakeet / Whisper / SenseVoice)
 - [x] `StreamingTranscriber` (Android OnlineRecognizer when streaming pack Ready; else overlapping Offline windows; JVM `FakeStreamingTranscriber`)
 - [x] Phone mic: runtime RECORD_AUDIO + rationale → PCM WAV (`MicCapture` / `WavWriter`) → process via WorkManager
+- [x] Mic foreground service (`MicRecordingService`, `FOREGROUND_SERVICE_MICROPHONE`) + Pause/Stop notification; process-death WAV recover (`WavWriter.recoverOrFinalize`); POST_NOTIFICATIONS on API 33+
+- [x] Processing FGS via WorkManager `setForegroundAsync` (`FOREGROUND_SERVICE_DATA_SYNC`) on `RecordingProcessWorker`
 - [x] Live record UI with partial Markdown (mic when permitted; else PCM demo stream)
 - [x] Mind-map from summary H2 + list items ("Mapa mental" sheet)
 - [x] Local diarization + cosine voice profiles (`VoiceProfileStore`); preferred embedding `3dspeaker-eres2net-base`
@@ -82,7 +84,7 @@ Owner standing rule: nothing may remain stub/demo-only. Prefer **blocked-on-owne
 ## In progress
 
 - [ ] Chunked / windowed ASR + BLE-to-file sync (OOM guard at 200 MiB is interim)
-- [ ] Mic + processing foreground services (FOREGROUND_SERVICE)
+- [x] Mic + processing foreground services (FOREGROUND_SERVICE) — mic `microphone` + processing `dataSync`
 - [ ] Owner-approved Wi‑Fi SoftAP: per-socket bind + AEAD nonce/TLS strategy
 
 ## Blocked on owner

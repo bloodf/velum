@@ -65,11 +65,11 @@ import dev.velum.ai.local.LocalAsrRouter
 import dev.velum.ai.local.LocalModelStatus
 import dev.velum.app.di.AppContainer
 import dev.velum.app.i18n.LocalStrings
+import dev.velum.app.platform.MicStartResult
 import dev.velum.app.platform.MicStopResult
-import dev.velum.app.platform.createLivePcmCapture
+import dev.velum.app.platform.WavWriter
 import dev.velum.app.platform.recordingsDirectoryPath
 import dev.velum.app.platform.shareText
-import dev.velum.app.platform.WavWriter
 import dev.velum.app.ui.components.AiGlowFooter
 import dev.velum.app.ui.components.BlackButton
 import dev.velum.app.ui.components.ChevronRow
@@ -669,7 +669,8 @@ private fun LiveTranscriptPane(
     val wavPath = remember(recordingId) {
         "${recordingsDirectoryPath()}/$recordingId.wav"
     }
-    val wavWriter = remember(recordingId) { WavWriter(wavPath, sampleRateHz = 16_000) }
+    // Only allocate WavWriter for the PCM-demo fallback. MicCapture/FGS owns the real file.
+    val demoWavWriter = remember(recordingId) { mutableStateOf<WavWriter?>(null) }
 
     fun finishOnce(): String {
         if (finished.value) return partial
@@ -684,34 +685,39 @@ private fun LiveTranscriptPane(
 
         val push: (ByteArray) -> Unit = { pcm ->
             try {
-                // When FAB MicCapture owns the WAV, skip duplicate WavWriter.
-                if (!container.micCapture.isCapturing) {
-                    wavWriter.writePcm(pcm)
-                }
                 streamer.pushPcm(pcm)
             } catch (t: Throwable) {
                 println("VelumLivePcm: push failed: ${t.message ?: t}")
             }
         }
 
-        var liveMic: dev.velum.app.platform.LivePcmCapture? = null
-        val fromActiveMic = container.micCapture.isCapturing
-        if (fromActiveMic) {
+        var ownsMicSession = false
+        val alreadyCapturing = container.micCapture.isCapturing
+        if (alreadyCapturing) {
             container.micCapture.onPcmChunk = push
             usingMic = true
         } else {
-            liveMic = createLivePcmCapture()
-            val micStarted = liveMic?.start(push) == true
-            usingMic = micStarted
-            if (!micStarted) liveMic = null
+            when (container.micCapture.start(wavPath)) {
+                MicStartResult.Started -> {
+                    container.activeMicRecordingId = recordingId
+                    container.micCapture.onPcmChunk = push
+                    ownsMicSession = true
+                    usingMic = true
+                }
+                else -> {
+                    usingMic = false
+                }
+            }
         }
 
         val demoJob = if (!usingMic) {
+            val writer = WavWriter(wavPath, sampleRateHz = 16_000)
+            demoWavWriter.value = writer
             scope.launch {
                 var tick = 0
                 while (isActive && !finished.value) {
                     val chunk = demoPcmChunk(tick)
-                    wavWriter.writePcm(chunk)
+                    writer.writePcm(chunk)
                     streamer.pushPcm(chunk)
                     tick++
                     delay(400)
@@ -723,8 +729,12 @@ private fun LiveTranscriptPane(
 
         onDispose {
             demoJob?.cancel()
-            if (fromActiveMic) container.micCapture.onPcmChunk = null
-            liveMic?.stop()
+            container.micCapture.onPcmChunk = null
+            // Do not stop an FAB-owned session when leaving the pane briefly;
+            // only clear the PCM listener. Explicit Stop button finalizes.
+            if (ownsMicSession && container.activeMicRecordingId == recordingId) {
+                // Keep FGS running while status stays "recording".
+            }
             finishOnce()
         }
     }
@@ -776,8 +786,8 @@ private fun LiveTranscriptPane(
                 scope.launch {
                     val finalMd = withContext(Dispatchers.Default) { finishOnce() }
                     container.repository.updateTranscript(recordingId, finalMd)
-                    if (container.micCapture.isCapturing &&
-                        container.activeMicRecordingId == recordingId
+                    if (container.activeMicRecordingId == recordingId ||
+                        container.micCapture.isCapturing
                     ) {
                         when (val stopped = container.micCapture.stop()) {
                             is MicStopResult.Stopped -> {
@@ -788,11 +798,24 @@ private fun LiveTranscriptPane(
                                     sizeBytes = stopped.sizeBytes,
                                 )
                             }
-                            else -> Unit
+                            else -> {
+                                // Notification Stop may have already finalized; fix header from disk.
+                                WavWriter.recoverOrFinalize(wavPath)?.let { recovered ->
+                                    container.repository.updateLocalPath(
+                                        id = recordingId,
+                                        localPath = recovered.absolutePath,
+                                        durationSeconds = recovered.durationSeconds,
+                                        sizeBytes = recovered.sizeBytes,
+                                    )
+                                }
+                            }
                         }
                         container.activeMicRecordingId = null
                     } else {
-                        val finishedWav = withContext(Dispatchers.IO) { wavWriter.finish() }
+                        val finishedWav = withContext(Dispatchers.IO) {
+                            demoWavWriter.value?.finish()
+                                ?: WavWriter(wavPath, sampleRateHz = 16_000).finish()
+                        }
                         container.repository.updateLocalPath(
                             id = recordingId,
                             localPath = finishedWav.absolutePath,
