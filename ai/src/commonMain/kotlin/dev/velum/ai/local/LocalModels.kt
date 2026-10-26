@@ -66,6 +66,7 @@ val DefaultLocalCatalog: List<LocalModelSpec> = listOf(
         notes = "Default for 25 European languages via sherpa-onnx",
         languages = "25 European (incl. pt, en, es, fr, de, …)",
         downloadUrl = "$ASR_MODELS/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8.tar.bz2",
+        sha256 = "5793d0fd397c5778d2cf2126994d58e9d56b1be7c04d13c7a15bb1b4eafb16bf",
         archiveFileName = "sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8.tar.bz2",
     ),
     LocalModelSpec(
@@ -77,6 +78,7 @@ val DefaultLocalCatalog: List<LocalModelSpec> = listOf(
         notes = "Fallback for non-EU languages and mixed audio",
         languages = "~99 (quality varies)",
         downloadUrl = "$ASR_MODELS/sherpa-onnx-whisper-turbo.tar.bz2",
+        sha256 = "b11acbbcd660b44a8e0df33724feb5aaa709cf65668f2823d59f656312544f22",
         archiveFileName = "sherpa-onnx-whisper-turbo.tar.bz2",
     ),
     LocalModelSpec(
@@ -88,6 +90,7 @@ val DefaultLocalCatalog: List<LocalModelSpec> = listOf(
         notes = "Light CJK option (zh / yue / ja / ko)",
         languages = "zh, yue, en, ja, ko",
         downloadUrl = "$ASR_MODELS/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17.tar.bz2",
+        sha256 = "7d1efa2138a65b0b488df37f8b89e3d91a60676e416f515b952358d83dfd347e",
         archiveFileName = "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17.tar.bz2",
     ),
     LocalModelSpec(
@@ -279,6 +282,29 @@ class LocalModelManager(
             emit(requireNotNull(stateFor(id)))
             return@flow
         }
+        if (!url.startsWith("https://")) {
+            update(id) {
+                it.copy(
+                    status = LocalModelStatus.Failed,
+                    progress = 0f,
+                    error = "Model download URL must use https:// (got: $url)",
+                )
+            }
+            emit(requireNotNull(stateFor(id)))
+            return@flow
+        }
+        val expectedSha = current.spec.sha256?.trim().orEmpty()
+        if (expectedSha.isEmpty()) {
+            update(id) {
+                it.copy(
+                    status = LocalModelStatus.BlockedOnUrl,
+                    progress = 0f,
+                    error = "SHA-256 required before download for ${it.spec.id}. Blocked until checksum is pinned.",
+                )
+            }
+            emit(requireNotNull(stateFor(id)))
+            return@flow
+        }
 
         update(id) { it.copy(status = LocalModelStatus.Downloading, progress = 0f, error = null) }
         emit(requireNotNull(stateFor(id)))
@@ -290,6 +316,7 @@ class LocalModelManager(
         if (partial.exists()) partial.deleteRecursively()
 
         try {
+            val digest = createSha256Digest()
             httpClient.prepareGet(url).execute { response ->
                 if (!response.status.isSuccess()) {
                     throw IllegalStateException("Download failed: HTTP ${response.status.value}")
@@ -301,6 +328,7 @@ class LocalModelManager(
                 while (!channel.isClosedForRead) {
                     val n = channel.readAvailable(buffer, 0, buffer.size)
                     if (n <= 0) break
+                    digest.update(buffer, 0, n)
                     partial.appendBytes(buffer.copyOf(n))
                     written += n
                     val progress = (written.toDouble() / total.toDouble()).toFloat().coerceIn(0f, 0.99f)
@@ -309,19 +337,17 @@ class LocalModelManager(
                 }
             }
 
-            val bytes = partial.readBytes()
-            val expectedSha = current.spec.sha256
-            if (!expectedSha.isNullOrBlank()) {
-                val actual = sha256Hex(bytes)
-                if (!actual.equals(expectedSha, ignoreCase = true)) {
-                    partial.deleteRecursively()
-                    throw IllegalStateException("SHA-256 mismatch for $id")
-                }
+            val actual = digest.digestHex()
+            if (!actual.equals(expectedSha, ignoreCase = true)) {
+                partial.deleteRecursively()
+                throw IllegalStateException("SHA-256 mismatch for $id")
             }
 
             if (dest.exists()) dest.deleteRecursively()
-            dest.writeBytes(bytes)
-            partial.deleteRecursively()
+            if (!partial.renameTo(dest)) {
+                dest.writeBytes(partial.readBytes())
+                partial.deleteRecursively()
+            }
 
             if (ModelArchiveExtractor.isArchive(current.spec.archiveFileName)) {
                 update(id) {
@@ -371,6 +397,12 @@ class LocalModelManager(
                     LocalModelStatus.BlockedOnUrl,
                     error = "No download URL. Blocked until a release URL is set.",
                 )
+            spec.sha256.isNullOrBlank() ->
+                LocalModelState(
+                    spec,
+                    LocalModelStatus.BlockedOnUrl,
+                    error = "SHA-256 required before download. Blocked until checksum is pinned.",
+                )
             dir.exists() && dir.listChildren().isNotEmpty() ->
                 LocalModelState(
                     spec,
@@ -383,8 +415,11 @@ class LocalModelManager(
     }
 
     private fun statusForMissingUrl(spec: LocalModelSpec): LocalModelStatus =
-        if (spec.downloadUrl.isNullOrBlank()) LocalModelStatus.BlockedOnUrl
-        else LocalModelStatus.NotDownloaded
+        when {
+            spec.downloadUrl.isNullOrBlank() -> LocalModelStatus.BlockedOnUrl
+            spec.sha256.isNullOrBlank() -> LocalModelStatus.BlockedOnUrl
+            else -> LocalModelStatus.NotDownloaded
+        }
 
     private fun update(id: String, transform: (LocalModelState) -> LocalModelState) {
         _states.update { list ->

@@ -8,6 +8,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import java.io.File
 import java.io.FileOutputStream
+import java.util.UUID
 
 @Composable
 actual fun rememberAudioImporter(onPicked: (path: String) -> Unit): () -> Unit {
@@ -16,7 +17,7 @@ actual fun rememberAudioImporter(onPicked: (path: String) -> Unit): () -> Unit {
         contract = ActivityResultContracts.OpenDocument(),
     ) { uri: Uri? ->
         if (uri == null) return@rememberLauncherForActivityResult
-        val name = uri.lastPathSegment?.substringAfterLast('/') ?: "import.audio"
+        val name = sanitizeImportFileName(uri.lastPathSegment)
         val dest = File(context.cacheDir, "imports").apply { mkdirs() }
         val outFile = File(dest, "${System.currentTimeMillis()}_$name")
         context.contentResolver.openInputStream(uri)?.use { input ->
@@ -31,4 +32,18 @@ actual fun rememberAudioImporter(onPicked: (path: String) -> Unit): () -> Unit {
             launcher.launch(arrayOf("audio/*", "application/ogg", "*/*"))
         }
     }
+}
+
+internal fun sanitizeImportFileName(raw: String?): String {
+    val base = raw
+        ?.substringAfterLast('/')
+        ?.substringAfterLast('\\')
+        ?.trim()
+        .orEmpty()
+    val cleaned = base
+        .replace("..", "")
+        .replace(Regex("[\\\\/]"), "")
+        .filter { it.isLetterOrDigit() || it == '.' || it == '_' || it == '-' }
+        .take(120)
+    return cleaned.ifBlank { "${UUID.randomUUID()}.audio" }
 }

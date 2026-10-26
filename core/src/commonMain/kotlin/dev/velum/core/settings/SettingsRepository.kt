@@ -72,7 +72,7 @@ class SettingsRepository(
     }
 
     suspend fun setBaseUrl(url: String) {
-        val normalized = url.trim().trimEnd('/')
+        val normalized = AiBaseUrl.normalizeAndValidate(url)
         store.putString(KEY_BASE_URL, normalized)
         _settings.update { it.copy(baseUrl = normalized) }
     }

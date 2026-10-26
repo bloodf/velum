@@ -5,7 +5,9 @@ import android.content.pm.PackageManager
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import android.util.Log
 import androidx.core.content.ContextCompat
+import java.io.IOException
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 
@@ -31,7 +33,7 @@ private class AndroidMicPcmCapture : LivePcmCapture {
             AudioFormat.ENCODING_PCM_16BIT,
         )
         if (minBuf <= 0) return false
-        val bufSize = minBuf.coerceAtLeast(sampleRateHz / 5 * 2) // ≥100 ms
+        val bufSize = minBuf.coerceAtLeast(sampleRateHz / 5 * 2)
         val audioRecord = try {
             AudioRecord(
                 MediaRecorder.AudioSource.VOICE_RECOGNITION,
@@ -52,9 +54,23 @@ private class AndroidMicPcmCapture : LivePcmCapture {
         audioRecord.startRecording()
         worker = thread(name = "velum-mic-pcm", isDaemon = true) {
             val buf = ByteArray(bufSize)
-            while (running.get()) {
-                val n = audioRecord.read(buf, 0, buf.size)
-                if (n > 0) onPcm(buf.copyOf(n))
+            try {
+                while (running.get()) {
+                    val n = audioRecord.read(buf, 0, buf.size)
+                    if (n > 0) {
+                        onPcm(buf.copyOf(n))
+                    } else if (n < 0) {
+                        Log.e(TAG, "AudioRecord.read error code=$n")
+                        break
+                    }
+                }
+            } catch (t: Throwable) {
+                Log.e(TAG, "Live PCM capture failed", t)
+                if (t is IOException) {
+                    running.set(false)
+                }
+            } finally {
+                running.set(false)
             }
         }
         return true
@@ -66,9 +82,14 @@ private class AndroidMicPcmCapture : LivePcmCapture {
         worker = null
         try {
             record?.stop()
-        } catch (_: IllegalStateException) {
+        } catch (t: IllegalStateException) {
+            Log.e(TAG, "AudioRecord.stop failed", t)
         }
         record?.release()
         record = null
+    }
+
+    companion object {
+        private const val TAG = "VelumLivePcm"
     }
 }

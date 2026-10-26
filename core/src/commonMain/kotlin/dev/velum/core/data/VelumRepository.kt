@@ -243,11 +243,13 @@ class VelumRepository(
         transcript: String? = null,
         summaryMarkdown: String? = null,
     ) = withContext(Dispatchers.Default) {
-        val current = q.selectRecordingById(id).executeAsOneOrNull() ?: return@withContext
-        val nextTranscript = transcript ?: current.transcript
-        val nextSummary = summaryMarkdown ?: current.summary_markdown
-        q.updateProcessingCheckpoint(status, nextTranscript, nextSummary, id)
-        reindexRecording(id)
+        db.transaction {
+            val current = q.selectRecordingById(id).executeAsOneOrNull() ?: return@transaction
+            val nextTranscript = transcript ?: current.transcript
+            val nextSummary = summaryMarkdown ?: current.summary_markdown
+            q.updateProcessingCheckpoint(status, nextTranscript, nextSummary, id)
+            reindexRecording(id)
+        }
     }
 
     suspend fun getMeta(key: String): String? = withContext(Dispatchers.Default) {

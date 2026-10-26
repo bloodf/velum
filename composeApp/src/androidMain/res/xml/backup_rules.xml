@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <exclude domain="sharedpref" path="velum_secure.xml" />
+    <exclude domain="sharedpref" path="velum_secure_prefs.xml" />
+    <exclude domain="sharedpref" path="velum_secure_encrypted.xml" />
+    <exclude domain="database" />
+    <exclude domain="file" path="models/" />
+    <exclude domain="file" path="recordings/" />
+</full-backup-content>

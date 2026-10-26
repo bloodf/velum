@@ -5,8 +5,10 @@ import android.content.pm.PackageManager
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import android.util.Log
 import androidx.core.content.ContextCompat
 import java.io.File
+import java.io.IOException
 import java.io.RandomAccessFile
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
@@ -113,13 +115,16 @@ private class AndroidMicCapture(
                     }
                     raf.seek(0)
                     writeWavHeader(raf, dataSize = bytesWritten)
+                    raf.fd.sync()
                 }
-            } catch (_: Throwable) {
-                // stop() surfaces failures via file size / NotCapturing
+            } catch (t: Throwable) {
+                Log.e(TAG, "Mic capture write failed", t)
+                capturing.set(false)
             } finally {
                 try {
                     recorder.stop()
-                } catch (_: Throwable) {
+                } catch (t: Throwable) {
+                    Log.e(TAG, "AudioRecord.stop failed", t)
                 }
                 recorder.release()
                 if (audioRecord === recorder) audioRecord = null
@@ -186,5 +191,6 @@ private class AndroidMicCapture(
 
     companion object {
         const val SAMPLE_RATE_HZ = 16_000
+        private const val TAG = "VelumMicCapture"
     }
 }

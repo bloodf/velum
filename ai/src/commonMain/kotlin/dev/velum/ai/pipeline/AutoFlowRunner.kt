@@ -10,26 +10,31 @@ import dev.velum.core.db.Autoflow
 import dev.velum.core.db.Recording
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
- * Local AutoFlow: match rules → [RecordingProcessor] → optional share / calendar intent.
- * Calendar titles come from the device CalendarProvider (no Plaud/Google OAuth server).
+ * Local AutoFlow: match rules → [RecordingJobScheduler] / [RecordingProcessor] →
+ * optional share / calendar intent.
+ * When [jobScheduler] is set, processing goes through that single path (WorkManager on
+ * Android) so AutoFlow never double-runs with the UI enqueue.
  */
 class AutoFlowRunner(
     private val repository: VelumRepository,
     private val processor: RecordingProcessor,
     private val scope: CoroutineScope,
-    /** When false, processing still runs; callers may skip UI banners. */
     val notifyEnabled: () -> Boolean = { true },
     private val calendar: CalendarEventProvider = createCalendarEventProvider(),
     private val nowEpochMs: () -> Long = { epochMsNow() },
+    private val jobScheduler: RecordingJobScheduler? = null,
 ) {
     private var job: Job? = null
     private val processedIds = mutableSetOf<String>()
@@ -62,11 +67,7 @@ class AutoFlowRunner(
                         val match = enabledFlows.firstOrNull { flow ->
                             matches(flow, recording)
                         } ?: continue
-                        processor.process(
-                            recordingId = recording.id,
-                            templateId = match.template_id,
-                            retranscribe = true,
-                        ).collect { }
+                        runProcessing(recording.id, match.template_id)
                         firePostAction(match, recording.id)
                     }
                 }
@@ -78,10 +79,41 @@ class AutoFlowRunner(
         job = null
     }
 
-    /** After BLE sync inserts a recording, rename from the current/next calendar event. */
     suspend fun applyCalendarTitleIfAvailable(recordingId: String) {
         val recording = repository.getRecording(recordingId) ?: return
         maybeApplyCalendarTitle(recording)
+    }
+
+    private suspend fun runProcessing(recordingId: String, templateId: String?) {
+        val scheduler = jobScheduler
+        if (scheduler != null) {
+            scheduler.enqueue(
+                recordingId = recordingId,
+                templateId = templateId,
+                retranscribe = true,
+            )
+            awaitTerminalStatus(recordingId)
+        } else {
+            processor.process(
+                recordingId = recordingId,
+                templateId = templateId,
+                retranscribe = true,
+            ).collect { }
+        }
+    }
+
+    private suspend fun awaitTerminalStatus(recordingId: String) {
+        var sawWork = false
+        withTimeoutOrNull(AWAIT_TERMINAL_MS) {
+            while (isActive) {
+                val status = repository.getRecording(recordingId)?.status ?: return@withTimeoutOrNull
+                when (status) {
+                    "generating", "paused_thermal" -> sawWork = true
+                    "ready", "failed" -> if (sawWork) return@withTimeoutOrNull
+                }
+                delay(500)
+            }
+        }
     }
 
     private suspend fun maybeApplyCalendarTitle(recording: Recording) {
@@ -143,7 +175,6 @@ class AutoFlowRunner(
         }
     }
 
-    /** Exposed for tests. */
     internal fun matches(flow: Autoflow, recording: Recording): Boolean =
         AutoFlowMatcher.matches(
             rule = AutoFlowMatcher.Rule(
@@ -161,6 +192,10 @@ class AutoFlowRunner(
                 transcript = recording.transcript,
             ),
         )
+
+    companion object {
+        private const val AWAIT_TERMINAL_MS = 30L * 60L * 1000L
+    }
 }
 
 sealed class AutoFlowUiAction {

@@ -1,6 +1,7 @@
 package dev.velum.ai
 
 import dev.velum.core.model.AiModelInfo
+import dev.velum.core.settings.AiBaseUrl
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.bearerAuth
@@ -120,7 +121,7 @@ class OpenAiCompatibleClient(
         }
 
         fun joinUrl(baseUrl: String, path: String): String {
-            val base = baseUrl.trim().trimEnd('/')
+            val base = AiBaseUrl.normalizeAndValidate(baseUrl)
             val p = path.trimStart('/')
             return "$base/$p"
         }

@@ -4,7 +4,7 @@ import dev.velum.core.data.VelumRepository
 
 /**
  * Process-wide hooks so [RecordingProcessWorker] can reach the app graph without a custom
- * WorkerFactory. Installed from MainActivity after [dev.velum.app.di.AppContainer] is built.
+ * WorkerFactory. Installed from Application.onCreate after AppContainer is built.
  */
 object AiRuntimeHolder {
     @Volatile

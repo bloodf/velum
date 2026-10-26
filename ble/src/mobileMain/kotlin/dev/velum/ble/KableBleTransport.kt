@@ -47,6 +47,7 @@ class KableBleTransport : BleTransport {
     private var scanJob: Job? = null
     private var peripheral: Peripheral? = null
     private var notifyJob: Job? = null
+    private var disconnectWatchJob: Job? = null
     private val seen = mutableMapOf<String, Advertisement>()
 
     private val writeCharacteristic = characteristicOf(
@@ -126,10 +127,17 @@ class KableBleTransport : BleTransport {
             }
             val device = adv.toConnectedDevice()
             _state.value = BleConnectionState.Connected(device)
-            scope.launch {
+            disconnectWatchJob?.cancel()
+            disconnectWatchJob = scope.launch {
                 p.state
                     .filter { it is State.Disconnected }
                     .collect {
+                        notifyJob?.cancel()
+                        notifyJob = null
+                        if (peripheral === p) {
+                            runCatching { p.close() }
+                            peripheral = null
+                        }
                         _state.value = BleConnectionState.Idle
                     }
             }
@@ -139,6 +147,8 @@ class KableBleTransport : BleTransport {
     }
 
     override suspend fun disconnect() {
+        disconnectWatchJob?.cancelAndJoin()
+        disconnectWatchJob = null
         notifyJob?.cancelAndJoin()
         notifyJob = null
         runCatching { peripheral?.disconnect() }

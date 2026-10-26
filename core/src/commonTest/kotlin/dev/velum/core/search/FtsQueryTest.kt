@@ -15,6 +15,15 @@ class FtsQueryTest {
         assertEquals("sprint* planning*", FtsQuery.fromUserInput("sprint planning"))
         assertEquals("BLE*", FtsQuery.fromUserInput("\"BLE*\""))
     }
+
+    @Test
+    fun stripsFtsOperatorsAndPunctuation() {
+        assertNull(FtsQuery.fromUserInput("AND OR NOT NEAR"))
+        assertEquals("hello* world*", FtsQuery.fromUserInput("(hello) -world"))
+        assertEquals("café*", FtsQuery.fromUserInput("café"))
+        assertEquals("foo_bar*", FtsQuery.fromUserInput("foo_bar"))
+        assertEquals("alpha* beta*", FtsQuery.fromUserInput("alpha AND beta OR"))
+    }
 }
 
 class RecordingSearchTest {

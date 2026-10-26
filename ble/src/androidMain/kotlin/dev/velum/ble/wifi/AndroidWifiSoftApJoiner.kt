@@ -17,6 +17,11 @@ import kotlin.coroutines.resumeWithException
  *
  * Compiles on Android 10+; does not contact Plaud servers. Full transfer UX
  * remains blocked on owner hardware approval.
+ *
+ * Intentionally does **not** call [ConnectivityManager.bindProcessToNetwork]:
+ * process-wide binding would hijack all sockets onto SoftAP (DNS/API breakage).
+ * Callers that need SoftAP routing should bind individual sockets via
+ * [boundNetwork] once the Wi-Fi path is owner-approved.
  */
 class AndroidWifiSoftApJoiner(
     private val context: Context,
@@ -24,6 +29,9 @@ class AndroidWifiSoftApJoiner(
     private var connectivityManager: ConnectivityManager? = null
     private var callback: ConnectivityManager.NetworkCallback? = null
     private var boundNetwork: Network? = null
+
+    /** SoftAP [Network] for future per-socket binding; null when not joined. */
+    fun boundNetwork(): Network? = boundNetwork
 
     override suspend fun join(ssid: String, password: String, ssidIsPattern: Boolean) {
         check(Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -48,7 +56,6 @@ class AndroidWifiSoftApJoiner(
             val cb = object : ConnectivityManager.NetworkCallback() {
                 override fun onAvailable(network: Network) {
                     boundNetwork = network
-                    cm.bindProcessToNetwork(network)
                     if (cont.isActive) cont.resume(Unit)
                 }
 
@@ -76,7 +83,6 @@ class AndroidWifiSoftApJoiner(
         if (cm != null && cb != null) {
             runCatching { cm.unregisterNetworkCallback(cb) }
         }
-        cm?.bindProcessToNetwork(null)
         callback = null
         boundNetwork = null
         connectivityManager = null

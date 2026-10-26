@@ -6,7 +6,9 @@ import dev.velum.protocol.BatteryReading
 import dev.velum.protocol.Bytes
 import dev.velum.protocol.Commands
 import dev.velum.protocol.DeviceIdentityKeys
+import dev.velum.protocol.CommonSettings
 import dev.velum.protocol.ForbiddenOpcodes
+import dev.velum.protocol.ForbiddenSettings
 import dev.velum.protocol.Framing
 import dev.velum.protocol.HandshakeResponse
 import dev.velum.protocol.HandshakeStatus
@@ -159,6 +161,9 @@ class PlaudDeviceClient(
     }
 
     suspend fun downloadSession(sessionId: Long, sizeBytes: Long): ByteArray {
+        require(sizeBytes in 0..MAX_SESSION_DOWNLOAD_BYTES) {
+            "Session sizeBytes=$sizeBytes exceeds cap of $MAX_SESSION_DOWNLOAD_BYTES"
+        }
         val start = Sessions.encodeSyncStart(sessionId, 0, sizeBytes)
         val startPayload = transactCommand(Commands.SYNC_FILE_START, start)
         val startRsp = Sessions.parseSyncStartResponse(startPayload)
@@ -170,7 +175,12 @@ class PlaudDeviceClient(
             when (val inboundPacket = Framing.decodeInbound(raw)) {
                 is InboundPacket.RecordingData -> {
                     when (val data = Sessions.parseRecordingData(raw, protocolVersion)) {
-                        is RecordingDataPacket.Chunk -> out.addAll(data.data.asList())
+                        is RecordingDataPacket.Chunk -> {
+                            require(out.size.toLong() + data.data.size <= MAX_SESSION_DOWNLOAD_BYTES) {
+                                "Session download exceeded ${MAX_SESSION_DOWNLOAD_BYTES}-byte cap"
+                            }
+                            out.addAll(data.data.asList())
+                        }
                         is RecordingDataPacket.End -> break
                     }
                 }
@@ -275,11 +285,30 @@ class PlaudDeviceClient(
 
     private fun assertOutboundAllowed(packet: ByteArray) {
         require(packet.size >= 2) { "Outbound packet too short" }
-        val opcode = if (packet[0] == Framing.APP_PREFIX && packet.size >= 3) {
+        val hasAppPrefix = packet[0] == Framing.APP_PREFIX && packet.size >= 3
+        val opcode = if (hasAppPrefix) {
             Bytes.readU16Le(packet, 1)
         } else {
             Bytes.readU16Le(packet, 0)
         }
         ForbiddenOpcodes.requireAllowed(opcode)
+        if (opcode == CommonSettings.CMD) {
+            val paramsOffset = if (hasAppPrefix) 3 else 2
+            val params = if (packet.size > paramsOffset) {
+                packet.copyOfRange(paramsOffset, packet.size)
+            } else {
+                ByteArray(0)
+            }
+            // Cmd 8 read is [settingId]; write is [settingId][value…].
+            // Only writes of forbidden settings are rejected (reads stay allowed).
+            if (params.size > 1) {
+                ForbiddenSettings.requireWritable(params[0].toInt() and 0xFF)
+            }
+        }
+    }
+
+    companion object {
+        /** Hard cap for a single session download (512 MiB). */
+        const val MAX_SESSION_DOWNLOAD_BYTES: Long = 512L * 1024 * 1024
     }
 }

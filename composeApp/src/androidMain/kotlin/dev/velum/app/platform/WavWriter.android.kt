@@ -33,6 +33,7 @@ internal class JvmWavFileHandle(private val file: File) : WavFileHandle {
             writeShortLE(raf, bitsPerSample.toShort())
             raf.writeBytes("data")
             writeIntLE(raf, dataSize.toInt())
+            raf.fd.sync()
         }
     }
 

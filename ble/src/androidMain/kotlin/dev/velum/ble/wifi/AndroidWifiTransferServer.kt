@@ -15,8 +15,11 @@ import kotlin.concurrent.thread
  * Minimal phone-side TCP listener on **:8081** for Wi-Fi fast transfer.
  *
  * Skeleton: accepts one client and relays length-prefixed blobs. The official
- * app uses WebSocket; a WS library can replace this later. Bind is local only —
- * never contacts Plaud servers.
+ * app uses WebSocket; a WS library can replace this later. Never contacts Plaud
+ * servers. Binds `0.0.0.0` so the SoftAP-joined device can reach the phone;
+ * loopback-only would break SoftAP. Process-wide network bind was removed from
+ * [AndroidWifiSoftApJoiner]; this path remains an owner-blocked skeleton until
+ * per-socket SoftAP binding + a stronger preamble are wired.
  */
 class AndroidWifiTransferServer : WifiTransferServer {
     private val incoming = MutableSharedFlow<ByteArray>(extraBufferCapacity = 64)
@@ -28,6 +31,7 @@ class AndroidWifiTransferServer : WifiTransferServer {
         stop()
         val server = ServerSocket()
         server.reuseAddress = true
+        // 0.0.0.0: SoftAP client (device) must reach the phone; 127.0.0.1 would not.
         server.bind(InetSocketAddress(port))
         serverRef.set(server)
         running.set(true)

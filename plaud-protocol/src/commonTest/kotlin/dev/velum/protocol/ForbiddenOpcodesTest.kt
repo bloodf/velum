@@ -59,6 +59,12 @@ class ForbiddenOpcodesTest {
         val ok = CommonSettings.encodeWrite(1, byteArrayOf(0x0A))
         assertEquals(Framing.APP_PREFIX, ok[0])
         assertEquals(8, ok[1].toInt() and 0xFF)
+        // Reads of forbidden ids remain framed (only writes are gated).
+        val read = CommonSettings.encodeRead(ForbiddenSettings.AUTO_DELETE)
+        assertEquals(Framing.APP_PREFIX, read[0])
+        assertEquals(CommonSettings.CMD, Bytes.readU16Le(read, 1))
+        assertEquals(1, read.size - 3)
+        assertEquals(ForbiddenSettings.AUTO_DELETE, read[3].toInt() and 0xFF)
     }
 
     @Test

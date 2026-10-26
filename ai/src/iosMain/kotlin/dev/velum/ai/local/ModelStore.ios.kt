@@ -91,6 +91,23 @@ actual class ModelStoreDir actual constructor(absolutePath: String) {
         val size = attrs["NSFileSize"] as? NSNumber
         return size?.longValue ?: 0L
     }
+
+    actual fun renameTo(dest: ModelStoreDir): Boolean {
+        val fm = NSFileManager.defaultManager
+        if (fm.fileExistsAtPath(dest.absolutePath)) {
+            fm.removeItemAtPath(dest.absolutePath, error = null)
+        }
+        val parent = dest.absolutePath.substringBeforeLast('/', missingDelimiterValue = "")
+        if (parent.isNotEmpty()) {
+            fm.createDirectoryAtPath(
+                parent,
+                withIntermediateDirectories = true,
+                attributes = null,
+                error = null,
+            )
+        }
+        return fm.moveItemAtPath(absolutePath, toPath = dest.absolutePath, error = null)
+    }
 }
 
 actual fun defaultModelStoreRoot(): ModelStoreDir {

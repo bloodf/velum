@@ -39,6 +39,33 @@ class LocalModelManagerTest {
     }
 
     @Test
+    fun blocked_without_sha256() = runTest {
+        val root = ModelStoreDir(File.createTempFile("velum-models", "").also { it.delete(); it.mkdirs() }.absolutePath)
+        val manager = LocalModelManager(
+            storeRoot = root,
+            httpClient = HttpClient(MockEngine { respond(byteArrayOf(1)) }),
+            catalog = listOf(
+                LocalModelSpec(
+                    id = "no-sha",
+                    displayName = "No SHA",
+                    kind = LocalModelKind.Asr,
+                    approxBytes = 1,
+                    license = "MIT",
+                    notes = "test",
+                    languages = "en",
+                    downloadUrl = "https://example.test/x.bin",
+                    archiveFileName = "x.bin",
+                    sha256 = null,
+                ),
+            ),
+        )
+        assertEquals(LocalModelStatus.BlockedOnUrl, manager.stateFor("no-sha")?.status)
+        val states = manager.download("no-sha").toList()
+        assertEquals(LocalModelStatus.BlockedOnUrl, states.last().status)
+        assertTrue(states.last().error?.contains("SHA-256") == true)
+    }
+
+    @Test
     fun download_writes_file_and_marks_ready() = runTest {
         val rootDir = File.createTempFile("velum-models", "").also { it.delete(); it.mkdirs() }
         val root = ModelStoreDir(rootDir.absolutePath)
@@ -64,14 +91,42 @@ class LocalModelManagerTest {
                     languages = "en",
                     downloadUrl = "https://example.test/tiny.bin",
                     archiveFileName = "tiny.bin",
+                    sha256 = sha256Hex(payload),
                 ),
             ),
         )
         val states = manager.download("tiny").toList()
-        assertEquals(LocalModelStatus.Ready, states.last().status)
+        assertEquals(LocalModelStatus.Ready, states.last().status, states.last().error)
         assertTrue(root.resolve("tiny").resolve("tiny.bin").exists())
         manager.delete("tiny")
         assertEquals(LocalModelStatus.NotDownloaded, manager.stateFor("tiny")?.status)
         assertTrue(!root.resolve("tiny").resolve("tiny.bin").exists())
+    }
+
+    @Test
+    fun download_rejects_http_url() = runTest {
+        val root = ModelStoreDir(File.createTempFile("velum-models", "").also { it.delete(); it.mkdirs() }.absolutePath)
+        val payload = byteArrayOf(1)
+        val manager = LocalModelManager(
+            storeRoot = root,
+            httpClient = HttpClient(MockEngine { respond(payload) }),
+            catalog = listOf(
+                LocalModelSpec(
+                    id = "http-only",
+                    displayName = "HTTP",
+                    kind = LocalModelKind.Asr,
+                    approxBytes = 1,
+                    license = "MIT",
+                    notes = "test",
+                    languages = "en",
+                    downloadUrl = "http://example.test/x.bin",
+                    archiveFileName = "x.bin",
+                    sha256 = sha256Hex(payload),
+                ),
+            ),
+        )
+        val states = manager.download("http-only").toList()
+        assertEquals(LocalModelStatus.Failed, states.last().status)
+        assertTrue(states.last().error?.contains("https://") == true)
     }
 }

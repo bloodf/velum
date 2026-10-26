@@ -15,6 +15,7 @@ import dev.velum.ai.local.ModelStoreDir
 import dev.velum.core.data.VelumRepository
 import dev.velum.core.model.ComputeMode
 import dev.velum.core.settings.SettingsRepository
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 
@@ -47,19 +48,23 @@ class RecordingProcessor(
             if (!localPath.isNullOrBlank()) {
                 emit(JobProgress.Running(0.1f, "Decoding audio"))
                 val raw = readFileBytes(localPath)
+                ensureAudioByteBudget(raw.size.toLong(), "file read")
                 filename = localPath.substringAfterLast('/')
                 if (filename.endsWith(".ogg", ignoreCase = true) ||
                     filename.endsWith(".opus", ignoreCase = true) ||
                     looksLikeOgg(raw)
                 ) {
                     val pcm = createOpusDecoder().decodeToPcm(raw)
+                    ensureAudioByteBudget(pcm.samples.size.toLong() * 2L, "opus decode")
                     audioBytes = pcm.toByteArray()
                     sampleRate = pcm.sampleRateHz
                 } else if (filename.endsWith(".wav", ignoreCase = true) || looksLikeWav(raw)) {
                     val wav = stripWavToPcm(raw)
+                    ensureAudioByteBudget(wav.pcm.size.toLong(), "wav decode")
                     audioBytes = wav.pcm
                     sampleRate = wav.sampleRateHz
                 } else {
+                    ensureAudioByteBudget(raw.size.toLong(), "raw audio")
                     audioBytes = raw
                     sampleRate = 16_000
                 }
@@ -199,8 +204,21 @@ class RecordingProcessor(
             repository.updateStatus(recordingId, "ready")
             emit(JobProgress.Succeeded("Processed $recordingId"))
         } catch (t: Throwable) {
+            if (t is CancellationException ||
+                t is kotlin.coroutines.cancellation.CancellationException
+            ) {
+                throw t
+            }
             repository.updateStatus(recordingId, "failed")
             emit(JobProgress.Failed(t.message ?: t.toString()))
+        }
+    }
+
+    private fun ensureAudioByteBudget(byteCount: Long, stage: String) {
+        if (byteCount > MAX_AUDIO_BYTES) {
+            throw IllegalStateException(
+                "Audio too large at $stage ($byteCount bytes); max is $MAX_AUDIO_BYTES",
+            )
         }
     }
 
@@ -327,6 +345,9 @@ class RecordingProcessor(
     }
 
     companion object {
+        /** Hard cap to fail before OOM on huge PCM buffers (~200 MiB). */
+        const val MAX_AUDIO_BYTES: Long = 200_000_000L
+
         /** Rough ~4k tokens; map-reduce when longer. */
         const val MAP_REDUCE_CHAR_THRESHOLD = 12_000
         const val MAP_REDUCE_CHUNK_CHARS = 8_000

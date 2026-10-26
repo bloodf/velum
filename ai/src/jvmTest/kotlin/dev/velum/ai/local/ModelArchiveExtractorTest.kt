@@ -52,6 +52,7 @@ class ModelArchiveExtractorTest {
                     languages = "en",
                     downloadUrl = "https://example.test/model.zip",
                     archiveFileName = "model.zip",
+                    sha256 = sha256Hex(zipBytes),
                 ),
             ),
         )

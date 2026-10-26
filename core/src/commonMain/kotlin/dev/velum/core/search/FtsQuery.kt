@@ -5,11 +5,23 @@ package dev.velum.core.search
  * Strips operators and uses prefix tokens so partial typing works.
  */
 object FtsQuery {
+    private val ftsKeywords = setOf("AND", "OR", "NOT", "NEAR")
+
     fun fromUserInput(raw: String): String? {
         val tokens = raw.trim()
             .split(Regex("\\s+"))
-            .map { it.replace(Regex("[\"'*^:]"), "") }
+            .map { token ->
+                buildString(token.length) {
+                    for (ch in token) {
+                        when {
+                            ch.isLetterOrDigit() || ch == '_' -> append(ch)
+                            else -> Unit
+                        }
+                    }
+                }
+            }
             .filter { it.isNotBlank() }
+            .filter { it.uppercase() !in ftsKeywords }
         if (tokens.isEmpty()) return null
         return tokens.joinToString(" ") { "$it*" }
     }

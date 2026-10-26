@@ -16,6 +16,8 @@ expect class ModelStoreDir(absolutePath: String) {
     fun deleteRecursively()
     fun listChildren(): List<ModelStoreDir>
     fun length(): Long
+    /** Atomic-ish publish: rename this path onto [dest] (replacing it). */
+    fun renameTo(dest: ModelStoreDir): Boolean
 }
 
 expect fun defaultModelStoreRoot(): ModelStoreDir

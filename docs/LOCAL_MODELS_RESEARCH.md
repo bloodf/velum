@@ -107,6 +107,9 @@ Computed locally from official downloads (k2-fsa GitHub release assets) or Huggi
 
 | Catalog id | Source | SHA-256 |
 |---|---|---|
+| `parakeet-tdt-0.6b-v3-int8` | k2-fsa `asr-models` / `sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8.tar.bz2` (487170055 B) | `5793d0fd397c5778d2cf2126994d58e9d56b1be7c04d13c7a15bb1b4eafb16bf` |
+| `whisper-large-v3-turbo` | k2-fsa `asr-models` / `sherpa-onnx-whisper-turbo.tar.bz2` (563790207 B) | `b11acbbcd660b44a8e0df33724feb5aaa709cf65668f2823d59f656312544f22` |
+| `sensevoice-small` | k2-fsa `asr-models` / `sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17.tar.bz2` (163002883 B) | `7d1efa2138a65b0b488df37f8b89e3d91a60676e416f515b952358d83dfd347e` |
 | `pyannote-segmentation-3.0` | k2-fsa `speaker-segmentation-models` / `sherpa-onnx-pyannote-segmentation-3-0.tar.bz2` | `24615ee884c897d9d2ba09bb4d30da6bb1b15e685065962db5b02e76e4996488` |
 | `3dspeaker-eres2net-base` | k2-fsa `speaker-recongition-models` ONNX | `1a331345f04805badbb495c775a6ddffcdd1a732567d5ec8b3d5749e3c7a5e4b` |
 | `wespeaker-voxceleb` | same release / `wespeaker_en_voxceleb_CAM++.onnx` | `c46fad10b5f81e1aa4a60c162714208577093655076c5450f8c469e522ec54ef` |

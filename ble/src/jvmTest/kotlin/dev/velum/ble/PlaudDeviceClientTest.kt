@@ -15,6 +15,7 @@ import dev.velum.protocol.DeviceIdentityKeys
 import dev.velum.protocol.DeviceModel
 import dev.velum.protocol.FeatureFlags
 import dev.velum.protocol.ForbiddenOpcodes
+import dev.velum.protocol.ForbiddenSettings
 import dev.velum.protocol.PlaudAdvertisement
 import dev.velum.protocol.PlaudFileCrypto
 import dev.velum.protocol.Protocol20SessionSecret
@@ -155,6 +156,55 @@ class PlaudDeviceClientTest {
             }
         }
         assertTrue(128 in ForbiddenOpcodes.ALL)
+        client.close()
+    }
+
+    @Test
+    fun forbiddenSettings_writeViaCmd8_throws() = runTest {
+        val (publicPem, privatePem) = rsaKeyPairToPem()
+        val keys = testKeys(publicPem, privatePem, signature = ByteArray(256) { 1 })
+        val cipher = createSessionCipher()
+        val file = (createFileDecryptor() as JcaFileDecryptor).encryptFile(
+            publicPem,
+            byteArrayOf(1, 2, 3),
+        )
+        val peripheral = FakePlaudPeripheral(cipher, keys, file, requirePublicKey = false)
+        val ble = FakeBleTransport(peripheral)
+        ble.connect("fake-note-pro")
+        val client = PlaudDeviceClient(ble, cipher, keys)
+        client.unlock()
+        client.handshake()
+
+        assertFailsWith<IllegalArgumentException> {
+            client.writeCommandForTest(8, byteArrayOf(4, 1))
+        }
+        assertFailsWith<IllegalArgumentException> {
+            client.writeCommandForTest(8, byteArrayOf(ForbiddenSettings.AUTO_SYNC.toByte(), 1))
+        }
+        client.close()
+    }
+
+    @Test
+    fun downloadSession_rejectsOversizedCap() = runTest {
+        val (publicPem, privatePem) = rsaKeyPairToPem()
+        val keys = testKeys(publicPem, privatePem)
+        val cipher = createSessionCipher()
+        val file = (createFileDecryptor() as JcaFileDecryptor).encryptFile(
+            publicPem,
+            byteArrayOf(1),
+        )
+        val peripheral = FakePlaudPeripheral(cipher, keys, file, requirePublicKey = false)
+        val ble = FakeBleTransport(peripheral)
+        ble.connect("fake-note-pro")
+        val client = PlaudDeviceClient(ble, cipher, keys)
+        client.unlock()
+        client.handshake()
+        assertFailsWith<IllegalArgumentException> {
+            client.downloadSession(
+                sessionId = 1,
+                sizeBytes = PlaudDeviceClient.MAX_SESSION_DOWNLOAD_BYTES + 1,
+            )
+        }
         client.close()
     }
 

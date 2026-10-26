@@ -106,6 +106,7 @@ class AppContainer(
         scope = appScope,
         notifyEnabled = { settingsRepository.preferences.value.autoflowNotify },
         calendar = calendarProvider,
+        jobScheduler = recordingJobs,
     )
 
     /** Active phone mic session recording id, if any. */

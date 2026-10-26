@@ -38,6 +38,22 @@ class DeviceViewModel(
 
     private var client: PlaudDeviceClient? = null
 
+    init {
+        viewModelScope.launch {
+            connectionState.collect { state ->
+                when (state) {
+                    is BleConnectionState.Connected,
+                    is BleConnectionState.Connecting,
+                    -> Unit
+                    BleConnectionState.Idle,
+                    BleConnectionState.Scanning,
+                    is BleConnectionState.Failed,
+                    -> closeClient()
+                }
+            }
+        }
+    }
+
     fun startScan() {
         viewModelScope.launch { ble.startScan() }
     }
@@ -55,11 +71,15 @@ class DeviceViewModel(
 
     fun disconnect() {
         viewModelScope.launch {
-            client?.close()
-            client = null
+            closeClient()
             _sessionUi.value = DeviceSessionUi()
             ble.disconnect()
         }
+    }
+
+    private fun closeClient() {
+        client?.close()
+        client = null
     }
 
     private suspend fun runProtocolIfKeysPresent() {
