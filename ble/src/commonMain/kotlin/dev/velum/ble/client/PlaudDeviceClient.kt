@@ -34,14 +34,16 @@ import kotlinx.coroutines.withTimeout
 /**
  * Protocol-20 client over [BleTransport].
  *
- * Never sends forbidden opcodes (5 / 104 / 0xFE20 / 143). Outbound frames are
- * checked before every write.
+ * Never sends forbidden opcodes (5 / 104 / 128 / 0xFE20 / 143). Outbound frames
+ * are checked before every write. For protocol ≥ 20, FE10 snSignature from the
+ * imported keys is sent on every [unlock] / connect.
  */
 class PlaudDeviceClient(
     private val ble: BleTransport,
     private val cipher: SessionCipher,
     private val keys: DeviceIdentityKeys,
     private val responseTimeout: Duration = 10.seconds,
+    private val protocolVersionHint: Int = 20,
 ) {
     private val inbound = Channel<ByteArray>(capacity = 128)
     private val writeMutex = Mutex()
@@ -72,10 +74,23 @@ class PlaudDeviceClient(
     /**
      * Unlock: FE10 SN signature → optional FE11 → FE12 RSA-wrapped session secret.
      * Starts the encrypted link with app send counter at 2.
+     *
+     * For protocol ≥ 20, always sends FE10 from the imported [DeviceIdentityKeys.serialSignature]
+     * on every call (every connect). Missing / empty signature fails clearly.
      */
     suspend fun unlock() {
         start()
         writeMutex.withLock {
+            if (protocolVersionHint >= 20) {
+                require(keys.serialSignature.isNotEmpty()) {
+                    "snSignature missing — import sn-sign once from Plaud storage; " +
+                        "Velum cannot generate FE10 locally and never contacts api.plaud.ai"
+                }
+                require(keys.serialSignature.size == 256) {
+                    "snSignature must be 256 bytes for protocol ≥ 20 FE10, " +
+                        "was ${keys.serialSignature.size}"
+                }
+            }
             for (chunk in Unlock.encodeSnSignatureChunks(keys.serialSignature)) {
                 assertOutboundAllowed(chunk)
                 ble.write(chunk, withoutResponse = true)

@@ -43,7 +43,12 @@ actual class LocalAsrRuntime actual constructor() {
         languageHint: String?,
         modelId: String,
         modelPath: String,
+        initialPrompt: String?,
     ): TranscriptionResult {
+        // Sherpa OfflineRecognizer has no Whisper initial_prompt; glossary is applied
+        // via RecordingProcessor LLM prompts. Keep the param for API parity / future online models.
+        @Suppress("UNUSED_PARAMETER")
+        val ignoredPrompt = initialPrompt
         val modelDir = File(modelPath)
         if (!modelDir.exists()) {
             throw IllegalStateException(

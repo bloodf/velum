@@ -29,12 +29,16 @@ object SecureKeys {
  * Values come from the user's own account / device; Velum never ships keys.
  */
 interface DeviceKeyImporter {
+    /**
+     * One-time import from the official app. RSA PEMs are optional when E2EE is off
+     * (FE10 + bind token may suffice — verify on hardware).
+     */
     suspend fun importKeys(
         serialNumber: String,
         serialSignatureBase64: String,
-        publicKeyPem: String,
-        privateKeyPem: String,
         bindToken: String,
+        publicKeyPem: String = "",
+        privateKeyPem: String = "",
     )
 
     suspend fun clearKeys()
@@ -52,15 +56,30 @@ class SecureDeviceKeyImporter(
     override suspend fun importKeys(
         serialNumber: String,
         serialSignatureBase64: String,
+        bindToken: String,
         publicKeyPem: String,
         privateKeyPem: String,
-        bindToken: String,
     ) {
-        store.putString(SecureKeys.DEVICE_SERIAL, serialNumber)
-        store.putString(SecureKeys.DEVICE_SERIAL_SIGNATURE, serialSignatureBase64)
-        store.putString(SecureKeys.DEVICE_PUBLIC_KEY_PEM, publicKeyPem)
-        store.putString(SecureKeys.DEVICE_PRIVATE_KEY_PEM, privateKeyPem)
-        store.putString(SecureKeys.DEVICE_BIND_TOKEN, bindToken)
+        require(serialNumber.isNotBlank()) { "serialNumber required" }
+        require(serialSignatureBase64.isNotBlank()) { "snSignature (base64) required" }
+        require(bindToken.isNotBlank()) { "bind token required" }
+        val signature = Base64.decode(serialSignatureBase64.trim())
+        require(signature.size == 256) {
+            "snSignature must decode to 256 bytes (got ${signature.size})"
+        }
+        store.putString(SecureKeys.DEVICE_SERIAL, serialNumber.trim())
+        store.putString(SecureKeys.DEVICE_SERIAL_SIGNATURE, serialSignatureBase64.trim())
+        store.putString(SecureKeys.DEVICE_BIND_TOKEN, bindToken.trim())
+        if (publicKeyPem.isNotBlank()) {
+            store.putString(SecureKeys.DEVICE_PUBLIC_KEY_PEM, publicKeyPem.trim())
+        } else {
+            store.remove(SecureKeys.DEVICE_PUBLIC_KEY_PEM)
+        }
+        if (privateKeyPem.isNotBlank()) {
+            store.putString(SecureKeys.DEVICE_PRIVATE_KEY_PEM, privateKeyPem.trim())
+        } else {
+            store.remove(SecureKeys.DEVICE_PRIVATE_KEY_PEM)
+        }
     }
 
     override suspend fun clearKeys() {
@@ -74,17 +93,21 @@ class SecureDeviceKeyImporter(
     }
 
     override suspend fun hasKeys(): Boolean =
-        store.contains(SecureKeys.DEVICE_PRIVATE_KEY_PEM) &&
+        store.contains(SecureKeys.DEVICE_SERIAL) &&
             store.contains(SecureKeys.DEVICE_SERIAL_SIGNATURE) &&
             store.contains(SecureKeys.DEVICE_BIND_TOKEN)
 
     override suspend fun loadKeys(): DeviceIdentityKeys? {
         val serial = store.getString(SecureKeys.DEVICE_SERIAL) ?: return null
         val sigB64 = store.getString(SecureKeys.DEVICE_SERIAL_SIGNATURE) ?: return null
-        val publicPem = store.getString(SecureKeys.DEVICE_PUBLIC_KEY_PEM) ?: return null
-        val privatePem = store.getString(SecureKeys.DEVICE_PRIVATE_KEY_PEM) ?: return null
         val bind = store.getString(SecureKeys.DEVICE_BIND_TOKEN) ?: return null
-        val signature = Base64.decode(sigB64)
+        val publicPem = store.getString(SecureKeys.DEVICE_PUBLIC_KEY_PEM).orEmpty()
+        val privatePem = store.getString(SecureKeys.DEVICE_PRIVATE_KEY_PEM).orEmpty()
+        val signature = try {
+            Base64.decode(sigB64)
+        } catch (_: Throwable) {
+            return null
+        }
         if (signature.size != 256) return null
         return DeviceIdentityKeys(
             serialNumber = serial,

@@ -8,14 +8,20 @@ import dev.velum.ble.crypto.createSessionCipher
 import dev.velum.ble.crypto.rsaKeyPairToPem
 import dev.velum.ble.fake.FakeBleTransport
 import dev.velum.ble.fake.FakePlaudPeripheral
+import dev.velum.ble.wifi.UnsupportedWifiSoftApJoiner
+import dev.velum.ble.wifi.WifiPayloadCipher
+import dev.velum.ble.wifi.createWifiFrameCipher
 import dev.velum.protocol.DeviceIdentityKeys
 import dev.velum.protocol.DeviceModel
+import dev.velum.protocol.FeatureFlags
 import dev.velum.protocol.ForbiddenOpcodes
 import dev.velum.protocol.PlaudAdvertisement
 import dev.velum.protocol.PlaudFileCrypto
+import dev.velum.protocol.Protocol20SessionSecret
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
 
@@ -85,15 +91,52 @@ class PlaudDeviceClientTest {
     }
 
     @Test
+    fun unlock_withoutPublicKey_whenE2eeOff() = runTest {
+        val (publicPem, privatePem) = rsaKeyPairToPem()
+        val keys = testKeys(publicPem, privatePem)
+        val cipher = createSessionCipher()
+        val file = (createFileDecryptor() as JcaFileDecryptor).encryptFile(
+            publicPem,
+            byteArrayOf(9, 8, 7),
+        )
+        val peripheral = FakePlaudPeripheral(cipher, keys, file, requirePublicKey = false)
+        val ble = FakeBleTransport(peripheral)
+        ble.connect("fake-note-pro")
+        val client = PlaudDeviceClient(ble, cipher, keys)
+        client.unlock()
+        assertEquals(20, client.handshake().protocolVersion)
+        client.close()
+    }
+
+    @Test
+    fun reconnect_requiresFe10Again() = runTest {
+        val (publicPem, privatePem) = rsaKeyPairToPem()
+        val keys = testKeys(publicPem, privatePem)
+        val cipher = createSessionCipher()
+        val file = (createFileDecryptor() as JcaFileDecryptor).encryptFile(
+            publicPem,
+            byteArrayOf(1),
+        )
+        val peripheral = FakePlaudPeripheral(cipher, keys, file, requirePublicKey = false)
+        val ble = FakeBleTransport(peripheral)
+        ble.connect("fake-note-pro")
+        val client = PlaudDeviceClient(ble, cipher, keys)
+        client.unlock()
+        client.handshake()
+        client.close()
+
+        ble.disconnect()
+        ble.connect("fake-note-pro")
+        val client2 = PlaudDeviceClient(ble, cipher, keys)
+        client2.unlock()
+        assertEquals(20, client2.handshake().protocolVersion)
+        client2.close()
+    }
+
+    @Test
     fun forbiddenOpcodes_throw() = runTest {
         val (publicPem, privatePem) = rsaKeyPairToPem()
-        val keys = DeviceIdentityKeys(
-            serialNumber = "881FAKE1",
-            serialSignature = ByteArray(256) { 1 },
-            publicKeyPem = publicPem,
-            privateKeyPem = privatePem,
-            bindToken = "tok",
-        )
+        val keys = testKeys(publicPem, privatePem, signature = ByteArray(256) { 1 })
         val cipher = createSessionCipher()
         val file = (createFileDecryptor() as JcaFileDecryptor).encryptFile(
             publicPem,
@@ -111,6 +154,63 @@ class PlaudDeviceClientTest {
                 client.writeCommandForTest(op)
             }
         }
+        assertTrue(128 in ForbiddenOpcodes.ALL)
         client.close()
     }
+
+    @Test
+    fun sessionCipher_usesFixedNonceAcrossSeq() {
+        val cipher = createSessionCipher()
+        val secret = Protocol20SessionSecret(
+            key = ByteArray(32) { 7 },
+            nonce = ByteArray(12) { 3 },
+            aad = ByteArray(12) { 9 },
+        )
+        val packet = byteArrayOf(0x01, 0x09, 0x00)
+        val a = cipher.sealPacket(secret, 2, packet)
+        val b = cipher.sealPacket(secret, 3, packet)
+        // Different plaintext (seq prefix) → different ciphertext; both open with fixed nonce.
+        assertFalse(a.contentEquals(b))
+        val openedA = cipher.openPacket(secret, 2, a)!!
+        val openedB = cipher.openPacket(secret, 3, b)!!
+        assertTrue(openedA.second.contentEquals(packet))
+        assertTrue(openedB.second.contentEquals(packet))
+    }
+
+    @Test
+    fun wifiFrameCipher_chacha_and_aes_roundTrip_jvmSkipsSoftAp() {
+        assertFailsWith<IllegalStateException> {
+            kotlinx.coroutines.runBlocking {
+                UnsupportedWifiSoftApJoiner.join("PLAUD-TEST", "password")
+            }
+        }
+        val cipher = createSessionCipher()
+        val secret = Protocol20SessionSecret(
+            key = ByteArray(32) { (it + 1).toByte() },
+            nonce = ByteArray(12) { (it + 2).toByte() },
+            aad = ByteArray(12) { (it + 3).toByte() },
+        )
+        val packet = byteArrayOf(0x01, 0x1A, 0x00)
+        val chacha = createWifiFrameCipher(cipher, secret, WifiPayloadCipher.ChaCha20Poly1305)
+        val sealed = chacha.seal(0, packet)
+        assertTrue(chacha.open(0, sealed)!!.second.contentEquals(packet))
+
+        val flags = FeatureFlags(wifiAesGcm = true, rawBitmap = 0x08)
+        assertEquals(WifiPayloadCipher.AesGcm, WifiPayloadCipher.fromFeatureFlags(flags))
+        val aes = createWifiFrameCipher(cipher, secret, WifiPayloadCipher.AesGcm)
+        val sealedAes = aes.seal(1, packet)
+        assertTrue(aes.open(1, sealedAes)!!.second.contentEquals(packet))
+    }
+
+    private fun testKeys(
+        publicPem: String,
+        privatePem: String,
+        signature: ByteArray = ByteArray(256) { (it % 251).toByte() },
+    ) = DeviceIdentityKeys(
+        serialNumber = "881FAKE1",
+        serialSignature = signature,
+        publicKeyPem = publicPem,
+        privateKeyPem = privatePem,
+        bindToken = "tok",
+    )
 }

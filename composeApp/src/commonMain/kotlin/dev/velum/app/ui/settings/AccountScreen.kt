@@ -48,6 +48,7 @@ fun AccountScreen(
     onDevice: () -> Unit,
     onAiProcessing: () -> Unit = {},
     onModelManager: () -> Unit = {},
+    onImportKeys: () -> Unit = {},
 ) {
     val strings = LocalStrings.current
     val viewModel = container.settingsViewModel
@@ -173,7 +174,7 @@ fun AccountScreen(
         }
         Spacer(Modifier.height(16.dp))
         ChevronRow(strings.deviceManagement, onDevice)
-        ChevronRow(strings.importDeviceKeys, {}, showDivider = false)
+        ChevronRow(strings.importDeviceKeys, onImportKeys, showDivider = false)
         Spacer(Modifier.height(40.dp))
     }
 }

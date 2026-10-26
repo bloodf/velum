@@ -29,6 +29,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -50,7 +51,8 @@ import dev.velum.app.ui.theme.VelumInk
 import dev.velum.app.ui.theme.VelumInkSecondary
 import dev.velum.app.ui.theme.VelumSurface
 import dev.velum.core.db.Recording
-import dev.velum.core.search.ListSearch
+import dev.velum.core.search.FtsQuery
+import dev.velum.core.search.RecordingSearch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -64,9 +66,20 @@ fun FilesScreen(
     var showFilter by remember { mutableStateOf(false) }
     var showSearch by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
+    var visible by remember { mutableStateOf<List<Recording>>(emptyList()) }
 
-    val visible = remember(recordings, searchQuery) {
-        ListSearch.filter(recordings, searchQuery) { listOf(it.title, it.transcript, it.summary_markdown) }
+    LaunchedEffect(recordings, searchQuery) {
+        val match = FtsQuery.fromUserInput(searchQuery)
+        val ftsIds = if (match != null) {
+            try {
+                container.repository.searchRecordingIdsFts(match)
+            } catch (_: Throwable) {
+                null
+            }
+        } else {
+            null
+        }
+        visible = RecordingSearch.recordings(recordings, searchQuery, ftsIds)
     }
 
     Column(

@@ -54,11 +54,13 @@ class FakeBleTransport(
     }
 
     override suspend fun connect(deviceId: String) {
+        peripheral.resetUnlock()
         _state.value = BleConnectionState.Connecting(deviceId)
         _state.value = BleConnectionState.Connected(device)
     }
 
     override suspend fun disconnect() {
+        peripheral.resetUnlock()
         _state.value = BleConnectionState.Idle
     }
 

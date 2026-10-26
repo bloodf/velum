@@ -210,13 +210,15 @@ interface SessionCipher {
     ): ByteArray
 
     /**
-     * Encrypt a link-layer packet after protocol-20 unlock.
+     * Encrypt a link-layer packet after protocol-20 unlock (APK 3.30.0).
      *
+     * - key / nonce / aad are **fixed** for the whole session (do not mutate nonce with seq)
      * - plaintext = `seq_u32_le || packet`
-     * - nonce = first 8 bytes of [Protocol20SessionSecret.nonce] ‖ `u32Le(seq)`
      * - aad = [Protocol20SessionSecret.aad]
      *
-     * App send counter starts at 2 after unlock.
+     * App send counter starts at 2 after unlock. The same seal is used for BLE
+     * writes and Wi-Fi WebSocket frames (Wi-Fi may use AES-GCM when
+     * FeatureRequest bit 0x08 is set).
      */
     fun sealPacket(
         secret: Protocol20SessionSecret,
@@ -227,9 +229,9 @@ interface SessionCipher {
     /**
      * Decrypt a sealed link packet.
      *
-     * Rebuilds the nonce as `secret.nonce[0..8) || u32Le(sequence)` and verifies
-     * the plaintext leading u32 matches [sequence]. Returns `(sequence, packet)`
-     * or null on auth failure / mismatch.
+     * Uses the session's fixed nonce and verifies the plaintext leading u32
+     * matches [sequence]. Returns `(sequence, packet)` or null on auth failure /
+     * mismatch. Receivers drop seq ≤ last seen.
      */
     fun openPacket(
         secret: Protocol20SessionSecret,

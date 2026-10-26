@@ -28,22 +28,25 @@ import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Search
-import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -61,7 +64,10 @@ import dev.velum.app.ui.theme.VelumInk
 import dev.velum.app.ui.theme.VelumInkSecondary
 import dev.velum.app.ui.theme.VelumSurface
 import dev.velum.core.db.Template
-import dev.velum.core.search.ListSearch
+import dev.velum.core.search.FtsQuery
+import dev.velum.core.search.RecordingSearch
+import kotlinx.coroutines.launch
+import kotlin.random.Random
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -74,14 +80,29 @@ fun TemplatesScreen(
     val templates by container.repository.observeTemplates().collectAsState(emptyList())
     var tab by remember { mutableStateOf(1) } // 0 my space, 1 discover
     var showCreate by remember { mutableStateOf(false) }
-    var showSearch by remember { mutableStateOf(false) }
+    var showTypeCreate by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
-    val filtered = remember(templates, searchQuery) {
-        ListSearch.filter(templates, searchQuery) {
-            listOf(it.name, it.description, it.category, it.author)
-        }
-    }
+    var showSearch by remember { mutableStateOf(false) }
+    var filtered by remember { mutableStateOf<List<Template>>(emptyList()) }
+    var draftName by remember { mutableStateOf("") }
+    var draftPrompt by remember { mutableStateOf("") }
+    var draftDesc by remember { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
     val categories = filtered.map { it.category }.distinct()
+
+    LaunchedEffect(templates, searchQuery) {
+        val match = FtsQuery.fromUserInput(searchQuery)
+        val ftsIds = if (match != null) {
+            try {
+                container.repository.searchTemplateIdsFts(match)
+            } catch (_: Throwable) {
+                null
+            }
+        } else {
+            null
+        }
+        filtered = RecordingSearch.templates(templates, searchQuery, ftsIds)
+    }
 
     Column(Modifier.fillMaxSize().background(VelumBg)) {
         Row(
@@ -183,14 +204,102 @@ fun TemplatesScreen(
                 CreateOption(
                     title = { GradientTitle(strings.photoToTemplate) },
                     icon = { Icon(Icons.Outlined.AutoAwesome, null, tint = Color(0xFF8B5CF6)) },
-                    subtitle = "Capture a document photo and Velum drafts a template.",
+                    subtitle = "Photo-to-template needs a vision LLM — not wired yet.",
                 ) { showCreate = false }
                 Spacer(Modifier.height(8.dp))
                 CreateOption(
                     title = { Text(strings.typeToTemplate, fontWeight = FontWeight.SemiBold, fontSize = 16.sp) },
                     icon = { Icon(Icons.Outlined.Edit, null, tint = VelumInk) },
                     subtitle = "Describe what you need and craft your own template.",
-                ) { showCreate = false }
+                ) {
+                    showCreate = false
+                    showTypeCreate = true
+                }
+                Spacer(Modifier.height(24.dp))
+            }
+        }
+    }
+
+    if (showTypeCreate) {
+        ModalBottomSheet(
+            onDismissRequest = { showTypeCreate = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = VelumSurface,
+        ) {
+            Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
+                Text(strings.createTemplate, fontWeight = FontWeight.SemiBold, fontSize = 18.sp)
+                Spacer(Modifier.height(12.dp))
+                BasicTextField(
+                    value = draftName,
+                    onValueChange = { draftName = it },
+                    textStyle = TextStyle(color = VelumInk, fontSize = 16.sp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, VelumDivider, RoundedCornerShape(10.dp))
+                        .padding(12.dp),
+                    decorationBox = { inner ->
+                        if (draftName.isEmpty()) {
+                            Text(strings.templateName, color = VelumInkSecondary)
+                        }
+                        inner()
+                    },
+                )
+                Spacer(Modifier.height(8.dp))
+                BasicTextField(
+                    value = draftDesc,
+                    onValueChange = { draftDesc = it },
+                    textStyle = TextStyle(color = VelumInk, fontSize = 14.sp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(64.dp)
+                        .border(1.dp, VelumDivider, RoundedCornerShape(10.dp))
+                        .padding(12.dp),
+                    decorationBox = { inner ->
+                        if (draftDesc.isEmpty()) {
+                            Text(strings.categories, color = VelumInkSecondary)
+                        }
+                        inner()
+                    },
+                )
+                Spacer(Modifier.height(8.dp))
+                BasicTextField(
+                    value = draftPrompt,
+                    onValueChange = { draftPrompt = it },
+                    textStyle = TextStyle(color = VelumInk, fontSize = 14.sp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(140.dp)
+                        .border(1.dp, VelumDivider, RoundedCornerShape(10.dp))
+                        .padding(12.dp),
+                    decorationBox = { inner ->
+                        if (draftPrompt.isEmpty()) {
+                            Text(strings.templatePrompt, color = VelumInkSecondary)
+                        }
+                        inner()
+                    },
+                )
+                Spacer(Modifier.height(12.dp))
+                BlackButton(
+                    strings.save,
+                    {
+                        scope.launch {
+                            val id = "tpl-user-${Random.nextInt(100000)}"
+                            container.repository.upsertTemplate(
+                                id = id,
+                                name = draftName.trim(),
+                                category = "Mine",
+                                description = draftDesc.trim().ifBlank { draftName.trim() },
+                                systemPrompt = draftPrompt.trim(),
+                            )
+                            draftName = ""
+                            draftDesc = ""
+                            draftPrompt = ""
+                            showTypeCreate = false
+                            onOpenTemplate(id)
+                        }
+                    },
+                    enabled = draftName.isNotBlank() && draftPrompt.isNotBlank(),
+                )
                 Spacer(Modifier.height(24.dp))
             }
         }
@@ -345,13 +454,62 @@ fun TemplateDetailScreen(
         Spacer(Modifier.height(16.dp))
         Text("RESUMO", fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 24.dp))
         Spacer(Modifier.height(6.dp))
-        Text(
-            tpl?.system_prompt.orEmpty(),
-            color = VelumInk,
-            fontSize = 14.sp,
-            lineHeight = 20.sp,
-            modifier = Modifier.padding(horizontal = 24.dp),
-        )
+        var editing by remember(tpl?.id) { mutableStateOf(false) }
+        var promptDraft by remember(tpl?.id) { mutableStateOf(tpl?.system_prompt.orEmpty()) }
+        var nameDraft by remember(tpl?.id) { mutableStateOf(tpl?.name.orEmpty()) }
+        val scope = rememberCoroutineScope()
+        if (editing && tpl != null && tpl.builtin == 0L) {
+            BasicTextField(
+                value = nameDraft,
+                onValueChange = { nameDraft = it },
+                textStyle = TextStyle(color = VelumInk, fontSize = 16.sp, fontWeight = FontWeight.SemiBold),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp)
+                    .border(1.dp, VelumDivider, RoundedCornerShape(8.dp))
+                    .padding(10.dp),
+            )
+            Spacer(Modifier.height(8.dp))
+            BasicTextField(
+                value = promptDraft,
+                onValueChange = { promptDraft = it },
+                textStyle = TextStyle(color = VelumInk, fontSize = 14.sp, lineHeight = 20.sp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp)
+                    .height(160.dp)
+                    .border(1.dp, VelumDivider, RoundedCornerShape(8.dp))
+                    .padding(10.dp),
+            )
+            Spacer(Modifier.height(12.dp))
+            BlackButton(
+                strings.save,
+                {
+                    scope.launch {
+                        container.repository.upsertTemplate(
+                            id = tpl.id,
+                            name = nameDraft,
+                            category = tpl.category,
+                            description = tpl.description,
+                            systemPrompt = promptDraft,
+                            author = tpl.author,
+                            builtin = false,
+                            uses = tpl.uses,
+                        )
+                        editing = false
+                    }
+                },
+                Modifier.padding(horizontal = 24.dp),
+            )
+        } else {
+            Text(
+                tpl?.system_prompt.orEmpty(),
+                color = VelumInk,
+                fontSize = 14.sp,
+                lineHeight = 20.sp,
+                modifier = Modifier.padding(horizontal = 24.dp),
+            )
+        }
         Spacer(Modifier.height(40.dp))
         Row(
             Modifier.fillMaxWidth().padding(20.dp),
@@ -362,10 +520,12 @@ fun TemplateDetailScreen(
                 Modifier
                     .size(52.dp)
                     .border(1.dp, VelumDivider, RoundedCornerShape(10.dp))
-                    .clickable { },
+                    .clickable {
+                        if (tpl?.builtin == 0L) editing = !editing
+                    },
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(Icons.Outlined.StarBorder, null, tint = VelumInk)
+                Icon(Icons.Outlined.Edit, null, tint = VelumInk)
             }
             BlackButton(strings.setForLater, onBack, Modifier.weight(1f))
         }

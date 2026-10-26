@@ -13,6 +13,7 @@ actual class LocalAsrRuntime actual constructor() {
         languageHint: String?,
         modelId: String,
         modelPath: String,
+        initialPrompt: String?,
     ): TranscriptionResult {
         throw UnsupportedOperationException(
             "Local ASR is Android-first; iOS on-device runtime not wired yet. modelId=$modelId",

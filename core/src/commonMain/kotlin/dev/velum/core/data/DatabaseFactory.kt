@@ -7,5 +7,12 @@ expect class DriverFactory {
     fun createDriver(): SqlDriver
 }
 
-fun createDatabase(driverFactory: DriverFactory): VelumDatabase =
-    VelumDatabase(driverFactory.createDriver())
+data class DatabaseHandle(
+    val database: VelumDatabase,
+    val driver: SqlDriver,
+)
+
+fun createDatabase(driverFactory: DriverFactory): DatabaseHandle {
+    val driver = driverFactory.createDriver()
+    return DatabaseHandle(VelumDatabase(driver), driver)
+}

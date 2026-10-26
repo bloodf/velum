@@ -46,6 +46,7 @@ class OpenAiCompatibleClient(
         filename: String,
         audioBytes: ByteArray,
         language: String? = null,
+        prompt: String? = null,
     ): TranscriptionResult {
         val url = joinUrl(baseUrl, "audio/transcriptions")
         val response = httpClient.post(url) {
@@ -55,6 +56,7 @@ class OpenAiCompatibleClient(
                     formData {
                         append("model", model)
                         if (language != null) append("language", language)
+                        if (!prompt.isNullOrBlank()) append("prompt", prompt)
                         append(
                             "file",
                             audioBytes,

@@ -201,6 +201,7 @@ fun AutoFlowEditScreen(
     var notify by remember(flow) { mutableStateOf(flow?.notify == 1L) }
     var durationMin by remember(flow) { mutableStateOf(flow?.duration_min_seconds ?: 0L) }
     var durationMax by remember(flow) { mutableStateOf(flow?.duration_max_seconds ?: 10800L) }
+    var postAction by remember(flow) { mutableStateOf(flow?.post_action.orEmpty()) }
     var dirty by remember { mutableStateOf(false) }
     var showDiscard by remember { mutableStateOf(false) }
     var editWhen by remember { mutableStateOf(false) }
@@ -229,6 +230,7 @@ fun AutoFlowEditScreen(
             autoLabelVoice = autoLabel,
             language = language,
             notify = notify,
+            postAction = postAction.ifBlank { null },
         )
     }
 
@@ -351,6 +353,14 @@ fun AutoFlowEditScreen(
             MetaRow(strings.summaryTemplate, templateName)
             MetaRow(strings.autoSpeakerLabel, if (autoLabel) strings.on else strings.off)
             MetaRow(strings.recordingLanguage, language)
+            MetaRow(
+                strings.postActionLabel,
+                when (postAction) {
+                    "share" -> strings.postActionShare
+                    "calendar_insert" -> strings.postActionCalendar
+                    else -> strings.postActionNone
+                },
+            )
         }
         Spacer(Modifier.height(40.dp))
     }
@@ -426,6 +436,26 @@ fun AutoFlowEditScreen(
                     autoLabel = it
                     markDirty()
                 })
+                Spacer(Modifier.height(8.dp))
+                Text(strings.postActionLabel, color = VelumInkSecondary, fontSize = 13.sp)
+                listOf(
+                    "" to strings.postActionNone,
+                    "share" to strings.postActionShare,
+                    "calendar_insert" to strings.postActionCalendar,
+                ).forEach { (value, label) ->
+                    Text(
+                        label,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                postAction = value
+                                markDirty()
+                            }
+                            .padding(vertical = 10.dp),
+                        color = if (postAction == value) VelumInk else VelumInkSecondary,
+                        fontWeight = if (postAction == value) FontWeight.SemiBold else FontWeight.Normal,
+                    )
+                }
                 DualActionRow(strings.cancel, strings.done, { editDo = false }, { editDo = false })
             }
         }

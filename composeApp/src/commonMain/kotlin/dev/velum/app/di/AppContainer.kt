@@ -12,12 +12,15 @@ import dev.velum.ai.local.defaultModelStoreRoot
 import dev.velum.ai.openai.OpenAiDiarizer
 import dev.velum.ai.openai.OpenAiLlmEngine
 import dev.velum.ai.openai.OpenAiTranscriber
+import dev.velum.ai.pipeline.AskAiChat
 import dev.velum.ai.pipeline.AutoFlowRunner
 import dev.velum.ai.pipeline.RecordingProcessor
 import dev.velum.app.ui.DeviceViewModel
 import dev.velum.app.ui.SettingsViewModel
 import dev.velum.ble.BleTransport
 import dev.velum.ble.createBleTransport
+import dev.velum.core.calendar.CalendarEventProvider
+import dev.velum.core.calendar.createCalendarEventProvider
 import dev.velum.core.data.DriverFactory
 import dev.velum.core.data.VelumRepository
 import dev.velum.core.data.createDatabase
@@ -39,16 +42,18 @@ class AppContainer(
     val ble: BleTransport = createBleTransport(),
     modelStoreRoot: ModelStoreDir = defaultModelStoreRoot(),
     val integrationConfig: IntegrationConfig = IntegrationConfig.defaults(),
+    val calendarProvider: CalendarEventProvider = createCalendarEventProvider(),
 ) {
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
-    val database = createDatabase(driverFactory)
-    val repository = VelumRepository(database)
+    val databaseHandle = createDatabase(driverFactory)
+    val database = databaseHandle.database
+    val repository = VelumRepository(databaseHandle)
     val settingsRepository = SettingsRepository(secureStore)
     val deviceKeyImporter: DeviceKeyImporter = SecureDeviceKeyImporter(secureStore)
     val aiClient = createOpenAiCompatibleClient()
     val settingsViewModel = SettingsViewModel(settingsRepository, aiClient)
-    val deviceViewModel = DeviceViewModel(ble)
+    val deviceViewModel = DeviceViewModel(ble, deviceKeyImporter)
     val integrationAuth = IntegrationAuthStore(secureStore, integrationConfig)
 
     val localModelManager = createLocalModelManager(storeRoot = modelStoreRoot)
@@ -76,11 +81,18 @@ class AppContainer(
         settings = settingsRepository,
     )
 
+    val askAiChat = AskAiChat(
+        aiRouter = aiRouter,
+        repository = repository,
+        settings = settingsRepository,
+    )
+
     val autoFlowRunner = AutoFlowRunner(
         repository = repository,
         processor = recordingProcessor,
         scope = appScope,
         notifyEnabled = { settingsRepository.preferences.value.autoflowNotify },
+        calendar = calendarProvider,
     )
 
     init {

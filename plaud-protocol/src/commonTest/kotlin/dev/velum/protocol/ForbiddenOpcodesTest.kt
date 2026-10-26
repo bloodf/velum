@@ -9,17 +9,18 @@ import kotlin.test.assertTrue
 class ForbiddenOpcodesTest {
     @Test
     fun knownDestructiveOpcodesAreForbidden() {
-        listOf(5, 104, 0xFE20, 143).forEach { op ->
+        listOf(5, 104, 128, 0xFE20, 143).forEach { op ->
             assertTrue(ForbiddenOpcodes.isForbidden(op), "expected $op forbidden")
             assertFailsWith<IllegalArgumentException> {
                 ForbiddenOpcodes.requireAllowed(op)
             }
         }
+        assertTrue(ForbiddenOpcodes.RESET_FINDMY in ForbiddenOpcodes.ALL)
     }
 
     @Test
     fun safeOpcodesAllowed() {
-        listOf(1, 9, 26, 28, 29, 0xFE10, 0xFE11, 0xFE12).forEach { op ->
+        listOf(1, 9, 26, 28, 29, 0xFE10, 0xFE11, 0xFE12, 138).forEach { op ->
             assertFalse(ForbiddenOpcodes.isForbidden(op))
             ForbiddenOpcodes.requireAllowed(op)
         }
@@ -33,6 +34,9 @@ class ForbiddenOpcodesTest {
         assertFailsWith<IllegalArgumentException> {
             Framing.encodeCommand(ForbiddenOpcodes.OTA)
         }
+        assertFailsWith<IllegalArgumentException> {
+            Framing.encodeCommand(ForbiddenOpcodes.RESET_FINDMY)
+        }
     }
 
     @Test
@@ -43,9 +47,55 @@ class ForbiddenOpcodesTest {
     }
 
     @Test
+    fun forbiddenSettings_neverWritable() {
+        assertTrue(ForbiddenSettings.isForbidden(4))
+        assertTrue(ForbiddenSettings.isForbidden(26))
+        assertFailsWith<IllegalArgumentException> {
+            CommonSettings.encodeWrite(ForbiddenSettings.AUTO_DELETE, byteArrayOf(1))
+        }
+        assertFailsWith<IllegalArgumentException> {
+            CommonSettings.encodeWrite(ForbiddenSettings.AUTO_SYNC, byteArrayOf(1))
+        }
+        val ok = CommonSettings.encodeWrite(1, byteArrayOf(0x0A))
+        assertEquals(Framing.APP_PREFIX, ok[0])
+        assertEquals(8, ok[1].toInt() and 0xFF)
+    }
+
+    @Test
+    fun unusedCommands_documented() {
+        assertEquals(
+            setOf(5, 13, 38, 50, 51, 109, 141, 142, 145, 151),
+            UnusedCommands.ALL,
+        )
+        UnusedCommands.ALL.forEach { op ->
+            assertTrue(UnusedCommands.isUnused(op))
+        }
+    }
+
+    @Test
+    fun featureRequest_bit08_aesGcm() {
+        val withBit = ByteArray(4) { 0 }
+        withBit[3] = 0x08
+        assertTrue(FeatureRequest.parse(withBit).wifiAesGcm)
+        assertFalse(FeatureRequest.parse(ByteArray(4)).wifiAesGcm)
+        assertFalse(FeatureRequest.parse(ByteArray(2)).wifiAesGcm)
+    }
+
+    @Test
+    fun noteProFamily_883_noOta() {
+        assertEquals(DeviceModel.NotePro883, DeviceModel.fromCode(883))
+        assertTrue(DeviceModel.NotePro.isNoteProFamily)
+        assertTrue(DeviceModel.NotePro883.isNoteProFamily)
+        assertFalse(DeviceModel.NotePro.supportsOta)
+        assertFalse(DeviceModel.NotePro883.supportsOta)
+        val table = CommandTable.forModel(DeviceModel.NotePro883, 20)
+        assertTrue(table.usesRsaUnlock)
+        assertEquals(4, table.setClock)
+    }
+
+    @Test
     fun encodeBatteryRequest_isCmd9() {
         val frame = Battery.encodeBatteryRequest()
-        // Empty params → trailing 0x00 of cmd u16 is trimmed (SDK-style).
         assertEquals(Framing.APP_PREFIX, frame[0])
         assertEquals(Commands.BATTERY_LIKELY, frame[1].toInt() and 0xFF)
     }

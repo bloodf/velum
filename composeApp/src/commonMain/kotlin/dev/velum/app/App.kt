@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -19,11 +20,14 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import androidx.savedstate.read
+import dev.velum.ai.pipeline.AutoFlowUiAction
 import dev.velum.app.di.AppContainer
 import dev.velum.app.i18n.LocalStrings
 import dev.velum.app.i18n.PtBr
 import dev.velum.app.navigation.Routes
+import dev.velum.app.platform.openCalendarInsert
 import dev.velum.app.platform.rememberAudioImporter
+import dev.velum.app.platform.shareText
 import dev.velum.app.ui.DeviceScreen
 import dev.velum.app.ui.autoflow.AutoFlowEditScreen
 import dev.velum.app.ui.autoflow.AutoFlowListScreen
@@ -33,6 +37,7 @@ import dev.velum.app.ui.integrations.IntegrationsScreen
 import dev.velum.app.ui.recording.RecordingDetailScreen
 import dev.velum.app.ui.settings.AccountScreen
 import dev.velum.app.ui.settings.AiProcessingScreen
+import dev.velum.app.ui.settings.ImportDeviceKeysScreen
 import dev.velum.app.ui.settings.MemoryScreen
 import dev.velum.app.ui.settings.ModelManagerScreen
 import dev.velum.app.ui.settings.PersonalizationScreen
@@ -78,6 +83,19 @@ private fun VelumRoot(container: AppContainer) {
                 templateId = null,
                 retranscribe = true,
             ).collect { }
+        }
+    }
+
+    LaunchedEffect(container) {
+        container.autoFlowRunner.actions.collect { action ->
+            when (action) {
+                is AutoFlowUiAction.ShareMarkdown -> shareText(action.title, action.body)
+                is AutoFlowUiAction.InsertCalendarEvent ->
+                    openCalendarInsert(action.title, action.description)
+                is AutoFlowUiAction.BlockedOnPermission -> {
+                    // Surface via status on Integrations; keep processing honest.
+                }
+            }
         }
     }
 
@@ -175,6 +193,13 @@ private fun VelumRoot(container: AppContainer) {
                         onDevice = { navController.navigate(Routes.DEVICE) },
                         onAiProcessing = { navController.navigate(Routes.AI_PROCESSING) },
                         onModelManager = { navController.navigate(Routes.MODEL_MANAGER) },
+                        onImportKeys = { navController.navigate(Routes.IMPORT_KEYS) },
+                    )
+                }
+                composable(Routes.IMPORT_KEYS) {
+                    ImportDeviceKeysScreen(
+                        container = container,
+                        onBack = { navController.popBackStack() },
                     )
                 }
                 composable(Routes.AI_PROCESSING) {

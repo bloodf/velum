@@ -1,19 +1,26 @@
 package dev.velum.ai.pipeline
 
 import dev.velum.core.autoflow.AutoFlowMatcher
+import dev.velum.core.autoflow.AutoFlowPostAction
+import dev.velum.core.calendar.CalendarEventProvider
+import dev.velum.core.calendar.CalendarLookupResult
+import dev.velum.core.calendar.createCalendarEventProvider
 import dev.velum.core.data.VelumRepository
 import dev.velum.core.db.Autoflow
 import dev.velum.core.db.Recording
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
 /**
- * Watches recordings and runs [RecordingProcessor] when a new note_pro (or rule-matching)
- * recording appears and an enabled AutoFlow rule matches.
+ * Local AutoFlow: match rules → [RecordingProcessor] → optional share / calendar intent.
+ * Calendar titles come from the device CalendarProvider (no Plaud/Google OAuth server).
  */
 class AutoFlowRunner(
     private val repository: VelumRepository,
@@ -21,10 +28,15 @@ class AutoFlowRunner(
     private val scope: CoroutineScope,
     /** When false, processing still runs; callers may skip UI banners. */
     val notifyEnabled: () -> Boolean = { true },
+    private val calendar: CalendarEventProvider = createCalendarEventProvider(),
+    private val nowEpochMs: () -> Long = { epochMsNow() },
 ) {
     private var job: Job? = null
     private val processedIds = mutableSetOf<String>()
     private var seeded = false
+
+    private val _actions = MutableSharedFlow<AutoFlowUiAction>(extraBufferCapacity = 8)
+    val actions: SharedFlow<AutoFlowUiAction> = _actions.asSharedFlow()
 
     fun start() {
         if (job != null) return
@@ -38,7 +50,6 @@ class AutoFlowRunner(
                 .distinctUntilChanged()
                 .collect { (recordings, flows) ->
                     if (!seeded) {
-                        // Avoid reprocessing seed/demo rows on cold start.
                         processedIds.addAll(recordings.map { it.id })
                         seeded = true
                         return@collect
@@ -47,6 +58,7 @@ class AutoFlowRunner(
                     for (recording in recordings) {
                         if (recording.id in processedIds) continue
                         processedIds.add(recording.id)
+                        maybeApplyCalendarTitle(recording)
                         val match = enabledFlows.firstOrNull { flow ->
                             matches(flow, recording)
                         } ?: continue
@@ -55,6 +67,7 @@ class AutoFlowRunner(
                             templateId = match.template_id,
                             retranscribe = true,
                         ).collect { }
+                        firePostAction(match, recording.id)
                     }
                 }
         }
@@ -63,6 +76,71 @@ class AutoFlowRunner(
     fun stop() {
         job?.cancel()
         job = null
+    }
+
+    /** After BLE sync inserts a recording, rename from the current/next calendar event. */
+    suspend fun applyCalendarTitleIfAvailable(recordingId: String) {
+        val recording = repository.getRecording(recordingId) ?: return
+        maybeApplyCalendarTitle(recording)
+    }
+
+    private suspend fun maybeApplyCalendarTitle(recording: Recording) {
+        when (val result = calendar.currentOrNextEvent(nowEpochMs())) {
+            is CalendarLookupResult.Ok -> {
+                val title = result.currentOrNext?.title?.trim().orEmpty()
+                if (title.isNotEmpty() && recording.title.startsWith("Recording ")) {
+                    repository.updateRecordingTitle(recording.id, title)
+                }
+            }
+            CalendarLookupResult.PermissionDenied -> {
+                _actions.tryEmit(
+                    AutoFlowUiAction.BlockedOnPermission(
+                        "READ_CALENDAR",
+                        "Calendar permission missing — cannot name recording from current event.",
+                    ),
+                )
+            }
+            is CalendarLookupResult.Unavailable -> Unit
+        }
+    }
+
+    private suspend fun firePostAction(flow: Autoflow, recordingId: String) {
+        val recording = repository.getRecording(recordingId) ?: return
+        when (AutoFlowPostAction.fromStored(flow.post_action)) {
+            AutoFlowPostAction.None -> Unit
+            AutoFlowPostAction.ShareMarkdown -> {
+                val body = buildString {
+                    append("# ").append(recording.title).append("\n\n")
+                    if (!recording.summary_markdown.isNullOrBlank()) {
+                        append(recording.summary_markdown).append("\n\n")
+                    }
+                    if (!recording.transcript.isNullOrBlank()) {
+                        append("## Transcript\n\n").append(recording.transcript)
+                    }
+                }
+                _actions.emit(AutoFlowUiAction.ShareMarkdown(recording.title, body))
+            }
+            AutoFlowPostAction.CalendarInsert -> {
+                when (calendar.currentOrNextEvent(nowEpochMs())) {
+                    CalendarLookupResult.PermissionDenied -> {
+                        _actions.emit(
+                            AutoFlowUiAction.BlockedOnPermission(
+                                "READ_CALENDAR",
+                                "Calendar permission missing — cannot open calendar insert.",
+                            ),
+                        )
+                    }
+                    else -> {
+                        _actions.emit(
+                            AutoFlowUiAction.InsertCalendarEvent(
+                                title = recording.title,
+                                description = recording.summary_markdown.orEmpty(),
+                            ),
+                        )
+                    }
+                }
+            }
+        }
     }
 
     /** Exposed for tests. */
@@ -84,3 +162,11 @@ class AutoFlowRunner(
             ),
         )
 }
+
+sealed class AutoFlowUiAction {
+    data class ShareMarkdown(val title: String, val body: String) : AutoFlowUiAction()
+    data class InsertCalendarEvent(val title: String, val description: String) : AutoFlowUiAction()
+    data class BlockedOnPermission(val permission: String, val message: String) : AutoFlowUiAction()
+}
+
+expect fun epochMsNow(): Long

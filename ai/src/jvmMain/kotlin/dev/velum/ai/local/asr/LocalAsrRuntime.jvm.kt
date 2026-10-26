@@ -13,10 +13,12 @@ actual class LocalAsrRuntime actual constructor() {
         languageHint: String?,
         modelId: String,
         modelPath: String,
+        initialPrompt: String?,
     ): TranscriptionResult {
         throw UnsupportedOperationException(
             "Local ASR (sherpa-onnx) is not supported on JVM desktop yet. " +
-                "Use API transcription, or run on Android. modelId=$modelId path=$modelPath",
+                "Use API transcription, or run on Android. modelId=$modelId path=$modelPath" +
+                (initialPrompt?.let { " promptChars=${it.length}" } ?: ""),
         )
     }
 

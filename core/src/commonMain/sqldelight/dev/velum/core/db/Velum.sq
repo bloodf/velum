@@ -53,12 +53,20 @@ CREATE TABLE autoflow (
   template_id TEXT,
   auto_label_voice INTEGER NOT NULL DEFAULT 0,
   language TEXT NOT NULL DEFAULT 'auto',
-  notify INTEGER NOT NULL DEFAULT 1
+  notify INTEGER NOT NULL DEFAULT 1,
+  post_action TEXT
 );
 
 CREATE TABLE memory_item (
   id TEXT NOT NULL PRIMARY KEY,
   content TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE glossary_term (
+  id TEXT NOT NULL PRIMARY KEY,
+  term TEXT NOT NULL,
+  definition TEXT NOT NULL DEFAULT '',
   created_at INTEGER NOT NULL
 );
 
@@ -136,14 +144,17 @@ INSERT OR REPLACE INTO template(
   id, name, category, description, author, system_prompt, uses, builtin, created_at
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
 
+deleteTemplate:
+DELETE FROM template WHERE id = ? AND builtin = 0;
+
 selectAutoflows:
 SELECT * FROM autoflow ORDER BY name ASC;
 
 insertAutoflow:
 INSERT OR REPLACE INTO autoflow(
   id, name, enabled, wake_phrase, duration_min_seconds, duration_max_seconds,
-  source_filter, template_id, auto_label_voice, language, notify
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+  source_filter, template_id, auto_label_voice, language, notify, post_action
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 updateAutoflowEnabled:
 UPDATE autoflow SET enabled = ? WHERE id = ?;
@@ -159,7 +170,8 @@ UPDATE autoflow SET
   template_id = ?,
   auto_label_voice = ?,
   language = ?,
-  notify = ?
+  notify = ?,
+  post_action = ?
 WHERE id = ?;
 
 updateAutoflowNotify:
@@ -173,6 +185,15 @@ INSERT OR REPLACE INTO memory_item(id, content, created_at) VALUES (?, ?, ?);
 
 deleteMemory:
 DELETE FROM memory_item WHERE id = ?;
+
+selectGlossary:
+SELECT * FROM glossary_term ORDER BY term COLLATE NOCASE ASC;
+
+insertGlossary:
+INSERT OR REPLACE INTO glossary_term(id, term, definition, created_at) VALUES (?, ?, ?, ?);
+
+deleteGlossary:
+DELETE FROM glossary_term WHERE id = ?;
 
 getMeta:
 SELECT value FROM app_meta WHERE key = ?;

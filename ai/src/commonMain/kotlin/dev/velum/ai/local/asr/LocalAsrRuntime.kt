@@ -17,6 +17,7 @@ expect class LocalAsrRuntime() {
         languageHint: String?,
         modelId: String,
         modelPath: String,
+        initialPrompt: String? = null,
     ): TranscriptionResult
 
     suspend fun diarize(

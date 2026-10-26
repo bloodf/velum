@@ -62,6 +62,11 @@ class RecordingProcessor(
                 sampleRate = 16_000
             }
 
+            val prefs = settings.preferences.value
+            val personalization = repository.personalizationPromptFragment(
+                includeMemory = prefs.useSavedMemory,
+            )
+
             var transcriptMarkdown = recording.transcript.orEmpty()
             if (retranscribe) {
                 if (audioBytes.isEmpty()) {
@@ -86,6 +91,7 @@ class RecordingProcessor(
                             sampleRateHz = sampleRate,
                             languageHint = cfg.audioLanguage,
                             recordingId = recordingId,
+                            initialPrompt = personalization.takeIf { it.isNotBlank() },
                         ),
                         asrModel,
                     )
@@ -143,9 +149,21 @@ class RecordingProcessor(
 
             emit(JobProgress.Running(0.7f, "Summarizing"))
             ensureApiKeyIfNeeded(cfg.summaryMode, "summaries")
-            val templatePrompt = templateId?.let { repository.getTemplate(it)?.system_prompt }
+            val baseTemplate = templateId?.let { repository.getTemplate(it)?.system_prompt }
                 ?: repository.getTemplate("tpl-meeting")?.system_prompt
                 ?: "Summarize into Overview, Key points, Action items."
+            val templatePrompt = buildString {
+                append(baseTemplate)
+                if (personalization.isNotBlank()) {
+                    append("\n\n").append(personalization)
+                }
+                if (prefs.customInstructions.isNotBlank()) {
+                    append("\nCustom instructions: ").append(prefs.customInstructions)
+                }
+                if (prefs.contentFocus.isNotBlank()) {
+                    append("\nContent focus: ").append(prefs.contentFocus)
+                }
+            }
             val llm = aiRouter.llm()
             val llmModel = when (cfg.summaryMode) {
                 ComputeMode.Local -> cfg.localLlmModelId.orEmpty()

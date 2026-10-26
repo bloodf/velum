@@ -15,7 +15,18 @@ object Commands {
     const val SYNC_FILE_STOP: Int = 29
     const val DELETE_FILE: Int = 30
     const val DELETE_FILE_RSP: Int = 31
+    const val FEATURE_REQUEST: Int = 138
     const val UNKNOWN_UNSOLICITED: Int = 141
+
+    /** Sync-in-idle Wi-Fi config (APK): get/set SSID+password, list, test, result, delete. */
+    const val WIFI_GET_SSID: Int = 120
+    const val WIFI_SET_SSID: Int = 121
+    const val WIFI_LIST: Int = 122
+    const val WIFI_TEST: Int = 123
+    const val WIFI_TEST_RESULT: Int = 124
+    const val WIFI_DELETE: Int = 125
+    const val WIFI_DISCONNECT: Int = 116
+    const val WIFI_DISCONNECT_RSP: Int = 117
 
     // Protocol-20 unlock (sent without the usual 0x01 app→device prefix).
     const val UNLOCK_SN_SIGNATURE: Int = 0xFE10

@@ -52,19 +52,59 @@ fun MemoryScreen(
 ) {
     val strings = LocalStrings.current
     val memories by container.repository.observeMemories().collectAsState(emptyList())
-    var showAdd by remember { mutableStateOf(false) }
+    val glossary by container.repository.observeGlossary().collectAsState(emptyList())
+    var showAddMemory by remember { mutableStateOf(false) }
+    var showAddGlossary by remember { mutableStateOf(false) }
     var draft by remember { mutableStateOf("") }
+    var term by remember { mutableStateOf("") }
+    var definition by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
 
     Box(Modifier.fillMaxSize().background(VelumBg)) {
         Column(Modifier.fillMaxSize()) {
             ScreenTopBar(strings.manageMemory, onBack = onBack)
-            if (memories.isEmpty()) {
-                Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    EmptyState(strings.noMemoryYet, strings.noMemoryHint)
+            LazyColumn(Modifier.weight(1f).padding(horizontal = 20.dp)) {
+                item {
+                    Spacer(Modifier.height(8.dp))
+                    Text(strings.glossary, fontWeight = FontWeight.SemiBold, fontSize = 16.sp, color = VelumInk)
+                    Text(strings.glossaryHint, color = VelumInkSecondary, fontSize = 13.sp)
+                    Spacer(Modifier.height(8.dp))
                 }
-            } else {
-                LazyColumn(Modifier.weight(1f).padding(horizontal = 20.dp)) {
+                if (glossary.isEmpty()) {
+                    item {
+                        Text(strings.noMemoryYet, color = VelumInkSecondary, fontSize = 14.sp)
+                        Spacer(Modifier.height(12.dp))
+                    }
+                } else {
+                    items(glossary, key = { it.id }) { item ->
+                        Column(
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    scope.launch { container.repository.deleteGlossaryTerm(item.id) }
+                                }
+                                .padding(vertical = 10.dp),
+                        ) {
+                            Text(item.term, color = VelumInk, fontWeight = FontWeight.Medium, fontSize = 15.sp)
+                            if (item.definition.isNotBlank()) {
+                                Text(item.definition, color = VelumInkSecondary, fontSize = 13.sp)
+                            }
+                        }
+                    }
+                }
+                item {
+                    BlackButton(strings.addGlossaryTerm, { showAddGlossary = true })
+                    Spacer(Modifier.height(24.dp))
+                    Text(strings.memory, fontWeight = FontWeight.SemiBold, fontSize = 16.sp, color = VelumInk)
+                    Spacer(Modifier.height(8.dp))
+                }
+                if (memories.isEmpty()) {
+                    item {
+                        Box(Modifier.fillMaxWidth().padding(vertical = 24.dp), contentAlignment = Alignment.Center) {
+                            EmptyState(strings.noMemoryYet, strings.noMemoryHint)
+                        }
+                    }
+                } else {
                     items(memories, key = { it.id }) { item ->
                         Text(
                             item.content,
@@ -72,6 +112,9 @@ fun MemoryScreen(
                             fontSize = 15.sp,
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .clickable {
+                                    scope.launch { container.repository.deleteMemory(item.id) }
+                                }
                                 .padding(vertical = 14.dp),
                         )
                     }
@@ -79,15 +122,15 @@ fun MemoryScreen(
             }
             BlackButton(
                 strings.addMemory,
-                { showAdd = true },
+                { showAddMemory = true },
                 Modifier.padding(20.dp),
             )
         }
     }
 
-    if (showAdd) {
+    if (showAddMemory) {
         ModalBottomSheet(
-            onDismissRequest = { showAdd = false },
+            onDismissRequest = { showAddMemory = false },
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
             containerColor = VelumSurface,
         ) {
@@ -129,16 +172,87 @@ fun MemoryScreen(
                     right = strings.save,
                     onLeft = {
                         draft = ""
-                        showAdd = false
+                        showAddMemory = false
                     },
                     onRight = {
                         scope.launch {
                             container.repository.addMemory("mem-${Random.nextInt(100000)}", draft.trim())
                             draft = ""
-                            showAdd = false
+                            showAddMemory = false
                         }
                     },
                     rightEnabled = draft.isNotBlank(),
+                )
+            }
+        }
+    }
+
+    if (showAddGlossary) {
+        ModalBottomSheet(
+            onDismissRequest = { showAddGlossary = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = VelumSurface,
+        ) {
+            Column(Modifier.padding(bottom = 8.dp)) {
+                Text(
+                    strings.addGlossaryTerm,
+                    fontWeight = FontWeight.Thin,
+                    fontSize = 26.sp,
+                    color = VelumInk,
+                    modifier = Modifier.padding(horizontal = 20.dp),
+                )
+                Spacer(Modifier.height(12.dp))
+                BasicTextField(
+                    value = term,
+                    onValueChange = { term = it },
+                    textStyle = TextStyle(color = VelumInk, fontSize = 15.sp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp)
+                        .border(1.dp, VelumInk, RoundedCornerShape(8.dp))
+                        .padding(12.dp),
+                    decorationBox = { inner ->
+                        if (term.isEmpty()) Text(strings.glossaryTerm, color = VelumInkSecondary)
+                        inner()
+                    },
+                )
+                Spacer(Modifier.height(8.dp))
+                BasicTextField(
+                    value = definition,
+                    onValueChange = { definition = it },
+                    textStyle = TextStyle(color = VelumInk, fontSize = 15.sp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp)
+                        .height(80.dp)
+                        .border(1.dp, VelumInk, RoundedCornerShape(8.dp))
+                        .padding(12.dp),
+                    decorationBox = { inner ->
+                        if (definition.isEmpty()) Text(strings.glossaryDefinition, color = VelumInkSecondary)
+                        inner()
+                    },
+                )
+                DualActionRow(
+                    left = strings.cancel,
+                    right = strings.save,
+                    onLeft = {
+                        term = ""
+                        definition = ""
+                        showAddGlossary = false
+                    },
+                    onRight = {
+                        scope.launch {
+                            container.repository.addGlossaryTerm(
+                                "gloss-${Random.nextInt(100000)}",
+                                term.trim(),
+                                definition.trim(),
+                            )
+                            term = ""
+                            definition = ""
+                            showAddGlossary = false
+                        }
+                    },
+                    rightEnabled = term.isNotBlank(),
                 )
             }
         }

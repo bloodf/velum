@@ -36,6 +36,7 @@ class OpenAiTranscriber(
             filename = input.filename,
             audioBytes = input.bytes,
             language = lang,
+            prompt = input.initialPrompt,
         )
         return TranscriptionResult(
             text = result.text,

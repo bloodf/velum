@@ -134,8 +134,8 @@ class DeviceToSummaryE2ETest {
             apiLlm = OpenAiLlmEngine(aiClient, settings),
         )
 
-        val db = createDatabase(DriverFactory())
-        val repo = VelumRepository(db)
+        val handle = createDatabase(DriverFactory())
+        val repo = VelumRepository(handle)
         val recordingId = "rec-e2e-1"
         repo.insertRecording(
             id = recordingId,

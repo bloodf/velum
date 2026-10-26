@@ -2,7 +2,6 @@ package dev.velum.app.ui.integrations
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,7 +20,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -38,8 +36,8 @@ import dev.velum.app.ui.theme.VelumDivider
 import dev.velum.app.ui.theme.VelumInk
 import dev.velum.app.ui.theme.VelumInkSecondary
 import dev.velum.app.ui.theme.VelumSurface
-import dev.velum.core.integrations.IntegrationAuthStatus
-import kotlinx.coroutines.launch
+import dev.velum.core.calendar.CalendarLookupResult
+import dev.velum.core.data.epochSecondsNow
 
 @Composable
 fun IntegrationsScreen(
@@ -47,25 +45,30 @@ fun IntegrationsScreen(
     onBack: () -> Unit,
 ) {
     val strings = LocalStrings.current
-    var status by remember { mutableStateOf(IntegrationAuthStatus.BlockedMissingClient) }
-    var authUrl by remember { mutableStateOf<String?>(null) }
-    val scope = rememberCoroutineScope()
+    var statusLabel by remember { mutableStateOf(strings.localCalendarHint) }
+    var statusColor by remember { mutableStateOf(VelumInkSecondary) }
 
     LaunchedEffect(container) {
-        status = container.integrationAuth.statusSuspend()
-        authUrl = container.integrationAuth.authorizationUrl()
-    }
-
-    val statusLabel = when (status) {
-        IntegrationAuthStatus.BlockedMissingClient -> strings.oauthBlocked
-        IntegrationAuthStatus.Disconnected -> strings.oauthDisconnected
-        IntegrationAuthStatus.Connected -> strings.oauthConnected
-    }
-
-    val actionLabel = when (status) {
-        IntegrationAuthStatus.BlockedMissingClient -> null
-        IntegrationAuthStatus.Disconnected -> strings.connect
-        IntegrationAuthStatus.Connected -> strings.disconnect
+        when (val result = container.calendarProvider.currentOrNextEvent(epochSecondsNow() * 1000)) {
+            is CalendarLookupResult.Ok -> {
+                val title = result.currentOrNext?.title
+                if (title.isNullOrBlank()) {
+                    statusLabel = strings.oauthDisconnected
+                    statusColor = VelumInkSecondary
+                } else {
+                    statusLabel = "${strings.oauthConnected}: $title"
+                    statusColor = Color(0xFF15803D)
+                }
+            }
+            CalendarLookupResult.PermissionDenied -> {
+                statusLabel = strings.calendarPermissionBlocked
+                statusColor = Color(0xFFB45309)
+            }
+            is CalendarLookupResult.Unavailable -> {
+                statusLabel = result.reason
+                statusColor = Color(0xFFB45309)
+            }
+        }
     }
 
     Column(Modifier.fillMaxSize().background(VelumBg)) {
@@ -87,61 +90,25 @@ fun IntegrationsScreen(
                         .background(Color(0xFF4285F4).copy(alpha = 0.12f)),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text("G", color = Color(0xFF4285F4), fontWeight = FontWeight.Bold)
+                    Text("C", color = Color(0xFF4285F4), fontWeight = FontWeight.Bold)
                 }
                 Spacer(Modifier.width(12.dp))
                 Text(
-                    strings.googleCalendar,
+                    strings.localCalendar,
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 16.sp,
                     modifier = Modifier.weight(1f),
                 )
-                if (actionLabel != null) {
-                    Text(
-                        actionLabel,
-                        color = Color(0xFF007AFF),
-                        fontWeight = FontWeight.Medium,
-                        modifier = Modifier.clickable {
-                            scope.launch {
-                                when (status) {
-                                    IntegrationAuthStatus.Disconnected -> {
-                                        // Auth URL is ready when client ID exists; browser open is platform-specific.
-                                        // Keep status honest until a real redirect completes.
-                                        authUrl = container.integrationAuth.authorizationUrl()
-                                    }
-                                    IntegrationAuthStatus.Connected -> {
-                                        container.integrationAuth.clearTokens()
-                                        status = container.integrationAuth.statusSuspend()
-                                    }
-                                    IntegrationAuthStatus.BlockedMissingClient -> Unit
-                                }
-                            }
-                        },
-                    )
-                }
             }
             Spacer(Modifier.height(10.dp))
-            Text(strings.googleCalendarHint, color = VelumInkSecondary, fontSize = 13.sp, lineHeight = 18.sp)
+            Text(strings.localCalendarHint, color = VelumInkSecondary, fontSize = 13.sp, lineHeight = 18.sp)
             Spacer(Modifier.height(8.dp))
             Text(
                 statusLabel,
-                color = when (status) {
-                    IntegrationAuthStatus.BlockedMissingClient -> Color(0xFFB45309)
-                    IntegrationAuthStatus.Connected -> Color(0xFF15803D)
-                    IntegrationAuthStatus.Disconnected -> VelumInkSecondary
-                },
+                color = statusColor,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Medium,
             )
-            if (status == IntegrationAuthStatus.Disconnected && !authUrl.isNullOrBlank()) {
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    authUrl.orEmpty(),
-                    color = VelumInkSecondary,
-                    fontSize = 11.sp,
-                    maxLines = 3,
-                )
-            }
         }
         Spacer(Modifier.weight(1f))
         Column(

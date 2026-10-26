@@ -17,6 +17,8 @@ data class AudioInput(
     val languageHint: String? = "auto",
     /** Optional recording id for voice-profile cluster cache. */
     val recordingId: String? = null,
+    /** Whisper-style initial_prompt (glossary / vocabulary hints). */
+    val initialPrompt: String? = null,
 )
 
 data class TranscriptSegment(
@@ -67,6 +69,24 @@ data class LlmResult(
 interface Transcriber {
     val engineId: String
     suspend fun transcribe(input: AudioInput, modelId: String): TranscriptionResult
+}
+
+/**
+ * Streaming local transcription. Emits partial Markdown as PCM arrives.
+ * Production Android uses a real sherpa path; JVM ships a test double only.
+ */
+interface StreamingTranscriber {
+    val engineId: String
+    fun start(
+        sampleRateHz: Int,
+        languageHint: String? = "auto",
+        initialPrompt: String? = null,
+    )
+    /** Push interleaved PCM16 LE. May emit partial Markdown via [onPartial]. */
+    fun pushPcm(pcm16Le: ByteArray)
+    /** Flush remaining audio and emit a final Markdown transcript. */
+    fun finish(): String
+    var onPartial: (markdown: String) -> Unit
 }
 
 interface Diarizer {

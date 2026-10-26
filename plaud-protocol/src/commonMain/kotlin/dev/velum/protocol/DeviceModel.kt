@@ -2,15 +2,26 @@ package dev.velum.protocol
 
 /**
  * Plaud product codes from BLE manufacturer data (bytes 1–2).
+ *
+ * Project **883** is Note Pro family alongside **881** (APK OTA push disables both).
  */
 enum class DeviceModel(val code: Int, val displayName: String) {
     PlaudOne(860, "Plaud One"),
     NotePin(880, "NotePin"),
     NotePro(881, "Note Pro"),
+    NotePro883(883, "Note Pro"),
     NotePinS(882, "NotePin S"),
     Note(888, "Note"),
     Unknown(-1, "Unknown"),
     ;
+
+    /** Note Pro family (881 / 883). Official app turns off OTA push for these. */
+    val isNoteProFamily: Boolean
+        get() = this == NotePro || this == NotePro883
+
+    /** Velum never runs OTA against Note Pro family; other models still forbid opcode 143. */
+    val supportsOta: Boolean
+        get() = !isNoteProFamily
 
     companion object {
         fun fromCode(code: Int): DeviceModel =
@@ -55,7 +66,11 @@ data class CommandTable(
             val rsa = protocolVersion in 20..29
             val ecc = protocolVersion >= 30
             return when (model) {
-                DeviceModel.NotePro, DeviceModel.NotePin, DeviceModel.NotePinS -> CommandTable(
+                DeviceModel.NotePro,
+                DeviceModel.NotePro883,
+                DeviceModel.NotePin,
+                DeviceModel.NotePinS,
+                -> CommandTable(
                     model = model,
                     protocolVersion = protocolVersion,
                     setClock = 4,

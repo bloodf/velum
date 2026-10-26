@@ -92,6 +92,11 @@ fun RecordingDetailScreen(
     var showGenerate by remember { mutableStateOf(showGenerateInitially) }
     var showMove by remember { mutableStateOf(false) }
     var showFindReplace by remember { mutableStateOf(false) }
+    var showAskAi by remember { mutableStateOf(false) }
+    var askDraft by remember { mutableStateOf("") }
+    var askAnswer by remember { mutableStateOf<String?>(null) }
+    var askBusy by remember { mutableStateOf(false) }
+    var askError by remember { mutableStateOf<String?>(null) }
     var processError by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val generating = recording?.status == "generating" ||
@@ -205,9 +210,68 @@ fun RecordingDetailScreen(
                 summary = recording?.summary_markdown,
                 generating = generating,
                 processError = processError,
-                onAskAi = { },
+                onAskAi = { showAskAi = true },
                 onGenerate = { showGenerate = true },
             )
+        }
+    }
+
+    if (showAskAi) {
+        ModalBottomSheet(
+            onDismissRequest = { showAskAi = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = VelumSurface,
+        ) {
+            Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
+                Text(strings.askAi, fontWeight = FontWeight.SemiBold, fontSize = 18.sp, color = VelumInk)
+                Spacer(Modifier.height(6.dp))
+                Text(strings.askAiHint, color = VelumInkSecondary, fontSize = 13.sp)
+                Spacer(Modifier.height(12.dp))
+                BasicTextField(
+                    value = askDraft,
+                    onValueChange = { askDraft = it },
+                    textStyle = TextStyle(color = VelumInk, fontSize = 15.sp),
+                    cursorBrush = SolidColor(VelumInk),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(100.dp)
+                        .border(1.dp, VelumDivider, RoundedCornerShape(10.dp))
+                        .padding(12.dp),
+                    decorationBox = { inner ->
+                        if (askDraft.isEmpty()) {
+                            Text(strings.askAiPlaceholder, color = VelumInkSecondary)
+                        }
+                        inner()
+                    },
+                )
+                Spacer(Modifier.height(12.dp))
+                BlackButton(
+                    if (askBusy) "…" else strings.askAiSend,
+                    {
+                        scope.launch {
+                            askBusy = true
+                            askError = null
+                            try {
+                                askAnswer = container.askAiChat.ask(recordingId, askDraft)
+                            } catch (t: Throwable) {
+                                askError = t.message ?: t.toString()
+                            } finally {
+                                askBusy = false
+                            }
+                        }
+                    },
+                    enabled = askDraft.isNotBlank() && !askBusy,
+                )
+                askError?.let {
+                    Spacer(Modifier.height(8.dp))
+                    Text(it, color = Color(0xFFFF3B30), fontSize = 13.sp)
+                }
+                askAnswer?.let { answer ->
+                    Spacer(Modifier.height(12.dp))
+                    MarkdownPreview(answer)
+                }
+                Spacer(Modifier.height(24.dp))
+            }
         }
     }
 

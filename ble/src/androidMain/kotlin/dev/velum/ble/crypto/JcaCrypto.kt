@@ -73,8 +73,7 @@ class JcaSessionCipher : SessionCipher {
 
     /**
      * plaintext = seq_u32_le || packet;
-     * nonce = secret.nonce[0..8) || u32Le(seq);
-     * aad = secret.aad.
+     * nonce / aad fixed for the whole session (APK 3.30.0 — do not fold seq into nonce).
      */
     override fun sealPacket(
         secret: Protocol20SessionSecret,
@@ -82,8 +81,7 @@ class JcaSessionCipher : SessionCipher {
         packet: ByteArray,
     ): ByteArray {
         val plaintext = Bytes.u32Le(sequence) + packet
-        val nonce = linkNonce(secret, sequence)
-        return chacha20Poly1305Seal(secret.key, nonce, secret.aad, plaintext)
+        return chacha20Poly1305Seal(secret.key, secret.nonce, secret.aad, plaintext)
     }
 
     override fun openPacket(
@@ -91,17 +89,13 @@ class JcaSessionCipher : SessionCipher {
         sequence: Long,
         ciphertextAndTag: ByteArray,
     ): Pair<Long, ByteArray>? {
-        val nonce = linkNonce(secret, sequence)
-        val plain = chacha20Poly1305Open(secret.key, nonce, secret.aad, ciphertextAndTag)
+        val plain = chacha20Poly1305Open(secret.key, secret.nonce, secret.aad, ciphertextAndTag)
             ?: return null
         if (plain.size < 4) return null
         val seq = Bytes.readU32Le(plain, 0)
         if (seq != sequence) return null
         return seq to plain.copyOfRange(4, plain.size)
     }
-
-    private fun linkNonce(secret: Protocol20SessionSecret, sequence: Long): ByteArray =
-        secret.nonce.copyOfRange(0, 8) + Bytes.u32Le(sequence)
 }
 
 /**

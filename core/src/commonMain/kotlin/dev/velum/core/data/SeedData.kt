@@ -81,6 +81,7 @@ object SeedData {
                 auto_label_voice = 1,
                 language = "auto",
                 notify = 1,
+                post_action = null,
             )
 
             q.setMeta(META_SEEDED, "1")

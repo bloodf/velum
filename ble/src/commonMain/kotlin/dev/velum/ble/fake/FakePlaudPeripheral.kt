@@ -5,7 +5,6 @@ import dev.velum.protocol.Bytes
 import dev.velum.protocol.Commands
 import dev.velum.protocol.DeviceIdentityKeys
 import dev.velum.protocol.Framing
-import dev.velum.protocol.HandshakeStatus
 import dev.velum.protocol.PacketType
 import dev.velum.protocol.Protocol20SessionSecret
 import dev.velum.protocol.SessionCipher
@@ -21,6 +20,12 @@ import kotlinx.coroutines.sync.withLock
 /**
  * In-process Note Pro (project 881, protocol 20) that speaks the same framing
  * and [SessionCipher] as [dev.velum.ble.client.PlaudDeviceClient].
+ *
+ * FE10 snSignature must be non-empty and match [clientKeys] on every connection.
+ * Call [resetUnlock] on disconnect so the next connect re-runs unlock.
+ *
+ * When [requirePublicKey] is false (E2EE off), FE11 is skipped and the session
+ * secret is emitted after a valid FE10.
  */
 class FakePlaudPeripheral(
     private val cipher: SessionCipher,
@@ -41,8 +46,23 @@ class FakePlaudPeripheral(
     private var appRecvSeq: Long = 2
     private var deviceSendSeq: Long = 0
     private var unlocked = false
+    private var handshakeFailed = false
+
+    /** Clear session state so the next connection requires FE10 again. */
+    fun resetUnlock() {
+        snChunks.clear()
+        pubChunks.clear()
+        secret = null
+        appRecvSeq = 2
+        deviceSendSeq = 0
+        unlocked = false
+        handshakeFailed = false
+    }
 
     suspend fun onWrite(payload: ByteArray) = mutex.withLock {
+        if (handshakeFailed) {
+            error("Handshake already failed — reconnect and send FE10 snSignature")
+        }
         if (!unlocked) {
             handleUnlock(payload)
             return
@@ -61,9 +81,13 @@ class FakePlaudPeripheral(
             Commands.UNLOCK_SN_SIGNATURE -> {
                 snChunks += Unlock.parseChunk(payload)
                 if (snChunks.size >= snChunks.first().total) {
-                    Unlock.reassemble(snChunks) // validate
+                    val signature = Unlock.reassemble(snChunks)
+                    if (signature.isEmpty() || !signature.contentEquals(clientKeys.serialSignature)) {
+                        handshakeFailed = true
+                        snChunks.clear()
+                        error("HANDSHAKE_FAIL: FE10 snSignature empty or does not match imported keys")
+                    }
                     if (requirePublicKey) {
-                        // Minimal FE11 nudge (opcode only + empty chunk header).
                         emitRaw(
                             Bytes.u16Le(Commands.UNLOCK_NEED_PUBLIC_KEY) +
                                 byteArrayOf(1, 0),
@@ -74,10 +98,12 @@ class FakePlaudPeripheral(
                 }
             }
             Commands.UNLOCK_SESSION_SECRET -> {
-                // App is sending public key PEM via FE12 chunks.
+                if (!requirePublicKey) {
+                    error("Public key FE12 unexpected when requirePublicKey=false")
+                }
                 pubChunks += Unlock.parseChunk(payload)
                 if (pubChunks.size >= pubChunks.first().total) {
-                    Unlock.reassemble(pubChunks) // validate PEM arrived
+                    Unlock.reassemble(pubChunks)
                     emitSessionSecret()
                 }
             }
@@ -107,7 +133,6 @@ class FakePlaudPeripheral(
     }
 
     private suspend fun handleCommand(packet: ByteArray) {
-        // App → device: [0x01][cmd u16 LE][params…] with trailing zeros trimmed.
         require(packet.isNotEmpty() && packet[0] == Framing.APP_PREFIX) {
             "Expected app prefix, got ${packet.firstOrNull()}"
         }
@@ -120,7 +145,6 @@ class FakePlaudPeripheral(
         val payload = if (packet.size > 3) packet.copyOfRange(3, packet.size) else ByteArray(0)
         when (cmd) {
             Commands.HANDSHAKE -> {
-                // status=0, protocol=20, tz=5, tzMin=0x1e, ch=1, wifi=1, noNs=0, ogg=1
                 val hsPayload = Bytes.hexToBytes("001400051e0101000156000701")
                 emitCommand(Commands.HANDSHAKE, hsPayload)
             }
@@ -144,7 +168,6 @@ class FakePlaudPeripheral(
                     Commands.SYNC_FILE_START,
                     Bytes.u32Le(sid) + byteArrayOf(0),
                 )
-                // Stream type-2 chunks then end marker.
                 var offset = 0
                 val maxChunk = 100
                 while (offset < sessionFile.size) {

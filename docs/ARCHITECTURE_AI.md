@@ -2,6 +2,31 @@
 
 Product decisions for transcription, diarization, and summaries/templates/agents.
 Research backing: [LOCAL_MODELS_RESEARCH.md](LOCAL_MODELS_RESEARCH.md).
+Plaud cloud inventory → local replacements: [APK_ANALYSIS.md](APK_ANALYSIS.md) §3.
+
+## 0. No Plaud cloud
+
+Velum never contacts `api.plaud.ai` (or regional / realtime / marketing hosts). There is **no** Plaud auth, billing, membership, telemetry (Datadog / PostHog / Crashlytics), hosted share links, teams, or SoundPlus license path.
+
+| Plaud group | Velum replacement |
+|---|---|
+| `/auth/*`, `/user-app/*` | Removed. Optional local PIN / biometrics only |
+| `/user/*`, `/config/*`, feature-gating | Local DataStore / SQLDelight; features on |
+| `/file/*`, tags, S3 | Local app storage + Room / SQLDelight |
+| `/ai/transcript*`, polish | Local ASR (whisper.cpp / sherpa-onnx) + optional LLM polish |
+| Diarization / speakers | Local embeddings + `VoiceProfileStore` |
+| `/ai/sum*`, `/summary/*`, templates | On-device LLM or **BYO** OpenAI-compatible key |
+| `/ask/*`, memory, search | Local chat + FTS / memory table |
+| `/share/*`, `/team-app/*`, marketing, Stripe / Shopify | Removed; Android share sheet for export |
+| Datadog / PostHog / FCM | Removed; local logs / notifications only |
+
+### Blocked on owner (cannot synthesize locally)
+
+- **`snSignature`** (`/device/sn-sign`) — one-time import into Android Keystore; required as FE10 on every connect for protocol ≥ 20
+- **Bind token** (`/device/bind`, bind-token, apply-token) — one-time import for cmd 1
+- **User RSA E2EE keypair** (`/e2ee/*`) — one-time import if the device still requests FE11/FE12; prefer turning E2EE off in the official app before migrate (verify on hardware)
+
+Firmware catalogue / automatic OTA, Find My registration, and SoundPlus remain out of scope.
 
 ## 1. Per-task Local vs API (mixing allowed)
 
@@ -85,3 +110,4 @@ OpusDecoder  ── Ogg demux (common) + kopus (Android/JVM); iOS unsupported fo
 - Streaming ASR UI
 - iOS on-device ASR / Opus decode / LLM runtimes (Android-first; same interfaces later)
 - WorkManager thermal checkpoints
+- Any Plaud-hosted auth, billing, telemetry, or OTA catalogue

@@ -32,6 +32,7 @@ class LocalTranscriber(
             languageHint = input.languageHint,
             modelId = resolved,
             modelPath = modelPath.absolutePath,
+            initialPrompt = input.initialPrompt,
         )
     }
 
