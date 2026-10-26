@@ -36,6 +36,9 @@ jobs:
       - name: Assemble Android debug APK
         run: ./gradlew :composeApp:assembleDebug --stacktrace
 
+      - name: Record Compose UI screenshots (Roborazzi)
+        run: ./gradlew :composeApp:recordRoborazziDebug --stacktrace
+
       - name: Compile desktop JVM (shared shell)
         run: ./gradlew :composeApp:compileKotlinDesktop --stacktrace
 
@@ -44,4 +47,11 @@ jobs:
         with:
           name: velum-debug-apk
           path: composeApp/build/outputs/apk/debug/*.apk
+          if-no-files-found: warn
+
+      - name: Upload UI screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: velum-ui-screenshots
+          path: composeApp/build/outputs/roborazzi/*.png
           if-no-files-found: warn

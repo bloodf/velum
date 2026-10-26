@@ -67,13 +67,16 @@ fun RecordingDetailScreen(
     container: AppContainer,
     recordingId: String,
     onBack: () -> Unit,
+    initialTab: Int = 0,
+    showSpeakersInitially: Boolean = false,
+    showGenerateInitially: Boolean = false,
 ) {
     val strings = LocalStrings.current
     val recording by container.repository.observeRecording(recordingId).collectAsState(null)
-    var tab by remember { mutableStateOf(0) } // 0 fontes, 1 notas
+    var tab by remember { mutableStateOf(initialTab) } // 0 fontes, 1 notas
     var showMenu by remember { mutableStateOf(false) }
-    var showSpeakers by remember { mutableStateOf(false) }
-    var showGenerate by remember { mutableStateOf(false) }
+    var showSpeakers by remember { mutableStateOf(showSpeakersInitially) }
+    var showGenerate by remember { mutableStateOf(showGenerateInitially) }
     val generating = recording?.status == "generating" || recording?.summary_markdown.isNullOrBlank()
 
     Column(
@@ -158,7 +161,7 @@ fun RecordingDetailScreen(
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
             containerColor = VelumSurface,
         ) {
-            SpeakerLabelSheet(onClose = { showSpeakers = false })
+            SpeakerLabelSheetContent(onClose = { showSpeakers = false })
         }
     }
     if (showGenerate) {
@@ -167,7 +170,7 @@ fun RecordingDetailScreen(
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
             containerColor = VelumSurface,
         ) {
-            GenerateSheet(onClose = { showGenerate = false })
+            GenerateSheetContent(onClose = { showGenerate = false })
         }
     }
 }
@@ -376,7 +379,7 @@ private fun GeneratingBody() {
 }
 
 @Composable
-private fun SpeakerLabelSheet(onClose: () -> Unit) {
+fun SpeakerLabelSheetContent(onClose: () -> Unit) {
     val strings = LocalStrings.current
     val demos = listOf(
         "Speaker 1" to "5m 12s",
@@ -421,7 +424,7 @@ private fun SpeakerLabelSheet(onClose: () -> Unit) {
 }
 
 @Composable
-private fun GenerateSheet(onClose: () -> Unit) {
+fun GenerateSheetContent(onClose: () -> Unit) {
     val strings = LocalStrings.current
     var auto by remember { mutableStateOf(true) }
     Column(Modifier.fillMaxWidth().padding(bottom = 20.dp)) {

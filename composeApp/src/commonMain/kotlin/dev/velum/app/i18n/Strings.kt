@@ -183,7 +183,7 @@ data class Strings(
 
 val PtBr = Strings(
     localeTag = "pt-BR",
-    allFiles = "Todos os ficheiros",
+    allFiles = "Todos os arquivos",
     explore = "Explorar",
     startRecording = "Iniciar gravação",
     importAudio = "Importar áudio",
@@ -278,7 +278,7 @@ val PtBr = Strings(
     findReplace = "Localizar e substituir",
     retranscribe = "Retranscrever",
     moveToTrash = "Mover para a lixeira",
-    speakersUpdateNote = "Os nomes são atualizados apenas neste ficheiro",
+    speakersUpdateNote = "Os nomes são atualizados apenas neste arquivo",
     allSet = "Tudo pronto",
     gotIt = "Entendi",
     modelsCached = "modelos em cache",
