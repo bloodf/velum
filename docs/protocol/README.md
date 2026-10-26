@@ -2,6 +2,9 @@
 
 These notes are an **adaptation** for Velum developers. They are **not** a dump of any proprietary SDK.
 
+Deep research (opcodes, Wi-Fi, model matrix, safe test plan):
+[PROTOCOL_RESEARCH.md](PROTOCOL_RESEARCH.md).
+
 ## Sources (please respect their licenses)
 
 | Project | License | What we used |

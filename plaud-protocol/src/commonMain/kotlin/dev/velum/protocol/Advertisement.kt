@@ -12,15 +12,14 @@ data class PlaudAdvertisement(
     val protocolVersion: Int,
     val rawManufacturerData: ByteArray,
 ) {
+    val model: DeviceModel get() = DeviceModel.fromCode(modelCode)
+
     val modelName: String
-        get() = when (modelCode) {
-            881 -> "Note Pro"
-            888 -> "Note"
-            880 -> "NotePin"
-            882 -> "NotePin S"
-            860 -> "Plaud One"
-            else -> "Unknown ($modelCode)"
-        }
+        get() = model.displayName.takeUnless { model == DeviceModel.Unknown }
+            ?: "Unknown ($modelCode)"
+
+    val commandTable: CommandTable
+        get() = CommandTable.forModel(model, protocolVersion)
 
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
