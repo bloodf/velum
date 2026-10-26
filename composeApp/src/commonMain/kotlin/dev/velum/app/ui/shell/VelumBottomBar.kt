@@ -1,8 +1,9 @@
 package dev.velum.app.ui.shell
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -17,18 +18,25 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.outlined.Apps
+import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Folder
-import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import dev.velum.app.i18n.LocalStrings
+import dev.velum.app.platform.HapticKind
+import dev.velum.app.platform.LocalHaptics
+import dev.velum.app.ui.motion.Motion
+import dev.velum.app.ui.motion.pressableScale
 import dev.velum.app.ui.theme.VelumBlack
 import dev.velum.app.ui.theme.VelumDivider
 import dev.velum.app.ui.theme.VelumInkSecondary
@@ -45,6 +53,7 @@ fun VelumBottomBar(
     onFab: () -> Unit,
 ) {
     val strings = LocalStrings.current
+    val haptics = LocalHaptics.current
     Box(modifier = Modifier.fillMaxWidth().background(VelumSurface)) {
         HorizontalDivider(thickness = 0.5.dp, color = VelumDivider)
         Row(
@@ -55,43 +64,50 @@ fun VelumBottomBar(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(
-                Modifier
-                    .defaultMinSize(48.dp, 48.dp)
-                    .clickable(onClick = onFiles),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    if (selected == ShellTab.Files && !fabOpen) Icons.Filled.Folder else Icons.Outlined.Folder,
-                    contentDescription = strings.allFiles,
-                    tint = if (selected == ShellTab.Files && !fabOpen) VelumBlack else VelumInkSecondary,
-                    modifier = Modifier.size(26.dp),
-                )
-            }
+            TabIcon(
+                selected = selected == ShellTab.Files && !fabOpen,
+                filled = Icons.Filled.Folder,
+                outlined = Icons.Outlined.Folder,
+                contentDescription = strings.allFiles,
+                onClick = {
+                    haptics.perform(HapticKind.Selection)
+                    onFiles()
+                },
+            )
             SpacerFab()
-            Box(
-                Modifier
-                    .defaultMinSize(48.dp, 48.dp)
-                    .clickable(onClick = onExplore),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    if (selected == ShellTab.Explore && !fabOpen) Icons.Filled.Apps else Icons.Outlined.Apps,
-                    contentDescription = strings.explore,
-                    tint = if (selected == ShellTab.Explore && !fabOpen) VelumBlack else VelumInkSecondary,
-                    modifier = Modifier.size(26.dp),
-                )
-            }
+            TabIcon(
+                selected = selected == ShellTab.Explore && !fabOpen,
+                filled = Icons.Filled.Apps,
+                outlined = Icons.Outlined.Apps,
+                contentDescription = strings.explore,
+                onClick = {
+                    haptics.perform(HapticKind.Selection)
+                    onExplore()
+                },
+            )
         }
+        val fabScale by animateFloatAsState(
+            targetValue = if (fabOpen) 0.94f else 1f,
+            animationSpec = Motion.tweenOut(Motion.PressMs),
+            label = "fabScale",
+        )
         Box(
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .offset(y = (-18).dp)
                 .size(58.dp)
+                .graphicsLayer {
+                    scaleX = fabScale
+                    scaleY = fabScale
+                }
                 .clip(CircleShape)
                 .background(VelumBlack)
                 .border(3.dp, VelumSurface, CircleShape)
-                .clickable(onClick = onFab),
+                .pressableScale(
+                    haptic = true,
+                    role = Role.Button,
+                    onClick = onFab,
+                ),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
@@ -101,6 +117,44 @@ fun VelumBottomBar(
                 modifier = Modifier.size(26.dp),
             )
         }
+    }
+}
+
+@Composable
+private fun TabIcon(
+    selected: Boolean,
+    filled: androidx.compose.ui.graphics.vector.ImageVector,
+    outlined: androidx.compose.ui.graphics.vector.ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit,
+) {
+    val tint by animateColorAsState(
+        targetValue = if (selected) VelumBlack else VelumInkSecondary,
+        animationSpec = Motion.tweenOut(Motion.ToggleMs),
+        label = "tabTint",
+    )
+    val scale by animateFloatAsState(
+        targetValue = if (selected) 1.06f else 1f,
+        animationSpec = Motion.tweenOut(Motion.ToggleMs),
+        label = "tabScale",
+    )
+    Box(
+        Modifier
+            .defaultMinSize(48.dp, 48.dp)
+            .pressableScale(haptic = false, role = Role.Tab, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            if (selected) filled else outlined,
+            contentDescription = contentDescription,
+            tint = tint,
+            modifier = Modifier
+                .size(26.dp)
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                },
+        )
     }
 }
 

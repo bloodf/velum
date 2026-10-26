@@ -1,5 +1,8 @@
 package dev.velum.app
 
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -28,13 +31,16 @@ import dev.velum.app.i18n.LocalStrings
 import dev.velum.app.i18n.PtBr
 import dev.velum.app.navigation.Routes
 import dev.velum.app.platform.AppPermission
+import dev.velum.app.platform.LocalHaptics
 import dev.velum.app.platform.MicStartResult
 import dev.velum.app.platform.PermissionOutcome
 import dev.velum.app.platform.openCalendarInsert
 import dev.velum.app.platform.recordingsDirectoryPath
 import dev.velum.app.platform.rememberAudioImporter
+import dev.velum.app.platform.rememberHaptics
 import dev.velum.app.platform.rememberPermissionRequester
 import dev.velum.app.platform.shareText
+import dev.velum.app.ui.motion.Motion
 import dev.velum.app.ui.DeviceScreen
 import dev.velum.app.ui.autoflow.AutoFlowEditScreen
 import dev.velum.app.ui.autoflow.AutoFlowListScreen
@@ -63,7 +69,11 @@ import kotlinx.coroutines.launch
 @Composable
 fun App(container: AppContainer) {
     VelumTheme {
-        CompositionLocalProvider(LocalStrings provides PtBr) {
+        val haptics = rememberHaptics()
+        CompositionLocalProvider(
+            LocalStrings provides PtBr,
+            LocalHaptics provides haptics,
+        ) {
             VelumRoot(container)
         }
     }
@@ -79,6 +89,10 @@ private fun VelumRoot(container: AppContainer) {
     val scope = rememberCoroutineScope()
     val strings = LocalStrings.current
     val snackbar = remember { SnackbarHostState() }
+    val reduceMotion = Motion.reduceMotion()
+    val navEnter = fadeIn(tween(if (reduceMotion) 0 else Motion.NavMs, easing = Motion.EaseOut))
+    val navExit = fadeOut(tween(if (reduceMotion) 0 else 120, easing = Motion.EaseOut))
+
 
     val requestMic = rememberPermissionRequester(
         permission = AppPermission.RecordAudio,
@@ -172,6 +186,10 @@ private fun VelumRoot(container: AppContainer) {
                 navController = navController,
                 startDestination = Routes.FILES,
                 modifier = Modifier.padding(padding),
+                enterTransition = { navEnter },
+                exitTransition = { navExit },
+                popEnterTransition = { navEnter },
+                popExitTransition = { navExit },
             ) {
                     composable(Routes.FILES) {
                         FilesScreen(
@@ -305,8 +323,9 @@ private fun VelumRoot(container: AppContainer) {
                 }
             }
 
-        if (fabOpen && onShell && !showFirstRun) {
+        if (onShell && !showFirstRun) {
             FabOverlay(
+                visible = fabOpen,
                 isCapturing = container.micCapture.isCapturing ||
                     container.activeMicRecordingId != null,
                 onStartRecording = {

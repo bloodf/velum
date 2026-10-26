@@ -25,14 +25,21 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.unit.dp
+import dev.velum.app.ui.motion.Motion
 
 @Composable
 fun RecordingsScreen() {
-    val pulse = remember { Animatable(0.92f) }
-    LaunchedEffect(Unit) {
+    val reduce = Motion.reduceMotion()
+    val pulse = remember { Animatable(1f) }
+    LaunchedEffect(reduce) {
+        if (reduce) {
+            pulse.snapTo(1f)
+            return@LaunchedEffect
+        }
+        // Ambient recording pulse — longer than UI chrome is OK; still ease-out.
         while (true) {
-            pulse.animateTo(1.05f, tween(1400))
-            pulse.animateTo(0.92f, tween(1400))
+            pulse.animateTo(1.04f, tween(900, easing = Motion.EaseOut))
+            pulse.animateTo(0.96f, tween(900, easing = Motion.EaseOut))
         }
     }
 

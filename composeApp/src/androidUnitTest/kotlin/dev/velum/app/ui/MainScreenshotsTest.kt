@@ -80,7 +80,7 @@ class MainScreenshotsTest {
     @Test
     fun fabOverlay() = capture("02-fab-overlay") {
         FilesScreen(container, onOpenRecording = {}, onOpenSettings = {})
-        FabOverlay(onStartRecording = {}, onImportAudio = {}, onDismiss = {})
+        FabOverlay(visible = true, onStartRecording = {}, onImportAudio = {}, onDismiss = {})
         BottomChrome(ShellTab.Files, fabOpen = true)
     }
 

@@ -1,5 +1,7 @@
 package dev.velum.app.ui.components
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -21,14 +23,19 @@ import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.velum.app.i18n.LocalStrings
+import dev.velum.app.ui.motion.Motion
+import dev.velum.app.ui.motion.pressableScale
 import dev.velum.app.ui.theme.VelumBlack
 import dev.velum.app.ui.theme.VelumDivider
 import dev.velum.app.ui.theme.VelumInk
@@ -114,7 +121,7 @@ fun SuggestionChip(text: String, onClick: () -> Unit) {
         modifier = Modifier
             .border(1.dp, VelumDivider, RoundedCornerShape(20.dp))
             .clip(RoundedCornerShape(20.dp))
-            .clickable(onClick = onClick)
+            .pressableScale(haptic = false, onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 8.dp),
     ) {
         Text(text, color = VelumInk, fontSize = 13.sp)
@@ -137,7 +144,7 @@ fun OutlineActionButton(
             .clip(RoundedCornerShape(10.dp))
             .border(1.dp, border, RoundedCornerShape(10.dp))
             .background(VelumSurface)
-            .clickable(onClick = onClick),
+            .pressableScale(haptic = true, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Text(text, color = tint, fontWeight = FontWeight.Medium, fontSize = 16.sp)
@@ -183,9 +190,22 @@ fun EmptyState(
     actionLabel: String? = null,
     onAction: (() -> Unit)? = null,
 ) {
+    val reduce = Motion.reduceMotion()
+    val progress = remember { Animatable(if (reduce) 1f else 0f) }
+    LaunchedEffect(Unit) {
+        if (!reduce) {
+            progress.animateTo(1f, tween(Motion.OverlayMs, easing = Motion.EaseOut))
+        }
+    }
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .graphicsLayer {
+                alpha = progress.value
+                val s = Motion.EnterScaleFrom + (1f - Motion.EnterScaleFrom) * progress.value
+                scaleX = s
+                scaleY = s
+            }
             .padding(horizontal = 32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {

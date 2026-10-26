@@ -30,11 +30,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.velum.app.ui.motion.pressableScale
 import dev.velum.app.ui.theme.AiGradientBrush
 import dev.velum.app.ui.theme.VelumAiCyan
 import dev.velum.app.ui.theme.VelumAiPurple
@@ -57,7 +59,7 @@ fun BlackButton(
             .height(52.dp)
             .clip(RoundedCornerShape(10.dp))
             .background(if (enabled) VelumBlack else VelumInkSecondary)
-            .clickable(enabled = enabled, onClick = onClick),
+            .pressableScale(enabled = enabled, haptic = true, role = Role.Button, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Text(text, color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
@@ -79,7 +81,7 @@ fun OutlineButton(
             .clip(RoundedCornerShape(12.dp))
             .border(1.dp, VelumDivider, RoundedCornerShape(12.dp))
             .background(VelumSurface)
-            .clickable(enabled = enabled, onClick = onClick)
+            .pressableScale(enabled = enabled, haptic = true, role = Role.Button, onClick = onClick)
             .padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center,
@@ -117,7 +119,7 @@ fun ChevronRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable(onClick = onClick)
+                .pressableScale(haptic = false, role = Role.Button, onClick = onClick)
                 .padding(horizontal = 20.dp, vertical = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
