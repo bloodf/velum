@@ -61,7 +61,7 @@ Use **`0x2A19`** for battery and **`0x180A`** for firmware/model info.
 - Phone runs a **WebSocket server on `:8081`**; device SoftAP joins via `WifiNetworkSpecifier` (WPA2).
 - Every WS frame is encrypted with the **same BLE session key/nonce/aad** (ChaCha20-Poly1305, or **AES-GCM** if cmd 138 bit `0x08`), with its own seq.
 - Active BLE session required; no Plaud cloud involved for the pipe itself.
-- Velum: local SoftAP + WS interfaces only — never contact `api.plaud.ai`.
+- Velum: local SoftAP + length-prefixed TCP `:8081` (same session cipher as Plaud WS) — never contact `api.plaud.ai`. See `WIFI_FAST_PATH.md`.
 
 ## Model / firmware matrix
 | Model | Firmware | Port | Notes |

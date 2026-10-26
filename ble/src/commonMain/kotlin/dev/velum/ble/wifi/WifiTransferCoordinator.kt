@@ -1,18 +1,19 @@
 package dev.velum.ble.wifi
 
+import dev.velum.protocol.FeatureFlags
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeout
-import kotlin.time.Duration
-import kotlin.time.Duration.Companion.seconds
 
 /**
- * Tries SoftAP + WebSocket :8081 fast transfer; on any failure falls back to [bleDownload].
+ * Tries SoftAP + TCP :8081 when FeatureRequest bit 0x08 is set; on any Wi-Fi
+ * failure falls back to BLE [bleDownload].
  *
- * Plaud parity: phone runs WS server on 8081; device joins SoftAP and pushes frames encrypted
- * with the BLE session key/nonce/aad (ChaCha20-Poly1305 or AES-GCM when feature bit 0x08).
- * Fixed nonce is **required** for Note Pro interoperability — not optional debt.
+ * Fixed AEAD nonce is Plaud parity debt (Note Pro SoftAP). Token preamble is
+ * Velum phone-listener auth.
  */
 class WifiTransferCoordinator(
     private val sessionFactory: () -> WifiFastTransferSession,
@@ -29,25 +30,28 @@ class WifiTransferCoordinator(
 
         data class BleFallback(val bytes: ByteArray, val reason: String) : Outcome() {
             override fun equals(other: Any?): Boolean =
-                other is BleFallback && bytes.contentEquals(other.bytes) && reason == other.reason
+                other is BleFallback &&
+                    bytes.contentEquals(other.bytes) &&
+                    reason == other.reason
 
             override fun hashCode(): Int = 31 * bytes.contentHashCode() + reason.hashCode()
         }
     }
 
-    /**
-     * [assemble] consumes opened plaintext frames until it returns non-null payload
-     * (e.g. full session file). Runs under [wifiTimeout]; failures → BLE.
-     */
     suspend fun transferOrFallback(
+        featureFlags: FeatureFlags,
         ssid: String,
         password: String,
+        expectedPreamble: ByteArray,
         ssidIsPattern: Boolean = false,
         port: Int = WifiTransferServer.DEFAULT_PORT,
-        preamble: ByteArray = WifiTransferPreamble.defaultToken(),
-        bindHost: String? = null,
-        assemble: suspend (WifiFastTransferSession) -> ByteArray,
+        bindAddress: String? = null,
+        sizeBytes: Long = 0,
+        assemble: (suspend (WifiFastTransferSession) -> ByteArray)? = null,
     ): Outcome {
+        if (!featureFlags.wifiAesGcm) {
+            return Outcome.BleFallback(bleDownload(), "feature_bit_0x08_absent")
+        }
         val session = sessionFactory()
         return try {
             withTimeout(wifiTimeout) {
@@ -56,46 +60,58 @@ class WifiTransferCoordinator(
                     password = password,
                     port = port,
                     ssidIsPattern = ssidIsPattern,
-                    preamble = preamble,
-                    bindHost = bindHost,
+                    bindAddress = bindAddress,
+                    expectedPreamble = expectedPreamble,
                 )
-                val bytes = assemble(session)
+                val bytes = if (assemble != null) {
+                    assemble(session)
+                } else {
+                    collectUntilSize(session, sizeBytes)
+                }
                 Outcome.Wifi(bytes)
             }
         } catch (t: CancellationException) {
             if (t is TimeoutCancellationException) {
-                val ble = bleDownload()
-                Outcome.BleFallback(ble, "wifi_timeout: ${t.message}")
+                Outcome.BleFallback(bleDownload(), "wifi_timeout: ${t.message}")
             } else {
                 throw t
             }
         } catch (t: Throwable) {
-            val ble = bleDownload()
-            Outcome.BleFallback(ble, t.message ?: t::class.simpleName ?: "wifi_failed")
+            Outcome.BleFallback(bleDownload(), t.message ?: t::class.simpleName ?: "wifi_failed")
         } finally {
             runCatching { session.stop() }
         }
     }
 
-    /** Collect first sealed frame, open it, return plaintext (demo / tests). */
-    suspend fun receiveOnePlainFrame(session: WifiFastTransferSession): ByteArray {
-        val sealed = session.server.incomingEncryptedFrames().first()
-        return session.openIncoming(sealed)
-            ?: error("Failed to open Wi-Fi frame (seq/cipher mismatch)")
+    companion object {
+        suspend fun collectUntilSize(
+            session: WifiFastTransferSession,
+            sizeBytes: Long,
+        ): ByteArray {
+            val chunks = ArrayList<ByteArray>()
+            var total = 0
+            while (sizeBytes <= 0 || total < sizeBytes) {
+                val sealed = session.server.incomingEncryptedFrames().first()
+                val chunk = session.openIncoming(sealed)
+                    ?: error("Wi-Fi frame decrypt failed")
+                if (chunk.isEmpty()) break
+                chunks += chunk
+                total += chunk.size
+                if (sizeBytes > 0 && total >= sizeBytes) break
+            }
+            if (sizeBytes > 0 && total < sizeBytes) {
+                error("Wi-Fi transfer incomplete: got $total < expected $sizeBytes")
+            }
+            val want = if (sizeBytes > 0) sizeBytes.toInt() else total
+            val out = ByteArray(want)
+            var offset = 0
+            for (chunk in chunks) {
+                val n = minOf(chunk.size, want - offset)
+                chunk.copyInto(out, offset, 0, n)
+                offset += n
+                if (offset >= want) break
+            }
+            return out
+        }
     }
-}
-
-/**
- * First WebSocket binary message must equal this token (Velum + fake device).
- * Plaud's app authenticates via the SoftAP WPA2 + active BLE session; we add an
- * explicit preamble so the phone never accepts a random SoftAP client.
- */
-object WifiTransferPreamble {
-    private const val MAGIC = "VELUM-WIFI-v1"
-
-    fun defaultToken(bindToken: String = "local"): ByteArray =
-        "$MAGIC:$bindToken".encodeToByteArray()
-
-    fun matches(actual: ByteArray, expected: ByteArray): Boolean =
-        actual.contentEquals(expected)
 }

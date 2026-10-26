@@ -45,16 +45,8 @@ kotlin {
 
         androidMain {
             dependsOn(mobileMain)
-            dependencies {
-                implementation(libs.java.websocket)
-            }
         }
 
-        jvmMain {
-            dependencies {
-                implementation(libs.java.websocket)
-            }
-        }
 
         // With the default hierarchy, apple/ios intermediate sets exist after applyDefaultHierarchyTemplate.
         val iosMain by getting {

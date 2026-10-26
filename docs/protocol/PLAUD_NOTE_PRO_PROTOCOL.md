@@ -77,4 +77,4 @@ Magic `PLAUD.AI`, header 512 bytes, version 1 = RSA-wrapped content key, body = 
 
 ## Gaps
 
-Protocol 30 ECDH, long download resume, exact CRC match — still to harden on owner hardware. Wi-Fi SoftAP + WebSocket `:8081` (Plaud parity) with token preamble and BLE fallback is implemented against the JVM fake; confirm SoftAP on owner hardware. See `WIFI_FAST_PATH.md`.
+Protocol 30 ECDH, long download resume, exact CRC match — still to harden on owner hardware. Wi-Fi SoftAP + length-prefixed TCP `:8081` with token preamble and BLE fallback is implemented against the JVM fake; confirm SoftAP on owner hardware. See `WIFI_FAST_PATH.md`.
