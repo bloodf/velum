@@ -74,3 +74,17 @@ test-results/
 plaud-ui-screenshots/
 **/Screenshot_*_Plaud.png
 /tmp/plaud-ui-screenshots/
+
+# On-device AI model weights (downloaded on demand — never commit)
+models/
+**/models/cache/
+*.onnx
+*.gguf
+*.ggml
+*.tflite
+*.litertlm
+*.pt
+*.pth
+*.safetensors
+*.mlmodel
+*.mlpackage/

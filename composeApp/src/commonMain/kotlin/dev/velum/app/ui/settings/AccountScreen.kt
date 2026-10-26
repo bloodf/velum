@@ -46,6 +46,8 @@ fun AccountScreen(
     container: AppContainer,
     onBack: () -> Unit,
     onDevice: () -> Unit,
+    onAiProcessing: () -> Unit = {},
+    onModelManager: () -> Unit = {},
 ) {
     val strings = LocalStrings.current
     val viewModel = container.settingsViewModel
@@ -64,6 +66,9 @@ fun AccountScreen(
     ) {
         ScreenTopBar(strings.account, onBack = onBack)
         Spacer(Modifier.height(8.dp))
+        ChevronRow(strings.aiProcessing, onAiProcessing)
+        ChevronRow(strings.modelManager, onModelManager, showDivider = false)
+        Spacer(Modifier.height(16.dp))
         Text(
             strings.aiProvider,
             fontWeight = FontWeight.SemiBold,

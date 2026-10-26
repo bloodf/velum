@@ -22,7 +22,10 @@ import dev.velum.app.ui.components.ToggleRow
 import dev.velum.app.ui.theme.VelumSurface
 
 @Composable
-fun PreferencesScreen(onBack: () -> Unit) {
+fun PreferencesScreen(
+    onBack: () -> Unit,
+    onAiProcessing: () -> Unit = {},
+) {
     val strings = LocalStrings.current
     var clean by remember { mutableStateOf(true) }
     var analytics by remember { mutableStateOf(false) }
@@ -34,6 +37,9 @@ fun PreferencesScreen(onBack: () -> Unit) {
             .verticalScroll(rememberScrollState()),
     ) {
         ScreenTopBar(strings.preferences, onBack = onBack)
+        SectionLabel(strings.aiProcessing)
+        ChevronRow(strings.aiProcessing, onAiProcessing, value = strings.computeLocal)
+        Spacer(Modifier.height(8.dp))
         SectionLabel(strings.transcriptionSummary)
         ChevronRow(
             strings.transcriptionLanguage,
