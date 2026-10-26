@@ -92,7 +92,7 @@ fun ImportDeviceKeysScreen(
                         privatePem = parsed.device.privateKeyPem.orEmpty()
                         hasKeys = true
                         jsonDraft = raw
-                        status = strings.importFromPlaudJsonOk
+                        status = strings.importKeys.fromPlaudJsonOk
                     }
                     is PlaudExportParseResult.Failure -> {
                         error = parsed.message
@@ -112,23 +112,23 @@ fun ImportDeviceKeysScreen(
             .background(VelumBg)
             .verticalScroll(rememberScrollState()),
     ) {
-        ScreenTopBar(strings.importDeviceKeys, onBack = onBack)
+        ScreenTopBar(strings.importKeys.title, onBack = onBack)
         Text(
-            strings.importDeviceKeysHint,
+            strings.importKeys.hint,
             color = VelumInkSecondary,
             fontSize = 13.sp,
             lineHeight = 18.sp,
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
         )
         Text(
-            strings.importFromPlaudJsonHint,
+            strings.importKeys.fromPlaudJsonHint,
             color = VelumInkSecondary,
             fontSize = 12.sp,
             lineHeight = 17.sp,
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
         )
         OutlineButton(
-            strings.importFromPlaudJson,
+            strings.importKeys.fromPlaudJson,
             { pickJsonFile() },
             Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
         )
@@ -136,19 +136,19 @@ fun ImportDeviceKeysScreen(
             value = jsonDraft,
             onValueChange = { jsonDraft = it },
             modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
-            label = { Text(strings.importFromPlaudJsonPaste) },
+            label = { Text(strings.importKeys.fromPlaudJsonPaste) },
             shape = RoundedCornerShape(10.dp),
             minLines = 4,
         )
         OutlineButton(
-            strings.importFromPlaudJsonApply,
+            strings.importKeys.fromPlaudJsonApply,
             { if (jsonDraft.isNotBlank()) applyJson(jsonDraft) },
             Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
             enabled = jsonDraft.isNotBlank(),
         )
         if (hasKeys) {
             Text(
-                strings.importDeviceKeysPresent,
+                strings.importKeys.present,
                 color = VelumInk,
                 fontWeight = FontWeight.Medium,
                 fontSize = 14.sp,
@@ -159,7 +159,7 @@ fun ImportDeviceKeysScreen(
             value = serial,
             onValueChange = { serial = it },
             modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
-            label = { Text(strings.deviceSerial) },
+            label = { Text(strings.importKeys.serial) },
             singleLine = true,
             shape = RoundedCornerShape(10.dp),
         )
@@ -167,7 +167,7 @@ fun ImportDeviceKeysScreen(
             value = snSignature,
             onValueChange = { snSignature = it },
             modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
-            label = { Text(strings.snSignatureB64) },
+            label = { Text(strings.importKeys.snSignatureB64) },
             shape = RoundedCornerShape(10.dp),
             minLines = 2,
         )
@@ -175,7 +175,7 @@ fun ImportDeviceKeysScreen(
             value = bindToken,
             onValueChange = { bindToken = it },
             modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
-            label = { Text(strings.bindToken) },
+            label = { Text(strings.importKeys.bindToken) },
             singleLine = true,
             shape = RoundedCornerShape(10.dp),
         )
@@ -183,7 +183,7 @@ fun ImportDeviceKeysScreen(
             value = publicPem,
             onValueChange = { publicPem = it },
             modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
-            label = { Text(strings.rsaPublicPemOptional) },
+            label = { Text(strings.importKeys.rsaPublicPemOptional) },
             shape = RoundedCornerShape(10.dp),
             minLines = 3,
         )
@@ -191,7 +191,7 @@ fun ImportDeviceKeysScreen(
             value = privatePem,
             onValueChange = { privatePem = it },
             modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
-            label = { Text(strings.rsaPrivatePemOptional) },
+            label = { Text(strings.importKeys.rsaPrivatePemOptional) },
             shape = RoundedCornerShape(10.dp),
             minLines = 3,
         )
@@ -211,7 +211,7 @@ fun ImportDeviceKeysScreen(
                             privateKeyPem = privatePem,
                         )
                         hasKeys = true
-                        status = strings.importDeviceKeysSaved
+                        status = strings.importKeys.saved
                     } catch (t: Throwable) {
                         error = t.message ?: t.toString()
                     }
@@ -222,12 +222,12 @@ fun ImportDeviceKeysScreen(
         )
         Spacer(Modifier.height(8.dp))
         OutlineButton(
-            strings.clearDeviceKeys,
+            strings.importKeys.clearKeys,
             {
                 scope.launch {
                     container.deviceKeyImporter.clearKeys()
                     hasKeys = false
-                    status = strings.importDeviceKeysCleared
+                    status = strings.importKeys.cleared
                 }
             },
             Modifier.padding(horizontal = 20.dp),

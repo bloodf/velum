@@ -174,7 +174,7 @@ fun AccountScreen(
         }
         Spacer(Modifier.height(16.dp))
         ChevronRow(strings.deviceManagement, onDevice)
-        ChevronRow(strings.importDeviceKeys, onImportKeys, showDivider = false)
+        ChevronRow(strings.importKeys.title, onImportKeys, showDivider = false)
         Spacer(Modifier.height(40.dp))
     }
 }
