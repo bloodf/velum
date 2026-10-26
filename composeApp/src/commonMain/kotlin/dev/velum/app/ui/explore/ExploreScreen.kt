@@ -19,7 +19,7 @@ import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.DesktopWindows
 import androidx.compose.material.icons.outlined.Extension
 import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material.icons.outlined.LibraryBooks
+import androidx.compose.material.icons.automirrored.outlined.LibraryBooks
 import androidx.compose.material.icons.outlined.Lightbulb
 import androidx.compose.material.icons.outlined.MailOutline
 import androidx.compose.material.icons.outlined.PeopleOutline
@@ -109,7 +109,7 @@ fun ExploreScreen(
         ChevronRow(strings.velumDesktop, {}, icon = Icons.Outlined.DesktopWindows, value = "Mac / Windows / Web")
 
         Spacer(Modifier.height(8.dp))
-        ChevronRow(strings.templatesCommunity, onTemplates, icon = Icons.Outlined.LibraryBooks)
+        ChevronRow(strings.templatesCommunity, onTemplates, icon = Icons.AutoMirrored.Outlined.LibraryBooks)
         ChevronRow(strings.autoFlow, onAutoFlow, icon = Icons.Outlined.AccountTree)
         ChevronRow(strings.integrations, onIntegrations, icon = Icons.Outlined.Extension)
 

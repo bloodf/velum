@@ -54,19 +54,21 @@ fun App(container: AppContainer) {
 private fun VelumRoot(container: AppContainer) {
     val navController = rememberNavController()
     val backStack by navController.currentBackStackEntryAsState()
-    val route = backStack?.destination?.route
+    val route = backStack?.destination?.route.orEmpty()
     var fabOpen by remember { mutableStateOf(false) }
 
-    val shellVisible = route == Routes.FILES || route == Routes.EXPLORE
-    val selectedTab = when (route) {
-        Routes.EXPLORE -> ShellTab.Explore
+    val onShell = route == Routes.FILES ||
+        route == Routes.EXPLORE ||
+        route.isEmpty() // initial composition before NavHost settles
+    val selectedTab = when {
+        route == Routes.EXPLORE -> ShellTab.Explore
         else -> ShellTab.Files
     }
 
     Box(Modifier.fillMaxSize()) {
         Scaffold(
             bottomBar = {
-                if (shellVisible) {
+                if (onShell) {
                     VelumBottomBar(
                         selected = selectedTab,
                         fabOpen = fabOpen,
@@ -193,7 +195,7 @@ private fun VelumRoot(container: AppContainer) {
             }
         }
 
-        if (fabOpen && shellVisible) {
+        if (fabOpen && onShell) {
             FabOverlay(
                 onStartRecording = { fabOpen = false },
                 onImportAudio = { fabOpen = false },

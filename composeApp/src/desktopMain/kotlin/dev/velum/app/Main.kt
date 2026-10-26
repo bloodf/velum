@@ -16,7 +16,7 @@ fun main() = application {
     Window(
         onCloseRequest = ::exitApplication,
         title = "Velum",
-        state = rememberWindowState(width = 420.dp, height = 860.dp),
+        state = rememberWindowState(width = 400.dp, height = 720.dp),
     ) {
         App(container)
     }
