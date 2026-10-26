@@ -1,132 +1,127 @@
 package dev.velum.ble.wifi
 
 import android.net.Network
-import java.io.InputStream
-import java.io.OutputStream
-import java.net.InetAddress
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import org.java_websocket.WebSocket
+import org.java_websocket.handshake.ClientHandshake
+import org.java_websocket.server.WebSocketServer
 import java.net.InetSocketAddress
-import java.net.ServerSocket
-import java.net.Socket
-import java.net.SocketException
+import java.nio.ByteBuffer
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
-import kotlin.concurrent.thread
-import kotlinx.coroutines.channels.BufferOverflow
-import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.receiveAsFlow
 
 /**
- * Phone-side length-prefixed TCP listener on :8081 for SoftAP fast transfer.
+ * Phone-side **WebSocket** server on **:8081** — Plaud APK parity (`org.java_websocket`).
  *
- * SoftAP routing is per-socket only (never bindProcessToNetwork):
- * - Listen socket binds the SoftAP interface address when known.
- * - Accepted peers use [Network.bindSocket].
- * - Outbound helpers use [Network.socketFactory] via [SoftApSocketBinder].
+ * Prefer [bindHost] = SoftAP link address from [AndroidWifiSoftApJoiner.softApHostAddress].
+ * When a SoftAP [Network] is provided, accepted client sockets are bound with
+ * [Network.bindSocket] (socket-level only — never process-wide bind).
  */
 class AndroidWifiTransferServer(
-    private val softApNetwork: (() -> Network?)? = null,
-    private val softApBindHost: (() -> String?)? = null,
+    private val softApNetwork: () -> Network? = { null },
 ) : WifiTransferServer {
-    private val incomingRef = java.util.concurrent.atomic.AtomicReference(
-        Channel<ByteArray>(capacity = 64, onBufferOverflow = BufferOverflow.DROP_OLDEST),
-    )
+    private val incoming = MutableSharedFlow<ByteArray>(extraBufferCapacity = 64)
     private val running = AtomicBoolean(false)
-    private val serverRef = AtomicReference<ServerSocket?>(null)
-    private val clientRef = AtomicReference<Socket?>(null)
-    private val clientOut = AtomicReference<OutputStream?>(null)
-    private val preambleAccepted = AtomicBoolean(false)
+    private val serverRef = AtomicReference<WebSocketServer?>(null)
+    private val clientRef = AtomicReference<WebSocket?>(null)
+    private val expectedPreamble = AtomicReference(WifiTransferPreamble.defaultToken())
+    private val preambleOk = AtomicBoolean(false)
 
     override suspend fun start(
         port: Int,
-        bindAddress: String?,
-        expectedPreamble: ByteArray,
+        bindHost: String?,
+        preamble: ByteArray,
     ) {
         stop()
-        require(expectedPreamble.isNotEmpty()) { "expectedPreamble must be non-empty" }
-        preambleAccepted.set(false)
-        incomingRef.getAndSet(
-            Channel(capacity = 64, onBufferOverflow = BufferOverflow.DROP_OLDEST),
-        ).close()
-        val network = softApNetwork?.invoke()
-        val host = bindAddress ?: softApBindHost?.invoke() ?: "127.0.0.1"
-        if (network != null) {
-            require(host != "0.0.0.0") {
-                "SoftAP Network known but bind host unresolved; pass SoftAP IPv4"
+        expectedPreamble.set(preamble)
+        preambleOk.set(false)
+        val address = if (bindHost != null) {
+            InetSocketAddress(bindHost, port)
+        } else {
+            InetSocketAddress(port)
+        }
+        val network = softApNetwork()
+        val server = object : WebSocketServer(address) {
+            override fun onOpen(conn: WebSocket, handshake: ClientHandshake) {
+                bindClientToSoftAp(conn, network)
+                clientRef.compareAndSet(null, conn)
+            }
+
+            override fun onClose(conn: WebSocket, code: Int, reason: String, remote: Boolean) {
+                clientRef.compareAndSet(conn, null)
+                preambleOk.set(false)
+            }
+
+            override fun onMessage(conn: WebSocket, message: String) = Unit
+
+            override fun onMessage(conn: WebSocket, message: ByteBuffer) {
+                val bytes = ByteArray(message.remaining())
+                message.get(bytes)
+                if (!preambleOk.get()) {
+                    if (WifiTransferPreamble.matches(bytes, expectedPreamble.get())) {
+                        preambleOk.set(true)
+                    } else {
+                        conn.close(1008, "preamble_mismatch")
+                    }
+                    return
+                }
+                if (bytes.size > MAX_FRAME_BYTES) {
+                    conn.close(1009, "frame_too_large")
+                    return
+                }
+                incoming.tryEmit(bytes)
+            }
+
+            override fun onError(conn: WebSocket?, ex: Exception) = Unit
+
+            override fun onStart() {
+                running.set(true)
             }
         }
-        val server = ServerSocket()
-        server.reuseAddress = true
-        server.bind(InetSocketAddress(InetAddress.getByName(host), port))
         serverRef.set(server)
-        running.set(true)
-        thread(name = "velum-wifi-transfer", isDaemon = true) {
-            try {
-                val client = server.accept()
-                if (network != null) {
-                    runCatching { network.bindSocket(client) }
-                }
-                clientRef.set(client)
-                client.soTimeout = 30_000
-                val input = client.getInputStream()
-                clientOut.set(client.getOutputStream())
-                val preamble = readExact(input, expectedPreamble.size) ?: run {
-                    client.close()
-                    return@thread
-                }
-                if (!WifiTransferPreamble.matches(preamble, expectedPreamble)) {
-                    client.close()
-                    return@thread
-                }
-                preambleAccepted.set(true)
-                while (running.get()) {
-                    val lenPrefix = readExact(input, WifiTransferFraming.LENGTH_PREFIX_BYTES)
-                        ?: break
-                    val len = WifiTransferFraming.parseLength(lenPrefix) ?: break
-                    val body = readExact(input, len) ?: break
-                    incomingRef.get().trySend(body)
-                }
-            } catch (_: SocketException) {
-            } catch (_: Exception) {
-            }
+        server.isReuseAddr = true
+        server.start()
+        var spins = 0
+        while (!running.get() && spins < 50) {
+            Thread.sleep(10)
+            spins++
         }
     }
 
     override suspend fun stop() {
         running.set(false)
-        preambleAccepted.set(false)
-        incomingRef.get().close()
-        clientOut.getAndSet(null)
+        preambleOk.set(false)
         clientRef.getAndSet(null)?.let { runCatching { it.close() } }
-        serverRef.getAndSet(null)?.let { runCatching { it.close() } }
+        serverRef.getAndSet(null)?.let { s -> runCatching { s.stop(500) } }
     }
 
-    override fun incomingEncryptedFrames(): Flow<ByteArray> = incomingRef.get().receiveAsFlow()
+    override fun incomingEncryptedFrames(): Flow<ByteArray> = incoming.asSharedFlow()
 
     override suspend fun sendEncryptedFrame(bytes: ByteArray) {
-        require(preambleAccepted.get()) { "Wi-Fi preamble not accepted yet" }
-        require(WifiTransferFraming.isValidFrameLength(bytes.size)) {
-            "Frame length ${bytes.size} exceeds ${WifiTransferFraming.MAX_FRAME_BYTES}"
-        }
-        val out = clientOut.get()
-            ?: error("No Wi-Fi transfer client on :${WifiTransferServer.DEFAULT_PORT}")
-        synchronized(out) {
-            out.write(WifiTransferFraming.encodeFrame(bytes))
-            out.flush()
+        val client = clientRef.get()
+            ?: error("No Wi-Fi WebSocket client on :${WifiTransferServer.DEFAULT_PORT}")
+        require(preambleOk.get()) { "Wi-Fi preamble not accepted yet" }
+        require(bytes.size <= MAX_FRAME_BYTES) { "Frame exceeds $MAX_FRAME_BYTES" }
+        synchronized(client) { client.send(bytes) }
+    }
+
+    private fun bindClientToSoftAp(conn: WebSocket, network: Network?) {
+        if (network == null) return
+        runCatching {
+            val method = conn.javaClass.methods.firstOrNull {
+                it.name == "getChannel" && it.parameterCount == 0
+            }
+            val channel = method?.invoke(conn) as? java.nio.channels.ByteChannel
+            val socket = (channel as? java.nio.channels.SocketChannel)?.socket()
+            if (socket != null) {
+                network.bindSocket(socket)
+            }
         }
     }
 
     companion object {
-        fun readExact(input: InputStream, len: Int): ByteArray? {
-            if (len <= 0) return null
-            val body = ByteArray(len)
-            var offset = 0
-            while (offset < len) {
-                val n = input.read(body, offset, len - offset)
-                if (n < 0) return null
-                offset += n
-            }
-            return body
-        }
+        const val MAX_FRAME_BYTES: Int = 8 * 1024 * 1024
     }
 }

@@ -2,21 +2,23 @@ package dev.velum.ble.wifi
 
 import android.content.Context
 import android.net.ConnectivityManager
+import android.net.LinkProperties
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.net.wifi.WifiNetworkSpecifier
 import android.os.Build
 import android.os.PatternMatcher
-import java.net.Inet4Address
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 /**
- * SoftAP join (WifiNetworkSpecifier + WPA2). Never calls bindProcessToNetwork.
- * Per-socket SoftAP routing uses [boundNetwork] with Network.socketFactory /
- * Network.bindSocket from [AndroidWifiTransferServer] / [SoftApSocketBinder].
+ * SoftAP join — Plaud APK parity (`WifiNetworkSpecifier` + WPA2).
+ *
+ * Does **not** call [ConnectivityManager.bindProcessToNetwork]. Exposes
+ * [boundNetwork] / [softApHostAddress] so the WebSocket :8081 server can bind
+ * sockets to the SoftAP [Network] via [Network.bindSocket] / [Network.socketFactory].
  */
 class AndroidWifiSoftApJoiner(
     private val context: Context,
@@ -24,18 +26,17 @@ class AndroidWifiSoftApJoiner(
     private var connectivityManager: ConnectivityManager? = null
     private var callback: ConnectivityManager.NetworkCallback? = null
     private var boundNetwork: Network? = null
+    private var linkProperties: LinkProperties? = null
 
     fun boundNetwork(): Network? = boundNetwork
 
-    fun softApIpv4Host(): String? {
-        val network = boundNetwork ?: return null
-        val cm = connectivityManager ?: return null
-        val props = cm.getLinkProperties(network) ?: return null
+    /** IPv4 host on the SoftAP network for binding the WS listener, if known. */
+    fun softApHostAddress(): String? {
+        val props = linkProperties ?: return null
         return props.linkAddresses
             .asSequence()
             .map { it.address }
-            .filterIsInstance<Inet4Address>()
-            .firstOrNull { !it.isLoopbackAddress }
+            .firstOrNull { !it.isLoopbackAddress && it.hostAddress?.contains(':') != true }
             ?.hostAddress
     }
 
@@ -62,7 +63,14 @@ class AndroidWifiSoftApJoiner(
             val cb = object : ConnectivityManager.NetworkCallback() {
                 override fun onAvailable(network: Network) {
                     boundNetwork = network
+                    linkProperties = cm.getLinkProperties(network)
                     if (cont.isActive) cont.resume(Unit)
+                }
+
+                override fun onLinkPropertiesChanged(network: Network, properties: LinkProperties) {
+                    if (network == boundNetwork) {
+                        linkProperties = properties
+                    }
                 }
 
                 override fun onUnavailable() {
@@ -91,6 +99,7 @@ class AndroidWifiSoftApJoiner(
         }
         callback = null
         boundNetwork = null
+        linkProperties = null
         connectivityManager = null
     }
 }

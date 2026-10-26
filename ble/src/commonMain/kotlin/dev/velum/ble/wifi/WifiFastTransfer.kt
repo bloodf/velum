@@ -8,10 +8,10 @@ import kotlinx.coroutines.flow.Flow
 /**
  * Cipher for Wi-Fi fast-transfer frames.
  *
- * APK 3.30.0: SoftAP frames use the same BLE session key/nonce/aad
- * (ChaCha20-Poly1305 by default, or AES-GCM when FeatureRequest bit 0x08 is set),
- * with per-frame sequence. Fixed nonce is Plaud protocol parity debt — required for
- * Note Pro SoftAP interoperability when hardware arrives; do not rotate per frame.
+ * APK 3.30.0 (Plaud parity): every WebSocket frame uses the **same BLE session**
+ * key/nonce/aad (ChaCha20-Poly1305 by default, or AES-GCM when FeatureRequest bit
+ * `0x08` is set), with its own sequence. Fixed nonce is required for Note Pro —
+ * do not "fix" it. No Plaud cloud is involved.
  */
 enum class WifiPayloadCipher {
     ChaCha20Poly1305,
@@ -24,25 +24,31 @@ enum class WifiPayloadCipher {
     }
 }
 
+/** Join the device SoftAP (phone becomes a client of the recorder's AP). */
 interface WifiSoftApJoiner {
     suspend fun join(ssid: String, password: String, ssidIsPattern: Boolean = false)
     suspend fun leave()
 }
 
 /**
- * Phone-side TCP listener after SoftAP join. Plaud uses WebSocket on :8081;
- * Velum uses length-prefixed TCP on the same port with the same session cipher.
- * Token preamble is Velum-side phone-listener auth.
+ * Phone-side **WebSocket** server the device connects to after SoftAP join.
+ * Official Plaud app listens on port **8081** (`org.java_websocket`).
  */
 interface WifiTransferServer {
+    /**
+     * @param bindHost SoftAP interface host when known (e.g. `"192.168.43.1"`);
+     *   null = platform default; JVM fake uses loopback.
+     * @param preamble required first binary WS message before encrypted frames.
+     */
     suspend fun start(
         port: Int = DEFAULT_PORT,
-        bindAddress: String? = null,
-        expectedPreamble: ByteArray,
+        bindHost: String? = null,
+        preamble: ByteArray = WifiTransferPreamble.defaultToken(),
     )
 
     suspend fun stop()
 
+    /** Encrypted frames from the device (still sealed — open with [WifiFrameCipher]). */
     fun incomingEncryptedFrames(): Flow<ByteArray>
 
     suspend fun sendEncryptedFrame(bytes: ByteArray)
@@ -58,6 +64,10 @@ interface WifiFrameCipher {
     fun open(sequence: Long, ciphertextAndTag: ByteArray): Pair<Long, ByteArray>?
 }
 
+/**
+ * ChaCha20-Poly1305 Wi-Fi frames via the BLE [SessionCipher] (fixed key/nonce/aad —
+ * Plaud session parity).
+ */
 class BleSessionWifiFrameCipher(
     private val cipher: SessionCipher,
     private val secret: Protocol20SessionSecret,
@@ -71,6 +81,7 @@ class BleSessionWifiFrameCipher(
         cipher.openPacket(secret, sequence, ciphertextAndTag)
 }
 
+/** SoftAP joiner that refuses to run (JVM / desktop tests use [FakeWifiSoftApJoiner]). */
 object UnsupportedWifiSoftApJoiner : WifiSoftApJoiner {
     override suspend fun join(ssid: String, password: String, ssidIsPattern: Boolean) {
         error("SoftAP join is Android-only — use FakeWifiSoftApJoiner in JVM tests")
@@ -79,6 +90,10 @@ object UnsupportedWifiSoftApJoiner : WifiSoftApJoiner {
     override suspend fun leave() = Unit
 }
 
+/**
+ * Coordinates SoftAP + WebSocket :8081 + frame cipher (Plaud APK parity).
+ * Never contacts Plaud servers.
+ */
 class WifiFastTransferSession(
     private val softAp: WifiSoftApJoiner,
     val server: WifiTransferServer,
@@ -92,10 +107,11 @@ class WifiFastTransferSession(
         password: String,
         port: Int = WifiTransferServer.DEFAULT_PORT,
         ssidIsPattern: Boolean = false,
-        bindAddress: String? = null,
-        expectedPreamble: ByteArray,
+        preamble: ByteArray = WifiTransferPreamble.defaultToken(),
+        bindHost: String? = null,
     ) {
-        server.start(port = port, bindAddress = bindAddress, expectedPreamble = expectedPreamble)
+        // Start WS listener first so the device can connect as soon as SoftAP is up.
+        server.start(port = port, bindHost = bindHost, preamble = preamble)
         softAp.join(ssid, password, ssidIsPattern)
         sendSeq = 0
         recvSeq = 0
@@ -117,25 +133,4 @@ class WifiFastTransferSession(
         recvSeq = opened.first + 1
         return opened.second
     }
-}
-
-/**
- * Session-token preamble: shared magic + bind-token, or session-key-derived token.
- */
-object WifiTransferPreamble {
-    private val MAGIC = byteArrayOf('V'.code.toByte(), 'L'.code.toByte(), 'W'.code.toByte(), 'F'.code.toByte())
-
-    fun fromBindToken(bindToken: String): ByteArray {
-        require(bindToken.isNotEmpty()) { "bind token required for Wi-Fi preamble" }
-        return MAGIC + bindToken.encodeToByteArray()
-    }
-
-    fun fromSessionKey(sessionKey: ByteArray): ByteArray {
-        require(sessionKey.isNotEmpty()) { "session key required for Wi-Fi preamble" }
-        val n = minOf(16, sessionKey.size)
-        return MAGIC + sessionKey.copyOf(n)
-    }
-
-    fun matches(actual: ByteArray, expected: ByteArray): Boolean =
-        actual.contentEquals(expected)
 }

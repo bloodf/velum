@@ -21,8 +21,9 @@ import dev.velum.protocol.Sessions
 import dev.velum.protocol.Unlock
 import dev.velum.protocol.UnlockChunk
 import dev.velum.protocol.UnlockSecretLayout
-import dev.velum.protocol.FeatureFlags
+import dev.velum.ble.wifi.WifiFastTransferSession
 import dev.velum.ble.wifi.WifiTransferCoordinator
+import dev.velum.ble.wifi.WifiTransferPreamble
 import dev.velum.ble.wifi.WifiTransferServer
 import kotlin.coroutines.coroutineContext
 import kotlin.time.Duration
@@ -165,29 +166,38 @@ class PlaudDeviceClient(
 
 
     /**
-     * Prefer SoftAP Wi-Fi fast path when FeatureRequest bit 0x08 is set; on any
-     * Wi-Fi failure fall back to BLE [downloadSession] via [wifi]'s bleDownload.
+     * SoftAP + WebSocket :8081 fast path (Plaud parity); on any Wi-Fi failure
+     * falls back to BLE [downloadSession]. [assemble] collects sealed WS frames
+     * into the session payload (see [WifiTransferCoordinator]).
      */
     suspend fun downloadSessionPreferWifi(
         sessionId: Long,
         sizeBytes: Long,
-        featureFlags: FeatureFlags,
-        wifi: WifiTransferCoordinator,
+        wifiSessionFactory: () -> WifiFastTransferSession,
         ssid: String,
         password: String,
-        expectedPreamble: ByteArray,
-        bindAddress: String? = null,
+        preamble: ByteArray = WifiTransferPreamble.defaultToken(),
+        bindHost: String? = null,
         port: Int = WifiTransferServer.DEFAULT_PORT,
-    ): WifiTransferCoordinator.Outcome =
-        wifi.transferOrFallback(
-            featureFlags = featureFlags,
+        ssidIsPattern: Boolean = false,
+        wifiTimeout: Duration = 45.seconds,
+        assemble: suspend (WifiFastTransferSession) -> ByteArray,
+    ): WifiTransferCoordinator.Outcome {
+        val coordinator = WifiTransferCoordinator(
+            sessionFactory = wifiSessionFactory,
+            bleDownload = { downloadSession(sessionId, sizeBytes) },
+            wifiTimeout = wifiTimeout,
+        )
+        return coordinator.transferOrFallback(
             ssid = ssid,
             password = password,
-            expectedPreamble = expectedPreamble,
+            ssidIsPattern = ssidIsPattern,
             port = port,
-            bindAddress = bindAddress,
-            sizeBytes = sizeBytes,
+            preamble = preamble,
+            bindHost = bindHost,
+            assemble = assemble,
         )
+    }
 
     /**
      * Download a session. Large transfers stream to a temp file when available,
