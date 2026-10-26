@@ -69,3 +69,8 @@ test-results/
 
 # Logs
 *.log
+
+# Owner Plaud reference screenshots (proprietary UI + personal data) — never commit
+plaud-ui-screenshots/
+**/Screenshot_*_Plaud.png
+/tmp/plaud-ui-screenshots/
