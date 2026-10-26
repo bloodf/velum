@@ -30,6 +30,7 @@ import dev.velum.ai.engine.TranscriptionResult
 import dev.velum.ai.local.VoiceProfileStore
 import dev.velum.ai.local.pcm16LeToFloats
 import dev.velum.ai.local.sliceFloats
+import dev.velum.ai.pipeline.SummaryLocalization
 import java.io.File
 
 /**
@@ -194,8 +195,10 @@ actual class LocalAsrRuntime actual constructor() {
         try {
             val system = buildString {
                 append(request.systemPrompt)
-                if (request.outputLanguage != "auto") {
-                    append("\nRespond in language: ${request.outputLanguage}.")
+                val lang = request.outputLanguage.trim().lowercase()
+                if (lang.isNotEmpty() && lang != "auto") {
+                    append('\n')
+                    append(SummaryLocalization.languageInstruction(lang))
                 }
             }
             val conversation = engine.createConversation(

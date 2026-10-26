@@ -159,11 +159,20 @@ class RecordingProcessor(
 
             emit(JobProgress.Running(0.7f, "Summarizing"))
             ensureApiKeyIfNeeded(cfg.summaryMode, "summaries")
+            val summaryLang = SummaryLocalization.resolveLanguage(
+                outputLanguage = cfg.outputLanguage,
+                audioLanguage = cfg.audioLanguage,
+            )
             val baseTemplate = templateId?.let { repository.getTemplate(it)?.system_prompt }
                 ?: repository.getTemplate("tpl-meeting")?.system_prompt
                 ?: "Summarize into Overview, Key points, Action items."
+            val localizedTemplate = SummaryLocalization.enhanceTemplatePrompt(
+                templateId = templateId ?: "tpl-meeting",
+                basePrompt = baseTemplate,
+                language = summaryLang,
+            )
             val templatePrompt = buildString {
-                append(baseTemplate)
+                append(localizedTemplate)
                 if (personalization.isNotBlank()) {
                     append("\n\n").append(personalization)
                 }
@@ -184,7 +193,7 @@ class RecordingProcessor(
                 llmComplete = { req -> llm.complete(req, llmModel) },
                 templatePrompt = templatePrompt,
                 transcriptMarkdown = transcriptMarkdown,
-                outputLanguage = cfg.outputLanguage,
+                outputLanguage = summaryLang,
             )
             repository.updateSummary(recordingId, summary.text)
             repository.updateStatus(recordingId, "ready")
@@ -214,8 +223,11 @@ class RecordingProcessor(
         val partials = chunks.mapIndexed { index, chunk ->
             llmComplete(
                 LlmRequest(
-                    systemPrompt = "Summarize this transcript section ($index/${chunks.lastIndex}) " +
-                        "into concise bullets. Keep speaker names and action items.",
+                    systemPrompt = SummaryLocalization.mapReduceChunkInstruction(
+                        language = outputLanguage,
+                        index = index,
+                        lastIndex = chunks.lastIndex,
+                    ),
                     userPrompt = chunk,
                     outputLanguage = outputLanguage,
                     maxOutputTokens = 512,

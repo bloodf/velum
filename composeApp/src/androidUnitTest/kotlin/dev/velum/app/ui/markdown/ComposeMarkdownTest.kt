@@ -31,12 +31,13 @@ class ComposeMarkdownTest {
     fun parses_summary_headings_and_checkboxes() {
         val blocks = parseMarkdownBlocks(
             """
-            ## Next Arrangements
+            ## Próximos passos
             - [ ] Importar chaves
             - Fechar sync BLE
             """.trimIndent(),
         )
         assertTrue(blocks.first() is MdBlock.Heading)
+        assertEquals("Próximos passos", (blocks.first() as MdBlock.Heading).text)
         assertTrue(blocks.any { it is MdBlock.Bullet && it.text.contains("Importar") })
         assertTrue(blocks.any { it is MdBlock.Bullet && it.text.contains("Fechar") })
     }

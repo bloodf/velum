@@ -38,6 +38,7 @@ Owner standing rule: nothing may remain stub/demo-only. Prefer **blocked-on-owne
 - [x] Local LLM LiteRT-LM on Android when Gemma Ready (default catalog id `gemma-4-e4b`)
 - [x] Ask AI on recording notes via local/`AiTaskRouter` LLM (no Plaud ask endpoints)
 - [x] Compose Markdown preview for Fontes / Notas (deterministic Compose renderer: bold speakers, timestamps, headings/lists; Roborazzi fixtures seed diarized transcript + summary)
+- [x] Summary/template H2 headings follow output language (pt-BR / en pinned; other langs via LLM instruction) — `SummaryLocalization`
 - [x] Generate sheet + retranscribe launch processor
 - [x] AutoFlow matcher + runner on matching recordings
 - [x] AutoFlow post-actions: share Markdown intent / calendar ACTION_INSERT

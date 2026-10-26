@@ -167,11 +167,15 @@ class MainScreenshotsTest {
     fun mindMap() = capture("15-mind-map") {
         val map = buildMindMap(
             markdown = """
+                ## Informações da reunião
+                - Participantes: Heitor, Marina
                 ## Decisões
                 - Usar Parakeet local
                 - Resumo com Gemma E4B
                 ## Próximos passos
                 - Importar chaves do Note Pro
+                ## Sugestões da IA
+                - Confirmar firmware
             """.trimIndent(),
             rootTitle = "Reunião demo",
         )

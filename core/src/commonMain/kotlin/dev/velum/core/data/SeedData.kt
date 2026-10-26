@@ -9,7 +9,7 @@ object DemoFlags {
 
 object SeedData {
     private const val META_SEEDED = "demo_seed_version"
-    private const val SEED_VERSION = "3"
+    private const val SEED_VERSION = "4"
 
     fun maybeSeed(db: VelumDatabase) {
         if (!DemoFlags.SEED_DEMO_DATA) return
@@ -103,12 +103,15 @@ object SeedData {
     )
 
     fun builtinTemplates(): List<BuiltinTemplate> = listOf(
+        // system_prompt bodies are locale-neutral outlines; RecordingProcessor +
+        // SummaryLocalization pin pt-BR / en headings (or instruct the LLM for other langs).
         BuiltinTemplate("tpl-general", "Notas gerais", "General",
             "Resumo estruturado com pontos-chave e próximos passos.",
-            systemPrompt = "Summarize into Overview, Key points, Action items."),
+            systemPrompt = "Summarize into sections: overview, key points, action items."),
         BuiltinTemplate("tpl-meeting", "Destaques da reunião", "Meeting",
             "Informações da reunião, notas por tópico, decisões e checklist.",
-            systemPrompt = "Meeting Information, Notes, Decisions, Next Arrangements, AI Suggestions.",
+            systemPrompt = "Meeting summary covering meeting information, notes by topic, " +
+                "decisions, next arrangements, and AI suggestions.",
             uses = 942),
         BuiltinTemplate("tpl-speech", "Discurso", "Speech",
             "Tema central, argumentos e citações memoráveis.",
@@ -192,12 +195,12 @@ Concordo. iOS fica para depois do pipeline local estar completo.
 """.trimIndent()
 
 private val DEMO_SUMMARY_PT = """
-## Meeting Information
-- **Date:** 2026-10-26
-- **Location:** Remoto
-- **Participants:** Heitor, Marina
+## Informações da reunião
+- **Data:** 2026-10-26
+- **Local:** Remoto
+- **Participantes:** Heitor, Marina
 
-## Meeting Notes
+## Notas da reunião
 ### Pipeline local
 - Transcrição diarizada → Markdown em **Fontes**
 - Resumo estruturado em **Notas** (Gemma E4B / API override)
@@ -207,15 +210,15 @@ private val DEMO_SUMMARY_PT = """
 - Fake BLE E2E no CI (FE10 obrigatório)
 - Chaves reais ainda bloqueadas no owner
 
-## Decisions
+## Decisões
 - Default **Local** quando o modelo estiver Ready
 - Embedding preferido: **3D-Speaker ERes2Net**
 
-## Next Arrangements
+## Próximos passos
 - [ ] Importar identidade do Note Pro
 - [ ] Validar Ogg Opus numa captura real
 - [ ] Revisar templates Velum
 
-## AI Suggestions
+## Sugestões da IA
 - Confirmar firmware 1.5 / protocolo 20 no aparelho do usuário
 """.trimIndent()

@@ -11,6 +11,7 @@ import dev.velum.ai.engine.LlmRequest
 import dev.velum.ai.engine.LlmResult
 import dev.velum.ai.engine.Transcriber
 import dev.velum.ai.engine.TranscriptionResult
+import dev.velum.ai.pipeline.SummaryLocalization
 import dev.velum.core.settings.SettingsRepository
 
 class OpenAiTranscriber(
@@ -80,8 +81,10 @@ class OpenAiLlmEngine(
         val model = modelId.ifBlank { cfg.chatModel ?: "gpt-4o-mini" }
         val system = buildString {
             append(request.systemPrompt)
-            if (request.outputLanguage != "auto") {
-                append("\nRespond in language: ${request.outputLanguage}.")
+            val lang = request.outputLanguage.trim().lowercase()
+            if (lang.isNotEmpty() && lang != "auto") {
+                append('\n')
+                append(SummaryLocalization.languageInstruction(lang))
             }
         }
         val text = client.chatCompletion(
