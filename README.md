@@ -10,6 +10,8 @@ Velum is an open-source, subscription-free companion for the [Plaud Note Pro](ht
 
 **Foundation (M0)** — repository, KMP modules, protocol codec + tests, AI client, BLE interface (Kable on mobile, stub on desktop), Compose Multiplatform shell (Device / Recordings / Settings).
 
+**Focus right now: Android.** The KMP layout keeps iOS targets for later (M3), but day-to-day work and CI target **Android + JVM tests** only. No Xcode project is maintained yet.
+
 Not yet: full BLE sync/download/decrypt on device, templates, desktop system-audio recorder, sync, integrations, speaker ID.
 
 ## Architecture
@@ -40,7 +42,9 @@ Requirements:
 ./gradlew :composeApp:run          # desktop
 ```
 
-CI builds JVM tests + Android debug APK on Linux; iOS is optional on macOS runners.
+CI builds JVM tests + Android debug APK on Linux (no iOS job until M3).
+
+Android API keys and device identity material use **Android Keystore AES-GCM** (`AndroidSecureStore`); ciphertext only is stored in private prefs.
 
 ## Configure AI
 
