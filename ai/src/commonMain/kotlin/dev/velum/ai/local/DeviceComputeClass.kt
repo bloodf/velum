@@ -5,7 +5,7 @@ package dev.velum.ai.local
  * Derived from RAM (and optionally SoC hints on Android).
  */
 enum class DeviceComputeClass {
-    /** ≤ ~3 GiB usable / low memoryClass — prefer Whisper Tiny. */
+    /** ≤ ~3 GiB usable / low memoryClass — Whistle or Whisper Tiny by language. */
     Low,
     /** Typical mid-range phones. */
     Mid,

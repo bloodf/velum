@@ -66,9 +66,20 @@ android {
     compileSdk = libs.versions.android.compileSdk.get().toInt()
     defaultConfig {
         minSdk = libs.versions.android.minSdk.get().toInt()
+        ndk {
+            // Needle/Whistle JNI (libvelum_needle) + libc++_shared; x86 emulators use Whisper Tiny.
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+        }
     }
+    sourceSets.getByName("main").jniLibs.srcDir("src/androidMain/jniLibs")
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+    }
+    packaging {
+        jniLibs {
+            // Ship Needle + libc++_shared from this module into consuming APKs.
+            keepDebugSymbols += listOf("**/libvelum_needle.so")
+        }
     }
 }

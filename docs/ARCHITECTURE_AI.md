@@ -51,9 +51,13 @@ The app is multilingual — not EN/PT only. Language comes from **auto-detect** 
 
 | Path | When | Runtime |
 |---|---|---|
-| **Parakeet TDT 0.6B v3** | Its 25 European languages | sherpa-onnx int8 |
+| **Whistle** | Low-end / Tiny + language ∈ en/de/fr/es/it/nl/pl | Needle JNI (`.cact`) |
+| **Whisper Tiny** | Low-end / Tiny + pt and other important langs | sherpa-onnx int8 |
+| **Parakeet TDT 0.6B v3** | Mid/standard — its 25 European languages | sherpa-onnx int8 |
 | **Whisper large-v3-turbo** | Everything else + mixed / code-switched audio | sherpa-onnx (later QNN NPU) |
 | **SenseVoice Small** | Light CJK option (zh / yue / ja / ko) | sherpa-onnx |
+
+Important language minimum (pt, en, es, fr, de, it, nl, pl, ja, zh, ko, ru, ar, hi, tr): `ImportantLanguages` / `docs/WHISTLE_EVAL.md`.
 
 API transcription uses the user’s chosen OpenAI-compatible `/audio/transcriptions` model.
 

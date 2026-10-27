@@ -27,14 +27,16 @@ import dev.velum.ai.engine.LlmResult
 import dev.velum.ai.engine.SpeakerSpan
 import dev.velum.ai.engine.TranscriptSegment
 import dev.velum.ai.engine.TranscriptionResult
+import dev.velum.ai.local.LocalAsrRouter
 import dev.velum.ai.local.VoiceProfileStore
 import dev.velum.ai.local.pcm16LeToFloats
 import dev.velum.ai.local.sliceFloats
+import dev.velum.ai.needle.NeedleWhistleEngine
 import dev.velum.ai.pipeline.SummaryLocalization
 import java.io.File
 
 /**
- * Android sherpa-onnx OfflineRecognizer + OfflineSpeakerDiarization + LiteRT-LM.
+ * Android sherpa-onnx OfflineRecognizer + Needle/Whistle JNI + OfflineSpeakerDiarization + LiteRT-LM.
  * Never returns placeholder transcript / summary text.
  */
 actual class LocalAsrRuntime actual constructor() {
@@ -46,6 +48,15 @@ actual class LocalAsrRuntime actual constructor() {
         modelPath: String,
         initialPrompt: String?,
     ): TranscriptionResult {
+        if (modelId == LocalAsrRouter.WHISTLE_ID || modelId.equals("whistle", ignoreCase = true)) {
+            return NeedleWhistleEngine.transcribe(
+                pcm16LeOrEncoded = pcmOrEncoded,
+                sampleRateHz = sampleRateHz,
+                languageHint = languageHint,
+                cactPath = modelPath,
+                keywords = initialPrompt,
+            )
+        }
         // Sherpa OfflineRecognizer has no Whisper initial_prompt; glossary is applied
         // via RecordingProcessor LLM prompts. Keep the param for API parity / future online models.
         @Suppress("UNUSED_PARAMETER")

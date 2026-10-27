@@ -6,3 +6,9 @@ hardware, informed by community documentation. See docs/protocol/README.md
 for upstream project credits (MIT-licensed research notes).
 
 Velum is not affiliated with Plaud Inc.
+
+This product may download and run:
+- Whistle speech weights (Apache-2.0) from Hugging Face Cactus-Compute/whistle
+- Needle inference engine static libraries (Apache-2.0) from Hugging Face
+  Cactus-Compute/needle3, linked into libvelum_needle.so for Android
+See docs/WHISTLE_EVAL.md.

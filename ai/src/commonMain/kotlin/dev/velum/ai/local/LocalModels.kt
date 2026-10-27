@@ -82,15 +82,27 @@ val DefaultLocalCatalog: List<LocalModelSpec> = listOf(
         archiveFileName = "sherpa-onnx-whisper-turbo.tar.bz2",
     ),
     LocalModelSpec(
+        id = "whistle",
+        displayName = "Whistle (low-end EU)",
+        kind = LocalModelKind.Asr,
+        approxBytes = 16_919_407L,
+        license = "Apache-2.0",
+        notes = "Cactus Whistle 16.9 MB via Needle JNI (.cact). Auto on low-RAM when " +
+            "language is en/de/fr/es/it/nl/pl. Portuguese and other important languages " +
+            "use Whisper Tiny — see docs/WHISTLE_EVAL.md.",
+        languages = "en, de, fr, es, it, nl, pl",
+        downloadUrl = "https://huggingface.co/Cactus-Compute/whistle/resolve/main/whistle.cact",
+        sha256 = "b6e02f048568ac5d01a2042556c658061e699acbc0aa2a1439f52f3d461dffeb",
+        archiveFileName = "whistle.cact",
+    ),
+    LocalModelSpec(
         id = "whisper-tiny",
         displayName = "Whisper Tiny (low-end)",
         kind = LocalModelKind.Asr,
         approxBytes = 111L * 1024 * 1024,
         license = "MIT",
-        notes = "Tiny / low-end phones: multilingual Whisper via sherpa-onnx int8 " +
-            "(includes pt). Chosen automatically on low RAM. " +
-            "Whistle (Cactus, 16.9 MB, Apache-2.0) was evaluated but rejected as default — " +
-            "no Portuguese and requires Needle .cact runtime (see docs/WHISTLE_EVAL.md).",
+        notes = "Low-end multilingual via sherpa-onnx int8 (includes pt and other major " +
+            "languages Whistle does not cover). Auto on low RAM when language ∉ Whistle set.",
         languages = "~99 (Whisper multilingual, incl. pt)",
         downloadUrl = "$ASR_MODELS/sherpa-onnx-whisper-tiny.tar.bz2",
         sha256 = "c46116994e539aa165266d96b325252728429c12535eb9d8b6a2b10f129e66b1",
@@ -444,18 +456,47 @@ class LocalModelManager(
 
 }
 
+/**
+ * Languages Velum treats as product-important (must have a working local ASR path).
+ * Whistle covers a subset; Whisper Tiny / Parakeet / SenseVoice / Whisper turbo cover the rest.
+ * See docs/WHISTLE_EVAL.md.
+ */
+object ImportantLanguages {
+    val codes: Set<String> = setOf(
+        "pt", "en", "es", "fr", "de", "it", "nl", "pl",
+        "ja", "zh", "ko", "ru", "ar", "hi", "tr",
+    )
+}
+
 /** Language + device-tier router for local ASR — see ARCHITECTURE_AI.md / WHISTLE_EVAL.md. */
 object LocalAsrRouter {
+    const val WHISTLE_ID: String = "whistle"
     const val TINY_ID: String = "whisper-tiny"
     const val STANDARD_ID: String = "parakeet-tdt-0.6b-v3-int8"
     const val QUALITY_ID: String = "whisper-large-v3-turbo"
     const val CJK_LIGHT_ID: String = "sensevoice-small"
+
+    /** Languages Whistle (Needle `.cact`) supports. */
+    val whistleLanguages: Set<String> = setOf("en", "de", "fr", "es", "it", "nl", "pl")
 
     private val parakeetEuropean = setOf(
         "bg", "hr", "cs", "da", "nl", "en", "et", "fi", "fr", "de", "el", "hu",
         "it", "lv", "lt", "mt", "pl", "pt", "ro", "sk", "sl", "es", "sv", "uk", "ru",
     )
     private val cjkLight = setOf("zh", "yue", "ja", "ko")
+
+    fun normalizeLang(languageHint: String?): String? =
+        languageHint?.lowercase()?.substringBefore('-')?.takeIf { it.isNotBlank() && it != "auto" }
+
+    fun supportsWhistle(languageHint: String?): Boolean =
+        normalizeLang(languageHint) in whistleLanguages
+
+    /**
+     * Low-end / Tiny size pick: Whistle when the language is in its set, else Whisper Tiny
+     * (covers Portuguese and other important languages).
+     */
+    fun chooseLowEndModelId(languageHint: String?): String =
+        if (supportsWhistle(languageHint)) WHISTLE_ID else TINY_ID
 
     fun chooseModelId(
         languageHint: String?,
@@ -464,18 +505,18 @@ object LocalAsrRouter {
         deviceClass: DeviceComputeClass = detectDeviceComputeClass(),
     ): String {
         when (tier) {
-            AsrSizeTier.Tiny -> return TINY_ID
+            AsrSizeTier.Tiny -> return chooseLowEndModelId(languageHint)
             AsrSizeTier.Quality -> return if (mixedAudio) QUALITY_ID else languageDefault(languageHint, preferQuality = true)
             AsrSizeTier.Standard -> return languageDefault(languageHint, preferQuality = false)
             AsrSizeTier.Auto -> Unit
         }
-        if (deviceClass == DeviceComputeClass.Low) return TINY_ID
+        if (deviceClass == DeviceComputeClass.Low) return chooseLowEndModelId(languageHint)
         if (mixedAudio) return QUALITY_ID
         return languageDefault(languageHint, preferQuality = deviceClass == DeviceComputeClass.High && mixedAudio)
     }
 
     private fun languageDefault(languageHint: String?, preferQuality: Boolean): String {
-        val lang = languageHint?.lowercase()?.substringBefore('-')?.takeIf { it != "auto" }
+        val lang = normalizeLang(languageHint)
         return when {
             preferQuality && lang !in parakeetEuropean && lang !in cjkLight -> QUALITY_ID
             lang == null -> STANDARD_ID

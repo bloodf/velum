@@ -17,6 +17,7 @@ object ModelReadiness {
             is ModelLayout.OpaqueFile,
             is ModelLayout.SingleOnnxFile,
             is ModelLayout.SingleLlmFile,
+            is ModelLayout.SingleCactFile,
             -> {
                 return if (archive.exists() && archive.length() > 0L) {
                     emptyList()
@@ -43,6 +44,7 @@ object ModelReadiness {
             is ModelLayout.OpaqueFile,
             is ModelLayout.SingleOnnxFile,
             is ModelLayout.SingleLlmFile,
+            is ModelLayout.SingleCactFile,
             -> {
                 return if (modelDir.resolve(spec.archiveFileName).exists()) modelDir else null
             }
@@ -57,6 +59,7 @@ object ModelReadiness {
         if (!spec.usesArchiveExtract()) {
             return when {
                 name.endsWith(".onnx") -> ModelLayout.SingleOnnxFile(spec.archiveFileName)
+                name.endsWith(".cact") -> ModelLayout.SingleCactFile(spec.archiveFileName)
                 name.endsWith(".litertlm") || name.endsWith(".gguf") ||
                     name.endsWith(".task") || name.endsWith(".tflite") ->
                     ModelLayout.SingleLlmFile(spec.archiveFileName)
@@ -174,6 +177,15 @@ sealed class ModelLayout {
 
     /** Direct download of one LLM weight file (.litertlm / .gguf / …). */
     data class SingleLlmFile(val fileName: String) : ModelLayout() {
+        override fun describe(): String = fileName
+        override fun missing(dir: ModelStoreDir): List<String> {
+            val f = dir.resolve(fileName)
+            return if (f.exists() && f.length() > 0L) emptyList() else listOf(fileName)
+        }
+    }
+
+    /** Needle/Whistle `.cact` single-file weights (no archive extract). */
+    data class SingleCactFile(val fileName: String) : ModelLayout() {
         override fun describe(): String = fileName
         override fun missing(dir: ModelStoreDir): List<String> {
             val f = dir.resolve(fileName)

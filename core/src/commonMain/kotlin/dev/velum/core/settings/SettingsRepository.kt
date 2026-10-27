@@ -161,16 +161,12 @@ class SettingsRepository(
         }
         store.putString(KEY_ASR_SIZE_TIER, value)
         _settings.update { it.copy(asrSizeTier = value) }
-        // Clearing an explicit model pin lets the tier/device router decide.
-        if (value != "auto") {
-            val pinned = when (value) {
-                "tiny" -> "whisper-tiny"
-                "quality" -> "whisper-large-v3-turbo"
-                else -> "parakeet-tdt-0.6b-v3-int8"
-            }
-            setLocalAsrModelId(pinned)
-        } else {
-            setLocalAsrModelId(null)
+        // Tiny clears the pin so LocalAsrRouter can pick Whistle vs Whisper Tiny by language.
+        // Standard/Quality still pin a concrete catalog id; Auto clears the pin entirely.
+        when (value) {
+            "auto", "tiny" -> setLocalAsrModelId(null)
+            "quality" -> setLocalAsrModelId("whisper-large-v3-turbo")
+            else -> setLocalAsrModelId("parakeet-tdt-0.6b-v3-int8")
         }
     }
 

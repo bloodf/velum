@@ -206,7 +206,7 @@ fun AiProcessingScreen(
         Spacer(Modifier.height(20.dp))
         SectionLabel("Local ASR size (low-end phones)")
         Text(
-            "Auto picks Whisper Tiny on low RAM. Whistle (Cactus) was evaluated but lacks Portuguese — see docs/WHISTLE_EVAL.md.",
+            "Auto / Tiny on low RAM: Whistle (16.9 MB) for en/de/fr/es/it/nl/pl; Whisper Tiny for Portuguese and other major languages. Manual override below — see docs/WHISTLE_EVAL.md.",
             color = VelumInkSecondary,
             fontSize = 13.sp,
             lineHeight = 18.sp,
