@@ -18,6 +18,8 @@ data class SettingsUiState(
     val refreshing: Boolean = false,
     val message: String? = null,
     val error: String? = null,
+    /** HTTP status from the last /models failure, when known. */
+    val errorStatus: Int? = null,
 )
 
 class SettingsViewModel(
@@ -39,10 +41,21 @@ class SettingsViewModel(
     }
 
     fun setBaseUrl(url: String) {
-        viewModelScope.launch { settingsRepository.setBaseUrl(url) }
+        viewModelScope.launch {
+            try {
+                settingsRepository.setBaseUrl(url)
+                clearMessage()
+            } catch (t: Throwable) {
+                _ui.value = SettingsUiState(
+                    error = t.message ?: t.toString(),
+                    errorStatus = null,
+                )
+            }
+        }
     }
 
     fun setApiKey(key: String) {
+        // Never log the key — only store via Keystore-backed SecureStore.
         viewModelScope.launch { settingsRepository.setApiKey(key) }
     }
 
@@ -50,8 +63,16 @@ class SettingsViewModel(
         viewModelScope.launch { settingsRepository.setTranscriptionModel(id) }
     }
 
+    fun selectDiarizationModel(id: String) {
+        viewModelScope.launch { settingsRepository.setDiarizationModel(id) }
+    }
+
     fun selectChatModel(id: String) {
         viewModelScope.launch { settingsRepository.setChatModel(id) }
+    }
+
+    fun selectEmbeddingModel(id: String) {
+        viewModelScope.launch { settingsRepository.setEmbeddingModel(id) }
     }
 
     fun refreshModels() {
@@ -67,7 +88,7 @@ class SettingsViewModel(
                 settingsRepository.setModels(models)
                 _ui.value = SettingsUiState(
                     refreshing = false,
-                    message = "Loaded ${models.size} models",
+                    message = "loaded:${models.size}",
                 )
             } catch (t: MissingApiKeyException) {
                 _ui.value = SettingsUiState(
@@ -78,6 +99,13 @@ class SettingsViewModel(
                 _ui.value = SettingsUiState(
                     refreshing = false,
                     error = t.message,
+                    errorStatus = t.status,
+                )
+            } catch (t: IllegalArgumentException) {
+                _ui.value = SettingsUiState(
+                    refreshing = false,
+                    error = t.message ?: t.toString(),
+                    errorStatus = -1,
                 )
             } catch (t: Throwable) {
                 _ui.value = SettingsUiState(
@@ -89,6 +117,6 @@ class SettingsViewModel(
     }
 
     fun clearMessage() {
-        _ui.value = _ui.value.copy(message = null, error = null)
+        _ui.value = _ui.value.copy(message = null, error = null, errorStatus = null)
     }
 }

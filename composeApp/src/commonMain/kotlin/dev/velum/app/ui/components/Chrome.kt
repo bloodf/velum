@@ -40,6 +40,7 @@ import dev.velum.app.ui.theme.VelumBlack
 import dev.velum.app.ui.theme.VelumDivider
 import dev.velum.app.ui.theme.VelumInk
 import dev.velum.app.ui.theme.VelumInkSecondary
+import dev.velum.app.ui.theme.VelumOnBlack
 import dev.velum.app.ui.theme.VelumSurface
 
 @Composable
@@ -234,6 +235,6 @@ fun SmallEditPill(text: String, onClick: () -> Unit) {
             .clickable(onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 4.dp),
     ) {
-        Text(text, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+        Text(text, color = VelumOnBlack, fontSize = 12.sp, fontWeight = FontWeight.Medium)
     }
 }

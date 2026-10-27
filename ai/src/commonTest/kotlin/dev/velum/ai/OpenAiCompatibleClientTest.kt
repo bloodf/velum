@@ -57,6 +57,41 @@ class OpenAiCompatibleClientTest {
         )
     }
 
+    @Test
+    fun listModels_unauthorizedThrows401() = runTest {
+        val engine = MockEngine {
+            respond(
+                content = """{"error":{"message":"Incorrect API key"}}""",
+                status = HttpStatusCode.Unauthorized,
+                headers = headersOf(HttpHeaders.ContentType, "application/json"),
+            )
+        }
+        val client = OpenAiCompatibleClient(httpClient = mockClient(engine))
+        val error = runCatching {
+            client.listModels("https://api.openai.com/v1", "bad-key")
+        }.exceptionOrNull()
+        assertTrue(error is AiApiException)
+        assertEquals(401, (error as AiApiException).status)
+        assertTrue(error.message!!.contains("GET /models"))
+    }
+
+    @Test
+    fun listModels_missingEndpointThrows404() = runTest {
+        val engine = MockEngine {
+            respond(
+                content = "Not Found",
+                status = HttpStatusCode.NotFound,
+                headers = headersOf(HttpHeaders.ContentType, "text/plain"),
+            )
+        }
+        val client = OpenAiCompatibleClient(httpClient = mockClient(engine))
+        val error = runCatching {
+            client.listModels("https://example.com/v1", "k")
+        }.exceptionOrNull()
+        assertTrue(error is AiApiException)
+        assertEquals(404, (error as AiApiException).status)
+    }
+
     private fun mockClient(engine: MockEngine) = HttpClient(engine) {
         install(ContentNegotiation) { json(OpenAiCompatibleClient.defaultJson) }
     }

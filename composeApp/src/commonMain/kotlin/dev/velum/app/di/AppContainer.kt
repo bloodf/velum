@@ -38,6 +38,7 @@ import dev.velum.core.security.DeviceKeyImporter
 import dev.velum.core.security.SecureDeviceKeyImporter
 import dev.velum.core.security.SecureStore
 import dev.velum.core.settings.SettingsRepository
+import dev.velum.core.time.VelumDateTime
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -175,12 +176,9 @@ class AppContainer(
     }
 
     private fun formatRecordingTitle(epochSeconds: Long): String {
-        val day = (epochSeconds / 86_400L)
-        val tod = epochSeconds % 86_400L
-        val h = tod / 3600
-        val m = (tod % 3600) / 60
-        val s = tod % 60
-        fun two(n: Long) = if (n < 10) "0$n" else "$n"
-        return "Recording $day ${two(h)}:${two(m)}:${two(s)}"
+        val locale = settingsRepository.preferences.value.appLanguage
+            .takeIf { it != "system" }
+            ?: "pt-BR"
+        return VelumDateTime.formatFriendlyTitle(epochSeconds, locale)
     }
 }

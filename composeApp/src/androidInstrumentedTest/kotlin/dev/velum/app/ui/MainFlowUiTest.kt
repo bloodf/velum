@@ -35,7 +35,7 @@ class MainFlowUiTest {
 
     @Test
     fun recordingDetail_opensNotasWithMarkdownSummary() {
-        composeRule.onNodeWithText("2026-10-26 10:59:15", substring = true).performClick()
+        composeRule.onNodeWithText("26 out, 10:39", substring = true).performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Notas", substring = true).performClick()
         composeRule.waitForIdle()

@@ -30,6 +30,10 @@ data class VelumColors(
     val surfaceVariant: Color,
     val disabledFill: Color,
     val onDisabled: Color,
+    /** Soft warning / missing-model banner fill. */
+    val warningContainer: Color,
+    /** Title/body on [warningContainer] — ≥4.5:1. */
+    val onWarningContainer: Color,
     val aiPurple: Color,
     val aiCyan: Color,
 )
@@ -46,6 +50,8 @@ val LightVelumColors = VelumColors(
     surfaceVariant = Color(0xFFF2F2F7),
     disabledFill = Color(0xFFC7C7CC),
     onDisabled = Color(0xFF3A3A3C),
+    warningContainer = Color(0xFFFFF7ED),
+    onWarningContainer = Color(0xFF9A3412),
     aiPurple = Color(0xFF8B5CF6),
     aiCyan = Color(0xFF22D3EE),
 )
@@ -62,6 +68,8 @@ val DarkVelumColors = VelumColors(
     surfaceVariant = Color(0xFF2C2C2E),
     disabledFill = Color(0xFF3A3A3C),
     onDisabled = Color(0xFFE5E5EA),
+    warningContainer = Color(0xFF3B2A1A),
+    onWarningContainer = Color(0xFFFFB74A),
     aiPurple = Color(0xFFA78BFA),
     aiCyan = Color(0xFF67E8F9),
 )
@@ -83,6 +91,8 @@ val VelumBlack: Color get() = VelumTokenBridge.current.black
 val VelumOnBlack: Color get() = VelumTokenBridge.current.onBlack
 val VelumDisabledFill: Color get() = VelumTokenBridge.current.disabledFill
 val VelumOnDisabled: Color get() = VelumTokenBridge.current.onDisabled
+val VelumWarningContainer: Color get() = VelumTokenBridge.current.warningContainer
+val VelumOnWarningContainer: Color get() = VelumTokenBridge.current.onWarningContainer
 val VelumAiPurple: Color get() = VelumTokenBridge.current.aiPurple
 val VelumAiCyan: Color get() = VelumTokenBridge.current.aiCyan
 
@@ -108,6 +118,8 @@ private val lightScheme = lightColorScheme(
     surfaceVariant = LightVelumColors.surfaceVariant,
     error = Color(0xFFFF3B30),
     onError = Color.White,
+    errorContainer = LightVelumColors.warningContainer,
+    onErrorContainer = LightVelumColors.onWarningContainer,
 )
 
 private val darkScheme = darkColorScheme(
@@ -128,6 +140,8 @@ private val darkScheme = darkColorScheme(
     surfaceVariant = DarkVelumColors.surfaceVariant,
     error = Color(0xFFFF453A),
     onError = Color(0xFF121212),
+    errorContainer = DarkVelumColors.warningContainer,
+    onErrorContainer = DarkVelumColors.onWarningContainer,
 )
 
 private val type = Typography(

@@ -18,7 +18,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -30,7 +29,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -38,8 +36,10 @@ import dev.velum.ai.engine.AiTask
 import dev.velum.ai.engine.ModeResolution
 import dev.velum.app.di.AppContainer
 import dev.velum.app.i18n.LocalStrings
+import dev.velum.app.ui.components.BlackButton
 import dev.velum.app.ui.components.ChevronRow
 import dev.velum.app.ui.components.LocalModelMissingDialog
+import dev.velum.app.ui.components.OutlineButton
 import dev.velum.app.ui.components.ScreenTopBar
 import dev.velum.app.ui.components.SectionLabel
 import dev.velum.app.ui.theme.VelumBg
@@ -47,7 +47,10 @@ import dev.velum.app.ui.theme.VelumBlack
 import dev.velum.app.ui.theme.VelumDivider
 import dev.velum.app.ui.theme.VelumInk
 import dev.velum.app.ui.theme.VelumInkSecondary
+import dev.velum.app.ui.theme.VelumOnBlack
+import dev.velum.app.ui.theme.VelumOnWarningContainer
 import dev.velum.app.ui.theme.VelumSurface
+import dev.velum.app.ui.theme.VelumWarningContainer
 import dev.velum.core.model.ComputeMode
 import kotlinx.coroutines.launch
 
@@ -107,33 +110,40 @@ fun AiProcessingScreen(
                     .padding(horizontal = 20.dp, vertical = 8.dp)
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(10.dp))
-                    .background(Color(0xFFFFF7ED))
+                    .background(VelumWarningContainer)
                     .padding(12.dp),
             ) {
                 Text(
                     strings.localModelMissingTitle,
                     fontWeight = FontWeight.SemiBold,
-                    color = Color(0xFFB45309),
+                    color = VelumOnWarningContainer,
                     fontSize = 14.sp,
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
                     strings.localModelMissingBody.replace("%s", first.displayName),
-                    color = Color(0xFF9A3412),
+                    color = VelumOnWarningContainer,
                     fontSize = 13.sp,
                     lineHeight = 18.sp,
                 )
+                Spacer(Modifier.height(10.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(onClick = onModelManager) { Text(strings.downloadModel) }
-                    TextButton(
-                        onClick = {
+                    BlackButton(
+                        strings.downloadModel,
+                        onModelManager,
+                        Modifier.weight(1f),
+                    )
+                    OutlineButton(
+                        strings.switchToApi,
+                        {
                             scope.launch {
                                 container.settingsRepository.setTranscriptionMode(ComputeMode.Api)
                                 container.settingsRepository.setDiarizationMode(ComputeMode.Api)
                                 container.settingsRepository.setSummaryMode(ComputeMode.Api)
                             }
                         },
-                    ) { Text(strings.switchToApi) }
+                        Modifier.weight(1f),
+                    )
                 }
             }
         }
@@ -374,7 +384,7 @@ private fun ModeChip(
     ) {
         Text(
             label,
-            color = if (selected) Color.White else VelumInk,
+            color = if (selected) VelumOnBlack else VelumInk,
             fontWeight = FontWeight.SemiBold,
             fontSize = 15.sp,
         )
@@ -386,11 +396,12 @@ private fun AsrTierPicker(
     selected: String,
     onSelect: (String) -> Unit,
 ) {
+    val strings = LocalStrings.current
     val options = listOf(
-        "auto" to "Auto",
-        "tiny" to "Tiny",
-        "standard" to "Standard",
-        "quality" to "Quality",
+        "auto" to strings.ux.asrTierAuto,
+        "tiny" to strings.ux.asrTierTiny,
+        "standard" to strings.ux.asrTierStandard,
+        "quality" to strings.ux.asrTierQuality,
     )
     Row(
         Modifier

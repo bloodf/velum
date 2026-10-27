@@ -40,6 +40,7 @@ import dev.velum.app.ui.motion.pressableScale
 import dev.velum.app.ui.theme.VelumBlack
 import dev.velum.app.ui.theme.VelumDivider
 import dev.velum.app.ui.theme.VelumInkSecondary
+import dev.velum.app.ui.theme.VelumOnBlack
 import dev.velum.app.ui.theme.VelumSurface
 
 enum class ShellTab { Files, Explore }
@@ -113,7 +114,7 @@ fun VelumBottomBar(
             Icon(
                 imageVector = if (fabOpen) Icons.Outlined.Close else Icons.Outlined.AutoAwesome,
                 contentDescription = if (fabOpen) strings.close else strings.create,
-                tint = Color.White,
+                tint = VelumOnBlack,
                 modifier = Modifier.size(26.dp),
             )
         }

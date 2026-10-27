@@ -12,6 +12,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -34,7 +37,9 @@ import dev.velum.app.platform.rememberPermissionRequester
 import dev.velum.app.ui.components.BlackButton
 import dev.velum.app.ui.components.ScreenTopBar
 import dev.velum.app.ui.theme.VelumBg
+import dev.velum.app.ui.theme.VelumInk
 import dev.velum.app.ui.theme.VelumInkSecondary
+import dev.velum.app.ui.theme.VelumOnWarningContainer
 import dev.velum.app.ui.theme.VelumSurface
 import dev.velum.core.calendar.CalendarLookupResult
 import dev.velum.core.data.epochSecondsNow
@@ -72,7 +77,7 @@ fun IntegrationsScreen(
             CalendarLookupResult.PermissionDenied -> {
                 needsPermission = true
                 statusLabel = strings.calendarPermissionBlocked
-                statusColor = Color(0xFFB45309)
+                statusColor = VelumOnWarningContainer
             }
             is CalendarLookupResult.Unavailable -> {
                 needsPermission = false
@@ -81,7 +86,7 @@ fun IntegrationsScreen(
                 } else {
                     result.reason.ifBlank { strings.ux.androidContextUnavailable }
                 }
-                statusColor = Color(0xFFB45309)
+                statusColor = VelumOnWarningContainer
             }
         }
     }
@@ -105,13 +110,19 @@ fun IntegrationsScreen(
                         .background(Color(0xFF4285F4).copy(alpha = 0.12f)),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text("C", color = Color(0xFF4285F4), fontWeight = FontWeight.Bold)
+                    Icon(
+                        Icons.Outlined.CalendarMonth,
+                        contentDescription = null,
+                        tint = Color(0xFF4285F4),
+                        modifier = Modifier.size(22.dp),
+                    )
                 }
                 Spacer(Modifier.width(12.dp))
                 Text(
                     strings.localCalendar,
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 16.sp,
+                    color = VelumInk,
                     modifier = Modifier.weight(1f),
                 )
             }

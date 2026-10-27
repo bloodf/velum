@@ -30,10 +30,11 @@ object SeedData {
                 id = "rec-demo-1",
                 session_id = now - 3600,
                 folder_id = "folder-meetings",
-                title = "2026-10-26 10:59:15",
+                // Friendly title matches started_at in UTC (demo / screenshot fixture).
+                title = "26 out, 10:39",
                 source = "note_pro",
                 device_serial = "881DEMO01",
-                started_at = now - 3600,
+                started_at = 1_729_939_155L,
                 duration_seconds = 36 * 60,
                 size_bytes = 8_500_000,
                 local_path = null,

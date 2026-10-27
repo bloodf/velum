@@ -88,6 +88,7 @@ import dev.velum.app.ui.theme.VelumBlack
 import dev.velum.app.ui.theme.VelumDivider
 import dev.velum.app.ui.theme.VelumInk
 import dev.velum.app.ui.theme.VelumInkSecondary
+import dev.velum.app.ui.theme.VelumOnBlack
 import dev.velum.app.ui.theme.VelumSurface
 import dev.velum.core.model.ComputeMode
 import dev.velum.core.templates.BuiltinTemplateCatalog
@@ -1397,7 +1398,7 @@ private fun ModeChip(text: String, selected: Boolean, onClick: () -> Unit) {
             .clickable(onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 8.dp),
     ) {
-        Text(text, color = if (selected) Color.White else VelumInk, fontSize = 13.sp)
+        Text(text, color = if (selected) VelumOnBlack else VelumInk, fontSize = 13.sp)
     }
 }
 

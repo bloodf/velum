@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
@@ -23,6 +24,7 @@ import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.AccountTree
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -40,7 +42,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -49,15 +50,18 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.velum.app.di.AppContainer
 import dev.velum.app.i18n.LocalStrings
+import dev.velum.app.i18n.Strings
 import dev.velum.app.ui.components.DualActionRow
 import dev.velum.app.ui.components.MetaRow
 import dev.velum.app.ui.components.SmallEditPill
 import dev.velum.app.ui.components.ThinDivider
 import dev.velum.app.ui.components.ToggleRow
 import dev.velum.app.ui.theme.VelumBg
+import dev.velum.app.ui.theme.VelumBlack
 import dev.velum.app.ui.theme.VelumDivider
 import dev.velum.app.ui.theme.VelumInk
 import dev.velum.app.ui.theme.VelumInkSecondary
+import dev.velum.app.ui.theme.VelumOnBlack
 import dev.velum.app.ui.theme.VelumSurface
 import kotlinx.coroutines.launch
 
@@ -231,6 +235,14 @@ fun AutoFlowEditScreen(
 
     val templateName = templates.firstOrNull { it.id == templateId }?.name
         ?: strings.meetingHighlights
+    val languageLabel = when (language) {
+        "auto" -> strings.automatic
+        "pt-BR" -> strings.languagePtBr
+        "en" -> strings.languageEn
+        else -> language
+    }
+    val wakeLabel = wakePhrase.ifBlank { strings.postActionNone }
+    val sourceLabel = sourceFilterLabel(sourceFilter, strings)
 
     Column(
         Modifier
@@ -251,8 +263,8 @@ fun AutoFlowEditScreen(
             Spacer(Modifier.weight(1f))
             Text(
                 strings.save,
-                color = Color(0xFF007AFF),
-                fontWeight = FontWeight.Medium,
+                color = VelumInk,
+                fontWeight = FontWeight.SemiBold,
                 fontSize = 16.sp,
                 modifier = Modifier
                     .padding(end = 12.dp)
@@ -291,8 +303,9 @@ fun AutoFlowEditScreen(
         Spacer(Modifier.height(12.dp))
         Text(
             strings.whenSection,
-            fontWeight = FontWeight.Bold,
-            fontSize = 28.sp,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 17.sp,
+            color = VelumInk,
             modifier = Modifier.padding(horizontal = 20.dp),
         )
         Row(
@@ -303,7 +316,7 @@ fun AutoFlowEditScreen(
             Icon(Icons.Outlined.Mic, null, tint = VelumInk)
             SmallEditPill(strings.edit) { editWhen = true }
         }
-        Text(strings.whenNewRecording, modifier = Modifier.padding(horizontal = 20.dp), fontSize = 15.sp)
+        Text(strings.whenNewRecording, modifier = Modifier.padding(horizontal = 20.dp), fontSize = 15.sp, color = VelumInk)
         Text(
             strings.whenNewRecordingHint,
             color = VelumInkSecondary,
@@ -311,22 +324,20 @@ fun AutoFlowEditScreen(
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
         )
         Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
-            MetaRow(strings.wakeWord, wakePhrase.ifBlank { "—" })
+            MetaRow(strings.wakeWord, wakeLabel)
             MetaRow(
                 strings.recordingDuration,
                 "${durationMin / 60} min - ${durationMax / 3600} h",
             )
-            MetaRow(
-                strings.recordingSource,
-                if (sourceFilter == "all") strings.everything else sourceFilter,
-            )
+            MetaRow(strings.recordingSource, sourceLabel)
         }
         ThinDivider(0)
         Spacer(Modifier.height(12.dp))
         Text(
             strings.doSection,
-            fontWeight = FontWeight.Bold,
-            fontSize = 28.sp,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 17.sp,
+            color = VelumInk,
             modifier = Modifier.padding(horizontal = 20.dp),
         )
         Row(
@@ -337,7 +348,7 @@ fun AutoFlowEditScreen(
             Icon(Icons.Outlined.AutoAwesome, null, tint = VelumInk)
             SmallEditPill(strings.edit) { editDo = true }
         }
-        Text(strings.doTranscribeSummarize, modifier = Modifier.padding(horizontal = 20.dp), fontSize = 15.sp)
+        Text(strings.doTranscribeSummarize, modifier = Modifier.padding(horizontal = 20.dp), fontSize = 15.sp, color = VelumInk)
         Text(
             strings.doTranscribeSummarizeHint,
             color = VelumInkSecondary,
@@ -347,7 +358,7 @@ fun AutoFlowEditScreen(
         Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
             MetaRow(strings.summaryTemplate, templateName)
             MetaRow(strings.autoSpeakerLabel, if (autoLabel) strings.on else strings.off)
-            MetaRow(strings.recordingLanguage, language)
+            MetaRow(strings.recordingLanguage, languageLabel)
             MetaRow(
                 strings.postActionLabel,
                 when (postAction) {
@@ -366,10 +377,21 @@ fun AutoFlowEditScreen(
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
             containerColor = VelumSurface,
         ) {
-            Column(Modifier.padding(20.dp)) {
-                Text(strings.whenSection, fontWeight = FontWeight.SemiBold, fontSize = 18.sp)
+            Column(Modifier.padding(vertical = 8.dp)) {
+                Text(
+                    strings.whenSection,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 18.sp,
+                    color = VelumInk,
+                    modifier = Modifier.padding(horizontal = 20.dp),
+                )
                 Spacer(Modifier.height(12.dp))
-                Text(strings.wakeWord, color = VelumInkSecondary, fontSize = 13.sp)
+                Text(
+                    strings.wakeWord,
+                    color = VelumInkSecondary,
+                    fontSize = 13.sp,
+                    modifier = Modifier.padding(horizontal = 20.dp),
+                )
                 BasicTextField(
                     value = wakePhrase,
                     onValueChange = {
@@ -379,23 +401,26 @@ fun AutoFlowEditScreen(
                     singleLine = true,
                     cursorBrush = SolidColor(VelumInk),
                     textStyle = TextStyle(color = VelumInk, fontSize = 16.sp),
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 8.dp),
                 )
                 ThinDivider(0)
                 Spacer(Modifier.height(8.dp))
-                Text(strings.recordingSource, color = VelumInkSecondary, fontSize = 13.sp)
+                Text(
+                    strings.recordingSource,
+                    color = VelumInkSecondary,
+                    fontSize = 13.sp,
+                    modifier = Modifier.padding(horizontal = 20.dp),
+                )
                 listOf("note_pro", "phone", "import", "all").forEach { src ->
-                    Text(
-                        if (src == "all") strings.everything else src,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                sourceFilter = src
-                                markDirty()
-                            }
-                            .padding(vertical = 10.dp),
-                        color = if (sourceFilter == src) VelumInk else VelumInkSecondary,
-                        fontWeight = if (sourceFilter == src) FontWeight.SemiBold else FontWeight.Normal,
+                    SelectableSheetRow(
+                        label = sourceFilterLabel(src, strings),
+                        selected = sourceFilter == src,
+                        onClick = {
+                            sourceFilter = src
+                            markDirty()
+                        },
                     )
                 }
                 DualActionRow(strings.cancel, strings.done, { editWhen = false }, { editWhen = false })
@@ -409,22 +434,29 @@ fun AutoFlowEditScreen(
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
             containerColor = VelumSurface,
         ) {
-            Column(Modifier.padding(20.dp)) {
-                Text(strings.doSection, fontWeight = FontWeight.SemiBold, fontSize = 18.sp)
+            Column(Modifier.padding(vertical = 8.dp)) {
+                Text(
+                    strings.doSection,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 18.sp,
+                    color = VelumInk,
+                    modifier = Modifier.padding(horizontal = 20.dp),
+                )
                 Spacer(Modifier.height(12.dp))
-                Text(strings.summaryTemplate, color = VelumInkSecondary, fontSize = 13.sp)
+                Text(
+                    strings.summaryTemplate,
+                    color = VelumInkSecondary,
+                    fontSize = 13.sp,
+                    modifier = Modifier.padding(horizontal = 20.dp),
+                )
                 templates.take(8).forEach { tpl ->
-                    Text(
-                        tpl.name,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                templateId = tpl.id
-                                markDirty()
-                            }
-                            .padding(vertical = 10.dp),
-                        color = if (templateId == tpl.id) VelumInk else VelumInkSecondary,
-                        fontWeight = if (templateId == tpl.id) FontWeight.SemiBold else FontWeight.Normal,
+                    SelectableSheetRow(
+                        label = tpl.name,
+                        selected = templateId == tpl.id,
+                        onClick = {
+                            templateId = tpl.id
+                            markDirty()
+                        },
                     )
                 }
                 ToggleRow(strings.autoSpeakerLabel, autoLabel, {
@@ -432,23 +464,24 @@ fun AutoFlowEditScreen(
                     markDirty()
                 })
                 Spacer(Modifier.height(8.dp))
-                Text(strings.postActionLabel, color = VelumInkSecondary, fontSize = 13.sp)
+                Text(
+                    strings.postActionLabel,
+                    color = VelumInkSecondary,
+                    fontSize = 13.sp,
+                    modifier = Modifier.padding(horizontal = 20.dp),
+                )
                 listOf(
                     "" to strings.postActionNone,
                     "share" to strings.postActionShare,
                     "calendar_insert" to strings.postActionCalendar,
                 ).forEach { (value, label) ->
-                    Text(
-                        label,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                postAction = value
-                                markDirty()
-                            }
-                            .padding(vertical = 10.dp),
-                        color = if (postAction == value) VelumInk else VelumInkSecondary,
-                        fontWeight = if (postAction == value) FontWeight.SemiBold else FontWeight.Normal,
+                    SelectableSheetRow(
+                        label = label,
+                        selected = postAction == value,
+                        onClick = {
+                            postAction = value
+                            markDirty()
+                        },
                     )
                 }
                 DualActionRow(strings.cancel, strings.done, { editDo = false }, { editDo = false })
@@ -483,4 +516,52 @@ fun AutoFlowEditScreen(
             }
         }
     }
+}
+
+@Composable
+private fun SelectableSheetRow(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            label,
+            modifier = Modifier.weight(1f),
+            color = if (selected) VelumInk else VelumInkSecondary,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            fontSize = 16.sp,
+        )
+        Box(
+            Modifier
+                .size(22.dp)
+                .clip(CircleShape)
+                .border(1.5.dp, if (selected) VelumBlack else VelumDivider, CircleShape)
+                .background(if (selected) VelumBlack else VelumSurface),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (selected) {
+                Icon(
+                    Icons.Outlined.Check,
+                    contentDescription = null,
+                    tint = VelumOnBlack,
+                    modifier = Modifier.size(14.dp),
+                )
+            }
+        }
+    }
+}
+
+private fun sourceFilterLabel(src: String, strings: Strings): String = when (src) {
+    "note_pro" -> strings.ux.sourceNotePro
+    "phone" -> strings.ux.sourcePhone
+    "import" -> strings.ux.sourceImport
+    "all" -> strings.everything
+    else -> src
 }

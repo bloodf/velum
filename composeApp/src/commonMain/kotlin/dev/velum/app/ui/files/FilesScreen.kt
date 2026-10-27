@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Headphones
 import androidx.compose.material.icons.outlined.MicExternalOn
@@ -54,6 +55,7 @@ import dev.velum.app.ui.theme.VelumSurface
 import dev.velum.core.db.Recording
 import dev.velum.core.search.FtsQuery
 import dev.velum.core.search.RecordingSearch
+import dev.velum.core.time.VelumDateTime
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -123,15 +125,19 @@ fun FilesScreen(
                 )
             }
             if (onAskAcross != null) {
-                Text(
-                    "Ask",
-                    color = VelumInk,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 13.sp,
-                    modifier = Modifier
-                        .clickable(onClick = onAskAcross)
-                        .padding(horizontal = 8.dp, vertical = 10.dp),
-                )
+                Box(
+                    Modifier
+                        .defaultMinSize(48.dp, 48.dp)
+                        .clickable(onClick = onAskAcross),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.Outlined.AutoAwesome,
+                        contentDescription = strings.ux.askAcrossShort,
+                        tint = VelumInk,
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
             }
             Box(
                 modifier = Modifier
@@ -221,8 +227,15 @@ fun FilesScreen(
 
 @Composable
 private fun RecordingRow(rec: Recording, selected: Boolean = false, onClick: () -> Unit) {
+    val strings = LocalStrings.current
     val mins = (rec.duration_seconds / 60).toInt()
-    val timeLabel = formatClock(rec.started_at)
+    val timeLabel = VelumDateTime.formatClock(rec.started_at)
+    val deviceLabel = when (rec.source) {
+        "note_pro" -> strings.ux.sourceNotePro
+        "phone" -> strings.ux.sourcePhone
+        "import" -> strings.ux.sourceImport
+        else -> null
+    }
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -241,9 +254,9 @@ private fun RecordingRow(rec: Recording, selected: Boolean = false, onClick: () 
                 tint = VelumInkSecondary,
                 modifier = Modifier.size(14.dp),
             )
-            if (rec.summary_markdown != null) {
+            if (deviceLabel != null) {
                 Spacer(Modifier.width(8.dp))
-                Text("Note", color = VelumInkSecondary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                Text(deviceLabel, color = VelumInkSecondary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
             }
         }
     }
@@ -265,7 +278,7 @@ private fun FilterSortSheet(total: Int, onClose: () -> Unit) {
         Text(strings.folders, fontWeight = FontWeight.Medium, fontSize = 15.sp)
         Spacer(Modifier.height(8.dp))
         Text(strings.comesFrom, fontWeight = FontWeight.Medium, fontSize = 15.sp)
-        FilterLine("Note Pro", "1", selected = false)
+        FilterLine(strings.ux.sourceNotePro, "1", selected = false)
         Spacer(Modifier.height(32.dp))
     }
 }
@@ -288,8 +301,3 @@ private fun FilterLine(label: String, count: String, selected: Boolean) {
     ThinDivider(0)
 }
 
-private fun formatClock(epochSeconds: Long): String {
-    val mins = ((epochSeconds % 86400) / 60) % 60
-    val hours = ((epochSeconds % 86400) / 3600)
-    return "%02d:%02d".format(hours.toInt(), mins.toInt())
-}

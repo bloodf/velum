@@ -51,7 +51,9 @@ class SettingsRepository(
         val baseUrl = store.getString(KEY_BASE_URL) ?: DEFAULT_BASE_URL
         val hasKey = store.contains(SecureKeys.AI_API_KEY)
         val transcription = store.getString(KEY_TRANSCRIPTION_MODEL)
+        val diarization = store.getString(KEY_DIARIZATION_MODEL)
         val chat = store.getString(KEY_CHAT_MODEL)
+        val embedding = store.getString(KEY_EMBEDDING_MODEL)
         val cached = store.getString(KEY_CACHED_MODELS)?.let {
             runCatching { json.decodeFromString<List<AiModelInfo>>(it) }.getOrDefault(emptyList())
         } ?: emptyList()
@@ -59,7 +61,9 @@ class SettingsRepository(
             baseUrl = baseUrl,
             hasApiKey = hasKey,
             transcriptionModel = transcription,
+            diarizationModel = diarization,
             chatModel = chat,
+            embeddingModel = embedding,
             cachedModels = cached,
             transcriptionMode = readMode(KEY_TRANSCRIPTION_MODE, ComputeMode.Local),
             diarizationMode = readMode(KEY_DIARIZATION_MODE, ComputeMode.Local),
@@ -128,6 +132,18 @@ class SettingsRepository(
         if (modelId == null) store.remove(KEY_CHAT_MODEL)
         else store.putString(KEY_CHAT_MODEL, modelId)
         _settings.update { it.copy(chatModel = modelId) }
+    }
+
+    suspend fun setDiarizationModel(modelId: String?) {
+        if (modelId == null) store.remove(KEY_DIARIZATION_MODEL)
+        else store.putString(KEY_DIARIZATION_MODEL, modelId)
+        _settings.update { it.copy(diarizationModel = modelId) }
+    }
+
+    suspend fun setEmbeddingModel(modelId: String?) {
+        if (modelId == null) store.remove(KEY_EMBEDDING_MODEL)
+        else store.putString(KEY_EMBEDDING_MODEL, modelId)
+        _settings.update { it.copy(embeddingModel = modelId) }
     }
 
     suspend fun setTranscriptionMode(mode: ComputeMode) {
@@ -275,7 +291,9 @@ class SettingsRepository(
         const val DEFAULT_BASE_URL = "https://api.openai.com/v1"
         private const val KEY_BASE_URL = "ai.base_url"
         private const val KEY_TRANSCRIPTION_MODEL = "ai.transcription_model"
+        private const val KEY_DIARIZATION_MODEL = "ai.diarization_model"
         private const val KEY_CHAT_MODEL = "ai.chat_model"
+        private const val KEY_EMBEDDING_MODEL = "ai.embedding_model"
         private const val KEY_CACHED_MODELS = "ai.cached_models_json"
         private const val KEY_TRANSCRIPTION_MODE = "ai.transcription_mode"
         private const val KEY_DIARIZATION_MODE = "ai.diarization_mode"

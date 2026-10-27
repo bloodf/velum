@@ -10,7 +10,7 @@ import kotlin.test.Test
 import kotlin.test.assertTrue
 
 /**
- * WCAG AA contrast (≥4.5:1) for primary filled controls and body ink.
+ * WCAG AA contrast (≥4.5:1) for primary filled controls, body ink, and warning banners.
  * Catches dark-theme white-on-white regressions (VelumBlack + hardcoded White).
  */
 class ThemeContrastTest {
@@ -30,6 +30,33 @@ class ThemeContrastTest {
         assertContrast("dark secondary/bg", DarkVelumColors.bg, DarkVelumColors.inkSecondary)
         assertContrast("light ink/surface", LightVelumColors.surface, LightVelumColors.ink)
         assertContrast("dark ink/surface", DarkVelumColors.surface, DarkVelumColors.ink)
+    }
+
+    @Test
+    fun warningBannerMeetsAa_lightAndDark() {
+        assertContrast(
+            "light warning",
+            LightVelumColors.warningContainer,
+            LightVelumColors.onWarningContainer,
+        )
+        assertContrast(
+            "dark warning",
+            DarkVelumColors.warningContainer,
+            DarkVelumColors.onWarningContainer,
+        )
+    }
+
+    @Test
+    fun hardcodedWhiteOnDarkPrimaryFailsAa() {
+        // Regression guard: Color.White on dark VelumBlack (near-white) is invisible.
+        // Selected chips / FAB / SmallEditPill must use onBlack, not Color.White.
+        val ratio = contrastRatio(DarkVelumColors.black, Color.White)
+        assertTrue(
+            ratio < 1.5,
+            "Expected Color.White on dark VelumBlack to fail AA (got $ratio) — " +
+                "proves chips/FAB must use VelumOnBlack",
+        )
+        assertContrast("dark onBlack", DarkVelumColors.black, DarkVelumColors.onBlack)
     }
 
     private fun assertContrast(label: String, background: Color, foreground: Color) {

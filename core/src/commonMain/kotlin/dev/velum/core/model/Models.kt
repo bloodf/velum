@@ -74,7 +74,11 @@ data class AiProviderSettings(
     /** Never log or commit; stored via [dev.velum.core.security.SecureStore]. */
     val hasApiKey: Boolean = false,
     val transcriptionModel: String? = null,
+    /** OpenAI-compatible model id when diarization mode is API (if the endpoint supports it). */
+    val diarizationModel: String? = null,
     val chatModel: String? = null,
+    /** Embeddings model for Ask / retrieval when an API embeddings endpoint is used. */
+    val embeddingModel: String? = null,
     val cachedModels: List<AiModelInfo> = emptyList(),
     /** Per-task Local vs OpenAI-compatible API. */
     val transcriptionMode: ComputeMode = ComputeMode.Local,

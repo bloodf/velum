@@ -64,6 +64,7 @@ import dev.velum.app.ui.theme.VelumBlack
 import dev.velum.app.ui.theme.VelumDivider
 import dev.velum.app.ui.theme.VelumInk
 import dev.velum.app.ui.theme.VelumInkSecondary
+import dev.velum.app.ui.theme.VelumOnBlack
 import dev.velum.app.ui.theme.VelumSurface
 import dev.velum.core.db.Template
 import dev.velum.core.search.FtsQuery
@@ -189,9 +190,9 @@ fun TemplatesScreen(
                     .padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(Icons.Outlined.Edit, null, tint = Color.White, modifier = Modifier.size(16.dp))
+                Icon(Icons.Outlined.Edit, null, tint = VelumOnBlack, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(6.dp))
-                Text(strings.create, color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                Text(strings.create, color = VelumOnBlack, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
             }
             Spacer(Modifier.width(8.dp))
         }
@@ -366,7 +367,7 @@ fun TemplatesScreen(
 private fun CategoryChip(label: String, selected: Boolean, onClick: () -> Unit) {
     Text(
         label,
-        color = if (selected) Color.White else VelumInk,
+        color = if (selected) VelumOnBlack else VelumInk,
         fontWeight = FontWeight.SemiBold,
         fontSize = 13.sp,
         modifier = Modifier
