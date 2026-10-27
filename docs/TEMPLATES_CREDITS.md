@@ -51,26 +51,26 @@ Shipped entries: **1500**.
 | `medical-healthcare-consultation-a384b72d` | Healthcare Consultation | Plaud | True | Medical | Plaud template community |
 | `functional-intent-analysis-7726b1c1` | Intent Analysis | Plaud | True | Functional | Plaud template community |
 | `general-interview-note-e771db8c` | Interview Note | Plaud | True | General | Plaud template community |
-| `interview-job-interview-82b0372c` | Job Interview | Plaud | True | Interview | Plaud template community |
+| `interview-job-interview-82b0372c` | Job Interview (3) | Plaud | True | Interview | Plaud template community |
 | `general-key-points-ef87236f` | Key Points | Plaud | True | General | Plaud template community |
 | `functional-key-quotes-67b7495f` | Key Quotes | Plaud | True | Functional | Plaud template community |
 | `general-lecture-17c59619` | Lecture | Plaud | True | General | Plaud template community |
-| `speech-lecture-summary-5519b7f5` | Lecture Summary | Plaud | True | Speech | Plaud template community |
+| `speech-lecture-summary-5519b7f5` | Lecture Summary (2) | Plaud | True | Speech | Plaud template community |
 | `functional-meeting-effectiveness-24010545` | Meeting Effectiveness | Plaud | True | Functional | Plaud template community |
 | `functional-meeting-highlights-1fa754df` | Meeting Highlights | Plaud | True | Functional | Plaud template community |
 | `functional-meeting-minutes-5ad64e34` | Meeting Minutes | Plaud | True | Functional | Plaud template community |
 | `general-meeting-note-afb65706` | Meeting Note | Plaud | True | General | Plaud template community |
 | `meeting-meeting-report-34a99a2e` | Meeting Report | Plaud | True | Meeting | Plaud template community |
-| `interview-panel-discussion-36040d21` | Panel Discussion | Plaud | True | Interview | Plaud template community |
+| `interview-panel-discussion-36040d21` | Panel Discussion (2) | Plaud | True | Interview | Plaud template community |
 | `call-phone-q-a-dcf96f0a` | Phone Q&A | Plaud | True | Call | Plaud template community |
 | `functional-power-dynamics-1d02dd62` | Power Dynamics | Plaud | True | Functional | Plaud template community |
 | `construction-project-hand-off-de12acbb` | Project Hand Off | Plaud | True | Construction | Plaud template community |
 | `medical-psychotherapy-note-658ed1a7` | Psychotherapy Note | Plaud | True | Medical | Plaud template community |
-| `construction-punch-list-423bd507` | Punch List | Plaud | True | Construction | Plaud template community |
+| `construction-punch-list-423bd507` | Punch List (2) | Plaud | True | Construction | Plaud template community |
 | `functional-quantitative-data-5de9c1fa` | Quantitative Data | Plaud | True | Functional | Plaud template community |
 | `general-reasoning-summary-559a3090` | Reasoning Summary | Plaud | True | General | Plaud template community |
 | `interview-research-interview-1308e956` | Research Interview | Plaud | True | Interview | Plaud template community |
-| `medical-soap-3d6d24ad` | SOAP | Plaud | True | Medical | Plaud template community |
+| `medical-soap-3d6d24ad` | SOAP (3) | Plaud | True | Medical | Plaud template community |
 | `meeting-task-assignment-c186290c` | Task Assignment | Plaud | True | Meeting | Plaud template community |
 | `call-task-by-call-a650fc3e` | Task by Call | Plaud | True | Call | Plaud template community |
 | `education-teaching-note-6d6723d1` | Teaching Note | Plaud | True | Education | Plaud template community |
@@ -91,7 +91,7 @@ Shipped entries: **1500**.
 | `education-coaching-and-mentoring-summaries-ecec-980679a3` | Coaching and mentoring summaries - ECEC | 8kz8h77vkv | False | Education | Plaud template community |
 | `interview-interviews-a6085f06` | Interviews | 8mdj4hpym8 | False | Interview | Plaud template community |
 | `real-estate-condominium-owners-meeting-e6c4942c` | Condominium Owners' Meeting | 9z2tvm2n2s | False | Real Estate | Plaud template community |
-| `call-phone-call-39c3dac0` | Phone Call | 9z2tvm2n2s | False | Call | Plaud template community |
+| `call-phone-call-39c3dac0` | Phone Call (5) | 9z2tvm2n2s | False | Call | Plaud template community |
 | `medical-pre-anaesthetic-assesment-plaud-076168f7` | Pre-Anaesthetic Assesment PLAUD | A G | False | Medical | Plaud template community |
 | `medical-meeting-minutes-preparation-27f4c164` | Meeting Minutes Preparation | a junjun | False | Medical | Plaud template community |
 | `interview-candidate-qualification-summary-template-72e871ed` | Candidate Qualification Summary Template | a.agredano | False | Interview | Plaud template community |
@@ -147,7 +147,7 @@ Shipped entries: **1500**.
 | `it-engineering-technology-runbook-8e888aa0` | Technology Runbook | alfred_esposito34 | False | IT & Engineering | Plaud template community |
 | `it-engineering-create-podcast-shownotes-49373f60` | Create Podcast Shownotes | Alice Ma | False | IT & Engineering | Plaud template community |
 | `meeting-summary-and-follow-ups-short-clear-e1d0a34d` | Summary and follow ups - short & clear | Alina.kraemer | False | Meeting | Plaud template community |
-| `medical-medical-consultation-98bd5876` | Medical Consultation | Allan Bonvallat | False | Medical | Plaud template community |
+| `medical-medical-consultation-98bd5876` | Medical Consultation (3) | Allan Bonvallat | False | Medical | Plaud template community |
 | `consulting-gemba-walk-analysis-0a4f59e1` | GEMBA WALK ANALYSIS | Allan Vargas | False | Consulting | Plaud template community |
 | `financial-diligence-meetings-d288b64d` | Diligence Meetings | Allen | False | Financial | Plaud template community |
 | `functional-one-page-brief-954e23a8` | One Page Brief | Ally | False | Functional | Plaud template community |
@@ -175,7 +175,7 @@ Shipped entries: **1500**.
 | `consulting-satir-model-session-record-9bf1145f` | Satir Model Session Record | annhua99 | False | Consulting | Plaud template community |
 | `speech-immersion-6cb08ffd` | Immersion | Annie Koutouan | False | Speech | Plaud template community |
 | `education-deep-learning-f161ee5b` | deep learning | Anthony Mazzeo | False | Education | Plaud template community |
-| `meeting-meeting-summary-8697bce9` | Meeting Summary | anthonyfps1993 | False | Meeting | Plaud template community |
+| `meeting-meeting-summary-8697bce9` | Meeting Summary (2) | anthonyfps1993 | False | Meeting | Plaud template community |
 | `financial-professional-client-meeting-summary-digital-client-a461784a` | Professional Client Meeting Summary & Digital Client File Drafting – Allianz Expertise & Conseil | Antoine Robbe | False | Financial | Plaud template community |
 | `consulting-therapy-6cb876e0` | Therapy | Anton Klochkov | False | Consulting | Plaud template community |
 | `consulting-workshop-summary-2-0-a4ef8541` | Workshop Summary 2.0 | Antonio Lucena de Faria | False | Consulting | Plaud template community |
@@ -253,7 +253,7 @@ Shipped entries: **1500**.
 | `general-podcast-episode-summarization-493a426e` | Podcast Episode Summarization | Brian Witt | False | General | Plaud template community |
 | `construction-technical-building-visit-report-18997ee9` | Technical Building Visit Report | Brieuc Thoumsin | False | Construction | Plaud template community |
 | `general-project-scope-of-work-template-50d93232` | Project Scope of Work Template | Brindi Riley | False | General | Plaud template community |
-| `medical-psychiatry-progress-note-e24b74f4` | Psychiatry Progress Note | britney | False | Medical | Plaud template community |
+| `medical-psychiatry-progress-note-e24b74f4` | Psychiatry Progress Note (2) | britney | False | Medical | Plaud template community |
 | `real-estate-real-estate-development-meeting-or-call-with-desig-e16dd755` | Real Estate Development Meeting or Call with Design Consultants and/or Construction Contractors | BRL Plaud | False | Real Estate | Plaud template community |
 | `real-estate-real-estate-development-team-quarterly-meeting-rec-66ef8fe2` | Real Estate Development Team Quarterly Meeting Recap | BRL Plaud | False | Real Estate | Plaud template community |
 | `real-estate-mortgage-customer-information-intake-3e8542e2` | Mortgage Customer Information Intake | Brooks C. | False | Real Estate | Plaud template community |
@@ -279,11 +279,11 @@ Shipped entries: **1500**.
 | `functional-podcast-transcription-04e46cbe` | Podcast Transcription | Callid Keefe-Perry (Callid) | False | Functional | Plaud template community |
 | `interview-interview-result-report-fd846c21` | Interview Result Report | Cap WAEL alhamarnah | False | Interview | Plaud template community |
 | `consulting-consulting-8552649f` | Consulting | Carlos Silva Júnior | False | Consulting | Plaud template community |
-| `call-phone-call-56cc6e7d` | Phone Call | Carmen | False | Call | Plaud template community |
+| `call-phone-call-56cc6e7d` | Phone Call (4) | Carmen | False | Call | Plaud template community |
 | `call-strategic-recording-and-follow-up-b5bd034c` | Strategic Recording and Follow-up | Carolina Lacerda | False | Call | Plaud template community |
 | `sales-customer-meeting-costar-00d68847` | Customer Meeting (COSTAR+) | Carraig S | False | Sales | Plaud template community |
 | `medical-soap-note-generator-for-physical-therapy-7d4dbefd` | SOAP Note Generator for Physical Therapy | Carter B | False | Medical | Plaud template community |
-| `meeting-meeting-minutes-d8a68c26` | Meeting Minutes | CARVEN | False | Meeting | Plaud template community |
+| `meeting-meeting-minutes-d8a68c26` | Meeting Minutes (2) | CARVEN | False | Meeting | Plaud template community |
 | `meeting-meeting-summary-e3f5b690` | Meeting Summary | CARVEN | False | Meeting | Plaud template community |
 | `interview-annual-evaluation-report-a123f712` | Annual Evaluation Report | catelain | False | Interview | Plaud template community |
 | `interview-catherine-model-monthly-cr-bold-plan-8f8ecd26` | Catherine Model Monthly CR Bold Plan | Catherine Gayral | False | Interview | Plaud template community |
@@ -329,7 +329,7 @@ Shipped entries: **1500**.
 | `construction-time-study-6cde2d8f` | Time Study | coleton | False | Construction | Plaud template community |
 | `construction-technical-inspection-of-pathologies-in-buildings-c-afc99519` | Technical Inspection of Pathologies in Buildings (Complete Model) | COLIZZI ENG | False | Construction | Plaud template community |
 | `general-carer-supervision-18e18231` | Carer Supervision | colleranamanda | False | General | Plaud template community |
-| `meeting-meeting-minutes-17cbe0cb` | Meeting Minutes | COMMUNITAS | False | Meeting | Plaud template community |
+| `meeting-meeting-minutes-17cbe0cb` | Meeting Minutes (5) | COMMUNITAS | False | Meeting | Plaud template community |
 | `financial-webinar-summary-article-b1c9a1ae` | Webinar summary article | communities | False | Financial | Plaud template community |
 | `construction-expert-report-1d316369` | Expert Report | contact | False | Construction | Plaud template community |
 | `consulting-map-processes-9e877e4f` | Map Processes | contato | False | Consulting | Plaud template community |
@@ -406,7 +406,7 @@ Shipped entries: **1500**.
 | `it-engineering-site-inspection-report-c69a33a2` | Site Inspection Report | Donato Ammirabile | False | IT & Engineering | Plaud template community |
 | `medical-gynecological-patient-visit-79fde8d3` | Gynecological Patient Visit | Dott. Giorgio Nicolanti | False | Medical | Plaud template community |
 | `medical-psychological-report-template-c0f11cb0` | Psychological Report Template | Dr Ken Greaves | False | Medical | Plaud template community |
-| `medical-medical-consultation-53a30b16` | Medical Consultation | Dr. Daniel Dorta | False | Medical | Plaud template community |
+| `medical-medical-consultation-53a30b16` | Medical Consultation (2) | Dr. Daniel Dorta | False | Medical | Plaud template community |
 | `medical-physical-therapy-soap-note-ef1f3961` | Physical Therapy Soap Note | Dr. Sasha Nuñez PT, DPT, CMPT | False | Medical | Plaud template community |
 | `interview-dental-consultation-23806038` | Dental consultation | Dr. Tom Cockerell | False | Interview | Plaud template community |
 | `medical-veterinary-soap-edaba6d4` | Veterinary SOAP | drchadgroce | False | Medical | Plaud template community |
@@ -466,7 +466,7 @@ Shipped entries: **1500**.
 | `functional-key-information-extractor-for-travel-internship-re-a3876e3e` | Key Information Extractor for Travel Internship Recordings | Evan Chung | False | Functional | Plaud template community |
 | `call-phone-technical-support-d4bf8ff9` | Phone Technical Support | Evan Million | False | Call | Plaud template community |
 | `real-estate-structured-meeting-minutes-for-construction-projec-8c9f18db` | Structured Meeting Minutes for Construction Projects | f.wagnersachverstaendiger | False | Real Estate | Plaud template community |
-| `real-estate-board-meeting-minutes-a53fdf2f` | Board Meeting Minutes | f16.sunny | False | Real Estate | Plaud template community |
+| `real-estate-board-meeting-minutes-a53fdf2f` | Board Meeting Minutes (2) | f16.sunny | False | Real Estate | Plaud template community |
 | `medical-consultation-discussed-with-ai-367f12cc` | Consultation - Discussed with AI | Fabio Alencar | False | Medical | Plaud template community |
 | `it-engineering-incident-post-mortem-8cf77eec` | INCIDENT POST-MORTEM | fabrizio.alampi | False | IT & Engineering | Plaud template community |
 | `it-engineering-interactive-it-metrics-dashboard-d6dd3421` | Interactive IT Metrics Dashboard | fabrizio.alampi | False | IT & Engineering | Plaud template community |
@@ -508,7 +508,7 @@ Shipped entries: **1500**.
 | `interview-analysis-and-synthesis-of-a-professional-coaching--f5530c74` | Analysis and synthesis of a professional coaching session | GARCIA Carlos | False | Interview | Plaud template community |
 | `functional-archetypal-dream-journal-6e5fd116` | Archetypal Dream Journal | Garon Nemyre | False | Functional | Plaud template community |
 | `medical-pain-note-history-and-physical-8ccc653c` | Pain Note: History and Physical | Garret Myhan | False | Medical | Plaud template community |
-| `speech-sermon-b7dff121` | Sermon | Garret Myhan | False | Speech | Plaud template community |
+| `speech-sermon-b7dff121` | Sermon (2) | Garret Myhan | False | Speech | Plaud template community |
 | `speech-detailed-meeting-notes-e75b11ad` | Detailed meeting Notes | Garrett & Sylvia McGrath | False | Speech | Plaud template community |
 | `general-disciplinary-hearing-730440e8` | Disciplinary Hearing | Garth | False | General | Plaud template community |
 | `legal-board-of-directors-meeting-minutes-c4176cc2` | Board of Directors Meeting Minutes | garu.asakawa | False | Legal | Plaud template community |
@@ -524,7 +524,7 @@ Shipped entries: **1500**.
 | `construction-exertise-429569fc` | Exertise | Gerhard | False | Construction | Plaud template community |
 | `education-template-for-transcribing-and-organizing-universit-1ee0dbd8` | Template for Transcribing and Organizing University Lecture Recordings | GERLANDO RUSSO INTROITO | False | Education | Plaud template community |
 | `call-template-phone-call-5936895f` | TEMPLATE – PHONE CALL | gertjan.fiers | False | Call | Plaud template community |
-| `interview-interview-b9d9c258` | Interview | Ghye | False | Interview | Plaud template community |
+| `interview-interview-b9d9c258` | Interview (3) | Ghye | False | Interview | Plaud template community |
 | `it-engineering-kanban-meeting-d190b10b` | Kanban meeting | giacomo carlesso | False | IT & Engineering | Plaud template community |
 | `legal-law-enforcement-investigative-narrative-report-eda17de1` | Law Enforcement Investigative Narrative Report | Gil Lozano | False | Legal | Plaud template community |
 | `medical-first-dental-visit-47fde867` | First Dental Visit | Giulio Castellari | False | Medical | Plaud template community |
@@ -537,7 +537,7 @@ Shipped entries: **1500**.
 | `medical-parent-interview-73c18d1f` | Parent Interview | grace hasler | False | Medical | Plaud template community |
 | `legal-digital-secretariat-685ae8ab` | Digital secretariat | greg vb | False | Legal | Plaud template community |
 | `legal-digital-secretariat-v2-04bcd0ae` | Digital Secretariat V2 | greg vb | False | Legal | Plaud template community |
-| `functional-brain-dump-36557d4f` | Brain Dump | Griffin Evans | False | Functional | Plaud template community |
+| `functional-brain-dump-36557d4f` | Brain Dump (2) | Griffin Evans | False | Functional | Plaud template community |
 | `financial-financial-advisory-client-meeting-record-summary-470071bf` | Financial Advisory Client Meeting Record Summary | gsoberanis | False | Financial | Plaud template community |
 | `financial-financial-advisory-client-meeting-record-summary-2-f5b85787` | Financial Advisory Client Meeting Record Summary #2 | gsoberanis | False | Financial | Plaud template community |
 | `financial-meeting-notes-fdee3e59` | Meeting notes | gsoberanis | False | Financial | Plaud template community |
@@ -602,7 +602,7 @@ Shipped entries: **1500**.
 | `real-estate-board-meeting-minutes-080d942c` | Board Meeting Minutes | ittetsu12345 | False | Real Estate | Plaud template community |
 | `call-conversation-topic-analysis-reorganization-316ea08f` | Conversation Topic Analysis & Reorganization | Ittiphan Jearkjirm | False | Call | Plaud template community |
 | `general-adhd-7bd87e8f` | ADHD | Ivan Braun | False | General | Plaud template community |
-| `medical-soap-8f200f4a` | SOAP | ivanjose | False | Medical | Plaud template community |
+| `medical-soap-8f200f4a` | SOAP (2) | ivanjose | False | Medical | Plaud template community |
 | `sales-sales-conversation-7cc4f1b0` | Sales Conversation | ivyhoken | False | Sales | Plaud template community |
 | `speech-standuptranscriber-a117b348` | StandUpTranscriber | izarhart | False | Speech | Plaud template community |
 | `functional-brain-dump-c26a97b2` | Brain Dump | İlker Galın | False | Functional | Plaud template community |
@@ -649,7 +649,7 @@ Shipped entries: **1500**.
 | `call-chat-assistant-for-good-friends-2a6dc4d9` | Chat Assistant for Good Friends | Jay Cui | False | Call | Plaud template community |
 | `construction-lmg-oac-meeting-0b430983` | LMG OAC Meeting | Jay Gaither | False | Construction | Plaud template community |
 | `functional-manifast-ai-voice-to-image-with-meeting-source-ea864859` | Manifast AI_ Voice to Image with Meeting Source | Jay Mandalawi | False | Functional | Plaud template community |
-| `sales-sales-discovery-call-9f03663b` | Sales Discovery Call | Jay Patel | False | Sales | Plaud template community |
+| `sales-sales-discovery-call-9f03663b` | Sales Discovery Call (2) | Jay Patel | False | Sales | Plaud template community |
 | `financial-client-review-meeting-ff6a9b14` | Client Review Meeting | jdix | False | Financial | Plaud template community |
 | `speech-political-discourse-analyst-f45accf1` | Political Discourse Analyst | Jean Mortaza | False | Speech | Plaud template community |
 | `consulting-jcd-business-ideas-breakdown-9c1a12b5` | JCD_Business_Ideas_Breakdown | Jean-Charles Dervieux | False | Consulting | Plaud template community |
@@ -729,7 +729,7 @@ Shipped entries: **1500**.
 | `it-engineering-2023-10-20-sample-project-acme-corp-technical-meet-15815dc3` | 2023-10-20 (Sample Project) - ACME Corp - Technical Meeting Discussion | Julien coppi | False | IT & Engineering | Plaud template community |
 | `it-engineering-technical-framing-6426a538` | Technical Framing | Julien Fabbri | False | IT & Engineering | Plaud template community |
 | `general-basic-meeting-minutes-a9f61ab7` | Basic Meeting Minutes | Julien PRÉVEL | False | General | Plaud template community |
-| `education-class-summary-f5021694` | Class Summary | Julio Leite | False | Education | Plaud template community |
+| `education-class-summary-f5021694` | Class Summary (2) | Julio Leite | False | Education | Plaud template community |
 | `construction-meeting-minutes-82d0d655` | Meeting Minutes+ | Justin | False | Construction | Plaud template community |
 | `functional-vietnamese-english-live-interpreter-e46c0f4f` | Vietnamese ↔ English Live Interpreter | justin | False | Functional | Plaud template community |
 | `sales-discussion-summary-c7c04d06` | Discussion Summary | jwearda | False | Sales | Plaud template community |
@@ -847,7 +847,7 @@ Shipped entries: **1500**.
 | `consulting-coaching-notes-af43c7f6` | Coaching Notes | M_0_D | False | Consulting | Plaud template community |
 | `sales-revenue-accelerator-pro-market-intel-ec3a533d` | Revenue Accelerator Pro & Market Intel | Madelaine Robillard | False | Sales | Plaud template community |
 | `functional-symbolic-seduction-analysis-7f165bd5` | SYMBOLIC SEDUCTION ANALYSIS | MAFDS | False | Functional | Plaud template community |
-| `functional-diary-cabcf58d` | Diary | Maguro | False | Functional | Plaud template community |
+| `functional-diary-cabcf58d` | Diary (2) | Maguro | False | Functional | Plaud template community |
 | `education-turn-any-talk-into-a-top-tier-journal-article-fcddb7ed` | Turn Any Talk into a Top-Tier Journal Article | mahmud.syaltout | False | Education | Plaud template community |
 | `education-turn-any-talk-into-academic-learning-notes-structu-bc3793a7` | Turn Any Talk into Academic Learning Notes: Structured, No-Summary, Citation-Integrated | mahmud.syaltout | False | Education | Plaud template community |
 | `education-music-production-training-33e22fea` | MUSIC PRODUCTION TRAINING | Maken El Comte | False | Education | Plaud template community |
@@ -860,7 +860,7 @@ Shipped entries: **1500**.
 | `construction-expertise-summary-f05aa191` | Expertise Summary | Marc Scheneder | False | Construction | Plaud template community |
 | `sales-meddpicc-0664f0ab` | MEDDPICC | Marcel Komatsu | False | Sales | Plaud template community |
 | `education-master-s-class-3f4fa5ad` | Master's Class | Marcelo Rodrigues Machado | False | Education | Plaud template community |
-| `meeting-meeting-minutes-3d289bd3` | Meeting Minutes | Marcelo Rodrigues Machado | False | Meeting | Plaud template community |
+| `meeting-meeting-minutes-3d289bd3` | Meeting Minutes (3) | Marcelo Rodrigues Machado | False | Meeting | Plaud template community |
 | `education-training-summary-f3037f04` | Training Summary | Marcelo Rodrigues Machado | False | Education | Plaud template community |
 | `consulting-legal-meeting-e044374e` | Legal Meeting | Marcelo Trajano | False | Consulting | Plaud template community |
 | `meeting-conference-recordings-2a184fd0` | Conference Recordings | Marco | False | Meeting | Plaud template community |
@@ -868,7 +868,7 @@ Shipped entries: **1500**.
 | `education-in-depth-summary-a07b72e3` | In-depth summary | Marcos Goulart | False | Education | Plaud template community |
 | `sales-business-meeting-db46d821` | Business Meeting | marcosantoniali | False | Sales | Plaud template community |
 | `real-estate-buyer-showing-s-3b9fb4c2` | Buyer Showing s | Marcus Cruz | False | Real Estate | Plaud template community |
-| `meeting-meeting-minutes-096e73f2` | Meeting Minutes | Marcus Saulo | False | Meeting | Plaud template community |
+| `meeting-meeting-minutes-096e73f2` | Meeting Minutes (6) | Marcus Saulo | False | Meeting | Plaud template community |
 | `financial-stock-market-discussion-9feb97ee` | Stock Market Discussion | Margnilien | False | Financial | Plaud template community |
 | `medical-s-o-a-p-note-format-use-subjective-objective-asses-798d2cb9` | ***S.O.A.P. Note Format**: Use SUBJECTIVE, OBJECTIVE, ASSESSMENT, PLAN sections. Follow CMS-complia | Maria Castro Calzada, PA-C | False | Medical | Plaud template community |
 | `consulting-complete-transcript-for-external-use-0cd65b76` | Complete Transcript for External Use | Maria Fernanda Cerini | False | Consulting | Plaud template community |
@@ -895,13 +895,13 @@ Shipped entries: **1500**.
 | `speech-daily-thoughts-86ff5494` | daily thoughts | Masa Kato | False | Speech | Plaud template community |
 | `it-engineering-product-manager-meeting-note-generator-c8223f92` | Product Manager Meeting Note Generator | Maschal Malek | False | IT & Engineering | Plaud template community |
 | `education-foreign-language-class-fb7aa736` | foreign language class | Massimo Mensi | False | Education | Plaud template community |
-| `general-personal-assistant-1a5a363c` | Personal Assistant | Massimo Mensi | False | General | Plaud template community |
+| `general-personal-assistant-1a5a363c` | Personal Assistant (2) | Massimo Mensi | False | General | Plaud template community |
 | `general-strategic-meeting-summary-speaker-profiling-minute-e7fc0564` | Strategic Meeting Summary & Speaker Profiling (Minutes-Ready Version) | Massimo Mensi | False | General | Plaud template community |
 | `it-engineering-customer-issues-and-product-management-initiative--e9fe3e3c` | Customer issues and product management initiative review meeting | Mat Nisbet | False | IT & Engineering | Plaud template community |
 | `it-engineering-neo-summary-into-a-knowledge-base-kb-article-2a3ebbf0` | NEO summary into a Knowledge Base (KB) article | Math Stein | False | IT & Engineering | Plaud template community |
 | `speech-book-reading-notes-287eb2b3` | Book Reading Notes | matheus.meirellessilva | False | Speech | Plaud template community |
 | `consulting-accounting-meeting-366b6942` | Accounting Meeting | matheusrdluz | False | Consulting | Plaud template community |
-| `meeting-meeting-notes-29ca4e8a` | Meeting Notes | mathieu | False | Meeting | Plaud template community |
+| `meeting-meeting-notes-29ca4e8a` | Meeting Notes (2) | mathieu | False | Meeting | Plaud template community |
 | `sales-insurance-broker-assistant-e11ed11f` | Insurance Broker Assistant | mathieukott | False | Sales | Plaud template community |
 | `call-phone-call-433f202f` | PHONE CALL | mathieukott | False | Call | Plaud template community |
 | `sales-appointment-0cae2311` | Appointment | Matis Minzière | False | Sales | Plaud template community |
@@ -940,7 +940,7 @@ Shipped entries: **1500**.
 | `legal-jail-calls-ac385d21` | Jail calls | Michael Byrnes | False | Legal | Plaud template community |
 | `meeting-brief-meeting-summery-with-topics-key-points-insig-139a48a8` | brief Meeting summery with topics, key points, insights and actions | Michael Gamböck | False | Meeting | Plaud template community |
 | `education-seminar-lecture-detailed-summary-and-transcript-abdb85e6` | Seminar, Lecture: Detailed Summary and Transcript | Michael K. GASSER | False | Education | Plaud template community |
-| `meeting-meeting-summary-95dce7c9` | Meeting Summary | Michael Karnolt | False | Meeting | Plaud template community |
+| `meeting-meeting-summary-95dce7c9` | Meeting Summary (3) | Michael Karnolt | False | Meeting | Plaud template community |
 | `construction-inspection-report-notes-c7c2fa98` | Inspection Report Notes | Michael Nibarger | False | Construction | Plaud template community |
 | `functional-bullet-point-notes-2fc7c112` | bullet point notes | michael stroud | False | Functional | Plaud template community |
 | `it-engineering-it-meeting-tasks-5bbc1ad8` | IT Meeting/Tasks | Michael Warren | False | IT & Engineering | Plaud template community |
@@ -981,7 +981,7 @@ Shipped entries: **1500**.
 | `speech-prompt-for-deeper-analysis-of-the-entire-lecture-6c91ee41` | Prompt for Deeper Analysis of the Entire Lecture | nakabow2 | False | Speech | Plaud template community |
 | `interview-transcription-for-interview-df67ba63` | Transcription for Interview | Nakamura Ayaka | False | Interview | Plaud template community |
 | `construction-noon-meeting-aa12d1c5` | Noon Meeting | nakamuray41104 | False | Construction | Plaud template community |
-| `meeting-meeting-0160e663` | Meeting | Nangila | False | Meeting | Plaud template community |
+| `meeting-meeting-0160e663` | Meeting (3) | Nangila | False | Meeting | Plaud template community |
 | `consulting-evolving-note-in-career-guidance-5f80901f` | Evolving Note in Career Guidance | Nathalie | False | Consulting | Plaud template community |
 | `financial-earnings-call-summarizer-7e9915b0` | Earnings Call Summarizer | Nathan W | False | Financial | Plaud template community |
 | `functional-thoughts-dd81eb3e` | Thoughts | Naveen Kumar | False | Functional | Plaud template community |
@@ -1029,7 +1029,7 @@ Shipped entries: **1500**.
 | `meeting-numbered-how-to-instructions-b08ac55b` | Numbered How-To Instructions | o39393 | False | Meeting | Plaud template community |
 | `consulting-coaching-psychological-assessment-of-human-errors--bff35403` | Coaching & Psychological Assessment of Human errors Improvement | OHM.BSTE | False | Consulting | Plaud template community |
 | `speech-teaching-to-book-3205f2a0` | TEACHING TO BOOK | okabuya | False | Speech | Plaud template community |
-| `general-meeting-minutes-ad701fd4` | Meeting Minutes | OKD | False | General | Plaud template community |
+| `general-meeting-minutes-ad701fd4` | Meeting Minutes (2) | OKD | False | General | Plaud template community |
 | `call-patient-communication-script-compliance-analysis-30ccbbe1` | Patient Communication Script Compliance Analysis | Olga Lukianenko | False | Call | Plaud template community |
 | `legal-case-review-e667d6fe` | Case Review | oliver | False | Legal | Plaud template community |
 | `interview-interviews-candidate-profile-and-information-c0869d3b` | Interviews - candidate profile and information | Olivia Adenubi | False | Interview | Plaud template community |
@@ -1067,7 +1067,7 @@ Shipped entries: **1500**.
 | `education-podcast-youtube-44219160` | Podcast YouTube | Pawel Bu | False | Education | Plaud template community |
 | `legal-law-report-fde2041a` | Law Report | pawel.krawiec78 | False | Legal | Plaud template community |
 | `call-1-phone-call-note-286f2cad` | 1. Phone call - note | Paweł Zajchowski | False | Call | Plaud template community |
-| `call-phone-call-c709d594` | Phone Call | Paweł Zajchowski | False | Call | Plaud template community |
+| `call-phone-call-c709d594` | Phone Call (3) | Paweł Zajchowski | False | Call | Plaud template community |
 | `functional-expert-assistant-89d01633` | Expert Assistant | Pedro Sanz | False | Functional | Plaud template community |
 | `education-sermon-9fb70673` | Sermon | Pedrobcantu Cantu | False | Education | Plaud template community |
 | `meeting-meeting-with-client-bfacbfaa` | Meeting with Client | pedromdorea | False | Meeting | Plaud template community |
@@ -1091,7 +1091,7 @@ Shipped entries: **1500**.
 | `sales-real-estate-door-to-door-sales-ea9bf62c` | Real Estate Door-to-Door Sales | plaud-admin003 | False | Sales | Plaud template community |
 | `education-audible-audiobook-deep-summary-chapters-reflection-c62bc83f` | Audible Audiobook Deep Summary (Chapters + Reflection + Counterpoints) | plaud.ai.twelve458 | False | Education | Plaud template community |
 | `education-youtube-learning-capture-personal-growth-work-lear-e9cfaeea` | YouTube Learning Capture (Personal Growth + Work Learning) | plaud.ai.twelve458 | False | Education | Plaud template community |
-| `meeting-meeting-minutes-b162c9e6` | Meeting Minutes | plaud_ai | False | Meeting | Plaud template community |
+| `meeting-meeting-minutes-b162c9e6` | Meeting Minutes (4) | plaud_ai | False | Meeting | Plaud template community |
 | `meeting-v2-2-9-15-2fb32549` | 店長會議紀錄v2.2版(9/15) | Plaude_MB31 | False | Meeting | Plaud template community |
 | `consulting-process-steps-from-discussion-c94b9069` | Process Steps From Discussion | Ponn Sthitphokwanich | False | Consulting | Plaud template community |
 | `general-social-worker-home-visit-narrative-081c8863` | Social worker Home visit Narrative | post2dennis | False | General | Plaud template community |
@@ -1122,7 +1122,7 @@ Shipped entries: **1500**.
 | `education-school-general-detailed-lecture-notes-04bc06c2` | School General Detailed Lecture Notes | rakeshbassi1972 | False | Education | Plaud template community |
 | `consulting-meeting-note-8f27d865` | Meeting Note | Ralph Audörsch | False | Consulting | Plaud template community |
 | `education-seminar-lecture-summary-notes-e60f8a3a` | Seminar/Lecture: Summary Notes | Rana | False | Education | Plaud template community |
-| `interview-job-interview-5463a56d` | Job Interview | raphael ella | False | Interview | Plaud template community |
+| `interview-job-interview-5463a56d` | Job Interview (2) | raphael ella | False | Interview | Plaud template community |
 | `consulting-process-mapping-242bc010` | Process Mapping | raphaelgoncalvessantos | False | Consulting | Plaud template community |
 | `consulting-process-mapping-process-focus-3d9ccf71` | Process Mapping (process focus) | raphaelgoncalvessantos | False | Consulting | Plaud template community |
 | `education-learning-engine-thinking-framework-2dccc87f` | 📚 Learning engine 🧠 Thinking framework | Ravi Shekhaar Singh | False | Education | Plaud template community |
@@ -1166,7 +1166,7 @@ Shipped entries: **1500**.
 | `interview-oc-s-template-9eeb5c85` | Oc's Template | roceguera133 | False | Interview | Plaud template community |
 | `education-law-class-summary-e250f3b1` | Law Class Summary | Rodrigo Adry | False | Education | Plaud template community |
 | `speech-lecture-summary-7374c348` | Lecture Summary | Rodrigo Adry | False | Speech | Plaud template community |
-| `meeting-meeting-9b871141` | Meeting | Rodrigo Adry | False | Meeting | Plaud template community |
+| `meeting-meeting-9b871141` | Meeting (2) | Rodrigo Adry | False | Meeting | Plaud template community |
 | `speech-samurai-lecture-cb98e71f` | Samurai Lecture | Rodrigo Goltzman | False | Speech | Plaud template community |
 | `speech-catholic-homilies-53ee5b94` | Catholic Homilies | rodrigoribas | False | Speech | Plaud template community |
 | `medical-summary-of-hospitalized-patients-veterinary-5e5c228f` | Summary of Hospitalized Patients (Veterinary) | rodrigosantana_30 | False | Medical | Plaud template community |
@@ -1183,7 +1183,7 @@ Shipped entries: **1500**.
 | `education-interactive-classroom-0ed99f12` | Interactive Classroom | rvfalcao | False | Education | Plaud template community |
 | `medical-medical-consultation-aeff9f69` | Medical Consultation | rvfalcao | False | Medical | Plaud template community |
 | `meeting-1-on-1-summary-a8efc133` | 1 on 1 Summary | Ryan Anderson | False | Meeting | Plaud template community |
-| `legal-smart-transcript-reasoner-a31a3495` | Smart Transcript Reasoner | Ryan Garcia | False | Legal | Plaud template community |
+| `legal-smart-transcript-reasoner-a31a3495` | Smart Transcript Reasoner (2) | Ryan Garcia | False | Legal | Plaud template community |
 | `sales-spin-bant-0f01edc4` | SPIN / BANT | Ryan Lewis | False | Sales | Plaud template community |
 | `real-estate-vhg-agent-template-4198c708` | VHG Agent Template | Ryan Reed | False | Real Estate | Plaud template community |
 | `legal-expert-opinion-summary-0f470518` | Expert Opinion Summary | ryankopf | False | Legal | Plaud template community |
@@ -1192,7 +1192,7 @@ Shipped entries: **1500**.
 | `consulting-consultant-document-creation-d4fd1b5a` | Consultant Document Creation | Ryota Horikoshi (Holy) | False | Consulting | Plaud template community |
 | `interview-parental-custody-interview-acda2b57` | Parental Custody Interview | Rô Vieira | False | Interview | Plaud template community |
 | `construction-minute-taker-architecture-office-59c83bb4` | Minute Taker / Architecture Office | s-projekt | False | Construction | Plaud template community |
-| `call-phone-call-0bb3e737` | Phone Call | s.olivia567 | False | Call | Plaud template community |
+| `call-phone-call-0bb3e737` | Phone Call (6) | s.olivia567 | False | Call | Plaud template community |
 | `sales-sfdc-template-a1133d88` | SFDC Template | S5.Plaudnotepin | False | Sales | Plaud template community |
 | `sales-ocean-version-visit-summary-spell-cc7ab93a` | Ocean Version Visit Summary Spell | S6.Plaudnotepin | False | Sales | Plaud template community |
 | `medical-class-summary-7afa26a0` | Class Summary | sabrina_fernandes | False | Medical | Plaud template community |
@@ -1210,13 +1210,13 @@ Shipped entries: **1500**.
 | `sales-meddpicc-based-meeting-summary-f5e0d6d4` | Meddpicc Based Meeting Summary | saqib.rizvi | False | Sales | Plaud template community |
 | `education-lecture-to-manual-de7c3b5d` | Lecture to Manual 🎀 | Sara Siverio | False | Education | Plaud template community |
 | `consulting-detailed-summary-and-coaching-34c3eb6f` | Detailed Summary and Coaching | Sarang Datye | False | Consulting | Plaud template community |
-| `interview-candidate-interview-cf193bee` | Candidate Interview | sararottiers | False | Interview | Plaud template community |
+| `interview-candidate-interview-cf193bee` | Candidate Interview (2) | sararottiers | False | Interview | Plaud template community |
 | `interview-key-messages-3b87064e` | Key Messages | Sascha Wesselsky | False | Interview | Plaud template community |
 | `interview-summary-bc5916fd` | Summary | Sascha Wesselsky | False | Interview | Plaud template community |
 | `speech-bible-study-and-sermon-guru-efc1dd3c` | ⛪️ Bible Study and Sermon Guru | SaulGOOD | False | Speech | Plaud template community |
 | `interview-basic-witness-model-8f9fc0c1` | BASIC WITNESS MODEL | sbeaufils | False | Interview | Plaud template community |
 | `it-engineering-service-operations-summary-69826494` | Service Operations Summary | scoota | False | IT & Engineering | Plaud template community |
-| `meeting-key-points-decisions-tasks-deadlines-actions-1eba169e` | Key Points, Decisions, Tasks, Deadlines & Actions | scottsmyth2000 | False | Meeting | Plaud template community |
+| `meeting-key-points-decisions-tasks-deadlines-actions-1eba169e` | Key Points, Decisions, Tasks, Deadlines & Actions (2) | scottsmyth2000 | False | Meeting | Plaud template community |
 | `legal-client-vs-service-client-cf16ce8d` | Client vs Service Client | sebastien.malpuech | False | Legal | Plaud template community |
 | `it-engineering-train-driver-troubleshooting-b6818eaf` | Train Driver Troubleshooting | sebastien.malpuech | False | IT & Engineering | Plaud template community |
 | `financial-business-financial-model-summary-65e1f9f8` | Business Financial Model Summary | Sergey | False | Financial | Plaud template community |
@@ -1250,7 +1250,7 @@ Shipped entries: **1500**.
 | `sales-setting-analysis-summary-evaluation-25593fa7` | Setting Analysis (Summary & Evaluation) | Simon Fuchtmann | False | Sales | Plaud template community |
 | `consulting-swot-e1993673` | SWOT | SIMON GEA MORENO | False | Consulting | Plaud template community |
 | `call-meeting-report-a64db692` | Meeting Report | Simon Zwaga | False | Call | Plaud template community |
-| `consulting-process-mapping-e021a65c` | Process Mapping | Sindy Castro | False | Consulting | Plaud template community |
+| `consulting-process-mapping-e021a65c` | Process Mapping (2) | Sindy Castro | False | Consulting | Plaud template community |
 | `functional-diary-37464e6c` | Diary | skomisarov | False | Functional | Plaud template community |
 | `construction-insurance-adjuster-roof-inspection-9dbbf950` | Insurance Adjuster Roof Inspection | Sky Shield Consulting | False | Construction | Plaud template community |
 | `meeting-project-manager-notes-a744ec7e` | Project manager notes | SL-M bv | False | Meeting | Plaud template community |
@@ -1324,7 +1324,7 @@ Shipped entries: **1500**.
 | `real-estate-property-visit-report-da78c554` | Property Visit Report | thalerjulien | False | Real Estate | Plaud template community |
 | `interview-interview-transcription-8c3d2e7c` | Interview transcription | TheDouje | False | Interview | Plaud template community |
 | `real-estate-property-viewing-for-sale-or-rent-427ab6df` | Property viewing for sale or rent | Thibaud | False | Real Estate | Plaud template community |
-| `financial-cr-r1-7cc1d742` | CR R1 | Thierry Boulet | False | Financial | Plaud template community |
+| `financial-cr-r1-7cc1d742` | CR R1 (2) | Thierry Boulet | False | Financial | Plaud template community |
 | `financial-cr-r2-ab0d7933` | CR R2 | Thierry Boulet | False | Financial | Plaud template community |
 | `construction-measurement-work-e7db56ef` | Measurement / Work | Thomas Helmschrott | False | Construction | Plaud template community |
 | `construction-project-meeting-95b698cf` | Project Meeting | Thomas Helmschrott | False | Construction | Plaud template community |
@@ -1372,7 +1372,7 @@ Shipped entries: **1500**.
 | `real-estate-summary-of-real-estate-conversations-with-customer-0619053f` | Summary of Real Estate Conversations with Customers (Kotobuki Real Estate) | Tsutsui Kazuomi | False | Real Estate | Plaud template community |
 | `sales-sales-summary-9105b326` | Sales Summary | tunca.oezkan | False | Sales | Plaud template community |
 | `call-call-recording-953eabda` | Call Recording | ty6hsgmktv | False | Call | Plaud template community |
-| `sales-product-discovery-6af15cf3` | Product Discovery | Tyler Conn | False | Sales | Plaud template community |
+| `sales-product-discovery-6af15cf3` | Product Discovery (2) | Tyler Conn | False | Sales | Plaud template community |
 | `sales-sales-appointment-35ac510f` | Sales Appointment | Tyler Malinauskas | False | Sales | Plaud template community |
 | `sales-networking-call-breakdown-1caa5c46` | Networking call breakdown | Tyler Palocsik | False | Sales | Plaud template community |
 | `call-quick-call-notes-2fe80b66` | Quick call notes | Tyler Palocsik | False | Call | Plaud template community |
@@ -1431,7 +1431,7 @@ Shipped entries: **1500**.
 | `sales-vertical-meeting-report-56654941` | VERTICAL Meeting Report | Yannis | False | Sales | Plaud template community |
 | `general-conversation-and-memory-curator-e0176330` | Conversation and Memory Curator | Yash | False | General | Plaud template community |
 | `interview-interview-article-creation-7a17c593` | Interview Article Creation | yasu3867 | False | Interview | Plaud template community |
-| `construction-construction-meeting-71fab516` | Construction Meeting | Yekda Cam | False | Construction | Plaud template community |
+| `construction-construction-meeting-71fab516` | Construction Meeting (2) | Yekda Cam | False | Construction | Plaud template community |
 | `sales-sales-call-coaching-b61b68f2` | Sales Call coaching | yesvaldes | False | Sales | Plaud template community |
 | `sales-north-kanto-branch-improved-5-point-selected-promp-e4d57e32` | North Kanto Branch Improved 5-Point Selected Prompt | yokohama.bigs | False | Sales | Plaud template community |
 | `medical-personality-analysis-afa593f3` | Personality Analysis | Yolanda Muñoz | False | Medical | Plaud template community |
@@ -1451,10 +1451,10 @@ Shipped entries: **1500**.
 | `it-engineering-business-intelligence-f906eac7` | Business Intelligence | Éd Jorge | False | IT & Engineering | Plaud template community |
 | `general-negotiations-5c615d91` | Negotiations | Евгений Томилов | False | General | Plaud template community |
 | `call-call-analysis-in-the-mfc-call-center-of-primorsky--ac0a4862` | Call Analysis in the MFC Call Center of Primorsky Krai. | Евгения Штейнле | False | Call | Plaud template community |
-| `interview-interview-a6d56992` | Interview | Ил | False | Interview | Plaud template community |
+| `interview-interview-a6d56992` | Interview (2) | Ил | False | Interview | Plaud template community |
 | `speech-transcription-1c2b5295` | Transcription | Сергей Шулик | False | Speech | Plaud template community |
 | `financial-from-an-investment-bank-s-perspective-95a154dd` | From an Investment Bank's Perspective | احسان کریم خانی | False | Financial | Plaud template community |
-| `call-phone-call-237f73d2` | Phone Call | あいぷろ相談 | False | Call | Plaud template community |
+| `call-phone-call-237f73d2` | Phone Call (2) | あいぷろ相談 | False | Call | Plaud template community |
 | `medical-new-home-care-nursing-record-ae278191` | New Home Care Nursing Record | あすく | False | Medical | Plaud template community |
 | `medical-medical-interview-record-for-continuous-consultati-87c0e171` | Medical Interview Record for Continuous Consultations | いとまさ | False | Medical | Plaud template community |
 | `call-sales-call-inside-follow-up-daac0a55` | Sales Call (Inside/Follow-up) | うさボッチ | False | Call | Plaud template community |

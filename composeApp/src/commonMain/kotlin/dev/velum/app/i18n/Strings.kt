@@ -364,6 +364,8 @@ data class UxStrings(
     val askAcrossPlaceholder: String,
     val askAcrossSources: String,
     val askAcrossEmpty: String,
+    val templateDescription: String,
+    val templatePromptSection: String,
 )
 
 val PtBr = Strings(
@@ -717,6 +719,8 @@ val PtBr = Strings(
         askAcrossPlaceholder = "Ex.: Quais decisões de orçamento tomamos?",
         askAcrossSources = "Fontes",
         askAcrossEmpty = "Faça uma pergunta para buscar transcripts e notas.",
+        templateDescription = "Descrição",
+        templatePromptSection = "Resumo",
     ),)
 
 val En = Strings(
@@ -1070,6 +1074,8 @@ val En = Strings(
         askAcrossPlaceholder = "e.g. What budget decisions did we make?",
         askAcrossSources = "Sources",
         askAcrossEmpty = "Ask a question to search transcripts and notes.",
+        templateDescription = "Description",
+        templatePromptSection = "Summary",
     ),)
 
 val LocalStrings = staticCompositionLocalOf { PtBr }

@@ -89,8 +89,7 @@ Phone-only / external (no Plaud required):
 - [x] SQLite FTS5 over recording title+transcript+summary and templates (raw `SqlDriver` DDL/MATCH — SQLDelight dialect SOEs on FTS5); Files/Templates search uses FTS with `ListSearch` fallback
 - [x] Glossary + memory tables in `Velum.sq`; CRUD under Personalization / Memory
 - [x] Local JSON/Markdown templates create/edit persist locally (community/cloud templates removed)
-- [x] Built-in catalog: **15 Velum originals** + curated **1,500 Plaud** templates (lazy classpath asset) + optional Velum PR contributions (`contributor` credit on detail only). Plaud author/official stay in JSONL + `docs/TEMPLATES_CREDITS.md` (not shown in app UI). Discover: category tabs, FTS over name/description/body, popularity sort. Local JSON importer kept (`TemplateJsonImporter`)
-- [ ] Plaud template dump from Heitor — schema + sync script ready; JSONL empty until collection lands
+- [x] Built-in catalog: **15 Velum originals** + curated **1,500 Plaud** templates (100×15 categories; unique names within category; lazy classpath asset) + optional Velum PR contributions (`contributor` credit on detail only). Plaud author/official stay in JSONL + `docs/TEMPLATES_CREDITS.md` (not shown in app UI). Discover: category tabs, FTS over name/description/body, popularity sort. Local JSON importer kept (`TemplateJsonImporter`). Sync via `scripts/sync-plaud-templates.sh`
 - [x] CalendarProvider read current/next event title to name recordings after sync (permission-denied reported clearly)
 - [x] Runtime READ_CALENDAR permission with rationale (Integrations + AutoFlow blocked path)
 

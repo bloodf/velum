@@ -529,7 +529,12 @@ fun TemplateDetailScreen(
             )
         }
         Spacer(Modifier.height(16.dp))
-        Text("Descrição", fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 24.dp))
+        Text(
+            strings.ux.templateDescription,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(horizontal = 24.dp),
+            color = VelumInk,
+        )
         Spacer(Modifier.height(6.dp))
         Text(
             tpl?.description.orEmpty(),
@@ -539,7 +544,12 @@ fun TemplateDetailScreen(
             modifier = Modifier.padding(horizontal = 24.dp),
         )
         Spacer(Modifier.height(16.dp))
-        Text("RESUMO", fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 24.dp))
+        Text(
+            strings.ux.templatePromptSection.uppercase(),
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(horizontal = 24.dp),
+            color = VelumInk,
+        )
         Spacer(Modifier.height(6.dp))
         var editing by remember(tpl?.id) { mutableStateOf(false) }
         var promptDraft by remember(tpl?.id) { mutableStateOf(tpl?.system_prompt.orEmpty()) }

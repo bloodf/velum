@@ -104,6 +104,14 @@ class PlaudTemplateCatalogTest {
         assertEquals(15, perCategory.size)
         perCategory.values.forEach { assertEquals(100, it) }
         assertEquals(41, official)
+        // Unique display names within each category; bodies unique globally.
+        val namesByCategory = mutableMapOf<String, MutableSet<String>>()
+        val bodies = mutableSetOf<String>()
+        entries.forEach { e ->
+            val names = namesByCategory.getOrPut(e.category) { mutableSetOf() }
+            assertTrue(names.add(e.name), "duplicate name in ${e.category}: ${e.name}")
+            assertTrue(bodies.add(e.body.trim()), "duplicate body: ${e.id}")
+        }
         assertTrue(BuiltinTemplateCatalog.All.size >= 1515)
         assertEquals(15, BuiltinTemplateCatalog.velumEntries().size)
     }
