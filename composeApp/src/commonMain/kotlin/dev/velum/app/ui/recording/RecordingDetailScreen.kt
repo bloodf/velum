@@ -271,6 +271,7 @@ fun RecordingDetailScreen(
                 container = container,
                 recordingId = recordingId,
                 title = recording?.title.orEmpty(),
+                initialTranscript = recording?.transcript,
                 onStoppedAndQueued = { /* status observed via Flow */ },
             )
         } else if (tab == 0) {
@@ -669,10 +670,14 @@ private fun LiveTranscriptPane(
     container: AppContainer,
     recordingId: String,
     title: String,
+    initialTranscript: String? = null,
     onStoppedAndQueued: () -> Unit = {},
 ) {
     val strings = LocalStrings.current
-    var partial by remember { mutableStateOf("**partial** · 0:00\n") }
+    val seededTranscript = initialTranscript?.takeIf { it.isNotBlank() }
+    var partial by remember(recordingId) {
+        mutableStateOf(seededTranscript ?: "**partial** · 0:00\n")
+    }
     var usingMic by remember { mutableStateOf(false) }
     var stopping by remember { mutableStateOf(false) }
     var inputSource by remember { mutableStateOf(MicInputSource.Mic) }
@@ -688,6 +693,8 @@ private fun LiveTranscriptPane(
     }
     // Only allocate WavWriter for the PCM-demo fallback. MicCapture/FGS owns the real file.
     val demoWavWriter = remember(recordingId) { mutableStateOf<WavWriter?>(null) }
+    // Seeded transcript (Roborazzi / resume) — keep it visible; skip PCM demo overwrite.
+    val preserveSeeded = seededTranscript != null
 
     fun finishOnce(): String {
         if (finished.value) return partial
@@ -696,9 +703,13 @@ private fun LiveTranscriptPane(
     }
 
     DisposableEffect(recordingId) {
-        streamer.onPartial = { md -> partial = md }
+        streamer.onPartial = { md ->
+            if (!preserveSeeded) partial = md
+        }
         val settingsLang = container.settingsRepository.settings.value.audioLanguage
-        streamer.start(16_000, settingsLang, null)
+        if (!preserveSeeded) {
+            streamer.start(16_000, settingsLang, null)
+        }
 
         val push: (ByteArray) -> Unit = { pcm ->
             try {
@@ -715,7 +726,7 @@ private fun LiveTranscriptPane(
             usingMic = true
             markerCount = container.micCapture.markers.size
             pausedUi = container.micCapture.isPaused
-        } else {
+        } else if (!preserveSeeded) {
             when (container.micCapture.start(wavPath, inputSource)) {
                 MicStartResult.Started -> {
                     container.activeMicRecordingId = recordingId
@@ -727,9 +738,11 @@ private fun LiveTranscriptPane(
                     usingMic = false
                 }
             }
+        } else {
+            usingMic = false
         }
 
-        val demoJob = if (!usingMic) {
+        val demoJob = if (!usingMic && !preserveSeeded) {
             val writer = WavWriter(wavPath, sampleRateHz = 16_000)
             demoWavWriter.value = writer
             scope.launch {
@@ -771,20 +784,22 @@ private fun LiveTranscriptPane(
             color = VelumBlack,
             modifier = Modifier.padding(horizontal = 20.dp).width(110.dp),
         )
-        if (!usingMic) {
+        if (preserveSeeded && !usingMic) {
+            Text(
+                "Microfone · ao vivo",
+                color = VelumInkSecondary,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+            )
+        } else if (!usingMic) {
+            // Robolectric / desktop: PCM demo path — keep a single quiet hint.
             Text(
                 strings.streamingDemoHint,
                 color = VelumInkSecondary,
                 fontSize = 12.sp,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
             )
-            Text(
-                strings.micUnsupported,
-                color = VelumInkSecondary,
-                fontSize = 12.sp,
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
-            )
-        } else {
+        } else if (usingMic) {
             Text(
                 "Input: ${inputSource.name} · markers $markerCount",
                 color = VelumInkSecondary,

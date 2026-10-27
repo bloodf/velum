@@ -43,7 +43,30 @@ fun DeviceScreen(
     val state by viewModel.connectionState.collectAsState()
     val devices by viewModel.devices.collectAsState()
     val sessionUi by viewModel.sessionUi.collectAsState()
+    DeviceScreenContent(
+        state = state,
+        devices = devices,
+        sessionUi = sessionUi,
+        bleAvailable = ble.isAvailable,
+        onStartScan = { viewModel.startScan() },
+        onStopScan = { viewModel.stopScan() },
+        onDisconnect = { viewModel.disconnect() },
+        onConnect = { viewModel.connect(it) },
+    )
+}
 
+/** Stateless device UI — used by [DeviceScreen] and Roborazzi fixtures. */
+@Composable
+fun DeviceScreenContent(
+    state: BleConnectionState,
+    devices: List<ConnectedDevice>,
+    sessionUi: DeviceSessionUi,
+    bleAvailable: Boolean,
+    onStartScan: () -> Unit,
+    onStopScan: () -> Unit,
+    onDisconnect: () -> Unit,
+    onConnect: (String) -> Unit,
+) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -70,7 +93,7 @@ fun DeviceScreen(
         )
         Spacer(Modifier.height(20.dp))
 
-        StatusBanner(state = state, bleAvailable = ble.isAvailable)
+        StatusBanner(state = state, bleAvailable = bleAvailable)
         sessionUi.statusMessage?.let { msg ->
             Spacer(Modifier.height(8.dp))
             Text(
@@ -81,6 +104,29 @@ fun DeviceScreen(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+        if (sessionUi.wifiFastPath) {
+            Spacer(Modifier.height(8.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.surface)
+                    .padding(14.dp),
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        "Wi‑Fi fast transfer",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Text(
+                        "SoftAP + WebSocket ready — large sessions skip slow BLE bulk transfer.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
         }
         if (sessionUi.sessions.isNotEmpty()) {
             Spacer(Modifier.height(8.dp))
@@ -100,19 +146,19 @@ fun DeviceScreen(
         Spacer(Modifier.height(16.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Button(
-                onClick = { viewModel.startScan() },
-                enabled = ble.isAvailable && state !is BleConnectionState.Connecting,
+                onClick = onStartScan,
+                enabled = bleAvailable && state !is BleConnectionState.Connecting,
             ) {
                 Text(if (state is BleConnectionState.Scanning) "Scanning…" else "Scan")
             }
             OutlinedButton(
-                onClick = { viewModel.stopScan() },
+                onClick = onStopScan,
                 enabled = state is BleConnectionState.Scanning,
             ) {
                 Text("Stop")
             }
             if (state is BleConnectionState.Connected) {
-                TextButton(onClick = { viewModel.disconnect() }) {
+                TextButton(onClick = onDisconnect) {
                     Text("Disconnect")
                 }
             }
@@ -130,7 +176,7 @@ fun DeviceScreen(
             enter = fadeIn(),
             exit = fadeOut(),
         ) {
-            EmptyDeviceHint(bleAvailable = ble.isAvailable)
+            EmptyDeviceHint(bleAvailable = bleAvailable)
         }
 
         LazyColumn(
@@ -138,7 +184,7 @@ fun DeviceScreen(
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             items(devices, key = { it.id }) { device ->
-                DeviceRow(device = device, onConnect = { viewModel.connect(device.id) })
+                DeviceRow(device = device, onConnect = { onConnect(device.id) })
             }
         }
     }
@@ -151,7 +197,7 @@ private fun StatusBanner(state: BleConnectionState, bleAvailable: Boolean) {
     } else {
         when (state) {
             is BleConnectionState.Idle -> "Ready to scan for a compatible recorder."
-            is BleConnectionState.Scanning -> "Scanning for Plaud service 0x1910…"
+            is BleConnectionState.Scanning -> "Scanning for compatible recorders…"
             is BleConnectionState.Connecting -> "Connecting to ${state.deviceId}…"
             is BleConnectionState.Connected -> {
                 val d = state.device
@@ -238,6 +284,8 @@ private fun DeviceRow(device: ConnectedDevice, onConnect: () -> Unit) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        Button(onClick = onConnect) { Text("Connect") }
+        if (device.id.isNotBlank()) {
+            Button(onClick = onConnect) { Text("Connect") }
+        }
     }
 }

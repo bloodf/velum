@@ -31,10 +31,10 @@ import dev.velum.app.ui.autoflow.AutoFlowListScreen
 import dev.velum.app.ui.brand.VelumLogo
 import dev.velum.app.ui.explore.ExploreScreen
 import dev.velum.app.ui.files.FilesScreen
+import dev.velum.app.ui.importing.ImportHubScreen
 import dev.velum.app.ui.integrations.IntegrationsScreen
 import dev.velum.app.ui.mindmap.MindMapView
 import dev.velum.app.ui.mindmap.buildMindMap
-import dev.velum.app.ui.importing.ImportHubScreen
 import dev.velum.app.ui.onboarding.FirstRunScreen
 import dev.velum.app.ui.recording.GenerateSheetContent
 import dev.velum.app.ui.recording.RecordingDetailScreen
@@ -49,8 +49,15 @@ import dev.velum.app.ui.shell.VelumBottomBar
 import dev.velum.app.ui.templates.TemplatesScreen
 import dev.velum.app.ui.theme.VelumBg
 import dev.velum.app.ui.theme.VelumTheme
+import dev.velum.ble.BleConnectionState
 import dev.velum.core.data.DriverFactory
+import dev.velum.core.data.VelumRepository
+import dev.velum.core.model.ComputeMode
+import dev.velum.core.model.ConnectedDevice
 import dev.velum.core.security.InMemorySecureStore
+import dev.velum.protocol.DeviceModel
+import dev.velum.protocol.SessionEntry
+import kotlinx.coroutines.runBlocking
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -60,8 +67,9 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * Deterministic phone screenshots (~1080×2400 px via w360dp-h800dp @ xxhdpi).
+ *
  * Run: `./gradlew :composeApp:recordRoborazziDebug`
- * PNGs land in composeApp/build/outputs/roborazzi/ (uploaded as CI artifacts; not committed).
+ * Then: `./scripts/package-screenshots.sh` → docs/screenshots/{light,dark}/ + fastlane.
  */
 @RunWith(AndroidJUnit4::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -76,103 +84,16 @@ class MainScreenshotsTest {
     @Before
     fun setUp() {
         val context = ApplicationProvider.getApplicationContext<Context>()
-        // Fresh DB so SeedData v3 Markdown fixtures always land for Roborazzi.
         context.deleteDatabase("velum.db")
         container = AppContainer(
             secureStore = InMemorySecureStore(),
             driverFactory = DriverFactory(context),
         )
+        runBlocking { seedScreenshotFixtures(container) }
     }
 
     @Test
-    fun filesList() = capture("01-files-list") {
-        FilesScreen(container, onOpenRecording = {}, onOpenSettings = {})
-        BottomChrome(ShellTab.Files, fabOpen = false)
-    }
-
-    @Test
-    fun fabOverlay() = capture("02-fab-overlay") {
-        FilesScreen(container, onOpenRecording = {}, onOpenSettings = {})
-        FabOverlay(visible = true, onStartRecording = {}, onImportAudio = {}, onDismiss = {})
-        BottomChrome(ShellTab.Files, fabOpen = true)
-    }
-
-    @Test
-    fun recordingFontes() = capture("03-recording-fontes") {
-        // Seeded diarized Markdown transcript rendered via MarkdownPreview.
-        RecordingDetailScreen(container, "rec-demo-1", onBack = {}, initialTab = 0)
-    }
-
-    @Test
-    fun recordingNotas() = capture("04-recording-notas") {
-        // Seeded meeting summary Markdown (headings + lists) in Notas.
-        RecordingDetailScreen(container, "rec-demo-1", onBack = {}, initialTab = 1)
-    }
-
-    @Test
-    fun nameSpeakersSheet() = capture("05-name-speakers") {
-        Box(Modifier.fillMaxSize().background(VelumBg)) {
-            SpeakerLabelSheetContent(onClose = {})
-        }
-    }
-
-    @Test
-    fun generateSheet() = capture("06-generate-sheet") {
-        Box(Modifier.fillMaxSize().background(VelumBg)) {
-            GenerateSheetContent(onClose = {})
-        }
-    }
-
-    @Test
-    fun templates() = capture("07-templates") {
-        TemplatesScreen(container, onBack = {}, onOpenTemplate = {})
-    }
-
-    @Test
-    fun explore() = capture("08-explore") {
-        ExploreScreen(
-            container = container,
-            onTemplates = {},
-            onAutoFlow = {},
-            onIntegrations = {},
-            onAccount = {},
-        )
-        BottomChrome(ShellTab.Explore, fabOpen = false)
-    }
-
-    @Test
-    fun autoFlow() = capture("09-autoflow") {
-        AutoFlowListScreen(container, onBack = {}, onEdit = {})
-    }
-
-    @Test
-    fun integrations() = capture("10-integrations") {
-        IntegrationsScreen(container = container, onBack = {})
-    }
-
-    @Test
-    fun settings() = capture("11-settings") {
-        SettingsHubScreen(
-            container = container,
-            onBack = {},
-            onPersonalization = {},
-            onPreferences = {},
-            onAccount = {},
-        )
-    }
-
-    @Test
-    fun aiProcessing() = capture("12-ai-processing") {
-        AiProcessingScreen(container, onBack = {}, onModelManager = {})
-    }
-
-    @Test
-    fun modelManager() = capture("13-model-manager") {
-        ModelManagerScreen(container, onBack = {})
-    }
-
-    @Test
-    fun firstRun() = capture("14-first-run") {
+    fun firstRun() = capture("01-onboarding") {
         FirstRunScreen(
             onPhoneMic = {},
             onImportRecorder = {},
@@ -184,7 +105,59 @@ class MainScreenshotsTest {
     }
 
     @Test
-    fun importHub() = capture("18-import-hub") {
+    fun filesList() = capture("02-home-recordings") {
+        FilesScreen(container, onOpenRecording = {}, onOpenSettings = {})
+        BottomChrome(ShellTab.Files, fabOpen = false)
+    }
+
+    @Test
+    fun fabOverlay() = capture("03-fab-overlay") {
+        FilesScreen(container, onOpenRecording = {}, onOpenSettings = {})
+        FabOverlay(visible = true, onStartRecording = {}, onImportAudio = {}, onDismiss = {})
+        BottomChrome(ShellTab.Files, fabOpen = true)
+    }
+
+    @Test
+    fun recordingInProgress() = capture("04-recording-in-progress") {
+        RecordingDetailScreen(container, "rec-live-mic", onBack = {}, initialTab = 0)
+    }
+
+    @Test
+    fun deviceConnectedWifi() = capture("05-device-connected-wifi") {
+        val device = ConnectedDevice(
+            id = "note-pro-demo",
+            name = "Note Pro",
+            serial = "881DEMO01",
+            modelCode = DeviceModel.NotePro.code,
+            protocolVersion = 20,
+            rssi = -48,
+            batteryPercent = 76,
+        )
+        DeviceScreenContent(
+            state = BleConnectionState.Connected(device),
+            devices = listOf(device),
+            sessionUi = DeviceSessionUi(
+                batteryPercent = 76,
+                sessions = listOf(
+                    SessionEntry(sessionId = 1_729_942_000L, sizeBytes = 8_500_000),
+                    SessionEntry(sessionId = 1_729_900_000L, sizeBytes = 3_200_000),
+                ),
+                statusMessage = "Ready · Note Pro · protocol 20 · Wi‑Fi fast path",
+                protocolVersion = 20,
+                modelDisplayName = "Note Pro",
+                wifiFastPath = true,
+                recorderDriverId = "plaud",
+            ),
+            bleAvailable = true,
+            onStartScan = {},
+            onStopScan = {},
+            onDisconnect = {},
+            onConnect = {},
+        )
+    }
+
+    @Test
+    fun importHub() = capture("06-import-hub") {
         ImportHubScreen(
             container = container,
             onBack = {},
@@ -195,46 +168,84 @@ class MainScreenshotsTest {
     }
 
     @Test
-    fun voiceProfiles() = capture("19-voice-profiles") {
+    fun transcriptSpeakers() = capture("07-transcript-speakers") {
+        RecordingDetailScreen(container, "rec-demo-1", onBack = {}, initialTab = 0)
+    }
+
+    @Test
+    fun summaryFromTemplate() = capture("08-summary-template") {
+        RecordingDetailScreen(container, "rec-demo-1", onBack = {}, initialTab = 1)
+    }
+
+    @Test
+    fun nameSpeakersSheet() = capture("09-name-speakers") {
+        Box(Modifier.fillMaxSize().background(VelumBg)) {
+            SpeakerLabelSheetContent(onClose = {})
+        }
+    }
+
+    @Test
+    fun generateSheet() = capture("10-generate-sheet") {
+        Box(Modifier.fillMaxSize().background(VelumBg)) {
+            GenerateSheetContent(onClose = {})
+        }
+    }
+
+    @Test
+    fun templates() = capture("11-template-picker") {
+        TemplatesScreen(container, onBack = {}, onOpenTemplate = {})
+    }
+
+    @Test
+    fun voiceProfiles() = capture("12-voice-profiles") {
         VoiceProfilesScreen(container = container, onBack = {})
     }
 
     @Test
-    fun brandLauncherLight() = capture("16-brand-launcher-light") {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                VelumLogo(
-                    size = 160.dp,
-                    dark = false,
-                    modifier = Modifier.clip(RoundedCornerShape(36.dp)),
-                )
-                Spacer(Modifier.height(16.dp))
-                Text("Velum", fontWeight = FontWeight.SemiBold, fontSize = 22.sp)
-            }
-        }
+    fun aiProcessing() = capture("13-ai-processing") {
+        AiProcessingScreen(container, onBack = {}, onModelManager = {})
     }
 
     @Test
-    fun brandSplashDark() {
-        captureRoboImage("velum-17-brand-splash-dark.png") {
-            CompositionLocalProvider(
-                LocalStrings provides PtBr,
-                LocalDensity provides Density(density = 3f, fontScale = 1f),
-            ) {
-                VelumTheme(darkTheme = true) {
-                    Box(
-                        Modifier.fillMaxSize().background(Color.Black),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        VelumLogo(size = 160.dp, dark = true)
-                    }
-                }
-            }
-        }
+    fun explore() = capture("14-explore") {
+        ExploreScreen(
+            container = container,
+            onTemplates = {},
+            onAutoFlow = {},
+            onIntegrations = {},
+            onAccount = {},
+        )
+        BottomChrome(ShellTab.Explore, fabOpen = false)
     }
 
     @Test
-    fun mindMap() = capture("15-mind-map") {
+    fun autoFlow() = capture("15-autoflow") {
+        AutoFlowListScreen(container, onBack = {}, onEdit = {})
+    }
+
+    @Test
+    fun integrations() = capture("16-integrations") {
+        IntegrationsScreen(container = container, onBack = {})
+    }
+
+    @Test
+    fun settings() = capture("17-settings") {
+        SettingsHubScreen(
+            container = container,
+            onBack = {},
+            onPersonalization = {},
+            onPreferences = {},
+            onAccount = {},
+        )
+    }
+
+    @Test
+    fun modelManager() = capture("18-model-manager") {
+        ModelManagerScreen(container, onBack = {})
+    }
+
+    @Test
+    fun mindMap() = capture("19-mind-map") {
         val map = buildMindMap(
             markdown = """
                 ## Informações da reunião
@@ -252,6 +263,96 @@ class MainScreenshotsTest {
         MindMapView(map)
     }
 
+    @Test
+    fun brandLauncherLight() = capture("20-brand-launcher-light") {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                VelumLogo(
+                    size = 160.dp,
+                    dark = false,
+                    modifier = Modifier.clip(RoundedCornerShape(36.dp)),
+                )
+                Spacer(Modifier.height(16.dp))
+                Text("Velum", fontWeight = FontWeight.SemiBold, fontSize = 22.sp)
+            }
+        }
+    }
+
+    @Test
+    fun brandSplashDark() {
+        captureRoboImage("velum-21-brand-splash-dark.png") {
+            CompositionLocalProvider(
+                LocalStrings provides PtBr,
+                LocalDensity provides Density(density = 3f, fontScale = 1f),
+            ) {
+                VelumTheme(darkTheme = true) {
+                    Box(
+                        Modifier.fillMaxSize().background(Color.Black),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        VelumLogo(size = 160.dp, dark = true)
+                    }
+                }
+            }
+        }
+    }
+
+    // —— Dark variants of key screens ——
+
+    @Test
+    fun darkHome() = capture("dark-02-home-recordings", dark = true) {
+        FilesScreen(container, onOpenRecording = {}, onOpenSettings = {})
+        BottomChrome(ShellTab.Files, fabOpen = false)
+    }
+
+    @Test
+    fun darkTranscript() = capture("dark-07-transcript-speakers", dark = true) {
+        RecordingDetailScreen(container, "rec-demo-1", onBack = {}, initialTab = 0)
+    }
+
+    @Test
+    fun darkSummary() = capture("dark-08-summary-template", dark = true) {
+        RecordingDetailScreen(container, "rec-demo-1", onBack = {}, initialTab = 1)
+    }
+
+    @Test
+    fun darkAiProcessing() = capture("dark-13-ai-processing", dark = true) {
+        AiProcessingScreen(container, onBack = {}, onModelManager = {})
+    }
+
+    @Test
+    fun darkDevice() = capture("dark-05-device-connected-wifi", dark = true) {
+        val device = ConnectedDevice(
+            id = "note-pro-demo",
+            name = "Note Pro",
+            serial = "881DEMO01",
+            modelCode = DeviceModel.NotePro.code,
+            protocolVersion = 20,
+            rssi = -48,
+            batteryPercent = 76,
+        )
+        DeviceScreenContent(
+            state = BleConnectionState.Connected(device),
+            devices = listOf(device),
+            sessionUi = DeviceSessionUi(
+                batteryPercent = 76,
+                sessions = listOf(
+                    SessionEntry(sessionId = 1_729_942_000L, sizeBytes = 8_500_000),
+                ),
+                statusMessage = "Ready · Note Pro · protocol 20 · Wi‑Fi fast path",
+                protocolVersion = 20,
+                modelDisplayName = "Note Pro",
+                wifiFastPath = true,
+                recorderDriverId = "plaud",
+            ),
+            bleAvailable = true,
+            onStartScan = {},
+            onStopScan = {},
+            onDisconnect = {},
+            onConnect = {},
+        )
+    }
+
     @Composable
     private fun BottomChrome(selected: ShellTab, fabOpen: Boolean) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
@@ -265,18 +366,68 @@ class MainScreenshotsTest {
         }
     }
 
-    private fun capture(name: String, content: @Composable () -> Unit) {
+    private fun capture(name: String, dark: Boolean = false, content: @Composable () -> Unit) {
         captureRoboImage("velum-$name.png") {
             CompositionLocalProvider(
                 LocalStrings provides PtBr,
                 LocalDensity provides Density(density = 3f, fontScale = 1f),
             ) {
-                VelumTheme {
+                VelumTheme(darkTheme = dark) {
                     Box(Modifier.fillMaxSize().background(VelumBg)) {
                         content()
                     }
                 }
             }
         }
+    }
+
+    private suspend fun seedScreenshotFixtures(container: AppContainer) {
+        val now = 1_729_942_755L
+        container.repository.insertRecording(
+            id = "rec-live-mic",
+            sessionId = now,
+            folderId = null,
+            title = "Gravação ao vivo",
+            source = "phone",
+            deviceSerial = null,
+            startedAt = now - 90,
+            durationSeconds = 90,
+            sizeBytes = 1_440_000,
+            localPath = null,
+            transcript = """
+                **Heitor** · 0:12
+                Vamos gravar pelo microfone do telefone e revisar o pipeline local.
+
+                **Marina** · 0:28
+                Combinado — Parakeet na transcrição e Gemma E4B no resumo.
+
+                **Heitor** · 0:41
+                Se o modelo local falhar, caímos para a API só nessa tarefa.
+            """.trimIndent(),
+            summaryMarkdown = null,
+            status = "recording",
+            createdAt = now - 90,
+        )
+        container.repository.updateSpeakers(
+            "rec-demo-1",
+            listOf(
+                VelumRepository.SpeakerUpsert("spk-1", "S1", "Heitor", 95),
+                VelumRepository.SpeakerUpsert("spk-2", "S2", "Marina", 88),
+            ),
+        )
+        container.settingsRepository.load()
+        container.settingsRepository.setTranscriptionMode(ComputeMode.Local)
+        container.settingsRepository.setDiarizationMode(ComputeMode.Local)
+        container.settingsRepository.setSummaryMode(ComputeMode.Api)
+        container.settingsRepository.setBaseUrl("https://api.openai.com/v1")
+        // Demo voice profiles (tiny synthetic embeddings — UI list only).
+        val emb = FloatArray(192) { i -> (i % 17) / 17f }
+        container.voiceProfileStore.upsert("Heitor", emb, role = "Product", company = "Velum")
+        container.voiceProfileStore.upsert(
+            "Marina",
+            FloatArray(192) { i -> ((i + 3) % 19) / 19f },
+            role = "Engineering",
+            company = "Velum",
+        )
     }
 }

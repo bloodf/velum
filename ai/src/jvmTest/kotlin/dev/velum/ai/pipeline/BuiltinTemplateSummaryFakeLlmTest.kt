@@ -28,8 +28,11 @@ import kotlinx.coroutines.flow.last
 import kotlinx.coroutines.runBlocking
 
 /**
- * Each built-in Velum template must produce a Markdown summary via a fake LLM
+ * Each Velum-original built-in template must produce a Markdown summary via a fake LLM
  * that mirrors the section headings requested in the enhanced system prompt.
+ *
+ * Plaud catalog rows (1,500+) are validated by [dev.velum.core.templates.PlaudTemplateCatalogTest]
+ * for schema/prompt wrapping — not exercised here (would dominate CI time).
  */
 class BuiltinTemplateSummaryFakeLlmTest {
     @Test
@@ -94,8 +97,10 @@ class BuiltinTemplateSummaryFakeLlmTest {
         )
         val processor = RecordingProcessor(router, repo, settings)
 
-        assertEquals(15, BuiltinTemplateCatalog.All.size)
-        BuiltinTemplateCatalog.All.forEach { spec ->
+        val velumSpecs = BuiltinTemplateCatalog.All.filter { it.id.startsWith("velum.") && it.sectionsPtBr.isNotEmpty() }
+        assertEquals(15, velumSpecs.size)
+        assertTrue(BuiltinTemplateCatalog.All.size >= 1515)
+        velumSpecs.forEach { spec ->
             captured.clear()
             val recordingId = "rec-tpl-${spec.id.replace('.', '-')}"
             repo.insertRecording(

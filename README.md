@@ -29,6 +29,7 @@ ble/                 BleTransport + Kable (Android/iOS) + desktop stub
 iosApp/              Thin SwiftUI host for the Compose framework
 docs/                Protocol notes, legal / interoperability
 docs/brand/          Brand masters + web/exact-size exports
+docs/screenshots/    App UI captures (light / dark / framed)
 fastlane/metadata/   Play / F-Droid listing assets
 ```
 
@@ -54,6 +55,37 @@ All brand art is black & white 3D, matching the launcher icon. Catalog: [docs/br
 **Dark vs light:** the Android launcher cannot switch icons by theme — keep the light 3D icon on the home screen. Splash, first-run hero, and About hero follow the system theme (`splash-light` / `splash-dark`). The About dialog also shows the light wordmark.
 
 > **GitHub social preview:** upload `docs/brand/sized/github-social-preview-1280x640.png` manually under **Settings → General → Social preview**. Git does not set this for you.
+
+## Screenshots
+
+Real Compose UI captures (Roborazzi, ≈1080×2400). No Plaud marketing art — Velum UI with seeded demo data. Light + dark galleries live under [`docs/screenshots/`](docs/screenshots/); store listing copies are in [`fastlane/metadata/android/`](fastlane/metadata/android/).
+
+<p align="center">
+  <img src="docs/screenshots/framed/framed-02-home-recordings.png" alt="Home — recordings list" width="24%" />
+  <img src="docs/screenshots/framed/framed-07-transcript-speakers.png" alt="Transcript with speakers" width="24%" />
+  <img src="docs/screenshots/framed/framed-08-summary-template.png" alt="Summary from template" width="24%" />
+  <img src="docs/screenshots/framed/framed-05-device-connected-wifi.png" alt="Device connected with Wi-Fi fast transfer" width="24%" />
+</p>
+
+| Screen | Light | Dark |
+|--------|-------|------|
+| Onboarding | [01](docs/screenshots/light/01-onboarding.png) | — |
+| Home / recordings | [02](docs/screenshots/light/02-home-recordings.png) | [02](docs/screenshots/dark/02-home-recordings.png) |
+| Recording in progress (phone mic) | [04](docs/screenshots/light/04-recording-in-progress.png) | — |
+| Device connected + Wi‑Fi fast transfer | [05](docs/screenshots/light/05-device-connected-wifi.png) | [05](docs/screenshots/dark/05-device-connected-wifi.png) |
+| Import hub | [06](docs/screenshots/light/06-import-hub.png) | — |
+| Transcript + speakers | [07](docs/screenshots/light/07-transcript-speakers.png) | [07](docs/screenshots/dark/07-transcript-speakers.png) |
+| Summary (template) | [08](docs/screenshots/light/08-summary-template.png) | [08](docs/screenshots/dark/08-summary-template.png) |
+| Template picker | [11](docs/screenshots/light/11-template-picker.png) | — |
+| Voice profiles | [12](docs/screenshots/light/12-voice-profiles.png) | — |
+| AI processing (Local vs API) | [13](docs/screenshots/light/13-ai-processing.png) | [13](docs/screenshots/dark/13-ai-processing.png) |
+
+Regenerate:
+
+```bash
+./gradlew :composeApp:recordRoborazziDebug
+./scripts/package-screenshots.sh
+```
 
 ## Build
 
