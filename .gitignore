@@ -17,6 +17,8 @@ build/
 local.properties
 *.keystore
 *.jks
+# Shared CI/local debug signing only (never release). Allows adb install -r across CI APKs.
+!composeApp/debug.keystore
 .env
 .env.*
 !.env.example

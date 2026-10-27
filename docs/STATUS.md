@@ -103,7 +103,7 @@ Phone-only / external (no Plaud required):
 - [x] Integrations: local device calendar (no Plaud/Google OAuth server path required)
 - [x] Roborazzi phone screenshots (~1080×2400) in CI artifacts
 - [x] Instrumented Compose UI smoke tests (`MainFlowUiTest`)
-- [x] Signed debug APK (Android debug keystore) as CI artifact
+- [x] Signed debug APK as CI artifact — fixed `composeApp/debug.keystore` (android/androiddebugkey) so every CI debug build shares one signature (`adb install -r` without wipe)
 - [x] UI comparison vs owner Plaud reference zip → `docs/UI_COMPARISON.md`
 
 ## Reviews
