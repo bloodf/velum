@@ -1,6 +1,12 @@
-# Plaud templates (APK 3.30.0)
+# Templates
 
-**Result: 0 templates are embedded in the APK.** Templates are only on the server (endpoints in plaud_templates_raw.json). The APK contains only 15 category icon keys. No server was contacted.
+## Shipping policy
+
+Velum ships **Velum originals** plus **all Plaud official + community templates** as built-ins, each with author credit (`docs/TEMPLATES_CREDITS.md`). Collected JSONL drops into `docs/templates/plaud_templates.jsonl` (see `docs/templates/README.md`); sync with `./scripts/sync-plaud-templates.sh`. Local JSON import remains for personal exports (`TemplateJsonImporter`).
+
+## Plaud APK 3.30.0 note
+
+**0 templates are embedded in the APK.** Templates are server-side (endpoints in plaud_templates_raw.json). The APK contains only 15 category icon keys. No server was contacted for the original Velum set.
 
 ## Velum originals (one per Plaud category)
 

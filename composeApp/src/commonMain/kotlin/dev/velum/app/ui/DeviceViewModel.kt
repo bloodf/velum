@@ -8,6 +8,8 @@ import dev.velum.ble.client.PlaudDeviceClient
 import dev.velum.ble.crypto.createSessionCipher
 import dev.velum.core.model.ConnectedDevice
 import dev.velum.core.security.DeviceKeyImporter
+import dev.velum.protocol.DeviceCapabilities
+import dev.velum.protocol.DeviceCapabilityRegistry
 import dev.velum.protocol.SessionEntry
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -21,6 +23,9 @@ data class DeviceSessionUi(
     val sessions: List<SessionEntry> = emptyList(),
     val statusMessage: String? = null,
     val protocolVersion: Int? = null,
+    val modelDisplayName: String? = null,
+    val wifiFastPath: Boolean = false,
+    val capabilities: DeviceCapabilities? = null,
 )
 
 class DeviceViewModel(
@@ -103,17 +108,31 @@ class DeviceViewModel(
         }
         _sessionUi.value = DeviceSessionUi(statusMessage = "Unlocking…")
         try {
+            val connected = (connectionState.value as? BleConnectionState.Connected)?.device
+            val capsBase = DeviceCapabilityRegistry.detect(
+                productCode = connected?.modelCode,
+                advertisedName = connected?.name,
+            )
             val c = PlaudDeviceClient(ble, createSessionCipher(), keys)
             client = c
             c.unlock()
             val hs = c.handshake()
+            val caps = capsBase.withHandshake(hs)
             val sessions = c.listSessions()
             val battery = c.readBattery()
+            val wifi = DeviceCapabilityRegistry.supportsWifiFastPath(caps)
             _sessionUi.value = DeviceSessionUi(
                 batteryPercent = battery.percent,
                 sessions = sessions.entries,
                 protocolVersion = hs.protocolVersion,
-                statusMessage = "Ready · protocol ${hs.protocolVersion}",
+                modelDisplayName = caps.displayName,
+                wifiFastPath = wifi,
+                capabilities = caps,
+                statusMessage = buildString {
+                    append("Ready · ${caps.displayName}")
+                    append(" · protocol ${hs.protocolVersion}")
+                    append(if (wifi) " · Wi‑Fi fast path" else " · BLE transfer")
+                },
             )
         } catch (e: Exception) {
             _sessionUi.value = DeviceSessionUi(

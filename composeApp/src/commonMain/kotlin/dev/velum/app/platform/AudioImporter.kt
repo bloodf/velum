@@ -3,8 +3,8 @@ package dev.velum.app.platform
 import androidx.compose.runtime.Composable
 
 /**
- * Returns a lambda that opens a platform file picker for audio.
- * Invokes [onPicked] with an absolute path when the user selects a file.
+ * Opens a multi-format audio document picker (SAF on Android).
+ * Supported: mp3, m4a/aac, wav, ogg/opus, flac, amr, 3gp, webm, mp4 audio.
  */
 @Composable
 expect fun rememberAudioImporter(onPicked: (path: String) -> Unit): () -> Unit

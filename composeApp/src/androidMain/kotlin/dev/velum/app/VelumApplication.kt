@@ -10,6 +10,7 @@ import dev.velum.ai.pipeline.createWorkManagerRecordingJobScheduler
 import dev.velum.app.di.AppContainer
 import dev.velum.app.platform.MicRecordingService
 import dev.velum.app.platform.ShareTextHolder
+import dev.velum.app.platform.installAppContext
 import dev.velum.app.platform.installMicCaptureContext
 import dev.velum.app.platform.installRecordingFilesDir
 import dev.velum.app.platform.recoverPartialMicRecordings
@@ -36,6 +37,7 @@ class VelumApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         ShareTextHolder.context = applicationContext
+        installAppContext(applicationContext)
         installCalendarContext(applicationContext)
         installMicCaptureContext(applicationContext)
         installRecordingFilesDir(filesDir.absolutePath)

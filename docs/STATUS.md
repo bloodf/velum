@@ -6,7 +6,7 @@ Owner standing rule: nothing may remain stub/demo-only. Prefer **blocked-on-owne
 
 ### Protocol / BLE
 - [x] Protocol-20 framing, unlock (FE10/FE11/FE12), handshake, list (26), download (28/type-2/29), battery (9)
-- [x] Forbidden opcodes never sent: **5, 104, 128, 0xFE20, 143 (OTA)**; never write settings **4 / 26**
+- [x] Forbidden opcodes never sent: **5, 104, 128, 0xFE20, 143 (OTA)**; never write settings **4 / 26** (every model)
 - [x] Unused cmds left alone: 5, 13, 38, 50, 51, 109, 141, 142, 145, 151
 - [x] Fixed session key/nonce/aad; plaintext = `seq ‖ packet`; FE10 snSignature on every connect (prot ≥ 20)
 - [x] Cmd 138 feature bit 0x08 (AES-GCM Wi-Fi); SoftAP + **WebSocket `:8081`** (`org.java_websocket`, Plaud parity) with SoftAP per-socket bind, token preamble, fixed session nonce, BLE fallback (JVM fake E2E green; confirm on hardware)
@@ -16,10 +16,31 @@ Owner standing rule: nothing may remain stub/demo-only. Prefer **blocked-on-owne
 - [x] `VelumApplication` process-scoped `AppContainer` / `AiRuntimeHolder` for WorkManager cold start
 - [x] Project **881/883** Note Pro family (no OTA)
 - [x] Per-model command tables (`DeviceModel` / `CommandTable`)
+- [x] **Device capability registry** — auto-detect on scan/connect (product code + name prefix); gate Wi‑Fi SoftAP; show model name on device screen
 - [x] `PlaudDeviceClient` + JCA `SessionCipher` / `FileDecryptor` (Android + JVM)
 - [x] `FakeBleTransport` / `FakePlaudPeripheral` + JVM E2E unlock→download→decrypt (rejects empty FE10)
 - [x] Device screen: scan / connect / sessions / battery when identity keys imported
 - [x] Static analysis notes: `docs/APK_ANALYSIS.md`
+
+### Supported devices matrix
+
+| Model | Product code(s) | BLE protocol | Wi‑Fi SoftAP `:8081` | Audio formats | Notes |
+|---|---|---|---|---|---|
+| Plaud One | 860 | 30–39 | Yes (if handshake) | Ogg Opus in PLAUD.AI | ECC unlock |
+| NotePin | 880 | 20–29 | Yes (if handshake) | Ogg Opus / ADPCM | |
+| NotePin S | 882 | 20–29 | Yes (if handshake) | Ogg Opus / ADPCM | |
+| Note Pro | 881, 883 | 20–29 | Yes (if handshake) | Ogg Opus in PLAUD.AI | Never send 143 OTA |
+| Note | 888 | 10–29 | **No** | Raw Opus / Ogg Opus | BLE transfer only |
+| Unknown / newer same protocol | other | 20–39 (default) | Attempt after handshake | Ogg Opus (conservative) | Refined by handshake |
+
+Phone-only / external (no Plaud required):
+
+| Source | Path | Pipeline |
+|---|---|---|
+| Phone mic (+ BT headset / USB mic) | Mic FGS, pause/resume, markers, input-source picker | Same ASR → diarize → summary |
+| SAF / share sheet (“Open with Velum”) | mp3, m4a/aac, wav, ogg/opus, flac, amr, 3gp, webm, mp4 | MediaCodec normalize → PCM WAV 16 kHz → same pipeline; SHA-256 dedupe |
+| USB OTG / SD / sync folder | SAF tree watched folders + re-sync | Same import pipeline |
+| User template JSON | Templates → JSON import | Upserts local templates; built-ins untouched |
 
 ### Audio / AI
 - [x] Ogg demux + Opus decode (kopus) → PCM
@@ -37,6 +58,9 @@ Owner standing rule: nothing may remain stub/demo-only. Prefer **blocked-on-owne
 - [x] `StreamingTranscriber` (Android OnlineRecognizer when streaming pack Ready; else overlapping Offline windows; JVM `FakeStreamingTranscriber`)
 - [x] Phone mic: runtime RECORD_AUDIO + rationale → PCM WAV (`MicCapture` / `WavWriter`) → process via WorkManager
 - [x] Mic foreground service (`MicRecordingService`, `FOREGROUND_SERVICE_MICROPHONE`) + Pause/Stop notification; process-death WAV recover (`WavWriter.recoverOrFinalize`); POST_NOTIFICATIONS on API 33+
+- [x] Mic first-class: pause/resume, markers, input-source picker (Mic / VoiceCommunication / Unprocessed / Camcorder for BT/USB routes)
+- [x] External import hub + share intents + watched SAF folders + MediaCodec normalize + hash dedupe
+- [x] Phone-first onboarding: Use phone mic / Import from a recorder / Connect a Plaud
 - [x] Processing FGS via WorkManager `setForegroundAsync` (`FOREGROUND_SERVICE_DATA_SYNC`) on `RecordingProcessWorker`
 - [x] Live record UI with partial Markdown (mic when permitted; else PCM demo stream)
 - [x] Mind-map from summary H2 + list items ("Mapa mental" sheet)
@@ -57,7 +81,8 @@ Owner standing rule: nothing may remain stub/demo-only. Prefer **blocked-on-owne
 - [x] SQLite FTS5 over recording title+transcript+summary and templates (raw `SqlDriver` DDL/MATCH — SQLDelight dialect SOEs on FTS5); Files/Templates search uses FTS with `ListSearch` fallback
 - [x] Glossary + memory tables in `Velum.sq`; CRUD under Personalization / Memory
 - [x] Local JSON/Markdown templates create/edit persist locally (community/cloud templates removed)
-- [x] Built-in catalog: **15 Velum-original templates** (`velum.*`, one per Plaud category key) with pt-BR/en names, recording-language Markdown output, omit-empty sections — `BuiltinTemplateCatalog` / `docs/velum_templates.json`
+- [x] Built-in catalog: **15 Velum-original templates** (`velum.*`) + Plaud official/community JSONL schema (`TemplateCatalogEntry` / `docs/templates/plaud_templates.jsonl`) with author credit in picker/detail; credits doc `docs/TEMPLATES_CREDITS.md`; local JSON importer kept (`TemplateJsonImporter`)
+- [ ] Plaud template dump from Heitor — schema + sync script ready; JSONL empty until collection lands
 - [x] CalendarProvider read current/next event title to name recordings after sync (permission-denied reported clearly)
 - [x] Runtime READ_CALENDAR permission with rationale (Integrations + AutoFlow blocked path)
 

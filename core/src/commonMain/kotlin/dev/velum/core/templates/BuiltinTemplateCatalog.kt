@@ -1,8 +1,8 @@
 package dev.velum.core.templates
 
 /**
- * Built-in Velum meeting templates (one per Plaud category key).
- * Source of truth: docs/velum_templates.json — all Velum originals, no Plaud text.
+ * Built-in templates: Velum originals + Plaud official/community (with author credit).
+ * Velum source: docs/velum_templates.json. Plaud JSONL: docs/templates/plaud_templates.jsonl.
  */
 object BuiltinTemplateCatalog {
     data class Spec(
@@ -14,6 +14,13 @@ object BuiltinTemplateCatalog {
         /** System prompt with optional {output_language}; transcript is the chat user message. */
         val systemPrompt: String,
         val uses: Long = 0,
+        val author: String = "Velum",
+        val source: String = TemplateCatalogEntry.SOURCE_VELUM,
+        val attribution: String = "Velum original",
+        val official: Boolean = false,
+        val sourceTemplateId: String? = null,
+        val categoryId: String? = null,
+        val bodyType: TemplateBodyType = TemplateBodyType.Prompt,
     ) {
         fun displayName(languageTag: String): String {
             val lang = languageTag.lowercase().substringBefore("-").substringBefore("_")
@@ -28,6 +35,34 @@ object BuiltinTemplateCatalog {
                 "Resumo em Markdown · omitir seções vazias · $sections"
             }
         }
+
+        fun creditLine(): String = attribution.ifBlank {
+            buildString {
+                append(author)
+                if (source.isNotBlank() && source != author) {
+                    append(" · ")
+                    append(source)
+                }
+            }
+        }
+
+        fun toCatalogEntry(): TemplateCatalogEntry = TemplateCatalogEntry(
+            id = id,
+            categoryId = categoryId ?: categoryKey,
+            category = categoryKey,
+            name = namePtBr,
+            author = author,
+            sourceTemplateId = sourceTemplateId,
+            official = official,
+            description = description("pt-BR"),
+            bodyType = bodyType,
+            body = systemPrompt,
+            source = source,
+            attribution = creditLine(),
+            nameEn = nameEn,
+            namePtBr = namePtBr,
+            uses = uses,
+        )
     }
 
     /** Plaud category key order for Discover UI. */
@@ -37,7 +72,7 @@ object BuiltinTemplateCatalog {
 
     const val DEFAULT_ID: String = "velum.meeting"
 
-    val All: List<Spec> = listOf(
+    private val VelumSpecs: List<Spec> = listOf(
         Spec(
             id = "velum.general",
             categoryKey = "general",
@@ -175,7 +210,31 @@ object BuiltinTemplateCatalog {
         ),
     )
 
-    private val byId: Map<String, Spec> = All.associateBy { it.id }
+    fun velumEntries(): List<TemplateCatalogEntry> = VelumSpecs.map { it.toCatalogEntry() }
+
+    private fun fromPlaud(entry: TemplateCatalogEntry): Spec = Spec(
+        id = entry.id,
+        categoryKey = entry.category.ifBlank { entry.categoryId.orEmpty().ifBlank { "general" } },
+        namePtBr = entry.namePtBr ?: entry.name,
+        nameEn = entry.nameEn ?: entry.name,
+        sectionsPtBr = emptyList(),
+        systemPrompt = entry.systemPrompt(),
+        uses = entry.uses,
+        author = entry.author,
+        source = entry.source,
+        attribution = entry.creditLine(),
+        official = entry.official,
+        sourceTemplateId = entry.sourceTemplateId,
+        categoryId = entry.categoryId,
+        bodyType = entry.bodyType,
+    )
+
+    /** Velum originals + Plaud official/community when JSONL is present. */
+    val All: List<Spec> by lazy {
+        VelumSpecs + PlaudTemplateCatalog.All.map { fromPlaud(it) }
+    }
+
+    private val byId: Map<String, Spec> by lazy { All.associateBy { it.id } }
 
     fun get(id: String): Spec? = byId[id]
 

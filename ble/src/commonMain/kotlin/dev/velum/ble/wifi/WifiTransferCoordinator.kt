@@ -1,5 +1,7 @@
 package dev.velum.ble.wifi
 
+import dev.velum.protocol.DeviceCapabilities
+import dev.velum.protocol.DeviceCapabilityRegistry
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.first
@@ -13,11 +15,15 @@ import kotlin.time.Duration.Companion.seconds
  * Plaud parity: phone runs WS server on 8081; device joins SoftAP and pushes frames encrypted
  * with the BLE session key/nonce/aad (ChaCha20-Poly1305 or AES-GCM when feature bit 0x08).
  * Fixed nonce is **required** for Note Pro interoperability — not optional debt.
+ *
+ * Gated by [DeviceCapabilityRegistry.supportsWifiFastPath] — Note (888) and handshake
+ * `wifiSupported=false` skip SoftAP and go straight to BLE.
  */
 class WifiTransferCoordinator(
     private val sessionFactory: () -> WifiFastTransferSession,
     private val bleDownload: suspend () -> ByteArray,
     private val wifiTimeout: Duration = 45.seconds,
+    private val capabilities: DeviceCapabilities? = null,
 ) {
     sealed class Outcome {
         data class Wifi(val bytes: ByteArray) : Outcome() {
@@ -48,6 +54,11 @@ class WifiTransferCoordinator(
         bindHost: String? = null,
         assemble: suspend (WifiFastTransferSession) -> ByteArray,
     ): Outcome {
+        val caps = capabilities
+        if (caps != null && !DeviceCapabilityRegistry.supportsWifiFastPath(caps)) {
+            val ble = bleDownload()
+            return Outcome.BleFallback(ble, "wifi_unsupported_for_${caps.model.name}")
+        }
         val session = sessionFactory()
         return try {
             withTimeout(wifiTimeout) {

@@ -29,7 +29,7 @@ actual fun rememberAudioImporter(onPicked: (path: String) -> Unit): () -> Unit {
     }
     return remember(launcher) {
         {
-            launcher.launch(arrayOf("audio/*", "application/ogg", "*/*"))
+            launcher.launch(ImportAudioFormats.mimeTypes)
         }
     }
 }

@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.velum.app.di.AppContainer
 import dev.velum.app.i18n.LocalStrings
+import dev.velum.app.platform.rememberJsonFileImporter
 import dev.velum.app.ui.components.BlackButton
 import dev.velum.app.ui.components.DisplayTitle
 import dev.velum.app.ui.components.GradientTitle
@@ -67,6 +68,7 @@ import dev.velum.core.db.Template
 import dev.velum.core.search.FtsQuery
 import dev.velum.core.search.RecordingSearch
 import dev.velum.core.templates.BuiltinTemplateCatalog
+import dev.velum.core.templates.TemplateJsonImporter
 import kotlinx.coroutines.launch
 import kotlin.random.Random
 
@@ -88,6 +90,7 @@ fun TemplatesScreen(
     var draftName by remember { mutableStateOf("") }
     var draftPrompt by remember { mutableStateOf("") }
     var draftDesc by remember { mutableStateOf("") }
+    var importStatus by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val languageTag = strings.localeTag
     val categories = BuiltinTemplateCatalog.CategoryOrder.filter { key ->
@@ -95,6 +98,34 @@ fun TemplatesScreen(
     } + filtered.map { it.category }
         .filter { it !in BuiltinTemplateCatalog.CategoryOrder }
         .distinct()
+    val importJson = rememberJsonFileImporter { jsonText ->
+        scope.launch {
+            runCatching {
+                val specs = TemplateJsonImporter.parse(jsonText)
+                specs.forEachIndexed { index, spec ->
+                    container.repository.upsertTemplate(
+                        id = TemplateJsonImporter.stableId(spec, index),
+                        name = spec.name,
+                        category = (spec.categoryId ?: spec.category).lowercase(),
+                        description = buildString {
+                            append(spec.description)
+                            val credit = spec.creditLine()
+                            if (credit.isNotBlank()) {
+                                if (isNotEmpty()) append(" · ")
+                                append(credit)
+                            }
+                        },
+                        author = spec.author,
+                        systemPrompt = spec.resolvedPrompt(),
+                        builtin = false,
+                    )
+                }
+                importStatus = "Imported ${specs.size} template(s)"
+            }.onFailure {
+                importStatus = it.message ?: "Import failed"
+            }
+        }
+    }
 
     LaunchedEffect(templates, searchQuery) {
         val match = FtsQuery.fromUserInput(searchQuery)
@@ -129,6 +160,14 @@ fun TemplatesScreen(
                 modifier = Modifier.size(22.dp).clickable { showSearch = true },
             )
             Spacer(Modifier.width(12.dp))
+            Text(
+                "JSON",
+                color = VelumInk,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 13.sp,
+                modifier = Modifier.clickable(onClick = importJson).padding(horizontal = 4.dp),
+            )
+            Spacer(Modifier.width(12.dp))
             Row(
                 Modifier
                     .clip(RoundedCornerShape(8.dp))
@@ -142,6 +181,14 @@ fun TemplatesScreen(
                 Text(strings.create, color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
             }
             Spacer(Modifier.width(8.dp))
+        }
+        importStatus?.let { status ->
+            Text(
+                status,
+                color = VelumInkSecondary,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+            )
         }
         Row(Modifier.padding(horizontal = 20.dp)) {
             Tab(strings.mySpace, tab == 0) { tab = 0 }
@@ -189,6 +236,7 @@ fun TemplatesScreen(
                             TemplateGridCard(
                                 name = templateDisplayName(tpl, languageTag),
                                 description = tpl.description,
+                                author = templateCredit(tpl),
                                 modifier = Modifier.weight(1f),
                             ) { onOpenTemplate(tpl.id) }
                         }
@@ -350,6 +398,11 @@ private fun templateDisplayName(tpl: Template, languageTag: String): String {
     return catalog?.displayName(languageTag) ?: tpl.name
 }
 
+private fun templateCredit(tpl: Template): String {
+    val catalog = BuiltinTemplateCatalog.get(tpl.id)
+    return catalog?.creditLine() ?: listOf(tpl.author).filter { it.isNotBlank() }.joinToString(" · ")
+}
+
 @Composable
 private fun RankingCard(tpl: Template, rank: Int, languageTag: String, onClick: () -> Unit) {
     Column(
@@ -382,7 +435,7 @@ private fun RankingCard(tpl: Template, rank: Int, languageTag: String, onClick: 
         Spacer(Modifier.height(6.dp))
         Text(tpl.description, color = VelumInkSecondary, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
         Spacer(Modifier.weight(1f))
-        Text("${tpl.uses} · ${tpl.author}", color = VelumInkSecondary, fontSize = 11.sp)
+        Text("${tpl.uses} · ${templateCredit(tpl)}", color = VelumInkSecondary, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -390,12 +443,13 @@ private fun RankingCard(tpl: Template, rank: Int, languageTag: String, onClick: 
 private fun TemplateGridCard(
     name: String,
     description: String,
+    author: String,
     modifier: Modifier,
     onClick: () -> Unit,
 ) {
     Column(
         modifier
-            .height(108.dp)
+            .height(120.dp)
             .clip(RoundedCornerShape(12.dp))
             .background(VelumSurface)
             .clickable(onClick = onClick)
@@ -405,7 +459,9 @@ private fun TemplateGridCard(
         Spacer(Modifier.height(8.dp))
         Text(name, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
         Spacer(Modifier.height(4.dp))
-        Text(description, color = VelumInkSecondary, fontSize = 11.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Text(description, color = VelumInkSecondary, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Spacer(Modifier.height(4.dp))
+        Text(author, color = VelumInkSecondary, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -472,12 +528,24 @@ fun TemplateDetailScreen(
         )
         Spacer(Modifier.height(6.dp))
         Text(
-            "${
-                tpl?.category?.let { BuiltinTemplateCatalog.categoryLabel(it, strings.localeTag) }.orEmpty()
-            } · ${tpl?.uses ?: 0} · ${tpl?.author.orEmpty()}",
+            buildString {
+                tpl?.category?.let {
+                    append(BuiltinTemplateCatalog.categoryLabel(it, strings.localeTag))
+                    append(" · ")
+                }
+                append(tpl?.uses ?: 0)
+            },
             color = VelumInkSecondary,
             fontSize = 13.sp,
             modifier = Modifier.align(Alignment.CenterHorizontally),
+        )
+        Spacer(Modifier.height(6.dp))
+        Text(
+            tpl?.let { templateCredit(it) }.orEmpty(),
+            color = VelumInkSecondary,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.padding(horizontal = 24.dp).align(Alignment.CenterHorizontally),
         )
         Spacer(Modifier.height(16.dp))
         Text("Descrição", fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 24.dp))

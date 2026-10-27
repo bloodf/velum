@@ -31,13 +31,19 @@ private class AndroidMicCapture(
     override val isPaused: Boolean
         get() = MicRecordingService.state.value is MicSessionState.Paused
 
+    override val markers: List<MicMarker>
+        get() = MicRecordingService.snapshotMarkers()
+
     override var onPcmChunk: ((ByteArray) -> Unit)?
         get() = MicRecordingService.pcmListener
         set(value) {
             MicRecordingService.pcmListener = value
         }
 
-    override fun start(absolutePath: String): MicStartResult {
+    override fun start(
+        absolutePath: String,
+        inputSource: MicInputSource,
+    ): MicStartResult {
         val context = contextProvider()
             ?: return MicStartResult.Failed("No Android context")
         val granted = ContextCompat.checkSelfPermission(
@@ -48,7 +54,7 @@ private class AndroidMicCapture(
         if (isCapturing) return MicStartResult.Failed("Already capturing")
 
         MicRecordingService.resetIdle()
-        MicRecordingService.start(context, absolutePath)
+        MicRecordingService.start(context, absolutePath, inputSource)
 
         val outcome = awaitState(timeoutMs = 8_000) { state ->
             when (state) {
@@ -90,6 +96,23 @@ private class AndroidMicCapture(
             }
         }
         return outcome ?: MicPauseResult.Failed("Timed out resuming")
+    }
+
+    override fun addMarker(label: String): MicMarkerResult {
+        val context = contextProvider()
+            ?: return MicMarkerResult.Failed("No Android context")
+        if (!isCapturing) return MicMarkerResult.NotCapturing
+        val before = markers.size
+        MicRecordingService.mark(context, label)
+        // Marker is applied on the service thread; short poll for visibility.
+        repeat(20) {
+            val list = markers
+            if (list.size > before) {
+                return MicMarkerResult.Ok(list.last())
+            }
+            Thread.sleep(25)
+        }
+        return MicMarkerResult.Ok(MicMarker(offsetMs = 0, label = label))
     }
 
     override fun stop(): MicStopResult {

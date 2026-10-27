@@ -34,6 +34,7 @@ import dev.velum.app.ui.files.FilesScreen
 import dev.velum.app.ui.integrations.IntegrationsScreen
 import dev.velum.app.ui.mindmap.MindMapView
 import dev.velum.app.ui.mindmap.buildMindMap
+import dev.velum.app.ui.importing.ImportHubScreen
 import dev.velum.app.ui.onboarding.FirstRunScreen
 import dev.velum.app.ui.recording.GenerateSheetContent
 import dev.velum.app.ui.recording.RecordingDetailScreen
@@ -171,7 +172,25 @@ class MainScreenshotsTest {
 
     @Test
     fun firstRun() = capture("14-first-run") {
-        FirstRunScreen(onDownload = {}, onUseApi = {}, onSkip = {})
+        FirstRunScreen(
+            onPhoneMic = {},
+            onImportRecorder = {},
+            onConnectPlaud = {},
+            onDownloadModels = {},
+            onUseApi = {},
+            onSkip = {},
+        )
+    }
+
+    @Test
+    fun importHub() = capture("18-import-hub") {
+        ImportHubScreen(
+            container = container,
+            onBack = {},
+            onOpenRecording = {},
+            onPickWatchedFolder = {},
+            onSyncWatchedFolder = { emptyList() },
+        )
     }
 
     @Test

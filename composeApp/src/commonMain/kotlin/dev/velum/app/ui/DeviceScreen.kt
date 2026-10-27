@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import dev.velum.ble.BleConnectionState
 import dev.velum.ble.BleTransport
 import dev.velum.core.model.ConnectedDevice
+import dev.velum.protocol.DeviceCapabilityRegistry
 
 @Composable
 fun DeviceScreen(
@@ -154,7 +155,11 @@ private fun StatusBanner(state: BleConnectionState, bleAvailable: Boolean) {
             is BleConnectionState.Connecting -> "Connecting to ${state.deviceId}…"
             is BleConnectionState.Connected -> {
                 val d = state.device
-                "Connected: ${d.name ?: d.serial ?: d.id}"
+                val model = DeviceCapabilityRegistry.detect(
+                    productCode = d.modelCode,
+                    advertisedName = d.name,
+                ).displayName
+                "Connected: ${d.name ?: d.serial ?: d.id} · $model"
             }
             is BleConnectionState.Failed -> state.message
         }
@@ -200,9 +205,18 @@ private fun DeviceRow(device: ConnectedDevice, onConnect: () -> Unit) {
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        val caps = DeviceCapabilityRegistry.detect(
+            productCode = device.modelCode,
+            advertisedName = device.name,
+        )
         Text(
-            text = device.name ?: device.serial ?: "Unknown device",
+            text = device.name ?: device.serial ?: caps.displayName,
             style = MaterialTheme.typography.titleLarge,
+        )
+        Text(
+            text = caps.displayName,
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.primary,
         )
         val meta = buildString {
             device.serial?.let { append(it) }
@@ -210,8 +224,10 @@ private fun DeviceRow(device: ConnectedDevice, onConnect: () -> Unit) {
                 if (isNotEmpty()) append(" · ")
                 append("protocol $it")
             }
+            if (isNotEmpty()) append(" · ")
+            append(if (caps.wifiFastTransfer) "Wi‑Fi capable" else "BLE only")
             device.rssi?.let {
-                if (isNotEmpty()) append(" · ")
+                append(" · ")
                 append("${it} dBm")
             }
         }

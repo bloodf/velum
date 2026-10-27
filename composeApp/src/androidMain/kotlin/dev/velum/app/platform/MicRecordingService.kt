@@ -54,10 +54,18 @@ class MicRecordingService : Service() {
                     stopSelf()
                     return START_NOT_STICKY
                 }
-                beginRecording(path)
+                val sourceName = intent.getStringExtra(EXTRA_INPUT_SOURCE)
+                    ?: MicInputSource.Mic.name
+                val input = runCatching { MicInputSource.valueOf(sourceName) }
+                    .getOrDefault(MicInputSource.Mic)
+                beginRecording(path, input)
             }
             ACTION_PAUSE -> pauseRecording()
             ACTION_RESUME -> resumeRecording()
+            ACTION_MARK -> {
+                val label = intent.getStringExtra(EXTRA_MARK_LABEL).orEmpty()
+                dropMarker(label)
+            }
             ACTION_STOP -> stopRecording(fromUser = true)
             else -> Unit
         }
@@ -72,11 +80,15 @@ class MicRecordingService : Service() {
         super.onDestroy()
     }
 
-    private fun beginRecording(absolutePath: String) {
+    private fun beginRecording(
+        absolutePath: String,
+        inputSource: MicInputSource = MicInputSource.Mic,
+    ) {
         if (!capturing.compareAndSet(false, true)) {
             publish(MicSessionState.Failed("Already capturing"))
             return
         }
+        synchronized(markersLock) { sessionMarkers.clear() }
         ensureNotificationChannel(this)
         val file = File(absolutePath)
         file.parentFile?.mkdirs()
@@ -93,9 +105,10 @@ class MicRecordingService : Service() {
             return
         }
 
+        val audioSource = resolveAudioSource(inputSource)
         val recorder = try {
             AudioRecord(
-                MediaRecorder.AudioSource.MIC,
+                audioSource,
                 SAMPLE_RATE_HZ,
                 AudioFormat.CHANNEL_IN_MONO,
                 AudioFormat.ENCODING_PCM_16BIT,
@@ -211,6 +224,25 @@ class MicRecordingService : Service() {
                 recorder.release()
                 if (audioRecord === recorder) audioRecord = null
             }
+        }
+    }
+
+    private fun recordedOffsetMs(): Long {
+        if (startedAtElapsedMs <= 0L) return 0L
+        val now = SystemClock.elapsedRealtime()
+        val pausedExtra = if (paused.get() && pauseStartedElapsedMs > 0) {
+            now - pauseStartedElapsedMs
+        } else {
+            0L
+        }
+        return (now - startedAtElapsedMs - pausedAccumulatedMs - pausedExtra).coerceAtLeast(0L)
+    }
+
+    private fun dropMarker(label: String) {
+        if (!capturing.get()) return
+        val marker = MicMarker(offsetMs = recordedOffsetMs(), label = label)
+        synchronized(markersLock) {
+            sessionMarkers += marker
         }
     }
 
@@ -360,13 +392,21 @@ class MicRecordingService : Service() {
         const val ACTION_START = "dev.velum.app.mic.START"
         const val ACTION_PAUSE = "dev.velum.app.mic.PAUSE"
         const val ACTION_RESUME = "dev.velum.app.mic.RESUME"
+        const val ACTION_MARK = "dev.velum.app.mic.MARK"
         const val ACTION_STOP = "dev.velum.app.mic.STOP"
         const val EXTRA_PATH = "path"
+        const val EXTRA_INPUT_SOURCE = "input_source"
+        const val EXTRA_MARK_LABEL = "mark_label"
         private const val SYNC_EVERY_BYTES = 32_000L // ~1s at 16 kHz mono PCM16
         private const val TAG = "VelumMicFgs"
 
         private val _state = MutableStateFlow<MicSessionState>(MicSessionState.Idle)
         val state: StateFlow<MicSessionState> = _state.asStateFlow()
+
+        private val markersLock = Any()
+        private val sessionMarkers = ArrayList<MicMarker>()
+
+        fun snapshotMarkers(): List<MicMarker> = synchronized(markersLock) { sessionMarkers.toList() }
 
         @Volatile
         var pcmListener: ((ByteArray) -> Unit)? = null
@@ -387,12 +427,29 @@ class MicRecordingService : Service() {
             nm.createNotificationChannel(channel)
         }
 
-        fun start(context: Context, absolutePath: String) {
+        fun start(
+            context: Context,
+            absolutePath: String,
+            inputSource: MicInputSource = MicInputSource.Mic,
+        ) {
             ensureNotificationChannel(context)
             val intent = Intent(context, MicRecordingService::class.java)
                 .setAction(ACTION_START)
                 .putExtra(EXTRA_PATH, absolutePath)
+                .putExtra(EXTRA_INPUT_SOURCE, inputSource.name)
             ContextCompat.startForegroundService(context, intent)
+        }
+
+        fun resolveAudioSource(input: MicInputSource): Int = when (input) {
+            MicInputSource.Mic -> MediaRecorder.AudioSource.MIC
+            MicInputSource.VoiceCommunication -> MediaRecorder.AudioSource.VOICE_COMMUNICATION
+            MicInputSource.Unprocessed ->
+                if (Build.VERSION.SDK_INT >= 24) {
+                    MediaRecorder.AudioSource.UNPROCESSED
+                } else {
+                    MediaRecorder.AudioSource.MIC
+                }
+            MicInputSource.Camcorder -> MediaRecorder.AudioSource.CAMCORDER
         }
 
         fun pause(context: Context) {
@@ -404,6 +461,14 @@ class MicRecordingService : Service() {
         fun resume(context: Context) {
             context.startService(
                 Intent(context, MicRecordingService::class.java).setAction(ACTION_RESUME),
+            )
+        }
+
+        fun mark(context: Context, label: String = "") {
+            context.startService(
+                Intent(context, MicRecordingService::class.java)
+                    .setAction(ACTION_MARK)
+                    .putExtra(EXTRA_MARK_LABEL, label),
             )
         }
 

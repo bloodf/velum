@@ -25,13 +25,21 @@ import dev.velum.app.ui.theme.VelumBg
 import dev.velum.app.ui.theme.VelumInk
 import dev.velum.app.ui.theme.VelumInkSecondary
 
+/**
+ * Phone-first onboarding: Velum works with no Plaud at all.
+ * Paths: phone mic · import from any recorder · connect Plaud · (optional) model download / API.
+ */
 @Composable
 fun FirstRunScreen(
-    onDownload: () -> Unit,
+    onPhoneMic: () -> Unit,
+    onImportRecorder: () -> Unit,
+    onConnectPlaud: () -> Unit,
+    onDownloadModels: () -> Unit,
     onUseApi: () -> Unit,
     onSkip: () -> Unit,
 ) {
     val strings = LocalStrings.current
+    val fr = strings.firstRun
     Column(
         Modifier
             .fillMaxSize()
@@ -46,23 +54,35 @@ fun FirstRunScreen(
         Column(Modifier.padding(horizontal = 24.dp, vertical = 28.dp)) {
             Text("Velum", fontWeight = FontWeight.Bold, fontSize = 32.sp, color = VelumInk)
             Spacer(Modifier.height(12.dp))
-            Text(strings.firstRun.title, fontWeight = FontWeight.SemiBold, fontSize = 22.sp, color = VelumInk)
+            Text(fr.title, fontWeight = FontWeight.SemiBold, fontSize = 22.sp, color = VelumInk)
             Spacer(Modifier.height(10.dp))
-            Text(strings.firstRun.body, color = VelumInkSecondary, fontSize = 15.sp, lineHeight = 22.sp)
-            Spacer(Modifier.height(14.dp))
-            Text(strings.firstRun.localVsApi, color = VelumInkSecondary, fontSize = 14.sp, lineHeight = 20.sp)
+            Text(fr.body, color = VelumInkSecondary, fontSize = 15.sp, lineHeight = 22.sp)
+            Spacer(Modifier.height(8.dp))
+            Text(fr.phoneFirstHint, color = VelumInkSecondary, fontSize = 14.sp, lineHeight = 20.sp)
             Spacer(Modifier.height(24.dp))
-            Text(strings.firstRun.modelsHeading, fontWeight = FontWeight.SemiBold, fontSize = 16.sp, color = VelumInk)
+
+            Text(fr.howToStart, fontWeight = FontWeight.SemiBold, fontSize = 16.sp, color = VelumInk)
+            Spacer(Modifier.height(12.dp))
+            BlackButton(fr.usePhoneMic, onPhoneMic, modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(10.dp))
-            ModelLine(strings.firstRun.modelAsr)
-            ModelLine(strings.firstRun.modelDiarization)
-            ModelLine(strings.firstRun.modelSummary)
+            OutlineButton(fr.importFromRecorder, onImportRecorder, modifier = Modifier.fillMaxWidth())
+            Spacer(Modifier.height(10.dp))
+            OutlineButton(fr.connectPlaud, onConnectPlaud, modifier = Modifier.fillMaxWidth())
+
             Spacer(Modifier.height(28.dp))
-            BlackButton(strings.firstRun.download, onDownload, modifier = Modifier.fillMaxWidth())
+            Text(fr.modelsHeading, fontWeight = FontWeight.SemiBold, fontSize = 16.sp, color = VelumInk)
+            Spacer(Modifier.height(8.dp))
+            Text(fr.localVsApi, color = VelumInkSecondary, fontSize = 14.sp, lineHeight = 20.sp)
             Spacer(Modifier.height(10.dp))
-            OutlineButton(strings.firstRun.useApi, onUseApi, modifier = Modifier.fillMaxWidth())
+            ModelLine(fr.modelAsr)
+            ModelLine(fr.modelDiarization)
+            ModelLine(fr.modelSummary)
+            Spacer(Modifier.height(20.dp))
+            OutlineButton(fr.download, onDownloadModels, modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(10.dp))
-            OutlineButton(strings.firstRun.skip, onSkip, modifier = Modifier.fillMaxWidth())
+            OutlineButton(fr.useApi, onUseApi, modifier = Modifier.fillMaxWidth())
+            Spacer(Modifier.height(10.dp))
+            OutlineButton(fr.skip, onSkip, modifier = Modifier.fillMaxWidth())
         }
     }
 }

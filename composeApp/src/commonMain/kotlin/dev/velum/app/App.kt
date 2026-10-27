@@ -29,19 +29,25 @@ import dev.velum.ai.pipeline.AutoFlowUiAction
 import dev.velum.app.di.AppContainer
 import dev.velum.app.i18n.LocalStrings
 import dev.velum.app.i18n.PtBr
+import dev.velum.app.importing.AudioImportPipeline
+import dev.velum.app.importing.ImportResult
 import dev.velum.app.navigation.Routes
 import dev.velum.app.platform.AppPermission
 import dev.velum.app.platform.LocalHaptics
 import dev.velum.app.platform.MicStartResult
 import dev.velum.app.platform.PermissionOutcome
+import dev.velum.app.platform.consumeIncomingSharePath
 import dev.velum.app.platform.openCalendarInsert
 import dev.velum.app.platform.recordingsDirectoryPath
 import dev.velum.app.platform.rememberAudioImporter
 import dev.velum.app.platform.rememberHaptics
+import dev.velum.app.platform.rememberImportFolderPicker
 import dev.velum.app.platform.rememberPermissionRequester
 import dev.velum.app.platform.shareText
-import dev.velum.app.ui.motion.Motion
+import dev.velum.app.platform.syncWatchedFolders
 import dev.velum.app.ui.DeviceScreen
+import dev.velum.app.ui.importing.ImportHubScreen
+import dev.velum.app.ui.motion.Motion
 import dev.velum.app.ui.autoflow.AutoFlowEditScreen
 import dev.velum.app.ui.autoflow.AutoFlowListScreen
 import dev.velum.app.ui.explore.ExploreScreen
@@ -114,20 +120,40 @@ private fun VelumRoot(container: AppContainer) {
         showFirstRun = !container.repository.isFirstRunDone()
     }
 
+    val importPipeline = remember(container) { AudioImportPipeline(container) }
     val importAudio = rememberAudioImporter { path ->
         scope.launch {
-            val id = container.createLocalRecording(
-                source = "import",
-                localPath = path,
-                status = "queued",
-            )
             fabOpen = false
-            navController.navigate(Routes.recording(id))
-            container.enqueueProcessing(
-                recordingId = id,
-                templateId = null,
-                retranscribe = true,
-            )
+            when (val result = importPipeline.importFile(path, source = "import")) {
+                is ImportResult.Created -> {
+                    navController.navigate(Routes.recording(result.recordingId))
+                }
+                is ImportResult.Duplicate -> {
+                    snackbar.showSnackbar("Already imported")
+                    navController.navigate(Routes.recording(result.existingRecordingId))
+                }
+                is ImportResult.Failed -> {
+                    snackbar.showSnackbar(result.message)
+                }
+            }
+        }
+    }
+    val pickWatchedFolder = rememberImportFolderPicker { _ ->
+        scope.launch {
+            snackbar.showSnackbar("Folder saved — tap Re-sync to import new files")
+        }
+    }
+
+    LaunchedEffect(container) {
+        consumeIncomingSharePath()?.let { path ->
+            when (val result = importPipeline.importFile(path, source = "share")) {
+                is ImportResult.Created -> navController.navigate(Routes.recording(result.recordingId))
+                is ImportResult.Duplicate -> {
+                    snackbar.showSnackbar("Already imported")
+                    navController.navigate(Routes.recording(result.existingRecordingId))
+                }
+                is ImportResult.Failed -> snackbar.showSnackbar(result.message)
+            }
         }
     }
 
@@ -258,6 +284,15 @@ private fun VelumRoot(container: AppContainer) {
                             onBack = { navController.popBackStack() },
                         )
                     }
+                    composable(Routes.IMPORT_AUDIO) {
+                        ImportHubScreen(
+                            container = container,
+                            onBack = { navController.popBackStack() },
+                            onOpenRecording = { id -> navController.navigate(Routes.recording(id)) },
+                            onPickWatchedFolder = pickWatchedFolder,
+                            onSyncWatchedFolder = { syncWatchedFolders(importPipeline) },
+                        )
+                    }
                     composable(Routes.AI_PROCESSING) {
                         AiProcessingScreen(
                             container = container,
@@ -381,14 +416,38 @@ private fun VelumRoot(container: AppContainer) {
                         }
                     }
                 },
-                onImportAudio = { importAudio() },
+                onImportAudio = {
+                    fabOpen = false
+                    navController.navigate(Routes.IMPORT_AUDIO)
+                },
                 onDismiss = { fabOpen = false },
             )
         }
 
         if (showFirstRun) {
             FirstRunScreen(
-                onDownload = {
+                onPhoneMic = {
+                    scope.launch {
+                        container.repository.markFirstRunDone()
+                        showFirstRun = false
+                        fabOpen = true
+                    }
+                },
+                onImportRecorder = {
+                    scope.launch {
+                        container.repository.markFirstRunDone()
+                        showFirstRun = false
+                        navController.navigate(Routes.IMPORT_AUDIO)
+                    }
+                },
+                onConnectPlaud = {
+                    scope.launch {
+                        container.repository.markFirstRunDone()
+                        showFirstRun = false
+                        navController.navigate(Routes.DEVICE)
+                    }
+                },
+                onDownloadModels = {
                     scope.launch {
                         container.repository.markFirstRunDone()
                         showFirstRun = false

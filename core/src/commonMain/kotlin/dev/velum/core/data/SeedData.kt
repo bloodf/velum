@@ -10,8 +10,8 @@ object DemoFlags {
 
 object SeedData {
     private const val META_SEEDED = "demo_seed_version"
-    /** v5: replace tpl-* builtins with velum.* catalog (15 Plaud category keys). */
-    private const val SEED_VERSION = "5"
+    /** v6: Velum originals + Plaud community/official catalog (author credits). */
+    private const val SEED_VERSION = "6"
 
     fun maybeSeed(db: VelumDatabase) {
         if (!DemoFlags.SEED_DEMO_DATA) return
@@ -114,7 +114,15 @@ object SeedData {
                 id = spec.id,
                 name = spec.namePtBr,
                 category = spec.categoryKey,
-                description = spec.description("pt-BR"),
+                description = buildString {
+                    append(spec.description("pt-BR"))
+                    val credit = spec.creditLine()
+                    if (credit.isNotBlank()) {
+                        append(" · ")
+                        append(credit)
+                    }
+                },
+                author = spec.author,
                 systemPrompt = spec.systemPrompt,
                 uses = spec.uses,
             )

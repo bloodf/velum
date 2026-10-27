@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -65,6 +66,8 @@ import dev.velum.ai.local.LocalAsrRouter
 import dev.velum.ai.local.LocalModelStatus
 import dev.velum.app.di.AppContainer
 import dev.velum.app.i18n.LocalStrings
+import dev.velum.app.platform.MicInputSource
+import dev.velum.app.platform.MicMarkerResult
 import dev.velum.app.platform.MicStartResult
 import dev.velum.app.platform.MicStopResult
 import dev.velum.app.platform.WavWriter
@@ -661,6 +664,9 @@ private fun LiveTranscriptPane(
     var partial by remember { mutableStateOf("**partial** · 0:00\n") }
     var usingMic by remember { mutableStateOf(false) }
     var stopping by remember { mutableStateOf(false) }
+    var inputSource by remember { mutableStateOf(MicInputSource.Mic) }
+    var markerCount by remember { mutableStateOf(0) }
+    var pausedUi by remember { mutableStateOf(container.micCapture.isPaused) }
     val finished = remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val streamer = remember {
@@ -696,8 +702,10 @@ private fun LiveTranscriptPane(
         if (alreadyCapturing) {
             container.micCapture.onPcmChunk = push
             usingMic = true
+            markerCount = container.micCapture.markers.size
+            pausedUi = container.micCapture.isPaused
         } else {
-            when (container.micCapture.start(wavPath)) {
+            when (container.micCapture.start(wavPath, inputSource)) {
                 MicStartResult.Started -> {
                     container.activeMicRecordingId = recordingId
                     container.micCapture.onPcmChunk = push
@@ -765,6 +773,55 @@ private fun LiveTranscriptPane(
                 fontSize = 12.sp,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
             )
+        } else {
+            Text(
+                "Input: ${inputSource.name} · markers $markerCount",
+                color = VelumInkSecondary,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
+            )
+            Row(
+                Modifier.padding(horizontal = 20.dp).fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                OutlineButton(
+                    if (pausedUi) "Resume" else "Pause",
+                    {
+                        if (pausedUi) {
+                            container.micCapture.resume()
+                            pausedUi = false
+                        } else {
+                            container.micCapture.pause()
+                            pausedUi = true
+                        }
+                    },
+                    modifier = Modifier.weight(1f),
+                )
+                OutlineButton(
+                    "Mark",
+                    {
+                        when (val r = container.micCapture.addMarker()) {
+                            is MicMarkerResult.Ok -> markerCount = container.micCapture.markers.size
+                            else -> Unit
+                        }
+                    },
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            Row(
+                Modifier
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                MicInputSource.entries.forEach { src ->
+                    OutlineButton(
+                        src.name,
+                        { inputSource = src },
+                        modifier = Modifier,
+                    )
+                }
+            }
         }
         Column(
             Modifier
@@ -784,7 +841,30 @@ private fun LiveTranscriptPane(
                 if (stopping) return@BlackButton
                 stopping = true
                 scope.launch {
-                    val finalMd = withContext(Dispatchers.Default) { finishOnce() }
+                    val marks = container.micCapture.markers
+                    val finalMd = withContext(Dispatchers.Default) {
+                        val base = finishOnce()
+                        if (marks.isEmpty()) base
+                        else buildString {
+                            append(base.trimEnd())
+                            append("\n\n## Markers\n")
+                            marks.forEach { m ->
+                                val sec = m.offsetMs / 1000
+                                val mm = sec / 60
+                                val ss = sec % 60
+                                append("- **")
+                                append(mm)
+                                append(':')
+                                append(ss.toString().padStart(2, '0'))
+                                append("**")
+                                if (m.label.isNotBlank()) {
+                                    append(' ')
+                                    append(m.label)
+                                }
+                                append('\n')
+                            }
+                        }
+                    }
                     container.repository.updateTranscript(recordingId, finalMd)
                     if (container.activeMicRecordingId == recordingId ||
                         container.micCapture.isCapturing

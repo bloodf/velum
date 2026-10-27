@@ -22,4 +22,5 @@ object Routes {
     const val AI_PROCESSING = "ai_processing"
     const val MODEL_MANAGER = "model_manager"
     const val IMPORT_KEYS = "import_keys"
+    const val IMPORT_AUDIO = "import_audio"
 }
