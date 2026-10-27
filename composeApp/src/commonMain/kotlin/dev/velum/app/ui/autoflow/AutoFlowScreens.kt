@@ -169,13 +169,6 @@ fun AutoFlowListScreen(
             }
             ThinDivider(20)
         }
-        Spacer(Modifier.height(32.dp))
-        Text(
-            strings.sendSuggestion,
-            color = VelumInkSecondary,
-            fontSize = 14.sp,
-            modifier = Modifier.align(Alignment.CenterHorizontally),
-        )
         Spacer(Modifier.height(40.dp))
     }
 }

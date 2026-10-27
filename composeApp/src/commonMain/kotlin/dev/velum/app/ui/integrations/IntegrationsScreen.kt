@@ -1,8 +1,6 @@
 package dev.velum.app.ui.integrations
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -36,8 +34,6 @@ import dev.velum.app.platform.rememberPermissionRequester
 import dev.velum.app.ui.components.BlackButton
 import dev.velum.app.ui.components.ScreenTopBar
 import dev.velum.app.ui.theme.VelumBg
-import dev.velum.app.ui.theme.VelumDivider
-import dev.velum.app.ui.theme.VelumInk
 import dev.velum.app.ui.theme.VelumInkSecondary
 import dev.velum.app.ui.theme.VelumSurface
 import dev.velum.core.calendar.CalendarLookupResult
@@ -145,31 +141,6 @@ fun IntegrationsScreen(
             }
         }
         Spacer(Modifier.weight(1f))
-        Column(
-            Modifier
-                .padding(16.dp)
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(14.dp))
-                .background(VelumSurface)
-                .padding(16.dp),
-        ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("N", "T", "✓", "D", "S", "↓").forEach { label ->
-                    Box(
-                        Modifier
-                            .size(36.dp)
-                            .border(1.dp, VelumDivider, RoundedCornerShape(8.dp)),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(label, fontSize = 12.sp, color = VelumInkSecondary)
-                    }
-                }
-            }
-            Spacer(Modifier.height(12.dp))
-            Text(strings.moreAppsComing, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
-            Spacer(Modifier.height(4.dp))
-            Text(strings.moreIntegrationsHint, color = VelumInkSecondary, fontSize = 13.sp)
-        }
         Spacer(Modifier.height(16.dp))
     }
 }

@@ -7,16 +7,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import dev.velum.app.di.AppContainer
@@ -39,18 +33,6 @@ fun PreferencesScreen(
     val prefs by container.settingsRepository.preferences.collectAsState()
     val settings by container.settingsRepository.settings.collectAsState()
     val scope = rememberCoroutineScope()
-    var showAppLockInfo by remember { mutableStateOf(false) }
-
-    if (showAppLockInfo) {
-        AlertDialog(
-            onDismissRequest = { showAppLockInfo = false },
-            title = { Text(strings.appLock) },
-            text = { Text(strings.appLockHint + "\n\n" + strings.off) },
-            confirmButton = {
-                TextButton(onClick = { showAppLockInfo = false }) { Text(strings.close) }
-            },
-        )
-    }
 
     Column(
         Modifier
@@ -99,21 +81,6 @@ fun PreferencesScreen(
             prefs.autoflowNotify,
             { enabled -> scope.launch { container.settingsRepository.setAutoflowNotify(enabled) } },
             strings.doTranscribeSummarizeHint,
-        )
-        Spacer(Modifier.height(8.dp))
-        SectionLabel(strings.security)
-        ChevronRow(
-            strings.appLock,
-            { showAppLockInfo = true },
-            value = strings.off,
-            showDivider = false,
-        )
-        Spacer(Modifier.height(8.dp))
-        ToggleRow(
-            strings.helpImprove,
-            prefs.helpImprove,
-            { enabled -> scope.launch { container.settingsRepository.setHelpImprove(enabled) } },
-            strings.helpImproveHint,
             showDivider = false,
         )
         Spacer(Modifier.height(40.dp))

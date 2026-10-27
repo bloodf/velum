@@ -16,7 +16,6 @@ import kotlinx.serialization.json.Json
 @Serializable
 data class AppPreferences(
     val cleanTranscript: Boolean = true,
-    val helpImprove: Boolean = false,
     val autoSpeakerLabel: Boolean = false,
     val displayName: String = "",
     val contentFocus: String = "",
@@ -66,7 +65,6 @@ class SettingsRepository(
         )
         _preferences.value = AppPreferences(
             cleanTranscript = store.getString(KEY_CLEAN_TRANSCRIPT)?.toBooleanStrictOrNull() ?: true,
-            helpImprove = store.getString(KEY_HELP_IMPROVE)?.toBooleanStrictOrNull() ?: false,
             autoSpeakerLabel = store.getString(KEY_AUTO_SPEAKER)?.toBooleanStrictOrNull() ?: false,
             displayName = store.getString(KEY_DISPLAY_NAME).orEmpty(),
             contentFocus = store.getString(KEY_CONTENT_FOCUS).orEmpty(),
@@ -181,11 +179,6 @@ class SettingsRepository(
         _preferences.update { it.copy(cleanTranscript = enabled) }
     }
 
-    suspend fun setHelpImprove(enabled: Boolean) {
-        store.putString(KEY_HELP_IMPROVE, enabled.toString())
-        _preferences.update { it.copy(helpImprove = enabled) }
-    }
-
     suspend fun setAutoSpeakerLabel(enabled: Boolean) {
         store.putString(KEY_AUTO_SPEAKER, enabled.toString())
         _preferences.update { it.copy(autoSpeakerLabel = enabled) }
@@ -242,7 +235,6 @@ class SettingsRepository(
         private const val KEY_ASR_SIZE_TIER = "ai.asr_size_tier"
         private const val KEY_SPEAKER_THRESHOLD = "ai.speaker_match_threshold"
         private const val KEY_CLEAN_TRANSCRIPT = "prefs.clean_transcript"
-        private const val KEY_HELP_IMPROVE = "prefs.help_improve"
         private const val KEY_AUTO_SPEAKER = "prefs.auto_speaker_label"
         private const val KEY_DISPLAY_NAME = "prefs.display_name"
         private const val KEY_CONTENT_FOCUS = "prefs.content_focus"

@@ -8,6 +8,8 @@ Thanks for helping build a local-first, subscription-free recorder companion.
 2. **No Plaud branding.** Do not copy Plaud logos or marketing copy. The curated Plaud template catalog is maintained separately (`docs/templates/plaud_templates.jsonl`); new in-app templates you contribute must be **original Velum** work (see Template contributions below).
 3. **Interoperability only.** Reverse-engineering notes exist so Velum can talk to hardware the user owns. Prefer read-only BLE commands until download/decrypt is proven safe.
 4. **Apache-2.0.** By contributing, you license your work under the Apache License 2.0.
+5. **No unimplemented UI.** Any menu item, button, tab, row, sheet entry, or toggle whose feature is not actually implemented and working must be removed from the UI. No “coming soon”, disabled placeholders, or dead links — app-wide (library, FAB, Explore, Integrations, AutoFlow, Device, Templates, recording menus, share sheet, onboarding, desktop layout, Settings). Velum has **no telemetry / analytics / crash-reporting opt-in**; do not add usage-data toggles or similar.
+6. **Push to `main`.** Owner workflow: land on `main` directly (no PRs) and keep CI green.
 
 ## Dev setup
 

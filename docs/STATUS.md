@@ -2,6 +2,8 @@
 
 Owner standing rule: nothing may remain stub/demo-only. Prefer **blocked-on-owner** over fake success.
 
+**No unimplemented UI (app-wide):** remove any menu item, button, tab, row, sheet entry, or toggle whose feature is not actually implemented and working. No “coming soon”, disabled placeholders, or dead links — covers library top bar, FAB overlay, Explore, Integrations, AutoFlow, Device, Templates, recording detail menus, share sheet, onboarding, desktop layout, and Settings. Velum has **no telemetry / analytics / crash reporting**; do not expose opt-in toggles or strings that imply otherwise.
+
 ## Working
 
 ### Protocol / BLE
@@ -125,6 +127,7 @@ Phone-only / external (no Plaud required):
 - Auth / billing / membership / Stripe / Shopify / telemetry (Datadog, PostHog, Crashlytics, Firebase Messaging)
 - Plaud host URLs (`api.plaud.ai`, regional, `wss://realtime.plaud.ai`, …) — not present in app code; BYO OpenAI-compatible base URL only
 - Community/cloud templates, hosted share links, teams, OTA catalogue, SoundPlus license
+- Unimplemented chrome audit: Preferences “Help improve Velum” / usage-data toggle + `prefs.help_improve`; Preferences App lock (info-only dialog); Settings hub Current workspace (noop); Integrations “More apps coming” panel; Templates Photo-to-template create option; AutoFlow “Send suggestion” inert label; Template detail “Set for later” mislabel (replaced with Close)
 
 ## Confirm only on owner’s real Plaud Note Pro
 

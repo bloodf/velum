@@ -16,7 +16,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.ViewAgenda
@@ -89,12 +88,6 @@ fun SettingsHubScreen(
         Spacer(Modifier.height(16.dp))
         Heatmap(createdAtEpochSeconds = count.map { it.created_at })
         Spacer(Modifier.height(24.dp))
-        ChevronRow(
-            strings.currentWorkspace,
-            {},
-            icon = Icons.Outlined.Home,
-            value = strings.personalWorkspace,
-        )
         ChevronRow(strings.personalization, onPersonalization, icon = Icons.Outlined.ViewAgenda)
         ChevronRow(strings.preferences, onPreferences, icon = Icons.Outlined.Tune)
         ChevronRow(strings.account, onAccount, icon = Icons.Outlined.Person, showDivider = false)

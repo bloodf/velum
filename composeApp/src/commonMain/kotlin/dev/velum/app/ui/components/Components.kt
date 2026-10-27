@@ -37,7 +37,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.velum.app.ui.motion.pressableScale
-import dev.velum.app.ui.theme.AiGradientBrush
 import dev.velum.app.ui.theme.VelumAiCyan
 import dev.velum.app.ui.theme.VelumAiPurple
 import dev.velum.app.ui.theme.VelumBlack
@@ -217,19 +216,6 @@ fun DisplayTitle(
         )
         if (trailing != null) trailing()
     }
-}
-
-@Composable
-fun GradientTitle(text: String, modifier: Modifier = Modifier) {
-    Text(
-        text = text,
-        style = TextStyle(
-            brush = AiGradientBrush,
-            fontWeight = FontWeight.SemiBold,
-            fontSize = 18.sp,
-        ),
-        modifier = modifier,
-    )
 }
 
 @Composable

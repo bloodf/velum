@@ -58,7 +58,6 @@ import dev.velum.app.i18n.LocalStrings
 import dev.velum.app.platform.rememberJsonFileImporter
 import dev.velum.app.ui.components.BlackButton
 import dev.velum.app.ui.components.DisplayTitle
-import dev.velum.app.ui.components.GradientTitle
 import dev.velum.app.ui.components.SearchSheet
 import dev.velum.app.ui.theme.VelumBg
 import dev.velum.app.ui.theme.VelumBlack
@@ -84,7 +83,6 @@ fun TemplatesScreen(
     val strings = LocalStrings.current
     val templates by container.repository.observeTemplates().collectAsState(emptyList())
     var tab by remember { mutableStateOf(1) } // 0 my space, 1 discover
-    var showCreate by remember { mutableStateOf(false) }
     var showTypeCreate by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
     var showSearch by remember { mutableStateOf(false) }
@@ -187,7 +185,7 @@ fun TemplatesScreen(
                 Modifier
                     .clip(RoundedCornerShape(8.dp))
                     .background(VelumBlack)
-                    .clickable { showCreate = true }
+                    .clickable { showTypeCreate = true }
                     .padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -276,37 +274,6 @@ fun TemplatesScreen(
             onDismiss = { showSearch = false },
             resultCount = shown.size,
         )
-    }
-
-    if (showCreate) {
-        ModalBottomSheet(
-            onDismissRequest = { showCreate = false },
-            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-            containerColor = VelumSurface,
-        ) {
-            Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(strings.createTemplate, fontWeight = FontWeight.SemiBold, fontSize = 18.sp)
-                    Icon(Icons.Outlined.Close, null, modifier = Modifier.clickable { showCreate = false })
-                }
-                Spacer(Modifier.height(16.dp))
-                CreateOption(
-                    title = { GradientTitle(strings.photoToTemplate) },
-                    icon = { Icon(Icons.Outlined.AutoAwesome, null, tint = Color(0xFF8B5CF6)) },
-                    subtitle = strings.ux.photoToTemplateHint,
-                ) { showCreate = false }
-                Spacer(Modifier.height(8.dp))
-                CreateOption(
-                    title = { Text(strings.typeToTemplate, fontWeight = FontWeight.SemiBold, fontSize = 16.sp) },
-                    icon = { Icon(Icons.Outlined.Edit, null, tint = VelumInk) },
-                    subtitle = strings.ux.typeToTemplateHint,
-                ) {
-                    showCreate = false
-                    showTypeCreate = true
-                }
-                Spacer(Modifier.height(24.dp))
-            }
-        }
     }
 
     if (showTypeCreate) {
@@ -501,31 +468,6 @@ private fun TemplateGridCard(
 }
 
 @Composable
-private fun CreateOption(
-    title: @Composable () -> Unit,
-    icon: @Composable () -> Unit,
-    subtitle: String,
-    onClick: () -> Unit,
-) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        icon()
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
-            title()
-            Spacer(Modifier.height(4.dp))
-            Text(subtitle, color = VelumInkSecondary, fontSize = 13.sp)
-        }
-        Text("›", color = VelumInkSecondary, fontSize = 20.sp)
-    }
-}
-
-@Composable
 fun TemplateDetailScreen(
     container: AppContainer,
     templateId: String,
@@ -671,7 +613,7 @@ fun TemplateDetailScreen(
             ) {
                 Icon(Icons.Outlined.Edit, null, tint = VelumInk)
             }
-            BlackButton(strings.setForLater, onBack, Modifier.weight(1f))
+            BlackButton(strings.close, onBack, Modifier.weight(1f))
         }
     }
 }
