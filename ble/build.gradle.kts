@@ -22,6 +22,7 @@ kotlin {
         commonMain.dependencies {
             implementation(project(":core"))
             implementation(project(":plaud-protocol"))
+            implementation(project(":recorder"))
             implementation(libs.kotlinx.coroutines.core)
         }
         commonTest.dependencies {

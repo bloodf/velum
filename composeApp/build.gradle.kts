@@ -38,6 +38,7 @@ kotlin {
             implementation(project(":ai"))
             implementation(project(":ble"))
             implementation(project(":plaud-protocol"))
+            implementation(project(":recorder"))
             implementation(compose.runtime)
             implementation(compose.foundation)
             implementation(compose.material3)

@@ -12,3 +12,5 @@ This product may download and run:
 - Needle inference engine static libraries (Apache-2.0) from Hugging Face
   Cactus-Compute/needle3, linked into libvelum_needle.so for Android
 See docs/WHISTLE_EVAL.md.
+
+Third-party source copies (with original license headers) are listed in THIRD_PARTY.md.

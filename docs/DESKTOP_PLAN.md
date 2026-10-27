@@ -18,10 +18,9 @@
 
 ### Practical recommendation for Velum
 
-1. **Prefer reimplement in KMP** (Compose Desktop + `expect`/`actual` + JNI/native) over vendoring anarlog’s Tauri/React/Rust stack — stack mismatch, maintenance cost, and trademark/UI clone risk.
-2. If copying any MIT community file (algorithm, detector heuristics, capture glue), record **upstream repo, revision, paths, copyright holder**, keep MIT notice, and note “copied / modified / behavioral reference” in provenance beside the consumer (same discipline as [LEGAL.md](LEGAL.md) / Plaud research).
-3. **Do not** copy TipTap editor UI, brand assets, or hosted CloudSync/Pro flows from anarlog; Velum already has Compose note UI, templates, and a planned E2E sync (M4) that is user-cloud, not Anarlog Pro.
-4. **Counsel note:** this is engineering guidance, not legal advice. Before shipping a binary that includes substantial anarlog MIT source, re-check `LICENSING.md` at the pinned revision.
+1. **Reuse policy (owner):** copy open-source code aggressively into Velum modules when it speeds desktop work (MIT/Apache/BSD **and** GPL/AGPL if useful). Keep original copyright headers; list paths in [THIRD_PARTY.md](../THIRD_PARTY.md). Prefer KMP/Compose over Tauri UI shell, but vendor anarlog MIT crates/algorithms freely when useful (still avoid `enterprise/**` commercial tree unless listed).
+2. **Do not** copy TipTap editor UI, brand assets, or Anarlog Pro billing/share flows by default; Velum already has Compose notes + planned user-cloud sync (M4).
+3. Owner accepts sorting licenses later; keep THIRD_PARTY.md current.
 
 ---
 

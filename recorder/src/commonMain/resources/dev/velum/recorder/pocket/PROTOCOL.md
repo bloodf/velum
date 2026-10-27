@@ -1,0 +1,459 @@
+# Pocket AI BLE Protocol
+
+## Protocol Overview
+
+The Pocket device uses a simple **ASCII text command protocol** over BLE GATT:
+- **App writes** `APP&<COMMAND>` to a characteristic of the `001120A0` service:
+  the vendor app to `001120A2` (ATT handle 0x002b), pocket-libre to
+  `001120A3`; the device takes commands on both
+- **Device responds** `MCU&<RESPONSE>` via notifications on `001120A3` (ATT handle 0x0030)
+- **Audio data** streams as MP3 on `001120A1` (ATT handle 0x002d)
+
+Handles are from firmware 1.8; see the [GATT Service Map](#gatt-service-map).
+
+Decoded via PacketLogger HCI capture analysis.
+
+## Audio Format
+
+**MPEG-2 Layer 3 (MP3)**, 16 kHz mono, 32 kbps constant: 144-byte frames
+starting `FF F3 48 C4`, so 4000 bytes per second of audio (confirmed on firmware
+1.8: a 278 s recording is 1,114,450 bytes). No DRM, no encryption, no
+proprietary codec. Over both BLE and WiFi the device sends the stored file as
+is.
+
+## Device Identity
+
+- Device name: `PKT01_GREY_XXXXXXXX` (also the WiFi AP's SSID)
+- Advertised BLE services: `5536`, `2222`
+- Firmware seen: `1.3.3` (WiFi `V6`), `1.8` (WiFi `V9`). The vendor app notes
+  that builds can differ while reporting the same version (a 1.8.5 re-cut added
+  `APP&SCHED`).
+- The device accepts one BLE connection at a time. While the vendor app (or
+  anything else) is connected it stops advertising, so it can't be found.
+
+## GATT Service Map
+
+From the vendor app's own service discovery in an iOS HCI trace on firmware
+1.8 (2026-10-08). An Android HCI log of the vendor app on 1.8 shows the same
+handles for its traffic.
+
+| Service | Characteristic | Value handle | Properties | Use |
+|---------|----------------|--------------|------------|-----|
+| 1801 | 2A05 (Service Changed) | 0x0003 | Indicate | The vendor app enables indications (CCCD `0x0004`) |
+| 180F | 2A19 (Battery Level) | 0x0012 | Read, Notify | Not used by the vendor app |
+| FFD0 | FFD1 | 0x0016 | Write | UART TX, unused |
+| FFD0 | FFD2 | 0x0018 | Notify | UART RX (status beacons); see below |
+| FFD0 | FFD3 | 0x001b | Write, Notify | UART BiDi, unused |
+| E49A3001 | E49A3002 / E49A3003 | 0x001f / 0x0021 | Write / Notify | Not used by the vendor app |
+| E49A25F8 | E49A25E0 / E49A28E1 | 0x0025 / 0x0027 | Write / Notify | Not used by the vendor app |
+| 001120A0 | **001120A2** | **0x002b** | Write | **Commands (`APP&…`)** from the vendor app |
+| 001120A0 | **001120A1** | **0x002d** | Notify | **MP3 audio** (CCCD `0x002e`) |
+| 001120A0 | **001120A3** | **0x0030** | Write without response, Notify | **Replies (`MCU&…`)** (CCCD `0x0031`); pocket-libre also writes its commands here |
+
+So the vendor app uses only the `001120A0` service; the `E49A…` services are
+present but unused.
+
+> **An earlier version of this table** (from work on firmware 1.3.3) put the
+> command, reply and audio traffic on `E49A3002` (0x002b), `E49A3003` (0x0030)
+> and `E49A28E1` (0x002d). Those three handles are exactly the 1.8 value
+> handles of `001120A2`, `001120A3` and `001120A1`, and the table's own
+> `001120A*` and `FFD*` handles were each one below their 1.8 value handles,
+> i.e. declaration handles. Most likely that table paired the handles with the
+> wrong UUIDs rather than 1.3.3 laying them out differently, but there is no
+> 1.3.3 trace to confirm it.
+
+> Don't subscribe to `FFD2` on 1.8: the subscription never completed and the
+> device dropped the connection.
+>
+> Under Linux/BlueZ, every notification tends to arrive about four times
+> within a few milliseconds, and BLE audio occasionally contains a repeated
+> 227-byte chunk. The phone's HCI log shows each notification once, so this is
+> on the receiving side. Deduplicate command replies; for audio, compare the
+> byte count with `MCU&U&<size>`.
+
+## Command Reference
+
+### Session Authentication
+
+```
+>> APP&SK&<16-char-session-key>
+<< MCU&SK&OK                      # the device's key
+<< MCU&SK&ERR                     # any other key; the device then drops the connection
+```
+The 16-character session key authenticates the connection. Capture yours from an HCI capture of the vendor app's `APP&SK&` write (e.g. PacketLogger on macOS/iOS, or Android's Bluetooth HCI snoop log) — `pocket-libre sniff` cannot see it, since it only observes notifications on its own connection. The first 8 characters are reused as the device's WiFi AP password — treat the key as a secret.
+
+**How a device gets its key (pairing).** There is no separate pairing command,
+and no BLE pairing or encryption: the link stays unencrypted. After a
+**hardware reset** the device takes the **first** `APP&SK&<key>` it receives,
+answers `MCU&SK&OK` followed by an unsolicited `MCU&WIFIO`, and from then on
+accepts only that key. Any other key gets `MCU&SK&ERR` and a disconnect. The
+vendor app pairs exactly this way, with the account's key as the first
+`APP&SK&` of its first connection, which is why that key works on every
+device of the account. `pocket-libre pair` pairs the same way with a key of
+its own. Confirmed on firmware 1.8 (2026-10-08):
+
+| After a hardware reset | Reply |
+|---|---|
+| `APP&SK&<new key A>` (first ever) | `MCU&SK&OK`, `MCU&WIFIO` |
+| `APP&SK&<key B>` | `MCU&SK&ERR`, then disconnect |
+| `APP&SK&<key A>` | `MCU&SK&OK` |
+
+About a second after it takes its first key, the device drops that
+connection (the link times out); the next connection with the new key works.
+The vendor app's first connection to a reset device ends the same way, after
+which it reconnects. So after pairing, reconnect before sending anything else.
+
+The hardware reset is the one the vendor documents: triple-click the side
+button (the LED blinks red), then press and hold it until the red blinking
+stops; the LED then pulses blue. A "reset" that leaves the key in place
+exists too: after it the device still accepted only its old key.
+
+### Device Info
+
+| Command | Response | Notes |
+|---------|----------|-------|
+| `APP&BAT` | `MCU&BAT&58` | Battery percentage |
+| `APP&FW` | `MCU&FW&1.3.3` | Firmware version |
+| `APP&WF` | `MCU&WF&V6` | WiFi firmware version |
+| `APP&SPACE` | `MCU&SPA&060846&061032` | Storage free & total (MB) |
+| `APP&STE` | `MCU&STE&0` | Device state (0=idle) |
+| `APP&T&YYYYMMDDHHmmss` | `MCU&T&OK` | Set device clock (the vendor app sends UTC) |
+| `APP&REC&SECEN` | `MCU&REC&CON` | Probably the side-switch position (inferred: only `CON` seen; see [Recording events](#recording-events)) |
+| `APP&MAC` | `MCU&MAC&<12 hex digits>` | Device MAC |
+| `APP&GET&USB` | `MCU&USB&<0\|1>` | USB mass storage state; see [USB Mass Storage](#usb-mass-storage) |
+| `APP&WPING` | `MCU&WPING` | Heartbeat while the WiFi AP is up |
+
+On connect, the vendor app (1.8) sends `SK`, then `BAT`, `FW`, `GET&USB`, `MAC`,
+`SPACE` and `WF` (several of them twice), `REC&SECEN`, `T&<UTC time>` and
+`STE`. It lists recordings with `APP&LIST&<date>` for each of the last seven
+days and the next two, not with `LIST_DIRS`, and then fetches new recordings
+over BLE in the background.
+
+Other commands named in the vendor app, not exercised here: `WIFID`, `WIFIE`,
+`WIFIM&<n>` (switch the WiFi module between AP and client mode), `WIFIX`,
+`WIFIJ`/`WIFIL`/`WSCAN`/`WIFIP`/`UPL`/`AUTOUP`/`SYNC`/`SCHED` (home-WiFi
+upload), `OTA`/`WOTA` (firmware updates), `D&` (delete?), `PAU`, `RESU`, `STA`,
+`SHUT`, `BLE&OFF`, `LNP`, `LNS`, `LOG`. Replies seen only from the
+device: `MCU&OFF` (end of a transfer), `MCU&SHUT`, and the recording events
+below. The vendor app also sends `APP&STO` (see below).
+
+### Recording events
+
+Seen on firmware 1.8 in an iOS HCI trace of the vendor app (2026-10-08),
+unsolicited on the reply characteristic while the app was connected:
+
+```
+<< MCU&REC&CALL                    # the side switch was moved
+<< MCU&REC&CON                     # ... and back
+<< MCU&REC&CON
+<< MCU&STA&20261009032636          # a recording started; its name
+   [the recording streams live on 001120A1, see below]
+<< MCU&STO                         # the recording stopped (8.55 s after STA)
+>> APP&U&2026-10-09&20261009032636 # the app fetches it right away over BLE
+<< MCU&U&32008
+<< MCU&OFF
+>> APP&STO                         # sent by the app after the transfer; no reply
+```
+
+- `MCU&STA&<name>` arrives when a recording starts and carries the name it
+  will be listed under; `MCU&STO` arrives when it stops. A client that stays
+  connected can fetch a recording the moment it ends instead of polling `LIST`.
+- `MCU&REC&CALL` / `MCU&REC&CON` arrived as the side switch was moved.
+  **Inferred, not seen:** that `APP&REC&SECEN` answers with the current
+  position. It answered `MCU&REC&CON` twice, both times with the switch in the
+  `CON` position. `CON` is presumably
+  "conversation" and `CALL` the phone-call position. **Unconfirmed guess:**
+  recordings made in the `CALL` position may be the ones named `PH…` (see
+  [Recording names](#file-listing)); a recording made in that position would
+  settle it.
+- What `APP&STO` does is unknown. It got no reply and nothing visible
+  changed.
+
+**Live audio while recording.** After `MCU&STA` arrived, the recording
+streamed on `001120A1` at 4000 bytes/s, as it was being made: 238
+notifications of 60–160 bytes (about 134 on average). The 32,008 bytes streamed
+during the recording were **byte for byte the file** the app then downloaded
+with `APP&U&` (`MCU&U&32008`). A connected, subscribed client therefore gets
+each recording without a download.
+
+The events don't line up exactly with the audio. The first audio notification
+came 0.54 s after `MCU&STA` and the last one just before `MCU&STO`, so the
+8.55 s between the events held 7.99 s of streamed audio, and 32,008 bytes is
+8.0 s at 4000 bytes/s. Take a recording's length from its size, not from the
+events.
+
+
+### File Listing
+
+**List recording dates:**
+```
+>> APP&LIST_DIRS
+<< MCU&DIRS&2026-03-26
+<< MCU&DIRS&2026-03-27
+<< MCU&DIRS&2026-03-28
+<< MCU&DIRS_SUM&003
+```
+
+**List files for a date:**
+```
+>> APP&LIST&2026-03-28
+<< MCU&F&2026-03-28&20260328001919&6222
+<< MCU&F&2026-03-28&20260328191640&222
+<< MCU&F&2026-03-28&20260328192028&3626
+...
+<< MCU&LIST&020
+```
+
+Format: `MCU&F&<date>&<timestamp>&<duration_seconds>`
+
+> The trailing field is a **duration in seconds**, not a size in kilobytes.
+> This was mislabelled here until firmware 1.8 field data corrected it
+> ([#4](https://github.com/shahcolate/pocket-libre/issues/4)). Multiply by
+> 4000 B/s (32 kbps) to estimate the size on disk.
+
+Ends with: `MCU&LIST&<count>` (zero-padded), the number of `MCU&F` entries
+before it; a date without recordings answers `MCU&LIST&0`. Confirmed on
+firmware 1.8 (2026-10-06). The answer can take longer than a fixed wait, so
+a listing without this line, or with fewer entries than it counts, is
+incomplete rather than empty.
+
+**Recording names.** The timestamp is usually `YYYYMMDDHHmmss`, the time the
+recording started. A second form, `PH` + `YYMMDDHHmmss`, also occurs:
+`PH261002211958` (2026-10-02 21:19:58) was seen next to ordinary names on
+firmware 1.7 ([#11](https://github.com/shahcolate/pocket-libre/issues/11)),
+and the form has also turned up on 1.8. It lists and downloads like any other
+recording. What makes the device use it is unknown; the side switch's
+`CALL` position is the likeliest guess (see [Recording events](#recording-events)). Treat the timestamp as an opaque name, not
+something to parse as a date.
+
+The name comes from the device clock, which `APP&T&` sets. The vendor app sets
+it to UTC, and so does pocket-libre (`status`, the web UI). Names are UTC once
+either has set the clock.
+A client that sends local time instead leaves the clock in whichever zone was
+set last, and names flip between the two. Names carry the start time in UTC,
+but because of forms like `PH…`, clients should still treat them as names, not
+parse them.
+
+### USB Mass Storage
+
+The device can expose its storage as a USB drive. The vendor app switches this
+on and off over BLE, then reads the state back:
+
+```
+>> APP&USB&1
+<< MCU&USB&1
+>> APP&GET&USB
+<< MCU&USB&1
+```
+
+| Command | Response | Notes |
+|---------|----------|-------|
+| `APP&USB&1` | `MCU&USB&1` | Enable USB mass storage |
+| `APP&USB&0` | `MCU&USB&0` | Disable USB mass storage |
+| `APP&GET&USB` | `MCU&USB&<0\|1>` | Read the current state |
+
+Captured from the vendor Android app (HCI snoop log) on 2026-10-03 and
+verified on hardware with `pocket-libre usb on`: the device's storage shows
+up as a USB drive. `GET&USB` is the only `GET&` command seen so far; others
+may exist.
+
+### Deleting a Recording
+
+```
+>> APP&D&2026-10-03&20261003081846
+<< MCU&D
+```
+
+Deletes one recording; the others on the device stay put. Confirmed on
+firmware 1.8 (2026-10-04) by listing before and after. The reply carries no
+status, so check the deletion by listing the date again, and trust only a
+complete listing (see `MCU&LIST&<count>` above). The command was
+guessed from the vendor app's command names and the `LIST` format, not
+captured from the vendor app; what it answers for a recording that doesn't
+exist is untested.
+
+### BLE File Transfer
+
+```
+>> APP&U&2026-03-26&20260326014509
+<< MCU&U&167798                        # File size in bytes
+   [MP3 data arrives on handle 0x002d]
+<< MCU&OFF                             # End of the transfer
+```
+
+The audio arrives as notifications of 244 bytes (some 192), the raw file with
+no header. The last one is short, and then `MCU&OFF` follows. **The transfer
+only runs while the audio characteristic is subscribed;** without a subscriber
+the device sends `MCU&OFF` right away.
+
+Throughput: about 3–4 KB/s in the original 1.3.3 capture. On firmware 1.8,
+about 26 KB/s to a Linux laptop and about 65 KB/s to an Android phone. On
+firmware 1.7, about 53–56 KB/s to a Mac. To an iPhone (vendor app, 1.8), a
+32,008-byte recording took 0.47 s, about 67 KB/s. WiFi transfer (below) runs
+at about 1 MB/s.
+
+New connections sometimes go silent during the opening queries. In the iOS
+trace, the vendor app's connection right after its first one stopped getting
+replies part way through (`APP&FW` unanswered) and ended in a link
+supervision timeout (disconnect reason `0x08`); the app reconnected, and the
+device answered normally. (The first connection, which paired the device,
+ended the same way; a device drops the connection right after it is paired,
+see [Session Authentication](#session-authentication).)
+
+### WiFi Transfer (Fast) — decoded on firmware 1.8
+
+**Works on firmware 1.8 with WiFi firmware V9**, about 0.7–1.1 MB/s, verified
+byte for byte against BLE downloads of the same recordings. **Also works on
+firmware 1.7 (WiFi firmware V9)**, with one difference: one transfer
+connection per AP session instead of two (see step 5 below).
+`pocket-libre wifi-transfer` implements it. Decoded on 2026-10-03 from the
+vendor app's Android HCI snoop log during a real "Quick Transfer", then
+reproduced from a Linux laptop acting as the WiFi client.
+
+#### The vendor app's sequence
+
+The app (Android, version 0.6.86) transferring a 44-minute recording, with
+seconds since it opened the import sheet:
+
+```
+ 0.0  >> APP&LIST_DIRS / APP&LIST&<date>         list the recordings
+ 0.7  >> APP&WIFIS           << MCU&WIFIS&0
+ 0.9  >> APP&WIFIO           << MCU&WIFIO         raise the AP; nothing staged before it
+ 1.0  >> APP&WPING           << MCU&WPING         heartbeat, then every 10 s
+ 3.5  >> APP&WIFI            << MCU&WIFI&<ssid>&<password>
+ 3.6  >> APP&WIFIS (1/s)     << MCU&WIFIS&3 ... MCU&WIFIS&2 (at 7.8)
+ 7.8  the phone asks Android for the network (WifiNetworkSpecifier: the "tap Accept" prompt)
+52.1  the phone joins (2.4 GHz) and gets 192.168.200.2 by DHCP
+55.1 >> APP&WIFIS           << MCU&WIFIS&1       a client has joined
+55.3 >> APP&U&<date>&<ts>   << MCU&U&10705002    a normal BLE transfer starts (audio on 0x002d)
+55.6 >> APP&U&WIFI                               0.35 s later: switch it to WiFi
+56.9                        << MCU&U&WIFI, MCU&U&10705002   BLE audio stops
+70.8                        << MCU&OFF           10.7 MB done
+70.8 >> APP&WIFIC           << MCU&WIFIC
+```
+
+Most of the 52 s was Android finding the hidden network. On Android the phone
+joins on a second, local-only interface and stays on its home WiFi, so users
+never see it switch.
+
+#### Protocol for a client
+
+1. **BLE:** authenticate (`APP&SK&…`) and **subscribe to the audio
+   characteristic** (pocket-libre: `001120A1`). Without a subscriber the device
+   ends a BLE transfer at once with `MCU&OFF`, and there is nothing to switch.
+2. **Raise the AP:** `APP&WIFIO` → `MCU&WIFIO`; `APP&WIFI` →
+   `MCU&WIFI&<ssid>&<password>`. Poll `APP&WIFIS` about once a second, and send
+   `APP&WPING` every few seconds while the AP is up.
+3. **Join** the network: hidden SSID, WPA2-PSK. Wait for `MCU&WIFIS&1`.
+4. **For each file:**
+   1. Connect to **`192.168.200.1:8475`** (TCP) and send nothing.
+   2. `APP&U&<date>&<timestamp>` → `MCU&U&<size>`.
+   3. About 0.3 s later, `APP&U&WIFI` → `MCU&U&WIFI`, then `MCU&U&<size>` again
+      (1.2–1.5 s after the switch).
+   4. Read exactly `<size>` bytes from the socket: the **raw MP3 file from byte
+      0**, no framing or headers. It does not resume after the bytes that already
+      went over BLE. Then come **10 fixed bytes, `ba 5a 02 8f 04 ba 5a 02 8f
+      04`**, identical for every file (not a checksum). `MCU&OFF` arrives over
+      BLE at the same moment.
+   5. Close the connection. The device closes its side at once, refuses new
+      connections for about 1.5–3.5 s, then listens again.
+5. **A limited number of transfer connections per AP session: two on 1.8, one
+   on 1.7.** On 1.8, port 8475 stops listening for good after the second. On
+   1.7 the device accepts a second connection, then resets it before sending
+   any data. Restart the AP for more files: `APP&WIFIC`, leave the network,
+   `APP&WIFIO`, rejoin, wait for `WIFIS=1` (about 14 s).
+
+   On 1.8, a transfer connection was also seen reset at 0 bytes while it was
+   still within the limit. After such a reset, the device ignored the next
+   `APP&WIFIO` (no `MCU&WIFIO` within 5 s, and the AP did not come up); a
+   further `APP&WIFIC` / `APP&WIFIO` a few seconds later worked. Both happened
+   twice in one 12-file run.
+6. **Finish** with `APP&WIFIC` → `MCU&WIFIC`.
+
+**Never send `APP&U&WIFI` without a transfer connection open.** The device
+acknowledges the switch, then hangs without `MCU&OFF`, and about 14 s later
+sends `MCU&SHUT`. BLE stayed up, and `APP&WIFIC` still worked, but don't rely
+on it.
+
+**WiFi Status Codes** (`MCU&WIFIS&<n>`), confirmed by timing them against the
+client's join:
+
+| Code | Meaning |
+|---|---|
+| `0` | AP off |
+| `3` | AP coming up (right after `APP&WIFIO`) |
+| `2` | AP up, waiting for a client |
+| `1` | A client has joined: ready for transfer |
+
+**WiFi AP Details (firmware 1.8; 1.7 uses the same address and port):**
+
+| | |
+|---|---|
+| SSID | The device name (`PKT01_GREY_XXXXXXXX`), **hidden** |
+| Security | WPA2-PSK, 2.4 GHz |
+| Password | First 8 characters of the session key |
+| Device | `192.168.200.1`, the DHCP server; leases `192.168.200.2/24` for 7200 s |
+| Routing | No default route; DHCP names the device as DNS server, but port 53 answered on one device and was closed on another |
+| Listening | Only TCP `8475`, and only while the AP is up and has transfer connections left (two per session on 1.8, one on 1.7) |
+
+**What else was learned on the way:**
+
+- **The vendor app sends small recordings over BLE**, even when the user
+  picks Quick Transfer. Its strings say "Bluetooth is used for smaller
+  recordings", with a threshold (`thresholdSeconds`) whose value isn't in the
+  strings. Recordings of 23 s and 3 min went over BLE; one of 44 min went over
+  WiFi.
+- `APP&WIFI&SWITCH`, which appears in the app's strings, is **not implemented**
+  on firmware 1.8 / V9: the device answers it like `APP&WIFI`, with the
+  credentials, and the BLE transfer carries on. The app doesn't send it either.
+- `RANGE` (`"RANGE request bytes="` in the app) is the **BLE** byte-range
+  download, not the WiFi verb. Its neighbouring strings say "Byte-range
+  downloads are Bluetooth-only".
+- Earlier sweeps that found nothing on the AP (#4) most likely missed 8475
+  because of timing. It only listens once the AP is up, and a client that
+  re-issues its connect while the join is still in progress drops off and
+  back on, after which it was gone too. NetworkManager's `nmcli connection up`
+  does exactly that when retried during activation.
+- The firmware 1.8 order this project documented before (`APP&U&WIFI`,
+  `APP&WIFI`, stage with `APP&U&<file>`, `APP&WIFIO`) also raises the AP and
+  works. The app's order shows that staging first is not required. What
+  stranded the device in #4 was not reproduced in about 20 runs here: no BLE
+  loss, no power-cycle needed.
+- The app's strings also show a home-WiFi upload mode, where the device joins
+  your router (`WIFIJ`, `WIFIL`, `WSCAN`, `WIFIP`, `UPL&…`, `AUTOUP`,
+  `SYNC&…`). It is unrelated to this transfer and wasn't tested.
+
+**Firmware 1.3.3 (historical capture, untested since):**
+
+```
+>> APP&U&WIFI
+<< MCU&WIFIS&0
+>> APP&WIFI
+<< MCU&WIFI&PKT01_GREY_XXXXXXXX&XXXXXXXX
+>> APP&WIFIO
+<< MCU&WIFIO
+>> APP&WIFIS                           # Poll 3 -> 2 -> 1
+>> APP&U&<date>&<timestamp>
+<< MCU&U&24890732
+>> APP&U&WIFI                          # The switch, as on 1.8
+>> APP&WIFIC
+```
+
+This is the same shape as the 1.8 protocol above. The capture was BLE-only,
+which is why the socket went unnoticed. An earlier revision of this document
+inferred an HTTP server at `192.168.4.1` from it, which was wrong.
+
+**Still unknown:**
+
+- Why the device serves only two connections per AP session (one on 1.7),
+  and whether one connection can carry several files. The app has a "Multiple file download with same wifi
+  socket" check. On 1.8 a second file on the same connection never arrived.
+- What the 10-byte end marker encodes.
+- The app's size threshold for using WiFi, and whether other firmware (newer,
+  or the "T22+ / WiFi V10+" builds the app mentions) behaves the same.
+
+## Legal Basis
+
+- DMCA Section 1201 interoperability exemption
+- Right to repair (your hardware, your data)
+- No DRM circumvention (unencrypted MP3)

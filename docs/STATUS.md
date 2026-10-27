@@ -5,6 +5,7 @@ Owner standing rule: nothing may remain stub/demo-only. Prefer **blocked-on-owne
 ## Working
 
 ### Protocol / BLE
+- [x] Pluggable `RecorderDriver` registry (`:recorder`): Plaud + Omi/Friend + Pocket; Limitless codec vendored; see `docs/DEVICES_ROADMAP.md` / `THIRD_PARTY.md` — **Omi/Pocket/Limitless not verified on hardware**
 - [x] Protocol-20 framing, unlock (FE10/FE11/FE12), handshake, list (26), download (28/type-2/29), battery (9)
 - [x] Forbidden opcodes never sent: **5, 104, 128, 0xFE20, 143 (OTA)**; never write settings **4 / 26** (every model)
 - [x] Unused cmds left alone: 5, 13, 38, 50, 51, 109, 141, 142, 145, 151

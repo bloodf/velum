@@ -18,6 +18,7 @@ dependencyResolutionManagement {
 
 include(":core")
 include(":plaud-protocol")
+include(":recorder")
 include(":ai")
 include(":ble")
 include(":composeApp")
