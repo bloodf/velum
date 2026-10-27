@@ -20,8 +20,6 @@ import dev.velum.app.ui.theme.VelumTheme
 import dev.velum.core.data.DriverFactory
 import dev.velum.core.security.InMemorySecureStore
 import java.io.File
-import androidx.compose.material3.Text
-import androidx.compose.ui.Alignment
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertTrue
