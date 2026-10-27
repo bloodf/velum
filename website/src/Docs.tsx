@@ -27,7 +27,7 @@ function SearchDialog({ open, onClose }: { open: boolean; onClose: () => void })
     <AnimatePresence>
       {open && <motion.div className="search-modal-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
         <motion.div className="search-modal" role="dialog" aria-modal="true" aria-label="Search documentation" initial={{ opacity: 0, y: -18, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -10, scale: 0.98 }} transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}>
-          <div className="search-modal-input"><Search size={20} /><input ref={inputRef} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search guides, apps, recorders…" aria-label="Search documentation" /><button onClick={onClose}>ESC</button></div>
+          <div className="search-modal-input"><Search size={20} /><input ref={inputRef} name="documentation-search" type="search" autoComplete="off" spellCheck={false} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search guides, apps, recorders…" aria-label="Search documentation" /><button onClick={onClose}>ESC</button></div>
           <div className="search-results">
             <span className="micro-label">{query ? `${results.length} RESULT${results.length === 1 ? '' : 'S'}` : 'QUICK LINKS'}</span>
             {results.length ? results.map((doc) => <Link key={doc.slug} to={`/docs/${doc.slug}`} onClick={onClose} className="search-result"><span className="search-result-icon"><FileText size={18} /></span><span><small>{doc.section}</small><strong>{doc.title}</strong><p>{doc.description}</p></span><ArrowRight size={17} /></Link>) : <div className="search-empty"><Search size={28} /><strong>No results for “{query}”</strong><p>Try a broader phrase, such as “mobile”, “Plaud”, or “privacy”.</p></div>}
@@ -72,7 +72,7 @@ function CodeBlock({ block }: { block: Extract<DocBlock, { type: 'code' }> }) {
     setCopied(true)
     window.setTimeout(() => setCopied(false), 1600)
   }
-  return <div className="docs-code"><div><span>{block.language}</span><button onClick={copy} aria-label="Copy code">{copied ? <Check size={14} /> : <Clipboard size={14} />}{copied ? 'Copied' : 'Copy'}</button></div><pre><code>{block.code}</code></pre></div>
+  return <div className="docs-code"><div><span>{block.language}</span><button onClick={copy} aria-label="Copy code" aria-live="polite">{copied ? <Check size={14} /> : <Clipboard size={14} />}{copied ? 'Copied' : 'Copy'}</button></div><pre><code>{block.code}</code></pre></div>
 }
 
 function BlockRenderer({ block }: { block: DocBlock }) {
@@ -120,7 +120,7 @@ export default function Docs() {
     <div className="docs-page">
       <DocsHeader onSearch={() => setSearchOpen(true)} onMenu={() => setMenuOpen(true)} />
       <DocsSidebar slug={doc.slug} open={menuOpen} onClose={() => setMenuOpen(false)} />
-      <main className="docs-main">
+      <main className="docs-main" id="main-content">
         <article className="docs-article">
           <div className="docs-breadcrumb"><Link to="/docs/introduction">Velum</Link><ChevronRight size={12} /><span>{doc.section}</span><ChevronRight size={12} /><span>{doc.title}</span></div>
           <div className="docs-article-heading"><span className="micro-label">{doc.section.toUpperCase()} / {doc.readTime.toUpperCase()} READ</span><h1>{doc.title}</h1><p>{doc.description}</p></div>

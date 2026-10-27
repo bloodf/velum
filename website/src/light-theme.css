@@ -41,11 +41,13 @@ body::before {
 }
 .desktop-nav a { color: #6d6d68; }
 .desktop-nav a:hover, .desktop-nav a.active { color: #111; }
+body.menu-open { overflow: hidden; }
 .mobile-menu {
-  background: rgba(244,244,241,.9);
-  backdrop-filter: blur(30px);
-  -webkit-backdrop-filter: blur(30px);
+  background: rgba(244,244,241,.985);
+  backdrop-filter: blur(44px) saturate(.65);
+  -webkit-backdrop-filter: blur(44px) saturate(.65);
   color: #151515;
+  isolation: isolate;
 }
 .mobile-menu > a { border-color: rgba(17,17,17,.13); }
 .mobile-menu > a span { color: #777; }
@@ -260,6 +262,50 @@ body::before {
 .footer-bottom > div { color: #333; }
 .footer-bottom a:hover { color: #000; }
 
+/* Accessibility and small-screen corrections */
+h1, h2, h3 { text-wrap: balance; }
+a, button { touch-action: manipulation; }
+.skip-link { position: fixed; top: 12px; left: 12px; z-index: 1000; padding: 11px 15px; border-radius: 9px; background: #171717; color: #fff; font-size: 13px; transform: translateY(-160%); transition: transform .2s; }
+.skip-link:focus { transform: translateY(0); }
+.shell-top i { color: #a8a8a2; }
+.footer-bottom { color: #686863; }
+.mobile-menu, .search-modal { overscroll-behavior: contain; }
+.search-modal-input:focus-within { box-shadow: inset 0 0 0 2px #222; }
+.search-modal-input input:focus-visible { outline: 0; }
+.search-modal-input button { color: #555; }
+.search-modal-footer { color: #5c5c57; font-size: 8px; }
+@media (max-width: 700px) {
+  .final-cta h2 { font-size: 12vw; }
+  .footer-bottom { font-size: 8px; }
+}
+
+/* Real product screenshots */
+.product-scene { align-items: center; justify-content: center; background: #fafafa; }
+.workflow-screenshot { display: block; width: 100%; height: 100%; object-fit: contain; object-position: center; }
+.desktop-ui { display: block; background: #fafafa; }
+.desktop-screenshot { display: block; width: 100%; height: 100%; object-fit: cover; object-position: center top; }
+.phone-ui { padding: 0; overflow: hidden; background: #fafafa; }
+.phone-screenshot { display: block; width: 100%; height: 100%; object-fit: cover; object-position: center top; }
+.device-view-switch {
+  position: absolute;
+  top: 32px;
+  right: 0;
+  z-index: 4;
+  display: flex;
+  gap: 3px;
+  padding: 4px;
+  border: 1px solid rgba(255,255,255,.85);
+  border-radius: 13px;
+  background: rgba(255,255,255,.42);
+  backdrop-filter: blur(16px);
+  box-shadow: inset 0 0 0 1px rgba(17,17,17,.05), 0 8px 25px rgba(50,50,45,.07);
+}
+.device-view-switch button { padding: 8px 11px; border-radius: 9px; background: transparent; color: #6d6d67; font-family: var(--mono); font-size: 8px; text-transform: capitalize; transition: background .2s,color .2s; }
+.device-view-switch button[aria-pressed="true"] { background: #1b1b1b; color: #fff; }
+.import-phone-preview { position: relative; z-index: 1; width: 165px; height: 305px; margin: 0 auto; overflow: hidden; border: 5px solid #242424; border-radius: 25px; background: #fafafa; box-shadow: 0 22px 45px rgba(50,50,45,.16); }
+.import-phone-preview img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: center top; }
+.import-phone-preview + .import-description { margin-top: 22px; }
+
 /* Documentation glass refinement */
 .docs-page { background: rgba(247,247,245,.72); }
 .docs-topbar {
@@ -286,6 +332,9 @@ body::before {
   .hero-intro p { color: #4f4f4a; }
   .conversation-window { border-radius: 19px; }
   .conversation-scene { border-radius: 18px; }
+  .workflow-screenshot { object-fit: cover; object-position: 72% center; }
+  .device-view-switch { top: 24px; left: 24px; right: auto; }
+  .import-phone-preview { width: 145px; height: 265px; }
   .integration-lab { border-radius: 20px; }
   .open-principles > div, .open-principles > div:first-child { border-color: rgba(17,17,17,.13); }
   .final-cta h2 span { -webkit-text-stroke-width: 1px; }
