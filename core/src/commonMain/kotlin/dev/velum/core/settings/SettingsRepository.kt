@@ -29,6 +29,12 @@ data class AppPreferences(
     val appLanguage: String = "system",
     /** Default phone-mic [MicInputSource] name when starting a new capture. */
     val defaultMicInput: String = "Mic",
+    /** Prefer SoftAP Wi‑Fi fast path when the paired device supports it. */
+    val preferWifiFastPath: Boolean = true,
+    /** Re-scan watched import folders when the app starts. */
+    val autoSyncWatchedFolders: Boolean = true,
+    /** Delete local audio after a successful transcription/summary job. */
+    val deleteAudioAfterProcessing: Boolean = false,
 )
 
 class SettingsRepository(
@@ -80,6 +86,11 @@ class SettingsRepository(
             themeMode = store.getString(KEY_THEME_MODE)?.takeIf { it in THEME_MODES } ?: "system",
             appLanguage = store.getString(KEY_APP_LANGUAGE)?.takeIf { it in APP_LANGUAGES } ?: "system",
             defaultMicInput = store.getString(KEY_DEFAULT_MIC_INPUT) ?: "Mic",
+            preferWifiFastPath = store.getString(KEY_PREFER_WIFI)?.toBooleanStrictOrNull() ?: true,
+            autoSyncWatchedFolders =
+                store.getString(KEY_AUTO_SYNC_WATCHED)?.toBooleanStrictOrNull() ?: true,
+            deleteAudioAfterProcessing =
+                store.getString(KEY_DELETE_AUDIO_AFTER)?.toBooleanStrictOrNull() ?: false,
         )
     }
 
@@ -236,6 +247,21 @@ class SettingsRepository(
         _preferences.update { it.copy(defaultMicInput = value) }
     }
 
+    suspend fun setPreferWifiFastPath(enabled: Boolean) {
+        store.putString(KEY_PREFER_WIFI, enabled.toString())
+        _preferences.update { it.copy(preferWifiFastPath = enabled) }
+    }
+
+    suspend fun setAutoSyncWatchedFolders(enabled: Boolean) {
+        store.putString(KEY_AUTO_SYNC_WATCHED, enabled.toString())
+        _preferences.update { it.copy(autoSyncWatchedFolders = enabled) }
+    }
+
+    suspend fun setDeleteAudioAfterProcessing(enabled: Boolean) {
+        store.putString(KEY_DELETE_AUDIO_AFTER, enabled.toString())
+        _preferences.update { it.copy(deleteAudioAfterProcessing = enabled) }
+    }
+
     private suspend fun writeOptional(key: String, value: String?) {
         if (value.isNullOrBlank()) store.remove(key) else store.putString(key, value)
     }
@@ -271,6 +297,9 @@ class SettingsRepository(
         private const val KEY_THEME_MODE = "prefs.theme_mode"
         private const val KEY_APP_LANGUAGE = "prefs.app_language"
         private const val KEY_DEFAULT_MIC_INPUT = "prefs.default_mic_input"
+        private const val KEY_PREFER_WIFI = "prefs.prefer_wifi_fast_path"
+        private const val KEY_AUTO_SYNC_WATCHED = "prefs.auto_sync_watched_folders"
+        private const val KEY_DELETE_AUDIO_AFTER = "prefs.delete_audio_after_processing"
         private val THEME_MODES = setOf("system", "light", "dark")
         private val APP_LANGUAGES = setOf("system", "en", "pt-BR")
     }

@@ -325,6 +325,26 @@ class VelumRepository(
         SeedData.maybeSeed(db)
     }
 
+    data class StorageUsage(
+        val recordingCount: Long,
+        val bytesClaimed: Long,
+    )
+
+    /** Sum of recording `size_bytes` for non-trashed rows (library claim, not free disk). */
+    suspend fun storageUsage(): StorageUsage = withContext(Dispatchers.Default) {
+        val rows = q.selectAllRecordings().executeAsList()
+        StorageUsage(
+            recordingCount = rows.size.toLong(),
+            bytesClaimed = rows.sumOf { it.size_bytes.coerceAtLeast(0) },
+        )
+    }
+
+    /** Clear local audio path after optional file delete (keeps transcript/summary). */
+    suspend fun clearLocalAudioPath(id: String) = withContext(Dispatchers.Default) {
+        val rec = q.selectRecordingById(id).executeAsOneOrNull() ?: return@withContext
+        q.updateLocalPath(null, rec.duration_seconds, 0, id)
+    }
+
     /** Plain-text backup of local library metadata + notes (no audio blobs). */
     suspend fun exportLibraryBackupText(): String = withContext(Dispatchers.Default) {
         val recordings = q.selectAllRecordings().executeAsList()

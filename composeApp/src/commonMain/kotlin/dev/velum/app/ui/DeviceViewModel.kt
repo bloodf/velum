@@ -33,6 +33,8 @@ data class DeviceSessionUi(
 class DeviceViewModel(
     private val ble: BleTransport,
     private val keyImporter: DeviceKeyImporter? = null,
+    /** When false, SoftAP Wi‑Fi banner stays off even if the device supports it. */
+    private val preferWifiFastPath: () -> Boolean = { true },
 ) : ViewModel() {
     val connectionState: StateFlow<BleConnectionState> =
         ble.connectionState.stateIn(viewModelScope, SharingStarted.Eagerly, BleConnectionState.Idle)
@@ -140,7 +142,8 @@ class DeviceViewModel(
             val caps = capsBase.withHandshake(hs)
             val sessions = c.listSessions()
             val battery = c.readBattery()
-            val wifi = DeviceCapabilityRegistry.supportsWifiFastPath(caps)
+            val wifiCapable = DeviceCapabilityRegistry.supportsWifiFastPath(caps)
+            val wifi = wifiCapable && preferWifiFastPath()
             _sessionUi.value = DeviceSessionUi(
                 batteryPercent = battery.percent,
                 sessions = sessions.entries,
@@ -152,7 +155,11 @@ class DeviceViewModel(
                 statusMessage = buildString {
                     append("Ready · ${caps.displayName}")
                     append(" · protocol ${hs.protocolVersion}")
-                    append(if (wifi) " · Wi‑Fi fast path" else " · BLE transfer")
+                    when {
+                        wifi -> append(" · Wi‑Fi fast path")
+                        wifiCapable -> append(" · BLE transfer (Wi‑Fi preferred off)")
+                        else -> append(" · BLE transfer")
+                    }
                 },
             )
         } catch (e: Exception) {

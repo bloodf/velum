@@ -54,20 +54,20 @@ fun AboutScreen(onBack: () -> Unit) {
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
         )
         Text(
-            strings.aboutBody,
+            strings.settingsUi.aboutBody,
             color = VelumInkSecondary,
             fontSize = 14.sp,
             lineHeight = 20.sp,
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
         )
         Spacer(Modifier.height(16.dp))
-        ChevronRow(strings.openSourceLicenses, {
+        ChevronRow(strings.settingsUi.openSourceLicenses, {
             openUrl("$GITHUB_REPO/blob/main/THIRD_PARTY.md")
         })
-        ChevronRow(strings.githubRepo, { openUrl(GITHUB_REPO) })
-        ChevronRow(strings.reportIssue, { openUrl(GITHUB_ISSUES) })
+        ChevronRow(strings.settingsUi.githubRepo, { openUrl(GITHUB_REPO) })
+        ChevronRow(strings.settingsUi.reportIssue, { openUrl(GITHUB_ISSUES) })
         ChevronRow(
-            strings.contributeTemplates,
+            strings.settingsUi.contributeTemplates,
             { openUrl("$GITHUB_REPO/blob/main/CONTRIBUTING.md") },
             showDivider = false,
         )

@@ -30,6 +30,9 @@ class RecordingProcessor(
     private val repository: VelumRepository,
     private val settings: SettingsRepository,
     private val readFileBytes: (String) -> ByteArray = { path -> ModelStoreDir(path).readBytes() },
+    private val deleteFile: (String) -> Unit = { path ->
+        runCatching { ModelStoreDir(path).deleteRecursively() }
+    },
     private val thermal: ThermalPolicy = NoOpThermalPolicy,
 ) {
     fun process(
@@ -211,6 +214,13 @@ class RecordingProcessor(
             )
             repository.updateSummary(recordingId, summary.text)
             repository.updateStatus(recordingId, "ready")
+            if (settings.preferences.value.deleteAudioAfterProcessing &&
+                !localPath.isNullOrBlank()
+            ) {
+                emit(JobProgress.Running(0.95f, "Removing local audio"))
+                deleteFile(localPath)
+                repository.clearLocalAudioPath(recordingId)
+            }
             emit(JobProgress.Succeeded("Processed $recordingId"))
         } catch (t: Throwable) {
             if (t is CancellationException ||

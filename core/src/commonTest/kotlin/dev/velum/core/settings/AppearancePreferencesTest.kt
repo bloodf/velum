@@ -24,4 +24,20 @@ class AppearancePreferencesTest {
         repo.setAppLanguage("fr")
         assertEquals("system", repo.preferences.value.appLanguage)
     }
+
+    @Test
+    fun deviceAndStoragePrefsRoundTrip() = runTest {
+        val repo = SettingsRepository(dev.velum.core.security.InMemorySecureStore())
+        repo.load()
+        assertEquals(true, repo.preferences.value.preferWifiFastPath)
+        assertEquals(true, repo.preferences.value.autoSyncWatchedFolders)
+        assertEquals(false, repo.preferences.value.deleteAudioAfterProcessing)
+
+        repo.setPreferWifiFastPath(false)
+        repo.setAutoSyncWatchedFolders(false)
+        repo.setDeleteAudioAfterProcessing(true)
+        assertEquals(false, repo.preferences.value.preferWifiFastPath)
+        assertEquals(false, repo.preferences.value.autoSyncWatchedFolders)
+        assertEquals(true, repo.preferences.value.deleteAudioAfterProcessing)
+    }
 }

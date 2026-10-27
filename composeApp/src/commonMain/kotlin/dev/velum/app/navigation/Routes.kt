@@ -29,4 +29,5 @@ object Routes {
     const val ABOUT = "about"
     const val STORAGE_PRIVACY = "storage_privacy"
     const val RECORDING_SETTINGS = "recording_settings"
+    const val DEVICES_SETTINGS = "devices_settings"
 }

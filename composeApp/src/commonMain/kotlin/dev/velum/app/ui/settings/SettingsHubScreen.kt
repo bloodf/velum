@@ -8,20 +8,20 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.LibraryBooks
+import androidx.compose.material.icons.outlined.AccountTree
 import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.Devices
-import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Extension
+import androidx.compose.material.icons.outlined.FolderOpen
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Key
+import androidx.compose.material.icons.outlined.Memory
 import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.RecordVoiceOver
 import androidx.compose.material.icons.outlined.Security
-import androidx.compose.material.icons.outlined.AccountTree
-import androidx.compose.material.icons.automirrored.outlined.LibraryBooks
-import androidx.compose.material.icons.outlined.Cloud
-import androidx.compose.material.icons.outlined.Download
-import androidx.compose.material.icons.outlined.Memory
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -40,8 +40,6 @@ import dev.velum.app.ui.theme.VelumSurface
 fun SettingsHubScreen(
     onBack: () -> Unit,
     onDevices: () -> Unit,
-    onImportKeys: () -> Unit,
-    onImportAudio: () -> Unit,
     onRecording: () -> Unit,
     onAiProcessing: () -> Unit,
     onModelManager: () -> Unit,
@@ -53,6 +51,7 @@ fun SettingsHubScreen(
     onTemplates: () -> Unit,
     onAutoFlow: () -> Unit,
     onIntegrations: () -> Unit,
+    onWatchedFolders: () -> Unit,
     onAppearance: () -> Unit,
     onStoragePrivacy: () -> Unit,
     onAbout: () -> Unit,
@@ -66,41 +65,60 @@ fun SettingsHubScreen(
     ) {
         ScreenTopBar(strings.settings, onBack = onBack)
 
-        SectionLabel(strings.settingsSectionDevices)
-        ChevronRow(strings.deviceManagement, onDevices, icon = Icons.Outlined.Devices)
-        ChevronRow(strings.importKeys.title, onImportKeys, icon = Icons.Outlined.Key)
-        ChevronRow(strings.importAudio, onImportAudio, icon = Icons.Outlined.Download, showDivider = false)
+        SectionLabel(strings.settingsUi.sectionDevices)
+        ChevronRow(
+            strings.settingsUi.sectionDevices,
+            onDevices,
+            icon = Icons.Outlined.Devices,
+            showDivider = false,
+        )
 
-        SectionLabel(strings.settingsSectionRecording)
-        ChevronRow(strings.settingsRecording, onRecording, icon = Icons.Outlined.Mic, showDivider = false)
+        SectionLabel(strings.settingsUi.sectionRecording)
+        ChevronRow(strings.settingsUi.recording, onRecording, icon = Icons.Outlined.Mic, showDivider = false)
 
-        SectionLabel(strings.settingsSectionTranscriptionAi)
+        SectionLabel(strings.settingsUi.sectionTranscriptionAi)
         ChevronRow(strings.aiProcessing, onAiProcessing, icon = Icons.Outlined.Tune)
         ChevronRow(strings.modelManager, onModelManager, icon = Icons.Outlined.Cloud)
         ChevronRow(strings.customVocabulary, onMemory, icon = Icons.Outlined.Memory)
         ChevronRow(strings.personalization, onPersonalization, icon = Icons.Outlined.AutoAwesome)
         ChevronRow(strings.preferences, onPreferences, icon = Icons.Outlined.Tune, showDivider = false)
 
-        SectionLabel(strings.settingsSectionApi)
+        SectionLabel(strings.settingsUi.sectionApi)
         ChevronRow(strings.aiProvider, onApi, icon = Icons.Outlined.Key, showDivider = false)
 
-        SectionLabel(strings.settingsSectionSpeakers)
+        SectionLabel(strings.settingsUi.sectionSpeakers)
         ChevronRow(strings.voiceProfiles, onVoiceProfiles, icon = Icons.Outlined.RecordVoiceOver, showDivider = false)
 
-        SectionLabel(strings.settingsSectionTemplates)
-        ChevronRow(strings.templatesCommunity, onTemplates, icon = Icons.AutoMirrored.Outlined.LibraryBooks, showDivider = false)
+        SectionLabel(strings.settingsUi.sectionTemplates)
+        ChevronRow(
+            strings.templatesCommunity,
+            onTemplates,
+            icon = Icons.AutoMirrored.Outlined.LibraryBooks,
+            showDivider = false,
+        )
 
-        SectionLabel(strings.settingsSectionAutomation)
+        SectionLabel(strings.settingsUi.sectionAutomation)
         ChevronRow(strings.autoFlow, onAutoFlow, icon = Icons.Outlined.AccountTree)
-        ChevronRow(strings.integrations, onIntegrations, icon = Icons.Outlined.Extension, showDivider = false)
+        ChevronRow(strings.integrations, onIntegrations, icon = Icons.Outlined.Extension)
+        ChevronRow(
+            strings.settingsUi.watchedFolders,
+            onWatchedFolders,
+            icon = Icons.Outlined.FolderOpen,
+            showDivider = false,
+        )
 
-        SectionLabel(strings.settingsSectionAppearance)
-        ChevronRow(strings.settingsAppearance, onAppearance, icon = Icons.Outlined.Palette, showDivider = false)
+        SectionLabel(strings.settingsUi.sectionAppearance)
+        ChevronRow(strings.settingsUi.appearance, onAppearance, icon = Icons.Outlined.Palette, showDivider = false)
 
-        SectionLabel(strings.settingsSectionStorage)
-        ChevronRow(strings.settingsStoragePrivacy, onStoragePrivacy, icon = Icons.Outlined.Security, showDivider = false)
+        SectionLabel(strings.settingsUi.sectionStorage)
+        ChevronRow(
+            strings.settingsUi.storagePrivacy,
+            onStoragePrivacy,
+            icon = Icons.Outlined.Security,
+            showDivider = false,
+        )
 
-        SectionLabel(strings.settingsSectionAbout)
+        SectionLabel(strings.settingsUi.sectionAbout)
         ChevronRow(strings.aboutVelum, onAbout, icon = Icons.Outlined.Info, showDivider = false)
 
         Spacer(Modifier.height(40.dp))

@@ -67,6 +67,7 @@ import dev.velum.app.ui.settings.AboutScreen
 import dev.velum.app.ui.settings.AiProcessingScreen
 import dev.velum.app.ui.settings.ApiSettingsScreen
 import dev.velum.app.ui.settings.AppearanceScreen
+import dev.velum.app.ui.settings.DevicesSettingsScreen
 import dev.velum.app.ui.settings.ImportDeviceKeysScreen
 import dev.velum.app.ui.settings.MemoryScreen
 import dev.velum.app.ui.settings.ModelManagerScreen
@@ -154,6 +155,12 @@ private fun VelumRoot(container: AppContainer) {
     }
 
     val importPipeline = remember(container) { AudioImportPipeline(container) }
+    LaunchedEffect(container, importPipeline) {
+        runCatching { container.settingsRepository.load() }
+        if (container.settingsRepository.preferences.value.autoSyncWatchedFolders) {
+            runCatching { syncWatchedFolders(importPipeline) }
+        }
+    }
     val importAudio = rememberAudioImporter { path ->
         scope.launch {
             fabOpen = false
@@ -308,9 +315,7 @@ private fun VelumRoot(container: AppContainer) {
                     composable(Routes.SETTINGS) {
                         SettingsHubScreen(
                             onBack = { navController.popBackStack() },
-                            onDevices = { navController.navigate(Routes.DEVICE) },
-                            onImportKeys = { navController.navigate(Routes.IMPORT_KEYS) },
-                            onImportAudio = { navController.navigate(Routes.IMPORT_AUDIO) },
+                            onDevices = { navController.navigate(Routes.DEVICES_SETTINGS) },
                             onRecording = { navController.navigate(Routes.RECORDING_SETTINGS) },
                             onAiProcessing = { navController.navigate(Routes.AI_PROCESSING) },
                             onModelManager = { navController.navigate(Routes.MODEL_MANAGER) },
@@ -322,9 +327,18 @@ private fun VelumRoot(container: AppContainer) {
                             onTemplates = { navController.navigate(Routes.TEMPLATES) },
                             onAutoFlow = { navController.navigate(Routes.AUTOFLOW) },
                             onIntegrations = { navController.navigate(Routes.INTEGRATIONS) },
+                            onWatchedFolders = { navController.navigate(Routes.IMPORT_AUDIO) },
                             onAppearance = { navController.navigate(Routes.APPEARANCE) },
                             onStoragePrivacy = { navController.navigate(Routes.STORAGE_PRIVACY) },
                             onAbout = { navController.navigate(Routes.ABOUT) },
+                        )
+                    }
+                    composable(Routes.DEVICES_SETTINGS) {
+                        DevicesSettingsScreen(
+                            container = container,
+                            onBack = { navController.popBackStack() },
+                            onDevice = { navController.navigate(Routes.DEVICE) },
+                            onImportKeys = { navController.navigate(Routes.IMPORT_KEYS) },
                         )
                     }
                     composable(Routes.PERSONALIZATION) {

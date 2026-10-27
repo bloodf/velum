@@ -128,7 +128,7 @@ Phone-only / external (no Plaud required):
 - Plaud host URLs (`api.plaud.ai`, regional, `wss://realtime.plaud.ai`, …) — not present in app code; BYO OpenAI-compatible base URL only
 - Community/cloud templates, hosted share links, teams, OTA catalogue, SoundPlus license
 - Unimplemented chrome audit: Preferences “Help improve Velum” / usage-data toggle + `prefs.help_improve`; Preferences App lock (info-only dialog); Settings hub Current workspace (noop); Integrations “More apps coming” panel; Templates Photo-to-template create option; AutoFlow “Send suggestion” inert label; Template detail “Set for later” mislabel (replaced with Close)
-- Settings redesign (local-only): sectioned hub (Devices / Recording / Transcription & AI / API / Speakers / Templates / Automation / Appearance / Storage & privacy / About); Account/profile/avatar chrome removed; library top-bar person → settings gear; theme + language prefs; library export + wipe; default mic input pref
+- Settings redesign (local-only): sectioned hub (Devices / Recording / Transcription & AI / API / Speakers / Templates / Automation / Appearance / Storage & privacy / About); Account/profile/avatar chrome removed; library top-bar person → settings gear; theme + language prefs; Devices (Wi‑Fi prefer + auto-sync watched folders); Recording default mic; Storage usage + delete-audio-after-process; library export + wipe
 
 ## Confirm only on owner’s real Plaud Note Pro
 

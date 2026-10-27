@@ -70,7 +70,7 @@ fun ApiSettingsScreen(
         ChevronRow(strings.modelManager, onModelManager, showDivider = false)
         Spacer(Modifier.height(16.dp))
         Text(
-            strings.settingsApiHint,
+            strings.settingsUi.apiHint,
             color = VelumInkSecondary,
             fontSize = 13.sp,
             lineHeight = 18.sp,
@@ -101,7 +101,7 @@ fun ApiSettingsScreen(
             visualTransformation = if (showKey) VisualTransformation.None else PasswordVisualTransformation(),
             trailingIcon = {
                 Text(
-                    if (showKey) strings.hide else strings.show,
+                    if (showKey) strings.settingsUi.hide else strings.settingsUi.show,
                     modifier = Modifier.padding(end = 8.dp).clickable { showKey = !showKey },
                     color = VelumInkSecondary,
                 )
@@ -123,7 +123,7 @@ fun ApiSettingsScreen(
                 enabled = apiKey.isNotBlank(),
             )
             OutlineButton(
-                strings.clear,
+                strings.settingsUi.clear,
                 {
                     viewModel.setApiKey("")
                     apiKey = ""
@@ -137,9 +137,9 @@ fun ApiSettingsScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(strings.testConnection, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+            Text(strings.settingsUi.testConnection, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
             OutlineButton(
-                if (ui.refreshing) "…" else strings.testConnection,
+                if (ui.refreshing) "…" else strings.settingsUi.testConnection,
                 { viewModel.refreshModels() },
                 Modifier.clip(RoundedCornerShape(10.dp)).fillMaxWidth(0.5f),
             )

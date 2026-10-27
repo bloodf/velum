@@ -66,7 +66,11 @@ class AppContainer(
     val deviceKeyImporter: DeviceKeyImporter = SecureDeviceKeyImporter(secureStore)
     val aiClient = createOpenAiCompatibleClient()
     val settingsViewModel = SettingsViewModel(settingsRepository, aiClient)
-    val deviceViewModel = DeviceViewModel(ble, deviceKeyImporter)
+    val deviceViewModel = DeviceViewModel(
+        ble = ble,
+        keyImporter = deviceKeyImporter,
+        preferWifiFastPath = { settingsRepository.preferences.value.preferWifiFastPath },
+    )
     val integrationAuth = IntegrationAuthStore(secureStore, integrationConfig)
 
     val localModelManager = createLocalModelManager(storeRoot = modelStoreRoot)

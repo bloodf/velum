@@ -28,7 +28,12 @@ class WipeAndExportTest {
         val backup = repo.exportLibraryBackupText()
         assertTrue(backup.contains("Demo"))
         assertTrue(backup.contains("hello"))
+        val usage = repo.storageUsage()
+        assertTrue(usage.recordingCount >= 1L)
+        assertTrue(usage.bytesClaimed >= 100L)
+
         repo.wipeAllUserData()
         assertEquals(0L, repo.recordingCount())
+        assertEquals(0L, repo.storageUsage().bytesClaimed)
     }
 }

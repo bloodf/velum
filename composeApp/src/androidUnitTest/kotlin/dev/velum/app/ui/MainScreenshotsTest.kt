@@ -233,8 +233,6 @@ class MainScreenshotsTest {
         SettingsHubScreen(
             onBack = {},
             onDevices = {},
-            onImportKeys = {},
-            onImportAudio = {},
             onRecording = {},
             onAiProcessing = {},
             onModelManager = {},
@@ -246,6 +244,7 @@ class MainScreenshotsTest {
             onTemplates = {},
             onAutoFlow = {},
             onIntegrations = {},
+            onWatchedFolders = {},
             onAppearance = {},
             onStoragePrivacy = {},
             onAbout = {},
@@ -257,8 +256,6 @@ class MainScreenshotsTest {
         SettingsHubScreen(
             onBack = {},
             onDevices = {},
-            onImportKeys = {},
-            onImportAudio = {},
             onRecording = {},
             onAiProcessing = {},
             onModelManager = {},
@@ -270,6 +267,7 @@ class MainScreenshotsTest {
             onTemplates = {},
             onAutoFlow = {},
             onIntegrations = {},
+            onWatchedFolders = {},
             onAppearance = {},
             onStoragePrivacy = {},
             onAbout = {},

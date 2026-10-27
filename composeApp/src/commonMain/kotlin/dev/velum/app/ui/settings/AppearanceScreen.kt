@@ -42,20 +42,20 @@ fun AppearanceScreen(
             .background(VelumSurface)
             .verticalScroll(rememberScrollState()),
     ) {
-        ScreenTopBar(strings.settingsAppearance, onBack = onBack)
-        SectionLabel(strings.settingsTheme)
-        ThemeOption(strings.themeSystem, prefs.themeMode == "system") {
+        ScreenTopBar(strings.settingsUi.appearance, onBack = onBack)
+        SectionLabel(strings.settingsUi.theme)
+        ThemeOption(strings.settingsUi.themeSystem, prefs.themeMode == "system") {
             scope.launch { container.settingsRepository.setThemeMode("system") }
         }
-        ThemeOption(strings.themeLight, prefs.themeMode == "light") {
+        ThemeOption(strings.settingsUi.themeLight, prefs.themeMode == "light") {
             scope.launch { container.settingsRepository.setThemeMode("light") }
         }
-        ThemeOption(strings.themeDark, prefs.themeMode == "dark") {
+        ThemeOption(strings.settingsUi.themeDark, prefs.themeMode == "dark") {
             scope.launch { container.settingsRepository.setThemeMode("dark") }
         }
         Spacer(Modifier.height(12.dp))
-        SectionLabel(strings.settingsLanguage)
-        ThemeOption(strings.languageSystem, prefs.appLanguage == "system") {
+        SectionLabel(strings.settingsUi.language)
+        ThemeOption(strings.settingsUi.languageSystem, prefs.appLanguage == "system") {
             scope.launch { container.settingsRepository.setAppLanguage("system") }
         }
         ThemeOption("English", prefs.appLanguage == "en") {
