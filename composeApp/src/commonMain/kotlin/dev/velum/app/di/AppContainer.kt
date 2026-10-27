@@ -20,6 +20,8 @@ import dev.velum.ai.pipeline.RecordingJobScheduler
 import dev.velum.ai.pipeline.RecordingProcessor
 import dev.velum.ai.pipeline.ThermalPolicy
 import dev.velum.ai.pipeline.createCoroutineRecordingJobScheduler
+import dev.velum.ai.integrations.WebhookDispatcher
+import dev.velum.app.platform.ExportFolderStore
 import dev.velum.app.platform.MicCapture
 import dev.velum.app.platform.createMicCapture
 import dev.velum.app.ui.DeviceViewModel
@@ -34,6 +36,8 @@ import dev.velum.core.data.createDatabase
 import dev.velum.core.data.epochSecondsNow
 import dev.velum.core.integrations.IntegrationAuthStore
 import dev.velum.core.integrations.IntegrationConfig
+import dev.velum.core.integrations.IntegrationRegistry
+import dev.velum.core.integrations.WebhookSettingsStore
 import dev.velum.core.security.DeviceKeyImporter
 import dev.velum.core.security.SecureDeviceKeyImporter
 import dev.velum.core.security.SecureStore
@@ -73,6 +77,16 @@ class AppContainer(
         preferWifiFastPath = { settingsRepository.preferences.value.preferWifiFastPath },
     )
     val integrationAuth = IntegrationAuthStore(secureStore, integrationConfig)
+    val webhookSettings = WebhookSettingsStore(secureStore)
+    val integrationRegistry = IntegrationRegistry(
+        webhook = webhookSettings,
+        exportFolderConfigured = { !ExportFolderStore.currentUri().isNullOrBlank() },
+        googleCalendarClientConfigured = integrationConfig.googleCalendarReady(),
+    )
+    val webhookDispatcher = WebhookDispatcher(
+        repository = repository,
+        settings = webhookSettings,
+    )
 
     val localModelManager = createLocalModelManager(storeRoot = modelStoreRoot)
     val voiceProfileStore = VoiceProfileStore(modelStoreRoot, secureStore = secureStore)

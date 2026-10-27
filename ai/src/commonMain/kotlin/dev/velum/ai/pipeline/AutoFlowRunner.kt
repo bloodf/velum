@@ -172,6 +172,12 @@ class AutoFlowRunner(
                     }
                 }
             }
+            AutoFlowPostAction.FolderExport -> {
+                _actions.emit(AutoFlowUiAction.ExportMarkdownToFolder(recordingId))
+            }
+            AutoFlowPostAction.Webhook -> {
+                _actions.emit(AutoFlowUiAction.PostWebhook(recordingId))
+            }
         }
     }
 
@@ -201,6 +207,8 @@ class AutoFlowRunner(
 sealed class AutoFlowUiAction {
     data class ShareMarkdown(val title: String, val body: String) : AutoFlowUiAction()
     data class InsertCalendarEvent(val title: String, val description: String) : AutoFlowUiAction()
+    data class ExportMarkdownToFolder(val recordingId: String) : AutoFlowUiAction()
+    data class PostWebhook(val recordingId: String) : AutoFlowUiAction()
     data class BlockedOnPermission(val permission: String, val message: String) : AutoFlowUiAction()
 }
 

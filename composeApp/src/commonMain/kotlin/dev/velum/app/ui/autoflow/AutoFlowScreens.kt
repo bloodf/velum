@@ -33,6 +33,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -63,6 +64,7 @@ import dev.velum.app.ui.theme.VelumInk
 import dev.velum.app.ui.theme.VelumInkSecondary
 import dev.velum.app.ui.theme.VelumOnBlack
 import dev.velum.app.ui.theme.VelumSurface
+import dev.velum.core.autoflow.AutoFlowPostAction
 import kotlinx.coroutines.launch
 
 @Composable
@@ -205,7 +207,31 @@ fun AutoFlowEditScreen(
     var showDiscard by remember { mutableStateOf(false) }
     var editWhen by remember { mutableStateOf(false) }
     var editDo by remember { mutableStateOf(false) }
+    var postActionChoices by remember {
+        mutableStateOf(
+            listOf(
+                "" to strings.postActionNone,
+                "share" to strings.postActionShare,
+                "calendar_insert" to strings.postActionCalendar,
+            ),
+        )
+    }
     val scope = rememberCoroutineScope()
+
+    LaunchedEffect(container, editDo, strings) {
+        val actions = container.integrationRegistry.availablePostActions()
+        postActionChoices = actions.map { action ->
+            when (action) {
+                AutoFlowPostAction.None -> "" to strings.postActionNone
+                AutoFlowPostAction.ShareMarkdown -> "share" to strings.postActionShare
+                AutoFlowPostAction.CalendarInsert ->
+                    "calendar_insert" to strings.postActionCalendar
+                AutoFlowPostAction.FolderExport ->
+                    "folder_export" to strings.postActionFolderExport
+                AutoFlowPostAction.Webhook -> "webhook" to strings.postActionWebhook
+            }
+        }
+    }
 
     fun markDirty() {
         dirty = true
@@ -361,11 +387,8 @@ fun AutoFlowEditScreen(
             MetaRow(strings.recordingLanguage, languageLabel)
             MetaRow(
                 strings.postActionLabel,
-                when (postAction) {
-                    "share" -> strings.postActionShare
-                    "calendar_insert" -> strings.postActionCalendar
-                    else -> strings.postActionNone
-                },
+                postActionChoices.firstOrNull { it.first == postAction }?.second
+                    ?: strings.postActionNone,
             )
         }
         Spacer(Modifier.height(40.dp))
@@ -470,11 +493,7 @@ fun AutoFlowEditScreen(
                     fontSize = 13.sp,
                     modifier = Modifier.padding(horizontal = 20.dp),
                 )
-                listOf(
-                    "" to strings.postActionNone,
-                    "share" to strings.postActionShare,
-                    "calendar_insert" to strings.postActionCalendar,
-                ).forEach { (value, label) ->
+                postActionChoices.forEach { (value, label) ->
                     SelectableSheetRow(
                         label = label,
                         selected = postAction == value,

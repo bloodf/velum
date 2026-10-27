@@ -80,7 +80,7 @@ Phone-only / external (no Plaud required):
 - [x] Dark theme + TalkBack labels + 48 dp chrome targets + secondary ink contrast; player disabled without local audio
 - [x] Generate sheet + retranscribe launch processor
 - [x] AutoFlow matcher + runner on matching recordings
-- [x] AutoFlow post-actions: share Markdown intent / calendar ACTION_INSERT
+- [x] AutoFlow post-actions: share Markdown intent / calendar ACTION_INSERT / folder export / webhook (gated on configuration)
 - [x] WorkManager (`RecordingProcessWorker`) + `ThermalMonitor` pause/resume + DB checkpoints (`paused_thermal`)
 - [x] First-run UX guiding model downloads (or Use API / Skip) → Model manager / Account
 - [x] CI E2E: Fake BLE → mock API ASR/LLM → Markdown in DB (`DeviceToSummaryE2ETest`)
@@ -93,6 +93,12 @@ Phone-only / external (no Plaud required):
 - [x] CalendarProvider read current/next event title to name recordings after sync (permission-denied reported clearly)
 - [x] Runtime READ_CALENDAR permission with rationale (Integrations + AutoFlow blocked path)
 
+### Integrations (no owner OAuth registration)
+- [x] Framework: `IntegrationRegistry` + Keystore `IntegrationAuthStore` / `WebhookSettingsStore`; OAuth providers omitted until client ID registered
+- [x] Obsidian / local folder: SAF picker + persistable URI; Markdown + YAML frontmatter (`MarkdownNoteExport`); AutoFlow `folder_export`
+- [x] Webhook: HTTPS URL + optional HMAC-SHA256 (`X-Velum-Signature`); schema v1 + retries; docs in `docs/WEBHOOK.md`; AutoFlow `webhook`
+- [ ] Google / Notion / Slack / Microsoft OAuth — blocked on owner client registration (#49/#50)
+
 ### App surfaces
 - [x] Search (Files / Templates)
 - [x] Share / export Markdown (Android share sheet; desktop clipboard/file)
@@ -101,11 +107,12 @@ Phone-only / external (no Plaud required):
 - [x] Find/replace on transcript
 - [x] Preferences / personalization / languages persist
 - [x] Key import UI (Settings → paste fields and/or Plaud JSON v1 → Keystore; optional templates as `plaud-import-*`) — see `docs/PLAUD_IMPORT.md`
-- [x] Integrations: local device calendar (no Plaud/Google OAuth server path required)
+- [x] Integrations screen: device calendar + folder export + webhook (working paths only; no placeholder OAuth rows)
 - [x] Roborazzi phone screenshots (~1080×2400) in CI artifacts
 - [x] Instrumented Compose UI smoke tests (`MainFlowUiTest`)
 - [x] Signed debug APK as CI artifact — fixed `composeApp/debug.keystore` (android/androiddebugkey) so every CI debug build shares one signature (`adb install -r` without wipe)
 - [x] UI comparison vs owner Plaud reference zip → `docs/UI_COMPARISON.md`
+- [x] Hardware validation checklist for Note Pro owner runs → `docs/HARDWARE_VALIDATION.md`
 
 ## Reviews
 

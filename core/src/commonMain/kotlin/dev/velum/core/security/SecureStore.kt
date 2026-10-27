@@ -22,6 +22,8 @@ object SecureKeys {
     const val DEVICE_SERIAL_SIGNATURE = "device.serial_signature_b64"
     const val DEVICE_BIND_TOKEN = "device.bind_token"
     const val DEVICE_SERIAL = "device.serial"
+    const val WEBHOOK_URL = "integrations.webhook.url"
+    const val WEBHOOK_SECRET = "integrations.webhook.secret"
 }
 
 /**

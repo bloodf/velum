@@ -8,6 +8,10 @@ enum class AutoFlowPostAction(val stored: String) {
     None(""),
     ShareMarkdown("share"),
     CalendarInsert("calendar_insert"),
+    /** Write Markdown + YAML frontmatter into the user-selected Obsidian/local folder. */
+    FolderExport("folder_export"),
+    /** POST JSON to a user-configured webhook URL (HMAC optional). */
+    Webhook("webhook"),
     ;
 
     companion object {
