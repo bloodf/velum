@@ -41,6 +41,7 @@ class VelumApplication : Application() {
         installCalendarContext(applicationContext)
         installMicCaptureContext(applicationContext)
         installRecordingFilesDir(filesDir.absolutePath)
+        dev.velum.ai.local.installDeviceComputeContext(applicationContext)
         MicRecordingService.ensureNotificationChannel(this)
         val modelsDir = File(filesDir, "models")
         val powerManager = getSystemService(PowerManager::class.java)

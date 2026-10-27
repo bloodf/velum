@@ -30,6 +30,7 @@ actual class LocalAsrRuntime actual constructor() {
         embeddingModelPath: String,
         voiceProfiles: VoiceProfileStore?,
         recordingId: String?,
+        matchThreshold: Float,
     ): DiarizationResult {
         throw UnsupportedOperationException(
             "Local diarization is not supported on JVM desktop yet. modelId=$modelId",

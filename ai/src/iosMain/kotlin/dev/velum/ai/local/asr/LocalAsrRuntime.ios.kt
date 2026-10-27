@@ -28,6 +28,7 @@ actual class LocalAsrRuntime actual constructor() {
         embeddingModelPath: String,
         voiceProfiles: VoiceProfileStore?,
         recordingId: String?,
+        matchThreshold: Float,
     ): DiarizationResult {
         throw UnsupportedOperationException(
             "Local diarization is Android-first; iOS not wired yet. modelId=$modelId",

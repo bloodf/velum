@@ -28,6 +28,7 @@ expect class LocalAsrRuntime() {
         embeddingModelPath: String,
         voiceProfiles: VoiceProfileStore?,
         recordingId: String?,
+        matchThreshold: Float = VoiceProfileStore.DEFAULT_MATCH_THRESHOLD,
     ): DiarizationResult
 
     suspend fun complete(

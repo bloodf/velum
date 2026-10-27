@@ -58,6 +58,11 @@ class SettingsRepository(
             localAsrModelId = store.getString(KEY_LOCAL_ASR_MODEL),
             localDiarizationModelId = store.getString(KEY_LOCAL_DIARIZATION_MODEL),
             localLlmModelId = store.getString(KEY_LOCAL_LLM_MODEL),
+            asrSizeTier = store.getString(KEY_ASR_SIZE_TIER) ?: "auto",
+            speakerMatchThreshold = store.getString(KEY_SPEAKER_THRESHOLD)
+                ?.toFloatOrNull()
+                ?.coerceIn(0.3f, 0.95f)
+                ?: 0.55f,
         )
         _preferences.value = AppPreferences(
             cleanTranscript = store.getString(KEY_CLEAN_TRANSCRIPT)?.toBooleanStrictOrNull() ?: true,
@@ -149,6 +154,32 @@ class SettingsRepository(
         _settings.update { it.copy(localLlmModelId = id) }
     }
 
+    suspend fun setAsrSizeTier(tier: String) {
+        val value = when (tier.lowercase()) {
+            "tiny", "standard", "quality" -> tier.lowercase()
+            else -> "auto"
+        }
+        store.putString(KEY_ASR_SIZE_TIER, value)
+        _settings.update { it.copy(asrSizeTier = value) }
+        // Clearing an explicit model pin lets the tier/device router decide.
+        if (value != "auto") {
+            val pinned = when (value) {
+                "tiny" -> "whisper-tiny"
+                "quality" -> "whisper-large-v3-turbo"
+                else -> "parakeet-tdt-0.6b-v3-int8"
+            }
+            setLocalAsrModelId(pinned)
+        } else {
+            setLocalAsrModelId(null)
+        }
+    }
+
+    suspend fun setSpeakerMatchThreshold(threshold: Float) {
+        val value = threshold.coerceIn(0.3f, 0.95f)
+        store.putString(KEY_SPEAKER_THRESHOLD, value.toString())
+        _settings.update { it.copy(speakerMatchThreshold = value) }
+    }
+
     suspend fun setCleanTranscript(enabled: Boolean) {
         store.putString(KEY_CLEAN_TRANSCRIPT, enabled.toString())
         _preferences.update { it.copy(cleanTranscript = enabled) }
@@ -212,6 +243,8 @@ class SettingsRepository(
         private const val KEY_LOCAL_ASR_MODEL = "ai.local_asr_model"
         private const val KEY_LOCAL_DIARIZATION_MODEL = "ai.local_diarization_model"
         private const val KEY_LOCAL_LLM_MODEL = "ai.local_llm_model"
+        private const val KEY_ASR_SIZE_TIER = "ai.asr_size_tier"
+        private const val KEY_SPEAKER_THRESHOLD = "ai.speaker_match_threshold"
         private const val KEY_CLEAN_TRANSCRIPT = "prefs.clean_transcript"
         private const val KEY_HELP_IMPROVE = "prefs.help_improve"
         private const val KEY_AUTO_SPEAKER = "prefs.auto_speaker_label"

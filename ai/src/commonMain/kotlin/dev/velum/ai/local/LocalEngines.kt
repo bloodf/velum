@@ -55,6 +55,7 @@ class LocalDiarizer(
     private val modelManager: LocalModelManager,
     private val voiceProfiles: VoiceProfileStore,
     private val runtime: LocalAsrRuntime = LocalAsrRuntime(),
+    private val matchThreshold: () -> Float = { VoiceProfileStore.DEFAULT_MATCH_THRESHOLD },
 ) : Diarizer {
     override val engineId: String = "local-diarizer"
 
@@ -86,6 +87,7 @@ class LocalDiarizer(
             embeddingModelPath = embeddingPath.absolutePath,
             voiceProfiles = voiceProfiles,
             recordingId = input.recordingId,
+            matchThreshold = matchThreshold(),
         )
     }
 

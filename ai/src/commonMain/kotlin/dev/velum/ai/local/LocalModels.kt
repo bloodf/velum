@@ -82,6 +82,21 @@ val DefaultLocalCatalog: List<LocalModelSpec> = listOf(
         archiveFileName = "sherpa-onnx-whisper-turbo.tar.bz2",
     ),
     LocalModelSpec(
+        id = "whisper-tiny",
+        displayName = "Whisper Tiny (low-end)",
+        kind = LocalModelKind.Asr,
+        approxBytes = 111L * 1024 * 1024,
+        license = "MIT",
+        notes = "Tiny / low-end phones: multilingual Whisper via sherpa-onnx int8 " +
+            "(includes pt). Chosen automatically on low RAM. " +
+            "Whistle (Cactus, 16.9 MB, Apache-2.0) was evaluated but rejected as default — " +
+            "no Portuguese and requires Needle .cact runtime (see docs/WHISTLE_EVAL.md).",
+        languages = "~99 (Whisper multilingual, incl. pt)",
+        downloadUrl = "$ASR_MODELS/sherpa-onnx-whisper-tiny.tar.bz2",
+        sha256 = "c46116994e539aa165266d96b325252728429c12535eb9d8b6a2b10f129e66b1",
+        archiveFileName = "sherpa-onnx-whisper-tiny.tar.bz2",
+    ),
+    LocalModelSpec(
         id = "sensevoice-small",
         displayName = "SenseVoice Small",
         kind = LocalModelKind.Asr,
@@ -429,22 +444,44 @@ class LocalModelManager(
 
 }
 
-/** Language router for local ASR — see ARCHITECTURE_AI.md. */
+/** Language + device-tier router for local ASR — see ARCHITECTURE_AI.md / WHISTLE_EVAL.md. */
 object LocalAsrRouter {
+    const val TINY_ID: String = "whisper-tiny"
+    const val STANDARD_ID: String = "parakeet-tdt-0.6b-v3-int8"
+    const val QUALITY_ID: String = "whisper-large-v3-turbo"
+    const val CJK_LIGHT_ID: String = "sensevoice-small"
+
     private val parakeetEuropean = setOf(
         "bg", "hr", "cs", "da", "nl", "en", "et", "fi", "fr", "de", "el", "hu",
         "it", "lv", "lt", "mt", "pl", "pt", "ro", "sk", "sl", "es", "sv", "uk", "ru",
     )
     private val cjkLight = setOf("zh", "yue", "ja", "ko")
 
-    fun chooseModelId(languageHint: String?, mixedAudio: Boolean = false): String {
-        if (mixedAudio) return "whisper-large-v3-turbo"
+    fun chooseModelId(
+        languageHint: String?,
+        mixedAudio: Boolean = false,
+        tier: AsrSizeTier = AsrSizeTier.Auto,
+        deviceClass: DeviceComputeClass = detectDeviceComputeClass(),
+    ): String {
+        when (tier) {
+            AsrSizeTier.Tiny -> return TINY_ID
+            AsrSizeTier.Quality -> return if (mixedAudio) QUALITY_ID else languageDefault(languageHint, preferQuality = true)
+            AsrSizeTier.Standard -> return languageDefault(languageHint, preferQuality = false)
+            AsrSizeTier.Auto -> Unit
+        }
+        if (deviceClass == DeviceComputeClass.Low) return TINY_ID
+        if (mixedAudio) return QUALITY_ID
+        return languageDefault(languageHint, preferQuality = deviceClass == DeviceComputeClass.High && mixedAudio)
+    }
+
+    private fun languageDefault(languageHint: String?, preferQuality: Boolean): String {
         val lang = languageHint?.lowercase()?.substringBefore('-')?.takeIf { it != "auto" }
         return when {
-            lang == null -> "parakeet-tdt-0.6b-v3-int8"
-            lang in parakeetEuropean -> "parakeet-tdt-0.6b-v3-int8"
-            lang in cjkLight -> "sensevoice-small"
-            else -> "whisper-large-v3-turbo"
+            preferQuality && lang !in parakeetEuropean && lang !in cjkLight -> QUALITY_ID
+            lang == null -> STANDARD_ID
+            lang in parakeetEuropean -> STANDARD_ID
+            lang in cjkLight -> CJK_LIGHT_ID
+            else -> QUALITY_ID
         }
     }
 }

@@ -104,7 +104,7 @@ class ModelArchiveExtractorTest {
         val store = VoiceProfileStore(storeRoot)
         store.upsert("Alice", floatArrayOf(0.1f, 0.2f, 0.3f))
         val match = store.match(floatArrayOf(0.1f, 0.2f, 0.3f), threshold = 0.99f)
-        assertEquals("Alice", match?.displayName)
+        assertEquals("Alice", match?.profile?.displayName)
     }
 
     private fun buildZip(vararg entries: Pair<String, String>): ByteArray {

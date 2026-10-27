@@ -69,9 +69,13 @@ class AppContainer(
     val integrationAuth = IntegrationAuthStore(secureStore, integrationConfig)
 
     val localModelManager = createLocalModelManager(storeRoot = modelStoreRoot)
-    val voiceProfileStore = VoiceProfileStore(modelStoreRoot)
+    val voiceProfileStore = VoiceProfileStore(modelStoreRoot, secureStore = secureStore)
     val localTranscriber = LocalTranscriber(localModelManager)
-    val localDiarizer = LocalDiarizer(localModelManager, voiceProfileStore)
+    val localDiarizer = LocalDiarizer(
+        localModelManager,
+        voiceProfileStore,
+        matchThreshold = { settingsRepository.settings.value.speakerMatchThreshold },
+    )
     val localLlm = LocalLlmEngine(localModelManager)
     val apiTranscriber = OpenAiTranscriber(aiClient, settingsRepository)
     val apiDiarizer = OpenAiDiarizer()
@@ -120,6 +124,7 @@ class AppContainer(
     init {
         appScope.launch {
             settingsRepository.load()
+            voiceProfileStore.ensureKey()
             autoFlowRunner.start()
         }
     }

@@ -49,6 +49,7 @@ fun AccountScreen(
     onAiProcessing: () -> Unit = {},
     onModelManager: () -> Unit = {},
     onImportKeys: () -> Unit = {},
+    onVoiceProfiles: () -> Unit = {},
 ) {
     val strings = LocalStrings.current
     val viewModel = container.settingsViewModel
@@ -68,7 +69,8 @@ fun AccountScreen(
         ScreenTopBar(strings.account, onBack = onBack)
         Spacer(Modifier.height(8.dp))
         ChevronRow(strings.aiProcessing, onAiProcessing)
-        ChevronRow(strings.modelManager, onModelManager, showDivider = false)
+        ChevronRow(strings.modelManager, onModelManager)
+        ChevronRow("Voice profiles", onVoiceProfiles, showDivider = false)
         Spacer(Modifier.height(16.dp))
         Text(
             strings.aiProvider,

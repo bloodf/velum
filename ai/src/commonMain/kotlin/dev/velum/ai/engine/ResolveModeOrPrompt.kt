@@ -1,7 +1,9 @@
 package dev.velum.ai.engine
 
+import dev.velum.ai.local.AsrSizeTier
 import dev.velum.ai.local.LocalAsrRouter
 import dev.velum.ai.local.LocalModelManager
+import dev.velum.ai.local.detectDeviceComputeClass
 import dev.velum.core.model.AiProviderSettings
 import dev.velum.core.model.ComputeMode
 
@@ -23,13 +25,24 @@ const val DEFAULT_LOCAL_LLM_MODEL_ID = "gemma-4-e4b"
 fun requiredLocalModelId(task: AiTask, settings: AiProviderSettings): String = when (task) {
     AiTask.Transcription ->
         settings.localAsrModelId?.takeIf { it.isNotBlank() }
-            ?: LocalAsrRouter.chooseModelId(settings.audioLanguage)
+            ?: LocalAsrRouter.chooseModelId(
+                languageHint = settings.audioLanguage,
+                tier = parseAsrTier(settings.asrSizeTier),
+                deviceClass = detectDeviceComputeClass(),
+            )
     AiTask.Diarization ->
         settings.localDiarizationModelId?.takeIf { it.isNotBlank() }
             ?: DEFAULT_LOCAL_DIARIZATION_MODEL_ID
     AiTask.Summary ->
         settings.localLlmModelId?.takeIf { it.isNotBlank() }
             ?: DEFAULT_LOCAL_LLM_MODEL_ID
+}
+
+fun parseAsrTier(raw: String?): AsrSizeTier = when (raw?.lowercase()) {
+    "tiny" -> AsrSizeTier.Tiny
+    "standard" -> AsrSizeTier.Standard
+    "quality" -> AsrSizeTier.Quality
+    else -> AsrSizeTier.Auto
 }
 
 /**

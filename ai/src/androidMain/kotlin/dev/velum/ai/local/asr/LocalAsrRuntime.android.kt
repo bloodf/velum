@@ -106,6 +106,7 @@ actual class LocalAsrRuntime actual constructor() {
         embeddingModelPath: String,
         voiceProfiles: VoiceProfileStore?,
         recordingId: String?,
+        matchThreshold: Float,
     ): DiarizationResult {
         val segModel = findOnnx(File(modelPath))
             ?: throw IllegalStateException(
@@ -157,9 +158,9 @@ actual class LocalAsrRuntime actual constructor() {
                     if (recordingId != null) {
                         voiceProfiles.cacheClusterEmbedding(recordingId, speakerId, embedding)
                     }
-                    val match = voiceProfiles.match(embedding)
+                    val match = voiceProfiles.match(embedding, threshold = matchThreshold)
                     if (match != null) {
-                        named[speakerId] = match.displayName
+                        named[speakerId] = match.profile.displayName
                     }
                 }
             }
@@ -311,12 +312,8 @@ actual class LocalAsrRuntime actual constructor() {
 
     private fun whisperConfig(modelDir: File, language: String): OfflineRecognizerConfig? {
         val tokens = findFileMatching(modelDir) { it.contains("tokens") && it.endsWith(".txt") }
-        val encoder = findFileMatching(modelDir) {
-            it.contains("encoder") && it.endsWith(".onnx")
-        }
-        val decoder = findFileMatching(modelDir) {
-            it.contains("decoder") && it.endsWith(".onnx")
-        }
+        val encoder = findOnnxPreferInt8(modelDir, "encoder")
+        val decoder = findOnnxPreferInt8(modelDir, "decoder")
         if (tokens == null || encoder == null || decoder == null) return null
         return OfflineRecognizerConfig(
             featConfig = FeatureConfig(sampleRate = 16_000, featureDim = 80, dither = 0f),
@@ -399,6 +396,13 @@ actual class LocalAsrRuntime actual constructor() {
         dir.walkTopDown()
             .filter { it.isFile }
             .firstOrNull { predicate(it.name.lowercase()) }
+
+    private fun findOnnxPreferInt8(dir: File, needle: String): File? {
+        val all = dir.walkTopDown()
+            .filter { it.isFile && it.name.lowercase().contains(needle) && it.name.endsWith(".onnx") }
+            .toList()
+        return all.firstOrNull { it.name.contains("int8", ignoreCase = true) } ?: all.firstOrNull()
+    }
 
     private fun findOnnx(dir: File): File? {
         if (dir.isFile && dir.name.endsWith(".onnx", ignoreCase = true)) return dir

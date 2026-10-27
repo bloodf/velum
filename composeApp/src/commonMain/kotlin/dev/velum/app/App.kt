@@ -63,6 +63,7 @@ import dev.velum.app.ui.settings.ModelManagerScreen
 import dev.velum.app.ui.settings.PersonalizationScreen
 import dev.velum.app.ui.settings.PreferencesScreen
 import dev.velum.app.ui.settings.SettingsHubScreen
+import dev.velum.app.ui.settings.VoiceProfilesScreen
 import dev.velum.app.ui.shell.FabOverlay
 import dev.velum.app.ui.shell.ShellTab
 import dev.velum.app.ui.shell.VelumBottomBar
@@ -276,6 +277,13 @@ private fun VelumRoot(container: AppContainer) {
                             onAiProcessing = { navController.navigate(Routes.AI_PROCESSING) },
                             onModelManager = { navController.navigate(Routes.MODEL_MANAGER) },
                             onImportKeys = { navController.navigate(Routes.IMPORT_KEYS) },
+                            onVoiceProfiles = { navController.navigate(Routes.VOICE_PROFILES) },
+                        )
+                    }
+                    composable(Routes.VOICE_PROFILES) {
+                        VoiceProfilesScreen(
+                            container = container,
+                            onBack = { navController.popBackStack() },
                         )
                     }
                     composable(Routes.IMPORT_KEYS) {

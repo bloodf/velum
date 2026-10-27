@@ -402,11 +402,22 @@ fun RecordingDetailScreen(
                             val trimmed = name.trim()
                             if (trimmed.isEmpty()) return@forEach
                             val row = speakers.firstOrNull { it.id == speakerId } ?: return@forEach
-                            container.voiceProfileStore.promoteCached(
-                                recordingId = recordingId,
-                                speakerId = row.label,
-                                displayName = trimmed,
+                            val emb = container.voiceProfileStore.cachedClusterEmbedding(
+                                recordingId,
+                                row.label,
                             )
+                            val existing = container.voiceProfileStore.listProfiles()
+                                .firstOrNull { it.displayName.equals(trimmed, ignoreCase = true) }
+                            when {
+                                existing != null && emb != null ->
+                                    container.voiceProfileStore.refine(existing.id, emb)
+                                else ->
+                                    container.voiceProfileStore.promoteCached(
+                                        recordingId = recordingId,
+                                        speakerId = row.label,
+                                        displayName = trimmed,
+                                    )
+                            }
                             container.repository.renameSpeaker(recordingId, speakerId, trimmed)
                         }
                         showSpeakers = false
@@ -1164,6 +1175,8 @@ data class SpeakerLabelRow(
     val label: String,
     val displayName: String?,
     val talkSeconds: Long,
+    /** Cosine confidence when auto-matched to a voice profile; null if unlabeled. */
+    val matchConfidence: Float? = null,
 )
 
 @Composable
@@ -1227,15 +1240,21 @@ fun SpeakerLabelSheetContent(
                 }
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "${strings.totalDuration}: ",
-                    color = VelumInk,
-                    fontSize = 14.sp,
+                    buildString {
+                        append("${strings.totalDuration}: $dur")
+                        row.matchConfidence?.let {
+                            append(" · match ")
+                            append("%.0f".format(it * 100))
+                            append('%')
+                        }
+                    },
+                    color = VelumInkSecondary,
+                    fontSize = 13.sp,
                 )
-                Text(dur, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = VelumInk)
             }
         }
         Text(
-            strings.speakersUpdateNote,
+            strings.speakersUpdateNote + " Confirmations refine the on-device voice profile.",
             color = VelumInkSecondary,
             fontSize = 12.sp,
             modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),

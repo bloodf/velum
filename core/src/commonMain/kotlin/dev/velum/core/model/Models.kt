@@ -87,6 +87,13 @@ data class AiProviderSettings(
     val localAsrModelId: String? = null,
     val localDiarizationModelId: String? = null,
     val localLlmModelId: String? = null,
+    /**
+     * Local ASR size preference: `auto` | `tiny` | `standard` | `quality`.
+     * `auto` picks Whisper Tiny on low-RAM devices (see DeviceComputeClass).
+     */
+    val asrSizeTier: String = "auto",
+    /** Cosine threshold for auto speaker labeling (0.3–0.95). */
+    val speakerMatchThreshold: Float = 0.55f,
 )
 
 @Serializable

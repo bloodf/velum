@@ -54,7 +54,7 @@ Verified dated releases:
 | **IBM granite-speech-5.0-470m-turboctc** (multilingual revision) https://huggingface.co/ibm-granite/granite-speech-5.0-470m-turboctc | Oct 21 2026 (EN-only Aug 25) | CTC ASR, native punctuation, noise/reverb robust, "smartphones/edge" | yes | 470M; transformers only — no ONNX/GGUF/sherpa build found | Apache-2.0 |
 | **IBM granite-speech-5.0-2b** https://huggingface.co/ibm-granite/granite-speech-5.0-2b | Oct 20 2026 | Speech-LLM ASR + translation, keyword biasing (2000 terms) | yes | 2B; llama.cpp support claimed by IBM; ~2-min segments | Apache-2.0 |
 | **IBM granite-speech-4.1-2b-plus** (weights update) https://huggingface.co/ibm-granite/granite-speech-4.1-2b-plus | updated Oct 19 2026 (orig Apr 28) | ASR + speaker-attributed ASR + word timestamps (no punctuation) | yes | 2B | Apache-2.0 |
-| Cactus Whistle https://cactuscompute.com/blog/whistle | Oct 2 2026 | 16.9 MB CPU ASR | **no PT** | tiny | — |
+| Cactus Whistle https://cactuscompute.com/blog/whistle | Oct 2 2026 | 16.9 MB CPU ASR | **no PT** | tiny | — | **Rejected as Velum default** (no PT + Needle `.cact` runtime). Low-end uses sherpa Whisper Tiny instead — `docs/WHISTLE_EVAL.md` |
 | Falcon-ASR (TII) https://huggingface.co/blog/tiiuae/falcon-asr | Oct 7 2026 | Arabic-focused ASR, also PT | yes | 1.6B | not checked |
 
 Not October but relevant: **MOSS-Transcribe-Diarize 0.9B** (Jul 9 2026, Apache-2.0, 50+ langs incl. PT, end-to-end ASR+diarization+timestamps, up to 90 min single pass; won MLC-SLM 2026 incl. PT) https://github.com/OpenMOSS/MOSS-Transcribe-Diarize — no mobile build found. Leaderboard top (ARK-ASR-3B/0.6B) has **no Portuguese**.

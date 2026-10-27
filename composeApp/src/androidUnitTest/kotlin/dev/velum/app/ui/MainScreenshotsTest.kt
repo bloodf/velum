@@ -42,6 +42,7 @@ import dev.velum.app.ui.recording.SpeakerLabelSheetContent
 import dev.velum.app.ui.settings.AiProcessingScreen
 import dev.velum.app.ui.settings.ModelManagerScreen
 import dev.velum.app.ui.settings.SettingsHubScreen
+import dev.velum.app.ui.settings.VoiceProfilesScreen
 import dev.velum.app.ui.shell.FabOverlay
 import dev.velum.app.ui.shell.ShellTab
 import dev.velum.app.ui.shell.VelumBottomBar
@@ -191,6 +192,11 @@ class MainScreenshotsTest {
             onPickWatchedFolder = {},
             onSyncWatchedFolder = { emptyList() },
         )
+    }
+
+    @Test
+    fun voiceProfiles() = capture("19-voice-profiles") {
+        VoiceProfilesScreen(container = container, onBack = {})
     }
 
     @Test

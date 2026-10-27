@@ -204,6 +204,21 @@ fun AiProcessingScreen(
             },
         )
         Spacer(Modifier.height(20.dp))
+        SectionLabel("Local ASR size (low-end phones)")
+        Text(
+            "Auto picks Whisper Tiny on low RAM. Whistle (Cactus) was evaluated but lacks Portuguese — see docs/WHISTLE_EVAL.md.",
+            color = VelumInkSecondary,
+            fontSize = 13.sp,
+            lineHeight = 18.sp,
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+        )
+        AsrTierPicker(
+            selected = settings.asrSizeTier,
+            onSelect = { tier ->
+                scope.launch { container.settingsRepository.setAsrSizeTier(tier) }
+            },
+        )
+        Spacer(Modifier.height(16.dp))
         ChevronRow(
             strings.audioLanguage,
             { pickAudio = true },
@@ -363,5 +378,33 @@ private fun ModeChip(
             fontWeight = FontWeight.SemiBold,
             fontSize = 15.sp,
         )
+    }
+}
+
+@Composable
+private fun AsrTierPicker(
+    selected: String,
+    onSelect: (String) -> Unit,
+) {
+    val options = listOf(
+        "auto" to "Auto",
+        "tiny" to "Tiny",
+        "standard" to "Standard",
+        "quality" to "Quality",
+    )
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        options.forEach { (id, label) ->
+            ModeChip(
+                label = label,
+                selected = selected.equals(id, ignoreCase = true),
+                onClick = { onSelect(id) },
+                modifier = Modifier.weight(1f),
+            )
+        }
     }
 }
