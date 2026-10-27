@@ -5,7 +5,7 @@ Thanks for helping build a local-first, subscription-free recorder companion.
 ## Ground rules
 
 1. **No secrets.** Never commit API keys, Plaud account tokens, device serial signatures, RSA private keys, Fernet keys, or anything from a decompiled APK’s assets. Device identity is imported by the user at runtime.
-2. **No Plaud branding.** Do not copy Plaud logos, marketing copy, or third-party “community template” prompt texts. Write original Velum templates.
+2. **No Plaud branding.** Do not copy Plaud logos or marketing copy. The curated Plaud template catalog is maintained separately (`docs/templates/plaud_templates.jsonl`); new in-app templates you contribute must be **original Velum** work (see Template contributions below).
 3. **Interoperability only.** Reverse-engineering notes exist so Velum can talk to hardware the user owns. Prefer read-only BLE commands until download/decrypt is proven safe.
 4. **Apache-2.0.** By contributing, you license your work under the Apache License 2.0.
 
@@ -44,6 +44,63 @@ Thanks for helping build a local-first, subscription-free recorder companion.
 - Kotlin official style; exhaustive `when` on sealed types.
 - Imports at the top of the file (no inline imports).
 - Prefer interfaces at module boundaries (`BleTransport`, `SecureStore`, `FileDecryptor`, `SessionCipher`).
+
+## Template contributions
+
+Ship an original summary template via pull request. Plaud author/official fields exist only in the curated dump + `docs/TEMPLATES_CREDITS.md` — the app UI never shows them. **In-app credit is only for Velum PR contributors.**
+
+### Where to add the entry
+
+Append **one JSON object per line** to:
+
+```text
+docs/templates/velum_contributed.jsonl
+```
+
+Then run:
+
+```bash
+./scripts/sync-plaud-templates.sh
+```
+
+That copies the JSONL into `core/src/commonMain/resources/velum_contributed.jsonl` and refreshes `docs/TEMPLATES_CREDITS.md`.
+
+Do **not** edit `docs/templates/plaud_templates.jsonl` for new Velum work (that file is the curated Plaud set).
+
+### Required fields
+
+```json
+{
+  "id": "standup-daily",
+  "category": "meeting",
+  "name": "Daily standup",
+  "description": "Wins, blockers, and plans from the transcript.",
+  "bodyType": "outline",
+  "body": "Summarize wins, blockers, and plans as bullet lists. Omit empty sections.",
+  "contributor": { "name": "Ada Lovelace", "github": "ada" }
+}
+```
+
+| Field | Required | Notes |
+|-------|----------|--------|
+| `id` | yes | Stable slug; stored as `velum.contrib.<id>` if it does not already start with `velum.` |
+| `category` / `categoryId` | yes | One of: `general`, `meeting`, `call`, `sales`, `interview`, `consulting`, `education`, `speech`, `medical`, `legal`, `financial`, `estate`, `construction`, `it`, `extractive` |
+| `name` | yes | Display name |
+| `description` | yes | Short picker blurb |
+| `bodyType` | yes | `outline` = instructions for the model; `prompt` = output skeleton to fill |
+| `body` | yes | Verbatim instructions or skeleton (never invent Plaud/community text) |
+| `contributor.name` | yes | Shown on template detail |
+| `contributor.github` | no | Handle without `@`; shown as `Name (@handle)` |
+| `author` / `official` / `attribution` | no | Unused for UI on contributed templates; prefer `contributor` |
+
+### Review checklist
+
+- [ ] Original wording (not copied from Plaud or other closed catalogs)
+- [ ] `bodyType` matches intent (`outline` = instructions, `prompt` = skeleton)
+- [ ] Category key is in the table above
+- [ ] `contributor.name` set; `github` optional and accurate
+- [ ] `./scripts/sync-plaud-templates.sh` run; credits doc updated
+- [ ] `./gradlew :core:jvmTest` passes (catalog validation included)
 
 ## Security & privacy
 

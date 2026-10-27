@@ -4,10 +4,13 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
- * Unified built-in catalog row for Velum originals and Plaud (official + community).
+ * Unified built-in catalog row for Velum originals, Velum PR contributions, and Plaud.
  *
- * Plaud dump lands as JSONL (one object per line) under docs/templates/plaud_templates.jsonl
- * and is mirrored into [PlaudTemplateCatalogData] for on-device seed.
+ * Plaud dump: `docs/templates/plaud_templates.jsonl` → classpath asset `plaud_templates.jsonl`.
+ * Velum PR contributions: `docs/templates/velum_contributed.jsonl` (optional `contributor`).
+ *
+ * Plaud `author` / `official` are kept for `docs/TEMPLATES_CREDITS.md` only — the app UI
+ * must not surface them. UI credit is only [contributor] (Velum PR contributions).
  */
 @Serializable
 enum class TemplateBodyType {
@@ -18,13 +21,27 @@ enum class TemplateBodyType {
     Outline,
 }
 
+/** Velum PR contributor credit (shown on template detail when present). */
+@Serializable
+data class TemplateContributor(
+    val name: String,
+    /** GitHub handle without leading `@`. */
+    val github: String? = null,
+) {
+    fun creditLine(): String {
+        val handle = github?.trim()?.removePrefix("@").orEmpty()
+        return if (handle.isEmpty()) name.trim()
+        else "${name.trim()} (@$handle)"
+    }
+}
+
 @Serializable
 data class TemplateCatalogEntry(
     val id: String,
     val categoryId: String? = null,
     val category: String,
     val name: String,
-    val author: String,
+    val author: String = "",
     val sourceTemplateId: String? = null,
     val official: Boolean = false,
     val description: String = "",
@@ -32,11 +49,17 @@ data class TemplateCatalogEntry(
     val body: String,
     /** e.g. "Velum" or "Plaud template community". */
     val source: String = SOURCE_VELUM,
-    /** Human-readable credit line shown in picker/detail. */
+    /** Docs-only credit line for Plaud / provenance — not shown in the app UI. */
     val attribution: String = "",
     val nameEn: String? = null,
     val namePtBr: String? = null,
+    @SerialName("usageCount")
     val uses: Long = 0,
+    /**
+     * Optional Velum PR contributor. When set, template detail shows this credit.
+     * Never set for copied Plaud templates.
+     */
+    val contributor: TemplateContributor? = null,
 ) {
     fun displayName(languageTag: String): String {
         val lang = languageTag.lowercase().substringBefore("-").substringBefore("_")
@@ -47,10 +70,11 @@ data class TemplateCatalogEntry(
         }
     }
 
-    fun creditLine(): String {
+    /** Docs / credits markdown only — not for picker/detail UI. */
+    fun docsCreditLine(): String {
         val base = attribution.ifBlank {
             buildString {
-                append(author)
+                append(author.ifBlank { "Unknown" })
                 if (source.isNotBlank() && source != author) {
                     append(" · ")
                     append(source)
@@ -61,10 +85,22 @@ data class TemplateCatalogEntry(
         return base
     }
 
+    /** App UI credit — only Velum PR [contributor], never Plaud author/official. */
+    fun uiContributorCredit(): String? =
+        contributor?.creditLine()?.takeIf { it.isNotBlank() }
+
+    /**
+     * Prompt-type body = output skeleton the model should fill.
+     * Outline-type body = free-form instructions for the summary.
+     */
     fun systemPrompt(): String = when (bodyType) {
-        TemplateBodyType.Prompt -> body
+        TemplateBodyType.Prompt ->
+            "You will receive a transcript of a recording. Write a Markdown summary that fills this output skeleton. " +
+                "Populate every applicable section from the transcript; omit sections with no supporting material; " +
+                "never invent facts.\n\nSkeleton:\n$body"
         TemplateBodyType.Outline ->
-            "You will receive a transcript of a recording. Write a Markdown summary using this outline as section guidance. Omit empty sections. Rely only on the transcript.\n\nOutline:\n$body"
+            "You will receive a transcript of a recording. Follow these instructions to write the Markdown summary. " +
+                "Rely only on the transcript; never invent facts.\n\nInstructions:\n$body"
     }
 
     companion object {

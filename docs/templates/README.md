@@ -1,47 +1,48 @@
 # Built-in template catalog
 
-Velum ships two built-in sets:
+Velum ships three built-in sets:
 
-1. **Velum originals** — `docs/velum_templates.json` / `BuiltinTemplateCatalog` (`velum.*`).
-2. **Plaud official + community** — JSONL below, mirrored into `PlaudTemplateCatalogData` for on-device seed.
+1. **Velum originals** — `BuiltinTemplateCatalog` (`velum.*`).
+2. **Velum PR contributions** — `docs/templates/velum_contributed.jsonl` (optional `contributor` credit in the app).
+3. **Plaud official + community** — curated JSONL below. Author / official stay in the file and `docs/TEMPLATES_CREDITS.md`; the **app UI does not show Plaud author or official badges**.
 
-## Plaud JSONL schema (one object per line)
+Assets are classpath resources under `core/src/commonMain/resources/` (lazy-loaded — not embedded as a Kotlin string).
 
-```json
-{
-  "id": "plaud.standup-daily",
-  "categoryId": "meeting",
-  "category": "meeting",
-  "name": "Daily standup",
-  "author": "Jane Doe",
-  "sourceTemplateId": "tpl_abc123",
-  "official": false,
-  "description": "Wins, blockers, plans",
-  "bodyType": "prompt",
-  "body": "Write a standup summary in Markdown…",
-  "source": "Plaud template community",
-  "attribution": "By Jane Doe · Plaud template community · id tpl_abc123"
-}
-```
-
-| field | notes |
-|---|---|
-| `id` | Stable Velum id (`plaud.*` preferred) |
-| `categoryId` / `category` | Plaud category key when known |
-| `author` | Credit shown in picker + detail |
-| `sourceTemplateId` | Upstream Plaud id |
-| `official` | Plaud first-party vs community |
-| `bodyType` | `prompt` or `outline` |
-| `body` | LLM instruction or outline |
-| `source` | Always `"Plaud template community"` for community; official may use the same + `official: true` |
-| `attribution` | Full credit line for UI |
-
-Drop collected lines into `plaud_templates.jsonl`, then run:
+## Sync
 
 ```bash
 ./scripts/sync-plaud-templates.sh
 ```
 
-That regenerates `PlaudTemplateCatalogData.JSONL` and `docs/TEMPLATES_CREDITS.md`.
+Copies both JSONL files into resources and regenerates `docs/TEMPLATES_CREDITS.md`.
+
+## Plaud JSONL schema (one object per line)
+
+```json
+{
+  "id": "construction-project-hand-off-de12acbb",
+  "categoryId": "cat_construction",
+  "category": "Construction",
+  "name": "Project Hand Off",
+  "author": "Plaud",
+  "official": true,
+  "usageCount": 12,
+  "description": "Create bulleted hand-off lists.",
+  "bodyType": "outline",
+  "body": "…",
+  "source": "Plaud template community",
+  "attribution": "by Plaud via Plaud template community"
+}
+```
+
+| field | notes |
+|---|---|
+| `author` / `official` / `attribution` | Docs / credits only — **not shown in the app** |
+| `bodyType` | `prompt` = output skeleton to fill; `outline` = instructions |
+| `usageCount` | Popularity sort in Discover |
+
+## Velum contributed schema
+
+See `CONTRIBUTING.md` → Template contributions. `contributor` is the only in-app credit.
 
 User-local JSON import remains available in the Templates screen (`TemplateJsonImporter`) for personal exports.

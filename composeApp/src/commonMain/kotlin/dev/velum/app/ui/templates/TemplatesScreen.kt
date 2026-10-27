@@ -7,6 +7,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -16,10 +17,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
@@ -33,7 +36,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -87,17 +89,13 @@ fun TemplatesScreen(
     var searchQuery by remember { mutableStateOf("") }
     var showSearch by remember { mutableStateOf(false) }
     var filtered by remember { mutableStateOf<List<Template>>(emptyList()) }
+    var selectedCategory by remember { mutableStateOf<String?>(null) }
     var draftName by remember { mutableStateOf("") }
     var draftPrompt by remember { mutableStateOf("") }
     var draftDesc by remember { mutableStateOf("") }
     var importStatus by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val languageTag = strings.localeTag
-    val categories = BuiltinTemplateCatalog.CategoryOrder.filter { key ->
-        filtered.any { it.category == key }
-    } + filtered.map { it.category }
-        .filter { it !in BuiltinTemplateCatalog.CategoryOrder }
-        .distinct()
     val importJson = rememberJsonFileImporter { jsonText ->
         scope.launch {
             runCatching {
@@ -107,14 +105,7 @@ fun TemplatesScreen(
                         id = TemplateJsonImporter.stableId(spec, index),
                         name = spec.name,
                         category = (spec.categoryId ?: spec.category).lowercase(),
-                        description = buildString {
-                            append(spec.description)
-                            val credit = spec.creditLine()
-                            if (credit.isNotBlank()) {
-                                if (isNotEmpty()) append(" · ")
-                                append(credit)
-                            }
-                        },
+                        description = spec.description,
                         author = spec.author,
                         systemPrompt = spec.resolvedPrompt(),
                         builtin = false,
@@ -140,6 +131,30 @@ fun TemplatesScreen(
         }
         filtered = RecordingSearch.templates(templates, searchQuery, ftsIds)
     }
+
+    val scoped = remember(filtered, tab) {
+        when (tab) {
+            0 -> filtered.filter { it.builtin == 0L }
+            else -> filtered.filter { it.builtin != 0L }
+        }
+    }
+    val categoryTabs = remember(scoped) {
+        BuiltinTemplateCatalog.CategoryOrder.filter { key -> scoped.any { it.category == key } } +
+            scoped.map { it.category }
+                .filter { it !in BuiltinTemplateCatalog.CategoryOrder && it != "mine" }
+                .distinct()
+    }
+    LaunchedEffect(categoryTabs, selectedCategory) {
+        if (selectedCategory != null && selectedCategory !in categoryTabs) {
+            selectedCategory = null
+        }
+    }
+    val shown = remember(scoped, selectedCategory) {
+        val base = if (selectedCategory == null) scoped
+        else scoped.filter { it.category == selectedCategory }
+        base.sortedByDescending { it.uses }
+    }
+    val ranking = remember(scoped) { scoped.sortedByDescending { it.uses }.take(5) }
 
     Column(Modifier.fillMaxSize().background(VelumBg)) {
         Row(
@@ -197,53 +212,59 @@ fun TemplatesScreen(
         }
         Spacer(Modifier.height(8.dp))
 
-        Column(
-            Modifier
-                .weight(1f)
-                .verticalScroll(rememberScrollState())
-                .padding(bottom = 24.dp),
-        ) {
-            Spacer(Modifier.height(12.dp))
-            DisplayTitle(strings.weeklyRanking)
-            Spacer(Modifier.height(12.dp))
+        if (tab == 1 && categoryTabs.isNotEmpty()) {
             Row(
-                Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                filtered.sortedByDescending { it.uses }.take(5).forEachIndexed { index, tpl ->
-                    RankingCard(tpl, index + 1, languageTag) { onOpenTemplate(tpl.id) }
+                CategoryChip(
+                    label = if (languageTag.lowercase().startsWith("en")) "All" else "Todos",
+                    selected = selectedCategory == null,
+                ) { selectedCategory = null }
+                categoryTabs.forEach { cat ->
+                    CategoryChip(
+                        label = BuiltinTemplateCatalog.categoryLabel(cat, languageTag),
+                        selected = selectedCategory == cat,
+                    ) { selectedCategory = cat }
                 }
             }
-            Spacer(Modifier.height(24.dp))
-            DisplayTitle(strings.categories)
-            Spacer(Modifier.height(8.dp))
-            categories.forEach { cat ->
-                val inCategory = filtered.filter { it.category == cat }
-                if (inCategory.isEmpty()) return@forEach
-                Text(
-                    BuiltinTemplateCatalog.categoryLabel(cat, languageTag),
-                    color = VelumInkSecondary,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 13.sp,
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-                )
-                inCategory.chunked(2).forEach { row ->
-                    Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        row.forEach { tpl ->
-                            TemplateGridCard(
-                                name = templateDisplayName(tpl, languageTag),
-                                description = tpl.description,
-                                author = templateCredit(tpl),
-                                modifier = Modifier.weight(1f),
-                            ) { onOpenTemplate(tpl.id) }
+        }
+
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(2),
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            if (tab == 1 && ranking.isNotEmpty() && searchQuery.isBlank() && selectedCategory == null) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Column {
+                        DisplayTitle(strings.weeklyRanking)
+                        Spacer(Modifier.height(12.dp))
+                        Row(
+                            Modifier.horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            ranking.forEachIndexed { index, tpl ->
+                                RankingCard(tpl, index + 1, languageTag) { onOpenTemplate(tpl.id) }
+                            }
                         }
-                        if (row.size == 1) Spacer(Modifier.weight(1f))
+                        Spacer(Modifier.height(16.dp))
+                        DisplayTitle(strings.categories)
                     }
                 }
-                Spacer(Modifier.height(8.dp))
+            }
+            items(shown, key = { it.id }) { tpl ->
+                TemplateGridCard(
+                    name = templateDisplayName(tpl, languageTag),
+                    description = tpl.description,
+                    uses = tpl.uses,
+                    modifier = Modifier.fillMaxWidth(),
+                ) { onOpenTemplate(tpl.id) }
             }
         }
     }
@@ -253,7 +274,7 @@ fun TemplatesScreen(
             query = searchQuery,
             onQueryChange = { searchQuery = it },
             onDismiss = { showSearch = false },
-            resultCount = filtered.size,
+            resultCount = shown.size,
         )
     }
 
@@ -375,6 +396,21 @@ fun TemplatesScreen(
 }
 
 @Composable
+private fun CategoryChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    Text(
+        label,
+        color = if (selected) Color.White else VelumInk,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 13.sp,
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(if (selected) VelumBlack else VelumSurface)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+    )
+}
+
+@Composable
 private fun Tab(label: String, selected: Boolean, onClick: () -> Unit) {
     Column(Modifier.clickable(onClick = onClick)) {
         Text(
@@ -398,17 +434,16 @@ private fun templateDisplayName(tpl: Template, languageTag: String): String {
     return catalog?.displayName(languageTag) ?: tpl.name
 }
 
-private fun templateCredit(tpl: Template): String {
-    val catalog = BuiltinTemplateCatalog.get(tpl.id)
-    return catalog?.creditLine() ?: listOf(tpl.author).filter { it.isNotBlank() }.joinToString(" · ")
-}
+/** In-app credit: Velum PR contributor only — never Plaud author/official. */
+private fun templateUiCredit(tpl: Template): String? =
+    BuiltinTemplateCatalog.get(tpl.id)?.uiContributorCredit()
 
 @Composable
 private fun RankingCard(tpl: Template, rank: Int, languageTag: String, onClick: () -> Unit) {
     Column(
         Modifier
             .width(180.dp)
-            .height(170.dp)
+            .height(150.dp)
             .clip(RoundedCornerShape(14.dp))
             .background(VelumSurface)
             .clickable(onClick = onClick)
@@ -435,7 +470,7 @@ private fun RankingCard(tpl: Template, rank: Int, languageTag: String, onClick: 
         Spacer(Modifier.height(6.dp))
         Text(tpl.description, color = VelumInkSecondary, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
         Spacer(Modifier.weight(1f))
-        Text("${tpl.uses} · ${templateCredit(tpl)}", color = VelumInkSecondary, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text("${tpl.uses}", color = VelumInkSecondary, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -443,7 +478,7 @@ private fun RankingCard(tpl: Template, rank: Int, languageTag: String, onClick: 
 private fun TemplateGridCard(
     name: String,
     description: String,
-    author: String,
+    uses: Long,
     modifier: Modifier,
     onClick: () -> Unit,
 ) {
@@ -461,7 +496,7 @@ private fun TemplateGridCard(
         Spacer(Modifier.height(4.dp))
         Text(description, color = VelumInkSecondary, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Spacer(Modifier.height(4.dp))
-        Text(author, color = VelumInkSecondary, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text("$uses", color = VelumInkSecondary, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -499,6 +534,7 @@ fun TemplateDetailScreen(
     val strings = LocalStrings.current
     val templates by container.repository.observeTemplates().collectAsState(emptyList())
     val tpl = templates.firstOrNull { it.id == templateId }
+    val contributorCredit = tpl?.let { templateUiCredit(it) }
 
     Column(Modifier.fillMaxSize().background(VelumBg).verticalScroll(rememberScrollState())) {
         Icon(
@@ -539,14 +575,16 @@ fun TemplateDetailScreen(
             fontSize = 13.sp,
             modifier = Modifier.align(Alignment.CenterHorizontally),
         )
-        Spacer(Modifier.height(6.dp))
-        Text(
-            tpl?.let { templateCredit(it) }.orEmpty(),
-            color = VelumInkSecondary,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Medium,
-            modifier = Modifier.padding(horizontal = 24.dp).align(Alignment.CenterHorizontally),
-        )
+        if (!contributorCredit.isNullOrBlank()) {
+            Spacer(Modifier.height(6.dp))
+            Text(
+                contributorCredit,
+                color = VelumInkSecondary,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.padding(horizontal = 24.dp).align(Alignment.CenterHorizontally),
+            )
+        }
         Spacer(Modifier.height(16.dp))
         Text("Descrição", fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 24.dp))
         Spacer(Modifier.height(6.dp))

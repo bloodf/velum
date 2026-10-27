@@ -53,9 +53,14 @@ data class ImportedTemplateSpec(
             ?: systemPrompt?.takeIf { it.isNotBlank() }
             ?: throw IllegalArgumentException("Template \"$name\" needs body, outline, or system_prompt")
         return when (bodyType) {
+            TemplateBodyType.Prompt ->
+                "You will receive a transcript of a recording. Write a Markdown summary that fills this output skeleton. " +
+                    "Populate every applicable section from the transcript; omit sections with no supporting material; " +
+                    "never invent facts.\n\nSkeleton:\n$raw"
             TemplateBodyType.Outline ->
-                "You will receive a transcript of a recording. Write a Markdown summary using this outline as section guidance. Omit empty sections. Rely only on the transcript.\n\nOutline:\n$raw"
-            TemplateBodyType.Prompt, null -> raw
+                "You will receive a transcript of a recording. Follow these instructions to write the Markdown summary. " +
+                    "Rely only on the transcript; never invent facts.\n\nInstructions:\n$raw"
+            null -> raw
         }
     }
 

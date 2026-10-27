@@ -26,8 +26,24 @@ class TemplateJsonImporterTest {
         val specs = TemplateJsonImporter.parse(
             """[{"name":"B","outline":"- item","category":"Notes"}]""",
         )
+        // No bodyType → raw body/outline used as the prompt.
         assertEquals("- item", specs.single().resolvedPrompt())
         assertTrue(TemplateJsonImporter.stableId(specs.single(), 0).startsWith("user-import-"))
+    }
+
+    @Test
+    fun bodyType_promptIsSkeleton_outlineIsInstructions() {
+        val prompt = TemplateJsonImporter.parse(
+            """[{"name":"P","body":"## H","bodyType":"prompt"}]""",
+        ).single().resolvedPrompt()
+        assertTrue(prompt.contains("Skeleton:"))
+        assertTrue(prompt.contains("## H"))
+
+        val outline = TemplateJsonImporter.parse(
+            """[{"name":"O","body":"List wins","bodyType":"outline"}]""",
+        ).single().resolvedPrompt()
+        assertTrue(outline.contains("Instructions:"))
+        assertTrue(outline.contains("List wins"))
     }
 
     @Test

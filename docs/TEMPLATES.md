@@ -2,7 +2,7 @@
 
 ## Shipping policy
 
-Velum ships **Velum originals** plus **all Plaud official + community templates** as built-ins, each with author credit (`docs/TEMPLATES_CREDITS.md`). Collected JSONL drops into `docs/templates/plaud_templates.jsonl` (see `docs/templates/README.md`); sync with `./scripts/sync-plaud-templates.sh`. Local JSON import remains for personal exports (`TemplateJsonImporter`).
+Velum ships **Velum originals**, optional **Velum PR contributions** (`contributor` credit in-app), and the curated **Plaud** catalog (1,500) as built-ins. Plaud author/official are documented in `docs/TEMPLATES_CREDITS.md` only — the app UI does not show them. Sync with `./scripts/sync-plaud-templates.sh` (lazy classpath assets). See `docs/templates/README.md` and `CONTRIBUTING.md`. Local JSON import remains for personal exports (`TemplateJsonImporter`).
 
 ## Plaud APK 3.30.0 note
 

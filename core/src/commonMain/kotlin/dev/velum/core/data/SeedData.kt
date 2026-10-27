@@ -10,8 +10,8 @@ object DemoFlags {
 
 object SeedData {
     private const val META_SEEDED = "demo_seed_version"
-    /** v6: Velum originals + Plaud community/official catalog (author credits). */
-    private const val SEED_VERSION = "6"
+    /** v7: curated Plaud 1500 + Velum PR contributions; no Plaud author in UI/seed blurb. */
+    private const val SEED_VERSION = "7"
 
     fun maybeSeed(db: VelumDatabase) {
         if (!DemoFlags.SEED_DEMO_DATA) return
@@ -114,15 +114,10 @@ object SeedData {
                 id = spec.id,
                 name = spec.namePtBr,
                 category = spec.categoryKey,
-                description = buildString {
-                    append(spec.description("pt-BR"))
-                    val credit = spec.creditLine()
-                    if (credit.isNotBlank()) {
-                        append(" · ")
-                        append(credit)
-                    }
-                },
-                author = spec.author,
+                // Keep description clean — Plaud author/official stay out of the seed blurb.
+                description = spec.description("pt-BR"),
+                // DB author is "Velum" for builtins unless a PR contributor is set.
+                author = spec.contributor?.name ?: "Velum",
                 systemPrompt = spec.systemPrompt,
                 uses = spec.uses,
             )

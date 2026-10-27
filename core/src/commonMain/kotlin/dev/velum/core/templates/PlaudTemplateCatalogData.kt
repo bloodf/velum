@@ -1,11 +1,11 @@
 package dev.velum.core.templates
 
 /**
- * Auto-generated from docs/templates/plaud_templates.jsonl — do not edit by hand.
- * Run: ./scripts/sync-plaud-templates.sh
- *
- * Empty until Heitor's collected Plaud template dump is committed.
+ * Legacy placeholder — the curated Plaud JSONL now ships as a classpath asset
+ * (`plaud_templates.jsonl`) and is read lazily via [PlaudTemplateAsset].
+ * Kept so older sync scripts / imports do not break; do not embed the catalog here.
  */
+@Deprecated("Use PlaudTemplateAsset.readJsonl() / PlaudTemplateCatalog.All", ReplaceWith("PlaudTemplateCatalog.All"))
 object PlaudTemplateCatalogData {
-    const val JSONL: String = """"""
+    const val JSONL: String = ""
 }

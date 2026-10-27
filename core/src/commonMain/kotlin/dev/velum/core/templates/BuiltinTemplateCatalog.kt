@@ -1,8 +1,10 @@
 package dev.velum.core.templates
 
 /**
- * Built-in templates: Velum originals + Plaud official/community (with author credit).
- * Velum source: docs/velum_templates.json. Plaud JSONL: docs/templates/plaud_templates.jsonl.
+ * Built-in templates: Velum originals + Velum PR contributions + Plaud catalog.
+ *
+ * Plaud author/official are docs-only ([PlaudTemplateCatalog.toCreditsMarkdown]).
+ * In-app credit is only [Spec.contributor] (Velum PR contributions).
  */
 object BuiltinTemplateCatalog {
     data class Spec(
@@ -21,6 +23,10 @@ object BuiltinTemplateCatalog {
         val sourceTemplateId: String? = null,
         val categoryId: String? = null,
         val bodyType: TemplateBodyType = TemplateBodyType.Prompt,
+        /** When set (Plaud / contributed), used instead of the sections-derived blurb. */
+        val catalogDescription: String = "",
+        /** Velum PR contributor — only credit shown in the app UI. */
+        val contributor: TemplateContributor? = null,
     ) {
         fun displayName(languageTag: String): String {
             val lang = languageTag.lowercase().substringBefore("-").substringBefore("_")
@@ -28,6 +34,7 @@ object BuiltinTemplateCatalog {
         }
 
         fun description(languageTag: String): String {
+            if (catalogDescription.isNotBlank()) return catalogDescription
             val sections = sectionsPtBr.joinToString("; ")
             return if (languageTag.lowercase().startsWith("en")) {
                 "Markdown summary · omit empty sections · $sections"
@@ -36,7 +43,8 @@ object BuiltinTemplateCatalog {
             }
         }
 
-        fun creditLine(): String = attribution.ifBlank {
+        /** Docs-only provenance line — not for picker/detail. */
+        fun docsCreditLine(): String = attribution.ifBlank {
             buildString {
                 append(author)
                 if (source.isNotBlank() && source != author) {
@@ -45,6 +53,10 @@ object BuiltinTemplateCatalog {
                 }
             }
         }
+
+        /** App UI credit — contributor only. */
+        fun uiContributorCredit(): String? =
+            contributor?.creditLine()?.takeIf { it.isNotBlank() }
 
         fun toCatalogEntry(): TemplateCatalogEntry = TemplateCatalogEntry(
             id = id,
@@ -58,10 +70,11 @@ object BuiltinTemplateCatalog {
             bodyType = bodyType,
             body = systemPrompt,
             source = source,
-            attribution = creditLine(),
+            attribution = docsCreditLine(),
             nameEn = nameEn,
             namePtBr = namePtBr,
             uses = uses,
+            contributor = contributor,
         )
     }
 
@@ -212,9 +225,11 @@ object BuiltinTemplateCatalog {
 
     fun velumEntries(): List<TemplateCatalogEntry> = VelumSpecs.map { it.toCatalogEntry() }
 
-    private fun fromPlaud(entry: TemplateCatalogEntry): Spec = Spec(
+    private fun fromCatalogEntry(entry: TemplateCatalogEntry): Spec = Spec(
         id = entry.id,
-        categoryKey = entry.category.ifBlank { entry.categoryId.orEmpty().ifBlank { "general" } },
+        categoryKey = entry.category.ifBlank {
+            PlaudTemplateCatalog.mapCategoryKey(entry.categoryId, entry.category)
+        }.ifBlank { "general" },
         namePtBr = entry.namePtBr ?: entry.name,
         nameEn = entry.nameEn ?: entry.name,
         sectionsPtBr = emptyList(),
@@ -222,16 +237,20 @@ object BuiltinTemplateCatalog {
         uses = entry.uses,
         author = entry.author,
         source = entry.source,
-        attribution = entry.creditLine(),
+        attribution = entry.docsCreditLine(),
         official = entry.official,
         sourceTemplateId = entry.sourceTemplateId,
         categoryId = entry.categoryId,
         bodyType = entry.bodyType,
+        catalogDescription = entry.description,
+        contributor = entry.contributor,
     )
 
-    /** Velum originals + Plaud official/community when JSONL is present. */
+    /** Velum originals + PR contributions + Plaud catalog (lazy; asset-backed). */
     val All: List<Spec> by lazy {
-        VelumSpecs + PlaudTemplateCatalog.All.map { fromPlaud(it) }
+        VelumSpecs +
+            VelumContributedCatalog.All.map { fromCatalogEntry(it) } +
+            PlaudTemplateCatalog.All.map { fromCatalogEntry(it) }
     }
 
     private val byId: Map<String, Spec> by lazy { All.associateBy { it.id } }
