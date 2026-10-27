@@ -129,8 +129,9 @@ class AppContainer(
 
     init {
         appScope.launch {
-            settingsRepository.load()
-            voiceProfileStore.ensureKey()
+            runCatching { settingsRepository.load() }
+            // Keystore may be unavailable in Robolectric; never crash process start.
+            runCatching { voiceProfileStore.ensureKey() }
             autoFlowRunner.start()
         }
     }

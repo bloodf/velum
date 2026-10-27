@@ -1,10 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  cleartext is OFF by default. Loopback domains are allowed for local LLM servers
+  (Ollama / LM Studio / OpenAI-compatible). debug-overrides may ONLY contain
+  trust-anchors — nested domain-config crashes Application instantiate on device.
+-->
 <network-security-config>
     <base-config cleartextTrafficPermitted="false" />
+
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">localhost</domain>
+        <domain includeSubdomains="true">127.0.0.1</domain>
+        <!-- Android emulator host loopback -->
+        <domain includeSubdomains="true">10.0.2.2</domain>
+    </domain-config>
+
     <debug-overrides>
-        <domain-config cleartextTrafficPermitted="true">
-            <domain includeSubdomains="true">localhost</domain>
-            <domain includeSubdomains="true">127.0.0.1</domain>
-        </domain-config>
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+        </trust-anchors>
     </debug-overrides>
 </network-security-config>
