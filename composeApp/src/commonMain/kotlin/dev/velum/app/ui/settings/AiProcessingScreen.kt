@@ -204,9 +204,9 @@ fun AiProcessingScreen(
             },
         )
         Spacer(Modifier.height(20.dp))
-        SectionLabel("Local ASR size (low-end phones)")
+        SectionLabel(strings.ux.asrSizeSection)
         Text(
-            "Auto / Tiny on low RAM: Whistle (16.9 MB) for en/de/fr/es/it/nl/pl; Whisper Tiny for Portuguese and other major languages. Manual override below — see docs/WHISTLE_EVAL.md.",
+            strings.ux.asrSizeHint,
             color = VelumInkSecondary,
             fontSize = 13.sp,
             lineHeight = 18.sp,

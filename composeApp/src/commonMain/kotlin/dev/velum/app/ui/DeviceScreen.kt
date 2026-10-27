@@ -30,6 +30,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.unit.dp
+import dev.velum.app.i18n.DeviceUiCopy
+import dev.velum.app.i18n.LocalStrings
 import dev.velum.ble.BleConnectionState
 import dev.velum.ble.BleTransport
 import dev.velum.core.model.ConnectedDevice
@@ -81,25 +83,27 @@ fun DeviceScreenContent(
             )
             .padding(horizontal = 20.dp, vertical = 16.dp),
     ) {
+        val strings = LocalStrings.current
+        val locale = strings.localeTag
         Text(
             text = "Velum",
             style = MaterialTheme.typography.displayLarge,
             color = MaterialTheme.colorScheme.onBackground,
         )
         Text(
-            text = "Your recorder, your models, your notes.",
+            text = DeviceUiCopy.tagline(locale),
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(Modifier.height(20.dp))
 
-        StatusBanner(state = state, bleAvailable = bleAvailable)
+        StatusBanner(state = state, bleAvailable = bleAvailable, localeTag = locale)
         sessionUi.statusMessage?.let { msg ->
             Spacer(Modifier.height(8.dp))
             Text(
                 text = buildString {
                     append(msg)
-                    sessionUi.batteryPercent?.let { append(" · battery $it%") }
+                    sessionUi.batteryPercent?.let { append(" · $it%") }
                 },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -116,12 +120,12 @@ fun DeviceScreenContent(
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
-                        "Wi‑Fi fast transfer",
+                        DeviceUiCopy.wifiFastTitle(locale),
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurface,
                     )
                     Text(
-                        "SoftAP + WebSocket ready — large sessions skip slow BLE bulk transfer.",
+                        DeviceUiCopy.wifiFastBody(locale),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -131,12 +135,12 @@ fun DeviceScreenContent(
         if (sessionUi.sessions.isNotEmpty()) {
             Spacer(Modifier.height(8.dp))
             Text(
-                text = "Sessions on device",
+                text = DeviceUiCopy.sessionsOnDevice(locale),
                 style = MaterialTheme.typography.titleLarge,
             )
             sessionUi.sessions.take(8).forEach { entry ->
                 Text(
-                    text = "#${entry.sessionId} · ${entry.sizeBytes} bytes",
+                    text = "#${entry.sessionId} · ${entry.sizeBytes} B",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -149,24 +153,24 @@ fun DeviceScreenContent(
                 onClick = onStartScan,
                 enabled = bleAvailable && state !is BleConnectionState.Connecting,
             ) {
-                Text(if (state is BleConnectionState.Scanning) "Scanning…" else "Scan")
+                Text(if (state is BleConnectionState.Scanning) strings.ux.scanning else strings.ux.scan)
             }
             OutlinedButton(
                 onClick = onStopScan,
                 enabled = state is BleConnectionState.Scanning,
             ) {
-                Text("Stop")
+                Text(strings.ux.stop)
             }
             if (state is BleConnectionState.Connected) {
                 TextButton(onClick = onDisconnect) {
-                    Text("Disconnect")
+                    Text(strings.disconnect)
                 }
             }
         }
 
         Spacer(Modifier.height(20.dp))
         Text(
-            text = "Nearby devices",
+            text = strings.ux.nearbyDevices,
             style = MaterialTheme.typography.titleLarge,
         )
         Spacer(Modifier.height(8.dp))
@@ -176,7 +180,7 @@ fun DeviceScreenContent(
             enter = fadeIn(),
             exit = fadeOut(),
         ) {
-            EmptyDeviceHint(bleAvailable = bleAvailable)
+            EmptyDeviceHint(bleAvailable = bleAvailable, localeTag = locale)
         }
 
         LazyColumn(
@@ -191,21 +195,25 @@ fun DeviceScreenContent(
 }
 
 @Composable
-private fun StatusBanner(state: BleConnectionState, bleAvailable: Boolean) {
+private fun StatusBanner(
+    state: BleConnectionState,
+    bleAvailable: Boolean,
+    localeTag: String,
+) {
     val text = if (!bleAvailable) {
-        "BLE on this platform is stubbed. Pairing works on Android and iOS."
+        DeviceUiCopy.bleStubbed(localeTag)
     } else {
         when (state) {
-            is BleConnectionState.Idle -> "Ready to scan for a compatible recorder."
-            is BleConnectionState.Scanning -> "Scanning for compatible recorders…"
-            is BleConnectionState.Connecting -> "Connecting to ${state.deviceId}…"
+            is BleConnectionState.Idle -> DeviceUiCopy.readyToScan(localeTag)
+            is BleConnectionState.Scanning -> DeviceUiCopy.scanningRecorders(localeTag)
+            is BleConnectionState.Connecting -> DeviceUiCopy.connectingTo(localeTag, state.deviceId)
             is BleConnectionState.Connected -> {
                 val d = state.device
                 val model = DeviceCapabilityRegistry.detect(
                     productCode = d.modelCode,
                     advertisedName = d.name,
                 ).displayName
-                "Connected: ${d.name ?: d.serial ?: d.id} · $model"
+                DeviceUiCopy.connected(localeTag, "${d.name ?: d.serial ?: d.id} · $model")
             }
             is BleConnectionState.Failed -> state.message
         }
@@ -222,7 +230,7 @@ private fun StatusBanner(state: BleConnectionState, bleAvailable: Boolean) {
 }
 
 @Composable
-private fun EmptyDeviceHint(bleAvailable: Boolean) {
+private fun EmptyDeviceHint(bleAvailable: Boolean, localeTag: String) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -231,9 +239,9 @@ private fun EmptyDeviceHint(bleAvailable: Boolean) {
     ) {
         Text(
             text = if (bleAvailable) {
-                "No devices yet. Power on your recorder and tap Scan."
+                DeviceUiCopy.noDevicesYet(localeTag)
             } else {
-                "Desktop BLE comes later. Build the Android app to talk to hardware."
+                DeviceUiCopy.desktopBleLater(localeTag)
             },
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -271,7 +279,11 @@ private fun DeviceRow(device: ConnectedDevice, onConnect: () -> Unit) {
                 append("protocol $it")
             }
             if (isNotEmpty()) append(" · ")
-            append(if (caps.wifiFastTransfer) "Wi‑Fi capable" else "BLE only")
+            val locale = LocalStrings.current.localeTag
+            append(
+                if (caps.wifiFastTransfer) DeviceUiCopy.wifiCapable(locale)
+                else DeviceUiCopy.bleOnly(locale),
+            )
             device.rssi?.let {
                 append(" · ")
                 append("${it} dBm")
@@ -285,7 +297,8 @@ private fun DeviceRow(device: ConnectedDevice, onConnect: () -> Unit) {
             )
         }
         if (device.id.isNotBlank()) {
-            Button(onClick = onConnect) { Text("Connect") }
+            val strings = LocalStrings.current
+            Button(onClick = onConnect) { Text(strings.connect) }
         }
     }
 }

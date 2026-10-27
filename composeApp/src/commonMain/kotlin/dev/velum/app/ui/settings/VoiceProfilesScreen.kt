@@ -218,15 +218,16 @@ private fun ProfileEditor(
     var email by remember(profile.id) { mutableStateOf(profile.email) }
     var notes by remember(profile.id) { mutableStateOf(profile.notes) }
     Column {
-        Field("Name", name) { name = it }
-        Field("Role", role) { role = it }
-        Field("Company", company) { company = it }
-        Field("Email", email) { email = it }
-        Field("Notes", notes) { notes = it }
+        val strings = LocalStrings.current
+        Field(strings.name, name) { name = it }
+        Field(strings.ux.role, role) { role = it }
+        Field(strings.ux.company, company) { company = it }
+        Field(strings.ux.email, email) { email = it }
+        Field(strings.notes, notes) { notes = it }
         Spacer(Modifier.height(8.dp))
-        BlackButton("Save", { onSave(name, role, company, email, notes) }, modifier = Modifier.fillMaxWidth())
+        BlackButton(strings.save, { onSave(name, role, company, email, notes) }, modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(8.dp))
-        OutlineButton("Delete profile", onDelete, modifier = Modifier.fillMaxWidth())
+        OutlineButton(strings.ux.deleteProfile, onDelete, modifier = Modifier.fillMaxWidth())
     }
 }
 

@@ -43,12 +43,18 @@ declare -A LIGHT_MAP=(
 )
 
 declare -A DARK_MAP=(
+  [velum-dark-01-onboarding.png]=01-onboarding.png
   [velum-dark-02-home-recordings.png]=02-home-recordings.png
   [velum-dark-05-device-connected-wifi.png]=05-device-connected-wifi.png
+  [velum-dark-06-import-hub.png]=06-import-hub.png
   [velum-dark-07-transcript-speakers.png]=07-transcript-speakers.png
   [velum-dark-08-summary-template.png]=08-summary-template.png
+  [velum-dark-10-templates.png]=10-templates.png
+  [velum-dark-12-voice-profiles.png]=12-voice-profiles.png
   [velum-dark-13-ai-processing.png]=13-ai-processing.png
-  [velum-17b-settings-dark.png]=17-settings.png
+  [velum-dark-17-settings.png]=17-settings.png
+  [velum-dark-18-model-manager.png]=18-model-manager.png
+  [velum-17b-settings-dark.png]=17b-settings-legacy.png
   [velum-21-brand-splash-dark.png]=21-brand-splash-dark.png
 )
 
@@ -90,6 +96,11 @@ for name in "${FASTLANE_ORDER[@]}"; do
 done
 
 # B&W 3D-style framed heroes for README (charcoal bezel, soft vignette).
+if ! python3 -c 'import PIL' 2>/dev/null; then
+  echo "warn: Pillow missing — skipping framed heroes" >&2
+  echo "Packaged light=$(ls -1 "$LIGHT"/*.png 2>/dev/null | wc -l) dark=$(ls -1 "$DARK"/*.png 2>/dev/null | wc -l)"
+  exit 0
+fi
 python3 - <<'PY'
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageOps

@@ -51,14 +51,14 @@ fun ImportHubScreen(
     var status by remember { mutableStateOf<String?>(null) }
     val pickFile = rememberAudioImporter { path ->
         scope.launch {
-            status = "Importing…"
+            status = strings.ux.importing
             when (val r = pipeline.importFile(path, source = "import")) {
                 is ImportResult.Created -> {
-                    status = "Imported"
+                    status = strings.ux.imported
                     onOpenRecording(r.recordingId)
                 }
                 is ImportResult.Duplicate -> {
-                    status = "Duplicate — opened existing"
+                    status = strings.ux.importDuplicate
                     onOpenRecording(r.existingRecordingId)
                 }
                 is ImportResult.Failed -> status = r.message
@@ -75,24 +75,24 @@ fun ImportHubScreen(
         ScreenTopBar(strings.importAudio, onBack = onBack)
         Column(Modifier.padding(20.dp)) {
             Text(
-                "Any external recorder",
+                strings.ux.importHubTitle,
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 18.sp,
                 color = VelumInk,
             )
             Spacer(Modifier.height(8.dp))
             Text(
-                "mp3, m4a/aac, wav, ogg/opus, flac, amr, 3gp, webm, mp4 audio — normalized to PCM for the same local pipeline as device sync.",
+                strings.ux.importHubBody,
                 color = VelumInkSecondary,
                 fontSize = 14.sp,
                 lineHeight = 20.sp,
             )
             Spacer(Modifier.height(20.dp))
-            BlackButton("Choose audio file", pickFile, modifier = Modifier.fillMaxWidth())
+            BlackButton(strings.ux.chooseAudioFile, pickFile, modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(12.dp))
             if (onPickWatchedFolder != null) {
                 OutlineButton(
-                    "Pick USB / SD / sync folder",
+                    strings.ux.pickWatchedFolder,
                     onPickWatchedFolder,
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -100,15 +100,15 @@ fun ImportHubScreen(
             }
             if (onSyncWatchedFolder != null) {
                 OutlineButton(
-                    "Re-sync watched folders",
+                    strings.ux.syncWatchedFolders,
                     {
                         scope.launch {
-                            status = "Scanning…"
+                            status = strings.ux.scanning
                             val results = onSyncWatchedFolder()
                             val created = results.count { it is ImportResult.Created }
                             val dupes = results.count { it is ImportResult.Duplicate }
                             val failed = results.count { it is ImportResult.Failed }
-                            status = "Sync done · $created new · $dupes dupes · $failed failed"
+                            status = strings.ux.syncDoneFormat.format(created, dupes, failed)
                             results.filterIsInstance<ImportResult.Created>().lastOrNull()
                                 ?.let { onOpenRecording(it.recordingId) }
                         }

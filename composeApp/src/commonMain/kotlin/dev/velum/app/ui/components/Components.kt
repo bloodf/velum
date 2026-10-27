@@ -40,9 +40,12 @@ import dev.velum.app.ui.motion.pressableScale
 import dev.velum.app.ui.theme.VelumAiCyan
 import dev.velum.app.ui.theme.VelumAiPurple
 import dev.velum.app.ui.theme.VelumBlack
+import dev.velum.app.ui.theme.VelumDisabledFill
 import dev.velum.app.ui.theme.VelumDivider
 import dev.velum.app.ui.theme.VelumInk
 import dev.velum.app.ui.theme.VelumInkSecondary
+import dev.velum.app.ui.theme.VelumOnBlack
+import dev.velum.app.ui.theme.VelumOnDisabled
 import dev.velum.app.ui.theme.VelumSurface
 
 @Composable
@@ -52,16 +55,18 @@ fun BlackButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
 ) {
+    val fill = if (enabled) VelumBlack else VelumDisabledFill
+    val label = if (enabled) VelumOnBlack else VelumOnDisabled
     Box(
         modifier = modifier
             .fillMaxWidth()
             .height(52.dp)
             .clip(RoundedCornerShape(10.dp))
-            .background(if (enabled) VelumBlack else VelumInkSecondary)
+            .background(fill)
             .pressableScale(enabled = enabled, haptic = true, role = Role.Button, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Text(text, color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+        Text(text, color = label, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
     }
 }
 

@@ -332,12 +332,35 @@ class MainScreenshotsTest {
         }
     }
 
-    // —— Dark variants of key screens ——
+    // —— Dark variants (1080×2400) ——
+
+    @Test
+    fun darkOnboarding() = capture("dark-01-onboarding", dark = true) {
+        FirstRunScreen(
+            onPhoneMic = {},
+            onImportRecorder = {},
+            onConnectPlaud = {},
+            onDownloadModels = {},
+            onUseApi = {},
+            onSkip = {},
+        )
+    }
 
     @Test
     fun darkHome() = capture("dark-02-home-recordings", dark = true) {
         FilesScreen(container, onOpenRecording = {}, onOpenSettings = {})
         BottomChrome(ShellTab.Files, fabOpen = false)
+    }
+
+    @Test
+    fun darkImportHub() = capture("dark-06-import-hub", dark = true) {
+        ImportHubScreen(
+            container = container,
+            onBack = {},
+            onOpenRecording = {},
+            onPickWatchedFolder = {},
+            onSyncWatchedFolder = { emptyList() },
+        )
     }
 
     @Test
@@ -351,8 +374,46 @@ class MainScreenshotsTest {
     }
 
     @Test
+    fun darkTemplates() = capture("dark-10-templates", dark = true) {
+        TemplatesScreen(container, onBack = {}, onOpenTemplate = {})
+    }
+
+    @Test
+    fun darkVoiceProfiles() = capture("dark-12-voice-profiles", dark = true) {
+        VoiceProfilesScreen(container, onBack = {})
+    }
+
+    @Test
     fun darkAiProcessing() = capture("dark-13-ai-processing", dark = true) {
         AiProcessingScreen(container, onBack = {}, onModelManager = {})
+    }
+
+    @Test
+    fun darkSettings() = capture("dark-17-settings", dark = true) {
+        SettingsHubScreen(
+            onBack = {},
+            onDevices = {},
+            onRecording = {},
+            onAiProcessing = {},
+            onModelManager = {},
+            onMemory = {},
+            onPersonalization = {},
+            onPreferences = {},
+            onApi = {},
+            onVoiceProfiles = {},
+            onTemplates = {},
+            onAutoFlow = {},
+            onIntegrations = {},
+            onWatchedFolders = {},
+            onAppearance = {},
+            onStoragePrivacy = {},
+            onAbout = {},
+        )
+    }
+
+    @Test
+    fun darkModelManager() = capture("dark-18-model-manager", dark = true) {
+        ModelManagerScreen(container, onBack = {})
     }
 
     @Test

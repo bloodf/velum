@@ -23,8 +23,13 @@ data class VelumColors(
     val ink: Color,
     val inkSecondary: Color,
     val divider: Color,
+    /** Filled primary control background (black in light, near-white in dark). */
     val black: Color,
+    /** Label/icon on [black] — must stay ≥4.5:1 (WCAG AA). */
+    val onBlack: Color,
     val surfaceVariant: Color,
+    val disabledFill: Color,
+    val onDisabled: Color,
     val aiPurple: Color,
     val aiCyan: Color,
 )
@@ -37,7 +42,10 @@ val LightVelumColors = VelumColors(
     inkSecondary = Color(0xFF6C6C70),
     divider = Color(0xFFE5E5EA),
     black = Color(0xFF000000),
+    onBlack = Color(0xFFFFFFFF),
     surfaceVariant = Color(0xFFF2F2F7),
+    disabledFill = Color(0xFFC7C7CC),
+    onDisabled = Color(0xFF3A3A3C),
     aiPurple = Color(0xFF8B5CF6),
     aiCyan = Color(0xFF22D3EE),
 )
@@ -50,7 +58,10 @@ val DarkVelumColors = VelumColors(
     inkSecondary = Color(0xFFAEAEB2),
     divider = Color(0xFF38383A),
     black = Color(0xFFF5F5F7),
+    onBlack = Color(0xFF121212),
     surfaceVariant = Color(0xFF2C2C2E),
+    disabledFill = Color(0xFF3A3A3C),
+    onDisabled = Color(0xFFE5E5EA),
     aiPurple = Color(0xFFA78BFA),
     aiCyan = Color(0xFF67E8F9),
 )
@@ -69,6 +80,9 @@ val VelumInk: Color get() = VelumTokenBridge.current.ink
 val VelumInkSecondary: Color get() = VelumTokenBridge.current.inkSecondary
 val VelumDivider: Color get() = VelumTokenBridge.current.divider
 val VelumBlack: Color get() = VelumTokenBridge.current.black
+val VelumOnBlack: Color get() = VelumTokenBridge.current.onBlack
+val VelumDisabledFill: Color get() = VelumTokenBridge.current.disabledFill
+val VelumOnDisabled: Color get() = VelumTokenBridge.current.onDisabled
 val VelumAiPurple: Color get() = VelumTokenBridge.current.aiPurple
 val VelumAiCyan: Color get() = VelumTokenBridge.current.aiCyan
 
@@ -78,9 +92,13 @@ fun velumColors(): VelumColors = LocalVelumColors.current
 
 private val lightScheme = lightColorScheme(
     primary = LightVelumColors.black,
-    onPrimary = Color.White,
+    onPrimary = LightVelumColors.onBlack,
+    primaryContainer = LightVelumColors.surfaceVariant,
+    onPrimaryContainer = LightVelumColors.ink,
     secondary = LightVelumColors.inkSecondary,
-    onSecondary = Color.White,
+    onSecondary = LightVelumColors.onBlack,
+    secondaryContainer = LightVelumColors.surfaceVariant,
+    onSecondaryContainer = LightVelumColors.ink,
     background = LightVelumColors.bg,
     onBackground = LightVelumColors.ink,
     surface = LightVelumColors.surface,
@@ -89,13 +107,18 @@ private val lightScheme = lightColorScheme(
     outline = LightVelumColors.divider,
     surfaceVariant = LightVelumColors.surfaceVariant,
     error = Color(0xFFFF3B30),
+    onError = Color.White,
 )
 
 private val darkScheme = darkColorScheme(
     primary = DarkVelumColors.black,
-    onPrimary = Color(0xFF121212),
+    onPrimary = DarkVelumColors.onBlack,
+    primaryContainer = DarkVelumColors.surfaceVariant,
+    onPrimaryContainer = DarkVelumColors.ink,
     secondary = DarkVelumColors.inkSecondary,
-    onSecondary = Color(0xFF121212),
+    onSecondary = DarkVelumColors.onBlack,
+    secondaryContainer = DarkVelumColors.surfaceVariant,
+    onSecondaryContainer = DarkVelumColors.ink,
     background = DarkVelumColors.bg,
     onBackground = DarkVelumColors.ink,
     surface = DarkVelumColors.surface,
@@ -104,6 +127,7 @@ private val darkScheme = darkColorScheme(
     outline = DarkVelumColors.divider,
     surfaceVariant = DarkVelumColors.surfaceVariant,
     error = Color(0xFFFF453A),
+    onError = Color(0xFF121212),
 )
 
 private val type = Typography(

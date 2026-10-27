@@ -12,22 +12,27 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.velum.ai.local.DefaultLocalCatalog
+import dev.velum.ai.local.detectDeviceComputeClass
 import dev.velum.app.i18n.LocalStrings
+import dev.velum.app.i18n.ModelCatalogUi
 import dev.velum.app.ui.brand.VelumHero
 import dev.velum.app.ui.components.BlackButton
 import dev.velum.app.ui.components.OutlineButton
 import dev.velum.app.ui.theme.VelumBg
 import dev.velum.app.ui.theme.VelumInk
 import dev.velum.app.ui.theme.VelumInkSecondary
+import dev.velum.app.ui.theme.VelumSurface
 
 /**
  * Phone-first onboarding: Velum works with no Plaud at all.
- * Paths: phone mic · import from any recorder · connect Plaud · (optional) model download / API.
+ * Paths: phone mic · import from any recorder · connect Plaud · recommended models / API.
  */
 @Composable
 fun FirstRunScreen(
@@ -35,11 +40,27 @@ fun FirstRunScreen(
     onImportRecorder: () -> Unit,
     onConnectPlaud: () -> Unit,
     onDownloadModels: () -> Unit,
+    onDownloadRecommended: () -> Unit = onDownloadModels,
     onUseApi: () -> Unit,
     onSkip: () -> Unit,
+    languageHint: String? = null,
 ) {
     val strings = LocalStrings.current
     val fr = strings.firstRun
+    val deviceClass = remember { detectDeviceComputeClass() }
+    val lang = languageHint ?: strings.localeTag
+    val recommendedIds = remember(lang, deviceClass) {
+        ModelCatalogUi.recommendedModelIds(lang, deviceClass)
+    }
+    val asrName = remember(lang, deviceClass) {
+        ModelCatalogUi.recommendedAsrDisplayName(lang, deviceClass)
+    }
+    val asrCopy = remember(lang, asrName) {
+        val id = recommendedIds.firstOrNull()
+            ?: return@remember ModelCatalogUi.copyFor(strings.localeTag, "parakeet-tdt-0.6b-v3-int8")
+        ModelCatalogUi.copyFor(strings.localeTag, id)
+    }
+
     Column(
         Modifier
             .fillMaxSize()
@@ -73,11 +94,30 @@ fun FirstRunScreen(
             Text(fr.modelsHeading, fontWeight = FontWeight.SemiBold, fontSize = 16.sp, color = VelumInk)
             Spacer(Modifier.height(8.dp))
             Text(fr.localVsApi, color = VelumInkSecondary, fontSize = 14.sp, lineHeight = 20.sp)
+            Spacer(Modifier.height(14.dp))
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(VelumSurface)
+                    .padding(16.dp),
+            ) {
+                Text(fr.recommendedModelLabel, color = VelumInkSecondary, fontSize = 12.sp)
+                Spacer(Modifier.height(4.dp))
+                Text(asrName, fontWeight = FontWeight.SemiBold, fontSize = 16.sp, color = VelumInk)
+                Spacer(Modifier.height(6.dp))
+                Text(asrCopy.blurb, color = VelumInk, fontSize = 14.sp, lineHeight = 20.sp)
+                Spacer(Modifier.height(8.dp))
+                Text(fr.recommendedPackHint, color = VelumInkSecondary, fontSize = 13.sp, lineHeight = 18.sp)
+                Spacer(Modifier.height(6.dp))
+                recommendedIds.drop(1).forEach { id ->
+                    val name = DefaultLocalCatalog.firstOrNull { it.id == id }?.displayName ?: id
+                    Text("• $name", color = VelumInkSecondary, fontSize = 13.sp)
+                }
+            }
+            Spacer(Modifier.height(16.dp))
+            BlackButton(fr.downloadRecommended, onDownloadRecommended, modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(10.dp))
-            ModelLine(fr.modelAsr)
-            ModelLine(fr.modelDiarization)
-            ModelLine(fr.modelSummary)
-            Spacer(Modifier.height(20.dp))
             OutlineButton(fr.download, onDownloadModels, modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(10.dp))
             OutlineButton(fr.useApi, onUseApi, modifier = Modifier.fillMaxWidth())
@@ -85,14 +125,4 @@ fun FirstRunScreen(
             OutlineButton(fr.skip, onSkip, modifier = Modifier.fillMaxWidth())
         }
     }
-}
-
-@Composable
-private fun ModelLine(text: String) {
-    Text(
-        "• $text",
-        color = VelumInk,
-        fontSize = 15.sp,
-        modifier = Modifier.padding(vertical = 4.dp),
-    )
 }

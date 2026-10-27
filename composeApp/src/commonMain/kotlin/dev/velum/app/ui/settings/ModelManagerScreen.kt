@@ -19,10 +19,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.velum.ai.local.LocalModelKind
@@ -30,6 +30,7 @@ import dev.velum.ai.local.LocalModelState
 import dev.velum.ai.local.LocalModelStatus
 import dev.velum.app.di.AppContainer
 import dev.velum.app.i18n.LocalStrings
+import dev.velum.app.i18n.ModelCatalogUi
 import dev.velum.app.i18n.Strings
 import dev.velum.app.ui.components.BlackButton
 import dev.velum.app.ui.components.OutlineButton
@@ -56,6 +57,7 @@ fun ModelManagerScreen(
             strings.modelManagerHint,
             color = VelumInkSecondary,
             fontSize = 14.sp,
+            lineHeight = 20.sp,
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
         )
         LazyColumn(
@@ -87,6 +89,7 @@ private fun ModelCard(
     onDelete: () -> Unit,
 ) {
     val strings = LocalStrings.current
+    val copy = ModelCatalogUi.copyFor(strings.localeTag, state.spec.id)
     val statusLabel = when (state.status) {
         LocalModelStatus.Ready -> strings.modelReady
         LocalModelStatus.Downloading -> strings.modelDownloading
@@ -101,7 +104,14 @@ private fun ModelCard(
             .background(VelumSurface)
             .padding(16.dp),
     ) {
-        Text(state.spec.displayName, fontWeight = FontWeight.SemiBold, fontSize = 16.sp, color = VelumInk)
+        Text(
+            state.spec.displayName,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 16.sp,
+            color = VelumInk,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
         Spacer(Modifier.height(4.dp))
         Text(
             kindLabel(state.spec.kind, strings),
@@ -109,14 +119,16 @@ private fun ModelCard(
             fontSize = 12.sp,
         )
         Spacer(Modifier.height(6.dp))
-        Text(state.spec.notes, color = VelumInk, fontSize = 13.sp, lineHeight = 18.sp)
+        Text(copy.blurb, color = VelumInk, fontSize = 13.sp, lineHeight = 18.sp)
         Spacer(Modifier.height(6.dp))
         Text(
-            "${strings.approxSize}: ${formatBytes(state.spec.approxBytes)} · ${state.spec.license}",
+            "${strings.approxSize}: ${formatBytes(state.spec.approxBytes)}",
             color = VelumInkSecondary,
             fontSize = 12.sp,
         )
-        Text(state.spec.languages, color = VelumInkSecondary, fontSize = 12.sp)
+        if (copy.languages.isNotBlank()) {
+            Text(copy.languages, color = VelumInkSecondary, fontSize = 12.sp)
+        }
         Spacer(Modifier.height(8.dp))
         Text(statusLabel, fontWeight = FontWeight.Medium, fontSize = 13.sp, color = VelumInk)
         state.error?.let { err ->
@@ -140,7 +152,6 @@ private fun ModelCard(
                     Spacer(Modifier.weight(1f))
                 }
                 LocalModelStatus.BlockedOnUrl -> {
-                    // No fake download — URL must be supplied in the catalog.
                     Spacer(Modifier.weight(1f))
                 }
                 LocalModelStatus.NotDownloaded, LocalModelStatus.Failed -> {
@@ -155,8 +166,8 @@ private fun ModelCard(
 private fun kindLabel(kind: LocalModelKind, strings: Strings): String = when (kind) {
     LocalModelKind.Asr -> strings.ux.modelKindAsr
     LocalModelKind.Diarization -> strings.ux.modelKindDiarization
-    LocalModelKind.Embedding -> "Embedding"
-    LocalModelKind.Llm -> "LLM"
+    LocalModelKind.Embedding -> strings.ux.modelKindEmbedding
+    LocalModelKind.Llm -> strings.ux.modelKindLlm
 }
 
 private fun formatBytes(bytes: Long): String {

@@ -31,6 +31,7 @@ import dev.velum.ai.pipeline.AutoFlowUiAction
 import dev.velum.app.di.AppContainer
 import dev.velum.app.i18n.En
 import dev.velum.app.i18n.LocalStrings
+import dev.velum.app.i18n.ModelCatalogUi
 import dev.velum.app.i18n.PtBr
 import dev.velum.app.i18n.Strings
 import dev.velum.app.ui.ask.AskAcrossScreen
@@ -84,6 +85,7 @@ import dev.velum.app.ui.templates.TemplateDetailScreen
 import dev.velum.app.ui.templates.TemplatesScreen
 import dev.velum.app.ui.theme.VelumTheme
 import dev.velum.core.model.ComputeMode
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
 @Composable
@@ -562,6 +564,21 @@ private fun VelumRoot(container: AppContainer) {
                 },
                 onDownloadModels = {
                     scope.launch {
+                        container.repository.markFirstRunDone()
+                        showFirstRun = false
+                        navController.navigate(Routes.MODEL_MANAGER)
+                    }
+                },
+                onDownloadRecommended = {
+                    scope.launch {
+                        val ids = ModelCatalogUi.recommendedModelIds(
+                            languageHint = strings.localeTag,
+                        )
+                        ids.forEach { id ->
+                            runCatching {
+                                container.localModelManager.download(id).collect()
+                            }
+                        }
                         container.repository.markFirstRunDone()
                         showFirstRun = false
                         navController.navigate(Routes.MODEL_MANAGER)
