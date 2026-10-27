@@ -14,6 +14,7 @@ import dev.velum.ai.engine.LlmRequest
 import dev.velum.ai.engine.requiredLocalModelId
 import dev.velum.ai.local.ModelNotReadyException
 import dev.velum.ai.local.ModelStoreDir
+import dev.velum.ai.local.defaultModelStoreRoot
 import dev.velum.core.data.VelumRepository
 import dev.velum.core.model.ComputeMode
 import dev.velum.core.settings.SettingsRepository
@@ -48,37 +49,39 @@ class RecordingProcessor(
                 ?: throw IllegalArgumentException("Recording not found: $recordingId")
             val cfg = settings.settings.value
 
-            val audioBytes: ByteArray
             val filename: String
             val sampleRate: Int
             val localPath = recording.local_path
+            val spillRoot = ModelStoreDir(defaultModelStoreRoot().absolutePath)
+                .resolve("tmp")
+                .resolve("pcm-$recordingId")
+            var pcmBuffer: PcmAudioBuffer = PcmAudioBuffer.Memory(ByteArray(0))
+            try {
             if (!localPath.isNullOrBlank()) {
                 emit(JobProgress.Running(0.1f, "Decoding audio"))
                 awaitThermalGate { emit(it) }
                 val raw = readFileBytes(localPath)
-                ensureAudioByteBudget(raw.size.toLong(), "file read")
+                // Compressed sources may be large on disk; budget applies to decoded PCM heap only.
                 filename = localPath.substringAfterLast('/')
+                val decodedPcm: ByteArray
                 if (filename.endsWith(".ogg", ignoreCase = true) ||
                     filename.endsWith(".opus", ignoreCase = true) ||
                     looksLikeOgg(raw)
                 ) {
                     val pcm = createOpusDecoder().decodeToPcm(raw)
-                    ensureAudioByteBudget(pcm.samples.size.toLong() * 2L, "opus decode")
-                    audioBytes = pcm.toByteArray()
+                    decodedPcm = pcm.toByteArray()
                     sampleRate = pcm.sampleRateHz
                 } else if (filename.endsWith(".wav", ignoreCase = true) || looksLikeWav(raw)) {
                     val wav = stripWavToPcm(raw)
-                    ensureAudioByteBudget(wav.pcm.size.toLong(), "wav decode")
-                    audioBytes = wav.pcm
+                    decodedPcm = wav.pcm
                     sampleRate = wav.sampleRateHz
                 } else {
-                    ensureAudioByteBudget(raw.size.toLong(), "raw audio")
-                    audioBytes = raw
+                    decodedPcm = raw
                     sampleRate = 16_000
                 }
+                pcmBuffer = PcmAudioBuffer.fromPcmBytes(decodedPcm, spillRoot)
             } else {
                 // Demo / seed rows have no audio file — keep existing transcript path for summary-only.
-                audioBytes = ByteArray(0)
                 filename = "missing.ogg"
                 sampleRate = 16_000
             }
@@ -90,7 +93,7 @@ class RecordingProcessor(
 
             var transcriptMarkdown = recording.transcript.orEmpty()
             if (retranscribe) {
-                if (audioBytes.isEmpty()) {
+                if (pcmBuffer.sizeBytes <= 0L) {
                     if (transcriptMarkdown.isBlank()) {
                         throw IllegalStateException(
                             "Recording has no local audio path and no existing transcript.",
@@ -110,7 +113,7 @@ class RecordingProcessor(
                         asr = asr,
                         asrModel = asrModel,
                         filename = filename,
-                        audioBytes = audioBytes,
+                        pcm = pcmBuffer,
                         sampleRate = sampleRate,
                         languageHint = cfg.audioLanguage,
                         recordingId = recordingId,
@@ -128,10 +131,18 @@ class RecordingProcessor(
                         ComputeMode.Api -> ""
                     }
                     val diarization = try {
+                        // Prefer in-memory buffer; for spilled PCM diarize the first 30 min window
+                        // (full-buffer diarizers cannot take multi-hour arrays without OOM).
+                        val diarBytes = pcmBuffer.asFullArrayOrNull()
+                            ?: pcmBuffer.slice(
+                                0,
+                                WindowedAsr.pcmWindowBytes(sampleRate, 30 * 60)
+                                    .coerceAtMost(pcmBuffer.sizeBytes.toInt()),
+                            )
                         diar.diarize(
                             AudioInput(
                                 filename = filename,
-                                bytes = audioBytes,
+                                bytes = diarBytes,
                                 sampleRateHz = sampleRate,
                                 languageHint = cfg.audioLanguage,
                                 recordingId = recordingId,
@@ -222,6 +233,10 @@ class RecordingProcessor(
                 repository.clearLocalAudioPath(recordingId)
             }
             emit(JobProgress.Succeeded("Processed $recordingId"))
+            } finally {
+                pcmBuffer.close()
+                runCatching { spillRoot.deleteRecursively() }
+            }
         } catch (t: Throwable) {
             if (t is CancellationException ||
                 t is kotlin.coroutines.cancellation.CancellationException
@@ -230,15 +245,6 @@ class RecordingProcessor(
             }
             repository.updateStatus(recordingId, "failed")
             emit(JobProgress.Failed(t.message ?: t.toString()))
-        }
-    }
-
-
-    private fun ensureAudioByteBudget(byteCount: Long, stage: String) {
-        if (byteCount > MAX_AUDIO_BYTES) {
-            throw IllegalStateException(
-                "Audio too large at $stage ($byteCount bytes); max is $MAX_AUDIO_BYTES",
-            )
         }
     }
 
@@ -304,18 +310,20 @@ class RecordingProcessor(
         asr: Transcriber,
         asrModel: String,
         filename: String,
-        audioBytes: ByteArray,
+        pcm: PcmAudioBuffer,
         sampleRate: Int,
         languageHint: String?,
         recordingId: String,
         initialPrompt: String?,
     ): TranscriptionResult {
-        val windows = WindowedAsr.windows(audioBytes.size, sampleRate)
+        val total = pcm.sizeBytes.toInt().coerceAtLeast(0)
+        val windows = WindowedAsr.windows(total, sampleRate)
         if (windows.size <= 1) {
+            val bytes = pcm.asFullArrayOrNull() ?: pcm.slice(0, total)
             return asr.transcribe(
                 AudioInput(
                     filename = filename,
-                    bytes = audioBytes,
+                    bytes = bytes,
                     sampleRateHz = sampleRate,
                     languageHint = languageHint,
                     recordingId = recordingId,
@@ -328,7 +336,7 @@ class RecordingProcessor(
         val starts = ArrayList<Long>(windows.size)
         for (w in windows) {
             thermal.awaitCool { }
-            val slice = audioBytes.copyOfRange(w.startByte, w.endByte)
+            val slice = pcm.slice(w.startByte, w.endByte)
             parts += asr.transcribe(
                 AudioInput(
                     filename = filename,
@@ -418,8 +426,11 @@ class RecordingProcessor(
     }
 
     companion object {
-        /** Hard cap to fail before OOM on huge PCM buffers (~200 MiB). */
-        const val MAX_AUDIO_BYTES: Long = 200_000_000L
+        /**
+         * Legacy name kept for callers/tests: in-memory PCM budget before spill-to-disk.
+         * Longer recordings spill to a temp file and are windowed — they no longer hard-fail.
+         */
+        const val MAX_AUDIO_BYTES: Long = PcmAudioBuffer.IN_MEMORY_BUDGET_BYTES
 
         /** Rough ~4k tokens; map-reduce when longer. */
         const val MAP_REDUCE_CHAR_THRESHOLD = 12_000

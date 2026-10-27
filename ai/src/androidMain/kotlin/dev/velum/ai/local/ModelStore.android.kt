@@ -32,6 +32,19 @@ actual class ModelStoreDir actual constructor(absolutePath: String) {
 
     actual fun readBytes(): ByteArray = file.readBytes()
 
+    actual fun readRange(offset: Long, length: Int): ByteArray {
+        require(offset >= 0 && length >= 0) { "offset=$offset length=$length" }
+        java.io.RandomAccessFile(file, "r").use { raf ->
+            require(offset + length <= raf.length()) {
+                "range $offset+$length exceeds file ${raf.length()}"
+            }
+            raf.seek(offset)
+            val out = ByteArray(length)
+            raf.readFully(out)
+            return out
+        }
+    }
+
     actual fun deleteRecursively() {
         file.deleteRecursively()
     }

@@ -73,6 +73,14 @@ actual class ModelStoreDir actual constructor(absolutePath: String) {
         return out
     }
 
+    actual fun readRange(offset: Long, length: Int): ByteArray {
+        require(offset >= 0 && length >= 0) { "offset=$offset length=$length" }
+        // iOS path is not the 6h Android processing target; slice from full read.
+        val all = readBytes()
+        require(offset + length <= all.size) { "range $offset+$length exceeds ${all.size}" }
+        return all.copyOfRange(offset.toInt(), (offset + length).toInt())
+    }
+
     actual fun deleteRecursively() {
         NSFileManager.defaultManager.removeItemAtPath(absolutePath, error = null)
     }

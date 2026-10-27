@@ -13,6 +13,8 @@ expect class ModelStoreDir(absolutePath: String) {
     fun writeBytes(bytes: ByteArray)
     fun appendBytes(bytes: ByteArray)
     fun readBytes(): ByteArray
+    /** Random-access read of [length] bytes starting at [offset] (for spilled PCM windows). */
+    fun readRange(offset: Long, length: Int): ByteArray
     fun deleteRecursively()
     fun listChildren(): List<ModelStoreDir>
     fun length(): Long

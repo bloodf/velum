@@ -115,7 +115,7 @@ Phone-only / external (no Plaud required):
 
 ## In progress
 
-- [x] Chunked / windowed ASR + BLE-to-file sync (Y14/Y17; 200 MiB hard fail remains)
+- [x] Chunked / windowed ASR + BLE-to-file sync (Y14/Y17); PCM above ~48 MiB spills to temp file and is window-read (no 200 MiB hard fail)
 - [x] Mic + processing foreground services (FOREGROUND_SERVICE) — mic `microphone` + processing `dataSync`
 - [x] SoftAP + WebSocket `:8081` per-socket bind + token preamble + BLE fallback (fixed AEAD nonce kept for Plaud SoftAP parity — see `docs/protocol/WIFI_FAST_PATH.md`)
 
