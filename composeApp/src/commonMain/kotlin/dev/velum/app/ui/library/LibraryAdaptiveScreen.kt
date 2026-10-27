@@ -23,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.velum.ai.pipeline.AskAcrossRecordings
 import dev.velum.app.di.AppContainer
 import dev.velum.app.i18n.LocalStrings
 import dev.velum.app.ui.adaptive.WindowWidthSizeClass
@@ -56,6 +57,9 @@ fun LibraryAdaptiveScreen(
     railDestination: LibraryRailDestination = LibraryRailDestination.Library,
     onRailDestination: (LibraryRailDestination) -> Unit = {},
     detailInitialTab: Int = 0,
+    /** Marketing / screenshot fixture for Ask pane. */
+    askPreviewAnswer: AskAcrossRecordings.Answer? = null,
+    askInitialQuestion: String = "",
 ) {
     val strings = LocalStrings.current
     WithWindowWidthSizeClass(Modifier.fillMaxSize()) { widthClass, _ ->
@@ -66,6 +70,8 @@ fun LibraryAdaptiveScreen(
                     container = container,
                     onBack = { onRailDestination(LibraryRailDestination.Library) },
                     onOpenCitation = { id, _ -> onOpenRecordingCompact(id) },
+                    previewAnswer = askPreviewAnswer,
+                    initialQuestion = askInitialQuestion,
                 )
                 else -> FilesScreen(
                     container = container,
@@ -124,6 +130,8 @@ fun LibraryAdaptiveScreen(
                         container = container,
                         onBack = { onRailDestination(LibraryRailDestination.Library) },
                         onOpenCitation = { id, _ -> onSelectRecording(id) },
+                        previewAnswer = askPreviewAnswer,
+                        initialQuestion = askInitialQuestion,
                     )
                     selectedRecordingId != null -> RecordingDetailScreen(
                         container = container,

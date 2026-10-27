@@ -70,11 +70,13 @@ fun FilesScreen(
     var showFilter by remember { mutableStateOf(false) }
     var showSearch by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
-    var visible by remember { mutableStateOf<List<Recording>>(emptyList()) }
+    // FTS hits for non-blank queries; blank search shows [recordings] immediately
+    // (avoids an empty first frame in ImageComposeScene / Roborazzi).
+    var ftsIds by remember { mutableStateOf<List<String>?>(null) }
 
     LaunchedEffect(recordings, searchQuery) {
         val match = FtsQuery.fromUserInput(searchQuery)
-        val ftsIds = if (match != null) {
+        ftsIds = if (match != null) {
             try {
                 container.repository.searchRecordingIdsFts(match)
             } catch (_: Throwable) {
@@ -83,7 +85,11 @@ fun FilesScreen(
         } else {
             null
         }
-        visible = RecordingSearch.recordings(recordings, searchQuery, ftsIds)
+    }
+    val visible = if (searchQuery.isBlank()) {
+        recordings
+    } else {
+        RecordingSearch.recordings(recordings, searchQuery, ftsIds)
     }
 
     Column(
