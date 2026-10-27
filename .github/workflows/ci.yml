@@ -107,41 +107,5 @@ jobs:
           force-avd-creation: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
-          script: |
-            set -euo pipefail
-            APK=$(ls apk/*.apk | head -1)
-            echo "Installing $APK"
-            adb install -r "$APK"
-            adb logcat -c
-            # Cold start — Application.attach parses network_security_config before UI.
-            adb shell am force-stop dev.velum.app || true
-            START_OUT=$(adb shell am start -W -n dev.velum.app/.MainActivity 2>&1 || true)
-            echo "$START_OUT"
-            # Give the process a moment to crash if config/manifest is broken.
-            sleep 8
-            PID=$(adb shell pidof -s dev.velum.app || true)
-            echo "pid=$PID"
-            CRASH_LOG=$(adb logcat -d -b crash 2>/dev/null || true)
-            FULL_LOG=$(adb logcat -d -t 400 2>/dev/null || true)
-            if echo "$CRASH_LOG$FULL_LOG" | grep -E 'FATAL EXCEPTION|Nested domain-config|Unable to instantiate application|AndroidRuntime: FATAL'; then
-              echo "==== crash buffer ===="
-              echo "$CRASH_LOG"
-              echo "==== recent logcat ===="
-              echo "$FULL_LOG" | tail -200
-              exit 1
-            fi
-            if [[ -z "$PID" ]]; then
-              echo "App process not running after launch"
-              echo "$START_OUT"
-              echo "$FULL_LOG" | tail -200
-              exit 1
-            fi
-            # am start -W should report Status: ok when Activity came up.
-            if ! echo "$START_OUT" | grep -qiE 'Status: ok|status=0|Timeout:'; then
-              # Timeout still means the Activity started; only fail hard on Error.
-              if echo "$START_OUT" | grep -qiE 'Error:|Exception'; then
-                echo "am start failed: $START_OUT"
-                exit 1
-              fi
-            fi
-            echo "Launch smoke OK (pid=$PID)"
+          # emulator-runner wraps the script in `sh -c`; invoke bash explicitly.
+          script: bash scripts/emulator-launch-smoke.sh apk
