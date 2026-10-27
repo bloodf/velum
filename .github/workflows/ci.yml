@@ -121,18 +121,36 @@ jobs:
 
   osv-scan:
     name: OSV dependency scan
-    permissions:
-      actions: read
-      contents: read
-      security-events: write
-    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@v2.0.1
-    with:
-      # Report vulns; do not fail the whole CI matrix on advisory noise until Renovate is on.
-      fail-on-vuln: false
-      scan-args: |-
-        --skip-git
-        --recursive
-        ./
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install osv-scanner
+        run: |
+          set -euo pipefail
+          VER=2.0.1
+          curl -fsSL \
+            "https://github.com/google/osv-scanner/releases/download/v${VER}/osv-scanner_${VER}_linux_amd64.tar.gz" \
+            -o /tmp/osv.tgz
+          tar -xzf /tmp/osv.tgz -C /tmp
+          sudo install -m 0755 /tmp/osv-scanner /usr/local/bin/osv-scanner
+          osv-scanner --version
+      - name: Scan repository
+        run: |
+          set +e
+          osv-scanner --skip-git --recursive ./
+          code=$?
+          set -e
+          # 0 = clean, 1 = vulnerabilities found — warn only until Renovate is enabled.
+          if [ "$code" -eq 0 ]; then
+            echo "OSV: no known vulnerabilities"
+            exit 0
+          fi
+          if [ "$code" -eq 1 ]; then
+            echo "::warning::OSV reported vulnerabilities (non-blocking; see docs/DEPENDENCY_AUDIT.md)"
+            exit 0
+          fi
+          echo "OSV scanner failed with exit $code"
+          exit "$code"
 
   android-launch-smoke:
     name: Emulator launch smoke
