@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.pw-browsers/
+test-results/
+playwright-report/
+artifacts/
+*.tsbuildinfo
+.DS_Store
