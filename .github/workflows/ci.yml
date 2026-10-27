@@ -136,7 +136,8 @@ jobs:
       - name: Scan repository
         run: |
           set +e
-          osv-scanner --skip-git --recursive ./
+          # v2 CLI: recursive source scan (no --skip-git; that flag was removed).
+          osv-scanner scan source -r --include-git-root ./
           code=$?
           set -e
           # 0 = clean, 1 = vulnerabilities found — warn only until Renovate is enabled.
