@@ -24,6 +24,6 @@ fun main() = application {
         state = rememberWindowState(width = 1440.dp, height = 900.dp),
         icon = painterResource("icons/velum-256.png"),
     ) {
-        App(container, strings = En)
+        App(container, stringsOverride = En)
     }
 }

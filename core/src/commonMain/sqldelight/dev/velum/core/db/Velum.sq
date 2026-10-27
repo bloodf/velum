@@ -162,6 +162,21 @@ DELETE FROM template WHERE id = ?;
 deleteAllBuiltinTemplates:
 DELETE FROM template WHERE builtin = 1;
 
+deleteAllCustomTemplates:
+DELETE FROM template WHERE builtin = 0;
+
+deleteAllAutoflows:
+DELETE FROM autoflow;
+
+deleteAllMemories:
+DELETE FROM memory_item;
+
+deleteAllGlossary:
+DELETE FROM glossary_term;
+
+selectAllRecordingIds:
+SELECT id FROM recording;
+
 selectAutoflows:
 SELECT * FROM autoflow ORDER BY name ASC;
 

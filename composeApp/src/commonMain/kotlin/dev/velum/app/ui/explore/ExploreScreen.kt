@@ -50,7 +50,7 @@ fun ExploreScreen(
     onTemplates: () -> Unit,
     onAutoFlow: () -> Unit,
     onIntegrations: () -> Unit,
-    onAccount: () -> Unit,
+    onApiSettings: () -> Unit,
 ) {
     val strings = LocalStrings.current
     val settings by container.settingsRepository.settings.collectAsState()
@@ -124,7 +124,7 @@ fun ExploreScreen(
                     .height(48.dp)
                     .clip(RoundedCornerShape(24.dp))
                     .background(Color.White)
-                    .clickable(onClick = onAccount),
+                    .clickable(onClick = onApiSettings),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(

@@ -23,6 +23,12 @@ data class AppPreferences(
     val useSavedMemory: Boolean = false,
     /** Global AutoFlow notification preference mirrored from UI toggle. */
     val autoflowNotify: Boolean = true,
+    /** `system` | `light` | `dark` */
+    val themeMode: String = "system",
+    /** `system` | `en` | `pt-BR` */
+    val appLanguage: String = "system",
+    /** Default phone-mic [MicInputSource] name when starting a new capture. */
+    val defaultMicInput: String = "Mic",
 )
 
 class SettingsRepository(
@@ -71,6 +77,9 @@ class SettingsRepository(
             customInstructions = store.getString(KEY_CUSTOM_INSTRUCTIONS).orEmpty(),
             useSavedMemory = store.getString(KEY_USE_MEMORY)?.toBooleanStrictOrNull() ?: false,
             autoflowNotify = store.getString(KEY_AUTOFLOW_NOTIFY)?.toBooleanStrictOrNull() ?: true,
+            themeMode = store.getString(KEY_THEME_MODE)?.takeIf { it in THEME_MODES } ?: "system",
+            appLanguage = store.getString(KEY_APP_LANGUAGE)?.takeIf { it in APP_LANGUAGES } ?: "system",
+            defaultMicInput = store.getString(KEY_DEFAULT_MIC_INPUT) ?: "Mic",
         )
     }
 
@@ -209,6 +218,24 @@ class SettingsRepository(
         _preferences.update { it.copy(autoflowNotify = enabled) }
     }
 
+    suspend fun setThemeMode(mode: String) {
+        val value = mode.takeIf { it in THEME_MODES } ?: "system"
+        store.putString(KEY_THEME_MODE, value)
+        _preferences.update { it.copy(themeMode = value) }
+    }
+
+    suspend fun setAppLanguage(tag: String) {
+        val value = tag.takeIf { it in APP_LANGUAGES } ?: "system"
+        store.putString(KEY_APP_LANGUAGE, value)
+        _preferences.update { it.copy(appLanguage = value) }
+    }
+
+    suspend fun setDefaultMicInput(source: String) {
+        val value = source.trim().ifBlank { "Mic" }
+        store.putString(KEY_DEFAULT_MIC_INPUT, value)
+        _preferences.update { it.copy(defaultMicInput = value) }
+    }
+
     private suspend fun writeOptional(key: String, value: String?) {
         if (value.isNullOrBlank()) store.remove(key) else store.putString(key, value)
     }
@@ -241,5 +268,10 @@ class SettingsRepository(
         private const val KEY_CUSTOM_INSTRUCTIONS = "prefs.custom_instructions"
         private const val KEY_USE_MEMORY = "prefs.use_saved_memory"
         private const val KEY_AUTOFLOW_NOTIFY = "prefs.autoflow_notify"
+        private const val KEY_THEME_MODE = "prefs.theme_mode"
+        private const val KEY_APP_LANGUAGE = "prefs.app_language"
+        private const val KEY_DEFAULT_MIC_INPUT = "prefs.default_mic_input"
+        private val THEME_MODES = setOf("system", "light", "dark")
+        private val APP_LANGUAGES = setOf("system", "en", "pt-BR")
     }
 }

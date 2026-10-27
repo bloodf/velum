@@ -41,15 +41,13 @@ import dev.velum.app.ui.theme.VelumInk
 import dev.velum.app.ui.theme.VelumInkSecondary
 import dev.velum.app.ui.theme.VelumSurface
 
+/** OpenAI-compatible BYO API — no account / login / cloud membership. */
 @Composable
-fun AccountScreen(
+fun ApiSettingsScreen(
     container: AppContainer,
     onBack: () -> Unit,
-    onDevice: () -> Unit,
     onAiProcessing: () -> Unit = {},
     onModelManager: () -> Unit = {},
-    onImportKeys: () -> Unit = {},
-    onVoiceProfiles: () -> Unit = {},
 ) {
     val strings = LocalStrings.current
     val viewModel = container.settingsViewModel
@@ -66,20 +64,19 @@ fun AccountScreen(
             .background(VelumBg)
             .verticalScroll(rememberScrollState()),
     ) {
-        ScreenTopBar(strings.account, onBack = onBack)
+        ScreenTopBar(strings.aiProvider, onBack = onBack)
         Spacer(Modifier.height(8.dp))
         ChevronRow(strings.aiProcessing, onAiProcessing)
-        ChevronRow(strings.modelManager, onModelManager)
-        ChevronRow("Voice profiles", onVoiceProfiles, showDivider = false)
+        ChevronRow(strings.modelManager, onModelManager, showDivider = false)
         Spacer(Modifier.height(16.dp))
         Text(
-            strings.aiProvider,
-            fontWeight = FontWeight.SemiBold,
-            fontSize = 16.sp,
-            color = VelumInk,
+            strings.settingsApiHint,
+            color = VelumInkSecondary,
+            fontSize = 13.sp,
+            lineHeight = 18.sp,
             modifier = Modifier.padding(horizontal = 20.dp),
         )
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(12.dp))
         OutlinedTextField(
             value = baseUrl,
             onValueChange = { baseUrl = it },
@@ -97,14 +94,14 @@ fun AccountScreen(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
             label = {
                 Text(
-                    if (settings.hasApiKey) "${strings.apiKey} (saved)" else strings.apiKey,
+                    if (settings.hasApiKey) "${strings.apiKey} (${strings.enabled})" else strings.apiKey,
                 )
             },
             singleLine = true,
             visualTransformation = if (showKey) VisualTransformation.None else PasswordVisualTransformation(),
             trailingIcon = {
                 Text(
-                    if (showKey) "Hide" else "Show",
+                    if (showKey) strings.hide else strings.show,
                     modifier = Modifier.padding(end = 8.dp).clickable { showKey = !showKey },
                     color = VelumInkSecondary,
                 )
@@ -126,7 +123,7 @@ fun AccountScreen(
                 enabled = apiKey.isNotBlank(),
             )
             OutlineButton(
-                "Clear",
+                strings.clear,
                 {
                     viewModel.setApiKey("")
                     apiKey = ""
@@ -140,11 +137,11 @@ fun AccountScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(strings.refreshModels, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+            Text(strings.testConnection, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
             OutlineButton(
-                if (ui.refreshing) "…" else strings.refreshModels,
+                if (ui.refreshing) "…" else strings.testConnection,
                 { viewModel.refreshModels() },
-                Modifier.clip(RoundedCornerShape(10.dp)).fillMaxWidth(0.45f),
+                Modifier.clip(RoundedCornerShape(10.dp)).fillMaxWidth(0.5f),
             )
         }
         ui.message?.let {
@@ -174,9 +171,6 @@ fun AccountScreen(
                 model.ownedBy?.let { Text(it, color = VelumInkSecondary, fontSize = 13.sp) }
             }
         }
-        Spacer(Modifier.height(16.dp))
-        ChevronRow(strings.deviceManagement, onDevice)
-        ChevronRow(strings.importKeys.title, onImportKeys, showDivider = false)
         Spacer(Modifier.height(40.dp))
     }
 }

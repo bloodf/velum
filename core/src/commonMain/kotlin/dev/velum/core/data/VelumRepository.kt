@@ -310,6 +310,49 @@ class VelumRepository(
         if (ftsAvailable) FtsIndex.deleteRecording(driver, id)
     }
 
+    /** Local wipe: recordings, custom templates, AutoFlows, memory, glossary. Built-ins reseed. */
+    suspend fun wipeAllUserData() = withContext(Dispatchers.Default) {
+        q.selectAllRecordingIds().executeAsList().forEach { id ->
+            q.deleteSpeakersForRecording(id)
+            q.deleteRecordingHard(id)
+            if (ftsAvailable) FtsIndex.deleteRecording(driver, id)
+        }
+        q.deleteAllCustomTemplates()
+        q.deleteAllAutoflows()
+        q.deleteAllMemories()
+        q.deleteAllGlossary()
+        if (ftsAvailable) rebuildFtsIndex()
+        SeedData.maybeSeed(db)
+    }
+
+    /** Plain-text backup of local library metadata + notes (no audio blobs). */
+    suspend fun exportLibraryBackupText(): String = withContext(Dispatchers.Default) {
+        val recordings = q.selectAllRecordings().executeAsList()
+        buildString {
+            appendLine("# Velum local backup")
+            appendLine("recordings=${recordings.size}")
+            appendLine()
+            recordings.forEach { r ->
+                appendLine("## ${r.title.ifBlank { r.id }}")
+                appendLine("id: ${r.id}")
+                appendLine("source: ${r.source}")
+                appendLine("status: ${r.status}")
+                appendLine("duration_seconds: ${r.duration_seconds}")
+                if (!r.transcript.isNullOrBlank()) {
+                    appendLine()
+                    appendLine("### Transcript")
+                    appendLine(r.transcript)
+                }
+                if (!r.summary_markdown.isNullOrBlank()) {
+                    appendLine()
+                    appendLine("### Notes")
+                    appendLine(r.summary_markdown)
+                }
+                appendLine()
+            }
+        }
+    }
+
     suspend fun insertRecording(
         id: String,
         sessionId: Long?,

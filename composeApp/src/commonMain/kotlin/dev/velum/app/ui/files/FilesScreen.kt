@@ -16,12 +16,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Headphones
 import androidx.compose.material.icons.outlined.MicExternalOn
-import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material.icons.outlined.TravelExplore
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -140,20 +139,12 @@ fun FilesScreen(
                     .clickable(onClick = onOpenSettings),
                 contentAlignment = Alignment.Center,
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(32.dp)
-                        .clip(CircleShape)
-                        .background(VelumInk.copy(alpha = 0.08f)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        Icons.Outlined.Person,
-                        contentDescription = strings.settings,
-                        tint = VelumInk,
-                        modifier = Modifier.size(18.dp),
-                    )
-                }
+                Icon(
+                    Icons.Outlined.Settings,
+                    contentDescription = strings.settings,
+                    tint = VelumInk,
+                    modifier = Modifier.size(22.dp),
+                )
             }
         }
 

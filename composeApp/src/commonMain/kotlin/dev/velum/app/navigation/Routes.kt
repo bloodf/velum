@@ -8,7 +8,7 @@ object Routes {
     const val SETTINGS = "settings"
     const val PERSONALIZATION = "personalization"
     const val PREFERENCES = "preferences"
-    const val ACCOUNT = "account"
+    const val API = "api"
     const val MEMORY = "memory"
     const val TEMPLATES = "templates"
     const val TEMPLATE_DETAIL = "template/{id}"
@@ -25,4 +25,8 @@ object Routes {
     const val IMPORT_AUDIO = "import_audio"
     const val VOICE_PROFILES = "voice_profiles"
     const val ASK_ACROSS = "ask_across"
+    const val APPEARANCE = "appearance"
+    const val ABOUT = "about"
+    const val STORAGE_PRIVACY = "storage_privacy"
+    const val RECORDING_SETTINGS = "recording_settings"
 }

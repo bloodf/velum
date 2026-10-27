@@ -213,7 +213,7 @@ class MainScreenshotsTest {
             onTemplates = {},
             onAutoFlow = {},
             onIntegrations = {},
-            onAccount = {},
+            onApiSettings = {},
         )
         BottomChrome(ShellTab.Explore, fabOpen = false)
     }
@@ -231,11 +231,48 @@ class MainScreenshotsTest {
     @Test
     fun settings() = capture("17-settings") {
         SettingsHubScreen(
-            container = container,
             onBack = {},
+            onDevices = {},
+            onImportKeys = {},
+            onImportAudio = {},
+            onRecording = {},
+            onAiProcessing = {},
+            onModelManager = {},
+            onMemory = {},
             onPersonalization = {},
             onPreferences = {},
-            onAccount = {},
+            onApi = {},
+            onVoiceProfiles = {},
+            onTemplates = {},
+            onAutoFlow = {},
+            onIntegrations = {},
+            onAppearance = {},
+            onStoragePrivacy = {},
+            onAbout = {},
+        )
+    }
+
+    @Test
+    fun settingsDark() = capture("17b-settings-dark", dark = true) {
+        SettingsHubScreen(
+            onBack = {},
+            onDevices = {},
+            onImportKeys = {},
+            onImportAudio = {},
+            onRecording = {},
+            onAiProcessing = {},
+            onModelManager = {},
+            onMemory = {},
+            onPersonalization = {},
+            onPreferences = {},
+            onApi = {},
+            onVoiceProfiles = {},
+            onTemplates = {},
+            onAutoFlow = {},
+            onIntegrations = {},
+            onAppearance = {},
+            onStoragePrivacy = {},
+            onAbout = {},
         )
     }
 

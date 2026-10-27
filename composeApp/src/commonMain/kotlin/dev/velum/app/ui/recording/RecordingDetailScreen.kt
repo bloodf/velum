@@ -690,7 +690,12 @@ private fun LiveTranscriptPane(
     }
     var usingMic by remember { mutableStateOf(false) }
     var stopping by remember { mutableStateOf(false) }
-    var inputSource by remember { mutableStateOf(MicInputSource.Mic) }
+    var inputSource by remember {
+        val preferred = container.settingsRepository.preferences.value.defaultMicInput
+        mutableStateOf(
+            runCatching { MicInputSource.valueOf(preferred) }.getOrDefault(MicInputSource.Mic),
+        )
+    }
     var markerCount by remember { mutableStateOf(0) }
     var pausedUi by remember { mutableStateOf(container.micCapture.isPaused) }
     val finished = remember { mutableStateOf(false) }

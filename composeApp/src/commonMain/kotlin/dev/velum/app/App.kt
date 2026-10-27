@@ -9,9 +9,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -50,6 +52,7 @@ import dev.velum.app.platform.rememberImportFolderPicker
 import dev.velum.app.platform.rememberPermissionRequester
 import dev.velum.app.platform.shareText
 import dev.velum.app.platform.syncWatchedFolders
+import dev.velum.app.platform.systemLanguageTag
 import dev.velum.app.ui.DeviceScreen
 import dev.velum.app.ui.importing.ImportHubScreen
 import dev.velum.app.ui.motion.Motion
@@ -60,14 +63,18 @@ import dev.velum.app.ui.files.FilesScreen
 import dev.velum.app.ui.integrations.IntegrationsScreen
 import dev.velum.app.ui.onboarding.FirstRunScreen
 import dev.velum.app.ui.recording.RecordingDetailScreen
-import dev.velum.app.ui.settings.AccountScreen
+import dev.velum.app.ui.settings.AboutScreen
 import dev.velum.app.ui.settings.AiProcessingScreen
+import dev.velum.app.ui.settings.ApiSettingsScreen
+import dev.velum.app.ui.settings.AppearanceScreen
 import dev.velum.app.ui.settings.ImportDeviceKeysScreen
 import dev.velum.app.ui.settings.MemoryScreen
 import dev.velum.app.ui.settings.ModelManagerScreen
 import dev.velum.app.ui.settings.PersonalizationScreen
 import dev.velum.app.ui.settings.PreferencesScreen
+import dev.velum.app.ui.settings.RecordingSettingsScreen
 import dev.velum.app.ui.settings.SettingsHubScreen
+import dev.velum.app.ui.settings.StoragePrivacyScreen
 import dev.velum.app.ui.settings.VoiceProfilesScreen
 import dev.velum.app.ui.shell.FabOverlay
 import dev.velum.app.ui.shell.ShellTab
@@ -81,9 +88,22 @@ import kotlinx.coroutines.launch
 @Composable
 fun App(
     container: AppContainer,
-    strings: Strings = PtBr,
-    darkTheme: Boolean = false,
+    /** Optional override for screenshots / desktop demos; null = follow preferences. */
+    stringsOverride: Strings? = null,
+    darkThemeOverride: Boolean? = null,
 ) {
+    val prefs by container.settingsRepository.preferences.collectAsState()
+    val systemDark = isSystemInDarkTheme()
+    val darkTheme = darkThemeOverride ?: when (prefs.themeMode) {
+        "dark" -> true
+        "light" -> false
+        else -> systemDark
+    }
+    val strings = stringsOverride ?: when (prefs.appLanguage) {
+        "en" -> En
+        "pt-BR" -> PtBr
+        else -> if (systemLanguageTag().lowercase().startsWith("pt")) PtBr else En
+    }
     VelumTheme(darkTheme = darkTheme) {
         val haptics = rememberHaptics()
         CompositionLocalProvider(
@@ -267,7 +287,7 @@ private fun VelumRoot(container: AppContainer) {
                             onTemplates = { navController.navigate(Routes.TEMPLATES) },
                             onAutoFlow = { navController.navigate(Routes.AUTOFLOW) },
                             onIntegrations = { navController.navigate(Routes.INTEGRATIONS) },
-                            onAccount = { navController.navigate(Routes.ACCOUNT) },
+                            onApiSettings = { navController.navigate(Routes.API) },
                         )
                     }
                     composable(
@@ -287,11 +307,24 @@ private fun VelumRoot(container: AppContainer) {
                     }
                     composable(Routes.SETTINGS) {
                         SettingsHubScreen(
-                            container = container,
                             onBack = { navController.popBackStack() },
+                            onDevices = { navController.navigate(Routes.DEVICE) },
+                            onImportKeys = { navController.navigate(Routes.IMPORT_KEYS) },
+                            onImportAudio = { navController.navigate(Routes.IMPORT_AUDIO) },
+                            onRecording = { navController.navigate(Routes.RECORDING_SETTINGS) },
+                            onAiProcessing = { navController.navigate(Routes.AI_PROCESSING) },
+                            onModelManager = { navController.navigate(Routes.MODEL_MANAGER) },
+                            onMemory = { navController.navigate(Routes.MEMORY) },
                             onPersonalization = { navController.navigate(Routes.PERSONALIZATION) },
                             onPreferences = { navController.navigate(Routes.PREFERENCES) },
-                            onAccount = { navController.navigate(Routes.ACCOUNT) },
+                            onApi = { navController.navigate(Routes.API) },
+                            onVoiceProfiles = { navController.navigate(Routes.VOICE_PROFILES) },
+                            onTemplates = { navController.navigate(Routes.TEMPLATES) },
+                            onAutoFlow = { navController.navigate(Routes.AUTOFLOW) },
+                            onIntegrations = { navController.navigate(Routes.INTEGRATIONS) },
+                            onAppearance = { navController.navigate(Routes.APPEARANCE) },
+                            onStoragePrivacy = { navController.navigate(Routes.STORAGE_PRIVACY) },
+                            onAbout = { navController.navigate(Routes.ABOUT) },
                         )
                     }
                     composable(Routes.PERSONALIZATION) {
@@ -309,15 +342,33 @@ private fun VelumRoot(container: AppContainer) {
                             onCustomVocabulary = { navController.navigate(Routes.MEMORY) },
                         )
                     }
-                    composable(Routes.ACCOUNT) {
-                        AccountScreen(
+                    composable(Routes.API) {
+                        ApiSettingsScreen(
                             container = container,
                             onBack = { navController.popBackStack() },
-                            onDevice = { navController.navigate(Routes.DEVICE) },
                             onAiProcessing = { navController.navigate(Routes.AI_PROCESSING) },
                             onModelManager = { navController.navigate(Routes.MODEL_MANAGER) },
-                            onImportKeys = { navController.navigate(Routes.IMPORT_KEYS) },
-                            onVoiceProfiles = { navController.navigate(Routes.VOICE_PROFILES) },
+                        )
+                    }
+                    composable(Routes.APPEARANCE) {
+                        AppearanceScreen(
+                            container = container,
+                            onBack = { navController.popBackStack() },
+                        )
+                    }
+                    composable(Routes.ABOUT) {
+                        AboutScreen(onBack = { navController.popBackStack() })
+                    }
+                    composable(Routes.STORAGE_PRIVACY) {
+                        StoragePrivacyScreen(
+                            container = container,
+                            onBack = { navController.popBackStack() },
+                        )
+                    }
+                    composable(Routes.RECORDING_SETTINGS) {
+                        RecordingSettingsScreen(
+                            container = container,
+                            onBack = { navController.popBackStack() },
                         )
                     }
                     composable(Routes.VOICE_PROFILES) {
@@ -509,7 +560,7 @@ private fun VelumRoot(container: AppContainer) {
                         container.settingsRepository.setSummaryMode(ComputeMode.Api)
                         container.repository.markFirstRunDone()
                         showFirstRun = false
-                        navController.navigate(Routes.ACCOUNT)
+                        navController.navigate(Routes.API)
                     }
                 },
                 onSkip = {
