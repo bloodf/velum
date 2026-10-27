@@ -119,6 +119,21 @@ jobs:
           path: composeApp/build/outputs/roborazzi/*.png
           if-no-files-found: warn
 
+  osv-scan:
+    name: OSV dependency scan
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@v2.0.1
+    with:
+      # Report vulns; do not fail the whole CI matrix on advisory noise until Renovate is on.
+      fail-on-vuln: false
+      scan-args: |-
+        --skip-git
+        --recursive
+        ./
+
   android-launch-smoke:
     name: Emulator launch smoke
     needs: jvm-android

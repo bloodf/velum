@@ -1,0 +1,39 @@
+# F-Droid metadata draft (submit via fdroiddata PR).
+# Keep in sync with composeApp versionName / versionCode and fastlane/metadata.
+
+Categories:
+  - Multimedia
+  - Writing
+License: Apache-2.0
+AuthorName: Velum contributors
+WebSite: https://github.com/bloodf/velum
+SourceCode: https://github.com/bloodf/velum
+IssueTracker: https://github.com/bloodf/velum/issues
+Changelog: https://github.com/bloodf/velum/releases
+Donate: ''
+
+AutoName: Velum
+RepoType: git
+Repo: https://github.com/bloodf/velum.git
+
+Builds:
+  - versionName: 0.1.0-foundation
+    versionCode: 1
+    commit: main
+    subdir: composeApp
+    gradle:
+      - yes
+    output: build/outputs/apk/release/composeApp-release-unsigned.apk
+    # Prefer signed AAB from GitHub Release workflow once upload key is configured.
+
+MaintainerNotes: |
+  Local-first; no telemetry. Release signing uses VELUM_UPLOAD_* CI secrets
+  (not in the repo). AntiFeatures none intended. Binary deps: sherpa-onnx,
+  LiteRT-LM, kopus — see THIRD_PARTY.md.
+
+Description: |-
+  Velum is an independent open-source companion for Plaud Note Pro and phone
+  microphones. Sync over BLE, transcribe and summarize on-device or with your
+  own OpenAI-compatible API. No Velum cloud.
+
+  Not affiliated with Plaud Inc.

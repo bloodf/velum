@@ -25,6 +25,7 @@ import dev.velum.app.ui.theme.VelumSurface
 
 private const val GITHUB_REPO = "https://github.com/bloodf/velum"
 private const val GITHUB_ISSUES = "https://github.com/bloodf/velum/issues"
+private const val PRIVACY_POLICY = "https://github.com/bloodf/velum/blob/main/docs/PRIVACY.md"
 private const val APP_VERSION = "0.1.0-foundation"
 
 @Composable
@@ -64,6 +65,7 @@ fun AboutScreen(onBack: () -> Unit) {
         ChevronRow(strings.settingsUi.openSourceLicenses, {
             openUrl("$GITHUB_REPO/blob/main/THIRD_PARTY.md")
         })
+        ChevronRow(strings.settingsUi.privacyPolicy, { openUrl(PRIVACY_POLICY) })
         ChevronRow(strings.settingsUi.githubRepo, { openUrl(GITHUB_REPO) })
         ChevronRow(strings.settingsUi.reportIssue, { openUrl(GITHUB_ISSUES) })
         ChevronRow(

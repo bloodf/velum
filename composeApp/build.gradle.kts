@@ -133,6 +133,21 @@ android {
             keyAlias = "androiddebugkey"
             keyPassword = "android"
         }
+        // Upload key via CI / local secrets — never commit the keystore.
+        // VELUM_UPLOAD_STORE_FILE, VELUM_UPLOAD_STORE_PASSWORD, VELUM_UPLOAD_KEY_ALIAS,
+        // VELUM_UPLOAD_KEY_PASSWORD
+        val uploadStorePath = System.getenv("VELUM_UPLOAD_STORE_FILE")
+        if (!uploadStorePath.isNullOrBlank()) {
+            create("release") {
+                storeFile = file(uploadStorePath)
+                storePassword = System.getenv("VELUM_UPLOAD_STORE_PASSWORD")
+                    ?: error("VELUM_UPLOAD_STORE_PASSWORD required when store file is set")
+                keyAlias = System.getenv("VELUM_UPLOAD_KEY_ALIAS")
+                    ?: error("VELUM_UPLOAD_KEY_ALIAS required when store file is set")
+                keyPassword = System.getenv("VELUM_UPLOAD_KEY_PASSWORD")
+                    ?: error("VELUM_UPLOAD_KEY_PASSWORD required when store file is set")
+            }
+        }
     }
     buildTypes {
         getByName("debug") {
@@ -141,7 +156,7 @@ android {
         getByName("release") {
             isMinifyEnabled = true
             isShrinkResources = true
-            // Intentionally no signingConfig — release must not use the debug keystore.
+            signingConfigs.findByName("release")?.let { signingConfig = it }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",

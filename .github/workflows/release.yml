@@ -1,0 +1,73 @@
+name: Release
+
+# Signed release AAB on version tags when upload-key secrets are configured.
+# Secrets (repository): VELUM_UPLOAD_KEYSTORE_BASE64, VELUM_UPLOAD_STORE_PASSWORD,
+# VELUM_UPLOAD_KEY_ALIAS, VELUM_UPLOAD_KEY_PASSWORD.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  signed-aab:
+    name: Signed release AAB
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Require upload-key secrets
+        id: secrets
+        env:
+          KS: ${{ secrets.VELUM_UPLOAD_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KS" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Upload keystore secrets missing — skipping signed AAB (configure VELUM_UPLOAD_*)."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up JDK 17
+        if: steps.secrets.outputs.configured == 'true'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        if: steps.secrets.outputs.configured == 'true'
+        uses: android-actions/setup-android@v4
+        with:
+          packages: "platform-tools platforms;android-35 build-tools;35.0.0 ndk;28.2.13676358"
+
+      - name: Setup Gradle
+        if: steps.secrets.outputs.configured == 'true'
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Decode upload keystore
+        if: steps.secrets.outputs.configured == 'true'
+        env:
+          KS: ${{ secrets.VELUM_UPLOAD_KEYSTORE_BASE64 }}
+        run: |
+          echo "$KS" | base64 -d > /tmp/velum-upload.jks
+          echo "VELUM_UPLOAD_STORE_FILE=/tmp/velum-upload.jks" >> "$GITHUB_ENV"
+          echo "VELUM_UPLOAD_STORE_PASSWORD=${{ secrets.VELUM_UPLOAD_STORE_PASSWORD }}" >> "$GITHUB_ENV"
+          echo "VELUM_UPLOAD_KEY_ALIAS=${{ secrets.VELUM_UPLOAD_KEY_ALIAS }}" >> "$GITHUB_ENV"
+          echo "VELUM_UPLOAD_KEY_PASSWORD=${{ secrets.VELUM_UPLOAD_KEY_PASSWORD }}" >> "$GITHUB_ENV"
+
+      - name: Assemble signed release bundle
+        if: steps.secrets.outputs.configured == 'true'
+        run: ./gradlew :composeApp:bundleRelease --stacktrace
+
+      - name: Upload AAB
+        if: steps.secrets.outputs.configured == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: velum-release-aab
+          path: composeApp/build/outputs/bundle/release/*.aab
+          if-no-files-found: error
+
+      - name: Scrub keystore
+        if: always() && steps.secrets.outputs.configured == 'true'
+        run: rm -f /tmp/velum-upload.jks
