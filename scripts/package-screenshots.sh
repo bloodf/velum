@@ -48,6 +48,7 @@ declare -A DARK_MAP=(
   [velum-dark-07-transcript-speakers.png]=07-transcript-speakers.png
   [velum-dark-08-summary-template.png]=08-summary-template.png
   [velum-dark-13-ai-processing.png]=13-ai-processing.png
+  [velum-17b-settings-dark.png]=17-settings.png
   [velum-21-brand-splash-dark.png]=21-brand-splash-dark.png
 )
 
