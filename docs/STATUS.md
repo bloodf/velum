@@ -56,6 +56,7 @@ Phone-only / external (no Plaud required):
 - [x] LocalModelManager: real Ktor download + archive extract + disk Ready checks + **SHA-256 verify**
 - [x] ASR catalog URLs (Parakeet / Whisper turbo / Whisper Tiny / SenseVoice from k2-fsa)
 - [x] Tiny / low-end ASR: **Whistle** (Needle JNI, 16.9 MB, Apache-2.0) for en/de/fr/es/it/nl/pl on low RAM / Tiny tier; **Whisper Tiny** for pt and other important languages; SHA-verified `.cact` download; manual Auto/Tiny/Standard/Quality override → `docs/WHISTLE_EVAL.md`
+- [x] Android 15+ **16 KB page size**: `libvelum_needle` linked with `-Wl,-z,max-page-size=16384` (NDK r28+); sherpa-onnx/onnxruntime, LiteRT-LM, kopus, androidx.graphics-path 16 KB-aligned; `useLegacyPackaging=false`; CI `zipalign -c -P 16` + `llvm-readelf` PT_LOAD ≥ 0x4000 on 64-bit libs
 - [x] Voice profiles: encrypted embeddings, multi-sample centroid, auto-label + confidence, refine on confirm, CRUD/merge/export/import, management screen
 - [x] Streaming ASR catalog packs (Zipformer EN mobile / ES Kroko / multilingual) with verified SHA-256
 - [x] Diarization + embedding + LLM catalog URLs + verified SHA-256 (pyannote, 3D-Speaker preferred, WeSpeaker, TitaNet, Gemma E4B/E2B LiteRT-LM, Qwen3-4B GGUF) — see `docs/LOCAL_MODELS_RESEARCH.md` §8

@@ -25,7 +25,7 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
         with:
-          packages: "platform-tools platforms;android-35 build-tools;35.0.0"
+          packages: "platform-tools platforms;android-35 build-tools;35.0.0 ndk;28.2.13676358"
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -46,6 +46,58 @@ jobs:
           grep -E 'lib/arm64-v8a/libc\+\+_shared\.so' /tmp/apk-listing.txt
           # network_security_config must be in the APK resources
           unzip -p "$APK" resources.arsc >/dev/null
+
+      - name: Assert 16 KB page-size compatibility
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Android/Sdk}}"
+          APK=$(ls composeApp/build/outputs/apk/debug/*.apk | head -1)
+          ZIPALIGN="$SDK/build-tools/35.0.0/zipalign"
+          READELF=$(ls "$SDK"/ndk/*/toolchains/llvm/prebuilt/*/bin/llvm-readelf 2>/dev/null | head -1 || true)
+          if [ -z "${READELF}" ]; then
+            READELF=$(command -v llvm-readelf || command -v readelf)
+          fi
+          echo "zipalign=$ZIPALIGN"
+          echo "readelf=$READELF"
+          "$ZIPALIGN" -c -P 16 -v 4 "$APK"
+
+          TMP=$(mktemp -d)
+          unzip -q "$APK" "lib/*/*.so" -d "$TMP" || true
+          fail=0
+          checked=0
+          while IFS= read -r -d '' so; do
+            # Play 16 KB rule is for 64-bit ABIs. Skip 32-bit (armeabi-v7a / x86);
+            # their libc++_shared may legitimately stay 4 KB-aligned.
+            case "$so" in
+              */lib/armeabi-v7a/*|*/lib/x86/*) continue ;;
+            esac
+            checked=$((checked + 1))
+            aligns=$("$READELF" -lW "$so" | awk '/LOAD/ { print $NF }')
+            echo "=== ${so#"$TMP/"} ==="
+            echo "$aligns"
+            if [ -z "$aligns" ]; then
+              echo "FAIL: no PT_LOAD in ${so#"$TMP/"}"
+              fail=1
+              continue
+            fi
+            for a in $aligns; do
+              val=$((a))
+              if [ "$val" -lt 16384 ]; then
+                echo "FAIL: PT_LOAD Align $a < 0x4000 in ${so#"$TMP/"}"
+                fail=1
+              fi
+            done
+          done < <(find "$TMP" -name '*.so' -print0)
+          rm -rf "$TMP"
+          if [ "$checked" -eq 0 ]; then
+            echo "FAIL: no 64-bit .so files found in APK"
+            exit 1
+          fi
+          if [ "$fail" -ne 0 ]; then
+            echo "One or more 64-bit native libs are not 16 KB ELF-aligned"
+            exit 1
+          fi
+          echo "Checked $checked 64-bit libs: PT_LOAD Align >= 0x4000"
 
       - name: Record Compose UI screenshots (Roborazzi)
         run: ./gradlew :composeApp:recordRoborazziDebug --stacktrace

@@ -64,6 +64,8 @@ kotlin {
             implementation(libs.androidx.work.runtime)
             implementation("androidx.core:core-ktx:1.15.0")
             implementation("androidx.documentfile:documentfile:1.0.1")
+            // Pin 16 KB-aligned graphics-path (Compose may otherwise pull 1.0.1).
+            implementation(libs.androidx.graphics.path)
         }
         val androidUnitTest by getting {
             dependencies {
@@ -114,6 +116,10 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     packaging {
+        jniLibs {
+            // AGP 8.5.1+: uncompressed native libs so zipalign -P 16 applies (16 KB pages).
+            useLegacyPackaging = false
+        }
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }

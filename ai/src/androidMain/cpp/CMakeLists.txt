@@ -1,6 +1,7 @@
 # Rebuild libvelum_needle.so from Needle static libs (Apache-2.0).
 # Prefetch: scripts/fetch-needle-android.sh
 # Output is also checked into jniLibs/ for CI without NDK.
+# Android 15+ / Play: link with 16 KB ELF max-page-size (NDK r28+ default; set explicitly).
 
 cmake_minimum_required(VERSION 3.22.1)
 project(velum_needle)
@@ -17,3 +18,9 @@ target_link_libraries(velum_needle
     log m dl c++_shared
 )
 target_compile_features(velum_needle PRIVATE cxx_std_17)
+
+# https://developer.android.com/guide/practices/page-sizes
+target_link_options(velum_needle PRIVATE
+    "-Wl,-z,max-page-size=16384"
+    "-Wl,-z,common-page-size=16384"
+)

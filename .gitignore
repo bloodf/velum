@@ -88,3 +88,6 @@ models/
 *.safetensors
 *.mlmodel
 *.mlpackage/
+
+# Needle static libs (fetched by scripts/fetch-needle-android.sh)
+ai/src/androidMain/cpp/prebuilt/

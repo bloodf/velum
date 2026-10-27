@@ -78,6 +78,8 @@ android {
     }
     packaging {
         jniLibs {
+            // Uncompressed + page-aligned so AGP/zipalign can enforce 16 KB packing.
+            useLegacyPackaging = false
             // Ship Needle + libc++_shared from this module into consuming APKs.
             keepDebugSymbols += listOf("**/libvelum_needle.so")
         }
