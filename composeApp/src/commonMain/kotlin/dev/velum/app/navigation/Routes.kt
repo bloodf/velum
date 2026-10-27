@@ -24,4 +24,5 @@ object Routes {
     const val IMPORT_KEYS = "import_keys"
     const val IMPORT_AUDIO = "import_audio"
     const val VOICE_PROFILES = "voice_profiles"
+    const val ASK_ACROSS = "ask_across"
 }

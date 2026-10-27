@@ -6,6 +6,7 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import dev.velum.app.di.AppContainer
+import dev.velum.app.i18n.En
 import dev.velum.core.data.DriverFactory
 import dev.velum.core.integrations.IntegrationConfig
 import dev.velum.core.security.DesktopSecureStore
@@ -19,9 +20,10 @@ fun main() = application {
     Window(
         onCloseRequest = ::exitApplication,
         title = "Velum",
-        state = rememberWindowState(width = 400.dp, height = 720.dp),
+        // Wide default so the adaptive list–detail library layout engages.
+        state = rememberWindowState(width = 1440.dp, height = 900.dp),
         icon = painterResource("icons/velum-256.png"),
     ) {
-        App(container)
+        App(container, strings = En)
     }
 }

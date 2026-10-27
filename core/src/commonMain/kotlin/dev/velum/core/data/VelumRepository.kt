@@ -59,6 +59,10 @@ class VelumRepository(
         q.selectRecordingById(id).executeAsOneOrNull()
     }
 
+    suspend fun getAllRecordings(): List<Recording> = withContext(Dispatchers.Default) {
+        q.selectAllRecordings().executeAsList()
+    }
+
     suspend fun getTemplate(id: String): Template? = withContext(Dispatchers.Default) {
         q.selectTemplateById(id).executeAsOneOrNull()
     }
@@ -298,6 +302,12 @@ class VelumRepository(
     suspend fun deleteTemplate(id: String) = withContext(Dispatchers.Default) {
         q.deleteTemplate(id)
         if (ftsAvailable) FtsIndex.deleteTemplate(driver, id)
+    }
+
+    suspend fun deleteRecordingHard(id: String) = withContext(Dispatchers.Default) {
+        q.deleteSpeakersForRecording(id)
+        q.deleteRecordingHard(id)
+        if (ftsAvailable) FtsIndex.deleteRecording(driver, id)
     }
 
     suspend fun insertRecording(

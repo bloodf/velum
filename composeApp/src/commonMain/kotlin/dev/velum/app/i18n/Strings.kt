@@ -283,6 +283,11 @@ data class UxStrings(
     val mindMapEmpty: String,
     val noRecordingsHint: String,
     val playbackUnavailable: String,
+    val askAcrossTitle: String = "Ask across recordings",
+    val askAcrossHint: String = "Search your library with FTS, then answer via Local/API LLM with citations.",
+    val askAcrossPlaceholder: String = "e.g. What budget decisions did we make?",
+    val askAcrossSources: String = "Sources",
+    val askAcrossEmpty: String = "Ask a question to search transcripts and notes.",
 )
 
 val PtBr = Strings(
@@ -558,6 +563,11 @@ val PtBr = Strings(
         mindMapEmpty = "Nenhum heading H2 no resumo.",
         noRecordingsHint = "Toque em gravar para capturar áudio no aparelho, ou importe um arquivo.",
         playbackUnavailable = "Reprodução indisponível — arquivo de áudio local ausente nesta gravação.",
+        askAcrossTitle = "Perguntar na biblioteca",
+        askAcrossHint = "Busca FTS nos transcripts e responde via LLM Local/API com citações.",
+        askAcrossPlaceholder = "Ex.: Quais decisões de orçamento tomamos?",
+        askAcrossSources = "Fontes",
+        askAcrossEmpty = "Faça uma pergunta para buscar transcripts e notas.",
     ),
 )
 

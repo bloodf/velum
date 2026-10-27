@@ -12,6 +12,7 @@ import dev.velum.ai.local.defaultModelStoreRoot
 import dev.velum.ai.openai.OpenAiDiarizer
 import dev.velum.ai.openai.OpenAiLlmEngine
 import dev.velum.ai.openai.OpenAiTranscriber
+import dev.velum.ai.pipeline.AskAcrossRecordings
 import dev.velum.ai.pipeline.AskAiChat
 import dev.velum.ai.pipeline.AutoFlowRunner
 import dev.velum.ai.pipeline.NoOpThermalPolicy
@@ -103,6 +104,11 @@ class AppContainer(
             ?: createCoroutineRecordingJobScheduler(recordingProcessor, appScope)
 
     val askAiChat = AskAiChat(
+        aiRouter = aiRouter,
+        repository = repository,
+        settings = settingsRepository,
+    )
+    val askAcross = AskAcrossRecordings(
         aiRouter = aiRouter,
         repository = repository,
         settings = settingsRepository,

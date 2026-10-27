@@ -27,8 +27,13 @@ import androidx.navigation.navArgument
 import androidx.savedstate.read
 import dev.velum.ai.pipeline.AutoFlowUiAction
 import dev.velum.app.di.AppContainer
+import dev.velum.app.i18n.En
 import dev.velum.app.i18n.LocalStrings
 import dev.velum.app.i18n.PtBr
+import dev.velum.app.i18n.Strings
+import dev.velum.app.ui.ask.AskAcrossScreen
+import dev.velum.app.ui.library.LibraryAdaptiveScreen
+import dev.velum.app.ui.library.LibraryRailDestination
 import dev.velum.app.importing.AudioImportPipeline
 import dev.velum.app.importing.ImportResult
 import dev.velum.app.navigation.Routes
@@ -74,11 +79,15 @@ import dev.velum.core.model.ComputeMode
 import kotlinx.coroutines.launch
 
 @Composable
-fun App(container: AppContainer) {
-    VelumTheme {
+fun App(
+    container: AppContainer,
+    strings: Strings = PtBr,
+    darkTheme: Boolean = false,
+) {
+    VelumTheme(darkTheme = darkTheme) {
         val haptics = rememberHaptics()
         CompositionLocalProvider(
-            LocalStrings provides PtBr,
+            LocalStrings provides strings,
             LocalHaptics provides haptics,
         ) {
             VelumRoot(container)
@@ -93,6 +102,8 @@ private fun VelumRoot(container: AppContainer) {
     val route = backStack?.destination?.route.orEmpty()
     var fabOpen by remember { mutableStateOf(false) }
     var showFirstRun by remember { mutableStateOf(false) }
+    var librarySelectedId by remember { mutableStateOf<String?>(null) }
+    var libraryRail by remember { mutableStateOf(LibraryRailDestination.Library) }
     val scope = rememberCoroutineScope()
     val strings = LocalStrings.current
     val snackbar = remember { SnackbarHostState() }
@@ -219,10 +230,23 @@ private fun VelumRoot(container: AppContainer) {
                 popExitTransition = { navExit },
             ) {
                     composable(Routes.FILES) {
-                        FilesScreen(
+                        LibraryAdaptiveScreen(
                             container = container,
-                            onOpenRecording = { id -> navController.navigate(Routes.recording(id)) },
+                            selectedRecordingId = librarySelectedId,
+                            onSelectRecording = { librarySelectedId = it },
+                            onOpenRecordingCompact = { id -> navController.navigate(Routes.recording(id)) },
                             onOpenSettings = { navController.navigate(Routes.SETTINGS) },
+                            onOpenDevice = { navController.navigate(Routes.DEVICE) },
+                            onOpenAskCompact = { navController.navigate(Routes.ASK_ACROSS) },
+                            railDestination = libraryRail,
+                            onRailDestination = { libraryRail = it },
+                        )
+                    }
+                    composable(Routes.ASK_ACROSS) {
+                        AskAcrossScreen(
+                            container = container,
+                            onBack = { navController.popBackStack() },
+                            onOpenCitation = { id, _ -> navController.navigate(Routes.recording(id)) },
                         )
                     }
                     composable(Routes.EXPLORE) {

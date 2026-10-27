@@ -272,6 +272,7 @@ fun RecordingDetailScreen(
                 recordingId = recordingId,
                 title = recording?.title.orEmpty(),
                 initialTranscript = recording?.transcript,
+                initialElapsedSeconds = recording?.duration_seconds ?: 0L,
                 onStoppedAndQueued = { /* status observed via Flow */ },
             )
         } else if (tab == 0) {
@@ -671,6 +672,7 @@ private fun LiveTranscriptPane(
     recordingId: String,
     title: String,
     initialTranscript: String? = null,
+    initialElapsedSeconds: Long = 0L,
     onStoppedAndQueued: () -> Unit = {},
 ) {
     val strings = LocalStrings.current
@@ -784,13 +786,43 @@ private fun LiveTranscriptPane(
             color = VelumBlack,
             modifier = Modifier.padding(horizontal = 20.dp).width(110.dp),
         )
+        val elapsed = rememberLiveElapsedSeconds(
+            running = !stopping && !finished.value && !pausedUi,
+            initialSeconds = initialElapsedSeconds,
+        )
+        Text(
+            formatDurationClock(elapsed),
+            color = VelumInk,
+            fontWeight = FontWeight.Medium,
+            fontSize = 28.sp,
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+        )
+        LiveWaveform(
+            active = !stopping && !finished.value && !pausedUi,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+        )
         if (preserveSeeded && !usingMic) {
             Text(
-                "Microfone · ao vivo",
+                "Phone mic · live · markers $markerCount",
                 color = VelumInkSecondary,
                 fontSize = 12.sp,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
             )
+            Row(
+                Modifier.padding(horizontal = 20.dp).fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                OutlineButton(
+                    if (pausedUi) "Resume" else "Pause",
+                    { pausedUi = !pausedUi },
+                    modifier = Modifier.weight(1f),
+                )
+                OutlineButton(
+                    "Mark",
+                    { markerCount += 1 },
+                    modifier = Modifier.weight(1f),
+                )
+            }
         } else if (!usingMic) {
             // Robolectric / desktop: PCM demo path — keep a single quiet hint.
             Text(

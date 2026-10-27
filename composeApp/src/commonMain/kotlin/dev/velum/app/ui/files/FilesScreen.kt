@@ -62,6 +62,8 @@ fun FilesScreen(
     container: AppContainer,
     onOpenRecording: (String) -> Unit,
     onOpenSettings: () -> Unit,
+    selectedRecordingId: String? = null,
+    onAskAcross: (() -> Unit)? = null,
 ) {
     val strings = LocalStrings.current
     val recordings by container.repository.observeRecordings().collectAsState(emptyList())
@@ -111,6 +113,17 @@ fun FilesScreen(
                     contentDescription = strings.search,
                     tint = VelumInk,
                     modifier = Modifier.size(22.dp),
+                )
+            }
+            if (onAskAcross != null) {
+                Text(
+                    "Ask",
+                    color = VelumInk,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 13.sp,
+                    modifier = Modifier
+                        .clickable(onClick = onAskAcross)
+                        .padding(horizontal = 8.dp, vertical = 10.dp),
                 )
             }
             Box(
@@ -176,7 +189,10 @@ fun FilesScreen(
         } else {
             LazyColumn(modifier = Modifier.fillMaxSize()) {
                 items(visible, key = { it.id }) { rec ->
-                    RecordingRow(rec) { onOpenRecording(rec.id) }
+                    RecordingRow(
+                        rec = rec,
+                        selected = rec.id == selectedRecordingId,
+                    ) { onOpenRecording(rec.id) }
                 }
             }
         }
@@ -205,12 +221,13 @@ fun FilesScreen(
 }
 
 @Composable
-private fun RecordingRow(rec: Recording, onClick: () -> Unit) {
+private fun RecordingRow(rec: Recording, selected: Boolean = false, onClick: () -> Unit) {
     val mins = (rec.duration_seconds / 60).toInt()
     val timeLabel = formatClock(rec.started_at)
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .background(if (selected) VelumSurface else VelumBg)
             .clickable(onClick = onClick)
             .padding(horizontal = 20.dp, vertical = 14.dp),
     ) {
@@ -225,6 +242,10 @@ private fun RecordingRow(rec: Recording, onClick: () -> Unit) {
                 tint = VelumInkSecondary,
                 modifier = Modifier.size(14.dp),
             )
+            if (rec.summary_markdown != null) {
+                Spacer(Modifier.width(8.dp))
+                Text("Note", color = VelumInkSecondary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            }
         }
     }
 }

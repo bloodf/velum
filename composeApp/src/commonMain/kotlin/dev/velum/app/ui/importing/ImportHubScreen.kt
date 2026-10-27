@@ -82,7 +82,7 @@ fun ImportHubScreen(
             )
             Spacer(Modifier.height(8.dp))
             Text(
-                "mp3, m4a/aac, wav, ogg/opus, flac, amr, 3gp, webm, mp4 audio — normalized to PCM for the same pipeline as Plaud sync.",
+                "mp3, m4a/aac, wav, ogg/opus, flac, amr, 3gp, webm, mp4 audio — normalized to PCM for the same local pipeline as device sync.",
                 color = VelumInkSecondary,
                 fontSize = 14.sp,
                 lineHeight = 20.sp,
