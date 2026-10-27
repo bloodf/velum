@@ -60,6 +60,13 @@ fun LibraryAdaptiveScreen(
     /** Marketing / screenshot fixture for Ask pane. */
     askPreviewAnswer: AskAcrossRecordings.Answer? = null,
     askInitialQuestion: String = "",
+    /** Pre-fill library search (desktop library marketing shot). */
+    listSearchQuery: String = "",
+    /** Seek offset when opening a recording from an Ask citation. */
+    detailSeekSeconds: Long = 0,
+    onOpenCitation: (recordingId: String, offsetSeconds: Long) -> Unit = { id, _ ->
+        onSelectRecording(id)
+    },
 ) {
     val strings = LocalStrings.current
     WithWindowWidthSizeClass(Modifier.fillMaxSize()) { widthClass, _ ->
@@ -69,7 +76,7 @@ fun LibraryAdaptiveScreen(
                 LibraryRailDestination.Ask -> AskAcrossScreen(
                     container = container,
                     onBack = { onRailDestination(LibraryRailDestination.Library) },
-                    onOpenCitation = { id, _ -> onOpenRecordingCompact(id) },
+                    onOpenCitation = onOpenCitation,
                     previewAnswer = askPreviewAnswer,
                     initialQuestion = askInitialQuestion,
                 )
@@ -79,6 +86,7 @@ fun LibraryAdaptiveScreen(
                     onOpenSettings = onOpenSettings,
                     selectedRecordingId = selectedRecordingId,
                     onAskAcross = onOpenAskCompact,
+                    initialSearchQuery = listSearchQuery,
                 )
             }
             return@WithWindowWidthSizeClass
@@ -121,6 +129,7 @@ fun LibraryAdaptiveScreen(
                     onOpenSettings = onOpenSettings,
                     selectedRecordingId = selectedRecordingId,
                     onAskAcross = { onRailDestination(LibraryRailDestination.Ask) },
+                    initialSearchQuery = listSearchQuery,
                 )
             }
             VerticalDivider(color = VelumDivider)
@@ -129,7 +138,7 @@ fun LibraryAdaptiveScreen(
                     railDestination == LibraryRailDestination.Ask -> AskAcrossScreen(
                         container = container,
                         onBack = { onRailDestination(LibraryRailDestination.Library) },
-                        onOpenCitation = { id, _ -> onSelectRecording(id) },
+                        onOpenCitation = onOpenCitation,
                         previewAnswer = askPreviewAnswer,
                         initialQuestion = askInitialQuestion,
                     )
@@ -138,6 +147,7 @@ fun LibraryAdaptiveScreen(
                         recordingId = selectedRecordingId,
                         onBack = { /* stay in pane */ },
                         initialTab = detailInitialTab,
+                        initialSeekSeconds = detailSeekSeconds,
                     )
                     else -> Box(
                         Modifier.fillMaxSize().background(VelumBg),

@@ -103,6 +103,7 @@ private fun VelumRoot(container: AppContainer) {
     var fabOpen by remember { mutableStateOf(false) }
     var showFirstRun by remember { mutableStateOf(false) }
     var librarySelectedId by remember { mutableStateOf<String?>(null) }
+    var librarySeekSeconds by remember { mutableStateOf(0L) }
     var libraryRail by remember { mutableStateOf(LibraryRailDestination.Library) }
     val scope = rememberCoroutineScope()
     val strings = LocalStrings.current
@@ -233,20 +234,31 @@ private fun VelumRoot(container: AppContainer) {
                         LibraryAdaptiveScreen(
                             container = container,
                             selectedRecordingId = librarySelectedId,
-                            onSelectRecording = { librarySelectedId = it },
+                            onSelectRecording = {
+                                librarySelectedId = it
+                                librarySeekSeconds = 0
+                            },
                             onOpenRecordingCompact = { id -> navController.navigate(Routes.recording(id)) },
                             onOpenSettings = { navController.navigate(Routes.SETTINGS) },
                             onOpenDevice = { navController.navigate(Routes.DEVICE) },
                             onOpenAskCompact = { navController.navigate(Routes.ASK_ACROSS) },
                             railDestination = libraryRail,
                             onRailDestination = { libraryRail = it },
+                            detailSeekSeconds = librarySeekSeconds,
+                            onOpenCitation = { id, seek ->
+                                librarySelectedId = id
+                                librarySeekSeconds = seek
+                                libraryRail = LibraryRailDestination.Library
+                            },
                         )
                     }
                     composable(Routes.ASK_ACROSS) {
                         AskAcrossScreen(
                             container = container,
                             onBack = { navController.popBackStack() },
-                            onOpenCitation = { id, _ -> navController.navigate(Routes.recording(id)) },
+                            onOpenCitation = { id, seek ->
+                                navController.navigate(Routes.recording(id, seek))
+                            },
                         )
                     }
                     composable(Routes.EXPLORE) {
@@ -260,13 +272,17 @@ private fun VelumRoot(container: AppContainer) {
                     }
                     composable(
                         Routes.RECORDING,
-                        arguments = listOf(navArgument("id") { type = NavType.StringType }),
+                        arguments = listOf(
+                            navArgument("id") { type = NavType.StringType },
+                            navArgument("seek") { type = NavType.LongType },
+                        ),
                     ) { entry ->
                         RecordingDetailScreen(
                             container = container,
                             recordingId = entry.arg("id"),
                             onBack = { navController.popBackStack() },
                             onOpenModelManager = { navController.navigate(Routes.MODEL_MANAGER) },
+                            initialSeekSeconds = entry.arguments?.read { getLongOrNull("seek") } ?: 0L,
                         )
                     }
                     composable(Routes.SETTINGS) {

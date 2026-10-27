@@ -3,8 +3,8 @@ package dev.velum.app.navigation
 object Routes {
     const val FILES = "files"
     const val EXPLORE = "explore"
-    const val RECORDING = "recording/{id}"
-    fun recording(id: String) = "recording/$id"
+    const val RECORDING = "recording/{id}/{seek}"
+    fun recording(id: String, seekSeconds: Long = 0) = "recording/$id/$seekSeconds"
     const val SETTINGS = "settings"
     const val PERSONALIZATION = "personalization"
     const val PREFERENCES = "preferences"

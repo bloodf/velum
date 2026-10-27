@@ -60,6 +60,8 @@ class SiteDesktopScreenshotsTest {
             selectedId = MarketingDemoData.LIBRARY_SELECTED_ID,
             rail = LibraryRailDestination.Library,
             detailTab = 0,
+            // Distinct from transcript shot: filtered list + result count.
+            listSearch = "sprint",
         )
     }
 
@@ -69,6 +71,7 @@ class SiteDesktopScreenshotsTest {
             selectedId = MarketingDemoData.LIBRARY_SELECTED_ID,
             rail = LibraryRailDestination.Library,
             detailTab = 0,
+            listSearch = "sprint",
         )
     }
 
@@ -115,6 +118,7 @@ class SiteDesktopScreenshotsTest {
         rail: LibraryRailDestination,
         detailTab: Int,
         askPreview: Boolean = false,
+        listSearch: String = "",
     ) {
         LibraryAdaptiveScreen(
             container = container,
@@ -132,6 +136,7 @@ class SiteDesktopScreenshotsTest {
             } else {
                 ""
             },
+            listSearchQuery = listSearch,
         )
     }
 

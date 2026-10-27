@@ -107,11 +107,16 @@ fun RecordingDetailScreen(
     initialTab: Int = 0,
     showSpeakersInitially: Boolean = false,
     showGenerateInitially: Boolean = false,
+    /** Playback seek position from Ask citations (seconds). */
+    initialSeekSeconds: Long = 0,
 ) {
     val strings = LocalStrings.current
     val recording by container.repository.observeRecording(recordingId).collectAsState(null)
     val folders by container.repository.observeFolders().collectAsState(emptyList())
     var tab by remember { mutableStateOf(initialTab) } // 0 fontes, 1 notas
+    var seekSeconds by remember(recordingId, initialSeekSeconds) {
+        mutableStateOf(initialSeekSeconds.coerceAtLeast(0))
+    }
     var showMenu by remember { mutableStateOf(false) }
     var showSpeakers by remember { mutableStateOf(showSpeakersInitially) }
     var showGenerate by remember { mutableStateOf(showGenerateInitially) }
@@ -279,6 +284,7 @@ fun RecordingDetailScreen(
             SourcesPane(
                 transcript = recording?.transcript,
                 durationSeconds = recording?.duration_seconds ?: 0,
+                positionSeconds = seekSeconds,
                 hasLocalAudio = !recording?.local_path.isNullOrBlank(),
                 generating = generating && recording?.transcript.isNullOrBlank(),
                 transportMessage = processError?.takeIf { it.startsWith("playback:") }?.removePrefix("playback:"),
@@ -608,6 +614,7 @@ private fun TabLabel(text: String, selected: Boolean, onClick: () -> Unit) {
 private fun SourcesPane(
     transcript: String?,
     durationSeconds: Long,
+    positionSeconds: Long = 0,
     hasLocalAudio: Boolean,
     generating: Boolean,
     transportMessage: String? = null,
@@ -616,6 +623,7 @@ private fun SourcesPane(
 ) {
     val strings = LocalStrings.current
     val dur = formatHms(durationSeconds)
+    val pos = formatHms(positionSeconds.coerceIn(0, durationSeconds.coerceAtLeast(0)))
     Column(Modifier.fillMaxSize()) {
         Text(
             strings.transcription,
@@ -627,7 +635,7 @@ private fun SourcesPane(
         HorizontalDivider(thickness = 2.dp, color = VelumBlack, modifier = Modifier.padding(horizontal = 20.dp).width(90.dp))
         Spacer(Modifier.height(8.dp))
         PlayerBar(
-            durationLabel = "00:00:00 / $dur",
+            durationLabel = "$pos / $dur",
             enabled = hasLocalAudio,
             onTransportClick = onPlaybackUnavailable,
         )

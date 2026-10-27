@@ -64,12 +64,14 @@ fun FilesScreen(
     onOpenSettings: () -> Unit,
     selectedRecordingId: String? = null,
     onAskAcross: (() -> Unit)? = null,
+    /** Pre-fill search (marketing / desktop library shot with filtered list). */
+    initialSearchQuery: String = "",
 ) {
     val strings = LocalStrings.current
     val recordings by container.repository.observeRecordings().collectAsState(emptyList())
     var showFilter by remember { mutableStateOf(false) }
     var showSearch by remember { mutableStateOf(false) }
-    var searchQuery by remember { mutableStateOf("") }
+    var searchQuery by remember { mutableStateOf(initialSearchQuery) }
     // FTS hits for non-blank queries; blank search shows [recordings] immediately
     // (avoids an empty first frame in ImageComposeScene / Roborazzi).
     var ftsIds by remember { mutableStateOf<List<String>?>(null) }
