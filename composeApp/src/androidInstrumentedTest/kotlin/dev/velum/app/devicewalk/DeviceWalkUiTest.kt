@@ -102,19 +102,22 @@ class DeviceWalkUiTest {
     }
 
     private fun waitForShell(lang: String) {
-        // Splash → FirstRun or Files. Skip onboarding when present.
-        val skip = if (lang == "en") "Skip" else "Pular"
-        val files = if (lang == "en") "All files" else "Todos os arquivos"
+        // Splash → FirstRun or Files. Locale may still be system/previous-test prefs.
         waitUntil(90_000) {
-            composeExists(skip) || composeExists(files) || composeExists("Velum")
+            composeExists("Skip") ||
+                composeExists("Pular") ||
+                composeExists("All files") ||
+                composeExists("Todos os arquivos") ||
+                composeExists("Velum")
         }
-        if (composeExists(skip) || composeExists("Pular") || composeExists("Skip")) {
-            clickTextPrefer(skip, "Pular", "Skip")
+        if (composeExists("Skip") || composeExists("Pular")) {
+            clickTextPrefer("Skip", "Pular")
             covered += "first-run-skip"
         }
         waitUntil(60_000) {
-            composeExists(files) || composeExists("Todos os arquivos") || composeExists("All files")
+            composeExists("All files") || composeExists("Todos os arquivos")
         }
+        ensureAllFilesFilter()
         dismissSystemPermissionDialogs()
     }
 
@@ -147,8 +150,7 @@ class DeviceWalkUiTest {
     }
 
     private fun walkLibrary(lang: String) {
-        val files = if (lang == "en") "All files" else "Todos os arquivos"
-        assertTrue(composeExists(files) || composeExists("Todos os arquivos") || composeExists("All files"))
+        assertTrue(composeExists("Todos os arquivos") || composeExists("All files"))
         covered += "library"
         // Search sheet
         runCatching {
@@ -159,39 +161,36 @@ class DeviceWalkUiTest {
             ).performClick()
         }
         runCatching {
-            // Fallback: many builds use icon-only search without CD — tap by text chip if present.
-            clickTextPrefer(
-                if (lang == "en") "Search" else "Buscar",
-                "Search",
-                "Buscar",
-            )
+            clickTextPrefer("Search", "Buscar")
         }
         covered += "library/search"
         device.pressBack()
-        // Filters / trash if available
+        SystemClock.sleep(400)
+        // Open filter sheet → Trash → back to All files (do not leave Trash selected).
         runCatching {
-            clickTextPrefer(
-                if (lang == "en") "Trash" else "Lixeira",
-                "Trash",
-                "Lixeira",
-            )
+            clickContentDescPrefer("Filter & Sort", "Filtrar & Ordenar")
+            clickTextPrefer("Trash", "Lixeira")
             covered += "library/trash"
-            device.pressBack()
+            clickContentDescPrefer("Filter & Sort", "Filtrar & Ordenar")
+            clickTextPrefer("All files", "Todos os arquivos")
         }
+        ensureAllFilesFilter()
         shot("03-library")
     }
 
     private fun walkImportAndTranscribe(lang: String, tag: String) {
+        ensureAllFilesFilter()
         val app = appContext.applicationContext as VelumApplication
         val container = runBlocking { app.awaitContainer() }
         val wavBytes = InstrumentationRegistry.getInstrumentation()
             .context.assets.open("device_walk_tone.wav").readBytes()
         val recordingsDir = File(appContext.filesDir, "recordings").also { it.mkdirs() }
+        val title = "Device walk $tag"
         val wavFile = File(recordingsDir, "device-walk-$tag.wav")
         wavFile.writeBytes(wavBytes)
         val id = runBlocking {
             container.createLocalRecording(
-                title = "Device walk $tag",
+                title = title,
                 source = "import",
                 localPath = wavFile.absolutePath,
                 status = "queued",
@@ -209,10 +208,33 @@ class DeviceWalkUiTest {
             }
         }
         covered += "transcription/device-walk-engine"
+        // Pull-to-refresh affordance + wait until the row is actually composed.
+        runCatching {
+            clickContentDescPrefer("Refresh library", "Atualizar biblioteca")
+        }
+        ensureAllFilesFilter()
+        waitUntil(30_000) {
+            composeExists(title) || composeExists("Device walk")
+        }
         shot("04-imported-$tag")
-        // Open from library
-        clickTextPrefer("Device walk $tag", "Device walk")
+        scrollClickPrefer(title, "Device walk", tag)
         covered += "recording/open"
+    }
+
+    /** Reset library filter to All files so seeded imports are visible. */
+    private fun ensureAllFilesFilter() {
+        if (composeExists("All files") || composeExists("Todos os arquivos")) {
+            // Title already shows All — still clear a stuck search sheet.
+            return
+        }
+        // Trash / Note Pro title is showing — open filter and pick All.
+        runCatching {
+            clickContentDescPrefer("Filter & Sort", "Filtrar & Ordenar")
+            clickTextPrefer("All files", "Todos os arquivos")
+        }
+        waitUntil(15_000) {
+            composeExists("All files") || composeExists("Todos os arquivos")
+        }
     }
 
     private fun walkRecordingDetail(lang: String, tag: String) {
