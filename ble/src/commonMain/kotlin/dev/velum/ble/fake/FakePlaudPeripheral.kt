@@ -26,13 +26,16 @@ import kotlinx.coroutines.sync.withLock
  *
  * When [requirePublicKey] is false (E2EE off), FE11 is skipped and the session
  * secret is emitted after a valid FE10.
+ *
+ * Test knobs: [muteResponses] (unlock/command timeouts), [batteryPayloadOverride]
+ * (malformed battery frames), [emitUnsolicitedBattery] (notify path).
  */
 class FakePlaudPeripheral(
     private val cipher: SessionCipher,
     private val clientKeys: DeviceIdentityKeys,
     private val sessionFile: ByteArray,
     private val sessionId: Long = 1_700_000_000L,
-    private val batteryPercent: Int = 0x5d,
+    var batteryPercent: Int = 0x5d,
     private val requirePublicKey: Boolean = true,
     private val random: Random = Random.Default,
 ) {
@@ -47,6 +50,17 @@ class FakePlaudPeripheral(
     private var deviceSendSeq: Long = 0
     private var unlocked = false
     private var handshakeFailed = false
+
+    /** When true, accept writes but emit no responses (client-side timeout tests). */
+    var muteResponses: Boolean = false
+
+    /**
+     * When set, the next battery cmd-9 response uses this payload instead of
+     * the normal `00 XX` reading (malformed-frame tests). Cleared after use.
+     */
+    var batteryPayloadOverride: ByteArray? = null
+
+    val isUnlocked: Boolean get() = unlocked
 
     /** Clear session state so the next connection requires FE10 again. */
     fun resetUnlock() {
@@ -74,6 +88,14 @@ class FakePlaudPeripheral(
         handleCommand(opened.second)
     }
 
+    /** Push an unsolicited encrypted cmd-9 battery notification (device → app). */
+    suspend fun emitUnsolicitedBattery(percent: Int = batteryPercent) = mutex.withLock {
+        check(unlocked) { "Cannot emit battery before unlock" }
+        batteryPercent = percent
+        val batPayload = byteArrayOf(0x00, percent.toByte())
+        emitCommand(Commands.BATTERY_LIKELY, batPayload)
+    }
+
     private suspend fun handleUnlock(payload: ByteArray) {
         require(payload.size >= 2)
         val opcode = Bytes.readU16Le(payload, 0)
@@ -85,8 +107,10 @@ class FakePlaudPeripheral(
                     if (signature.isEmpty() || !signature.contentEquals(clientKeys.serialSignature)) {
                         handshakeFailed = true
                         snChunks.clear()
+                        // Do not include signature bytes in the error text.
                         error("HANDSHAKE_FAIL: FE10 snSignature empty or does not match imported keys")
                     }
+                    if (muteResponses) return
                     if (requirePublicKey) {
                         emitRaw(
                             Bytes.u16Le(Commands.UNLOCK_NEED_PUBLIC_KEY) +
@@ -104,6 +128,7 @@ class FakePlaudPeripheral(
                 pubChunks += Unlock.parseChunk(payload)
                 if (pubChunks.size >= pubChunks.first().total) {
                     Unlock.reassemble(pubChunks)
+                    if (muteResponses) return
                     emitSessionSecret()
                 }
             }
@@ -194,15 +219,20 @@ class FakePlaudPeripheral(
                 )
             }
             Commands.BATTERY_LIKELY -> {
-                val batPayload = byteArrayOf(0x00, batteryPercent.toByte())
+                val override = batteryPayloadOverride
+                batteryPayloadOverride = null
+                val batPayload = override ?: byteArrayOf(0x00, batteryPercent.toByte())
                 emitCommand(Commands.BATTERY_LIKELY, batPayload)
-                check(BatteryReading.parse(batPayload).percent == batteryPercent)
+                if (override == null) {
+                    check(BatteryReading.parse(batPayload).percent == batteryPercent)
+                }
             }
             else -> error("Fake peripheral does not handle cmd $cmd")
         }
     }
 
     private suspend fun emitCommand(cmd: Int, payload: ByteArray) {
+        if (muteResponses) return
         val frame = ByteArray(1 + 2 + payload.size)
         frame[0] = PacketType.CommandResponse.code.toByte()
         Bytes.u16Le(cmd).copyInto(frame, 1)
@@ -211,6 +241,7 @@ class FakePlaudPeripheral(
     }
 
     private suspend fun emitEncrypted(frame: ByteArray) {
+        if (muteResponses) return
         val sec = secret
         if (sec == null) {
             emitRaw(frame)
@@ -222,6 +253,7 @@ class FakePlaudPeripheral(
     }
 
     private suspend fun emitRaw(frame: ByteArray) {
+        if (muteResponses) return
         notifications.emit(frame)
     }
 }

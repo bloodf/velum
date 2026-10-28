@@ -7,8 +7,10 @@ import dev.velum.ble.GattProfile
 import dev.velum.ble.GattProfiles
 import dev.velum.ble.PlaudWriteGuard
 import dev.velum.core.model.ConnectedDevice
+import dev.velum.protocol.AdvertisementFixtures
 import dev.velum.protocol.Bytes
 import dev.velum.protocol.DeviceModel
+import dev.velum.protocol.PlaudAdvertisement
 import dev.velum.protocol.PlaudUuids
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -26,28 +28,33 @@ import kotlinx.coroutines.sync.withLock
  * When connected with [GattProfiles.Plaud] and a [FakePlaudPeripheral] is
  * provided, Plaud write/notify are forwarded to that peripheral. Writes are
  * always recorded per characteristic name for multi-GATT tests.
+ *
+ * [advertisementFixtures] drive scan discovery: only payloads that parse as
+ * Note Pro family discoveries are surfaced (malformed fixtures are skipped).
+ *
+ * Implements [BleSealedWriteSink] so [dev.velum.ble.PlaudBleTransport.writeSealedAfterPlaintextGuard]
+ * can deliver sealed ciphertext without re-parsing it as an opcode.
  */
 class FakeBleTransport(
     private val peripheral: FakePlaudPeripheral? = null,
     private val deviceId: String = "fake-note-pro",
     private val serial: String = "881FAKE1",
+<<<<<<< HEAD
     private val name: String = "PLAUD NOTE PRO",
 ) : AbstractBleTransport() {
+=======
+    private val name: String = "Note Pro",
+    private val advertisementFixtures: List<ByteArray> = listOf(
+        AdvertisementFixtures.notePro881(portVersion = 20, serial = serial),
+    ),
+) : BleTransport, BleSealedWriteSink {
+>>>>>>> d228d99 (feat(ble): simulated peripheral knobs for unlock, scan, battery notify (#93))
     override val isAvailable: Boolean = true
 
     private val mutex = Mutex()
 
     private val _state = MutableStateFlow<BleConnectionState>(BleConnectionState.Idle)
     override val connectionState: StateFlow<BleConnectionState> = _state.asStateFlow()
-
-    private val device = ConnectedDevice(
-        id = deviceId,
-        name = name,
-        serial = serial,
-        modelCode = DeviceModel.NotePro.code,
-        protocolVersion = 20,
-        rssi = -42,
-    )
 
     private val _devices = MutableStateFlow<List<ConnectedDevice>>(emptyList())
     override val discoveredDevices: StateFlow<List<ConnectedDevice>> = _devices.asStateFlow()
@@ -63,12 +70,29 @@ class FakeBleTransport(
     private val notifyFlows =
         mutableMapOf<String, MutableSharedFlow<ByteArray>>()
 
-    override fun advertisements(): Flow<ConnectedDevice> = emptyFlow()
+    private val advertisementFlow =
+        MutableSharedFlow<ConnectedDevice>(extraBufferCapacity = 64)
+
+    override fun advertisements(): Flow<ConnectedDevice> = advertisementFlow.asSharedFlow()
 
     override suspend fun startScan() {
+        val discovered = mutableListOf<ConnectedDevice>()
+        advertisementFixtures.forEachIndexed { index, mfg ->
+            val parsed = PlaudAdvertisement.parseNoteProFamilyDiscovery(mfg) ?: return@forEachIndexed
+            val device = ConnectedDevice(
+                id = if (index == 0) deviceId else "$deviceId-$index",
+                name = name,
+                serial = parsed.serial,
+                modelCode = parsed.modelCode,
+                protocolVersion = parsed.portVersion,
+                rssi = -42 - index,
+            )
+            discovered += device
+            advertisementFlow.emit(device)
+        }
         mutex.withLock {
             _state.value = BleConnectionState.Scanning
-            _devices.value = listOf(device)
+            _devices.value = discovered
         }
     }
 
@@ -88,6 +112,15 @@ class FakeBleTransport(
             for (ch in profile.notifyCharacteristics()) {
                 notifyFlows[ch.name] = MutableSharedFlow(extraBufferCapacity = 128)
             }
+            val fromScan = _devices.value.firstOrNull { it.id == deviceId }
+            val device = fromScan ?: ConnectedDevice(
+                id = deviceId,
+                name = name,
+                serial = serial,
+                modelCode = DeviceModel.NotePro.code,
+                protocolVersion = 20,
+                rssi = -42,
+            )
             _state.value = BleConnectionState.Connecting(deviceId)
             // Set profile only after the fake "link" is up.
             _activeProfile = profile
@@ -192,12 +225,12 @@ class FakeBleTransport(
             serial: String = "881FAKE1",
             protocolVersion: Int = 20,
         ): ByteArray {
-            val data = ByteArray(20)
-            // byte 0 often holds a flags/type nibble in captures; leave 0.
-            Bytes.u16Le(DeviceModel.NotePro.code).copyInto(data, 1)
-            serial.encodeToByteArray().copyInto(data, 9, 0, minOf(8, serial.length))
-            Bytes.u16Le(protocolVersion).copyInto(data, 18)
+            val data = AdvertisementFixtures.notePro881(
+                portVersion = protocolVersion,
+                serial = serial,
+            )
             check(PlaudUuids.MANUFACTURER_ID == 0x005D)
+            check(Bytes.readU16Le(data, 1) == DeviceModel.NotePro.code)
             return data
         }
     }

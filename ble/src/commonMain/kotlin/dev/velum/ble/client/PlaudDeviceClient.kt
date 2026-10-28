@@ -66,6 +66,7 @@ class PlaudDeviceClient(
     private var protocolVersion: Int = 20
 
     val sessionSecret: Protocol20SessionSecret? get() = secret
+    val isUnlocked: Boolean get() = secret != null
     val linkProtocolVersion: Int get() = protocolVersion
 
     suspend fun start() {
@@ -297,6 +298,22 @@ class PlaudDeviceClient(
         val packet = Battery.encodeBatteryRequest()
         val payload = transactCommand(Commands.BATTERY_LIKELY, packet)
         return BatteryReading.parse(payload)
+    }
+
+    /**
+     * Wait for the next inbound cmd-9 battery frame without sending a request.
+     * Used for unsolicited battery notifications from the device notify path.
+     */
+    suspend fun awaitBatteryNotification(
+        timeout: Duration = responseTimeout,
+    ): BatteryReading {
+        val raw = awaitDecryptedFrame(timeout) { frame ->
+            val decoded = runCatching { Framing.decodeInbound(frame) }.getOrNull()
+            decoded is InboundPacket.CommandResponse &&
+                decoded.cmd == Commands.BATTERY_LIKELY
+        }
+        val decoded = Framing.decodeInbound(raw) as InboundPacket.CommandResponse
+        return BatteryReading.parse(decoded.payload)
     }
 
     /**
