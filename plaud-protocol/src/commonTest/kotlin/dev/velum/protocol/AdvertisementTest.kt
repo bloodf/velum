@@ -2,25 +2,68 @@ package dev.velum.protocol
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class AdvertisementTest {
     @Test
     fun parseManufacturerData_noteProProtocol20() {
-        // Synthetic layout matching documented offsets.
-        val data = ByteArray(20)
-        // bytes 1-2 model 0x0371 = 881
-        Bytes.u16Le(0x0371).copyInto(data, 1)
-        "881TEST1".encodeToByteArray().copyInto(data, 9)
-        // protocol 20 = 0x0014
-        Bytes.u16Le(20).copyInto(data, 18)
-
+        val data = AdvertisementFixtures.notePro881(portVersion = 20, serial = "881TEST1")
         val adv = PlaudAdvertisement.parseManufacturerData(data)
         assertNotNull(adv)
         assertEquals(881, adv.modelCode)
         assertEquals("Note Pro", adv.modelName)
         assertEquals("881TEST1", adv.serial)
         assertEquals(20, adv.protocolVersion)
+        assertEquals(20, adv.portVersion)
+        assertTrue(adv.isNoteProFamilyDiscovery)
+    }
+
+    @Test
+    fun fixtures_parseExpectedPortVersionAndProject881() {
+        val adv881 = PlaudAdvertisement.parseNoteProFamilyDiscovery(
+            AdvertisementFixtures.notePro881(portVersion = 20),
+        )
+        assertNotNull(adv881)
+        assertEquals(DeviceModel.NotePro, adv881.model)
+        assertEquals(881, adv881.modelCode)
+        assertEquals(20, adv881.portVersion)
+
+        val adv883 = PlaudAdvertisement.parseNoteProFamilyDiscovery(
+            AdvertisementFixtures.notePro883(portVersion = 21),
+        )
+        assertNotNull(adv883)
+        assertEquals(DeviceModel.NotePro883, adv883.model)
+        assertEquals(883, adv883.modelCode)
+        assertEquals(21, adv883.portVersion)
+    }
+
+    @Test
+    fun malformedFixtures_noCrashAndNoFalseNoteProDiscovery() {
+        val malformed = listOf(
+            AdvertisementFixtures.empty(),
+            AdvertisementFixtures.tooShort(),
+            AdvertisementFixtures.truncatedBeforePortVersion(),
+            AdvertisementFixtures.allZeros(),
+            AdvertisementFixtures.otherModel(),
+            AdvertisementFixtures.notePro881WrongPort(portVersion = 0),
+            AdvertisementFixtures.notePro881WrongPort(portVersion = 99),
+            byteArrayOf(0xFF.toByte(), 0xFE.toByte()),
+        )
+        for (fixture in malformed) {
+            val discovery = PlaudAdvertisement.parseNoteProFamilyDiscovery(fixture)
+            assertNull(
+                discovery,
+                "malformed/unrelated fixture must not report Note Pro discovery " +
+                    "(size=${fixture.size})",
+            )
+        }
+        // Structural parse may succeed for all-zeros / wrong port, but discovery must fail.
+        val zeros = PlaudAdvertisement.parseManufacturerData(AdvertisementFixtures.allZeros())
+        assertNotNull(zeros)
+        assertFalse(zeros.isNoteProFamilyDiscovery)
     }
 
     @Test

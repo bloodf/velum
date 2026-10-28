@@ -19,11 +19,24 @@ data class BatteryReading(val percent: Int, val rawPayload: ByteArray) {
 
     override fun hashCode(): Int = 31 * percent + rawPayload.contentHashCode()
 
+    override fun toString(): String = "BatteryReading(percent=$percent, rawPayload=${rawPayload.size} bytes)"
+
     companion object {
+        /**
+         * Parse a cmd-9 payload. Empty / truncated frames throw; percent is the
+         * last byte (0–100 observed on device notifies).
+         */
         fun parse(payload: ByteArray): BatteryReading {
             require(payload.isNotEmpty()) { "Empty battery payload" }
             val percent = payload.last().toInt() and 0xFF
-            return BatteryReading(percent, payload)
+            require(percent <= 100) {
+                "Malformed battery percent $percent (expected 0–100)"
+            }
+            return BatteryReading(percent, payload.copyOf())
         }
+
+        /** Like [parse] but returns null for empty or out-of-range payloads. */
+        fun parseOrNull(payload: ByteArray): BatteryReading? =
+            runCatching { parse(payload) }.getOrNull()
     }
 }

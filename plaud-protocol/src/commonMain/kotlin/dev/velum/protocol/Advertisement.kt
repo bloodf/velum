@@ -14,12 +14,23 @@ data class PlaudAdvertisement(
 ) {
     val model: DeviceModel get() = DeviceModel.fromCode(modelCode)
 
+    /** Community / APK name for [protocolVersion] (bytes 18–19 of manufacturer data). */
+    val portVersion: Int get() = protocolVersion
+
     val modelName: String
         get() = model.displayName.takeUnless { model == DeviceModel.Unknown }
             ?: "Unknown ($modelCode)"
 
     val commandTable: CommandTable
         get() = CommandTable.forModel(model, protocolVersion)
+
+    /**
+     * True when manufacturer data identifies a Note Pro family device with a
+     * usable protocol/port version. Malformed or unrelated payloads must not
+     * report successful Note Pro discovery via this check.
+     */
+    val isNoteProFamilyDiscovery: Boolean
+        get() = model.isNoteProFamily && portVersion in NOTE_PRO_PORT_VERSION_RANGE
 
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -39,14 +50,75 @@ data class PlaudAdvertisement(
     }
 
     companion object {
+        /** Observed Note Pro family protocol / port versions (inclusive). */
+        val NOTE_PRO_PORT_VERSION_RANGE: IntRange = 20..29
+
         fun parseManufacturerData(data: ByteArray): PlaudAdvertisement? {
             if (data.size < 20) return null
             val modelCode = Bytes.readU16Le(data, 1)
             val serialBytes = data.copyOfRange(9, 17)
             val serial = serialBytes.decodeToString().trimEnd('\u0000', ' ')
             val protocolVersion = Bytes.readU16Le(data, 18)
-            return PlaudAdvertisement(modelCode, serial, protocolVersion, data)
+            return PlaudAdvertisement(modelCode, serial, protocolVersion, data.copyOf())
         }
+
+        /**
+         * Parse only when the payload is a Note Pro family discovery
+         * (project 881/883 + portVersion in range). Malformed or unrelated
+         * fixtures return null — never a false successful Note Pro discovery.
+         */
+        fun parseNoteProFamilyDiscovery(data: ByteArray): PlaudAdvertisement? =
+            parseManufacturerData(data)?.takeIf { it.isNoteProFamilyDiscovery }
+    }
+}
+
+/**
+ * Synthetic manufacturer-data fixtures for project 881 / portVersion checks.
+ * Values are protocol layout only — never real device identity material.
+ */
+object AdvertisementFixtures {
+    fun notePro881(
+        portVersion: Int = 20,
+        serial: String = "881FAKE1",
+    ): ByteArray = build(modelCode = DeviceModel.NotePro.code, serial = serial, portVersion = portVersion)
+
+    fun notePro883(
+        portVersion: Int = 20,
+        serial: String = "883FAKE1",
+    ): ByteArray = build(modelCode = DeviceModel.NotePro883.code, serial = serial, portVersion = portVersion)
+
+    /** Shorter than the documented 20-byte layout. */
+    fun tooShort(): ByteArray = ByteArray(12).also {
+        Bytes.u16Le(DeviceModel.NotePro.code).copyInto(it, 1)
+    }
+
+    /** Empty manufacturer payload. */
+    fun empty(): ByteArray = ByteArray(0)
+
+    /** 20 zero bytes — parses structurally but is not a Note Pro discovery. */
+    fun allZeros(): ByteArray = ByteArray(20)
+
+    /** Truncated before portVersion (bytes 18–19 missing). */
+    fun truncatedBeforePortVersion(): ByteArray = ByteArray(18).also {
+        Bytes.u16Le(DeviceModel.NotePro.code).copyInto(it, 1)
+        "881TRUNC".encodeToByteArray().copyInto(it, 9, 0, 8)
+    }
+
+    /** Valid length, non–Note Pro model code. */
+    fun otherModel(modelCode: Int = DeviceModel.Note.code, portVersion: Int = 20): ByteArray =
+        build(modelCode = modelCode, serial = "888OTHER", portVersion = portVersion)
+
+    /** Valid 881 layout but portVersion outside the Note Pro range. */
+    fun notePro881WrongPort(portVersion: Int = 0): ByteArray =
+        notePro881(portVersion = portVersion)
+
+    fun build(modelCode: Int, serial: String, portVersion: Int): ByteArray {
+        val data = ByteArray(20)
+        Bytes.u16Le(modelCode).copyInto(data, 1)
+        val serialBytes = serial.encodeToByteArray()
+        serialBytes.copyInto(data, 9, 0, minOf(8, serialBytes.size))
+        Bytes.u16Le(portVersion).copyInto(data, 18)
+        return data
     }
 }
 

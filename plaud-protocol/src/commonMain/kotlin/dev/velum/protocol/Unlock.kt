@@ -114,6 +114,11 @@ data class Protocol20SessionSecret(
 
     override fun hashCode(): Int =
         31 * (31 * key.contentHashCode() + nonce.contentHashCode()) + aad.contentHashCode()
+
+    /** Never include key material in logs or exception text. */
+    override fun toString(): String =
+        "Protocol20SessionSecret(key=<redacted ${key.size} bytes>, " +
+            "nonce=<redacted ${nonce.size} bytes>, aad=<redacted ${aad.size} bytes>)"
 }
 
 /**
@@ -180,6 +185,12 @@ data class DeviceIdentityKeys(
         result = 31 * result + bindToken.hashCode()
         return result
     }
+
+    /** Identity values are secrets — never emit them via toString / logs. */
+    override fun toString(): String =
+        "DeviceIdentityKeys(serialNumber=<redacted>, " +
+            "serialSignature=<redacted ${serialSignature.size} bytes>, " +
+            "publicKeyPem=<redacted>, privateKeyPem=<redacted>, bindToken=<redacted>)"
 }
 
 /**
