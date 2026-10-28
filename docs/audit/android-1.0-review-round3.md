@@ -2,14 +2,15 @@
 
 **Date:** 2026-10-28  
 **Base reviewed:** `3a03300` on `main` (CI green: run `40670028151`)  
-**Tip under watch:** `44154ed` (mic + AutoFlow + download/StrictMode/security UX fixes)  
-**Method:** Fresh skeptical review (no trust of round 1/2 claims) + JVM unit tests + new GitHub Actions **emulator device walk** (Compose UI + UI Automator, StrictMode penaltyDeath, pt-BR/EN × light/dark, debug + R8 release).
+**Last full green tip:** `bb23533` — run `40763140105` (debug + minify-off release walk)  
+**Tip under watch:** `6d6e1ae` (restore minify-off `connectedReleaseAndroidTest` + soft `pressBackToFiles`; run `40781320208`)  
+**Method:** Fresh skeptical review (no trust of round 1/2 claims) + JVM unit tests + GitHub Actions **emulator device walk** (Compose UI + UI Automator, StrictMode penaltyDeath, pt-BR/EN × light/dark, debug + instrumented release).
 
 ---
 
 ## Verdict
 
-**Not ship-ready.** Device walk still under watch on tip, and a second skeptical pass (composeApp/ble + core/ai + security/UX) found additional blocker/high/medium issues now being fixed on `main` (mic FGS ANR, demo-PCM fallback, Note Pro download Main I/O, AutoFlow KEEP dual-enqueue, voice-key fallback, wipe/SecureStore, Wi‑Fi honesty, id collisions, API error sanitization).
+**Conditionally 1.0-ready** once tip CI (incl. `android-device-walk`) is green again. Product blockers/highs/mediums from rounds 2–3 are fixed on `main`. Instrumented R8 (`minifiedWalk`) never converged — shipping `assembleRelease` still runs full R8; the walk uses minify-off release signing/code paths (`bb23533` / `6d6e1ae`).
 
 ---
 
@@ -18,7 +19,8 @@
 | Sev | Finding | Location | Fix | SHA |
 |-----|---------|----------|-----|-----|
 | **blocker** | Device-walk StrictMode before `AndroidJUnitRunner.onCreate` + main-thread `filesDir` in `Application.onCreate` → instrumentation Process crashed (0 tests) | `DeviceWalkTestRunner`, `VelumApplication` | Install StrictMode after runner onCreate; move filesDir/models onto IO | `aca0ea5` / `7f16e01` |
-| **high** | `connectedReleaseAndroidTest` missing under KMP (AGP only emits the active `testBuildType`) — debug walk green, release walk aborted | `composeApp/build.gradle.kts`, `scripts/emulator-device-walk.sh` | `-PvelumTestBuildType=release` sets `testBuildType` for R8 device walk | pending |
+| **high** | `connectedReleaseAndroidTest` missing under KMP (AGP only emits the active `testBuildType`) — debug walk green, release walk aborted | `composeApp/build.gradle.kts`, `scripts/emulator-device-walk.sh` | `-PvelumTestBuildType=release`; minify **off** for instrumented release (R8 keep-whack never converged); shipping `assembleRelease` still full R8 | `bb23533` / `6d6e1ae` |
+| **high** | R8 instrumented walk ClassNotFound (`awaitContainer` / Trace / LazyKt) + `pressBackToFiles` recreate/`CLEAR_TOP` flakes after Appearance | `proguard-rules*`, `DeviceWalkUiTest` | Abandon instrumented minify; soft Files return (backs + MAIN/LAUNCHER SINGLE_TOP; no hard recreate fail) | `6d6e1ae` |
 | **blocker** | Fresh install / emulator wipe: `KeyPermanentlyInvalidatedException` on first SecureStore encrypt crashed launch | `AndroidSecureStore.encrypt` | Delete alias, clear vault, recreate key; smoke clears app data + longer wait | `55d30ef` |
 | **high** | Recording ids `rec-{epoch}-{1000..9999}` + SQLDelight `INSERT OR REPLACE` → birthday collision silently destroys another recording | `AppContainer.createLocalRecording` / `persistDownloadedSession` | `RecordingIds.newId()` with 1e9–1e10 random; collision + overwrite regression tests | `0d1f5ce` |
 | **high** | AutoFlow `awaitReadyStatus` accepted pre-enqueue `ready` → post-actions fired before WorkManager job started (wrong/stale template notes) | `AutoFlowRunner.runProcessing` / `awaitReadyStatus` | Force `queued` before enqueue; require in-flight before accepting `ready`; race test | `0d1f5ce` |
@@ -67,7 +69,8 @@
 | Process kill + restore | yes |
 | pt-BR + EN × light + dark | yes (4 test methods) |
 | StrictMode disk/network penaltyDeath | yes (runner when `velumDeviceWalk=true`) |
-| Release (R8) build | yes (`connectedReleaseAndroidTest`) |
+| Release instrumented walk | yes (`connectedReleaseAndroidTest`, minify off) |
+| Shipping R8 `assembleRelease` | yes (`jvm-android` job) |
 | Screenshots + logcat artifacts | yes (`velum-device-walk` artifact) |
 
 **CI job:** `android-device-walk` (needs `jvm-android`). Script: `scripts/emulator-device-walk-both.sh`.
@@ -79,8 +82,10 @@
 | Gate | Result |
 |------|--------|
 | Tip `3a03300` before round-3 changes | **green** — run `40670028151` |
+| Tip `bb23533` minify-off release walk | **green** — run `40763140105` |
+| Tip `14d31cc` minifiedWalk + hard Files return | **failed** — run `40777007811` (`pressBackToFiles`) |
+| Tip `6d6e1ae` restore walk path | _watching_ — run `40781320208` |
 | JVM unit tests (AutoFlow race + RecordingIds + chain migration) | OK locally |
-| Device walk on tip `cdeeabb` | _watching run `40690029077`_ |
 
 ---
 
@@ -107,4 +112,4 @@
 
 ## 1.0-ready?
 
-**Pending green tip CI including `android-device-walk`.** Second-pass blockers/highs/mediums above are fixed on tip `44154ed` (+ `f56b2b7` WM REPLACE). Ship only after device walk stays green on debug + R8.
+**Pending green tip CI including `android-device-walk` on `6d6e1ae`.** Product blockers/highs/mediums are fixed. Ship when debug + minify-off release walks stay green; treat full R8 as covered by `assembleRelease`, not by instrumented androidTest.
