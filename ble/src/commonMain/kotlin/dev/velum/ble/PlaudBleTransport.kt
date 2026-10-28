@@ -36,10 +36,14 @@ class PlaudBleTransport(
     /**
      * Start an encrypted link session after unlock.
      *
+     * **Internal** to `:ble` — passing a [SessionCipher] into the session from
+     * outside this module must not compile. [PlaudDeviceClient] opens sessions
+     * after unlock; app code never calls this directly.
+     *
      * The returned [PlaudEncryptedSession] owns sealing; callers pass plaintext
      * to [PlaudEncryptedSession.writeEncrypted] only.
      */
-    fun openEncryptedSession(
+    internal fun openEncryptedSession(
         cipher: SessionCipher,
         secret: Protocol20SessionSecret,
         initialSendSeq: Long = 2,

@@ -33,10 +33,11 @@ import kotlinx.coroutines.sync.withLock
  * Kable-backed BLE transport for Android and iOS.
  * Desktop uses [StubBleTransport] until a SimpleBLE (or similar) binding exists.
  *
+ * **Internal** to `:ble` — [createBleTransport] returns it as [BleTransport].
  * Characteristic UUIDs come from the [GattProfile] passed to [connect].
  */
 @OptIn(ExperimentalUuidApi::class)
-class KableBleTransport : AbstractBleTransport() {
+internal class KableBleTransport : AbstractBleTransport() {
     override val isAvailable: Boolean = true
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -222,27 +223,23 @@ class KableBleTransport : AbstractBleTransport() {
         }
     }
 
-    private val sealedSink = object : BleSealedWriteSink {
-        override suspend fun writeSealedAlreadyGuarded(
-            characteristic: String,
-            payload: ByteArray,
-            withoutResponse: Boolean,
-        ) {
-            mutex.withLock {
-                val p = peripheral ?: error("Not connected")
-                val profile = activeProfile ?: error("No active GATT profile")
-                val ch = profile.characteristic(characteristic)
-                require(ch.canWrite) {
-                    "Characteristic '${ch.name}' on profile '${profile.id}' is not writable"
-                }
-                val serviceUuid = profile.resolveServiceUuid(ch)
-                // No opcode parse — plaintext already checked by PlaudEncryptedSession.
-                writeToPeripheral(p, serviceUuid, ch.uuid, payload, withoutResponse)
+    internal override suspend fun writeSealedAlreadyGuarded(
+        characteristic: String,
+        payload: ByteArray,
+        withoutResponse: Boolean,
+    ) {
+        mutex.withLock {
+            val p = peripheral ?: error("Not connected")
+            val profile = activeProfile ?: error("No active GATT profile")
+            val ch = profile.characteristic(characteristic)
+            require(ch.canWrite) {
+                "Characteristic '${ch.name}' on profile '${profile.id}' is not writable"
             }
+            val serviceUuid = profile.resolveServiceUuid(ch)
+            // No opcode parse — plaintext already checked by PlaudEncryptedSession.
+            writeToPeripheral(p, serviceUuid, ch.uuid, payload, withoutResponse)
         }
     }
-
-    internal override fun sealedWriteSink(): BleSealedWriteSink = sealedSink
 
     private suspend fun writeToPeripheral(
         p: Peripheral,

@@ -9,9 +9,12 @@ import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flowOf
 
 /**
- * No-op transport for desktop JVM and for UI wiring before permissions/hardware.
+ * No-op desktop / pre-permission transport.
+ *
+ * **Internal** to `:ble` — [createBleTransport] on JVM returns it as [BleTransport].
+ * Outside modules must not construct or call sealed-write APIs on this type.
  */
-class StubBleTransport(
+internal class StubBleTransport(
     override val isAvailable: Boolean = false,
     private val unavailableReason: String = "BLE is not available on this platform yet",
 ) : AbstractBleTransport() {
@@ -23,16 +26,6 @@ class StubBleTransport(
 
     private var _activeProfile: GattProfile? = null
     override val activeProfile: GattProfile? get() = _activeProfile
-
-    private val sealedSink = object : BleSealedWriteSink {
-        override suspend fun writeSealedAlreadyGuarded(
-            characteristic: String,
-            payload: ByteArray,
-            withoutResponse: Boolean,
-        ) {
-            error(unavailableReason)
-        }
-    }
 
     override fun advertisements(): Flow<ConnectedDevice> = emptyFlow()
 
@@ -74,7 +67,13 @@ class StubBleTransport(
         error(unavailableReason)
     }
 
-    internal override fun sealedWriteSink(): BleSealedWriteSink = sealedSink
+    internal override suspend fun writeSealedAlreadyGuarded(
+        characteristic: String,
+        payload: ByteArray,
+        withoutResponse: Boolean,
+    ) {
+        error(unavailableReason)
+    }
 
     override fun notifications(characteristic: String): Flow<ByteArray> = flowOf()
 }
