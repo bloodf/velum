@@ -2,6 +2,7 @@ package dev.velum.core.security
 
 import java.nio.file.Files
 import java.nio.file.attribute.PosixFilePermission
+import java.util.Collections
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -63,15 +64,17 @@ class DesktopSecureStoreConcurrencyTest {
             PosixFilePermission.OWNER_WRITE,
         )
         val tempModesAtCreation = mutableListOf<Set<PosixFilePermission>>()
-        val previous = ownerOnlyTempCreatedProbe.getAndSet { tmp ->
-            // Probe fires from createOwnerOnlyTempFile — the same path
-            // DesktopSecureStore uses for key (atomicWriteOwnerOnlyBytes) and
-            // properties (atomicWriteProperties) writes — before any data is written.
+        // Constructor-injected probe — no production global mutable hook.
+        val onTemp: (java.nio.file.Path) -> Unit = { tmp ->
             tempModesAtCreation += Files.getPosixFilePermissions(tmp)
         }
         try {
             runBlocking {
-                val store = DesktopSecureStore(file = props, keyFile = keyFile)
+                val store = DesktopSecureStore(
+                    file = props,
+                    keyFile = keyFile,
+                    onOwnerOnlyTempCreated = onTemp,
+                )
                 store.putString("probe", "x")
             }
             assertTrue(tempModesAtCreation.isNotEmpty(), "expected temp-file creation probes")
@@ -91,7 +94,59 @@ class DesktopSecureStoreConcurrencyTest {
                 fail("properties file permissions were not owner-only")
             }
         } finally {
-            ownerOnlyTempCreatedProbe.set(previous)
+            dir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun concurrent_loadOrCreate_on_missing_key_converges_to_one_key() = runBlocking {
+        val dir = kotlin.io.path.createTempDirectory("velum-secure-key-race-missing")
+        val keyFile = dir.resolve("secure.aes256")
+        try {
+            val keys = Collections.synchronizedList(mutableListOf<ByteArray>())
+            coroutineScope {
+                repeat(8) { i ->
+                    launch(Dispatchers.IO) {
+                        val key = DesktopSecureStore.loadOrCreateKey(keyFile)
+                        keys += key.encoded.copyOf()
+                    }
+                }
+            }
+            assertEquals(8, keys.size)
+            val first = keys.first()
+            assertEquals(32, first.size)
+            for (k in keys) {
+                assertTrue(first.contentEquals(k), "concurrent starters must share one key")
+            }
+            assertTrue(first.contentEquals(Files.readAllBytes(keyFile)))
+        } finally {
+            dir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun concurrent_loadOrCreate_on_bad_key_converges_to_one_key() = runBlocking {
+        val dir = kotlin.io.path.createTempDirectory("velum-secure-key-race-bad")
+        val keyFile = dir.resolve("secure.aes256")
+        try {
+            Files.write(keyFile, byteArrayOf(0x0A, 0x0B, 0x0C))
+            val keys = Collections.synchronizedList(mutableListOf<ByteArray>())
+            coroutineScope {
+                repeat(8) { i ->
+                    launch(Dispatchers.IO) {
+                        val key = DesktopSecureStore.loadOrCreateKey(keyFile)
+                        keys += key.encoded.copyOf()
+                    }
+                }
+            }
+            assertEquals(8, keys.size)
+            val first = keys.first()
+            assertEquals(32, first.size)
+            for (k in keys) {
+                assertTrue(first.contentEquals(k), "concurrent bad-key recovery must share one key")
+            }
+            assertTrue(first.contentEquals(Files.readAllBytes(keyFile)))
+        } finally {
             dir.toFile().deleteRecursively()
         }
     }
