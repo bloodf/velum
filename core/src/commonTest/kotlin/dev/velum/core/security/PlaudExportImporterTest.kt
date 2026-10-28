@@ -64,6 +64,30 @@ class PlaudExportImporterTest {
     }
 
     @Test
+    fun importInto_malformed_does_not_store_keys() = runBlocking {
+        val store = InMemorySecureStore()
+        val importer = SecureDeviceKeyImporter(store)
+        val fail = assertIs<PlaudExportParseResult.Failure>(
+            PlaudExportImporter.importInto("{not-json", importer),
+        )
+        assertTrue(fail.message.contains("malformed", ignoreCase = true), fail.message)
+        assertFalse(importer.hasKeys())
+        assertFalse(store.contains(SecureKeys.DEVICE_SERIAL))
+    }
+
+    @Test
+    fun importInto_overwrite_from_synthetic_fixture() = runBlocking {
+        val store = InMemorySecureStore()
+        val importer = SecureDeviceKeyImporter(store)
+        val first = SyntheticIdentityFixtures.validBundleJson()
+        assertIs<PlaudExportParseResult.Success>(PlaudExportImporter.importInto(first, importer))
+        val second = SyntheticIdentityFixtures.validBundleJson(source = SyntheticIdentityFixtures.SOURCE_EXPORT)
+        assertIs<PlaudExportParseResult.Success>(PlaudExportImporter.importInto(second, importer))
+        assertEquals(SyntheticIdentityFixtures.SERIAL, importer.loadKeys()?.serialNumber)
+        assertTrue(importer.hasKeys())
+    }
+
+    @Test
     fun rejects_missing_serial() {
         val sig = SyntheticIdentityFixtures.signatureBase64()
         val raw = """
