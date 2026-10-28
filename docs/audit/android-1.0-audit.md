@@ -14,7 +14,7 @@ Status legend: `Open` · `Fixed` · `Deferred (owner/hardware)` · `Accepted ris
 | Severity | Found | Fixed | Deferred / accepted | Open (process) |
 |----------|------:|------:|--------------------:|---------------:|
 | Critical | 5 | 5 | 0 | 0 |
-| High | 14 | 13 | 1 | 0 |
+| High | 14 | 14 | 0 | 0 |
 | Medium | 16 | 14 | 2 | 0 |
 | Low / Info | 10 | 5 | 4 | 1 |
 
@@ -67,7 +67,7 @@ Status legend: `Open` · `Fixed` · `Deferred (owner/hardware)` · `Accepted ris
 ### H11 — Demo seed left on — **Fixed** (`0a34d9b`, `SEED_DEMO_DATA = false`; templates always seed)
 ### H12 — Explore Conta / dark contrast — **Fixed** (`b851722`, `VelumOnBlack` + localized settings copy)
 ### H13 — Voice Profiles hardcoded English — **Fixed** (`1b33ae3`, EN + pt-BR via `Strings.ux`; #87 addressed in code — owner can verify on device)
-### H14 — No BLE transfer FGS — **Deferred (owner/hardware)** — download works in-process; add `connectedDevice` FGS after hardware timing measurements (#85)
+### H14 — No BLE transfer FGS — **Fixed (code)** — `SessionDownloadService` (`connectedDevice`) + `SessionDownloadKeepAlive` gate tied to download lifecycle; reuses `DownloadProgressNotifier` progress/cancel. Owner still confirms background/Doze survival on S26 Ultra + Note Pro (#85)
 
 ---
 
@@ -129,7 +129,7 @@ Status legend: `Open` · `Fixed` · `Deferred (owner/hardware)` · `Accepted ris
 | Device identity keys from Plaud dump | Cannot generate locally | Existing import docs / blocked issues |
 | SoftAP Wi‑Fi on real Note Pro | JVM fake only | #8 |
 | Long multi-hour OOM / streaming decode validation | Needs large captures | #86 (also #6) — code streaming fixed; HW confirm |
-| BLE download FGS timing | Needs background kill tests on S26 Ultra | #85 |
+| BLE download FGS survival | Code ships `connectedDevice` FGS; confirm background/Doze/process-death on S26 Ultra + Note Pro | #85 |
 | Release upload keystore + Play / F-Droid | Secrets + consoles | Existing release docs |
 | OAuth client IDs | Out of scope | #49/#50 family |
 | Renovate PR #2 | Owner decision | #2 |
@@ -159,6 +159,7 @@ Status legend: `Open` · `Fixed` · `Deferred (owner/hardware)` · `Accepted ris
 | Deferred issue links | `0a34d9b`→`0b3aab3` | #85 #86 #87 |
 | C5 H13 M4 M8–M10 L4 L8 L9 + CI image retry | `1b33ae3` | Streaming Opus decode, i18n polish, emulator zip retry, AutoFlow test race |
 | Audit final status SHAs / green CI | *(docs follow-up)* | Records green run for `1b33ae3` |
+| H14 session download `connectedDevice` FGS | *(#85 branch)* | `SessionDownloadService` + keep-alive gate; HW confirm still owner |
 
 ---
 
