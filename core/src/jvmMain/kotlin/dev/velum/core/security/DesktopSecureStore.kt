@@ -98,8 +98,10 @@ class DesktopSecureStore(
                 if (bytes.size == AES_256_KEY_BYTES) {
                     return JvmAesGcmSecureStore.keyFromBytes(bytes)
                 }
-                // Wrong length (e.g. crash between create and write) — treat as
-                // missing: mint a new key, keep existing ciphertext entries.
+                // Wrong length (e.g. crash between create and write) — never
+                // overwrite in place. Quarantine to secure.aes256.bad-<ts>
+                // (owner-only), then mint a new key; keep ciphertext entries.
+                quarantineToBadSibling(path)
             }
             Files.createDirectories(path.parent)
             val generated = JvmAesGcmSecureStore.generateAes256Key()

@@ -103,6 +103,24 @@ internal fun createOwnerOnlyTempFile(directory: Path, prefix: String, suffix: St
 }
 
 /**
+ * Atomically rename [path] to `[filename].bad-<timestamp>` (owner-only on the
+ * destination). Used to quarantine a wrong-length key file before minting a new one.
+ */
+internal fun quarantineToBadSibling(path: Path): Path {
+    val bad = path.resolveSibling("${path.fileName}.bad-${System.currentTimeMillis()}")
+    try {
+        Files.move(path, bad, StandardCopyOption.ATOMIC_MOVE)
+    } catch (_: java.nio.file.AtomicMoveNotSupportedException) {
+        Files.move(path, bad)
+    }
+    setOwnerOnlyPermissions(bad)
+    if (!supportsPosixPermissions()) {
+        applyOwnerOnlyAcl(bad)
+    }
+    return bad
+}
+
+/**
  * Write [bytes] to [target] via a sibling temp file + atomic move.
  * The temp file is owner-only from creation so a crash never leaves a world-readable key.
  */
