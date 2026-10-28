@@ -3,6 +3,7 @@ package dev.velum.core.security
 import java.nio.channels.OverlappingFileLockException
 import java.nio.file.Files
 import java.nio.file.attribute.PosixFilePermission
+import java.security.MessageDigest
 import java.util.Collections
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -276,9 +277,9 @@ class DesktopSecureStoreConcurrencyTest {
 
             assertTrue(firstError.get() == null, "writer failed: ${firstError.get()}")
             val a = assertNotNull(firstKey.get())
-            assertEquals(AES_256_KEY_BYTES * 2, out.length)
-            val childBytes = out.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
-            assertTrue(a.contentEquals(childBytes), "in-process and child JVM must share one key")
+            val expectedDigest = sha256Hex(a)
+            assertEquals(64, out.length, "child must print SHA-256 hex, not key bytes")
+            assertEquals(expectedDigest, out, "in-process and child JVM must share one key")
             assertTrue(a.contentEquals(Files.readAllBytes(keyFile)))
 
             val badCount = Files.list(dir).use { stream ->
@@ -342,6 +343,11 @@ class DesktopSecureStoreConcurrencyTest {
             linkRoot.toFile().deleteRecursively()
             real.toFile().deleteRecursively()
         }
+    }
+
+    private fun sha256Hex(bytes: ByteArray): String {
+        val digest = MessageDigest.getInstance("SHA-256").digest(bytes)
+        return digest.joinToString("") { b -> "%02x".format(b) }
     }
 
     private fun PathOfJava(): String {
