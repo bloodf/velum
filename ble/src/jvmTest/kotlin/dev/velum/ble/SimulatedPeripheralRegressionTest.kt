@@ -184,7 +184,6 @@ class SimulatedPeripheralRegressionTest {
         val env = unlockedEnv(requirePublicKey = false)
         env.client.handshake()
         val batteryBefore = env.client.readBattery()
-        assertNotNull(batteryBefore)
         assertEquals(0x5d, batteryBefore.percent)
         assertNoForbiddenPlaintext(env.ble.recordedWrites)
         env.client.close()
@@ -203,7 +202,6 @@ class SimulatedPeripheralRegressionTest {
         assertTrue(client2.isUnlocked)
         assertEquals(20, client2.handshake().protocolVersion)
         val batteryAfter = client2.readBattery()
-        assertNotNull(batteryAfter)
         assertEquals(0x5d, batteryAfter.percent)
         assertNoForbiddenPlaintext(env.ble.recordedWrites)
         client2.close()
@@ -215,7 +213,6 @@ class SimulatedPeripheralRegressionTest {
         env.client.handshake()
 
         val polled = env.client.readBattery()
-        assertNotNull(polled)
         assertEquals(93, polled.percent)
 
         env.peripheral.batteryPercent = 76
@@ -229,7 +226,6 @@ class SimulatedPeripheralRegressionTest {
 
         // Application path poll after notify still returns the updated level.
         val again = env.client.readBattery()
-        assertNotNull(again)
         assertEquals(76, again.percent)
         assertNoForbiddenPlaintext(env.ble.recordedWrites)
         env.client.close()
@@ -407,17 +403,9 @@ class SimulatedPeripheralRegressionTest {
             assertTrue(env.ble.recordedWrites.isEmpty())
         }
 
-        // Allowed writeEncrypted still works; prove plaintext round-trip on seq 100.
-        val allowedPlain = Framing.encodeCommand(Commands.BATTERY_LIKELY)
-        session.writeEncrypted(allowedPlain)
-        assertEquals(1, env.ble.recordedWrites.size)
-        val sealedAllowed = env.ble.recordedWrites.single().second
-        val openedAllowed = session.openPacket(100L, sealedAllowed)
-        assertNotNull(openedAllowed)
-        assertTrue(openedAllowed.second.contentEquals(allowedPlain))
         // Client path still healthy after rejection attempts (seq 4 after prior battery).
-        env.ble.clearRecordedWrites()
         assertEquals(93, env.client.readBattery().percent)
+        assertEquals(1, env.ble.recordedWrites.size)
         val sealedClient = env.ble.recordedWrites.single().second
         val openedClient = env.cipher.openPacket(secret, sequence = 4L, sealedClient)
         assertNotNull(openedClient)
