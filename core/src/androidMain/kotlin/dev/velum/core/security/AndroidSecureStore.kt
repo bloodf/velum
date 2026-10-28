@@ -3,15 +3,17 @@ package dev.velum.core.security
 import android.content.Context
 import android.content.SharedPreferences
 import android.security.keystore.KeyGenParameterSpec
-import android.security.keystore.KeyPermanentlyInvalidatedException
 import android.security.keystore.KeyProperties
 import android.util.Base64
 import android.util.Log
+import java.nio.BufferUnderflowException
 import java.nio.ByteBuffer
-import java.security.InvalidKeyException
 import java.security.KeyStore
-import java.security.UnrecoverableKeyException
+import java.security.SecureRandom
+import javax.crypto.AEADBadTagException
+import javax.crypto.BadPaddingException
 import javax.crypto.Cipher
+import javax.crypto.IllegalBlockSizeException
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
@@ -26,8 +28,20 @@ import kotlinx.coroutines.withContext
  * Only ciphertext is persisted in private SharedPreferences. Used for API keys
  * and imported device identity. Never log decrypted values.
  *
- * If the Keystore entry is permanently invalidated (emulator wipe / OEM quirks),
- * the alias is deleted and a fresh key is created so cold start cannot crash.
+ * Wire format matches the JVM AES-GCM secure payload:
+ * `Base64( version:1 || ivLength:1 || iv || ciphertext+tag )`. Legacy
+ * unversioned blobs (`ivLength:1 || iv || ciphertext+tag`) still decrypt.
+ *
+ * Keystore failure policy ([KeystoreFailureClassifier]):
+ * - [KeystoreVaultAction.ClearAndRegenerate] — only
+ *   `KeyPermanentlyInvalidatedException` (the old key is gone). Delete the alias,
+ *   clear every ciphertext entry, mint a fresh key.
+ * - [KeystoreVaultAction.KeepEntries] — every other exception. Stored ciphertext
+ *   is left untouched; a transient Keystore error must never wipe the vault.
+ *
+ * Decrypt policy matches the JVM store: drop an entry only when its blob is
+ * structurally malformed; crypto / auth / Keystore failures keep the ciphertext
+ * and return null.
  */
 class AndroidSecureStore(
     context: Context,
@@ -38,6 +52,7 @@ class AndroidSecureStore(
     private val prefs: SharedPreferences by lazy {
         appContext.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
     }
+    private val random = SecureRandom()
 
     override suspend fun putString(key: String, value: String) {
         withContext(Dispatchers.IO) {
@@ -48,13 +63,35 @@ class AndroidSecureStore(
 
     override suspend fun getString(key: String): String? = withContext(Dispatchers.IO) {
         val stored = prefs.getString(key, null) ?: return@withContext null
-        runCatching {
-            decrypt(stored).toString(Charsets.UTF_8)
-        }.getOrElse {
-            // Corrupt, invalidated key, or legacy plaintext — remove and treat as missing.
-            // Do not include ciphertext or plaintext in any log or exception message.
-            prefs.edit().remove(key).commit()
-            null
+        val secretKey = try {
+            getOrCreateKey()
+        } catch (t: Throwable) {
+            Log.w(TAG, "Keystore unavailable during read: ${t::class.java.name}")
+            if (KeystoreFailureClassifier.actionFor(t) == KeystoreVaultAction.ClearAndRegenerate) {
+                clearVaultAndKey()
+            }
+            return@withContext null
+        }
+        when (val result = decryptResult(secretKey, stored)) {
+            is VaultDecrypt.Ok ->
+                result.plaintext.toString(Charsets.UTF_8)
+            VaultDecrypt.StructurallyMalformed -> {
+                // Only drop blobs that are not valid vault payloads.
+                prefs.edit().remove(key).commit()
+                null
+            }
+            VaultDecrypt.CryptographicFailure -> {
+                // Wrong key / auth failure — keep ciphertext.
+                null
+            }
+            is VaultDecrypt.KeystoreFailure -> {
+                Log.w(TAG, "Keystore failure during decrypt: ${result.throwableClassName}")
+                if (result.clearVault) {
+                    clearVaultAndKey()
+                }
+                // Transient Keystore errors keep the stored ciphertext.
+                null
+            }
         }
     }
 
@@ -70,7 +107,7 @@ class AndroidSecureStore(
 
     override suspend fun wipe() {
         withContext(Dispatchers.IO) {
-            deleteKey()
+            clearVaultAndKey()
         }
     }
 
@@ -82,11 +119,12 @@ class AndroidSecureStore(
             val existing = runCatching {
                 keyStore.getEntry(keyAlias, null) as? KeyStore.SecretKeyEntry
             }.getOrElse { t ->
-                Log.w(TAG, "Keystore getEntry failed; recreating alias", t)
+                Log.w(TAG, "Keystore getEntry failed; recreating alias: ${t::class.java.name}")
                 null
             }
             if (existing != null) return existing.secretKey
-            deleteKey()
+            // Transient / corrupt alias: replace the alias only — never clear prefs.
+            deleteKeyAliasOnly()
         }
         return createKey()
     }
@@ -109,36 +147,52 @@ class AndroidSecureStore(
         return generator.generateKey()
     }
 
-    private fun deleteKey() {
+    /**
+     * Permanent invalidation / explicit wipe: the Keystore key is gone, so
+     * ciphertext sealed with it is unreadable — clear the vault and the alias.
+     */
+    private fun clearVaultAndKey() {
+        deleteKeyAliasOnly()
+        prefs.edit().clear().commit()
+    }
+
+    private fun deleteKeyAliasOnly() {
         runCatching {
             val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
             if (keyStore.containsAlias(keyAlias)) {
                 keyStore.deleteEntry(keyAlias)
             }
         }.onFailure { t ->
-            Log.w(TAG, "Failed to delete invalidated Keystore alias", t)
+            Log.w(TAG, "Failed to delete Keystore alias: ${t::class.java.name}")
         }
-        // Ciphertext sealed with the old key is unreadable — clear the vault.
-        prefs.edit().clear().commit()
     }
 
     private fun encrypt(plaintext: ByteArray): String {
         return try {
             encryptWith(getOrCreateKey(), plaintext)
         } catch (t: Throwable) {
-            if (!isRecoverableKeystoreFailure(t)) throw t
-            Log.w(TAG, "Keystore key unusable; recreating", t)
-            deleteKey()
-            encryptWith(createKey(), plaintext)
+            when (KeystoreFailureClassifier.actionFor(t)) {
+                KeystoreVaultAction.ClearAndRegenerate -> {
+                    Log.w(TAG, "Key permanently invalidated; clearing vault: ${t::class.java.name}")
+                    clearVaultAndKey()
+                    encryptWith(createKey(), plaintext)
+                }
+                KeystoreVaultAction.KeepEntries -> {
+                    // Transient Keystore error — never wipe stored ciphertext.
+                    Log.w(TAG, "Keystore encrypt failed; retaining vault: ${t::class.java.name}")
+                    throw t
+                }
+            }
         }
     }
 
     private fun encryptWith(key: SecretKey, plaintext: ByteArray): String {
+        val iv = ByteArray(IV_BYTES).also { random.nextBytes(it) }
         val cipher = Cipher.getInstance(TRANSFORMATION)
-        cipher.init(Cipher.ENCRYPT_MODE, key)
-        val iv = cipher.iv
+        cipher.init(Cipher.ENCRYPT_MODE, key, GCMParameterSpec(GCM_TAG_BITS, iv))
         val ciphertext = cipher.doFinal(plaintext)
-        val payload = ByteBuffer.allocate(1 + iv.size + ciphertext.size)
+        val payload = ByteBuffer.allocate(2 + iv.size + ciphertext.size)
+            .put(FORMAT_VERSION)
             .put(iv.size.toByte())
             .put(iv)
             .put(ciphertext)
@@ -146,55 +200,68 @@ class AndroidSecureStore(
         return Base64.encodeToString(payload, Base64.NO_WRAP)
     }
 
-    private fun decrypt(encoded: String): ByteArray {
-        val payload = Base64.decode(encoded, Base64.NO_WRAP)
-        require(payload.isNotEmpty()) { "Empty ciphertext" }
+    private fun decryptResult(key: SecretKey, encoded: String): VaultDecrypt {
+        val payload = try {
+            Base64.decode(encoded, Base64.NO_WRAP)
+        } catch (_: IllegalArgumentException) {
+            return VaultDecrypt.StructurallyMalformed
+        }
+        if (payload.isEmpty()) return VaultDecrypt.StructurallyMalformed
+
         val buffer = ByteBuffer.wrap(payload)
-        val ivLength = buffer.get().toInt() and 0xFF
-        require(ivLength in 12..32) { "Unexpected IV length: $ivLength" }
+        if (!buffer.hasRemaining()) return VaultDecrypt.StructurallyMalformed
+        val first = buffer.get().toInt() and 0xFF
+        val ivLength = when {
+            first == (FORMAT_VERSION.toInt() and 0xFF) -> {
+                if (!buffer.hasRemaining()) return VaultDecrypt.StructurallyMalformed
+                buffer.get().toInt() and 0xFF
+            }
+            // Legacy unversioned blobs: first byte is the IV length.
+            first in 12..32 -> first
+            else -> return VaultDecrypt.StructurallyMalformed
+        }
+        if (ivLength !in 12..32) return VaultDecrypt.StructurallyMalformed
+        if (buffer.remaining() < ivLength + GCM_TAG_BYTES) {
+            return VaultDecrypt.StructurallyMalformed
+        }
         val iv = ByteArray(ivLength)
-        buffer.get(iv)
-        val ciphertext = ByteArray(buffer.remaining())
-        buffer.get(ciphertext)
+        val ciphertext = try {
+            buffer.get(iv)
+            ByteArray(buffer.remaining()).also { buffer.get(it) }
+        } catch (_: BufferUnderflowException) {
+            return VaultDecrypt.StructurallyMalformed
+        }
+
         return try {
-            decryptWith(getOrCreateKey(), iv, ciphertext)
+            val cipher = Cipher.getInstance(TRANSFORMATION)
+            cipher.init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(GCM_TAG_BITS, iv))
+            VaultDecrypt.Ok(cipher.doFinal(ciphertext))
+        } catch (_: AEADBadTagException) {
+            VaultDecrypt.CryptographicFailure
+        } catch (_: BadPaddingException) {
+            VaultDecrypt.CryptographicFailure
+        } catch (_: IllegalBlockSizeException) {
+            VaultDecrypt.CryptographicFailure
+        } catch (_: IllegalArgumentException) {
+            VaultDecrypt.StructurallyMalformed
         } catch (t: Throwable) {
-            if (!isRecoverableKeystoreFailure(t)) throw t
-            Log.w(TAG, "Keystore key unusable during decrypt; recreating", t)
-            deleteKey()
-            // Caller treats failure as missing value after prefs clear.
-            throw t
+            val clear = KeystoreFailureClassifier.actionFor(t) ==
+                KeystoreVaultAction.ClearAndRegenerate
+            VaultDecrypt.KeystoreFailure(
+                throwableClassName = t::class.java.name,
+                clearVault = clear,
+            )
         }
     }
 
-    private fun decryptWith(key: SecretKey, iv: ByteArray, ciphertext: ByteArray): ByteArray {
-        val cipher = Cipher.getInstance(TRANSFORMATION)
-        cipher.init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(GCM_TAG_BITS, iv))
-        return cipher.doFinal(ciphertext)
-    }
-
-    private fun isRecoverableKeystoreFailure(t: Throwable): Boolean {
-        var cur: Throwable? = t
-        while (cur != null) {
-            when (cur) {
-                is KeyPermanentlyInvalidatedException,
-                is UnrecoverableKeyException,
-                is InvalidKeyException,
-                -> return true
-                // Corrupt / wiped AndroidKeyStore entries (API 35 emulator).
-                is NullPointerException -> {
-                    if (cur.message?.contains("invalid null input", ignoreCase = true) == true) {
-                        return true
-                    }
-                }
-            }
-            // Some OEMs wrap the typed exception.
-            if (cur.message?.contains("Key permanently invalidated", ignoreCase = true) == true) {
-                return true
-            }
-            cur = cur.cause
-        }
-        return false
+    private sealed class VaultDecrypt {
+        class Ok(val plaintext: ByteArray) : VaultDecrypt()
+        data object StructurallyMalformed : VaultDecrypt()
+        data object CryptographicFailure : VaultDecrypt()
+        class KeystoreFailure(
+            val throwableClassName: String,
+            val clearVault: Boolean,
+        ) : VaultDecrypt()
     }
 
     companion object {
@@ -204,5 +271,8 @@ class AndroidSecureStore(
         private const val PREFS_NAME = "velum_secure_encrypted"
         private const val TRANSFORMATION = "AES/GCM/NoPadding"
         private const val GCM_TAG_BITS = 128
+        private const val GCM_TAG_BYTES = 16
+        private const val IV_BYTES = 12
+        private const val FORMAT_VERSION: Byte = 1
     }
 }
