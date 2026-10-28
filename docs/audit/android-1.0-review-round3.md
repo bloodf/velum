@@ -89,16 +89,16 @@
 |-----|---------|----------|
 | **blocker** ~~fixed~~ | Mic FGS `stop`/`join(5s)` on main → ANR; `startForeground` after disk/AudioRecord init | `MicRecordingService` → `1bff9ff` |
 | **blocker** ~~fixed~~ | Android mic start failure falls through to demo PCM as real capture | `RecordingDetailScreen` → `47a9091` (+ `74ea04a` marker timeout) |
-| **blocker** | Note Pro download decrypt + `writeBytes` on Main | `DeviceViewModel.downloadSession` |
+| **blocker** ~~fixed~~ | Note Pro download decrypt + `writeBytes` on Main | → `74a66a7` / stream `c8357eb` |
 | **blocker** ~~fixed~~ | AutoFlow template/model enqueue lost to `ExistingWorkPolicy.KEEP` after null enqueue | → `7bf9b62` |
 | **high** ~~fixed~~ | Mic pause races `AudioRecord.stop` vs read loop | `MicRecordingService` → `1bff9ff` (flag-only pause) |
 | **high** ~~fixed~~ | Process-death AutoFlow rematch retranscribes finished `ready` rows | → `7bf9b62` |
 | **high** ~~fixed~~ | AutoFlow API override key checked but ASR ignores override | → `7bf9b62` |
 | **high** ~~fixed~~ | Voice profile cipher falls back to fixed `0x07` key until `ensureKey` | → `7bf9b62` |
 | **high** ~~fixed~~ | Empty library forces full template FTS rebuild every cold start | → `7bf9b62` |
-| **high** | Wipe leaves SecureStore secrets; Wi‑Fi banner claims SoftAP that isn’t shipped | wipe / Device UI |
-| **high** | OpenAI error bodies (may echo `sk-`) → WorkManager `KEY_ERROR` | `OpenAiCompatibleClient` → worker |
-| **high** | User template/memory/glossary 5-digit ids + `INSERT OR REPLACE` | Templates/Memory screens |
+| **high** ~~fixed~~ | Wipe leaves SecureStore secrets; Wi‑Fi banner SoftAP lie | wipe `b101759`; Wi‑Fi `6cb4d97` |
+| **high** ~~fixed~~ | OpenAI error bodies (may echo `sk-`) → WorkManager `KEY_ERROR` | → `22216f0` |
+| **high** ~~fixed~~ | User template/memory/glossary 5-digit ids + `INSERT OR REPLACE` | `UserContentIds` on tip |
 | **medium** | Wipe deletes audio after DB; EN-only permission/mic strings; unused `DATA_SYNC` FGS perm; over-broad SHARE/`video/mp4`; Appearance/All hardcoded; sherpa R8 keep | various |
 | **medium** ~~fixed~~ | AutoFlow await timeout still claims `processedIds` | claim only on terminal ready/failed |
 | **medium** ~~fixed~~ | Seed version bump wiped `flow-default` user edits | insert only if missing |
