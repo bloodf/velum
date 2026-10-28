@@ -1,3 +1,7 @@
+# Shipping R8 rules only — no -dontobfuscate, no blanket dev.velum.** /
+# androidx.** keeps. Instrumented minified walks add
+# proguard-rules-instrumented.pro via the minifiedWalk build type.
+
 # Keep kotlinx.serialization generated serializers
 -keepattributes *Annotation*, InnerClasses
 -dontnote kotlinx.serialization.**
@@ -40,35 +44,6 @@
 # LiteRT / on-device LLM (reflection-heavy)
 -keep class com.google.ai.edge.** { *; }
 -keep class org.tensorflow.lite.** { *; }
-
-# Device-walk CI flag + fake engines (flipped via instrumentation runner).
--keep class dev.velum.app.devicewalk.** { *; }
-
-# Keep Velum APIs intact under R8 for assembleRelease. Instrumented release
-# device walk disables minify via -PvelumTestBuildType=release because
-# androidTest and the app share a classloader.
--keep class dev.velum.** { *; }
--keepclassmembers class dev.velum.** { *; }
-
-# AndroidJUnitRunner 1.6+ needs Trace on the app classpath when instrumenting
-# a minified release APK.
--keep class androidx.tracing.** { *; }
--dontwarn androidx.tracing.**
-
-# Shared androidTest / app classloader: keep kotlin / kotlinx / androidx
-# intact and skip obfuscation so library facades stay name-compatible.
--dontobfuscate
--keep class kotlin.** { *; }
--keepclassmembers class kotlin.** { *; }
--keep class kotlin.Metadata { *; }
--dontwarn kotlin.**
--keep class kotlinx.** { *; }
--keepclassmembers class kotlinx.** { *; }
--dontwarn kotlinx.**
--keep class androidx.** { *; }
--keep interface androidx.** { *; }
--keepclassmembers class androidx.** { *; }
--dontwarn androidx.**
 
 # sherpa-onnx local ASR / diarization (JNI + reflection-heavy)
 -keep class com.k2fsa.sherpa.onnx.** { *; }

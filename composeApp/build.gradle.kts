@@ -115,15 +115,13 @@ android {
     namespace = "dev.velum.app"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
 
-    // Default debug. Device-walk CI passes -PvelumTestBuildType=release so
-    // connectedReleaseAndroidTest exists (release signing/code paths).
-    // Minify is OFF for that instrumented leg: androidTest calls app APIs
-    // (e.g. VelumApplication.awaitContainer) and R8 keep-whack-a-mole never
-    // converges. assembleRelease in jvm-android still runs full R8.
+    // Default debug. Device-walk CI passes -PvelumTestBuildType=minifiedWalk so
+    // connectedMinifiedWalkAndroidTest exercises a genuinely R8-minified APK
+    // (initWith release + debug signing + test-only keep file). Shipping
+    // assembleRelease still uses proguard-rules.pro alone.
     val walkBuildType =
         (findProperty("velumTestBuildType") as String?)?.takeIf { it.isNotBlank() } ?: "debug"
     testBuildType = walkBuildType
-    val instrumentedReleaseWalk = walkBuildType == "release"
 
     defaultConfig {
         applicationId = "dev.velum.app"
@@ -177,18 +175,28 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
         getByName("release") {
-            isMinifyEnabled = !instrumentedReleaseWalk
-            isShrinkResources = !instrumentedReleaseWalk
-            // Prefer upload key when present; otherwise debug keystore so CI can
-            // install + run connectedReleaseAndroidTest.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            // Prefer upload key when present; otherwise debug keystore so local
+            // assembleRelease still installs without the upload secret.
             signingConfig = signingConfigs.findByName("release")
                 ?: signingConfigs.getByName("debug")
-            if (!instrumentedReleaseWalk) {
-                proguardFiles(
-                    getDefaultProguardFile("proguard-android-optimize.txt"),
-                    "proguard-rules.pro",
-                )
-            }
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
+        }
+        // Genuinely minified instrumented walk: release R8 + shipping keeps,
+        // plus test-only seams. Debug-signed so CI can adb install without the
+        // upload keystore. Library modules fall back to their release variants.
+        create("minifiedWalk") {
+            initWith(getByName("release"))
+            matchingFallbacks += listOf("release")
+            isMinifyEnabled = true
+            isShrinkResources = true
+            signingConfig = signingConfigs.getByName("debug")
+            // initWith(release) already attaches shipping proguard-rules.pro.
+            proguardFile("proguard-rules-instrumented.pro")
         }
     }
     compileOptions {

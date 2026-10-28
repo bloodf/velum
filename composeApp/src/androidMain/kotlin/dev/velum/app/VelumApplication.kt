@@ -3,6 +3,8 @@ package dev.velum.app
 import android.app.Application
 import android.os.PowerManager
 import android.util.Log
+import androidx.annotation.Keep
+import androidx.annotation.VisibleForTesting
 import dev.velum.ai.local.ModelStoreDir
 import dev.velum.ai.pipeline.AiRuntimeHolder
 import dev.velum.ai.pipeline.ThermalMonitor
@@ -108,6 +110,9 @@ class VelumApplication : Application() {
 
     fun containerInitError(): Throwable? = initFailure.get()
 
+    /** Kept for device-walk instrumentation (seed import via AppContainer). */
+    @Keep
+    @VisibleForTesting
     suspend fun awaitContainer(): AppContainer = containerDeferred.await()
 
     companion object {
