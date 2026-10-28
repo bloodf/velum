@@ -72,7 +72,10 @@ import dev.velum.app.ui.theme.VelumInkSecondary
 import dev.velum.app.ui.theme.VelumOnBlack
 import dev.velum.app.ui.theme.VelumSurface
 import dev.velum.core.autoflow.AutoFlowPostAction
+import dev.velum.core.autoflow.AutoFlowTemplateCatalog
+import dev.velum.core.autoflow.AutoFlowTemplateSetup
 import dev.velum.core.data.epochSecondsNow
+import dev.velum.core.integrations.IntegrationId
 import kotlinx.coroutines.launch
 
 @Composable
@@ -80,6 +83,7 @@ fun AutoFlowListScreen(
     container: AppContainer,
     onBack: () -> Unit,
     onEdit: (String) -> Unit,
+    onBrowseTemplates: () -> Unit,
 ) {
     val strings = LocalStrings.current
     val flows by container.repository.observeAutoflows().collectAsState(emptyList())
@@ -144,7 +148,15 @@ fun AutoFlowListScreen(
             textAlign = TextAlign.Center,
             modifier = Modifier.padding(horizontal = 28.dp),
         )
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(16.dp))
+        OutlineButton(
+            strings.ux.autoFlowBrowseTemplates,
+            onBrowseTemplates,
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp),
+        )
+        Spacer(Modifier.height(16.dp))
         ThinDivider(0)
         ToggleRow(
             strings.receiveNotifications,
@@ -163,8 +175,8 @@ fun AutoFlowListScreen(
             EmptyState(
                 title = strings.ux.autoFlowEmpty,
                 subtitle = strings.ux.autoFlowEmptyHint,
-                actionLabel = strings.create,
-                onAction = { onEdit("new") },
+                actionLabel = strings.ux.autoFlowBrowseTemplates,
+                onAction = onBrowseTemplates,
             )
         } else {
             flows.forEach { flow ->
@@ -204,60 +216,103 @@ fun AutoFlowEditScreen(
     container: AppContainer,
     flowId: String,
     onBack: () -> Unit,
+    seedTemplateId: String? = null,
+    onOpenIntegrations: () -> Unit = {},
 ) {
     val strings = LocalStrings.current
     val flows by container.repository.observeAutoflows().collectAsState(emptyList())
     val templates by container.repository.observeTemplates().collectAsState(emptyList())
-    val isNew = flowId == "new"
+    val seed = remember(seedTemplateId) {
+        seedTemplateId?.let { AutoFlowTemplateCatalog.byId(it) }
+    }
+    val isNew = flowId == "new" || seed != null
     val flow = flows.firstOrNull { it.id == flowId }
-    var enabled by remember(flow, isNew) { mutableStateOf(flow?.enabled == 1L || isNew) }
-    var name by remember(flow, isNew) { mutableStateOf(flow?.name ?: strings.newAutoFlow) }
-    var wakePhrase by remember(flow) { mutableStateOf(flow?.wake_phrase.orEmpty()) }
-    var sourceFilter by remember(flow) { mutableStateOf(flow?.source_filter ?: "note_pro") }
-    var templateId by remember(flow) {
-        mutableStateOf(flow?.template_id ?: "velum.meeting")
+    val locale = strings.localeTag
+    var enabled by remember(flow, isNew, seed) {
+        mutableStateOf(flow?.enabled == 1L || isNew)
     }
-    var language by remember(flow) { mutableStateOf(flow?.language ?: "auto") }
-    var autoLabel by remember(flow) { mutableStateOf(flow?.auto_label_voice == 1L) }
-    var notify by remember(flow, isNew) { mutableStateOf(flow?.notify != 0L) }
-    var durationMin by remember(flow) { mutableStateOf(flow?.duration_min_seconds ?: 0L) }
-    var durationMax by remember(flow) { mutableStateOf(flow?.duration_max_seconds ?: 10800L) }
-    var durationMinText by remember(flow) {
-        mutableStateOf(((flow?.duration_min_seconds ?: 0L) / 60L).toString())
+    var name by remember(flow, isNew, seed) {
+        mutableStateOf(
+            flow?.name
+                ?: seed?.name?.forLocale(locale)
+                ?: strings.newAutoFlow,
+        )
     }
-    var durationMaxText by remember(flow) {
-        mutableStateOf(((flow?.duration_max_seconds ?: 10800L) / 3600L).toString())
+    var wakePhrase by remember(flow, seed) {
+        mutableStateOf(flow?.wake_phrase ?: seed?.definition?.wakePhrase.orEmpty())
     }
-    var postAction by remember(flow) { mutableStateOf(flow?.post_action.orEmpty()) }
-    var dirty by remember { mutableStateOf(false) }
+    var sourceFilter by remember(flow, seed) {
+        mutableStateOf(flow?.source_filter ?: seed?.definition?.sourceFilter ?: "note_pro")
+    }
+    var templateId by remember(flow, seed) {
+        mutableStateOf(flow?.template_id ?: seed?.definition?.templateId ?: "velum.meeting")
+    }
+    var language by remember(flow, seed) {
+        mutableStateOf(flow?.language ?: seed?.definition?.language ?: "auto")
+    }
+    var autoLabel by remember(flow, seed) {
+        mutableStateOf(
+            flow?.auto_label_voice?.let { it == 1L }
+                ?: seed?.definition?.autoLabelVoice
+                ?: false,
+        )
+    }
+    var notify by remember(flow, isNew, seed) {
+        mutableStateOf(
+            flow?.notify?.let { it != 0L }
+                ?: seed?.definition?.notify
+                ?: true,
+        )
+    }
+    var durationMin by remember(flow, seed) {
+        mutableStateOf(flow?.duration_min_seconds ?: seed?.definition?.durationMinSeconds ?: 0L)
+    }
+    var durationMax by remember(flow, seed) {
+        mutableStateOf(flow?.duration_max_seconds ?: seed?.definition?.durationMaxSeconds ?: 10800L)
+    }
+    var durationMinText by remember(flow, seed) {
+        mutableStateOf(
+            (
+                (flow?.duration_min_seconds ?: seed?.definition?.durationMinSeconds ?: 0L) / 60L
+                ).toString(),
+        )
+    }
+    var durationMaxText by remember(flow, seed) {
+        mutableStateOf(
+            (
+                (flow?.duration_max_seconds ?: seed?.definition?.durationMaxSeconds ?: 10800L) / 3600L
+                ).toString(),
+        )
+    }
+    var postAction by remember(flow, seed) {
+        mutableStateOf(
+            flow?.post_action
+                ?: seed?.definition?.normalizedPostAction().orEmpty(),
+        )
+    }
+    var dirty by remember(seed) { mutableStateOf(seed != null) }
     var showDiscard by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
+    var setupMissing by remember { mutableStateOf<AutoFlowTemplateSetup?>(null) }
     var editWhen by remember { mutableStateOf(false) }
     var editDo by remember { mutableStateOf(false) }
-    var postActionChoices by remember {
-        mutableStateOf(
-            listOf(
-                "" to strings.postActionNone,
-                "share" to strings.postActionShare,
-                "calendar_insert" to strings.postActionCalendar,
-            ),
-        )
+    var exportFolderReady by remember { mutableStateOf(false) }
+    var webhookReady by remember { mutableStateOf(false) }
+    val postActionChoices = remember(strings, exportFolderReady, webhookReady, postAction) {
+        buildList {
+            add("" to strings.postActionNone)
+            add("share" to strings.postActionShare)
+            add("calendar_insert" to strings.postActionCalendar)
+            add("folder_export" to strings.postActionFolderExport)
+            add("webhook" to strings.postActionWebhook)
+        }
     }
     val scope = rememberCoroutineScope()
 
-    LaunchedEffect(container, editDo, strings) {
-        val actions = container.integrationRegistry.availablePostActions()
-        postActionChoices = actions.map { action ->
-            when (action) {
-                AutoFlowPostAction.None -> "" to strings.postActionNone
-                AutoFlowPostAction.ShareMarkdown -> "share" to strings.postActionShare
-                AutoFlowPostAction.CalendarInsert ->
-                    "calendar_insert" to strings.postActionCalendar
-                AutoFlowPostAction.FolderExport ->
-                    "folder_export" to strings.postActionFolderExport
-                AutoFlowPostAction.Webhook -> "webhook" to strings.postActionWebhook
-            }
-        }
+    LaunchedEffect(container) {
+        val listed = container.integrationRegistry.listed()
+        exportFolderReady = listed.any { it.id == IntegrationId.FolderExport && it.configured }
+        webhookReady = listed.any { it.id == IntegrationId.Webhook && it.configured }
     }
 
     fun markDirty() {
@@ -266,6 +321,17 @@ fun AutoFlowEditScreen(
 
     fun tryBack() {
         if (dirty) showDiscard = true else onBack()
+    }
+
+    fun missingSetupFor(action: String): AutoFlowTemplateSetup? = when (AutoFlowPostAction.fromStored(action)) {
+        AutoFlowPostAction.FolderExport ->
+            if (exportFolderReady) null else AutoFlowTemplateSetup.ExportFolder
+        AutoFlowPostAction.Webhook ->
+            if (webhookReady) null else AutoFlowTemplateSetup.WebhookUrl
+        AutoFlowPostAction.None,
+        AutoFlowPostAction.ShareMarkdown,
+        AutoFlowPostAction.CalendarInsert,
+        -> null
     }
 
     suspend fun persist() {
@@ -284,6 +350,19 @@ fun AutoFlowEditScreen(
             notify = notify,
             postAction = postAction.ifBlank { null },
         )
+    }
+
+    fun trySave(after: () -> Unit = {}) {
+        val missing = missingSetupFor(postAction)
+        if (missing != null) {
+            setupMissing = missing
+            return
+        }
+        scope.launch {
+            persist()
+            dirty = false
+            after()
+        }
     }
 
     val templateName = templates.firstOrNull { it.id == templateId }?.name
@@ -321,13 +400,7 @@ fun AutoFlowEditScreen(
                 fontSize = 16.sp,
                 modifier = Modifier
                     .padding(end = 12.dp)
-                    .clickable {
-                        scope.launch {
-                            persist()
-                            dirty = false
-                            onBack()
-                        }
-                    },
+                    .clickable { trySave { onBack() } },
             )
         }
         Row(
@@ -537,6 +610,16 @@ fun AutoFlowEditScreen(
         }
     }
 
+    val templateChoices = remember(templates, templateId) {
+        val selected = templates.firstOrNull { it.id == templateId }
+        val head = templates.take(12)
+        if (selected == null || head.any { it.id == selected.id }) {
+            head
+        } else {
+            listOf(selected) + head.take(11)
+        }
+    }
+
     if (editDo) {
         ModalBottomSheet(
             onDismissRequest = { editDo = false },
@@ -558,7 +641,7 @@ fun AutoFlowEditScreen(
                     fontSize = 13.sp,
                     modifier = Modifier.padding(horizontal = 20.dp),
                 )
-                templates.take(8).forEach { tpl ->
+                templateChoices.forEach { tpl ->
                     SelectableSheetRow(
                         label = tpl.name,
                         selected = templateId == tpl.id,
@@ -633,14 +716,33 @@ fun AutoFlowEditScreen(
                     onBack()
                 }, {
                     showDiscard = false
-                    dirty = false
-                    scope.launch {
-                        persist()
-                        onBack()
-                    }
+                    trySave { onBack() }
                 })
             }
         }
+    }
+
+    setupMissing?.let { missing ->
+        val message = when (missing) {
+            AutoFlowTemplateSetup.ExportFolder -> strings.ux.autoFlowNeedExportFolder
+            AutoFlowTemplateSetup.WebhookUrl -> strings.ux.autoFlowNeedWebhook
+        }
+        AlertDialog(
+            onDismissRequest = { setupMissing = null },
+            title = { Text(strings.postActionLabel) },
+            text = { Text(message) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        setupMissing = null
+                        onOpenIntegrations()
+                    },
+                ) { Text(strings.ux.autoFlowOpenIntegrations) }
+            },
+            dismissButton = {
+                TextButton(onClick = { setupMissing = null }) { Text(strings.cancel) }
+            },
+        )
     }
 
     if (showDeleteConfirm && flow != null) {

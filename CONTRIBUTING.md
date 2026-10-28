@@ -47,6 +47,19 @@ Thanks for helping build a local-first, subscription-free recorder companion.
 - Imports at the top of the file (no inline imports).
 - Prefer interfaces at module boundaries (`BleTransport`, `SecureStore`, `FileDecryptor`, `SessionCipher`).
 
+## AutoFlow automation templates
+
+Ship a ready-made AutoFlow rule (triggers/conditions + note template + optional post-action) as a JSON file under `templates/autoflow/`. Full guide: [`docs/autoflow-templates.md`](docs/autoflow-templates.md).
+
+Quick path:
+
+1. Add `templates/autoflow/<category>/<slug>.json` (see schema in that folder).
+2. Localize `name` / `description` / `preview` in **en** and **pt-BR**.
+3. Set optional `author` for contributor credit in the app; omit it for official built-ins.
+4. Run `./gradlew :core:validateAutoflowTemplates` (or `./scripts/sync-autoflow-templates.sh`) then `./gradlew :core:jvmTest`.
+
+Propose ideas with the GitHub issue template **Automation template proposal**.
+
 ## Template contributions
 
 Ship an original summary template via pull request. Plaud author/official fields exist only in the curated dump + `docs/TEMPLATES_CREDITS.md` — the app UI never shows them. **In-app credit is only for Velum PR contributors.**

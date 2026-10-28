@@ -65,6 +65,7 @@ import dev.velum.app.ui.importing.ImportHubScreen
 import dev.velum.app.ui.motion.Motion
 import dev.velum.app.ui.autoflow.AutoFlowEditScreen
 import dev.velum.app.ui.autoflow.AutoFlowListScreen
+import dev.velum.app.ui.autoflow.AutoFlowTemplateLibraryScreen
 import dev.velum.app.ui.explore.ExploreScreen
 import dev.velum.app.ui.files.FilesScreen
 import dev.velum.app.ui.integrations.IntegrationsScreen
@@ -509,6 +510,31 @@ private fun VelumRoot(container: AppContainer) {
                             container = container,
                             onBack = { navController.popBackStack() },
                             onEdit = { id -> navController.navigate(Routes.autoflowEdit(id)) },
+                            onBrowseTemplates = {
+                                navController.navigate(Routes.AUTOFLOW_TEMPLATES)
+                            },
+                        )
+                    }
+                    composable(Routes.AUTOFLOW_TEMPLATES) {
+                        AutoFlowTemplateLibraryScreen(
+                            onBack = { navController.popBackStack() },
+                            onUseTemplate = { templateId ->
+                                navController.navigate(Routes.autoflowFromTemplate(templateId))
+                            },
+                        )
+                    }
+                    composable(
+                        Routes.AUTOFLOW_FROM_TEMPLATE,
+                        arguments = listOf(navArgument("templateId") { type = NavType.StringType }),
+                    ) { entry ->
+                        AutoFlowEditScreen(
+                            container = container,
+                            flowId = "new",
+                            seedTemplateId = entry.arg("templateId"),
+                            onBack = { navController.popBackStack() },
+                            onOpenIntegrations = {
+                                navController.navigate(Routes.INTEGRATIONS)
+                            },
                         )
                     }
                     composable(
@@ -519,6 +545,9 @@ private fun VelumRoot(container: AppContainer) {
                             container = container,
                             flowId = entry.arg("id"),
                             onBack = { navController.popBackStack() },
+                            onOpenIntegrations = {
+                                navController.navigate(Routes.INTEGRATIONS)
+                            },
                         )
                     }
                     composable(Routes.INTEGRATIONS) {

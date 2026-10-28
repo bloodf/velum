@@ -1,0 +1,97 @@
+name: Automation template proposal
+description: Propose a new ready-made AutoFlow automation template
+title: "[autoflow-template] "
+labels: ["autoflow", "templates"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Propose a built-in AutoFlow automation. Only capabilities that already work in Velum are accepted (new recording → source/duration/wake filters → transcribe/summarize with a note template → optional share / calendar / folder export / webhook).
+        See `docs/autoflow-templates.md`.
+  - type: input
+    id: name_en
+    attributes:
+      label: Name (English)
+      placeholder: Weekly sync → Obsidian
+    validations:
+      required: true
+  - type: input
+    id: name_pt
+    attributes:
+      label: Name (Portuguese, pt-BR)
+      placeholder: Sincronia semanal → Obsidian
+    validations:
+      required: true
+  - type: dropdown
+    id: category
+    attributes:
+      label: Category
+      options:
+        - meetings
+        - sales
+        - interviews
+        - medical
+        - legal
+        - education
+        - personal
+        - productivity
+        - research
+        - content
+        - real_estate
+        - finance
+        - it
+        - devices
+    validations:
+      required: true
+  - type: textarea
+    id: preview
+    attributes:
+      label: Plain-language preview (what it does)
+      description: Describe the trigger/conditions and actions in everyday language (EN + pt-BR welcome).
+      placeholder: When a recording with “weekly” in the title arrives, make meeting minutes and export Markdown to the Obsidian folder.
+    validations:
+      required: true
+  - type: input
+    id: note_template
+    attributes:
+      label: Note template id
+      description: Prefer stable `velum.*` ids (e.g. velum.meeting, velum.sales).
+      placeholder: velum.meeting
+    validations:
+      required: true
+  - type: dropdown
+    id: source
+    attributes:
+      label: Recording source filter
+      options:
+        - all
+        - note_pro
+        - phone
+        - import
+      default: 0
+    validations:
+      required: true
+  - type: dropdown
+    id: post_action
+    attributes:
+      label: Post-action after processing
+      options:
+        - none
+        - share
+        - calendar_insert
+        - folder_export
+        - webhook
+      default: 0
+    validations:
+      required: true
+  - type: textarea
+    id: extras
+    attributes:
+      label: Wake phrase / duration / other details
+      description: Optional wake phrase, duration bounds, language, speaker labeling, why this is distinct from existing templates.
+  - type: input
+    id: author
+    attributes:
+      label: Author credit (optional)
+      description: Shown in the app for contributed templates. GitHub handle without @.
+      placeholder: Ada Lovelace (@ada)

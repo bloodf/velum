@@ -220,7 +220,7 @@ class MainScreenshotsTest {
 
     @Test
     fun autoFlow() = capture("15-autoflow") {
-        AutoFlowListScreen(container, onBack = {}, onEdit = {})
+        AutoFlowListScreen(container, onBack = {}, onEdit = {}, onBrowseTemplates = {})
     }
 
     @Test
