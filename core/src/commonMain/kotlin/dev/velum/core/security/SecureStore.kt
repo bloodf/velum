@@ -70,17 +70,16 @@ class SecureDeviceKeyImporter(
         privateKeyPem: String,
     ) {
         // Messages name fields only — never echo rejected values (they are secrets).
-        require(serialNumber.isNotBlank()) { "serialNumber required" }
-        require(serialSignatureBase64.isNotBlank()) { "snSignature (base64) required" }
-        require(bindToken.isNotBlank()) { "bind token required" }
+        // UI maps these constants to fixed user strings; never show raw exception text.
+        require(serialNumber.isNotBlank()) { ERR_SERIAL_REQUIRED }
+        require(serialSignatureBase64.isNotBlank()) { ERR_SIGNATURE_REQUIRED }
+        require(bindToken.isNotBlank()) { ERR_BIND_REQUIRED }
         val signature = try {
             Base64.decode(serialSignatureBase64.trim())
         } catch (_: Throwable) {
-            throw IllegalArgumentException("snSignature (base64) is malformed")
+            throw IllegalArgumentException(ERR_SIGNATURE_MALFORMED)
         }
-        require(signature.size == 256) {
-            "snSignature must decode to 256 bytes (got ${signature.size})"
-        }
+        require(signature.size == 256) { ERR_SIGNATURE_LENGTH }
         store.putString(SecureKeys.DEVICE_SERIAL, serialNumber.trim())
         store.putString(SecureKeys.DEVICE_SERIAL_SIGNATURE, serialSignatureBase64.trim())
         store.putString(SecureKeys.DEVICE_BIND_TOKEN, bindToken.trim())
@@ -130,5 +129,13 @@ class SecureDeviceKeyImporter(
             privateKeyPem = privatePem,
             bindToken = bind,
         )
+    }
+
+    companion object {
+        const val ERR_SERIAL_REQUIRED = "serialNumber required"
+        const val ERR_SIGNATURE_REQUIRED = "snSignature (base64) required"
+        const val ERR_BIND_REQUIRED = "bind token required"
+        const val ERR_SIGNATURE_MALFORMED = "snSignature (base64) is malformed"
+        const val ERR_SIGNATURE_LENGTH = "snSignature must decode to 256 bytes"
     }
 }

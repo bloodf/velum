@@ -27,6 +27,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.velum.app.di.AppContainer
+import dev.velum.app.i18n.ImportStrings
 import dev.velum.app.i18n.LocalStrings
 import dev.velum.app.platform.rememberJsonFileImporter
 import dev.velum.app.ui.components.BlackButton
@@ -37,6 +38,7 @@ import dev.velum.app.ui.theme.VelumInk
 import dev.velum.app.ui.theme.VelumInkSecondary
 import dev.velum.core.security.PlaudExportImporter
 import dev.velum.core.security.PlaudExportParseResult
+import dev.velum.core.security.SecureDeviceKeyImporter
 import kotlinx.coroutines.launch
 
 /**
@@ -102,9 +104,8 @@ fun ImportDeviceKeysScreen(
                     }
                 }
             } catch (t: Throwable) {
-                // Field-name errors only — never surface throwable text that might echo secrets.
-                error = (t as? IllegalArgumentException)?.message
-                    ?: strings.importKeys.fromPlaudJsonFailed
+                // Never surface exception messages (may echo secrets). Fixed strings only.
+                error = mapImportThrowable(t, strings.importKeys)
             }
         }
     }
@@ -218,8 +219,7 @@ fun ImportDeviceKeysScreen(
                         hasKeys = true
                         status = strings.importKeys.saved
                     } catch (t: Throwable) {
-                        error = (t as? IllegalArgumentException)?.message
-                            ?: strings.importKeys.fromPlaudJsonFailed
+                        error = mapImportThrowable(t, strings.importKeys)
                     }
                 }
             },
@@ -263,5 +263,21 @@ fun ImportDeviceKeysScreen(
                 TextButton(onClick = { showClearConfirm = false }) { Text(strings.cancel) }
             },
         )
+    }
+}
+
+/**
+ * Map importer validation constants to fixed UI copy. Base64 / other
+ * [IllegalArgumentException]s and every non-validation failure become the
+ * generic import-failed string — never [Throwable.message].
+ */
+internal fun mapImportThrowable(t: Throwable, import: ImportStrings): String {
+    val msg = (t as? IllegalArgumentException)?.message ?: return import.fromPlaudJsonFailed
+    return when (msg) {
+        SecureDeviceKeyImporter.ERR_SERIAL_REQUIRED -> import.validationSerialRequired
+        SecureDeviceKeyImporter.ERR_SIGNATURE_REQUIRED -> import.validationSignatureRequired
+        SecureDeviceKeyImporter.ERR_BIND_REQUIRED -> import.validationBindRequired
+        SecureDeviceKeyImporter.ERR_SIGNATURE_LENGTH -> import.validationSignatureLength
+        else -> import.fromPlaudJsonFailed
     }
 }
