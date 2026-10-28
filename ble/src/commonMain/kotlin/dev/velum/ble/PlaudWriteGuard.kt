@@ -8,9 +8,10 @@ import dev.velum.protocol.PlaudUuids
  * (`2BB1`) and service (`1910`), not on profile id / characteristic name.
  *
  * Public [BleTransport.write] always runs this for Plaud write targets.
- * Skipping the opcode parse is only possible via the internal
- * [BleSealedWriteSink] after [PlaudEncryptedSession.writeEncrypted] has
- * already passed [requireAllowedPlaintext] and sealed inside `:ble`.
+ * Skipping the opcode parse is only possible via
+ * [AbstractBleTransport.writeSealedAlreadyGuarded] after
+ * [PlaudEncryptedSession.writeEncrypted] has already passed
+ * [requireAllowedPlaintext] and sealed inside `:ble`.
  */
 object PlaudWriteGuard {
     fun isPlaudWriteTarget(serviceUuid: String, characteristicUuid: String): Boolean =

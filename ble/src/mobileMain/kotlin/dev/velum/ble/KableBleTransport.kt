@@ -36,7 +36,7 @@ import kotlinx.coroutines.sync.withLock
  * Characteristic UUIDs come from the [GattProfile] passed to [connect].
  */
 @OptIn(ExperimentalUuidApi::class)
-class KableBleTransport : BleTransport, BleSealedWriteSink {
+class KableBleTransport : AbstractBleTransport() {
     override val isAvailable: Boolean = true
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -222,7 +222,7 @@ class KableBleTransport : BleTransport, BleSealedWriteSink {
         }
     }
 
-    override suspend fun writeSealedAlreadyGuarded(
+    internal override suspend fun writeSealedAlreadyGuarded(
         characteristic: String,
         payload: ByteArray,
         withoutResponse: Boolean,
