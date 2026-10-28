@@ -22,7 +22,7 @@
     public <init>(android.content.Context,androidx.work.WorkerParameters);
 }
 
-# SoftAP Wi‑Fi transfer WebSocket server (java_websocket)
+# SoftAP Wi-Fi transfer WebSocket server (java_websocket)
 -keep class org.java_websocket.** { *; }
 -dontwarn org.java_websocket.**
 
@@ -43,35 +43,20 @@
 
 # Device-walk CI flag + fake engines (flipped via instrumentation runner).
 -keep class dev.velum.app.devicewalk.** { *; }
-<<<<<<< HEAD
-# androidTest calls into the app process (VelumApplication.awaitContainer,
-# AppContainer, repository). Keep the app package entry points intact under R8
-# so connectedReleaseAndroidTest does not hit NoSuchMethodError if minify is on.
--keep class dev.velum.app.VelumApplication { *; }
--keepclassmembers class dev.velum.app.VelumApplication { *; }
--keep class dev.velum.app.di.AppContainer { *; }
--keepclassmembers class dev.velum.app.di.AppContainer { *; }
-=======
-# androidTest reaches app APIs via reflection-free calls (awaitContainer,
-# createLocalRecording, …). Keep the whole Velum surface so R8 cannot drop
-# suspend bridges the walk needs; unused third-party code still shrinks.
+
+# Keep Velum APIs intact under R8 for assembleRelease. Instrumented release
+# device walk disables minify via -PvelumTestBuildType=release because
+# androidTest and the app share a classloader.
 -keep class dev.velum.** { *; }
 -keepclassmembers class dev.velum.** { *; }
--keepclassmembers class * extends dev.velum.** { *; }
->>>>>>> 93b139a (fix(android): keep all dev.velum.** for R8 release instrumented tests)
 
-# AndroidJUnitRunner 1.6+ calls androidx.tracing.Trace in onCreate. Without a keep,
-# R8 strips it from the release APK and connectedReleaseAndroidTest crashes the
-# instrumentation process before any test runs (NoClassDefFoundError).
+# AndroidJUnitRunner 1.6+ needs Trace on the app classpath when instrumenting
+# a minified release APK.
 -keep class androidx.tracing.** { *; }
 -dontwarn androidx.tracing.**
 
-# connectedReleaseAndroidTest shares the app classloader with androidTest /
-# Compose UI test. Shrinking or obfuscating kotlin / kotlinx / androidx
-# causes NoClassDefFoundError / NoSuchMethodError (LazyKt, JobKt,
-# InfiniteAnimationPolicy, mutableIntObjectMapOf, …). Keep them intact;
-# still minify/shrink Velum + other deps. -dontobfuscate avoids renamed
-# library facades the test APK still references by original name.
+# Shared androidTest / app classloader: keep kotlin / kotlinx / androidx
+# intact and skip obfuscation so library facades stay name-compatible.
 -dontobfuscate
 -keep class kotlin.** { *; }
 -keepclassmembers class kotlin.** { *; }
