@@ -21,9 +21,12 @@ class UserContentIdCollisionTest {
         assertEquals(2_000, templates.size)
         assertEquals(2_000, memories.size)
         assertEquals(2_000, glossary.size)
-        assertTrue(templates.all { it.matches(Regex("""tpl-user-\d+-\d{10}""")) })
-        assertTrue(memories.all { it.matches(Regex("""mem-\d+-\d{10}""")) })
-        assertTrue(glossary.all { it.matches(Regex("""gloss-\d+-\d{10}""")) })
+        val tplRe = Regex("""^tpl-user-\d+-\d{10}$""")
+        val memRe = Regex("""^mem-\d+-\d{10}$""")
+        val glossRe = Regex("""^gloss-\d+-\d{10}$""")
+        assertTrue(templates.all { id -> tplRe.matches(id) })
+        assertTrue(memories.all { id -> memRe.matches(id) })
+        assertTrue(glossary.all { id -> glossRe.matches(id) })
     }
 
     @Test
