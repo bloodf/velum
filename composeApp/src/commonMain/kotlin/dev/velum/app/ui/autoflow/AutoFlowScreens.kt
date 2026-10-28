@@ -33,6 +33,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -290,6 +291,10 @@ fun AutoFlowEditScreen(
                 ?: seed?.definition?.normalizedPostAction().orEmpty(),
         )
     }
+    var modelId by remember(flow) { mutableStateOf(flow?.model_id.orEmpty()) }
+    var endpointProfileId by remember(flow) {
+        mutableStateOf(flow?.endpoint_profile_id.orEmpty())
+    }
     var dirty by remember(seed) { mutableStateOf(seed != null) }
     var showDiscard by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
@@ -349,6 +354,8 @@ fun AutoFlowEditScreen(
             language = language,
             notify = notify,
             postAction = postAction.ifBlank { null },
+            modelId = modelId.ifBlank { null },
+            endpointProfileId = endpointProfileId.ifBlank { null },
         )
     }
 
@@ -493,6 +500,14 @@ fun AutoFlowEditScreen(
                 strings.postActionLabel,
                 postActionChoices.firstOrNull { it.first == postAction }?.second
                     ?: strings.postActionNone,
+            )
+            MetaRow(
+                strings.settingsUi.modelForAutoFlow,
+                modelId.ifBlank { strings.postActionNone },
+            )
+            MetaRow(
+                strings.settingsUi.endpointProfile,
+                endpointProfileId.ifBlank { strings.postActionNone },
             )
         }
         if (!isNew && flow != null) {
@@ -693,6 +708,30 @@ fun AutoFlowEditScreen(
                         },
                     )
                 }
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = modelId,
+                    onValueChange = {
+                        modelId = it
+                        markDirty()
+                    },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+                    label = { Text(strings.settingsUi.modelForAutoFlow) },
+                    singleLine = true,
+                    shape = RoundedCornerShape(10.dp),
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = endpointProfileId,
+                    onValueChange = {
+                        endpointProfileId = it
+                        markDirty()
+                    },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+                    label = { Text(strings.settingsUi.endpointProfile) },
+                    singleLine = true,
+                    shape = RoundedCornerShape(10.dp),
+                )
                 DualActionRow(strings.cancel, strings.done, { editDo = false }, { editDo = false })
             }
         }

@@ -6,7 +6,11 @@ import dev.velum.ai.AiApiException
 import dev.velum.ai.MissingApiKeyException
 import dev.velum.ai.OpenAiCompatibleClient
 import dev.velum.core.model.AiProviderSettings
+import dev.velum.core.settings.AiApiTask
+import dev.velum.core.settings.ApiEndpointProfile
+import dev.velum.core.settings.ApiModelResolver
 import dev.velum.core.settings.SettingsRepository
+import dev.velum.core.settings.TaskModelBinding
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -59,6 +63,33 @@ class SettingsViewModel(
         viewModelScope.launch { settingsRepository.setApiKey(key) }
     }
 
+    fun setProfileApiKey(profileId: String, key: String) {
+        viewModelScope.launch { settingsRepository.setProfileApiKey(profileId, key) }
+    }
+
+    fun upsertProfile(profile: ApiEndpointProfile) {
+        viewModelScope.launch {
+            try {
+                settingsRepository.upsertProfile(profile)
+                clearMessage()
+            } catch (t: Throwable) {
+                _ui.value = SettingsUiState(error = t.message ?: t.toString())
+            }
+        }
+    }
+
+    fun deleteProfile(profileId: String) {
+        viewModelScope.launch { settingsRepository.deleteProfile(profileId) }
+    }
+
+    fun setActiveProfile(profileId: String) {
+        viewModelScope.launch { settingsRepository.setActiveProfile(profileId) }
+    }
+
+    fun setTaskBinding(task: AiApiTask, binding: TaskModelBinding) {
+        viewModelScope.launch { settingsRepository.setTaskBinding(task, binding) }
+    }
+
     fun selectTranscriptionModel(id: String) {
         viewModelScope.launch { settingsRepository.setTranscriptionModel(id) }
     }
@@ -75,17 +106,27 @@ class SettingsViewModel(
         viewModelScope.launch { settingsRepository.setEmbeddingModel(id) }
     }
 
-    fun refreshModels() {
+    fun refreshModels(profileId: String? = null) {
         viewModelScope.launch {
             _ui.value = SettingsUiState(refreshing = true)
             try {
-                val key = settingsRepository.getApiKey()?.takeIf { it.isNotBlank() }
+                val cfg = settings.value
+                val id = profileId
+                    ?: cfg.activeProfileId
+                    ?: cfg.profiles.firstOrNull()?.id
+                    ?: ApiModelResolver.DEFAULT_PROFILE_ID
+                val profile = cfg.profiles.firstOrNull { it.id == id }
+                    ?: ApiEndpointProfile(
+                        id = id,
+                        name = ApiModelResolver.DEFAULT_PROFILE_NAME,
+                        baseUrl = cfg.baseUrl,
+                    )
+                val key = settingsRepository.getProfileApiKey(profile.id)?.takeIf { it.isNotBlank() }
                     ?: throw MissingApiKeyException(
                         "API key required to refresh models. Add your OpenAI-compatible key first.",
                     )
-                val base = settings.value.baseUrl
-                val models = aiClient.listModels(base, key)
-                settingsRepository.setModels(models)
+                val models = aiClient.listModels(profile.baseUrl, key)
+                settingsRepository.setProfileModels(profile.id, models)
                 _ui.value = SettingsUiState(
                     refreshing = false,
                     message = "loaded:${models.size}",
@@ -107,7 +148,7 @@ class SettingsViewModel(
                     error = "bad_url",
                     errorStatus = -1,
                 )
-            } catch (t: Throwable) {
+            } catch (_: Throwable) {
                 _ui.value = SettingsUiState(
                     refreshing = false,
                     error = "generic",

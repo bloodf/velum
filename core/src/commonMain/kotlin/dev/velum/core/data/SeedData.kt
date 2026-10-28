@@ -2,6 +2,7 @@ package dev.velum.core.data
 
 import dev.velum.core.db.VelumDatabase
 import dev.velum.core.templates.BuiltinTemplateCatalog
+import dev.velum.core.templates.TemplateTagVocabulary
 
 object DemoFlags {
     /**
@@ -14,8 +15,10 @@ object DemoFlags {
 
 object SeedData {
     private const val META_SEEDED = "demo_seed_version"
-    /** v8: templates always; demo recordings only when [DemoFlags.SEED_DEMO_DATA]. */
-    private const val SEED_VERSION = "8"
+    /** Cleared on reseed so Discover "All" re-imports the gzip full catalog. */
+    const val META_FULL_TEMPLATES_IMPORTED = "full_templates_imported"
+    /** v10: tags + lang on templates for discoverability. */
+    private const val SEED_VERSION = "10"
 
     fun maybeSeed(db: VelumDatabase) {
         val q = db.velumQueries
@@ -75,6 +78,7 @@ object SeedData {
             BuiltinTemplateCatalog.LegacyAliases.keys.forEach { legacyId ->
                 q.deleteTemplateHard(legacyId)
             }
+            // Featured builtins only; full Plaud set is lazy-imported on Discover "All".
             builtinTemplates().forEach { t ->
                 q.insertTemplate(
                     id = t.id,
@@ -85,9 +89,15 @@ object SeedData {
                     system_prompt = t.systemPrompt,
                     uses = t.uses,
                     builtin = 1,
+                    featured = if (t.featured) 1 else 0,
+                    tags = t.tags,
+                    lang = t.lang,
+                    preferred_model = null,
+                    preferred_endpoint_profile_id = null,
                     created_at = now,
                 )
             }
+            q.setMeta(META_FULL_TEMPLATES_IMPORTED, "0")
 
             q.insertAutoflow(
                 id = "flow-default",
@@ -102,6 +112,8 @@ object SeedData {
                 language = "auto",
                 notify = 1,
                 post_action = null,
+                model_id = null,
+                endpoint_profile_id = null,
             )
 
             q.setMeta(META_SEEDED, SEED_VERSION)
@@ -116,6 +128,9 @@ object SeedData {
         val author: String = "Velum",
         val systemPrompt: String,
         val uses: Long = 0,
+        val featured: Boolean = true,
+        val tags: String = "",
+        val lang: String = "und",
     )
 
     fun builtinTemplates(): List<BuiltinTemplate> =
@@ -130,6 +145,9 @@ object SeedData {
                 author = spec.contributor?.name ?: "Velum",
                 systemPrompt = spec.systemPrompt,
                 uses = spec.uses,
+                featured = spec.featured,
+                tags = TemplateTagVocabulary.encode(spec.resolvedTags()),
+                lang = spec.lang.ifBlank { "und" },
             )
         }
 }

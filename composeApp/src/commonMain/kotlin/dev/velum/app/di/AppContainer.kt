@@ -45,6 +45,7 @@ import dev.velum.core.integrations.WebhookSettingsStore
 import dev.velum.core.security.DeviceKeyImporter
 import dev.velum.core.security.SecureDeviceKeyImporter
 import dev.velum.core.security.SecureStore
+import dev.velum.core.settings.ApiModelOverride
 import dev.velum.core.settings.SettingsRepository
 import dev.velum.core.time.VelumDateTime
 import kotlinx.coroutines.CoroutineScope
@@ -171,8 +172,9 @@ class AppContainer(
         recordingId: String,
         templateId: String? = null,
         retranscribe: Boolean = true,
+        apiModelOverride: ApiModelOverride? = null,
     ) {
-        recordingJobs.enqueue(recordingId, templateId, retranscribe)
+        recordingJobs.enqueue(recordingId, templateId, retranscribe, apiModelOverride)
     }
 
     suspend fun createLocalRecording(

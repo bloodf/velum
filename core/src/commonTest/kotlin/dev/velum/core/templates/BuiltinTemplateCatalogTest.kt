@@ -21,17 +21,25 @@ class BuiltinTemplateCatalogTest {
             assertTrue(entry.id.startsWith("velum."), entry.id)
             assertTrue(entry.name.isNotBlank())
             assertTrue(entry.body.isNotBlank())
+            assertTrue(entry.featured)
+            assertTrue(entry.tags.isNotEmpty(), entry.id)
             assertNull(entry.uiContributorCredit())
         }
     }
 
     @Test
-    fun all_merges_plaud_catalog() {
+    fun all_merges_featured_plaud_catalog_not_full() {
         assertEquals(15, BuiltinTemplateCatalog.velumEntries().size)
-        assertEquals(1500, PlaudTemplateCatalog.All.size)
-        assertEquals(15 + PlaudTemplateCatalog.All.size + VelumContributedCatalog.All.size, BuiltinTemplateCatalog.All.size)
+        assertTrue(PlaudTemplateCatalog.All.size >= 1500)
+        assertEquals(
+            BuiltinTemplateCatalog.velumEntries().size +
+                PlaudTemplateCatalog.All.size +
+                VelumContributedCatalog.All.size,
+            BuiltinTemplateCatalog.All.size,
+        )
         val meeting = assertNotNull(BuiltinTemplateCatalog.get("velum.meeting"))
         assertEquals("Velum", meeting.author)
+        assertTrue(meeting.featured)
         assertNull(meeting.uiContributorCredit())
     }
 
@@ -40,6 +48,7 @@ class BuiltinTemplateCatalogTest {
         val plaud = assertNotNull(PlaudTemplateCatalog.All.firstOrNull())
         val spec = assertNotNull(BuiltinTemplateCatalog.get(plaud.id))
         assertNull(spec.uiContributorCredit())
+        assertTrue(spec.featured)
         assertTrue(spec.catalogDescription.isNotBlank() || spec.description("en").isNotBlank())
         assertTrue(spec.docsCreditLine().isNotBlank())
     }

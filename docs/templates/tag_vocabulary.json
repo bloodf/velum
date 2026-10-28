@@ -1,0 +1,267 @@
+[
+  {
+    "slug": "action-items",
+    "en": "Action items",
+    "ptBr": "Itens de ação"
+  },
+  {
+    "slug": "decisions",
+    "en": "Decisions",
+    "ptBr": "Decisões"
+  },
+  {
+    "slug": "agenda",
+    "en": "Agenda",
+    "ptBr": "Pauta"
+  },
+  {
+    "slug": "key-points",
+    "en": "Key points",
+    "ptBr": "Pontos principais"
+  },
+  {
+    "slug": "follow-ups",
+    "en": "Follow-ups",
+    "ptBr": "Follow-ups"
+  },
+  {
+    "slug": "timeline",
+    "en": "Timeline",
+    "ptBr": "Cronograma"
+  },
+  {
+    "slug": "participants",
+    "en": "Participants",
+    "ptBr": "Participantes"
+  },
+  {
+    "slug": "risks",
+    "en": "Risks",
+    "ptBr": "Riscos"
+  },
+  {
+    "slug": "metrics",
+    "en": "Metrics",
+    "ptBr": "Métricas"
+  },
+  {
+    "slug": "1-1",
+    "en": "1:1",
+    "ptBr": "1:1"
+  },
+  {
+    "slug": "standup",
+    "en": "Standup",
+    "ptBr": "Daily"
+  },
+  {
+    "slug": "retrospective",
+    "en": "Retrospective",
+    "ptBr": "Retrospectiva"
+  },
+  {
+    "slug": "kickoff",
+    "en": "Kickoff",
+    "ptBr": "Kickoff"
+  },
+  {
+    "slug": "lecture",
+    "en": "Lecture",
+    "ptBr": "Aula"
+  },
+  {
+    "slug": "interview",
+    "en": "Interview",
+    "ptBr": "Entrevista"
+  },
+  {
+    "slug": "discovery",
+    "en": "Discovery",
+    "ptBr": "Discovery"
+  },
+  {
+    "slug": "demo",
+    "en": "Demo",
+    "ptBr": "Demo"
+  },
+  {
+    "slug": "negotiation",
+    "en": "Negotiation",
+    "ptBr": "Negociação"
+  },
+  {
+    "slug": "brainstorm",
+    "en": "Brainstorm",
+    "ptBr": "Brainstorm"
+  },
+  {
+    "slug": "workshop",
+    "en": "Workshop",
+    "ptBr": "Workshop"
+  },
+  {
+    "slug": "presentation",
+    "en": "Presentation",
+    "ptBr": "Apresentação"
+  },
+  {
+    "slug": "coaching",
+    "en": "Coaching",
+    "ptBr": "Coaching"
+  },
+  {
+    "slug": "onboarding",
+    "en": "Onboarding",
+    "ptBr": "Onboarding"
+  },
+  {
+    "slug": "handoff",
+    "en": "Handoff",
+    "ptBr": "Handoff"
+  },
+  {
+    "slug": "soap",
+    "en": "SOAP",
+    "ptBr": "SOAP"
+  },
+  {
+    "slug": "clinical-notes",
+    "en": "Clinical notes",
+    "ptBr": "Notas clínicas"
+  },
+  {
+    "slug": "patient-intake",
+    "en": "Patient intake",
+    "ptBr": "Admissão do paciente"
+  },
+  {
+    "slug": "legal-brief",
+    "en": "Legal brief",
+    "ptBr": "Memorial jurídico"
+  },
+  {
+    "slug": "contract",
+    "en": "Contract",
+    "ptBr": "Contrato"
+  },
+  {
+    "slug": "financial-review",
+    "en": "Financial review",
+    "ptBr": "Revisão financeira"
+  },
+  {
+    "slug": "sales-discovery",
+    "en": "Sales discovery",
+    "ptBr": "Discovery de vendas"
+  },
+  {
+    "slug": "sprint",
+    "en": "Sprint",
+    "ptBr": "Sprint"
+  },
+  {
+    "slug": "code-review",
+    "en": "Code review",
+    "ptBr": "Code review"
+  },
+  {
+    "slug": "incident",
+    "en": "Incident",
+    "ptBr": "Incidente"
+  },
+  {
+    "slug": "architecture",
+    "en": "Architecture",
+    "ptBr": "Arquitetura"
+  },
+  {
+    "slug": "real-estate",
+    "en": "Real estate",
+    "ptBr": "Imóveis"
+  },
+  {
+    "slug": "construction",
+    "en": "Construction",
+    "ptBr": "Obra"
+  },
+  {
+    "slug": "recruiting",
+    "en": "Recruiting",
+    "ptBr": "Recrutamento"
+  },
+  {
+    "slug": "performance-review",
+    "en": "Performance review",
+    "ptBr": "Avaliação de desempenho"
+  },
+  {
+    "slug": "compliance",
+    "en": "Compliance",
+    "ptBr": "Compliance"
+  },
+  {
+    "slug": "therapy",
+    "en": "Therapy",
+    "ptBr": "Terapia"
+  },
+  {
+    "slug": "research",
+    "en": "Research",
+    "ptBr": "Pesquisa"
+  },
+  {
+    "slug": "customer-support",
+    "en": "Customer support",
+    "ptBr": "Suporte ao cliente"
+  },
+  {
+    "slug": "product",
+    "en": "Product",
+    "ptBr": "Produto"
+  },
+  {
+    "slug": "bullets",
+    "en": "Bullets",
+    "ptBr": "Tópicos"
+  },
+  {
+    "slug": "sections",
+    "en": "Sections",
+    "ptBr": "Seções"
+  },
+  {
+    "slug": "checklist",
+    "en": "Checklist",
+    "ptBr": "Checklist"
+  },
+  {
+    "slug": "email-draft",
+    "en": "Email draft",
+    "ptBr": "Rascunho de e-mail"
+  },
+  {
+    "slug": "report",
+    "en": "Report",
+    "ptBr": "Relatório"
+  },
+  {
+    "slug": "transcript",
+    "en": "Transcript",
+    "ptBr": "Transcrição"
+  },
+  {
+    "slug": "minutes",
+    "en": "Minutes",
+    "ptBr": "Ata"
+  },
+  {
+    "slug": "summary",
+    "en": "Summary",
+    "ptBr": "Resumo"
+  },
+  {
+    "slug": "qa",
+    "en": "Q&A",
+    "ptBr": "Perguntas e respostas"
+  }
+]

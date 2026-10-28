@@ -7,9 +7,14 @@ import app.cash.sqldelight.db.SqlDriver
 import dev.velum.core.db.Glossary_term
 import dev.velum.core.db.Recording
 import dev.velum.core.db.Speaker
+import dev.velum.core.db.Summary_version
 import dev.velum.core.db.Template
 import dev.velum.core.db.VelumDatabase
 import dev.velum.core.search.FtsIndex
+import dev.velum.core.templates.PlaudFullTemplateAsset
+import dev.velum.core.templates.PlaudTemplateCatalog
+import dev.velum.core.templates.TemplateTagVocabulary
+import kotlin.random.Random
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
@@ -98,6 +103,8 @@ class VelumRepository(
         language: String,
         notify: Boolean,
         postAction: String? = null,
+        modelId: String? = null,
+        endpointProfileId: String? = null,
     ) = withContext(Dispatchers.Default) {
         q.updateAutoflow(
             name = name,
@@ -111,6 +118,8 @@ class VelumRepository(
             language = language,
             notify = if (notify) 1 else 0,
             post_action = postAction,
+            model_id = modelId?.takeIf { it.isNotBlank() },
+            endpoint_profile_id = endpointProfileId?.takeIf { it.isNotBlank() },
             id = id,
         )
     }
@@ -128,6 +137,8 @@ class VelumRepository(
         language: String,
         notify: Boolean,
         postAction: String? = null,
+        modelId: String? = null,
+        endpointProfileId: String? = null,
     ) = withContext(Dispatchers.Default) {
         q.insertAutoflow(
             id = id,
@@ -142,6 +153,8 @@ class VelumRepository(
             language = language,
             notify = if (notify) 1 else 0,
             post_action = postAction,
+            model_id = modelId?.takeIf { it.isNotBlank() },
+            endpoint_profile_id = endpointProfileId?.takeIf { it.isNotBlank() },
         )
     }
 
@@ -279,6 +292,7 @@ class VelumRepository(
     /**
      * Persist a local template as name + Markdown/plain prompt JSON body.
      * [systemPrompt] is the LLM instruction; may be plain Markdown or a JSON object string.
+     * Custom templates use [featured]=false; Featured builtins use true.
      */
     suspend fun upsertTemplate(
         id: String,
@@ -289,10 +303,17 @@ class VelumRepository(
         author: String = "You",
         builtin: Boolean = false,
         uses: Long = 0,
+        featured: Boolean = false,
+        tags: List<String> = emptyList(),
+        lang: String = "und",
+        preferredModel: String? = null,
+        preferredEndpointProfileId: String? = null,
     ) = withContext(Dispatchers.Default) {
         val n = name.trim()
         val c = category.trim().ifBlank { "General" }
         val d = description.trim()
+        val tagsEncoded = TemplateTagVocabulary.encode(tags)
+        val langNorm = lang.trim().ifBlank { "und" }
         q.insertTemplate(
             id = id,
             name = n,
@@ -302,9 +323,69 @@ class VelumRepository(
             system_prompt = systemPrompt,
             uses = uses,
             builtin = if (builtin) 1 else 0,
+            featured = if (featured) 1 else 0,
+            tags = tagsEncoded,
+            lang = langNorm,
+            preferred_model = preferredModel?.takeIf { it.isNotBlank() },
+            preferred_endpoint_profile_id = preferredEndpointProfileId?.takeIf { it.isNotBlank() },
             created_at = epochSeconds(),
         )
-        indexTemplate(id, n, d, c, systemPrompt)
+        indexTemplate(id, n, d, c, systemPrompt, tagsEncoded)
+    }
+
+    /**
+     * Lazy-import the gzipped full Plaud catalog once (Discover "All").
+     * Preserves existing [Template.uses] on id collision; sets featured from JSON.
+     * @return number of rows upserted, or 0 if already imported / asset empty.
+     */
+    suspend fun ensureFullTemplatesImported(): Int = withContext(Dispatchers.Default) {
+        if (q.getMeta(SeedData.META_FULL_TEMPLATES_IMPORTED).executeAsOneOrNull() == "1") {
+            return@withContext 0
+        }
+        val jsonl = PlaudFullTemplateAsset.readJsonl()
+        if (jsonl.isBlank()) {
+            return@withContext 0
+        }
+        val entries = PlaudTemplateCatalog.parseJsonl(jsonl)
+        if (entries.isEmpty()) {
+            return@withContext 0
+        }
+        val now = epochSeconds()
+        var upserted = 0
+        db.transaction {
+            entries.forEach { entry ->
+                val existing = q.selectTemplateById(entry.id).executeAsOneOrNull()
+                val uses = existing?.uses ?: entry.uses
+                val createdAt = existing?.created_at ?: now
+                val tagsEncoded = TemplateTagVocabulary.encode(
+                    entry.tags.ifEmpty {
+                        TemplateTagVocabulary.defaultsForCategory(entry.category)
+                    },
+                )
+                val langNorm = entry.lang.ifBlank { "und" }
+                q.insertTemplate(
+                    id = entry.id,
+                    name = entry.name,
+                    category = entry.category,
+                    description = entry.description,
+                    author = "Velum",
+                    system_prompt = entry.systemPrompt(),
+                    uses = uses,
+                    builtin = 1,
+                    featured = if (entry.featured) 1 else 0,
+                    tags = tagsEncoded,
+                    lang = langNorm,
+                    preferred_model = entry.preferredModel?.takeIf { it.isNotBlank() },
+                    preferred_endpoint_profile_id =
+                        entry.preferredEndpointProfileId?.takeIf { it.isNotBlank() },
+                    created_at = createdAt,
+                )
+                upserted++
+            }
+            q.setMeta(SeedData.META_FULL_TEMPLATES_IMPORTED, "1")
+        }
+        if (ftsAvailable) rebuildFtsIndex()
+        upserted
     }
 
     suspend fun deleteTemplate(id: String) = withContext(Dispatchers.Default) {
@@ -313,6 +394,7 @@ class VelumRepository(
     }
 
     suspend fun deleteRecordingHard(id: String) = withContext(Dispatchers.Default) {
+        q.deleteVersionsForRecording(id)
         q.deleteSpeakersForRecording(id)
         q.deleteRecordingHard(id)
         if (ftsAvailable) FtsIndex.deleteRecording(driver, id)
@@ -321,6 +403,7 @@ class VelumRepository(
     /** Local wipe: recordings, custom templates, AutoFlows, memory, glossary. Built-ins reseed. */
     suspend fun wipeAllUserData() = withContext(Dispatchers.Default) {
         q.selectAllRecordingIds().executeAsList().forEach { id ->
+            q.deleteVersionsForRecording(id)
             q.deleteSpeakersForRecording(id)
             q.deleteRecordingHard(id)
             if (ftsAvailable) FtsIndex.deleteRecording(driver, id)
@@ -426,7 +509,7 @@ class VelumRepository(
                 indexRecording(r.id, r.title, r.transcript, r.summary_markdown)
             }
             q.selectTemplates().executeAsList().forEach { t ->
-                indexTemplate(t.id, t.name, t.description, t.category, t.system_prompt)
+                indexTemplate(t.id, t.name, t.description, t.category, t.system_prompt, t.tags)
             }
         }
     }
@@ -453,9 +536,10 @@ class VelumRepository(
         description: String,
         category: String,
         systemPrompt: String,
+        tags: String = "",
     ) {
         if (!ftsAvailable) return
-        FtsIndex.upsertTemplate(driver, id, name, description, category, systemPrompt)
+        FtsIndex.upsertTemplate(driver, id, name, description, category, systemPrompt, tags)
     }
 
     data class SpeakerUpsert(
@@ -473,6 +557,104 @@ class VelumRepository(
 
     fun observeSpeakers(recordingId: String): Flow<List<Speaker>> =
         q.selectSpeakersForRecording(recordingId).asFlow().mapToList(Dispatchers.Default)
+
+    fun observeSummaryVersions(recordingId: String): Flow<List<Summary_version>> =
+        q.selectVersionsForRecording(recordingId).asFlow().mapToList(Dispatchers.Default)
+
+    suspend fun getSummaryVersions(recordingId: String): List<Summary_version> =
+        withContext(Dispatchers.Default) {
+            q.selectVersionsForRecording(recordingId).executeAsList()
+        }
+
+    /**
+     * Persist a newly generated summary as the active version.
+     * When the recording already has non-blank notes that are not yet versioned,
+     * snapshots that text first ([ensureBaselineVersion]) so regenerate keeps history.
+     */
+    suspend fun saveSummaryVersion(
+        recordingId: String,
+        markdown: String,
+        templateId: String?,
+        templateName: String,
+        versionId: String = newSummaryVersionId(),
+        createdAt: Long = epochSeconds(),
+    ): String = withContext(Dispatchers.Default) {
+        db.transactionWithResult {
+            ensureBaselineVersionLocked(recordingId)
+            q.clearActiveVersionsForRecording(recordingId)
+            q.insertSummaryVersion(
+                id = versionId,
+                recording_id = recordingId,
+                template_id = templateId,
+                template_name = templateName,
+                markdown = markdown,
+                created_at = createdAt,
+                is_active = 1,
+            )
+            q.updateSummary(markdown, recordingId)
+            reindexRecording(recordingId)
+            versionId
+        }
+    }
+
+    suspend fun activateSummaryVersion(recordingId: String, versionId: String) =
+        withContext(Dispatchers.Default) {
+            db.transaction {
+                val version = q.getSummaryVersionById(versionId, recordingId).executeAsOneOrNull()
+                    ?: return@transaction
+                q.clearActiveVersionsForRecording(recordingId)
+                q.setVersionActive(versionId, recordingId)
+                q.updateSummary(version.markdown, recordingId)
+                reindexRecording(recordingId)
+            }
+        }
+
+    suspend fun deleteSummaryVersion(recordingId: String, versionId: String) =
+        withContext(Dispatchers.Default) {
+            db.transaction {
+                val version = q.getSummaryVersionById(versionId, recordingId).executeAsOneOrNull()
+                    ?: return@transaction
+                val wasActive = version.is_active != 0L
+                q.deleteSummaryVersion(versionId, recordingId)
+                if (!wasActive) return@transaction
+                val remaining = q.selectVersionsForRecording(recordingId).executeAsList()
+                val fallback = remaining.firstOrNull()
+                if (fallback != null) {
+                    q.clearActiveVersionsForRecording(recordingId)
+                    q.setVersionActive(fallback.id, recordingId)
+                    q.updateSummary(fallback.markdown, recordingId)
+                } else {
+                    q.updateSummary(null, recordingId)
+                }
+                reindexRecording(recordingId)
+            }
+        }
+
+    /** Snapshot current [Recording.summary_markdown] if non-blank and no versions exist yet. */
+    suspend fun ensureBaselineVersion(recordingId: String) = withContext(Dispatchers.Default) {
+        db.transaction {
+            ensureBaselineVersionLocked(recordingId)
+        }
+    }
+
+    private fun ensureBaselineVersionLocked(recordingId: String) {
+        val count = q.countVersionsForRecording(recordingId).executeAsOne()
+        if (count > 0L) return
+        val recording = q.selectRecordingById(recordingId).executeAsOneOrNull() ?: return
+        val prior = recording.summary_markdown?.takeIf { it.isNotBlank() } ?: return
+        q.insertSummaryVersion(
+            id = newSummaryVersionId(),
+            recording_id = recordingId,
+            template_id = null,
+            template_name = "",
+            markdown = prior,
+            created_at = recording.created_at.coerceAtMost(epochSeconds() - 1),
+            is_active = 0,
+        )
+    }
+
+    private fun newSummaryVersionId(): String =
+        "sv-${epochSeconds()}-${Random.nextInt(1000, 9999)}"
 
     suspend fun getSpeakers(recordingId: String): List<Speaker> = withContext(Dispatchers.Default) {
         q.selectSpeakersForRecording(recordingId).executeAsList()
@@ -522,5 +704,6 @@ class VelumRepository(
         const val META_FIRST_RUN_DONE = "first_run_done"
     }
 }
+
 
 expect fun epochSecondsNow(): Long

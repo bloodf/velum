@@ -7,6 +7,7 @@ import dev.velum.core.data.VelumRepository
 import dev.velum.core.db.Recording
 import dev.velum.core.model.ComputeMode
 import dev.velum.core.search.FtsQuery
+import dev.velum.core.settings.AiApiTask
 import dev.velum.core.settings.SettingsRepository
 
 /**
@@ -83,13 +84,14 @@ class AskAcrossRecordings(
         val llm = aiRouter.llm()
         val model = when (cfg.summaryMode) {
             ComputeMode.Local -> cfg.localLlmModelId.orEmpty()
-            ComputeMode.Api -> cfg.chatModel.orEmpty()
+            ComputeMode.Api -> ""
         }
         val text = llm.complete(
             LlmRequest(
                 systemPrompt = system,
                 userPrompt = q,
                 outputLanguage = cfg.outputLanguage,
+                apiTask = AiApiTask.Ask,
             ),
             model,
         ).text
@@ -204,7 +206,8 @@ class AskAcrossRecordings(
 
     private suspend fun ensureApiKeyIfNeeded(mode: ComputeMode) {
         if (mode != ComputeMode.Api) return
-        val key = settings.getApiKey()
+        val resolved = settings.resolveApiModel(AiApiTask.Ask)
+        val key = settings.getProfileApiKey(resolved.profileId)
         if (key.isNullOrBlank()) {
             throw MissingApiKeyException(
                 "API key required for Ask across recordings. Add your OpenAI-compatible key in Settings → AI provider.",

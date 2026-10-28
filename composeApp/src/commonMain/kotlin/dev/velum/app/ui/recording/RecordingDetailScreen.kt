@@ -18,6 +18,8 @@ import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -32,6 +34,7 @@ import androidx.compose.material.icons.outlined.IosShare
 import androidx.compose.material.icons.outlined.MoreHoriz
 import androidx.compose.material.icons.outlined.Pause
 import androidx.compose.material.icons.outlined.PlayArrow
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
@@ -108,8 +111,18 @@ import dev.velum.app.ui.theme.VelumInk
 import dev.velum.app.ui.theme.VelumInkSecondary
 import dev.velum.app.ui.theme.VelumOnBlack
 import dev.velum.app.ui.theme.VelumSurface
+import dev.velum.core.data.epochSecondsNow
+import dev.velum.core.db.Summary_version
+import dev.velum.core.db.Template
+import dev.velum.core.model.AiModelInfo
 import dev.velum.core.model.ComputeMode
+import dev.velum.core.search.FtsQuery
+import dev.velum.core.search.RecordingSearch
+import dev.velum.core.settings.ApiEndpointProfile
+import dev.velum.core.settings.ApiModelOverride
 import dev.velum.core.templates.BuiltinTemplateCatalog
+import dev.velum.core.templates.TemplateTagFilter
+import dev.velum.core.templates.TemplateTagVocabulary
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -142,6 +155,9 @@ fun RecordingDetailScreen(
     var showMenu by remember { mutableStateOf(false) }
     var showSpeakers by remember { mutableStateOf(showSpeakersInitially) }
     var showGenerate by remember { mutableStateOf(showGenerateInitially) }
+    var showChangeTemplate by remember { mutableStateOf(false) }
+    var showSummaryVersions by remember { mutableStateOf(false) }
+    var versionPendingDelete by remember { mutableStateOf<Summary_version?>(null) }
     var showMove by remember { mutableStateOf(false) }
     var showFindReplace by remember { mutableStateOf(false) }
     var showAskAi by remember { mutableStateOf(false) }
@@ -186,7 +202,11 @@ fun RecordingDetailScreen(
                 recording?.status != "queued")
         )
 
-    fun enqueueAfterGate(retranscribe: Boolean, templateId: String? = "velum.meeting") {
+    fun enqueueAfterGate(
+        retranscribe: Boolean,
+        templateId: String? = "velum.meeting",
+        apiModelOverride: ApiModelOverride? = null,
+    ) {
         processError = null
         val tasks = listOf(AiTask.Transcription, AiTask.Diarization, AiTask.Summary)
         for (task in tasks) {
@@ -203,11 +223,15 @@ fun RecordingDetailScreen(
             recordingId = recordingId,
             templateId = templateId,
             retranscribe = retranscribe,
+            apiModelOverride = apiModelOverride,
         )
     }
 
-    fun launchProcessing(retranscribe: Boolean, templateId: String? = "velum.meeting") =
-        enqueueAfterGate(retranscribe, templateId)
+    fun launchProcessing(
+        retranscribe: Boolean,
+        templateId: String? = "velum.meeting",
+        apiModelOverride: ApiModelOverride? = null,
+    ) = enqueueAfterGate(retranscribe, templateId, apiModelOverride)
 
     fun exportMarkdownShare() {
         val rec = recording ?: return
@@ -432,6 +456,8 @@ fun RecordingDetailScreen(
                 processError = processError,
                 onAskAi = { showAskAi = true },
                 onGenerate = { showGenerate = true },
+                onChangeTemplate = { showChangeTemplate = true },
+                onSummaryVersions = { showSummaryVersions = true },
                 onMindMap = { showMindMap = true },
             )
         }
@@ -621,26 +647,89 @@ fun RecordingDetailScreen(
             )
         }
     }
-    if (showGenerate) {
+    if (showGenerate || showChangeTemplate) {
+        val changeOnly = showChangeTemplate
         ModalBottomSheet(
-            onDismissRequest = { showGenerate = false },
+            onDismissRequest = {
+                showGenerate = false
+                showChangeTemplate = false
+            },
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
             containerColor = VelumSurface,
         ) {
+            val catalogTemplates by container.repository.observeTemplates().collectAsState(emptyList())
+            val aiSettings by container.settingsRepository.settings.collectAsState()
             GenerateSheetContent(
-                onClose = { showGenerate = false },
-                onApply = { templateId, language, autoLabel ->
+                onClose = {
                     showGenerate = false
+                    showChangeTemplate = false
+                },
+                catalogTemplates = catalogTemplates.filter { it.builtin != 0L && it.featured != 0L },
+                searchTemplateIds = { match ->
+                    container.repository.searchTemplateIdsFts(match)
+                },
+                profiles = aiSettings.profiles,
+                modelsByProfile = aiSettings.cachedModelsByProfile,
+                onApply = { templateId, language, autoLabel, apiOverride ->
+                    showGenerate = false
+                    showChangeTemplate = false
                     scope.launch {
                         if (language != "auto") {
                             container.settingsRepository.setAudioLanguage(language)
                         }
                         container.settingsRepository.setAutoSpeakerLabel(autoLabel)
-                        launchProcessing(retranscribe = true, templateId = templateId)
+                        launchProcessing(
+                            retranscribe = !changeOnly,
+                            templateId = templateId,
+                            apiModelOverride = apiOverride,
+                        )
                     }
                 },
             )
         }
+    }
+    if (showSummaryVersions) {
+        val versions by container.repository.observeSummaryVersions(recordingId)
+            .collectAsState(emptyList())
+        ModalBottomSheet(
+            onDismissRequest = { showSummaryVersions = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = VelumSurface,
+        ) {
+            SummaryVersionsSheet(
+                versions = versions,
+                onActivate = { versionId ->
+                    scope.launch {
+                        container.repository.activateSummaryVersion(recordingId, versionId)
+                    }
+                },
+                onDelete = { version -> versionPendingDelete = version },
+                onClose = { showSummaryVersions = false },
+            )
+        }
+    }
+    versionPendingDelete?.let { pending ->
+        AlertDialog(
+            onDismissRequest = { versionPendingDelete = null },
+            title = { Text(strings.ux.confirmDeleteTitle) },
+            text = { Text(strings.confirmDeleteVersionBody) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val id = pending.id
+                        versionPendingDelete = null
+                        scope.launch {
+                            container.repository.deleteSummaryVersion(recordingId, id)
+                        }
+                    },
+                ) { Text(strings.confirm) }
+            },
+            dismissButton = {
+                TextButton(onClick = { versionPendingDelete = null }) {
+                    Text(strings.cancel)
+                }
+            },
+        )
     }
     modelPrompt?.let { need ->
         LocalModelMissingDialog(
@@ -1328,6 +1417,8 @@ private fun NotesPane(
     processError: String? = null,
     onAskAi: () -> Unit,
     onGenerate: () -> Unit,
+    onChangeTemplate: () -> Unit = {},
+    onSummaryVersions: () -> Unit = {},
     onMindMap: () -> Unit,
 ) {
     val strings = LocalStrings.current
@@ -1363,6 +1454,10 @@ private fun NotesPane(
                 ) {
                     MarkdownPreview(summary)
                     Spacer(Modifier.height(20.dp))
+                    OutlineButton(strings.changeTemplate, onChangeTemplate)
+                    Spacer(Modifier.height(12.dp))
+                    OutlineButton(strings.summaryVersions, onSummaryVersions)
+                    Spacer(Modifier.height(12.dp))
                     OutlineButton(strings.mindMap, onMindMap)
                     Spacer(Modifier.height(12.dp))
                     BlackButton(strings.askAi, onAskAi)
@@ -1370,6 +1465,132 @@ private fun NotesPane(
                     OutlineButton(strings.generateCustom, onGenerate)
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun SummaryVersionsSheet(
+    versions: List<Summary_version>,
+    onActivate: (String) -> Unit,
+    onDelete: (Summary_version) -> Unit,
+    onClose: () -> Unit,
+) {
+    val strings = LocalStrings.current
+    val now = remember { epochSecondsNow() }
+    Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
+        Text(
+            strings.summaryVersions,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 18.sp,
+            color = VelumInk,
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+        )
+        if (versions.isEmpty()) {
+            Text(
+                strings.summaryVersionsEmpty,
+                color = VelumInkSecondary,
+                fontSize = 14.sp,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+            )
+        } else {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(420.dp)
+                    .padding(horizontal = 12.dp),
+            ) {
+                items(versions, key = { it.id }) { version ->
+                    val active = version.is_active != 0L
+                    val name = version.template_name.ifBlank {
+                        version.template_id?.takeIf { it.isNotBlank() } ?: strings.template
+                    }
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp, vertical = 10.dp)
+                            .then(
+                                if (active) {
+                                    Modifier
+                                        .border(1.dp, VelumBlack, RoundedCornerShape(8.dp))
+                                        .padding(12.dp)
+                                } else {
+                                    Modifier.padding(horizontal = 4.dp)
+                                },
+                            ),
+                    ) {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    name,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 15.sp,
+                                    color = VelumInk,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                Text(
+                                    relativeTimeLabel(version.created_at, now, strings.localeTag),
+                                    color = VelumInkSecondary,
+                                    fontSize = 12.sp,
+                                )
+                            }
+                            if (active) {
+                                Text(
+                                    strings.versionActive,
+                                    color = VelumInk,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium,
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (!active) {
+                                OutlineButton(
+                                    text = strings.ux.restore,
+                                    onClick = { onActivate(version.id) },
+                                    modifier = Modifier.weight(1f),
+                                )
+                            }
+                            OutlineButton(
+                                text = strings.ux.deleteForever,
+                                onClick = { onDelete(version) },
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                    }
+                    ThinDivider()
+                }
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        TextButton(
+            onClick = onClose,
+            modifier = Modifier.padding(horizontal = 12.dp),
+        ) {
+            Text(strings.done)
+        }
+    }
+}
+
+private fun relativeTimeLabel(createdAt: Long, now: Long, localeTag: String): String {
+    val delta = (now - createdAt).coerceAtLeast(0)
+    val minutes = delta / 60
+    val hours = minutes / 60
+    val days = hours / 24
+    val pt = localeTag.startsWith("pt", ignoreCase = true)
+    return when {
+        minutes < 1L -> if (pt) "agora" else "just now"
+        minutes < 60L -> if (pt) "há ${minutes} min" else "${minutes}m ago"
+        hours < 24L -> if (pt) "há ${hours} h" else "${hours}h ago"
+        days < 7L -> if (pt) "há ${days} d" else "${days}d ago"
+        else -> {
+            val weeks = days / 7
+            if (pt) "há ${weeks} sem" else "${weeks}w ago"
         }
     }
 }
@@ -1665,18 +1886,87 @@ private fun formatTalk(seconds: Long): String {
 @Composable
 fun GenerateSheetContent(
     onClose: () -> Unit,
-    onApply: (templateId: String, language: String, autoLabel: Boolean) -> Unit = { _, _, _ -> onClose() },
+    onApply: (templateId: String, language: String, autoLabel: Boolean, apiOverride: ApiModelOverride?) -> Unit =
+        { _, _, _, _ -> onClose() },
     templates: List<String> = listOf("velum.meeting", "velum.general", "velum.it"),
     languages: List<String> = listOf("auto", "pt", "en", "es"),
+    catalogTemplates: List<Template> = emptyList(),
+    searchTemplateIds: (suspend (String) -> List<String>)? = null,
+    profiles: List<ApiEndpointProfile> = emptyList(),
+    modelsByProfile: Map<String, List<AiModelInfo>> = emptyMap(),
 ) {
     val strings = LocalStrings.current
+    val languageTag = strings.localeTag
     var auto by remember { mutableStateOf(true) }
     var templateIdx by remember { mutableStateOf(0) }
+    var selectedTemplateId by remember { mutableStateOf(templates.firstOrNull() ?: "velum.meeting") }
     var autoLabel by remember { mutableStateOf(true) }
     var langIdx by remember { mutableStateOf(0) }
+    var pickerQuery by remember { mutableStateOf("") }
+    var selectedTags by remember { mutableStateOf(setOf<String>()) }
+    var selectedContentLang by remember { mutableStateOf<String?>(null) }
+    var ftsIds by remember { mutableStateOf<List<String>?>(null) }
+    var showAdvanced by remember { mutableStateOf(false) }
+    var overrideProfileIdx by remember { mutableStateOf(0) }
+    var overrideModelIdx by remember { mutableStateOf(0) }
+    var useApiOverride by remember { mutableStateOf(false) }
     val templateLabels = templates.map { id ->
         BuiltinTemplateCatalog.get(id)?.displayName(strings.localeTag) ?: id
     }
+    val useCatalogPicker = catalogTemplates.isNotEmpty()
+
+    LaunchedEffect(pickerQuery, catalogTemplates, searchTemplateIds) {
+        if (!useCatalogPicker || pickerQuery.isBlank() || searchTemplateIds == null) {
+            ftsIds = null
+            return@LaunchedEffect
+        }
+        val match = FtsQuery.fromUserInput(pickerQuery)
+        ftsIds = if (match != null) {
+            runCatching { searchTemplateIds(match) }.getOrNull()
+        } else {
+            null
+        }
+    }
+
+    val filteredCatalog = remember(
+        catalogTemplates,
+        pickerQuery,
+        ftsIds,
+        selectedTags,
+        selectedContentLang,
+    ) {
+        if (!useCatalogPicker) return@remember emptyList()
+        val searched = RecordingSearch.templates(catalogTemplates, pickerQuery, ftsIds)
+        val rows = searched.map {
+            TemplateTagFilter.Row(
+                id = it.id,
+                tags = TemplateTagVocabulary.decode(it.tags),
+                lang = it.lang,
+                category = it.category,
+            )
+        }
+        val kept = TemplateTagFilter.filter(
+            items = rows,
+            selectedTags = selectedTags,
+            selectedLang = selectedContentLang,
+        ).map { it.id }.toSet()
+        searched.filter { it.id in kept }
+    }
+    val pickerTags = remember(catalogTemplates) {
+        TemplateTagFilter.tagsPresentIn(
+            catalogTemplates.map {
+                TemplateTagFilter.Row(it.id, TemplateTagVocabulary.decode(it.tags), it.lang, it.category)
+            },
+        )
+    }
+    val pickerLangs = remember(catalogTemplates) {
+        TemplateTagFilter.langsPresentIn(
+            catalogTemplates.map {
+                TemplateTagFilter.Row(it.id, TemplateTagVocabulary.decode(it.tags), it.lang, it.category)
+            },
+        ).filter { it != "und" }
+    }
+
     Column(Modifier.fillMaxWidth().padding(bottom = 20.dp)) {
         Text(
             if (auto) strings.generateAuto else strings.generateCustom,
@@ -1691,13 +1981,119 @@ fun GenerateSheetContent(
         }
         Spacer(Modifier.height(8.dp))
         if (!auto) {
-            ChevronRow(
-                strings.template,
-                {
-                    templateIdx = (templateIdx + 1) % templates.size.coerceAtLeast(1)
-                },
-                value = templateLabels.getOrElse(templateIdx) { templates[templateIdx] },
-            )
+            if (useCatalogPicker) {
+                BasicTextField(
+                    value = pickerQuery,
+                    onValueChange = { pickerQuery = it },
+                    textStyle = TextStyle(color = VelumInk, fontSize = 14.sp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp)
+                        .border(1.dp, VelumDivider, RoundedCornerShape(10.dp))
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    decorationBox = { inner ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Outlined.Search, null, tint = VelumInkSecondary, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Box(Modifier.weight(1f)) {
+                                if (pickerQuery.isEmpty()) {
+                                    Text(strings.template, color = VelumInkSecondary, fontSize = 14.sp)
+                                }
+                                inner()
+                            }
+                        }
+                    },
+                )
+                if (pickerTags.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                            .padding(horizontal = 20.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        pickerTags.take(16).forEach { tag ->
+                            ModeChip(
+                                TemplateTagVocabulary.label(tag, languageTag),
+                                tag in selectedTags,
+                            ) {
+                                selectedTags =
+                                    if (tag in selectedTags) selectedTags - tag else selectedTags + tag
+                            }
+                        }
+                    }
+                }
+                if (pickerLangs.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                            .padding(horizontal = 20.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        ModeChip(
+                            if (languageTag.lowercase().startsWith("en")) "All" else "Todos",
+                            selectedContentLang == null,
+                        ) { selectedContentLang = null }
+                        pickerLangs.forEach { lang ->
+                            ModeChip(lang.uppercase(), selectedContentLang == lang) {
+                                selectedContentLang = lang
+                            }
+                        }
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                LazyColumn(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(220.dp)
+                        .padding(horizontal = 12.dp),
+                ) {
+                    items(filteredCatalog, key = { it.id }) { tpl ->
+                        val selected = tpl.id == selectedTemplateId
+                        val name = BuiltinTemplateCatalog.get(tpl.id)?.displayName(languageTag) ?: tpl.name
+                        val tagLine = TemplateTagVocabulary.decode(tpl.tags)
+                            .take(3)
+                            .joinToString(" · ") { TemplateTagVocabulary.label(it, languageTag) }
+                        Column(
+                            Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(if (selected) VelumBlack else Color.Transparent)
+                                .clickable { selectedTemplateId = tpl.id }
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                        ) {
+                            Text(
+                                name,
+                                color = if (selected) VelumOnBlack else VelumInk,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 14.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            if (tagLine.isNotEmpty()) {
+                                Text(
+                                    tagLine,
+                                    color = if (selected) VelumOnBlack.copy(alpha = 0.75f) else VelumInkSecondary,
+                                    fontSize = 11.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                        }
+                    }
+                }
+            } else {
+                ChevronRow(
+                    strings.template,
+                    {
+                        templateIdx = (templateIdx + 1) % templates.size.coerceAtLeast(1)
+                    },
+                    value = templateLabels.getOrElse(templateIdx) { templates[templateIdx] },
+                )
+            }
         }
         ChevronRow(
             strings.autoLabelVoice,
@@ -1708,18 +2104,69 @@ fun GenerateSheetContent(
             strings.audioLanguage,
             { langIdx = (langIdx + 1) % languages.size.coerceAtLeast(1) },
             value = languages[langIdx],
-            showDivider = false,
+            showDivider = profiles.isEmpty(),
         )
+        if (profiles.isNotEmpty()) {
+            ChevronRow(
+                strings.settingsUi.generateAdvancedModel,
+                { showAdvanced = !showAdvanced },
+                value = if (showAdvanced) strings.on else strings.off,
+                showDivider = !showAdvanced,
+            )
+            if (showAdvanced) {
+                ChevronRow(
+                    strings.settingsUi.useModelOverride,
+                    { useApiOverride = !useApiOverride },
+                    value = if (useApiOverride) strings.on else strings.off,
+                )
+                if (useApiOverride) {
+                    val profile = profiles.getOrElse(overrideProfileIdx) { profiles.first() }
+                    val models = modelsByProfile[profile.id].orEmpty()
+                    ChevronRow(
+                        strings.settingsUi.endpointProfile,
+                        {
+                            overrideProfileIdx = (overrideProfileIdx + 1) % profiles.size
+                            overrideModelIdx = 0
+                        },
+                        value = profile.name,
+                    )
+                    ChevronRow(
+                        strings.settingsUi.modelForSummaries,
+                        {
+                            if (models.isNotEmpty()) {
+                                overrideModelIdx = (overrideModelIdx + 1) % models.size
+                            }
+                        },
+                        value = models.getOrNull(overrideModelIdx)?.id
+                            ?: strings.settingsUi.modelManualId,
+                        showDivider = false,
+                    )
+                }
+            }
+        }
         Spacer(Modifier.height(12.dp))
         BlackButton(
             strings.apply,
             {
                 val templateId = if (auto) {
                     "velum.meeting"
+                } else if (useCatalogPicker) {
+                    selectedTemplateId
                 } else {
                     templates.getOrElse(templateIdx) { "velum.meeting" }
                 }
-                onApply(templateId, languages[langIdx], autoLabel)
+                val override = if (useApiOverride && profiles.isNotEmpty()) {
+                    val profile = profiles.getOrElse(overrideProfileIdx) { profiles.first() }
+                    val model = modelsByProfile[profile.id].orEmpty()
+                        .getOrNull(overrideModelIdx)?.id
+                    ApiModelOverride(
+                        profileId = profile.id,
+                        modelId = model,
+                    )
+                } else {
+                    null
+                }
+                onApply(templateId, languages[langIdx], autoLabel, override)
             },
             modifier = Modifier.padding(horizontal = 20.dp),
         )

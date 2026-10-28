@@ -48,23 +48,45 @@ class SettingsRepository(
     val preferences: StateFlow<AppPreferences> = _preferences.asStateFlow()
 
     suspend fun load() {
-        val baseUrl = store.getString(KEY_BASE_URL) ?: DEFAULT_BASE_URL
-        val hasKey = store.contains(SecureKeys.AI_API_KEY)
-        val transcription = store.getString(KEY_TRANSCRIPTION_MODEL)
-        val diarization = store.getString(KEY_DIARIZATION_MODEL)
-        val chat = store.getString(KEY_CHAT_MODEL)
-        val embedding = store.getString(KEY_EMBEDDING_MODEL)
-        val cached = store.getString(KEY_CACHED_MODELS)?.let {
+        val profiles = loadOrMigrateProfiles()
+        val activeProfileId = store.getString(KEY_ACTIVE_PROFILE)
+            ?.takeIf { id -> profiles.any { it.id == id } }
+            ?: profiles.firstOrNull()?.id
+            ?: ApiModelResolver.DEFAULT_PROFILE_ID
+        val activeProfile = profiles.firstOrNull { it.id == activeProfileId } ?: profiles.first()
+
+        val taskBindings = loadTaskBindings()
+        val cachedByProfile = loadCachedModelsByProfile(profiles)
+        val legacyCached = store.getString(KEY_CACHED_MODELS)?.let {
             runCatching { json.decodeFromString<List<AiModelInfo>>(it) }.getOrDefault(emptyList())
         } ?: emptyList()
+        val activeCached = cachedByProfile[activeProfile.id]
+            ?.takeIf { it.isNotEmpty() }
+            ?: legacyCached
+
+        val transcription = bindingModel(taskBindings, AiApiTask.Transcription)
+            ?: store.getString(KEY_TRANSCRIPTION_MODEL)
+        val diarization = bindingModel(taskBindings, AiApiTask.Diarization)
+            ?: store.getString(KEY_DIARIZATION_MODEL)
+        val chat = bindingModel(taskBindings, AiApiTask.Summary)
+            ?: store.getString(KEY_CHAT_MODEL)
+        val embedding = store.getString(KEY_EMBEDDING_MODEL)
+        val hasKey = store.contains(SecureKeys.apiKey(activeProfile.id)) ||
+            (activeProfile.id == ApiModelResolver.DEFAULT_PROFILE_ID &&
+                store.contains(SecureKeys.AI_API_KEY))
+
         _settings.value = AiProviderSettings(
-            baseUrl = baseUrl,
+            baseUrl = activeProfile.baseUrl,
             hasApiKey = hasKey,
             transcriptionModel = transcription,
             diarizationModel = diarization,
             chatModel = chat,
             embeddingModel = embedding,
-            cachedModels = cached,
+            cachedModels = activeCached,
+            profiles = profiles,
+            taskBindings = taskBindings,
+            activeProfileId = activeProfile.id,
+            cachedModelsByProfile = cachedByProfile,
             transcriptionMode = readMode(KEY_TRANSCRIPTION_MODE, ComputeMode.Local),
             diarizationMode = readMode(KEY_DIARIZATION_MODE, ComputeMode.Local),
             summaryMode = readMode(KEY_SUMMARY_MODE, ComputeMode.Local),
@@ -100,50 +122,214 @@ class SettingsRepository(
 
     suspend fun setBaseUrl(url: String) {
         val normalized = AiBaseUrl.normalizeAndValidate(url)
-        store.putString(KEY_BASE_URL, normalized)
-        _settings.update { it.copy(baseUrl = normalized) }
-    }
-
-    suspend fun setApiKey(apiKey: String) {
-        val trimmed = apiKey.trim()
-        if (trimmed.isEmpty()) {
-            store.remove(SecureKeys.AI_API_KEY)
-            _settings.update { it.copy(hasApiKey = false) }
-        } else {
-            store.putString(SecureKeys.AI_API_KEY, trimmed)
-            _settings.update { it.copy(hasApiKey = true) }
+        val profileId = defaultOrActiveProfileId()
+        upsertProfile(
+            ApiEndpointProfile(
+                id = profileId,
+                name = profileName(profileId),
+                baseUrl = normalized,
+            ),
+        )
+        // Legacy mirror for default profile.
+        if (profileId == ApiModelResolver.DEFAULT_PROFILE_ID) {
+            store.putString(KEY_BASE_URL, normalized)
         }
     }
 
-    suspend fun getApiKey(): String? = store.getString(SecureKeys.AI_API_KEY)
+    suspend fun setApiKey(apiKey: String) {
+        setProfileApiKey(defaultOrActiveProfileId(), apiKey)
+    }
+
+    suspend fun getApiKey(): String? = getProfileApiKey(defaultOrActiveProfileId())
+
+    suspend fun setProfileApiKey(profileId: String, apiKey: String) {
+        val trimmed = apiKey.trim()
+        val keyName = SecureKeys.apiKey(profileId)
+        if (trimmed.isEmpty()) {
+            store.remove(keyName)
+            if (profileId == ApiModelResolver.DEFAULT_PROFILE_ID) {
+                store.remove(SecureKeys.AI_API_KEY)
+            }
+        } else {
+            store.putString(keyName, trimmed)
+            if (profileId == ApiModelResolver.DEFAULT_PROFILE_ID) {
+                store.putString(SecureKeys.AI_API_KEY, trimmed)
+            }
+        }
+        refreshHasApiKeyFlags()
+    }
+
+    suspend fun getProfileApiKey(profileId: String): String? {
+        store.getString(SecureKeys.apiKey(profileId))?.let { return it }
+        if (profileId == ApiModelResolver.DEFAULT_PROFILE_ID) {
+            return store.getString(SecureKeys.AI_API_KEY)
+        }
+        return null
+    }
+
+    suspend fun upsertProfile(profile: ApiEndpointProfile) {
+        val normalized = profile.copy(baseUrl = AiBaseUrl.normalizeAndValidate(profile.baseUrl))
+        val current = _settings.value.profiles.toMutableList()
+        val idx = current.indexOfFirst { it.id == normalized.id }
+        if (idx >= 0) current[idx] = normalized else current.add(normalized)
+        persistProfiles(current)
+        if (normalized.id == ApiModelResolver.DEFAULT_PROFILE_ID) {
+            store.putString(KEY_BASE_URL, normalized.baseUrl)
+        }
+        val activeId = _settings.value.activeProfileId ?: normalized.id
+        _settings.update {
+            it.copy(
+                profiles = current,
+                baseUrl = current.firstOrNull { p -> p.id == activeId }?.baseUrl ?: normalized.baseUrl,
+            )
+        }
+    }
+
+    suspend fun deleteProfile(profileId: String) {
+        if (profileId == ApiModelResolver.DEFAULT_PROFILE_ID) return
+        val current = _settings.value.profiles.filterNot { it.id == profileId }
+        if (current.isEmpty()) return
+        persistProfiles(current)
+        store.remove(SecureKeys.apiKey(profileId))
+        store.remove(cachedModelsKey(profileId))
+        val bindings = _settings.value.taskBindings.mapValues { (_, binding) ->
+            if (binding.profileId == profileId) binding.copy(profileId = current.first().id)
+            else binding
+        }
+        persistTaskBindings(bindings)
+        val activeId = when (_settings.value.activeProfileId) {
+            profileId -> current.first().id
+            else -> _settings.value.activeProfileId ?: current.first().id
+        }
+        store.putString(KEY_ACTIVE_PROFILE, activeId)
+        val active = current.first { it.id == activeId }
+        _settings.update {
+            it.copy(
+                profiles = current,
+                taskBindings = bindings,
+                activeProfileId = activeId,
+                baseUrl = active.baseUrl,
+                cachedModelsByProfile = it.cachedModelsByProfile - profileId,
+                cachedModels = it.cachedModelsByProfile[activeId].orEmpty(),
+                hasApiKey = store.contains(SecureKeys.apiKey(activeId)) ||
+                    (activeId == ApiModelResolver.DEFAULT_PROFILE_ID &&
+                        store.contains(SecureKeys.AI_API_KEY)),
+            )
+        }
+    }
+
+    suspend fun setActiveProfile(profileId: String) {
+        val profile = _settings.value.profiles.firstOrNull { it.id == profileId } ?: return
+        store.putString(KEY_ACTIVE_PROFILE, profileId)
+        val cached = _settings.value.cachedModelsByProfile[profileId].orEmpty()
+        val hasKey = store.contains(SecureKeys.apiKey(profileId)) ||
+            (profileId == ApiModelResolver.DEFAULT_PROFILE_ID &&
+                store.contains(SecureKeys.AI_API_KEY))
+        _settings.update {
+            it.copy(
+                activeProfileId = profileId,
+                baseUrl = profile.baseUrl,
+                cachedModels = cached,
+                hasApiKey = hasKey,
+            )
+        }
+    }
+
+    suspend fun setTaskBinding(task: AiApiTask, binding: TaskModelBinding) {
+        val updated = _settings.value.taskBindings.toMutableMap()
+        updated[task.name] = binding
+        persistTaskBindings(updated)
+        val mirrors = mirrorBindings(updated)
+        _settings.update {
+            it.copy(
+                taskBindings = updated,
+                transcriptionModel = mirrors.transcription,
+                diarizationModel = mirrors.diarization,
+                chatModel = mirrors.chat,
+            )
+        }
+        // Legacy plain keys for default-profile convenience mirrors.
+        writeOptional(KEY_TRANSCRIPTION_MODEL, mirrors.transcription)
+        writeOptional(KEY_DIARIZATION_MODEL, mirrors.diarization)
+        writeOptional(KEY_CHAT_MODEL, mirrors.chat)
+    }
 
     suspend fun setModels(models: List<AiModelInfo>) {
-        store.putString(KEY_CACHED_MODELS, json.encodeToString(models))
-        _settings.update { it.copy(cachedModels = models) }
+        setProfileModels(defaultOrActiveProfileId(), models)
+    }
+
+    suspend fun setProfileModels(profileId: String, models: List<AiModelInfo>) {
+        store.putString(cachedModelsKey(profileId), json.encodeToString(models))
+        if (profileId == ApiModelResolver.DEFAULT_PROFILE_ID ||
+            profileId == _settings.value.activeProfileId
+        ) {
+            store.putString(KEY_CACHED_MODELS, json.encodeToString(models))
+        }
+        _settings.update {
+            val byProfile = it.cachedModelsByProfile + (profileId to models)
+            it.copy(
+                cachedModelsByProfile = byProfile,
+                cachedModels = if (profileId == it.activeProfileId) models else it.cachedModels,
+            )
+        }
     }
 
     suspend fun setTranscriptionModel(modelId: String?) {
-        if (modelId == null) store.remove(KEY_TRANSCRIPTION_MODEL)
-        else store.putString(KEY_TRANSCRIPTION_MODEL, modelId)
-        _settings.update { it.copy(transcriptionModel = modelId) }
+        val binding = _settings.value.taskBindings[AiApiTask.Transcription.name]
+            ?: TaskModelBinding(profileId = defaultOrActiveProfileId())
+        setTaskBinding(AiApiTask.Transcription, binding.copy(modelId = modelId))
     }
 
     suspend fun setChatModel(modelId: String?) {
-        if (modelId == null) store.remove(KEY_CHAT_MODEL)
-        else store.putString(KEY_CHAT_MODEL, modelId)
-        _settings.update { it.copy(chatModel = modelId) }
+        val binding = _settings.value.taskBindings[AiApiTask.Summary.name]
+            ?: TaskModelBinding(profileId = defaultOrActiveProfileId())
+        setTaskBinding(AiApiTask.Summary, binding.copy(modelId = modelId))
+        // Ask mirrors Summary chat model unless explicitly bound.
+        val ask = _settings.value.taskBindings[AiApiTask.Ask.name]
+        if (ask == null || ask.modelId.isNullOrBlank()) {
+            setTaskBinding(
+                AiApiTask.Ask,
+                (ask ?: TaskModelBinding(profileId = defaultOrActiveProfileId()))
+                    .copy(modelId = modelId),
+            )
+        }
     }
 
     suspend fun setDiarizationModel(modelId: String?) {
-        if (modelId == null) store.remove(KEY_DIARIZATION_MODEL)
-        else store.putString(KEY_DIARIZATION_MODEL, modelId)
-        _settings.update { it.copy(diarizationModel = modelId) }
+        val binding = _settings.value.taskBindings[AiApiTask.Diarization.name]
+            ?: TaskModelBinding(profileId = defaultOrActiveProfileId())
+        setTaskBinding(AiApiTask.Diarization, binding.copy(modelId = modelId))
     }
 
     suspend fun setEmbeddingModel(modelId: String?) {
         if (modelId == null) store.remove(KEY_EMBEDDING_MODEL)
         else store.putString(KEY_EMBEDDING_MODEL, modelId)
         _settings.update { it.copy(embeddingModel = modelId) }
+    }
+
+    fun cachedModelIdsByProfile(): Map<String, List<String>> =
+        _settings.value.cachedModelsByProfile.mapValues { (_, models) -> models.map { it.id } }
+
+    fun resolveApiModel(
+        task: AiApiTask,
+        override: ApiModelOverride? = null,
+    ): ResolvedApiModel {
+        val cfg = _settings.value
+        return ApiModelResolver.resolve(
+            task = task,
+            profiles = cfg.profiles.ifEmpty {
+                listOf(
+                    ApiEndpointProfile(
+                        id = ApiModelResolver.DEFAULT_PROFILE_ID,
+                        name = ApiModelResolver.DEFAULT_PROFILE_NAME,
+                        baseUrl = cfg.baseUrl,
+                    ),
+                )
+            },
+            taskDefaults = cfg.taskBindings,
+            cachedModelIdsByProfile = cachedModelIdsByProfile(),
+            override = override,
+        )
     }
 
     suspend fun setTranscriptionMode(mode: ComputeMode) {
@@ -278,6 +464,131 @@ class SettingsRepository(
         _preferences.update { it.copy(deleteAudioAfterProcessing = enabled) }
     }
 
+    private suspend fun loadOrMigrateProfiles(): List<ApiEndpointProfile> {
+        val raw = store.getString(KEY_ENDPOINT_PROFILES)
+        if (!raw.isNullOrBlank()) {
+            val decoded = runCatching {
+                json.decodeFromString<List<ApiEndpointProfile>>(raw)
+            }.getOrDefault(emptyList())
+            if (decoded.isNotEmpty()) return decoded
+        }
+        val baseUrl = store.getString(KEY_BASE_URL) ?: DEFAULT_BASE_URL
+        val defaultProfile = ApiEndpointProfile(
+            id = ApiModelResolver.DEFAULT_PROFILE_ID,
+            name = ApiModelResolver.DEFAULT_PROFILE_NAME,
+            baseUrl = baseUrl,
+        )
+        persistProfiles(listOf(defaultProfile))
+        store.putString(KEY_ACTIVE_PROFILE, defaultProfile.id)
+        // Migrate legacy key → per-profile key.
+        val legacyKey = store.getString(SecureKeys.AI_API_KEY)
+        if (!legacyKey.isNullOrBlank() && !store.contains(SecureKeys.apiKey(defaultProfile.id))) {
+            store.putString(SecureKeys.apiKey(defaultProfile.id), legacyKey)
+        }
+        return listOf(defaultProfile)
+    }
+
+    private suspend fun loadTaskBindings(): Map<String, TaskModelBinding> {
+        val raw = store.getString(KEY_TASK_BINDINGS)
+        if (!raw.isNullOrBlank()) {
+            val decoded = runCatching {
+                json.decodeFromString<Map<String, TaskModelBinding>>(raw)
+            }.getOrDefault(emptyMap())
+            if (decoded.isNotEmpty()) return decoded
+        }
+        // Seed from legacy per-task model keys onto the default profile.
+        val seeded = buildMap {
+            store.getString(KEY_TRANSCRIPTION_MODEL)?.let {
+                put(AiApiTask.Transcription.name, TaskModelBinding(ApiModelResolver.DEFAULT_PROFILE_ID, it))
+            }
+            store.getString(KEY_DIARIZATION_MODEL)?.let {
+                put(AiApiTask.Diarization.name, TaskModelBinding(ApiModelResolver.DEFAULT_PROFILE_ID, it))
+            }
+            store.getString(KEY_CHAT_MODEL)?.let { chat ->
+                put(AiApiTask.Summary.name, TaskModelBinding(ApiModelResolver.DEFAULT_PROFILE_ID, chat))
+                put(AiApiTask.Ask.name, TaskModelBinding(ApiModelResolver.DEFAULT_PROFILE_ID, chat))
+                put(AiApiTask.AutoTitle.name, TaskModelBinding(ApiModelResolver.DEFAULT_PROFILE_ID, chat))
+                put(AiApiTask.Translation.name, TaskModelBinding(ApiModelResolver.DEFAULT_PROFILE_ID, chat))
+                put(AiApiTask.AutoFlow.name, TaskModelBinding(ApiModelResolver.DEFAULT_PROFILE_ID, chat))
+            }
+        }
+        if (seeded.isNotEmpty()) persistTaskBindings(seeded)
+        return seeded
+    }
+
+    private suspend fun loadCachedModelsByProfile(
+        profiles: List<ApiEndpointProfile>,
+    ): Map<String, List<AiModelInfo>> {
+        val result = mutableMapOf<String, List<AiModelInfo>>()
+        for (profile in profiles) {
+            val raw = store.getString(cachedModelsKey(profile.id))
+            val models = raw?.let {
+                runCatching { json.decodeFromString<List<AiModelInfo>>(it) }.getOrDefault(emptyList())
+            }.orEmpty()
+            if (models.isNotEmpty()) result[profile.id] = models
+        }
+        if (result.isEmpty()) {
+            val legacy = store.getString(KEY_CACHED_MODELS)?.let {
+                runCatching { json.decodeFromString<List<AiModelInfo>>(it) }.getOrDefault(emptyList())
+            }.orEmpty()
+            if (legacy.isNotEmpty()) {
+                val id = profiles.firstOrNull()?.id ?: ApiModelResolver.DEFAULT_PROFILE_ID
+                result[id] = legacy
+                store.putString(cachedModelsKey(id), json.encodeToString(legacy))
+            }
+        }
+        return result
+    }
+
+    private suspend fun persistProfiles(profiles: List<ApiEndpointProfile>) {
+        store.putString(KEY_ENDPOINT_PROFILES, json.encodeToString(profiles))
+    }
+
+    private suspend fun persistTaskBindings(bindings: Map<String, TaskModelBinding>) {
+        store.putString(KEY_TASK_BINDINGS, json.encodeToString(bindings))
+    }
+
+    private fun bindingModel(
+        bindings: Map<String, TaskModelBinding>,
+        task: AiApiTask,
+    ): String? = bindings[task.name]?.modelId?.takeIf { it.isNotBlank() }
+
+    private data class MirrorModels(
+        val transcription: String?,
+        val diarization: String?,
+        val chat: String?,
+    )
+
+    private fun mirrorBindings(bindings: Map<String, TaskModelBinding>): MirrorModels =
+        MirrorModels(
+            transcription = bindingModel(bindings, AiApiTask.Transcription),
+            diarization = bindingModel(bindings, AiApiTask.Diarization),
+            chat = bindingModel(bindings, AiApiTask.Summary),
+        )
+
+    private fun defaultOrActiveProfileId(): String =
+        _settings.value.activeProfileId
+            ?: _settings.value.profiles.firstOrNull()?.id
+            ?: ApiModelResolver.DEFAULT_PROFILE_ID
+
+    private fun profileName(profileId: String): String =
+        _settings.value.profiles.firstOrNull { it.id == profileId }?.name
+            ?: if (profileId == ApiModelResolver.DEFAULT_PROFILE_ID) {
+                ApiModelResolver.DEFAULT_PROFILE_NAME
+            } else {
+                profileId
+            }
+
+    private suspend fun refreshHasApiKeyFlags() {
+        val activeId = defaultOrActiveProfileId()
+        val hasKey = store.contains(SecureKeys.apiKey(activeId)) ||
+            (activeId == ApiModelResolver.DEFAULT_PROFILE_ID &&
+                store.contains(SecureKeys.AI_API_KEY))
+        _settings.update { it.copy(hasApiKey = hasKey) }
+    }
+
+    private fun cachedModelsKey(profileId: String): String = "$KEY_CACHED_MODELS_PREFIX$profileId"
+
     private suspend fun writeOptional(key: String, value: String?) {
         if (value.isNullOrBlank()) store.remove(key) else store.putString(key, value)
     }
@@ -295,6 +606,10 @@ class SettingsRepository(
         private const val KEY_CHAT_MODEL = "ai.chat_model"
         private const val KEY_EMBEDDING_MODEL = "ai.embedding_model"
         private const val KEY_CACHED_MODELS = "ai.cached_models_json"
+        private const val KEY_CACHED_MODELS_PREFIX = "ai.cached_models."
+        private const val KEY_ENDPOINT_PROFILES = "ai.endpoint_profiles_json"
+        private const val KEY_TASK_BINDINGS = "ai.task_model_bindings_json"
+        private const val KEY_ACTIVE_PROFILE = "ai.active_profile_id"
         private const val KEY_TRANSCRIPTION_MODE = "ai.transcription_mode"
         private const val KEY_DIARIZATION_MODE = "ai.diarization_mode"
         private const val KEY_SUMMARY_MODE = "ai.summary_mode"

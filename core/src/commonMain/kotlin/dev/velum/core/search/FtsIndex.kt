@@ -27,15 +27,19 @@ object FtsIndex {
                 """.trimIndent(),
                 parameters = 0,
             )
+            // Recreate when upgrading so the tags column is always present.
+            // Callers rebuild the index after ensureSchema (VelumRepository init).
+            driver.execute(identifier = null, sql = "DROP TABLE IF EXISTS template_fts", parameters = 0)
             driver.execute(
                 identifier = null,
                 sql = """
-                    CREATE VIRTUAL TABLE IF NOT EXISTS template_fts USING fts5(
+                    CREATE VIRTUAL TABLE template_fts USING fts5(
                       template_id UNINDEXED,
                       name,
                       description,
                       category,
                       system_prompt,
+                      tags,
                       tokenize = 'porter unicode61'
                     )
                 """.trimIndent(),
@@ -89,6 +93,7 @@ object FtsIndex {
         description: String,
         category: String,
         systemPrompt: String,
+        tags: String = "",
     ) {
         inTransaction(driver) {
             driver.execute(
@@ -98,14 +103,15 @@ object FtsIndex {
             ) { bindString(0, id) }
             driver.execute(
                 identifier = null,
-                sql = "INSERT INTO template_fts(template_id, name, description, category, system_prompt) VALUES (?, ?, ?, ?, ?)",
-                parameters = 5,
+                sql = "INSERT INTO template_fts(template_id, name, description, category, system_prompt, tags) VALUES (?, ?, ?, ?, ?, ?)",
+                parameters = 6,
             ) {
                 bindString(0, id)
                 bindString(1, name)
                 bindString(2, description)
                 bindString(3, category)
                 bindString(4, systemPrompt)
+                bindString(5, tags)
             }
         }
     }

@@ -36,2782 +36,1508 @@ Shipped entries: **1500**.
 
 | id | name | author | official | category | source |
 |---|---|---|---|---|---|
-| `general-adaptive-summary-2b26c8d7` | Adaptive Summary | Plaud | True | General | Plaud template community |
-| `sales-bant-60f1f1aa` | BANT | Plaud | True | Sales | Plaud template community |
-| `call-call-discussion-80707730` | Call Discussion | Plaud | True | Call | Plaud template community |
-| `general-call-note-da7e7f26` | Call Note | Plaud | True | General | Plaud template community |
-| `meeting-chat-note-05bf7299` | Chat Note | Plaud | True | Meeting | Plaud template community |
-| `speech-class-note-addb4a52` | Class Note | Plaud | True | Speech | Plaud template community |
-| `consulting-client-needs-0100a8ce` | Client Needs | Plaud | True | Consulting | Plaud template community |
-| `functional-concept-insights-a802d528` | Concept Insights | Plaud | True | Functional | Plaud template community |
-| `meeting-consultation-q-a-51efeac1` | Consultation Q&A | Plaud | True | Meeting | Plaud template community |
-| `speech-dictation-note-9223be1c` | Dictation Note | Plaud | True | Speech | Plaud template community |
-| `meeting-discussion-summary-1adf2a0c` | Discussion Summary | Plaud | True | Meeting | Plaud template community |
-| `meeting-formal-meeting-e17ea68e` | Formal Meeting | Plaud | True | Meeting | Plaud template community |
-| `medical-healthcare-consultation-a384b72d` | Healthcare Consultation | Plaud | True | Medical | Plaud template community |
-| `functional-intent-analysis-7726b1c1` | Intent Analysis | Plaud | True | Functional | Plaud template community |
-| `general-interview-note-e771db8c` | Interview Note | Plaud | True | General | Plaud template community |
-| `interview-job-interview-82b0372c` | Job Interview (3) | Plaud | True | Interview | Plaud template community |
-| `general-key-points-ef87236f` | Key Points | Plaud | True | General | Plaud template community |
-| `functional-key-quotes-67b7495f` | Key Quotes | Plaud | True | Functional | Plaud template community |
-| `general-lecture-17c59619` | Lecture | Plaud | True | General | Plaud template community |
-| `speech-lecture-summary-5519b7f5` | Lecture Summary (2) | Plaud | True | Speech | Plaud template community |
-| `functional-meeting-effectiveness-24010545` | Meeting Effectiveness | Plaud | True | Functional | Plaud template community |
-| `functional-meeting-highlights-1fa754df` | Meeting Highlights | Plaud | True | Functional | Plaud template community |
-| `functional-meeting-minutes-5ad64e34` | Meeting Minutes | Plaud | True | Functional | Plaud template community |
-| `general-meeting-note-afb65706` | Meeting Note | Plaud | True | General | Plaud template community |
-| `meeting-meeting-report-34a99a2e` | Meeting Report | Plaud | True | Meeting | Plaud template community |
-| `interview-panel-discussion-36040d21` | Panel Discussion (2) | Plaud | True | Interview | Plaud template community |
-| `call-phone-q-a-dcf96f0a` | Phone Q&A | Plaud | True | Call | Plaud template community |
-| `functional-power-dynamics-1d02dd62` | Power Dynamics | Plaud | True | Functional | Plaud template community |
-| `construction-project-hand-off-de12acbb` | Project Hand Off | Plaud | True | Construction | Plaud template community |
-| `medical-psychotherapy-note-658ed1a7` | Psychotherapy Note | Plaud | True | Medical | Plaud template community |
-| `construction-punch-list-423bd507` | Punch List (2) | Plaud | True | Construction | Plaud template community |
-| `functional-quantitative-data-5de9c1fa` | Quantitative Data | Plaud | True | Functional | Plaud template community |
-| `general-reasoning-summary-559a3090` | Reasoning Summary | Plaud | True | General | Plaud template community |
-| `interview-research-interview-1308e956` | Research Interview | Plaud | True | Interview | Plaud template community |
-| `medical-soap-3d6d24ad` | SOAP (3) | Plaud | True | Medical | Plaud template community |
-| `meeting-task-assignment-c186290c` | Task Assignment | Plaud | True | Meeting | Plaud template community |
-| `call-task-by-call-a650fc3e` | Task by Call | Plaud | True | Call | Plaud template community |
-| `education-teaching-note-6d6723d1` | Teaching Note | Plaud | True | Education | Plaud template community |
-| `functional-to-do-list-002ff024` | To-do List | Plaud | True | Functional | Plaud template community |
-| `speech-training-summary-f2b941df` | Training Summary | Plaud | True | Speech | Plaud template community |
-| `general-voice-note-0db31cae` | Voice Note | Plaud | True | General | Plaud template community |
-| `speech-transform-a-transcript-into-a-detailed-document-80fccb1e` | Transform a transcript into a detailed document | 007 | False | Speech | Plaud template community |
-| `financial-trading-course-summary-5b5f35d8` | Trading Course Summary | 0624648464 | False | Financial | Plaud template community |
-| `consulting-consulting-meeting-7271b7d2` | Consulting Meeting | 5Dev | False | Consulting | Plaud template community |
-| `education-english-classes-c7c766f4` | English Classes | 5dfxtx7bjg | False | Education | Plaud template community |
-| `legal-findings-and-conclusion-investigative-report-a93b9b50` | Findings and Conclusion Investigative Report | 65cf9jnj7x | False | Legal | Plaud template community |
-| `medical-psychiatry-rounds-c673333e` | Psychiatry rounds | 7gfrgxq7mq | False | Medical | Plaud template community |
-| `speech-turn-content-spoken-alone-into-a-blog-draft-26b062d3` | Turn content spoken alone into a blog draft | 7qgfqhp4ys | False | Speech | Plaud template community |
-| `call-core-information-extraction-from-drug-leaflets-d5786c9f` | Core Information Extraction from Drug Leaflets | 7点中 | False | Call | Plaud template community |
-| `interview-detailed-scene-description-prompt-a78099ad` | Detailed Scene Description Prompt | 7点中 | False | Interview | Plaud template community |
-| `call-structured-summary-of-drug-information-3e3f0e75` | Structured Summary of Drug Information | 7点中 | False | Call | Plaud template community |
-| `speech-structure-thoughts-79a28508` | Structure Thoughts | 8bcwdstfd2 | False | Speech | Plaud template community |
-| `education-coaching-and-mentoring-summaries-ecec-980679a3` | Coaching and mentoring summaries - ECEC | 8kz8h77vkv | False | Education | Plaud template community |
-| `interview-interviews-a6085f06` | Interviews | 8mdj4hpym8 | False | Interview | Plaud template community |
-| `real-estate-condominium-owners-meeting-e6c4942c` | Condominium Owners' Meeting | 9z2tvm2n2s | False | Real Estate | Plaud template community |
-| `call-phone-call-39c3dac0` | Phone Call (5) | 9z2tvm2n2s | False | Call | Plaud template community |
-| `medical-pre-anaesthetic-assesment-plaud-076168f7` | Pre-Anaesthetic Assesment PLAUD | A G | False | Medical | Plaud template community |
-| `medical-meeting-minutes-preparation-27f4c164` | Meeting Minutes Preparation | a junjun | False | Medical | Plaud template community |
-| `interview-candidate-qualification-summary-template-72e871ed` | Candidate Qualification Summary Template | a.agredano | False | Interview | Plaud template community |
-| `it-engineering-business-requirements-process-summary-261b5183` | Business Requirements & Process Summary | a.alshareef | False | IT & Engineering | Plaud template community |
-| `legal-lawyer-model-d5bd6773` | Lawyer Model | a.beer | False | Legal | Plaud template community |
-| `legal-legal-summary-2cee03c1` | legal summary | a.hosdey | False | Legal | Plaud template community |
-| `legal-legal-summary-v2-91e466f9` | Legal Summary V2 | a.hosdey | False | Legal | Plaud template community |
-| `functional-knowledge-study-a8795c95` | Knowledge & Study | a.kosnaki | False | Functional | Plaud template community |
-| `meeting-reporting-ac41b4f1` | Reporting | AA | False | Meeting | Plaud template community |
-| `legal-court-reporter-with-time-markers-a79dcffc` | Court Reporter With Time Markers | aaithal | False | Legal | Plaud template community |
-| `meeting-1-to-1-supervision-template-5bcfa5c9` | 1 to 1 Supervision template | Abdul Luton | False | Meeting | Plaud template community |
-| `it-engineering-software-requirements-gathering-22c6743d` | Software Requirements Gathering | Abigail Cipriano | False | IT & Engineering | Plaud template community |
-| `construction-site-inspection-54628ae0` | Site Inspection | accounts | False | Construction | Plaud template community |
-| `consulting-all-client-meetings-financial-planning-eb4486e0` | All Client Meetings - Financial Planning | Adam | False | Consulting | Plaud template community |
-| `medical-bis-np-v2-418fdf13` | BIS NP V2 | Adam S Di Dio, MD | False | Medical | Plaud template community |
-| `functional-transcription-cleanup-517fe66d` | Transcription Cleanup | adamgotlin | False | Functional | Plaud template community |
-| `sales-rewrite-inspire-persuade-and-move-people-to-take-a-55f21286` | Rewrite - Inspire, persuade and move people to take action. (UVP, CTA) | Adamjasonmoore | False | Sales | Plaud template community |
-| `general-rewrite-sounds-human-reads-fluidly-engages-emotion-1d7b76a1` | Rewrite - Sounds human, reads fluidly, engages emotionally, | Adamjasonmoore | False | General | Plaud template community |
-| `general-rewriter-simple-clear-and-concise-a385dc09` | Rewriter - Simple, Clear, and Concise. | Adamjasonmoore | False | General | Plaud template community |
-| `general-summary-explanation-and-conclusion-3ae04479` | Summary, Explanation and Conclusion | Adamjasonmoore | False | General | Plaud template community |
-| `functional-clarify-what-matters-with-production-report-dc1989d5` | 🎯 Clarify What Matters (With Production Report) | Adamjasonmoore | False | Functional | Plaud template community |
-| `speech-blunt-to-the-point-absolute-mode-476ed937` | 👉BLUNT TO THE POINT - Absolute Mode | Adamjasonmoore | False | Speech | Plaud template community |
-| `education-lecture-boss-babe-extract-organise-all-the-things-6afbfd4c` | Lecture Boss Babe: Extract + Organise All The Things | Adedamola Alfred | False | Education | Plaud template community |
-| `consulting-structured-report-of-a-personal-brainstorming-sess-0999e6b0` | Structured Report of a Personal Brainstorming Session | Adolfo Gutierrez | False | Consulting | Plaud template community |
-| `call-speech-to-text-4deb7374` | Speech to Text | adrian0309.adrian0309 | False | Call | Plaud template community |
-| `medical-medical-long-case-5b4f85aa` | Medical Long Case | Adrianus | False | Medical | Plaud template community |
-| `legal-lawyer-s-consultation-4e26b103` | Lawyer's Consultation | adv-kab.lazarenko | False | Legal | Plaud template community |
-| `it-engineering-deep-technical-efaee4ba` | Deep Technical | aeteux | False | IT & Engineering | Plaud template community |
-| `general-detailed-summary-10fad7e8` | Detailed summary | ag | False | General | Plaud template community |
-| `call-mortgage-calls-f4b34f8d` | Mortgage Calls | Agustín Gentini | False | Call | Plaud template community |
-| `call-lead-analyse-template-potanalysen-dcs-676fb469` | Lead Analyse Template (PotAnalysen+DCs) | ahmannschlieker | False | Call | Plaud template community |
-| `medical-consultation-hours-c6d41845` | Consultation Hours | ahmedaesaid | False | Medical | Plaud template community |
-| `real-estate-buyer-agent-conversation-28e57c20` | Buyer Agent Conversation | aimeevora | False | Real Estate | Plaud template community |
-| `functional-brain-dump-template-8561e75e` | Brain Dump template | ajh824 | False | Functional | Plaud template community |
-| `consulting-project-meeting-notes-ab76831e` | Project Meeting Notes | Akira | False | Consulting | Plaud template community |
-| `legal-municipal-council-meeting-minutes-generator-40fcd0d4` | Municipal Council Meeting Minutes Generator | Alain Dubé (418) 868-5314 | False | Legal | Plaud template community |
-| `real-estate-the-fraker-group-initial-client-consultation-ab1867c0` | The Fraker Group - Initial Client Consultation | Alan Bell | False | Real Estate | Plaud template community |
-| `it-engineering-technical-product-spec-sheet-summary-1fb68094` | Technical Product Spec Sheet Summary | aleburvil | False | IT & Engineering | Plaud template community |
-| `real-estate-post-listing-appointment-c06e33eb` | Post Listing Appointment | Alecia Scott | False | Real Estate | Plaud template community |
-| `medical-format-for-gastroenterological-control-consultatio-6dfd60ae` | Format for Gastroenterological Control Consultation | Alejandro Orozco | False | Medical | Plaud template community |
-| `meeting-complete-transcription-with-speaker-identification-7570660b` | Complete Transcription with Speaker Identification | Alejandro Rubin Cymerman | False | Meeting | Plaud template community |
-| `construction-builder-intelligence-part-2-excel-control-tables-d-ff4796f4` | Builder Intelligence | Part 2: Excel & Control Tables (description)Turns recordings into Excel-ready control tables. | Aleksandur Mitrev | False | Construction | Plaud template community |
-| `sales-projects-for-budgets-8ee49fc1` | Projects for Budgets | Alessandra Samico | False | Sales | Plaud template community |
-| `it-engineering-general-or-tender-site-inspection-05d48914` | General or tender site inspection | Alessandro Armanasco | False | IT & Engineering | Plaud template community |
-| `legal-review-evidence-ed77caec` | Review Evidence | Alessandro Pineda | False | Legal | Plaud template community |
-| `real-estate-buyer-seller-call-summary-6ec68a26` | Buyer/seller call summary | alex | False | Real Estate | Plaud template community |
-| `medical-dental-appt-notes-1dc39caa` | Dental Appt notes | Alex Park | False | Medical | Plaud template community |
-| `speech-minds-to-article-lossless-1d6b2f31` | Minds to Article (Lossless) | Alex Vrt | False | Speech | Plaud template community |
-| `general-meeting-minutes-577f0ed6` | Meeting Minutes | Alexander Marschner | False | General | Plaud template community |
-| `interview-pre-dismissal-interview-report-a4d78606` | Pre-Dismissal Interview Report | alexis.plancon | False | Interview | Plaud template community |
-| `it-engineering-software-development-progress-review-meeting-minut-725fabce` | Software Development Progress Review Meeting Minutes Using Agile Scrum and PMBOK Framework | Alfons Tefa | False | IT & Engineering | Plaud template community |
-| `medical-consulta-m-dica-chequeo-m-dico-ejecutivo-518241e2` | Consulta Médica / Chequeo Médico Ejecutivo | Alfonso E. Núñez N. | False | Medical | Plaud template community |
-| `it-engineering-technology-runbook-8e888aa0` | Technology Runbook | alfred_esposito34 | False | IT & Engineering | Plaud template community |
-| `it-engineering-create-podcast-shownotes-49373f60` | Create Podcast Shownotes | Alice Ma | False | IT & Engineering | Plaud template community |
-| `meeting-summary-and-follow-ups-short-clear-e1d0a34d` | Summary and follow ups - short & clear | Alina.kraemer | False | Meeting | Plaud template community |
-| `medical-medical-consultation-98bd5876` | Medical Consultation (3) | Allan Bonvallat | False | Medical | Plaud template community |
-| `consulting-gemba-walk-analysis-0a4f59e1` | GEMBA WALK ANALYSIS | Allan Vargas | False | Consulting | Plaud template community |
-| `financial-diligence-meetings-d288b64d` | Diligence Meetings | Allen | False | Financial | Plaud template community |
-| `functional-one-page-brief-954e23a8` | One Page Brief | Ally | False | Functional | Plaud template community |
-| `consulting-ekantika-proposals-2482e419` | Ekantika Proposals | Alvaro Augusto Vovio Spinola (Guto Spinola) | False | Consulting | Plaud template community |
-| `speech-aline-therapeutic-mode-df9b5fdb` | Aline Therapeutic Mode | alypietra | False | Speech | Plaud template community |
-| `sales-post-call-business-intelligence-summary-f5ec1eb9` | Post-Call Business Intelligence Summary | Amir Hezareh | False | Sales | Plaud template community |
-| `sales-customer-meeting-summary-a257f5c6` | Customer Meeting Summary | Amos Carrick | False | Sales | Plaud template community |
-| `speech-analysis-video-tiktok-fb6fa867` | Analysis Video TikTok | Amran Muhamad | False | Speech | Plaud template community |
-| `consulting-legal-2dee8378` | Legal | Anastas Maraslis | False | Consulting | Plaud template community |
-| `legal-attorney-client-facts-investigation-2581f060` | Attorney Client - Facts Investigation | anaya.n.khan | False | Legal | Plaud template community |
-| `call-main-0fa1202b` | Main | Andranik Karapetyan | False | Call | Plaud template community |
-| `speech-rawscript-d5b38832` | RAWscript | Andre Kent | False | Speech | Plaud template community |
-| `it-engineering-it-project-director-assistant-25aca7ee` | IT Project Director Assistant | andrea brescia | False | IT & Engineering | Plaud template community |
-| `general-relationship-communication-e37f8de7` | Relationship Communication | Andrew Kraut | False | General | Plaud template community |
-| `interview-interview-summary-for-investigations-22b2c3f7` | Interview Summary for Investigations | Andrew Leyden | False | Interview | Plaud template community |
-| `financial-bwp-annual-review-meeting-5ed15093` | BWP Annual Review Meeting | Andrew McCulloch | False | Financial | Plaud template community |
-| `construction-construction-project-action-items-summary-11d52d42` | Construction Project Action Items Summary | andrewpollesel | False | Construction | Plaud template community |
-| `financial-advanced-analyst-visit-report-de3ee409` | Advanced Analyst Visit Report | ANDRÉ FILIPE | False | Financial | Plaud template community |
-| `consulting-enneagram-profile-0d58ccde` | Enneagram Profile | André Luiz Kammler | False | Consulting | Plaud template community |
-| `it-engineering-client-review-meeting-template-de18a4bf` | Client Review Meeting Template | angus.unwin-rose | False | IT & Engineering | Plaud template community |
-| `meeting-responsive-education-case-conference-ad00ff35` | Responsive Education Case Conference | anjavdwesthuizen85 | False | Meeting | Plaud template community |
-| `legal-family-law-attorney-daily-calls-and-meetings-58e30aac` | Family Law Attorney - Daily Calls and Meetings | Anna Koontz | False | Legal | Plaud template community |
-| `financial-intitial-client-consult-mortgage-consultation-for--4b799f7e` | Intitial Client Consult- Mortgage Consultation for Anna Smith Mortgage team | Anna Smith | False | Financial | Plaud template community |
-| `interview-interview-notes-for-candidate-cc261842` | Interview Notes For Candidate | Annette Weibel-Ranger | False | Interview | Plaud template community |
-| `consulting-satir-model-session-record-9bf1145f` | Satir Model Session Record | annhua99 | False | Consulting | Plaud template community |
-| `speech-immersion-6cb08ffd` | Immersion | Annie Koutouan | False | Speech | Plaud template community |
-| `education-deep-learning-f161ee5b` | deep learning | Anthony Mazzeo | False | Education | Plaud template community |
-| `meeting-meeting-summary-8697bce9` | Meeting Summary (2) | anthonyfps1993 | False | Meeting | Plaud template community |
-| `financial-professional-client-meeting-summary-digital-client-a461784a` | Professional Client Meeting Summary & Digital Client File Drafting – Allianz Expertise & Conseil | Antoine Robbe | False | Financial | Plaud template community |
-| `consulting-therapy-6cb876e0` | Therapy | Anton Klochkov | False | Consulting | Plaud template community |
-| `consulting-workshop-summary-2-0-a4ef8541` | Workshop Summary 2.0 | Antonio Lucena de Faria | False | Consulting | Plaud template community |
-| `education-verbatim-for-transcript-1228e8dc` | Verbatim for Transcript | antonio.martinese | False | Education | Plaud template community |
-| `sales-sales-analysis-4302cffc` | Sales Analysis | antonio.santos | False | Sales | Plaud template community |
-| `legal-incident-report-e77caeb3` | Incident Report | Antwan Collier | False | Legal | Plaud template community |
-| `real-estate-listing-consultation-a04ea066` | listing consultation | April Spaulding | False | Real Estate | Plaud template community |
-| `call-candidate-reference-check-questionnaire-683717e7` | Candidate Reference Check Questionnaire | aprilgraberallen | False | Call | Plaud template community |
-| `meeting-minutes-of-the-owners-meeting-23ec3475` | Minutes of the Owners' Meeting | arantza_gar_fer | False | Meeting | Plaud template community |
-| `construction-bl-construction-site-report-2-0-4a0ebb3b` | BL Construction Site Report 2.0 | architekt.leymann | False | Construction | Plaud template community |
-| `general-how-to-face-personal-and-professional-life-in-a-se-1003f293` | How to face personal and professional life in a serene and human way 5.0 | archiviorick1 | False | General | Plaud template community |
-| `general-how-to-serenely-and-humanely-manage-personal-profe-1725133f` | How to serenely and humanely manage personal-professional life 7.0 | archiviorick1 | False | General | Plaud template community |
-| `general-sofia-13-0-dbfc0af6` | SofIA 13.0 | archiviorick1 | False | General | Plaud template community |
-| `it-engineering-archi-2m-construction-site-meeting-report-a5a6caa9` | Archi-2M Construction Site Meeting Report | Archi•2M Michaël Mesa | False | IT & Engineering | Plaud template community |
-| `functional-planner-67f0f045` | Planner | arthur beck | False | Functional | Plaud template community |
-| `meeting-company-meeting-e98e40d3` | Company Meeting | Arthur Röell | False | Meeting | Plaud template community |
-| `meeting-meeting-54660346` | Meeting | Arthur Röell | False | Meeting | Plaud template community |
-| `meeting-executive-protocol-strategic-ai-companion-9f6d45d7` | ❤️‍🔥 Executive Protocol & Strategic AI Companion | Artur Levitan | False | Meeting | Plaud template community |
-| `legal-evidence-in-civil-law-50cddb77` | Evidence in Civil Law | As | False | Legal | Plaud template community |
-| `education-language-learning-82cd07eb` | Language Learning | AS | False | Education | Plaud template community |
-| `general-complete-transcription-d7e47eab` | Complete Transcription | as224.g | False | General | Plaud template community |
-| `speech-sermon-summary-and-notes-fe67d931` | Sermon Summary and Notes | austin | False | Speech | Plaud template community |
-| `construction-quotation-layout-79ae6203` | Quotation Layout | aymeric | False | Construction | Plaud template community |
-| `construction-minutes-of-a-construction-meeting-4ba8e8ca` | Minutes of a Construction Meeting | b.lauer | False | Construction | Plaud template community |
-| `call-clear-clean-and-highly-detailed-8a0d4a02` | Clear, clean, and highly detailed. | Baghdasaryan | False | Call | Plaud template community |
-| `sales-email-follow-up-generator-1850df73` | Email & Follow up Generator | balling1 | False | Sales | Plaud template community |
-| `it-engineering-documentation-builder-d6c68737` | Documentation builder | baptiste.crete | False | IT & Engineering | Plaud template community |
-| `sales-real-estate-transaction-clients-83b58db4` | Real estate transaction (clients) | Bastien.launayd | False | Sales | Plaud template community |
-| `real-estate-real-estate-buyer-discovery-1cf0cbc8` | Real Estate Buyer Discovery | bataillearnaud | False | Real Estate | Plaud template community |
-| `medical-elation-new-patient-note-1ce01d8c` | Elation New Patient Note | Beau Gedrick | False | Medical | Plaud template community |
-| `education-dyslexia-1af170e8` | Dyslexia | Becky Graffius | False | Education | Plaud template community |
-| `interview-le-investigations-interview-f70ae700` | LE Investigations Interview | bekupper | False | Interview | Plaud template community |
-| `call-phone-call-summary-8ba995ce` | Phone Call Summary | Ben Byers | False | Call | Plaud template community |
-| `speech-who-whisper-do-d9b5e1a7` | who whisper do | Ben drover | False | Speech | Plaud template community |
-| `financial-relationship-reviews-3933cfea` | Relationship/Reviews | benedettipaulo | False | Financial | Plaud template community |
-| `meeting-meeting-note-18c8804f` | Meeting Note | benedikt.sulzer | False | Meeting | Plaud template community |
-| `financial-first-meeting-with-accountant-33b49343` | First meeting with accountant | Benjamin ACHER | False | Financial | Plaud template community |
-| `financial-summary-of-an-accountant-s-meeting-with-their-clie-a7a65227` | Summary of an accountant's meeting with their client | Benjamin ACHER | False | Financial | Plaud template community |
-| `it-engineering-adhd-cyber-meeting-minutes-writer-a582c731` | ADHD - Cyber Meeting Minutes Writer | Benjamin B | False | IT & Engineering | Plaud template community |
-| `medical-psychological-session-39ddfa4c` | Psychological Session | Benjaminignacio | False | Medical | Plaud template community |
-| `consulting-advisory-insight-capture-733876f1` | Advisory Insight Capture | Benny | False | Consulting | Plaud template community |
-| `call-consulting-call-signals-decisions-3ec94641` | Consulting Call – Signals & Decisions | Benny | False | Call | Plaud template community |
-| `legal-judicial-expertise-ee15526e` | judicial expertise | Benoit HUCHELOUP | False | Legal | Plaud template community |
-| `it-engineering-it-products-meeting-recorder-b6aad755` | IT Products Meeting Recorder | benstenger | False | IT & Engineering | Plaud template community |
-| `functional-a-layer-deeper-4e82cebb` | A Layer Deeper | bertbunnik | False | Functional | Plaud template community |
-| `medical-psychology-and-therapy-bc-bcdedcb0` | Psychology and therapy bc | betinhocar94 | False | Medical | Plaud template community |
-| `construction-pre-bid-call-600ae64b` | Pre Bid Call | bidinvites | False | Construction | Plaud template community |
-| `sales-sales-coach-dc847066` | Sales Coach | Bill Brown | False | Sales | Plaud template community |
-| `legal-court-reporter-c6581bce` | Court Reporter | Bill McCracken | False | Legal | Plaud template community |
-| `legal-court-reporter-with-min-markers-fa485e51` | Court Reporter With Min Markers | Bill McCracken | False | Legal | Plaud template community |
-| `meeting-personality-assessment-b6a2131f` | Personality Assessment | Bill McCracken | False | Meeting | Plaud template community |
-| `general-recipe-99dc2ad5` | Recipe | Bill McCracken | False | General | Plaud template community |
-| `it-engineering-tech-meeting-autogen-radial-mindmap-3a58a15d` | Tech Meeting - AutoGen Radial Mindmap | Bill McCracken | False | IT & Engineering | Plaud template community |
-| `construction-daily-log-78b3d51e` | Daily Log | Bill Olsen | False | Construction | Plaud template community |
-| `construction-site-meeting-job-tread-a635a81a` | Site Meeting - Job Tread | Bill Olsen | False | Construction | Plaud template community |
-| `functional-audhd-92963bd2` | AudHD | bjgerber | False | Functional | Plaud template community |
-| `construction-construction-team-v01-be3a955d` | Construction Team-v01 | bmaaskant76 | False | Construction | Plaud template community |
-| `legal-estate-planning-consultation-25862c26` | Estate Planning Consultation | bmense | False | Legal | Plaud template community |
-| `legal-trust-admin-consulation-4d7fa85d` | Trust Admin Consulation | bmense | False | Legal | Plaud template community |
-| `interview-business-psyche-assessment-6814aef6` | Business Psyche Assessment | Bobbin Toms (Tom) | False | Interview | Plaud template community |
-| `interview-technical-engineering-interview-215aae9b` | Technical Engineering Interview | Bobby Christian | False | Interview | Plaud template community |
-| `call-ss-discovery-call-2-6c81c8fa` | SS Discovery Call 2 | Bonnie Douglas | False | Call | Plaud template community |
-| `speech-1-7-verbatim-text-81084bb4` | 1.7 Verbatim Text | Brad Wallace | False | Speech | Plaud template community |
-| `functional-opportunity-analysis-template-for-strategic-discus-8539be78` | Opportunity analysis template for strategic discussions | bradenainsworth54 | False | Functional | Plaud template community |
-| `financial-financial-review-meeting-summary-2fbeb57e` | Financial Review Meeting Summary | Brandan C | False | Financial | Plaud template community |
-| `meeting-executive-meeting-summary-7f8c96ac` | Executive Meeting Summary | Brandon Graff | False | Meeting | Plaud template community |
-| `legal-forensic-evidence-transcript-template-exhaustive-r-a9d65a27` | Forensic Evidence Transcript Template – Exhaustive Record for Legal & Safety Use | Brennan Cashiola | False | Legal | Plaud template community |
-| `meeting-email-for-boss-8d7a1022` | Email For Boss | Brian | False | Meeting | Plaud template community |
-| `call-phone-call-summary-kbm-354783bc` | Phone Call Summary (KBM) | Brian | False | Call | Plaud template community |
-| `real-estate-mortgage-purchase-lead-intake-call-781a1370` | 🏠Mortgage- Purchase Lead intake call | Brian | False | Real Estate | Plaud template community |
-| `it-engineering-daily-scrum-f33ca7e6` | Daily Scrum | Brian McQueen | False | IT & Engineering | Plaud template community |
-| `functional-work-plan-153cf9e6` | Work Plan | Brian McQueen | False | Functional | Plaud template community |
-| `consulting-soap-progress-note-0a40fcff` | SOAP/Progress Note | Brian Phanichkarn | False | Consulting | Plaud template community |
-| `interview-career-coaching-session-cbc07b1b` | Career Coaching Session | Brian Van Burkleo | False | Interview | Plaud template community |
-| `general-podcast-episode-summarization-493a426e` | Podcast Episode Summarization | Brian Witt | False | General | Plaud template community |
-| `construction-technical-building-visit-report-18997ee9` | Technical Building Visit Report | Brieuc Thoumsin | False | Construction | Plaud template community |
-| `general-project-scope-of-work-template-50d93232` | Project Scope of Work Template | Brindi Riley | False | General | Plaud template community |
-| `medical-psychiatry-progress-note-e24b74f4` | Psychiatry Progress Note (2) | britney | False | Medical | Plaud template community |
-| `real-estate-real-estate-development-meeting-or-call-with-desig-e16dd755` | Real Estate Development Meeting or Call with Design Consultants and/or Construction Contractors | BRL Plaud | False | Real Estate | Plaud template community |
-| `real-estate-real-estate-development-team-quarterly-meeting-rec-66ef8fe2` | Real Estate Development Team Quarterly Meeting Recap | BRL Plaud | False | Real Estate | Plaud template community |
-| `real-estate-mortgage-customer-information-intake-3e8542e2` | Mortgage Customer Information Intake | Brooks C. | False | Real Estate | Plaud template community |
-| `financial-afinancial-planning-review-meeting-file-note-templ-ac38841d` | aFinancial Planning Review Meeting File Note Template | Bruce.gorry | False | Financial | Plaud template community |
-| `real-estate-feedback-on-commercial-meetings-and-investor-acqui-9aa9f449` | Feedback on Commercial Meetings and Investor Acquisition | Bruno Sagas Lopes | False | Real Estate | Plaud template community |
-| `real-estate-feedback-on-commercial-services-and-investor-acqui-cebf2f70` | Feedback on Commercial Services and Investor Acquisition | Bruno Sagas Lopes | False | Real Estate | Plaud template community |
-| `real-estate-model-for-broker-training-or-sales-sprint-067949ed` | Model for Broker Training or Sales Sprint | Bruno Sagas Lopes | False | Real Estate | Plaud template community |
-| `real-estate-template-for-business-meetings-real-estate-project-f384dea7` | Template for Business Meetings / Real Estate Projects | Bruno Sagas Lopes | False | Real Estate | Plaud template community |
-| `meeting-corporate-memo-amazon-81c45579` | Corporate Memo (Amazon) | Bryan Almeida | False | Meeting | Plaud template community |
-| `sales-call-summary-template-crm-ready-84743842` | CALL SUMMARY TEMPLATE (CRM-READY) | Bryan Thompson | False | Sales | Plaud template community |
-| `speech-scripture-summary-concise-cannon-0fd94dad` | Scripture Summary Concise Cannon | bryancannon4491 | False | Speech | Plaud template community |
-| `medical-orthodontic-new-patient-consultation-5c343db8` | Orthodontic New Patient Consultation | Buddy Davis | False | Medical | Plaud template community |
-| `interview-press-article-0b91335b` | Press Article | Buk | False | Interview | Plaud template community |
-| `sales-crm-report-da99d65b` | CRM Report | bypm4pj2y9 | False | Sales | Plaud template community |
-| `legal-conflict-discussions-difficult-employee-conversati-d3321f59` | Conflict Discussions / Difficult Employee Conversations | byt3x | False | Legal | Plaud template community |
-| `sales-sales-call-comprehensive-summary-and-crm-entry-v1-7e3833c5` | Sales Call Comprehensive Summary and CRM Entry V1 | C Anais | False | Sales | Plaud template community |
-| `education-detailed-seminar-summarization-capturing-lecture-a-b267a180` | Detailed Seminar Summarization Capturing Lecture and Crucial Conversations | C J | False | Education | Plaud template community |
-| `construction-deficiency-list-5d72f9d2` | DEFICIENCY LIST | c.dratwa | False | Construction | Plaud template community |
-| `construction-expert-opinion-cd1-ccf38cfb` | EXPERT OPINION CD1 | c.dratwa | False | Construction | Plaud template community |
-| `meeting-report-template-b1b3fb2d` | Report Template | c.faddoul | False | Meeting | Plaud template community |
-| `legal-immigration-consultation-a87d4666` | Immigration Consultation | c6w55frshz | False | Legal | Plaud template community |
-| `general-reflective-journal-entry-generator-e7d04a5f` | Reflective Journal Entry Generator | Caitlin Hartman | False | General | Plaud template community |
-| `functional-podcast-transcription-04e46cbe` | Podcast Transcription | Callid Keefe-Perry (Callid) | False | Functional | Plaud template community |
-| `interview-interview-result-report-fd846c21` | Interview Result Report | Cap WAEL alhamarnah | False | Interview | Plaud template community |
-| `consulting-consulting-8552649f` | Consulting | Carlos Silva Júnior | False | Consulting | Plaud template community |
-| `call-phone-call-56cc6e7d` | Phone Call (4) | Carmen | False | Call | Plaud template community |
-| `call-strategic-recording-and-follow-up-b5bd034c` | Strategic Recording and Follow-up | Carolina Lacerda | False | Call | Plaud template community |
-| `sales-customer-meeting-costar-00d68847` | Customer Meeting (COSTAR+) | Carraig S | False | Sales | Plaud template community |
-| `medical-soap-note-generator-for-physical-therapy-7d4dbefd` | SOAP Note Generator for Physical Therapy | Carter B | False | Medical | Plaud template community |
-| `meeting-meeting-minutes-d8a68c26` | Meeting Minutes (2) | CARVEN | False | Meeting | Plaud template community |
-| `meeting-meeting-summary-e3f5b690` | Meeting Summary | CARVEN | False | Meeting | Plaud template community |
-| `interview-annual-evaluation-report-a123f712` | Annual Evaluation Report | catelain | False | Interview | Plaud template community |
-| `interview-catherine-model-monthly-cr-bold-plan-8f8ecd26` | Catherine Model Monthly CR Bold Plan | Catherine Gayral | False | Interview | Plaud template community |
-| `meeting-transcript-to-full-narrative-record-31403b0a` | Transcript to Full Narrative Record | cbhifia+plaud | False | Meeting | Plaud template community |
-| `legal-detective-interview-summary-4680250f` | Detective Interview Summary | ccallihan | False | Legal | Plaud template community |
-| `interview-annual-review-94528b1b` | Annual Review | ccarbiener | False | Interview | Plaud template community |
-| `financial-the-best-template-61e242a4` | The best template | cezzane.see | False | Financial | Plaud template community |
-| `real-estate-real-estate-expertise-4f752472` | Real Estate Expertise | ch.abbou | False | Real Estate | Plaud template community |
-| `call-mark-gpt-2ced3d99` | Mark GPT | Chad Hart | False | Call | Plaud template community |
-| `consulting-behavior-analyst-e4382621` | Behavior Analyst | Chase Hughes | False | Consulting | Plaud template community |
-| `consulting-social-worker-case-interview-record-summary-27e0c675` | Social Worker Case Interview Record Summary | chon wai chan | False | Consulting | Plaud template community |
-| `sales-ttb-sales-process-new-customer-1cf5f264` | TTB Sales Process New Customer | Chris | False | Sales | Plaud template community |
-| `general-master-youtube-summary-4025cfd2` | Master Youtube Summary | Chris Carrigan | False | General | Plaud template community |
-| `meeting-1-on-1-meeting-summary-64c2dd5a` | 1-on-1 meeting summary | Chris Empson | False | Meeting | Plaud template community |
-| `meeting-project-status-meeting-minutes-d207d483` | Project status meeting minutes | Chris Empson | False | Meeting | Plaud template community |
-| `general-jimmy-carr-one-liner-comedy-cb84c138` | Jimmy Carr One-Liner Comedy | Chris F | False | General | Plaud template community |
-| `interview-recruiter-screen-353fb2be` | Recruiter Screen | Chris Nguyen | False | Interview | Plaud template community |
-| `it-engineering-prospect-initial-meeting-questions-2e615ad0` | Prospect Initial Meeting Questions | Chris Reynolds | False | IT & Engineering | Plaud template community |
-| `real-estate-appraisal-inspection-405dd47f` | Appraisal Inspection | Chris Simmons | False | Real Estate | Plaud template community |
-| `financial-cr-r1-594adcbc` | CR R1 | christian | False | Financial | Plaud template community |
-| `call-call-recap-05ad5c44` | Call Recap | Christian Galvis | False | Call | Plaud template community |
-| `construction-project-meeting-minutes-9604fc74` | Project Meeting Minutes | Christian Mayer | False | Construction | Plaud template community |
-| `general-expert-opinion-b8c5d737` | Expert Opinion | Christian.Jandrisovits | False | General | Plaud template community |
-| `interview-interview-analysis-702d71bd` | Interview Analysis | christineknific | False | Interview | Plaud template community |
-| `construction-site-measurement-dccab9ab` | Site Measurement | Christoph | False | Construction | Plaud template community |
-| `consulting-template-for-consultation-documentation-and-cooper-7c64a120` | Template for Consultation Documentation and Cooperation Plan | christoph | False | Consulting | Plaud template community |
-| `consulting-client-discovery-meeting-64adbffe` | Client Discovery Meeting | Christophe VOISIN | False | Consulting | Plaud template community |
-| `real-estate-real-estate-agent-private-showing-with-action-item-264885a3` | Real Estate Agent Private Showing with Action Items, Talk Time, and 3rd Perspective Rating System | Christopher Phares | False | Real Estate | Plaud template community |
-| `general-regular-journaling-2109dc2a` | Regular Journaling | Christopher Phares | False | General | Plaud template community |
-| `financial-bookkeeping-9e7df79c` | Bookkeeping | Ci | False | Financial | Plaud template community |
-| `real-estate-pipeline-meeting-14f60799` | Pipeline Meeting | ciweaver09 | False | Real Estate | Plaud template community |
-| `it-engineering-it-project-meeting-template-78a241fc` | IT Project Meeting Template | cjflanagan | False | IT & Engineering | Plaud template community |
-| `call-buff-c05fd232` | Buff | ck | False | Call | Plaud template community |
-| `financial-spm-pci-template-8ed24d0d` | SPM, PCI Template | CK25 | False | Financial | Plaud template community |
-| `real-estate-buyer-or-seller-real-estate-consultation-appointme-5b428175` | Buyer or Seller Real Estate consultation appointments | claireackermanrealtor | False | Real Estate | Plaud template community |
-| `functional-business-procedures-0e00bc3f` | Business Procedures | clanappo | False | Functional | Plaud template community |
-| `education-nursing-lecture-notes-b1003729` | Nursing Lecture Notes | claudiapiedra.c | False | Education | Plaud template community |
-| `speech-panel-discussions-c5d1c911` | Panel Discussions | claytonrfe | False | Speech | Plaud template community |
-| `construction-site-report-308a04a7` | Site Report | clementgau | False | Construction | Plaud template community |
-| `it-engineering-software-engineering-morning-stand-c42f220c` | Software Engineering Morning Stand | Clint | False | IT & Engineering | Plaud template community |
-| `legal-crime-scene-investigation-note-09452285` | Crime Scene Investigation Note | Colby Doak | False | Legal | Plaud template community |
-| `interview-recruiting-phone-screen-notes-a5221603` | Recruiting Phone Screen Notes | Cole Gerke | False | Interview | Plaud template community |
-| `construction-time-study-6cde2d8f` | Time Study | coleton | False | Construction | Plaud template community |
-| `construction-technical-inspection-of-pathologies-in-buildings-c-afc99519` | Technical Inspection of Pathologies in Buildings (Complete Model) | COLIZZI ENG | False | Construction | Plaud template community |
-| `general-carer-supervision-18e18231` | Carer Supervision | colleranamanda | False | General | Plaud template community |
-| `meeting-meeting-minutes-17cbe0cb` | Meeting Minutes (5) | COMMUNITAS | False | Meeting | Plaud template community |
-| `financial-webinar-summary-article-b1c9a1ae` | Webinar summary article | communities | False | Financial | Plaud template community |
-| `construction-expert-report-1d316369` | Expert Report | contact | False | Construction | Plaud template community |
-| `consulting-map-processes-9e877e4f` | Map Processes | contato | False | Consulting | Plaud template community |
-| `legal-court-transcript-803a8e97` | Court Transcript | cool2008cool | False | Legal | Plaud template community |
-| `it-engineering-ultrasonic-thickness-readings-tmls-ee937723` | Ultrasonic Thickness Readings (TMLs) | Cory Conner | False | IT & Engineering | Plaud template community |
-| `education-teacher-lesson-observation-3ee539e1` | Teacher Lesson Observation | Craig Tunks | False | Education | Plaud template community |
-| `construction-project-manager-construction-update-bbadeeae` | Project Manager - Construction Update | Creighton Carey | False | Construction | Plaud template community |
-| `call-case-transcript-ab9be59a` | Case Transcript | cristiano zambarbieri | False | Call | Plaud template community |
-| `general-full-day-summary-1a64bca0` | Full Day Summary | cs.ng.eric | False | General | Plaud template community |
-| `functional-simple-clear-sop-8th-grade-level-1fab6301` | Simple, Clear SOP (8th Grade Level) | Curt Casady | False | Functional | Plaud template community |
-| `sales-sales-coaching-5898f4e1` | Sales Coaching | curt.dueck | False | Sales | Plaud template community |
-| `interview-profile-creation-843212ae` | Profile Creation | cvirshup | False | Interview | Plaud template community |
-| `sales-sales-call-65027cee` | sales call | Cyrus Kilburn | False | Sales | Plaud template community |
-| `consulting-dietitian-833801de` | Dietitian | cécile Zeste | False | Consulting | Plaud template community |
-| `real-estate-condominium-owners-association-assembly-6a162f04` | Condominium Owners' Association Assembly | Cédric | False | Real Estate | Plaud template community |
-| `medical-physiotherapy-assessment-ae96ea26` | Physiotherapy Assessment | Céline DE MARCHI | False | Medical | Plaud template community |
-| `interview-forensic-interview-1-8fd79af8` | Forensic Interview 1 | César Castaño | False | Interview | Plaud template community |
-| `interview-hr-interview-305d9a5e` | HR Interview | C’Ville ER | False | Interview | Plaud template community |
-| `consulting-secret-weapon-report-92cfe545` | Secret Weapon Report | D K | False | Consulting | Plaud template community |
-| `general-personnel-meeting-9465484f` | Personnel Meeting | d.toellner | False | General | Plaud template community |
-| `sales-agency-proposal-creation-a7ccfde1` | Agency Proposal Creation | d.winkler | False | Sales | Plaud template community |
-| `meeting-super-summarizer-0e9b89e9` | Super Summarizer | Dan's Plaud Pen | False | Meeting | Plaud template community |
-| `real-estate-1003-loan-app-43022c94` | 1003 Loan App | Danell Riggs | False | Real Estate | Plaud template community |
-| `it-engineering-service-call-summary-for-home-services-08726944` | Service Call Summary for Home Services | Daniel Sadlis | False | IT & Engineering | Plaud template community |
-| `education-law-school-df233b02` | LAW SCHOOL | Daniel Santos | False | Education | Plaud template community |
-| `consulting-coaching-evaluation-e689116a` | Coaching Evaluation | Daniel Seglias | False | Consulting | Plaud template community |
-| `real-estate-buyer-seller-meeting-summary-dafc4aa9` | Buyer/Seller Meeting Summary | danielle.morrison | False | Real Estate | Plaud template community |
-| `interview-physiotherapeutic-assessment-8d0a56c5` | Physiotherapeutic Assessment | daniloesposto | False | Interview | Plaud template community |
-| `general-adhd-daily-assistant-5c8a8755` | ADHD Daily Assistant | Dannie Than | False | General | Plaud template community |
-| `functional-post-date-evaluation-and-indicators-8f28a0a3` | Post Date Evaluation and Indicators | Dannie Than | False | Functional | Plaud template community |
-| `call-sales-pitch-for-calls-fc5d5350` | Sales Pitch for Calls | Dannie Than | False | Call | Plaud template community |
-| `legal-report-d132415b` | REPORT | Danny.white | False | Legal | Plaud template community |
-| `legal-traffic-stops-c89b1774` | TRAFFIC STOPS | Danny.white | False | Legal | Plaud template community |
-| `real-estate-walkthrough-inspection-report-3bf93ab4` | Walkthrough Inspection Report | dannytrapp25 | False | Real Estate | Plaud template community |
-| `medical-wyklad-b7ec62b1` | wyklad | Dariusz Bujalski | False | Medical | Plaud template community |
-| `medical-visiting-the-doctor-7b9bb01f` | Visiting the Doctor | Darth Vader | False | Medical | Plaud template community |
-| `sales-client-meeting-summary-actions-ab6641b1` | Client Meeting – Summary & Actions | Daryl m | False | Sales | Plaud template community |
-| `general-my-vet-detailed-52983835` | My Vet Detailed | Dave Trevino | False | General | Plaud template community |
-| `sales-intent-da77ec22` | Intent | dave.j.johnson24 | False | Sales | Plaud template community |
-| `speech-concise-summarizing-goal-oriented-9bfcced9` | Concise, summarizing, goal-oriented | David | False | Speech | Plaud template community |
-| `medical-soap-d8b66db3` | Soap + | David Johnston | False | Medical | Plaud template community |
-| `speech-speaker-performance-cd1a9c3a` | Speaker Performance | David Lough | False | Speech | Plaud template community |
-| `functional-what-was-said-today-32a95150` | What was said today? | David NGUYEN | False | Functional | Plaud template community |
-| `sales-client-meetings-73b92bb8` | Client Meetings | david.mlejnek | False | Sales | Plaud template community |
-| `consulting-meetings-5b731bd7` | Meetings | david.mlejnek | False | Consulting | Plaud template community |
-| `financial-recruitment-8f206352` | Recruitment | david.mlejnek | False | Financial | Plaud template community |
-| `legal-telephone-file-note-client-a7812876` | Telephone File Note - Client | davidmulligan | False | Legal | Plaud template community |
-| `financial-client-review-0f6a1cdf` | Client Review | DC | False | Financial | Plaud template community |
-| `call-medical-office-call-log-data-extraction-template-09e22924` | Medical Office Call Log Data Extraction Template | deankward | False | Call | Plaud template community |
-| `medical-paediatric-dental-report-ttf-ec015a86` | Paediatric Dental Report TTF | Debra Li | False | Medical | Plaud template community |
-| `consulting-effective-meeting-assessment-45f3dcc1` | Effective Meeting Assessment | Demetrick Ferguson | False | Consulting | Plaud template community |
-| `speech-pentecostal-sermon-outline-style-dcf7c8eb` | Pentecostal Sermon Outline Style | demetries75 | False | Speech | Plaud template community |
-| `general-personal-conversations-ec612970` | Personal Conversations | Demischa Wielkens | False | General | Plaud template community |
-| `medical-therapy-session-3aa8ceee` | Therapy session | Demischa Wielkens | False | Medical | Plaud template community |
-| `call-mortgage-loan-information-summary-202cb312` | Mortgage Loan Information Summary | Dene | False | Call | Plaud template community |
-| `consulting-mentoring-73f0e84f` | Mentoring | Denis Pellizzari | False | Consulting | Plaud template community |
-| `interview-podcast-86a81dc6` | podcast | Denis Pellizzari | False | Interview | Plaud template community |
-| `functional-visit-report-f7e05f15` | Visit Report | Denis Seguier | False | Functional | Plaud template community |
-| `real-estate-offer-2-977bd56e` | Offer 2 | Denis Skydan | False | Real Estate | Plaud template community |
-| `it-engineering-from-idea-to-task-b81cbdcc` | from idea to task | Denis Zaytsev | False | IT & Engineering | Plaud template community |
-| `call-custom-template-phone-conversations-f0b719e3` | Custom Template Phone Conversations | Dennis | False | Call | Plaud template community |
-| `it-engineering-troubleshooting-summary-dc85e904` | Troubleshooting Summary | devyn.smith94 | False | IT & Engineering | Plaud template community |
-| `consulting-psychotherapy-session-note-based-on-the-principles-21e94eb8` | Psychotherapy Session Note, based on the principles of Acceptance and Commitment Therapy (ACT) and Functional Analytic Psychotherapy (FAP). | Diego Araya Chacón | False | Consulting | Plaud template community |
-| `education-extracting-information-from-a-viola-class-5c3b3832` | Extracting information from a viola class | Diego Uceda | False | Education | Plaud template community |
-| `it-engineering-it-topics-cf37af29` | IT Topics | DIETMAR LAHM | False | IT & Engineering | Plaud template community |
-| `interview-academic-report-2ee39187` | Academic report | diocelio | False | Interview | Plaud template community |
-| `interview-recruiter-e53f65a5` | Recruiter | Diogo Gomes da Silva | False | Interview | Plaud template community |
-| `financial-financial-advisor-call-summary-dc1c4b85` | Financial Advisor Call Summary | Dirk Harris | False | Financial | Plaud template community |
-| `real-estate-home-seller-closing-meeting-ddd701ed` | Home Seller Closing Meeting | dkishimo | False | Real Estate | Plaud template community |
-| `consulting-summarize-meeting-acfe0faf` | Summarize meeting | dm | False | Consulting | Plaud template community |
-| `it-engineering-it-meeting-6e2f68f3` | IT Meeting | Dmitry Zamotkin | False | IT & Engineering | Plaud template community |
-| `real-estate-listing-consultation-internal-notes-client-recap-079a921e` | Listing Consultation – Internal Notes + Client Recap | dom | False | Real Estate | Plaud template community |
-| `it-engineering-application-development-c7eb4ec9` | Application Development | Dominick Ricciardi | False | IT & Engineering | Plaud template community |
-| `it-engineering-site-inspection-report-c69a33a2` | Site Inspection Report | Donato Ammirabile | False | IT & Engineering | Plaud template community |
-| `medical-gynecological-patient-visit-79fde8d3` | Gynecological Patient Visit | Dott. Giorgio Nicolanti | False | Medical | Plaud template community |
-| `medical-psychological-report-template-c0f11cb0` | Psychological Report Template | Dr Ken Greaves | False | Medical | Plaud template community |
-| `medical-medical-consultation-53a30b16` | Medical Consultation (2) | Dr. Daniel Dorta | False | Medical | Plaud template community |
-| `medical-physical-therapy-soap-note-ef1f3961` | Physical Therapy Soap Note | Dr. Sasha Nuñez PT, DPT, CMPT | False | Medical | Plaud template community |
-| `interview-dental-consultation-23806038` | Dental consultation | Dr. Tom Cockerell | False | Interview | Plaud template community |
-| `medical-veterinary-soap-edaba6d4` | Veterinary SOAP | drchadgroce | False | Medical | Plaud template community |
-| `medical-orthodontic-consultation-3-8d0af3a5` | Orthodontic consultation 3 | drlarkin | False | Medical | Plaud template community |
-| `functional-machine-arrival-checklist-generator-fb37c224` | Machine Arrival Checklist Generator | drphone69 | False | Functional | Plaud template community |
-| `general-comprehensive-relationship-analysis-1596c3ca` | Comprehensive Relationship Analysis | dt | False | General | Plaud template community |
-| `medical-medical-class-d9cf7a20` | Medical Class | Duda S. | False | Medical | Plaud template community |
-| `construction-electrical-contractor-punch-list-and-contract-draf-41c96998` | Electrical Contractor Punch List and Contract Drafting Assistant | Duke of Watts Electric | False | Construction | Plaud template community |
-| `it-engineering-it-troubleshooting-call-e7fe0bfe` | IT Troubleshooting Call | Dustin Beisch | False | IT & Engineering | Plaud template community |
-| `functional-5-year-strat-plan-e743955e` | 5 year strat plan | Dwayne | False | Functional | Plaud template community |
-| `sales-financial-planning-summary-a3689da4` | Financial Planning Summary | dylan | False | Sales | Plaud template community |
-| `construction-inspection-and-assessment-for-water-damage-3bb30246` | Inspection and Assessment for Water Damage. | dylan | False | Construction | Plaud template community |
-| `it-engineering-prompt-creation-4c36737a` | Prompt Creation | Dylan Ryan | False | IT & Engineering | Plaud template community |
-| `speech-dream-e47fa9cd` | Dream | E S | False | Speech | Plaud template community |
-| `interview-conversation-summary-1c7630f9` | Conversation Summary | e.kuipers70 | False | Interview | Plaud template community |
-| `real-estate-maintenance-work-order-report-4cc16922` | Maintenance Work Order / Report | Easy T | False | Real Estate | Plaud template community |
-| `real-estate-deal-terms-summary-955c8cec` | Deal Terms Summary | ebmeindl | False | Real Estate | Plaud template community |
-| `education-semestre-filtro-2be9043d` | Semestre filtro | Edoardo Lumetti | False | Education | Plaud template community |
-| `sales-conference-booth-e4284b80` | Conference booth | edoperry | False | Sales | Plaud template community |
-| `it-engineering-rigg-check-report-trp-063317b6` | ⛵✅ Rigg check report TRP | Eduardo Alves | False | IT & Engineering | Plaud template community |
-| `construction-senior-construction-project-manager-f57004e1` | Senior Construction Project Manager | eduardo rincon | False | Construction | Plaud template community |
-| `consulting-sales-post-meeting-follow-up-78e65f19` | Sales - Post Meeting Follow-Up | Edward Watkin | False | Consulting | Plaud template community |
-| `legal-divorce-summary-9d7a06af` | divorce summary | edwinzeegers | False | Legal | Plaud template community |
-| `meeting-condominium-assembly-9b9d2a65` | Condominium Assembly | eggnunes | False | Meeting | Plaud template community |
-| `speech-conference-seminar-summary-6ffb4943` | Conference/Seminar – Summary | eistef | False | Speech | Plaud template community |
-| `construction-construction-progress-report-7d42b449` | Construction progress report | El viajero | False | Construction | Plaud template community |
-| `construction-site-visit-report-5e30ca3d` | Site Visit Report | El viajero | False | Construction | Plaud template community |
-| `education-study-model-becc713c` | Study Model | Elena Acciai | False | Education | Plaud template community |
-| `speech-study-model-2-4071a3ea` | Study Model 2 | Elena Acciai | False | Speech | Plaud template community |
-| `speech-content-analysis-template-for-personal-recordings-6851df54` | Content Analysis Template for Personal Recordings. | Elena Gómez de la Orden | False | Speech | Plaud template community |
-| `education-lesson-notes-0a3026d4` | Lesson Notes | Elena Nikitina | False | Education | Plaud template community |
-| `speech-perfect-transcript-03060f5b` | Perfect Transcript | Eliah Halm | False | Speech | Plaud template community |
-| `sales-sandler-quick-call-c6fdbafb` | Sandler Quick Call | Elkin D. Gonzalez | False | Sales | Plaud template community |
-| `education-movies-shows-information-9c907de5` | Movies & Shows Information | Ella Drummond | False | Education | Plaud template community |
-| `financial-cfo-financial-advisory-board-f71a882f` | CFO Financial Advisory Board | Elnaz Khalili | False | Financial | Plaud template community |
-| `medical-psychiatry-progress-note-d5e7ba32` | Psychiatry Progress Note | email | False | Medical | Plaud template community |
-| `it-engineering-theory-and-concepts-d228e91f` | theory and concepts | emanu.piantedosi | False | IT & Engineering | Plaud template community |
-| `sales-sales-meeting-99c7f589` | Sales Meeting | Emerson | False | Sales | Plaud template community |
-| `consulting-critical-path-analysis-of-processes-64cef787` | Critical Path Analysis of Processes | Emerson Moscoso | False | Consulting | Plaud template community |
-| `construction-construction-site-meeting-planning-coordination-8d10b76b` | Construction Site Meeting - Planning & Coordination | emilien.castro | False | Construction | Plaud template community |
-| `legal-lawyer-client-interview-633fa61f` | Lawyer / Client Interview | emmanuel.garrelon | False | Legal | Plaud template community |
-| `consulting-comprehensive-analysis-of-a-coachee-f96dc486` | Comprehensive Analysis of a Coachee | Emmanuelle | False | Consulting | Plaud template community |
-| `speech-meeting-q-a-24ac9605` | Meeting Q&A | endo.panchi | False | Speech | Plaud template community |
-| `speech-q-a-for-debriefing-session-7e7d96f9` | Q&A for Debriefing Session | endo.panchi | False | Speech | Plaud template community |
-| `it-engineering-security-assessment-for-vendors-partners-714b5712` | Security Assessment for Vendors & Partners | Endrigo Antonini | False | IT & Engineering | Plaud template community |
-| `functional-email-redaction-448cdb9f` | email redaction | Enrico Baccati | False | Functional | Plaud template community |
-| `consulting-verbatim-transcription-diarization-3058fed4` | Verbatim Transcription & Diarization | Enrico Busto | False | Consulting | Plaud template community |
-| `call-manager-led-conflict-resolution-call-f97691e8` | MANAGER LED CONFLICT RESOLUTION CALL | erasmussen | False | Call | Plaud template community |
-| `interview-interview-summary-in-person-interview-ed436917` | Interview Summary - In Person Interview | Eric H | False | Interview | Plaud template community |
-| `interview-interview-summary-phone-interview-2fdea477` | Interview Summary - Phone Interview | Eric H | False | Interview | Plaud template community |
-| `education-law-school-master-prompt-outline-6e2abace` | Law School Master Prompt outline | Eric Milestone | False | Education | Plaud template community |
-| `call-cosmetic-personal-care-product-label-summary-fa1eaf9f` | Cosmetic & Personal Care Product Label Summary | eric.chen.1白名单 | False | Call | Plaud template community |
-| `legal-attorney-client-meeting-detailed-accurate-facts-1aaa7a39` | Attorney Client Meeting (Detailed, Accurate Facts) | Erica H. | False | Legal | Plaud template community |
-| `legal-deposition-summary-8c0dc03a` | deposition summary | ericalindsay24 | False | Legal | Plaud template community |
-| `interview-tt-plaudai-e2eb6d18` | TT PlaudAI | Erin Copes | False | Interview | Plaud template community |
-| `it-engineering-technical-audit-report-generator-2ab20457` | Technical Audit Report Generator | ESCA IBS | False | IT & Engineering | Plaud template community |
-| `functional-key-information-extractor-for-travel-internship-re-a3876e3e` | Key Information Extractor for Travel Internship Recordings | Evan Chung | False | Functional | Plaud template community |
-| `call-phone-technical-support-d4bf8ff9` | Phone Technical Support | Evan Million | False | Call | Plaud template community |
-| `real-estate-structured-meeting-minutes-for-construction-projec-8c9f18db` | Structured Meeting Minutes for Construction Projects | f.wagnersachverstaendiger | False | Real Estate | Plaud template community |
-| `real-estate-board-meeting-minutes-a53fdf2f` | Board Meeting Minutes (2) | f16.sunny | False | Real Estate | Plaud template community |
-| `medical-consultation-discussed-with-ai-367f12cc` | Consultation - Discussed with AI | Fabio Alencar | False | Medical | Plaud template community |
-| `it-engineering-incident-post-mortem-8cf77eec` | INCIDENT POST-MORTEM | fabrizio.alampi | False | IT & Engineering | Plaud template community |
-| `it-engineering-interactive-it-metrics-dashboard-d6dd3421` | Interactive IT Metrics Dashboard | fabrizio.alampi | False | IT & Engineering | Plaud template community |
-| `it-engineering-interactive-visual-roadmap-40e7354c` | Interactive Visual Roadmap | fabrizio.alampi | False | IT & Engineering | Plaud template community |
-| `it-engineering-meeting-minutes-action-plan-2ec25965` | MEETING MINUTES → ACTION PLAN | fabrizio.alampi | False | IT & Engineering | Plaud template community |
-| `speech-information-report-43a34dac` | Information Report | Fadhil Maulana | False | Speech | Plaud template community |
-| `call-wise-summary-de097d07` | Wise Summary | Fajar | False | Call | Plaud template community |
-| `education-transform-any-law-lecture-into-your-ultimate-exam--61945be2` | Transform Any Law Lecture into Your Ultimate Exam Guide | faustino-santos | False | Education | Plaud template community |
-| `speech-communication-coach-bd77073f` | Communication Coach | Felice | False | Speech | Plaud template community |
-| `education-study-and-training-material-61642cdf` | Study and Training Material | Felipe Cortez | False | Education | Plaud template community |
-| `real-estate-real-estate-pro-c1fac85c` | real estate pro | felipe dutra neves | False | Real Estate | Plaud template community |
-| `meeting-perfect-minutes-high-performance-executive-secreta-81822a46` | Perfect Minutes - High-Performance Executive Secretary | Felipe Fabro | False | Meeting | Plaud template community |
-| `education-faculty-of-law-ecb0920e` | Faculty of Law | Felipe Salles | False | Education | Plaud template community |
-| `financial-client-report-financial-planning-35e6a4d7` | 📌 CLIENT REPORT (FINANCIAL PLANNING) | Felipehbussolo | False | Financial | Plaud template community |
-| `it-engineering-ba-430eeb7f` | BA | Fernando Blancas | False | IT & Engineering | Plaud template community |
-| `real-estate-general-meeting-of-the-condominium-owners-associat-460936a6` | General Meeting of the Condominium Owners' Association | Feynman | False | Real Estate | Plaud template community |
-| `real-estate-mortgage-planning-3fe51cd1` | Mortgage Planning | Filippo Bonaccorso | False | Real Estate | Plaud template community |
-| `call-disco-call-2-d5cec016` | Disco Call 2 | Fingz | False | Call | Plaud template community |
-| `real-estate-meeting-minutes-fintop-15175a91` | Meeting Minutes - Fintop | Fintop | False | Real Estate | Plaud template community |
-| `consulting-strategic-planning-6ee29b66` | Strategic Planning | flaviasamaral | False | Consulting | Plaud template community |
-| `financial-car-insurance-7417dd90` | Car Insurance | Florian Rex | False | Financial | Plaud template community |
-| `consulting-technical-economic-conversation-on-software-develo-59aba8a4` | Technical-Economic Conversation on Software Development and Sales | Francesco Francomagro | False | Consulting | Plaud template community |
-| `education-lecture-summary-key-concepts-study-notes-2c668aab` | Lecture Summary → Key Concepts & Study Notes | Frank Schaefer | False | Education | Plaud template community |
-| `legal-criminal-investigator-interview-report-250bc57e` | Criminal Investigator Interview Report | fred.pereziii | False | Legal | Plaud template community |
-| `it-engineering-r-d-projects-cd037d89` | R&D Projects | frederic.girard.ard | False | IT & Engineering | Plaud template community |
-| `real-estate-descriptive-inventory-report-d42e1950` | Descriptive Inventory Report | Frédéric Lemaire | False | Real Estate | Plaud template community |
-| `consulting-manual-creation-647affd2` | [Manual Creation] | Fuji | False | Consulting | Plaud template community |
-| `interview-mid-career-interview-record-40b59bac` | Mid-Career Interview Record | fuji | False | Interview | Plaud template community |
-| `interview-assessment-in-home-long-term-care-support-74c1fe70` | Assessment (In-home Long-term Care Support) | fujita | False | Interview | Plaud template community |
-| `meeting-dating-conversation-bfeba90d` | Dating Conversation | fumi23progress | False | Meeting | Plaud template community |
-| `call-action-discussion-cbed16a2` | Action + Discussion | Fuzzy | False | Call | Plaud template community |
-| `sales-30-minutes-to-presidents-club-meeting-summary-form-29d803e3` | 30 Minutes to Presidents Club Meeting Summary Format | G$ | False | Sales | Plaud template community |
-| `medical-psych-notes-15caec6c` | Psych notes | Gabiosis | False | Medical | Plaud template community |
-| `functional-operational-storage-and-logistics-radar-a1dde2c6` | Operational Storage and Logistics Radar | Gabriel Sigarroa | False | Functional | Plaud template community |
-| `it-engineering-expert-report-0cf28c44` | EXPERT REPORT | Gabriela Heleno | False | IT & Engineering | Plaud template community |
-| `legal-dr-argos-criminal-law-de5a7b6e` | Dr. Argos - Criminal Law | Gabriela Menezes Mendes de Lima | False | Legal | Plaud template community |
-| `legal-lawyer-meeting-summary-91569b54` | Lawyer/Meeting/Summary | GAERNER | False | Legal | Plaud template community |
-| `medical-acute-visit-9b90ce11` | ACUTE VISIT | gandiavictoria1206 | False | Medical | Plaud template community |
-| `interview-analysis-and-synthesis-of-a-professional-coaching--f5530c74` | Analysis and synthesis of a professional coaching session | GARCIA Carlos | False | Interview | Plaud template community |
-| `functional-archetypal-dream-journal-6e5fd116` | Archetypal Dream Journal | Garon Nemyre | False | Functional | Plaud template community |
-| `medical-pain-note-history-and-physical-8ccc653c` | Pain Note: History and Physical | Garret Myhan | False | Medical | Plaud template community |
-| `speech-sermon-b7dff121` | Sermon (2) | Garret Myhan | False | Speech | Plaud template community |
-| `speech-detailed-meeting-notes-e75b11ad` | Detailed meeting Notes | Garrett & Sylvia McGrath | False | Speech | Plaud template community |
-| `general-disciplinary-hearing-730440e8` | Disciplinary Hearing | Garth | False | General | Plaud template community |
-| `legal-board-of-directors-meeting-minutes-c4176cc2` | Board of Directors Meeting Minutes | garu.asakawa | False | Legal | Plaud template community |
-| `medical-orthodontic-findings-and-treatment-planning-a12f4128` | Orthodontic Findings and Treatment Planning | Gary Bedrosian, DDS, MSD | False | Medical | Plaud template community |
-| `interview-hiring-manager-4f0f70b0` | Hiring Manager | Gary Crisci | False | Interview | Plaud template community |
-| `real-estate-construction-consultation-20884865` | Construction Consultation | Geco | False | Real Estate | Plaud template community |
-| `financial-fundraising-98f0b811` | Fundraising | gemini | False | Financial | Plaud template community |
-| `financial-investor-memo-c02ee419` | Investor memo | gemini | False | Financial | Plaud template community |
-| `meeting-meeting-actions-aac07478` | Meeting Actions | gemini | False | Meeting | Plaud template community |
-| `financial-meeting-summary-notes-80a81c18` | Meeting Summary Notes | Gene Ens | False | Financial | Plaud template community |
-| `construction-site-visit-174c58a6` | Site Visit | Gentry Giles | False | Construction | Plaud template community |
-| `education-english-lesson-0a34d11c` | English Lesson | geny0608 | False | Education | Plaud template community |
-| `construction-exertise-429569fc` | Exertise | Gerhard | False | Construction | Plaud template community |
-| `education-template-for-transcribing-and-organizing-universit-1ee0dbd8` | Template for Transcribing and Organizing University Lecture Recordings | GERLANDO RUSSO INTROITO | False | Education | Plaud template community |
-| `call-template-phone-call-5936895f` | TEMPLATE – PHONE CALL | gertjan.fiers | False | Call | Plaud template community |
-| `interview-interview-b9d9c258` | Interview (3) | Ghye | False | Interview | Plaud template community |
-| `it-engineering-kanban-meeting-d190b10b` | Kanban meeting | giacomo carlesso | False | IT & Engineering | Plaud template community |
-| `legal-law-enforcement-investigative-narrative-report-eda17de1` | Law Enforcement Investigative Narrative Report | Gil Lozano | False | Legal | Plaud template community |
-| `medical-first-dental-visit-47fde867` | First Dental Visit | Giulio Castellari | False | Medical | Plaud template community |
-| `real-estate-dave-panozzo-s-framework-for-a-real-estate-sales-c-a609e5af` | Dave Panozzo's Framework for A Real Estate Sales Call | Glen Morris | False | Real Estate | Plaud template community |
-| `consulting-focus-your-thinking-coaching-session-review-e272e4b1` | Focus Your Thinking Coaching Session Review | Glen Morris | False | Consulting | Plaud template community |
-| `sales-real-estate-coach-sales-calls-and-appointment-revi-20c1938d` | Real Estate Coach Sales Calls And Appointment Review | Glen Morris | False | Sales | Plaud template community |
-| `interview-verbatim-transcript-72b65d61` | Verbatim Transcript | glenn.house.sr | False | Interview | Plaud template community |
-| `construction-to-do-list-auto-45f9d429` | To-Do-List(Auto) | gn2r9vg9x8 | False | Construction | Plaud template community |
-| `meeting-external-meeting-minutes-20250625-16b654a8` | External Meeting Minutes_20250625 | gpiplauduser04 | False | Meeting | Plaud template community |
-| `medical-parent-interview-73c18d1f` | Parent Interview | grace hasler | False | Medical | Plaud template community |
-| `legal-digital-secretariat-685ae8ab` | Digital secretariat | greg vb | False | Legal | Plaud template community |
-| `legal-digital-secretariat-v2-04bcd0ae` | Digital Secretariat V2 | greg vb | False | Legal | Plaud template community |
-| `functional-brain-dump-36557d4f` | Brain Dump (2) | Griffin Evans | False | Functional | Plaud template community |
-| `financial-financial-advisory-client-meeting-record-summary-470071bf` | Financial Advisory Client Meeting Record Summary | gsoberanis | False | Financial | Plaud template community |
-| `financial-financial-advisory-client-meeting-record-summary-2-f5b85787` | Financial Advisory Client Meeting Record Summary #2 | gsoberanis | False | Financial | Plaud template community |
-| `financial-meeting-notes-fdee3e59` | Meeting notes | gsoberanis | False | Financial | Plaud template community |
-| `education-class-notes-c3092d71` | Class Notes | Guido Nass | False | Education | Plaud template community |
-| `education-detailed-study-d8ac0d9c` | Detailed Study | Guilherme Hahn | False | Education | Plaud template community |
-| `construction-project-site-visit-report-b394827a` | Project Site Visit Report | Guillaume | False | Construction | Plaud template community |
-| `medical-consultation-letter-b2a14814` | Consultation letter | gurpaltoor | False | Medical | Plaud template community |
-| `meeting-1-1-43366960` | 1:1 | Gustavo Cabral | False | Meeting | Plaud template community |
-| `medical-orthopedic-consultation-fb7776dc` | ORTHOPEDIC CONSULTATION | Gustavo izar barbosa | False | Medical | Plaud template community |
-| `consulting-lawyer-model-7685b568` | Lawyer Model | gustavo_dps | False | Consulting | Plaud template community |
-| `general-press-article-b8248de8` | Press article | Guy Mitschler | False | General | Plaud template community |
-| `call-general-call-dc2ee619` | General Call | h.conradie | False | Call | Plaud template community |
-| `general-translated-summary-version-bf62437d` | Translated Summary Version | h.takeuchi | False | General | Plaud template community |
-| `legal-auto-accident-intake-case-overview-b1681bc5` | Auto Accident: Intake & Case Overview | h86zs65xqs | False | Legal | Plaud template community |
-| `functional-product-handling-precautions-operation-method-summ-e3dd4a10` | Product Handling Precautions & Operation Method Summary | haha | False | Functional | Plaud template community |
-| `real-estate-mortgage-pre-qualification-phone-call-26885dfc` | Mortgage pre qualification phone call | Hajir | False | Real Estate | Plaud template community |
-| `general-detailed-meeting-minutes-summary-dbc69a66` | Detailed Meeting Minutes Summary | Hakodesu853 | False | General | Plaud template community |
-| `speech-case-note-drug-and-sexual-health-worker-00b1ce25` | Case note- Drug and sexual health worker | Hana Green | False | Speech | Plaud template community |
-| `medical-emergency-medicine-document-assistant-6e5a9ac8` | Emergency Medicine Document assistant | Hanna Eadeh | False | Medical | Plaud template community |
-| `functional-fiction-writer-1d087fb6` | Fiction writer | Harold Cath | False | Functional | Plaud template community |
-| `functional-film-script-discussion-review-d5f8b31e` | Film Script Discussion/Review | Harsh Pant | False | Functional | Plaud template community |
-| `call-call-notetaker-270a8a93` | Call noteTaker | Haseeb Uddin | False | Call | Plaud template community |
-| `sales-sales-call-summary-1f3321c5` | sales call summary | Hawk Bowman | False | Sales | Plaud template community |
-| `sales-sales-calls-summary-7c35af3c` | Sales Calls Summary | Hawk Bowman | False | Sales | Plaud template community |
-| `it-engineering-configuration-template-nicely-created-by-se-c83c6766` | Configuration Template Nicely Created by SE | hcsslsd.kz | False | IT & Engineering | Plaud template community |
-| `general-meeting-summary-398ee9bb` | Meeting Summary | Heckmann Thomas | False | General | Plaud template community |
-| `interview-job-interview-c854ebcb` | Job Interview | Hector Daniel Cueto Romero | False | Interview | Plaud template community |
-| `financial-business-diary-8c3ec691` | Business Diary | Heinrich Traude | False | Financial | Plaud template community |
-| `financial-financial-client-meeting-summary-template-696d8980` | Financial Client Meeting Summary Template | helen | False | Financial | Plaud template community |
-| `call-welfare-equipment-rental-office-call-summary-2d00c863` | Welfare Equipment Rental Office Call Summary | hendrix1234 | False | Call | Plaud template community |
-| `call-welfare-equipment-rental-office-call-summary-41b109af` | Welfare Equipment Rental Office – Call Summary | hendrix1234 | False | Call | Plaud template community |
-| `education-class-summary-5dc99c24` | Class Summary | Henrique Andrade | False | Education | Plaud template community |
-| `financial-financial-advisor-meeting-0a0d569c` | Financial Advisor Meeting | Herman Venegas | False | Financial | Plaud template community |
-| `consulting-present-state-and-planning-capture-439c5946` | Present State and Planning Capture | Hillel Glazer | False | Consulting | Plaud template community |
-| `it-engineering-it-ticket-for-msp-securecpu-3bb2dbee` | IT Ticket for MSP (SecureCPU) | hody | False | IT & Engineering | Plaud template community |
-| `financial-hopcopilot-gemba-walk-agent-using-the-4ds-to-ident-b430a552` | HOPCoPilot Gemba Walk Agent using the 4Ds to identify waste in operations | HOPCoPilot Agents | False | Financial | Plaud template community |
-| `it-engineering-hopcopilot-learning-from-work-agent-for-the-4ds-an-5823e276` | HOPCoPilot Learning From Work Agent for the 4Ds and the 4Ls | HOPCoPilot Agents | False | IT & Engineering | Plaud template community |
-| `meeting-bullet-point-meeting-minutes-summary-68d440b5` | Bullet Point Meeting Minutes Summary | hotta | False | Meeting | Plaud template community |
-| `call-telephone-call-log-3384cb33` | Telephone Call Log | hsantos | False | Call | Plaud template community |
-| `functional-daylog-ea360b0f` | DayLog | Hugo Az | False | Functional | Plaud template community |
-| `functional-taks-reminders-and-promises-extraction-for-all-day-5a72a980` | Taks, reminders and promises extraction for All Day Recordings | hugoaap | False | Functional | Plaud template community |
-| `education-class-analysis-63993d1a` | 🏫 Class Analysis | i f. | False | Education | Plaud template community |
-| `construction-checklist-creator-eaaf3ad4` | Checklist Creator | iA | False | Construction | Plaud template community |
-| `construction-process-creation-2fa63c2a` | Process Creation | iA | False | Construction | Plaud template community |
-| `construction-readiness-assessment-352b67ed` | Readiness Assessment | iA | False | Construction | Plaud template community |
-| `construction-site-walk-7dee1a41` | Site Walk | iA | False | Construction | Plaud template community |
-| `interview-candidate-interview-bf227eb0` | Candidate Interview | Ian | False | Interview | Plaud template community |
-| `meeting-client-meeting-9ccddd09` | Client Meeting | Ian | False | Meeting | Plaud template community |
-| `financial-financial-adviser-client-meeting-summary-b96b97d7` | Financial Adviser Client Meeting Summary | ianjjosh71 | False | Financial | Plaud template community |
-| `functional-key-points-decisions-tasks-deadlines-actions-baf01cb1` | Key Points, Decisions, Tasks, Deadlines & Actions | ibi2k3 | False | Functional | Plaud template community |
-| `financial-earnings-call-financial-report-analysis-625f1468` | Earnings Call Financial Report Analysis | iGotOptions | False | Financial | Plaud template community |
-| `meeting-meeting-report-e841fb16` | meeting report | indole.nl | False | Meeting | Plaud template community |
-| `interview-anamnesis-e327977b` | Anamnesis | info | False | Interview | Plaud template community |
-| `general-memoir-book-chapter-648f4492` | Memoir book chapter | info | False | General | Plaud template community |
-| `real-estate-site-inspection-2c4e1d9c` | Site Inspection | info | False | Real Estate | Plaud template community |
-| `real-estate-site-report-671e6246` | Site Report | info | False | Real Estate | Plaud template community |
-| `it-engineering-processes-and-continuous-improvement-7b78bc57` | Processes and Continuous Improvement | Inversiones CAP | False | IT & Engineering | Plaud template community |
-| `general-summary-prompt-to-do-dc2ede6e` | Summary Prompt + To Do | invoices | False | General | Plaud template community |
-| `call-daily-activity-log-26b7a8b5` | Daily Activity Log | Irene Plat | False | Call | Plaud template community |
-| `speech-mine-story-ad22c90c` | Mine Story | Iris | False | Speech | Plaud template community |
-| `education-course-transcription-d7a63c1d` | course transcription | isa.rizzi | False | Education | Plaud template community |
-| `real-estate-board-meeting-minutes-080d942c` | Board Meeting Minutes | ittetsu12345 | False | Real Estate | Plaud template community |
-| `call-conversation-topic-analysis-reorganization-316ea08f` | Conversation Topic Analysis & Reorganization | Ittiphan Jearkjirm | False | Call | Plaud template community |
-| `general-adhd-7bd87e8f` | ADHD | Ivan Braun | False | General | Plaud template community |
-| `medical-soap-8f200f4a` | SOAP (2) | ivanjose | False | Medical | Plaud template community |
-| `sales-sales-conversation-7cc4f1b0` | Sales Conversation | ivyhoken | False | Sales | Plaud template community |
-| `speech-standuptranscriber-a117b348` | StandUpTranscriber | izarhart | False | Speech | Plaud template community |
-| `functional-brain-dump-c26a97b2` | Brain Dump | İlker Galın | False | Functional | Plaud template community |
-| `functional-quick-voice-note-memo-8f661822` | Quick Voice Note (Memo) | İlker Galın | False | Functional | Plaud template community |
-| `education-seminar-webinar-e171c4b0` | Seminar & Webinar | İlker Galın | False | Education | Plaud template community |
-| `sales-smart-crm-740c021a` | Smart CRM | İlker Galın | False | Sales | Plaud template community |
-| `functional-to-do-tasks-33058141` | To-Do & Tasks | İlker Galın | False | Functional | Plaud template community |
-| `education-training-and-lecture-notes-22200193` | Training and Lecture Notes | İlker Galın | False | Education | Plaud template community |
-| `functional-z-report-ce979623` | Z Report | İlker Galın | False | Functional | Plaud template community |
-| `medical-physical-therapy-revisit-note-template-1075b2eb` | PHYSICAL THERAPY REVISIT NOTE TEMPLATE | J. Rashid (@frcphysicaltherapy) | False | Medical | Plaud template community |
-| `meeting-power-dynamics-and-influence-analysis-d2415ae4` | Power Dynamics and Influence Analysis | J.Grimes | False | Meeting | Plaud template community |
-| `call-master-prompt-for-analysing-telephone-funding-call-69902897` | Master Prompt for Analysing Telephone Funding Call Transcripts (For Disabled Veterans Seeking Funding or Support) | j.wallace | False | Call | Plaud template community |
-| `consulting-padel-training-2-0-7e4abe54` | Padel Training 2.0 | J3Pádel Academy | False | Consulting | Plaud template community |
-| `meeting-perfect-meeting-recap-550f3d4a` | Perfect Meeting Recap | Jack | False | Meeting | Plaud template community |
-| `sales-tradeshow-synthesizer-3a36d3ba` | Tradeshow Synthesizer | Jack | False | Sales | Plaud template community |
-| `medical-social-work-soap-therapy-note-88012d9c` | Social Work SOAP Therapy Note | Jack Holt | False | Medical | Plaud template community |
-| `consulting-l10-meeting-eos-84a4faa5` | L10 Meeting - EOS | Jacob Delk | False | Consulting | Plaud template community |
-| `financial-financial-advisor-initial-prospect-meeting-f9064b46` | Financial Advisor Initial Prospect Meeting | Jacob Savary | False | Financial | Plaud template community |
-| `real-estate-osa-listing-appointment-grading-c43fb2b8` | OSA LISTING APPOINTMENT GRADING | jacobprice1024 | False | Real Estate | Plaud template community |
-| `functional-book-podcast-ideas-b7fe5df1` | Book/Podcast Ideas | jaimecanales | False | Functional | Plaud template community |
-| `general-simple-summary-b9700554` | Simple Summary ✅ | jake | False | General | Plaud template community |
-| `functional-the-weekly-compass-transcription-assistant-da05a632` | The Weekly Compass Transcription Assistant | Jake Carr | False | Functional | Plaud template community |
-| `legal-procedural-guide-summary-89cb9979` | Procedural Guide Summary | Jake Henry | False | Legal | Plaud template community |
-| `financial-fwp-fact-finder-3da9827b` | FWP Fact Finder | Jake Ratermann | False | Financial | Plaud template community |
-| `it-engineering-1-1-mentor-mentee-template-8b77ee9b` | 1:1 mentor & mentee template | Jake Sturk | False | IT & Engineering | Plaud template community |
-| `legal-court-summary-client-9cf0cb07` | Court Summary (Client) | Jakub Korbelar | False | Legal | Plaud template community |
-| `functional-recipe-sheet-88c60929` | Recipe Sheet | James | False | Functional | Plaud template community |
-| `real-estate-real-estate-listing-appointment-in-person-4b99d9b5` | Real Estate – Listing Appointment (In-Person) | James Conley | False | Real Estate | Plaud template community |
-| `financial-bwp-client-meeting-0b3388b8` | BWP Client Meeting | James.wilson | False | Financial | Plaud template community |
-| `financial-financial-adviser-client-review-checklist-4d3953d7` | Financial Adviser Client Review Checklist | james_barber93 | False | Financial | Plaud template community |
-| `financial-ai-transcription-template-for-the-insurance-indust-05de7cf5` | AI Transcription Template for the Insurance Industry | jameschen1016 | False | Financial | Plaud template community |
-| `financial-investment-fiduciary-committee-meeting-minutes-f614abb4` | Investment Fiduciary Committee Meeting Minutes | Jamie | False | Financial | Plaud template community |
-| `construction-formal-construction-meeting-agenda-d7ff0308` | Formal Construction Meeting Agenda | Jan-Willem Radstake | False | Construction | Plaud template community |
-| `speech-ghostwriter-bestseller-for-talks-and-presentations-543fe1eb` | Ghostwriter Bestseller for Talks and Presentations | Janderson Santos | False | Speech | Plaud template community |
-| `call-customer-transcript-follow-up-call-8a5176e3` | Customer Transcript + Follow up - Call | jannik.ehlert | False | Call | Plaud template community |
-| `legal-court-stenographer-6ba48bda` | COURT stenographer | January Faye Risonar-Bello | False | Legal | Plaud template community |
-| `legal-court-transcription-bdf3bbff` | COURT TRANSCRIPTION | January Faye Risonar-Bello | False | Legal | Plaud template community |
-| `real-estate-mortgage-d6906ac6` | Mortgage | Jared Nicolaisen | False | Real Estate | Plaud template community |
-| `interview-enterprise-user-research-interview-18ee05de` | Enterprise User Research Interview | Jarle | False | Interview | Plaud template community |
-| `construction-scta-site-observation-template-a406a25e` | SCTA- Site Observation Template | jarrod.keith | False | Construction | Plaud template community |
-| `construction-worker-safety-interaction-log-d6ef2b56` | Worker Safety Interaction Log | jarrod.keith | False | Construction | Plaud template community |
-| `consulting-executive-level-chapter-summary-39c220fe` | executive level chapter summary | jason | False | Consulting | Plaud template community |
-| `construction-oac-meeting-75be8109` | OAC Meeting | Jason Taylor | False | Construction | Plaud template community |
-| `call-chat-assistant-for-good-friends-2a6dc4d9` | Chat Assistant for Good Friends | Jay Cui | False | Call | Plaud template community |
-| `construction-lmg-oac-meeting-0b430983` | LMG OAC Meeting | Jay Gaither | False | Construction | Plaud template community |
-| `functional-manifast-ai-voice-to-image-with-meeting-source-ea864859` | Manifast AI_ Voice to Image with Meeting Source | Jay Mandalawi | False | Functional | Plaud template community |
-| `sales-sales-discovery-call-9f03663b` | Sales Discovery Call (2) | Jay Patel | False | Sales | Plaud template community |
-| `financial-client-review-meeting-ff6a9b14` | Client Review Meeting | jdix | False | Financial | Plaud template community |
-| `speech-political-discourse-analyst-f45accf1` | Political Discourse Analyst | Jean Mortaza | False | Speech | Plaud template community |
-| `consulting-jcd-business-ideas-breakdown-9c1a12b5` | JCD_Business_Ideas_Breakdown | Jean-Charles Dervieux | False | Consulting | Plaud template community |
-| `real-estate-renah-template-c5d20d02` | RENAH Template | Jean-Plaude 🤖 | False | Real Estate | Plaud template community |
-| `interview-ultimate-case-study-strategy-consulting-11ad108c` | Ultimate Case Study (strategy consulting) | jean_sebastien.duprat | False | Interview | Plaud template community |
-| `legal-legal-service-4a276fa3` | LEGAL SERVICE | jeanrsalles | False | Legal | Plaud template community |
-| `functional-honesty-analysis-f7c17cee` | Honesty Analysis | Jeff | False | Functional | Plaud template community |
-| `real-estate-listing-consultation-summary-bb3c48b8` | Listing Consultation Summary | Jeff Packer | False | Real Estate | Plaud template community |
-| `legal-ohio-sheriff-detective-narrative-add08159` | Ohio Sheriff Detective Narrative | Jeff Wolf | False | Legal | Plaud template community |
-| `sales-plaud-lite-quick-client-recap-89e4e2ae` | PLAUD LITE – QUICK CLIENT RECAP | Jennifer | False | Sales | Plaud template community |
-| `legal-depo-summary-0f50c268` | Depo Summary | Jeremiah Harvey | False | Legal | Plaud template community |
-| `legal-smart-transcript-reasoner-e2b2e73a` | Smart Transcript Reasoner | Jeremiah Harvey | False | Legal | Plaud template community |
-| `speech-audio-clean-up-cc852529` | Audio Clean Up | Jeremy | False | Speech | Plaud template community |
-| `sales-spiced-sales-call-notes-863a9c9e` | SPICED SALES CALL NOTES | Jeroen van Asch | False | Sales | Plaud template community |
-| `construction-technical-meeting-d85b53a0` | Technical meeting | jerome pecon | False | Construction | Plaud template community |
-| `financial-client-meeting-and-call-summary-7812d2e6` | Client meeting and call summary | jessbeasley | False | Financial | Plaud template community |
-| `education-law-school-cans-canada-417945b7` | Law School CANS - Canada | Jessica McConnell | False | Education | Plaud template community |
-| `functional-psychological-breakdown-c4427482` | Psychological Breakdown | jferrato7 | False | Functional | Plaud template community |
-| `call-call-summary-29ea3b23` | Call Summary | jgrillas | False | Call | Plaud template community |
-| `construction-construction-fae651e3` | Construction | jgrillas | False | Construction | Plaud template community |
-| `construction-to-do-35ed18df` | To Do | jgrillas | False | Construction | Plaud template community |
-| `construction-quote-a68c5106` | Quote | Jhonathan Almeida | False | Construction | Plaud template community |
-| `meeting-soap-note-b51766cb` | SOAP Note | Jim Duffy | False | Meeting | Plaud template community |
-| `medical-dental-note-expert-10484f79` | dental note expert | jjbeus11 | False | Medical | Plaud template community |
-| `general-podcast-deep-dive-165651f5` | Podcast Deep-Dive | Jk's Gold Grillz | False | General | Plaud template community |
-| `legal-mva-case-intake-sheet-extractor-ccbd2abd` | MVA Case Intake Sheet Extractor | jkolb | False | Legal | Plaud template community |
-| `it-engineering-the-agile-daily-sync-plaud-prompt-022b1f51` | The "Agile Daily Sync" Plaud Prompt | Jmbourke | False | IT & Engineering | Plaud template community |
-| `education-training-summary-with-speakers-actions-and-q-a-ac31b1b4` | training summary with speakers, actions, and Q&A | jnaverill | False | Education | Plaud template community |
-| `legal-law-school-nsl-4584201b` | Law School - NSL | jngriffith84 | False | Legal | Plaud template community |
-| `it-engineering-technical-how-to-f4949af2` | Technical How To | Jo's Plaud Note | False | IT & Engineering | Plaud template community |
-| `call-call-1eb766ee` | Call | Joe | False | Call | Plaud template community |
-| `legal-fire-investigation-full-cdc4b6d3` | FIRE INVESTIGATION FULL | joe.towers | False | Legal | Plaud template community |
-| `interview-iso-9001-audit-d258a7ae` | ISO 9001 Audit | Johann Blackaller | False | Interview | Plaud template community |
-| `speech-voice-memo-to-digital-copy-7081f695` | Voice Memo to Digital Copy | John B | False | Speech | Plaud template community |
-| `education-esl-personal-lesson-report-cb402579` | ESL Personal Lesson Report | John Douche | False | Education | Plaud template community |
-| `education-teacher-performance-feedback-ce43fb72` | Teacher Performance Feedback | John Douche | False | Education | Plaud template community |
-| `general-john-f-crm-processor-notes-client-email-realtor-em-c05eaeae` | John F. CRM, Processor notes, Client Email, Realtor Email | John Duazo-Fleming | False | General | Plaud template community |
-| `speech-catholic-homily-226da274` | Catholic Homily | John Joel Seow | False | Speech | Plaud template community |
-| `legal-pnc-intake-890f2847` | PNC Intake | John Kauffman | False | Legal | Plaud template community |
-| `education-student-feedback-9be268c4` | Student Feedback | John lopez | False | Education | Plaud template community |
-| `sales-estimate-assistant-14b3caf2` | Estimate Assistant | John Obaid | False | Sales | Plaud template community |
-| `functional-podcast-summary-action-guide-7ad89114` | Podcast Summary & Action Guide | John Poindexter | False | Functional | Plaud template community |
-| `speech-nexus-expository-sermon-summary-6f250d62` | Nexus Expository Sermon Summary | John Richerson | False | Speech | Plaud template community |
-| `it-engineering-hitrust-evidence-processing-15c863f2` | HiTrust Evidence Processing | john.d.parker.85 | False | IT & Engineering | Plaud template community |
-| `education-law-school-post-lecture-21633688` | Law School Post Lecture | Johnathan Eagle | False | Education | Plaud template community |
-| `legal-law-school-lecture-exam-outline-builder-a43b450f` | Law School Lecture → Exam Outline Builder | johnpeterson2828 | False | Legal | Plaud template community |
-| `call-coaching-calls-dbcfdff6` | Coaching calls | johnslabbekoorn | False | Call | Plaud template community |
-| `meeting-product-manager-7e566d84` | Product Manager | Jon | False | Meeting | Plaud template community |
-| `consulting-coaching-template-f35994ce` | Coaching Template | Jon Stevens | False | Consulting | Plaud template community |
-| `meeting-1-2-extremely-detailed-summary-17e80ae2` | 1.2 Extremely Detailed Summary | Jonathan Barzilai | False | Meeting | Plaud template community |
-| `general-narrative-9172625e` | Narrative 📖 | Jonathan Duran | False | General | Plaud template community |
-| `call-key-points-8eb535f5` | KEY POINTS | Jonathan Hamp | False | Call | Plaud template community |
-| `general-book-reading-note-taking-9e48a8ba` | book reading note-taking | Jonathan HEILI | False | General | Plaud template community |
-| `medical-session-notes-a408635f` | Session Notes | Jonathan Vasquez | False | Medical | Plaud template community |
-| `real-estate-buyer-seller-real-estate-consultation-with-speaker-479f0c6f` | Buyer/Seller Real Estate Consultation with Speaker Labels | Jordan Felix | False | Real Estate | Plaud template community |
-| `speech-sermon-notes-d18ed82c` | Sermon Notes | Jordan Felix | False | Speech | Plaud template community |
-| `call-my-business-phone-calls-a2c55c2a` | My Business Phone Calls | Jorge | False | Call | Plaud template community |
-| `real-estate-coaching-summarizer-deb9120c` | Coaching Summarizer | Joseph Ranola | False | Real Estate | Plaud template community |
-| `real-estate-crm-update-10eec85c` | CRM Update | Joseph Ranola | False | Real Estate | Plaud template community |
-| `call-phone-call-summarizer-2b516021` | Phone Call Summarizer | Joseph Ranola | False | Call | Plaud template community |
-| `financial-m-a-advisory-ai-note-taker-7615b1b0` | M&A Advisory AI Note Taker | Josh | False | Financial | Plaud template community |
-| `real-estate-appraisal-analysis-630fee16` | Appraisal Analysis | Josh Bourgeois | False | Real Estate | Plaud template community |
-| `real-estate-cma-presentation-c5d84492` | CMA Presentation | Josh Bourgeois | False | Real Estate | Plaud template community |
-| `real-estate-listing-presentation-3dd43296` | Listing Presentation | Josh Bourgeois | False | Real Estate | Plaud template community |
-| `construction-construction-meeting-f99a2d36` | Construction Meeting | Josh McDowell | False | Construction | Plaud template community |
-| `real-estate-summarization-prompt-for-home-inspection-a3293968` | Summarization Prompt for Home Inspection | Josh Meltzer | False | Real Estate | Plaud template community |
-| `consulting-sop-outline-standard-operating-procedure-8cc97707` | SOP Outline (Standard Operating Procedure) | Josh Williams | False | Consulting | Plaud template community |
-| `speech-chinese-to-english-translation-86e345c5` | Chinese to English Translation | josumi | False | Speech | Plaud template community |
-| `speech-presenter-and-or-speaker-diagnosis-d213090e` | Presenter and/or Speaker Diagnosis | José Vicente | False | Speech | Plaud template community |
-| `consulting-individual-counseling-integration-6ec1f244` | Individual Counseling Integration | Joy Lee | False | Consulting | Plaud template community |
-| `education-bible-study-and-sermon-summary-5fa7b4a4` | Bible Study and Sermon Summary | João Marocco | False | Education | Plaud template community |
-| `sales-field-sales-7ce5c9a9` | Field Sales | jr | False | Sales | Plaud template community |
-| `meeting-company-meeting-informative-summary-no-action-item-af36265f` | Company meeting (Informative summary; no action items) | jsgordon87 | False | Meeting | Plaud template community |
-| `medical-clinical-history-8a939591` | Clinical History | Juan Manuel Fraga Sastrias | False | Medical | Plaud template community |
-| `medical-patient-summary-5f819925` | Patient Summary | Juan Manuel Fraga Sastrias | False | Medical | Plaud template community |
-| `speech-hacktown-19e00694` | Hacktown | Jubran Coelho | False | Speech | Plaud template community |
-| `it-engineering-2023-10-20-sample-project-acme-corp-technical-meet-15815dc3` | 2023-10-20 (Sample Project) - ACME Corp - Technical Meeting Discussion | Julien coppi | False | IT & Engineering | Plaud template community |
-| `it-engineering-technical-framing-6426a538` | Technical Framing | Julien Fabbri | False | IT & Engineering | Plaud template community |
-| `general-basic-meeting-minutes-a9f61ab7` | Basic Meeting Minutes | Julien PRÉVEL | False | General | Plaud template community |
-| `education-class-summary-f5021694` | Class Summary (2) | Julio Leite | False | Education | Plaud template community |
-| `construction-meeting-minutes-82d0d655` | Meeting Minutes+ | Justin | False | Construction | Plaud template community |
-| `functional-vietnamese-english-live-interpreter-e46c0f4f` | Vietnamese ↔ English Live Interpreter | justin | False | Functional | Plaud template community |
-| `sales-discussion-summary-c7c04d06` | Discussion Summary | jwearda | False | Sales | Plaud template community |
-| `legal-attorney-client-meeting-call-summary-e93d827b` | Attorney–Client Meeting & Call Summary | jwilson | False | Legal | Plaud template community |
-| `functional-performance-review-9bfde8d0` | Performance Review | jwptrs | False | Functional | Plaud template community |
-| `sales-plaud-sales-call-review-template-ba0f1440` | 🧠 PLAUD SALES CALL REVIEW TEMPLATE | jxmptzzj5s | False | Sales | Plaud template community |
-| `functional-clean-transcript-c2b3ffb4` | Clean Transcript | Jörg | False | Functional | Plaud template community |
-| `call-ogawa-phone-call-minutes-aa5fccda` | Ogawa Phone Call Minutes | k-ogawa | False | Call | Plaud template community |
-| `functional-book-report-4ab84dd8` | Book Report | k.yoshitaka1984 | False | Functional | Plaud template community |
-| `legal-full-transcription-transcription-and-archiving-ff111509` | Full Transcription – Transcription and Archiving | k9b469p46p | False | Legal | Plaud template community |
-| `speech-sermon-outline-template-fcf6a212` | Sermon Outline Template | KA CHEUK LAI | False | Speech | Plaud template community |
-| `financial-company-interview-notes-draft-4ceb1acc` | Company Interview Notes (Draft) | kago84 | False | Financial | Plaud template community |
-| `education-grad-school-lecture-c584ccba` | grad school lecture | kara | False | Education | Plaud template community |
-| `it-engineering-prompt-master-1262ce70` | Prompt Master | Karim GARCIA | False | IT & Engineering | Plaud template community |
-| `meeting-meeting-notes-24f0fdd5` | Meeting Notes | Karim Khowaja | False | Meeting | Plaud template community |
-| `legal-police-narrative-30e58ded` | Police Narrative | Kasey Jay | False | Legal | Plaud template community |
-| `medical-aesthetic-consultation-and-treatment-a4dda0e1` | Aesthetic Consultation and Treatment | Kate Allen | False | Medical | Plaud template community |
-| `sales-customer-conversation-strategic-c316b2da` | Customer Conversation Strategic | Katharina`s Plaud | False | Sales | Plaud template community |
-| `consulting-meeting-summary-46e33d3f` | Meeting summary | kathleen tremblay | False | Consulting | Plaud template community |
-| `real-estate-daily-standup-e418c4d2` | Daily Standup | kav.ei | False | Real Estate | Plaud template community |
-| `general-business-negotiation-report-creation-prompt-6124b6b8` | Business Negotiation Report Creation Prompt | kawachi | False | General | Plaud template community |
-| `legal-law-school-class-lecture-neurodivergent-friendly-76f1fb83` | Law School Class Lecture - Neurodivergent-Friendly | Kayla Howsare | False | Legal | Plaud template community |
-| `financial-conference-9529c091` | Conference | kaylennho | False | Financial | Plaud template community |
-| `sales-d2d-pest-control-sales-50233e38` | d2d pest control sales | keagan newby | False | Sales | Plaud template community |
-| `sales-manager-briefing-82fad1bc` | Manager Briefing | keith.kornegger | False | Sales | Plaud template community |
-| `meeting-psychotherapist-template-27fd30de` | Psychotherapist template | keithyamashita | False | Meeting | Plaud template community |
-| `meeting-employee-annual-review-668fa284` | Employee Annual Review | Kenneth Gipson | False | Meeting | Plaud template community |
-| `functional-process-mapping-template-0f96ef3b` | Process Mapping Template | Kenny Ruiz | False | Functional | Plaud template community |
-| `call-phone-memo-c60ad1b4` | Phone Memo | kenta shibata | False | Call | Plaud template community |
-| `education-lecture-152fe619` | Lecture | Keven David | False | Education | Plaud template community |
-| `general-university-lecture-bcd40009` | University Lecture | Keven David | False | General | Plaud template community |
-| `functional-very-detailed-summary-6ee420fe` | Very Detailed Summary | Kevin Hogrebe | False | Functional | Plaud template community |
-| `it-engineering-site-ops-regularity-be597905` | Site Ops & Regularity | Kevin Merino | False | IT & Engineering | Plaud template community |
-| `functional-book-material-extractor-1d08830a` | 📚 Book Material Extractor | kevindavila717 | False | Functional | Plaud template community |
-| `call-customer-consultation-center-input-prompt-1ee15aeb` | Customer Consultation Center Input Prompt | kgmplaud_minutes_0020 | False | Call | Plaud template community |
-| `it-engineering-application-project-development-meetings-27d766fc` | Application Project Development Meetings. | Khemmachart Chutapetch (คุณ นาย) | False | IT & Engineering | Plaud template community |
-| `call-recruiter-call-candidate-opportunity-brief-f5814c6e` | Recruiter Call — Candidate Opportunity Brief | Kim Dula | False | Call | Plaud template community |
-| `construction-design-meeting-3b333be8` | Design Meeting | kimura_ayumu | False | Construction | Plaud template community |
-| `call-stan-lee-csr-grading-coaching-template-339a0fa3` | Stan Lee CSR Grading & Coaching Template | kingsconnor | False | Call | Plaud template community |
-| `functional-manager-allen-smart-meeting-notes-action-first-edi-2eacd2ac` | Manager Allen | Smart Meeting Notes (Action-First Edition) | kinm04112752137 | False | Functional | Plaud template community |
-| `functional-speakers-psychological-analysis-79c68231` | Speakers psychological analysis | kippersluis.leon | False | Functional | Plaud template community |
-| `sales-ttb-new-customer-in-home-sales-appointment-20ac68fa` | TTB New Customer In-home sales Appointment | Kirk | False | Sales | Plaud template community |
-| `speech-talking-points-professional-evaluation-from-discus-a4701b4a` | Talking Points - Professional Evaluation from Discussion | Kit Betts-Masters | False | Speech | Plaud template community |
-| `sales-km-ed4b5225` | Km | km | False | Sales | Plaud template community |
-| `it-engineering-helpdesk-onsite-troubleshooting-notes-967e7856` | Helpdesk - Onsite troubleshooting notes | knadolny | False | IT & Engineering | Plaud template community |
-| `medical-support-progress-record-for-care-managers-d3d172cc` | Support Progress Record (for Care Managers) | kobayashi hirotaka | False | Medical | Plaud template community |
-| `it-engineering-code-review-record-cd23fe5c` | Code Review Record | komi5320 | False | IT & Engineering | Plaud template community |
-| `financial-customer-interaction-history-template-as-an-fp-d1ef3c66` | Customer Interaction History Template as an FP | Kozo Hoshino | False | Financial | Plaud template community |
-| `construction-home-services-sales-coach-bd7f492e` | Home Services Sales Coach | Kris | False | Construction | Plaud template community |
-| `construction-home-services-sales-process-d1ef0943` | Home Services Sales Process | Kris | False | Construction | Plaud template community |
-| `real-estate-prelist-walkthough-home-features-measurements-task-72c23672` | Prelist Walkthough- Home features, Measurements & Task list | Krystal Seeley | False | Real Estate | Plaud template community |
-| `functional-coach-766f1b72` | Coach | Kuersat.tuel | False | Functional | Plaud template community |
-| `interview-interview-summary-aeba6887` | interview summary | KuhlmanOffice | False | Interview | Plaud template community |
-| `interview-witness-interview-transcript-6888bc43` | Witness Interview Transcript | KuhlmanOffice | False | Interview | Plaud template community |
-| `financial-cpa-tax-preparation-tax-planning-746172a2` | CPA – Tax Preparation + Tax Planning | Kurt Krueger | False | Financial | Plaud template community |
-| `meeting-meeting-summary-bullet-point-structure-253788d1` | Meeting Summary, Bullet Point Structure | kyle | False | Meeting | Plaud template community |
-| `legal-detective-interview-baf9ff23` | Detective Interview | Kyle McNabb | False | Legal | Plaud template community |
-| `financial-audit-internal-controls-narrative-f58bdd7d` | Audit - Internal Controls Narrative | Kyle Myers | False | Financial | Plaud template community |
-| `functional-hot-debrief-288665bc` | Hot Debrief | kyletay60 | False | Functional | Plaud template community |
-| `functional-hot-debrief-new-version-586287f2` | Hot Debrief New Version | kyletay60 | False | Functional | Plaud template community |
-| `meeting-client-meeting-summary-with-action-items-5c9ded06` | Client Meeting Summary with Action Items | Kylie Jesus | False | Meeting | Plaud template community |
-| `medical-psychiatric-evaluation-96bad1c0` | Psychiatric Evaluation | l.rosas07 | False | Medical | Plaud template community |
-| `call-raynet-65422052` | Raynet | LACI | False | Call | Plaud template community |
-| `general-meeting-secretary-7aaaabf8` | Meeting Secretary | lamborghini.porsche | False | General | Plaud template community |
-| `medical-dental-new-patient-examination-dr-v-71bf5616` | Dental New Patient Examination - Dr. V | Lance Vicente | False | Medical | Plaud template community |
-| `it-engineering-it-support-report-c35b3be0` | IT Support Report | Lannick CHENUS | False | IT & Engineering | Plaud template community |
-| `functional-to-do-list-31bc394e` | To Do List | Lauren B | False | Functional | Plaud template community |
-| `it-engineering-data-analyst-d3cbafb7` | Data Analyst | Lawrenz Ong | False | IT & Engineering | Plaud template community |
-| `functional-dictation-formal-letter-f98477c2` | Dictation - Formal Letter | lboswell | False | Functional | Plaud template community |
-| `construction-interior-design-client-discovery-e0b4b784` | Interior Design - Client Discovery | Le Goubey Architecture / PERENE | False | Construction | Plaud template community |
-| `financial-mortgage-client-meeting-summary-2cd3546a` | Mortgage Client Meeting Summary | lee | False | Financial | Plaud template community |
-| `speech-sermon-5bc255a9` | Sermon | Lee | False | Speech | Plaud template community |
-| `medical-rios-lfb-31ed3507` | Rios LFB | Leonardo Rios | False | Medical | Plaud template community |
-| `it-engineering-security-expert-46da0df4` | Security Expert | Leonardo Rosário | False | IT & Engineering | Plaud template community |
-| `functional-full-verified-transcript-e8e870ae` | Full Verified Transcript | Leonid DaSilva | False | Functional | Plaud template community |
-| `general-detailed-lecture-notes-fae72a47` | Detailed Lecture Notes | leosungwonlee | False | General | Plaud template community |
-| `construction-instructions-for-transcription-of-building-inspect-ec8fa17a` | INSTRUCTIONS FOR TRANSCRIPTION OF BUILDING INSPECTION QUEBEC | Leslie Cb | False | Construction | Plaud template community |
-| `education-class-notes-b7c79091` | Class notes | levi silverberg | False | Education | Plaud template community |
-| `sales-participant-intake-66d944fe` | Participant Intake | lewon.khajo | False | Sales | Plaud template community |
-| `it-engineering-1-detailed-meeting-summary-89a72c6f` | 1) Detailed Meeting Summary | Liem Vo-Nguyen | False | IT & Engineering | Plaud template community |
-| `it-engineering-job-interview-1st-round-hiring-manager-screen-cand-00d2f50b` | Job Interview — 1st Round: Hiring Manager Screen (Candidate) | Liem Vo-Nguyen | False | IT & Engineering | Plaud template community |
-| `functional-children-s-behavior-data-c94c01ec` | Children's behavior data | Linda Ibbotson | False | Functional | Plaud template community |
-| `it-engineering-ciso-assistance-6cbf05b2` | CISO Assistance | liorcracked | False | IT & Engineering | Plaud template community |
-| `financial-annual-review-43c8898f` | annual review | lisa | False | Financial | Plaud template community |
-| `real-estate-mortgage-planning-meeting-d1e04deb` | Mortgage Planning Meeting | lisa | False | Real Estate | Plaud template community |
-| `consulting-for-fp-consultation-record-b3182acf` | For FP Consultation Record | Lit S10 | False | Consulting | Plaud template community |
-| `call-onboarding-transcript-template-1449a4d7` | Onboarding Transcript Template | lizzie | False | Call | Plaud template community |
-| `medical-psychology-5b2c6fe3` | Psychology | longran2004 | False | Medical | Plaud template community |
-| `sales-my-sales-1-96af6ae7` | my sales 1 | Lonny Joynt | False | Sales | Plaud template community |
-| `call-generic-call-summary-5b2903cb` | Generic Call Summary | Loren R Elks | False | Call | Plaud template community |
-| `call-enterprise-dispatch-call-log-generator-5b0c4189` | Enterprise Dispatch Call Log Generator | lorenzo | False | Call | Plaud template community |
-| `general-client-information-sheet-mortgage-brokerage-97b540d9` | Client Information Sheet - Mortgage Brokerage | Loïc | False | General | Plaud template community |
-| `functional-lpugliesi-pro-760d21b0` | lpugliesi pro | LPugliesi | False | Functional | Plaud template community |
-| `functional-plain-text-9abd0fd0` | plain text. | ls.griffith | False | Functional | Plaud template community |
-| `construction-safety-coordinator-58c6f774` | Safety Coordinator | Luca Lenzi | False | Construction | Plaud template community |
-| `interview-create-podcast-audiocast-marketing-663f1554` | Create Podcast & Audiocast (Marketing) | Lucas Borges | False | Interview | Plaud template community |
-| `sales-interaction-trade-shows-and-events-marketing-45f22166` | Interaction Trade Shows and Events (Marketing) | Lucas Borges | False | Sales | Plaud template community |
-| `sales-trade-show-booth-interaction-marketing-80a04a5f` | Trade Show Booth Interaction (Marketing) | Lucas Borges | False | Sales | Plaud template community |
-| `real-estate-property-move-in-move-out-inspection-report-694c664c` | Property Move-In/Move-out Inspection Report | Lucas Conradi | False | Real Estate | Plaud template community |
-| `financial-investment-advisory-7e39e681` | Investment Advisory | lucasosporto | False | Financial | Plaud template community |
-| `legal-legal-261eb2a0` | legal | Lucio Salazar | False | Legal | Plaud template community |
-| `construction-detailed-scope-of-work-sow-for-mitigation-project-ecf5dcc6` | Detailed Scope of Work (SOW) for Mitigation Project | Luis Arvizu | False | Construction | Plaud template community |
-| `sales-senior-sales-coach-84c9630b` | Senior Sales Coach | Luiz Fernando Goulart | False | Sales | Plaud template community |
-| `speech-class-explanations-2a6d494d` | Class Explanations | Lukas Huguet Sanchez | False | Speech | Plaud template community |
-| `meeting-minutes-of-meeting-mom-29557a25` | Minutes of Meeting (MoM) | Luke.simpson | False | Meeting | Plaud template community |
-| `general-adhd-full-day-review-670a50f6` | ADHD Full Day Review | Lunar | False | General | Plaud template community |
-| `meeting-verbatim-full-transcript-2452d323` | Verbatim Full Transcript | Lurk Skywalker | False | Meeting | Plaud template community |
-| `sales-pipedrive-meeting-notes-8ec76037` | Pipedrive Meeting Notes | Luuk | False | Sales | Plaud template community |
-| `consulting-psychoanalyst-098160d4` | Psychoanalyst | Lyahn | False | Consulting | Plaud template community |
-| `education-academic-conversation-5f62c7a1` | Academic conversation | lyn | False | Education | Plaud template community |
-| `financial-form-8a395a8b` | FORM | lyndeeann99 | False | Financial | Plaud template community |
-| `sales-pipeline-review-c34f2058` | Pipeline Review | M Cook | False | Sales | Plaud template community |
-| `construction-outcome-documentation-05468a4d` | OUTCOME DOCUMENTATION | m.teichmann | False | Construction | Plaud template community |
-| `legal-h-c-fn-4e350ab1` | H&C FN | m.vernon | False | Legal | Plaud template community |
-| `consulting-coaching-notes-af43c7f6` | Coaching Notes | M_0_D | False | Consulting | Plaud template community |
-| `sales-revenue-accelerator-pro-market-intel-ec3a533d` | Revenue Accelerator Pro & Market Intel | Madelaine Robillard | False | Sales | Plaud template community |
-| `functional-symbolic-seduction-analysis-7f165bd5` | SYMBOLIC SEDUCTION ANALYSIS | MAFDS | False | Functional | Plaud template community |
-| `functional-diary-cabcf58d` | Diary (2) | Maguro | False | Functional | Plaud template community |
-| `education-turn-any-talk-into-a-top-tier-journal-article-fcddb7ed` | Turn Any Talk into a Top-Tier Journal Article | mahmud.syaltout | False | Education | Plaud template community |
-| `education-turn-any-talk-into-academic-learning-notes-structu-bc3793a7` | Turn Any Talk into Academic Learning Notes: Structured, No-Summary, Citation-Integrated | mahmud.syaltout | False | Education | Plaud template community |
-| `education-music-production-training-33e22fea` | MUSIC PRODUCTION TRAINING | Maken El Comte | False | Education | Plaud template community |
-| `speech-religious-speech-b3cdac24` | Religious Speech | Makoto O | False | Speech | Plaud template community |
-| `speech-for-public-election-speech-8c7c0d95` | For Public Election Speech | Manabu Watabe | False | Speech | Plaud template community |
-| `financial-conversational-analyst-f87e235b` | Conversational Analyst | manuel ricci | False | Financial | Plaud template community |
-| `consulting-opportunity-identification-879664e7` | Opportunity Identification | Manuel Villanueva Serrano | False | Consulting | Plaud template community |
-| `legal-create-detailed-report-fc3564cc` | Create detailed report | manuel.lopez21 | False | Legal | Plaud template community |
-| `functional-fiction-writer-b61afd0f` | Fiction Writer | Manú | False | Functional | Plaud template community |
-| `construction-expertise-summary-f05aa191` | Expertise Summary | Marc Scheneder | False | Construction | Plaud template community |
-| `sales-meddpicc-0664f0ab` | MEDDPICC | Marcel Komatsu | False | Sales | Plaud template community |
-| `education-master-s-class-3f4fa5ad` | Master's Class | Marcelo Rodrigues Machado | False | Education | Plaud template community |
-| `meeting-meeting-minutes-3d289bd3` | Meeting Minutes (3) | Marcelo Rodrigues Machado | False | Meeting | Plaud template community |
-| `education-training-summary-f3037f04` | Training Summary | Marcelo Rodrigues Machado | False | Education | Plaud template community |
-| `consulting-legal-meeting-e044374e` | Legal Meeting | Marcelo Trajano | False | Consulting | Plaud template community |
-| `meeting-conference-recordings-2a184fd0` | Conference Recordings | Marco | False | Meeting | Plaud template community |
-| `sales-lesson-builder-82930d81` | lesson builder | marcofmen | False | Sales | Plaud template community |
-| `education-in-depth-summary-a07b72e3` | In-depth summary | Marcos Goulart | False | Education | Plaud template community |
-| `sales-business-meeting-db46d821` | Business Meeting | marcosantoniali | False | Sales | Plaud template community |
-| `real-estate-buyer-showing-s-3b9fb4c2` | Buyer Showing s | Marcus Cruz | False | Real Estate | Plaud template community |
-| `meeting-meeting-minutes-096e73f2` | Meeting Minutes (6) | Marcus Saulo | False | Meeting | Plaud template community |
-| `financial-stock-market-discussion-9feb97ee` | Stock Market Discussion | Margnilien | False | Financial | Plaud template community |
-| `medical-s-o-a-p-note-format-use-subjective-objective-asses-798d2cb9` | ***S.O.A.P. Note Format**: Use SUBJECTIVE, OBJECTIVE, ASSESSMENT, PLAN sections. Follow CMS-complia | Maria Castro Calzada, PA-C | False | Medical | Plaud template community |
-| `consulting-complete-transcript-for-external-use-0cd65b76` | Complete Transcript for External Use | Maria Fernanda Cerini | False | Consulting | Plaud template community |
-| `medical-first-cbt-session-97b8a687` | FIRST CBT SESSION | Maria Giuseppina Canevisio | False | Medical | Plaud template community |
-| `medical-therapy-summary-a4a1df6e` | Therapy Summary | Mariano Ventura Barreira | False | Medical | Plaud template community |
-| `real-estate-commercial-property-inspection-checklist-generator-5e9d45d7` | Commercial Property Inspection Checklist Generator | Marie Cameron | False | Real Estate | Plaud template community |
-| `interview-clinical-follow-up-notes-in-clinical-educational-t-f72489fe` | Clinical follow-up notes in clinical educational therapy | MarieDupont | False | Interview | Plaud template community |
-| `real-estate-real-estate-phone-note-e9051f7d` | Real Estate_Phone Note | Marijan Stanic | False | Real Estate | Plaud template community |
-| `sales-vc-pitch-deck-evaluation-investor-scorecard-decisi-f6a2bb0d` | VC Pitch Deck Evaluation – Investor Scorecard & Decision Framework | marioeaviles | False | Sales | Plaud template community |
-| `consulting-deep-clinical-deconstruction-30640428` | Deep Clinical Deconstruction | Mark | False | Consulting | Plaud template community |
-| `financial-fp-meeting-follow-up-4ee439af` | FP: Meeting Follow Up | Mark Anthony | False | Financial | Plaud template community |
-| `financial-annual-financial-and-investment-review-with-existi-16f51baa` | Annual Financial and Investment Review With Existing Clients | Mark Mulcahy | False | Financial | Plaud template community |
-| `consulting-full-meeting-capture-action-summary-audit-ready-9474a663` | Full Meeting Capture & Action Summary — Audit-Ready | mark_mason79 | False | Consulting | Plaud template community |
-| `call-client-meeting-a2b5cea6` | Client Meeting | marketing | False | Call | Plaud template community |
-| `meeting-student-counselor-04a8ebf5` | Student Counselor | marketing | False | Meeting | Plaud template community |
-| `consulting-stakeholder-meeting-6ed7c661` | Stakeholder meeting | markh389 | False | Consulting | Plaud template community |
-| `real-estate-property-inspection-f57551b7` | Property Inspection | markus.thielemann | False | Real Estate | Plaud template community |
-| `real-estate-construction-company-meetings-quick-call-catch-up-535c7c69` | Construction Company Meetings (Quick Call Catch-up) | martin | False | Real Estate | Plaud template community |
-| `real-estate-meeting-minutes-2dc955f1` | Meeting Minutes | martin | False | Real Estate | Plaud template community |
-| `real-estate-real-estate-property-acquisition-ada575c6` | Real Estate Property Acquisition | martin | False | Real Estate | Plaud template community |
-| `meeting-training-28cdef0b` | Training | Martin Hrňa | False | Meeting | Plaud template community |
-| `consulting-coaching-session-7a35885b` | Coaching session | Martin Stam | False | Consulting | Plaud template community |
-| `consulting-discussing-with-experts-5f403938` | Discussing with Experts | Marty Kearns | False | Consulting | Plaud template community |
-| `speech-daily-thoughts-86ff5494` | daily thoughts | Masa Kato | False | Speech | Plaud template community |
-| `it-engineering-product-manager-meeting-note-generator-c8223f92` | Product Manager Meeting Note Generator | Maschal Malek | False | IT & Engineering | Plaud template community |
-| `education-foreign-language-class-fb7aa736` | foreign language class | Massimo Mensi | False | Education | Plaud template community |
-| `general-personal-assistant-1a5a363c` | Personal Assistant (2) | Massimo Mensi | False | General | Plaud template community |
-| `general-strategic-meeting-summary-speaker-profiling-minute-e7fc0564` | Strategic Meeting Summary & Speaker Profiling (Minutes-Ready Version) | Massimo Mensi | False | General | Plaud template community |
-| `it-engineering-customer-issues-and-product-management-initiative--e9fe3e3c` | Customer issues and product management initiative review meeting | Mat Nisbet | False | IT & Engineering | Plaud template community |
-| `it-engineering-neo-summary-into-a-knowledge-base-kb-article-2a3ebbf0` | NEO summary into a Knowledge Base (KB) article | Math Stein | False | IT & Engineering | Plaud template community |
-| `speech-book-reading-notes-287eb2b3` | Book Reading Notes | matheus.meirellessilva | False | Speech | Plaud template community |
-| `consulting-accounting-meeting-366b6942` | Accounting Meeting | matheusrdluz | False | Consulting | Plaud template community |
-| `meeting-meeting-notes-29ca4e8a` | Meeting Notes (2) | mathieu | False | Meeting | Plaud template community |
-| `sales-insurance-broker-assistant-e11ed11f` | Insurance Broker Assistant | mathieukott | False | Sales | Plaud template community |
-| `call-phone-call-433f202f` | PHONE CALL | mathieukott | False | Call | Plaud template community |
-| `sales-appointment-0cae2311` | Appointment | Matis Minzière | False | Sales | Plaud template community |
-| `speech-sermon-analyzer-8bd31149` | ++ Sermon Analyzer | matk | False | Speech | Plaud template community |
-| `meeting-meeting-secretary-dfa9afd8` | Meeting Secretary | Matt | False | Meeting | Plaud template community |
-| `it-engineering-a-workshop-breakdown-29fcd4f8` | A Workshop Breakdown | Matt Blaylock | False | IT & Engineering | Plaud template community |
-| `construction-gc-site-walk-94c40440` | GC Site Walk | Matt Mitchell | False | Construction | Plaud template community |
-| `consulting-financial-advisor-0688f3fb` | Financial Advisor | Matteo Delle Foglie | False | Consulting | Plaud template community |
-| `general-casual-conversation-b7675d6f` | Casual Conversation | Matthew Eckes | False | General | Plaud template community |
-| `sales-roofing-sales-diagnostics-bd6bdf60` | Roofing Sales Diagnostics | Matthew Griffin | False | Sales | Plaud template community |
-| `call-family-law-initial-inquiry-client-to-financial-pro-ba1b5e19` | Family Law: Initial Inquiry Client to Financial Professional | matthias.reetz | False | Call | Plaud template community |
-| `consulting-iso-audit-daily-log-with-sequences-42ab735c` | ISO Audit – Daily Log with Sequences | matthias.reetz | False | Consulting | Plaud template community |
-| `consulting-iso-audit-sequence-protocol-a0b62966` | ISO Audit – Sequence Protocol | matthias.reetz | False | Consulting | Plaud template community |
-| `consulting-consulting-2-0-e9bd8a0b` | Consulting 2.0 | Mattia Cavaliere | False | Consulting | Plaud template community |
-| `construction-bullet-point-summary-792c0e05` | bullet point summary | max | False | Construction | Plaud template community |
-| `interview-individual-interview-a8dca089` | Individual Interview | Max DL | False | Interview | Plaud template community |
-| `real-estate-mortgage-consultation-7b752bf7` | Mortgage Consultation | Max Giamanco | False | Real Estate | Plaud template community |
-| `real-estate-property-visit-bf3fff9b` | Property Visit | Maxime Benoit | False | Real Estate | Plaud template community |
-| `construction-transcription-273dff6d` | Transcription | maxime figureau | False | Construction | Plaud template community |
-| `real-estate-consultation-follow-up-d19acc0e` | Consultation Follow Up | Maximilian Fischer | False | Real Estate | Plaud template community |
-| `consulting-counseling-session-report-059fb586` | Counseling Session Report | mazni kamlin | False | Consulting | Plaud template community |
-| `consulting-group-counseling-reflection-adc873e8` | Group Counseling Reflection | mazni kamlin | False | Consulting | Plaud template community |
-| `education-it-software-tutorial-instruction-generator-from-au-20cd50fb` | IT Software Tutorial Instruction Generator from Audio | Małgorzata Kołucka | False | Education | Plaud template community |
-| `legal-mxb-letter-6-0-21531a79` | MXB letter 6.0 | mbaggot | False | Legal | Plaud template community |
-| `call-detailed-call-meeting-summary-structured-record-1b1962da` | Detailed Call & Meeting Summary – Structured Record | MC Hammer | False | Call | Plaud template community |
-| `general-full-verbatim-transcript-external-use-b109195f` | Full Verbatim Transcript – External Use | MC Hammer | False | General | Plaud template community |
-| `call-telephone-discussion-structured-brief-6ed33c19` | Telephone Discussion – Structured Brief | MC Hammer | False | Call | Plaud template community |
-| `meeting-therapy-session-progress-note-6604adb8` | Therapy Session Progress Note | mcarmino33 | False | Meeting | Plaud template community |
-| `education-stem-lectures-9ce3d541` | STEM Lectures | McKenna Stewart | False | Education | Plaud template community |
-| `it-engineering-software-product-manager-498febae` | Software Product Manager | mcrueckert | False | IT & Engineering | Plaud template community |
-| `legal-legal-depo-summary-1089a4d0` | Legal depo summary | mhernandez | False | Legal | Plaud template community |
-| `construction-business-project-meeting-dedff6f9` | Business Project Meeting | michael | False | Construction | Plaud template community |
-| `construction-project-meeting-with-companies-0d27b6b7` | Project Meeting with Companies | michael | False | Construction | Plaud template community |
-| `construction-project-review-session-df39b0a2` | Project Review Session | michael | False | Construction | Plaud template community |
-| `real-estate-real-estate-protectional-daily-tracker-6fcdd56e` | Real estate protectional daily tracker | michael | False | Real Estate | Plaud template community |
-| `legal-jail-calls-ac385d21` | Jail calls | Michael Byrnes | False | Legal | Plaud template community |
-| `meeting-brief-meeting-summery-with-topics-key-points-insig-139a48a8` | brief Meeting summery with topics, key points, insights and actions | Michael Gamböck | False | Meeting | Plaud template community |
-| `education-seminar-lecture-detailed-summary-and-transcript-abdb85e6` | Seminar, Lecture: Detailed Summary and Transcript | Michael K. GASSER | False | Education | Plaud template community |
-| `meeting-meeting-summary-95dce7c9` | Meeting Summary (3) | Michael Karnolt | False | Meeting | Plaud template community |
-| `construction-inspection-report-notes-c7c2fa98` | Inspection Report Notes | Michael Nibarger | False | Construction | Plaud template community |
-| `functional-bullet-point-notes-2fc7c112` | bullet point notes | michael stroud | False | Functional | Plaud template community |
-| `it-engineering-it-meeting-tasks-5bbc1ad8` | IT Meeting/Tasks | Michael Warren | False | IT & Engineering | Plaud template community |
-| `sales-mortgage-loan-officer-purchase-lead-call-072d4a90` | Mortgage Loan Officer - Purchase Lead Call | michael.dean27 | False | Sales | Plaud template community |
-| `consulting-cipro-s-elite-performance-coaching-462fa912` | Cipro’s elite performance coaching | michal.cipro | False | Consulting | Plaud template community |
-| `general-full-transcript-for-external-use-56d004d4` | full transcript (for external use) | Michele Morgese (Dott. Michele Morgese) | False | General | Plaud template community |
-| `it-engineering-internal-client-site-summaries-44c6ef50` | Internal + Client Site Summaries | Mighty Bornfreedom | False | IT & Engineering | Plaud template community |
-| `construction-my-punchlist-ec5ff43e` | My PunchList | Mike Carter | False | Construction | Plaud template community |
-| `construction-site-walk-documentation-assistant-dc8fcfa3` | Site-walk documentation assistant | Mike Carter | False | Construction | Plaud template community |
-| `construction-updated-punch-list-12-25-334ebc05` | Updated Punch List 12.25 | Mike Carter | False | Construction | Plaud template community |
-| `sales-analyze-sales-representative-negotiation-audio-and-e5984170` | Analyze sales representative negotiation audio and provide feedback to improve contract rates. | minagawa_t | False | Sales | Plaud template community |
-| `construction-site-inspection-fbb02807` | Site inspection | Mirko Cioni | False | Construction | Plaud template community |
-| `sales-customer-business-negotiation-report-for-manufactu-aa4cada9` | Customer Business Negotiation Report for Manufacturing Industry | mitsuya31daaa | False | Sales | Plaud template community |
-| `it-engineering-tech-consulting-meeting-919343b4` | Tech Consulting Meeting | mj.iyer | False | IT & Engineering | Plaud template community |
-| `speech-marketing-strategy-meeting-21207890` | Marketing Strategy Meeting | mlfscl.smm | False | Speech | Plaud template community |
-| `real-estate-site-inspection-for-real-estate-valuation-expert-5ff08fc0` | Site Inspection for Real Estate Valuation Expert | mm | False | Real Estate | Plaud template community |
-| `call-telephone-notes-7e9b2179` | Telephone Notes | Mo Frankenfeld | False | Call | Plaud template community |
-| `legal-spouse-visa-client-onboarding-521137df` | Spouse Visa Client Onboarding | Mohsin Khan | False | Legal | Plaud template community |
-| `construction-design-project-review-846a4725` | DESIGN/PROJECT REVIEW | Moises Guindi | False | Construction | Plaud template community |
-| `general-rpg-session-cdffcad4` | RPG Session | Morgan Bartlett | False | General | Plaud template community |
-| `speech-foundations-of-nursing-lecture-19db98d9` | Foundations of Nursing Lecture | morganmoore0618 | False | Speech | Plaud template community |
-| `education-lecture-notes-06f53350` | Lecture Notes | morganmoore0618 | False | Education | Plaud template community |
-| `financial-meetings-and-financial-kpi-ae307571` | Meetings and Financial KPI | mpeixotojr | False | Financial | Plaud template community |
-| `general-personal-assistant-15b8d55c` | Personal Assistant | mr_head86 | False | General | Plaud template community |
-| `it-engineering-cybersecurity-conference-0008cc4f` | cybersecurity conference | mrsannamorris | False | IT & Engineering | Plaud template community |
-| `call-business-call-41d3e6fc` | Business Call | mrskimbley | False | Call | Plaud template community |
-| `medical-generalist-veterinary-consultation-484e5ce4` | Generalist Veterinary Consultation | mstac | False | Medical | Plaud template community |
-| `real-estate-1-on-1-real-estate-investor-consult-7a1ffceb` | 1 on 1 Real Estate investor consult | Muir.kevin12 | False | Real Estate | Plaud template community |
-| `real-estate-open-house-to-notes-86218ed5` | Open house to notes | Muir.kevin12 | False | Real Estate | Plaud template community |
-| `meeting-executive-2db1d221` | Executive | Mustafa Kumas | False | Meeting | Plaud template community |
-| `medical-dental-consultant-adult-orthodontics-sales-coach-2bdbaa36` | Dental Consultant (Adult Orthodontics) Sales Coach | mvpdentistlin | False | Medical | Plaud template community |
-| `medical-dental-consultant-implant-deal-coach-ecde533e` | Dental Consultant (Implant) Deal Coach | mvpdentistlin | False | Medical | Plaud template community |
-| `medical-dental-consultant-coach-d4184bb1` | Dental Consultant Coach | mvpdentistlin | False | Medical | Plaud template community |
-| `construction-protokoll-ortstermin-ifb-741bca2e` | Protokoll Ortstermin - ifb | n.baumann | False | Construction | Plaud template community |
-| `call-phone-calls-a364da9d` | Phone Calls | N.K | False | Call | Plaud template community |
-| `consulting-transcription-of-topic-centered-conversations-75ab28a7` | Transcription of Topic-Centered Conversations | n5jf7ztd6g | False | Consulting | Plaud template community |
-| `speech-easy-to-understand-summary-template-easy-for-anyon-aa7fb6e3` | Easy-to-Understand Summary Template (Easy for Anyone to Understand) | naisa225 44 | False | Speech | Plaud template community |
-| `speech-prompt-for-deeper-analysis-of-the-entire-lecture-6c91ee41` | Prompt for Deeper Analysis of the Entire Lecture | nakabow2 | False | Speech | Plaud template community |
-| `interview-transcription-for-interview-df67ba63` | Transcription for Interview | Nakamura Ayaka | False | Interview | Plaud template community |
-| `construction-noon-meeting-aa12d1c5` | Noon Meeting | nakamuray41104 | False | Construction | Plaud template community |
-| `meeting-meeting-0160e663` | Meeting (3) | Nangila | False | Meeting | Plaud template community |
-| `consulting-evolving-note-in-career-guidance-5f80901f` | Evolving Note in Career Guidance | Nathalie | False | Consulting | Plaud template community |
-| `financial-earnings-call-summarizer-7e9915b0` | Earnings Call Summarizer | Nathan W | False | Financial | Plaud template community |
-| `functional-thoughts-dd81eb3e` | Thoughts | Naveen Kumar | False | Functional | Plaud template community |
-| `it-engineering-daily-engineering-stand-up-43ab77ba` | Daily Engineering Stand-up | nb2qjf658z | False | IT & Engineering | Plaud template community |
-| `call-telephone-support-9fb251d8` | Telephone Support | NB情報技術基盤本部 | False | Call | Plaud template community |
-| `legal-recorded-statement-summary-insurance-auto-claims-73cca16b` | Recorded Statement Summary - Insurance Auto Claims | neal70 | False | Legal | Plaud template community |
-| `speech-my-diary-89a2a070` | My Diary | nelifes | False | Speech | Plaud template community |
-| `meeting-best-prompts-for-voice-transcripts-66df4291` | Best Prompts for Voice Transcripts | neomatrixyzy | False | Meeting | Plaud template community |
-| `financial-client-call-2dc00a67` | Client Call | nfabbris99 | False | Financial | Plaud template community |
-| `financial-wealth-management-consultation-meeting-342cec80` | Wealth Management Consultation Meeting | nfabbris99 | False | Financial | Plaud template community |
-| `interview-autobiography-interview-e60ccc6d` | Autobiography Interview | Nic Lydon | False | Interview | Plaud template community |
-| `it-engineering-secops-incident-response-call-4381a9fe` | SecOps - Incident Response Call | Nic Lydon | False | IT & Engineering | Plaud template community |
-| `education-training-study-guide-686c8245` | Training Study Guide | Nic Lydon | False | Education | Plaud template community |
-| `call-manager-employee-one-on-one-session-98826336` | Manager/Employee One-on-One Session | Nicholas Fisk | False | Call | Plaud template community |
-| `it-engineering-project-team-meetings-with-multiple-participants-42375ef8` | Project Team Meetings with Multiple Participants | Nicholas Fisk | False | IT & Engineering | Plaud template community |
-| `real-estate-chatgpt-collect-comp-data-2b7fc226` | ChatGPT-Collect Comp Data | Nicholas Pilz | False | Real Estate | Plaud template community |
-| `functional-influence-persuasion-analysis-f6535f94` | Influence & Persuasion Analysis | Nick | False | Functional | Plaud template community |
-| `speech-novel-editor-bcaa626f` | Novel Editor | nick | False | Speech | Plaud template community |
-| `financial-pp-annual-review-suitability-letter-5b4c8937` | PP - Annual Review suitability letter | nick | False | Financial | Plaud template community |
-| `financial-pp-client-meeting-annual-review-9c09aebe` | PP - Client Meeting - Annual review | nick | False | Financial | Plaud template community |
-| `financial-pp-client-meeting-fact-find-8413b352` | PP - Client meeting - Fact find | nick | False | Financial | Plaud template community |
-| `general-daily-journal-549490bc` | Daily Journal | Nick Bluth | False | General | Plaud template community |
-| `it-engineering-user-research-call-902c7f37` | User Research Call | Nick Bluth | False | IT & Engineering | Plaud template community |
-| `it-engineering-ux-contextual-inquiry-visit-76f16263` | UX Contextual Inquiry Visit | Nick Bluth | False | IT & Engineering | Plaud template community |
-| `construction-inspection-findings-specialty-inspection-defect-in-4f6238fe` | Inspection Findings - Specialty Inspection/Defect Investigation | Nick DC | False | Construction | Plaud template community |
-| `real-estate-tea-hsd-presenting-to-a-failed-house-seller-331322db` | TEA - HSD - Presenting to a Failed House Seller | Nick Xenos | False | Real Estate | Plaud template community |
-| `general-dungeons-dragons-session-chronicle-scene-by-scene--c04b1cb1` | Dungeons & Dragons Session Chronicle - Scene-By-Scene Summary | NickD | False | General | Plaud template community |
-| `sales-competitor-product-service-analysis-188eedf8` | Competitor Product / Service Analysis | Nico Zwaneveld | False | Sales | Plaud template community |
-| `consulting-identify-hidden-consequences-of-an-action-decision-303fa415` | Identify hidden consequences of an action / decision | Nico Zwaneveld | False | Consulting | Plaud template community |
-| `interview-inspiring-quotes-from-interview-6c941427` | Inspiring Quotes from Interview | Nico Zwaneveld | False | Interview | Plaud template community |
-| `general-time-entry-2ec5e43c` | Time Entry | Nico Zwaneveld | False | General | Plaud template community |
-| `consulting-training-course-65cc1e6f` | Training Course | Nicola Busca | False | Consulting | Plaud template community |
-| `education-medicine-nicole-ec1bb9a8` | Medicine - Nicole | Nicole Leonel | False | Education | Plaud template community |
-| `education-medicine-3-nicole-2b584943` | Medicine 3 - Nicole | Nicole Leonel | False | Education | Plaud template community |
-| `interview-case-study-55b766ea` | Case Study | Niko | False | Interview | Plaud template community |
-| `legal-file-note-solicitor-e632c8a3` | File Note (Solicitor) | Nils Hoppe | False | Legal | Plaud template community |
-| `medical-er-visit-mc-brain-4a47e95e` | ER visit- MC Brain | Niuslux | False | Medical | Plaud template community |
-| `education-coaching-transcription-b661d656` | Coaching Transcription | NK | False | Education | Plaud template community |
-| `construction-expertise-3022-fbf4fea1` | Expertise 3022 | nncdxjxcf5 | False | Construction | Plaud template community |
-| `interview-candidate-interview-summary-lencioni-hungry-humble-0562ed4f` | Candidate Interview Summary — Lencioni "Hungry, Humble, Smart" | Norv Buchloh | False | Interview | Plaud template community |
-| `medical-wound-care-soap-note-follow-up-visit-a66d1f33` | Wound Care SOAP Note follow-up visit | npmikeelrod | False | Medical | Plaud template community |
-| `speech-simple-diary-entry-cf4f9886` | Simple Diary Entry | nrpln | False | Speech | Plaud template community |
-| `construction-construction-project-regular-meeting-minutes-0f3317c7` | Construction Project Regular Meeting Minutes | numajiri | False | Construction | Plaud template community |
-| `medical-psych-soap-new-patient-5f9ad37c` | Psych SOAP, New Patient | Nurse Angela | False | Medical | Plaud template community |
-| `meeting-numbered-how-to-instructions-b08ac55b` | Numbered How-To Instructions | o39393 | False | Meeting | Plaud template community |
-| `consulting-coaching-psychological-assessment-of-human-errors--bff35403` | Coaching & Psychological Assessment of Human errors Improvement | OHM.BSTE | False | Consulting | Plaud template community |
-| `speech-teaching-to-book-3205f2a0` | TEACHING TO BOOK | okabuya | False | Speech | Plaud template community |
-| `general-meeting-minutes-ad701fd4` | Meeting Minutes (2) | OKD | False | General | Plaud template community |
-| `call-patient-communication-script-compliance-analysis-30ccbbe1` | Patient Communication Script Compliance Analysis | Olga Lukianenko | False | Call | Plaud template community |
-| `legal-case-review-e667d6fe` | Case Review | oliver | False | Legal | Plaud template community |
-| `interview-interviews-candidate-profile-and-information-c0869d3b` | Interviews - candidate profile and information | Olivia Adenubi | False | Interview | Plaud template community |
-| `call-phone-reference-748be16c` | Phone - reference | Olivia Adenubi | False | Call | Plaud template community |
-| `real-estate-property-discovery-sheet-3950a9bc` | Property Discovery Sheet | Olivier Ranocha | False | Real Estate | Plaud template community |
-| `it-engineering-it-knowledge-transfer-session-fcb102e9` | IT Knowledge Transfer Session | OllyOvation | False | IT & Engineering | Plaud template community |
-| `interview-employee-conversations-1a385530` | Employee Conversations | Oma Lore | False | Interview | Plaud template community |
-| `interview-q-a-style-interview-summary-92b643d7` | Q&A Style Interview Summary | onodera | False | Interview | Plaud template community |
-| `it-engineering-oqva-odoo-meeting-bb1f260d` | OQVA-Odoo Meeting | OQVA Management GmbH | False | IT & Engineering | Plaud template community |
-| `financial-rdv-client-mail-r-sum-crm-0b428961` | RDV Client - Mail résumé + CRM | orelllll | False | Financial | Plaud template community |
-| `real-estate-real-estate-calls-8a2869a4` | Real Estate Calls | orenline56 | False | Real Estate | Plaud template community |
-| `meeting-1-1-meetings-da6104dd` | 1-1 Meetings | Osman | False | Meeting | Plaud template community |
-| `consulting-expert-management-consultant-e70136b2` | Expert Management Consultant | Osman | False | Consulting | Plaud template community |
-| `general-minutes-d0529650` | Minutes | Pablo Alejandro Mercado Martínez | False | General | Plaud template community |
-| `functional-summary-of-evidentiary-and-trial-hearings-8ff3991d` | SUMMARY OF EVIDENTIARY AND TRIAL HEARINGS | pablo chaer | False | Functional | Plaud template community |
-| `medical-psychiatric-progress-note-cbaee55f` | Psychiatric Progress Note | Paige | False | Medical | Plaud template community |
-| `real-estate-meeting-record-90f9a247` | Meeting Record | pan louis | False | Real Estate | Plaud template community |
-| `speech-comprehensive-keynote-intelligence-report-deep-ana-175ba443` | Comprehensive Keynote Intelligence Report: Deep Analysis, Structured Insights, and Actionable Outcomes | Paoli Dental Center srl | False | Speech | Plaud template community |
-| `it-engineering-prd-product-requirements-document-fb1b2d63` | PRD - Product Requirements Document | Pate Bryant | False | IT & Engineering | Plaud template community |
-| `call-phone-call-note-618fa523` | Phone Call - Note | Patricia | False | Call | Plaud template community |
-| `interview-interview-transcription-complete-q-a-90af557e` | Interview transcription - complete Q&A | Patricia Earnhardt Tyndall | False | Interview | Plaud template community |
-| `education-comprehensive-nursing-school-lecture-notes-93fcaec9` | Comprehensive Nursing School Lecture Notes | Patricia Smith | False | Education | Plaud template community |
-| `general-draft-note-to-file-81933402` | Draft note to file | patrick | False | General | Plaud template community |
-| `it-engineering-step-by-step-instruction-guide-creator-a8f60f1e` | Step-by-Step Instruction Guide Creator | Patrick Schäfer | False | IT & Engineering | Plaud template community |
-| `education-workshops-healing-sessions-guided-events-633bcbf0` | Workshops, Healing Sessions & Guided Events | Patrick Sekhem “Sekhem” Zeigler | False | Education | Plaud template community |
-| `speech-personal-email-c9b2725f` | Personal Email | Patrick.nathe | False | Speech | Plaud template community |
-| `consulting-product-demo-7a78b952` | Product Demo | Paul | False | Consulting | Plaud template community |
-| `construction-punch-list-50add6bd` | Punch List | paul | False | Construction | Plaud template community |
-| `functional-verbatim-transcript-f2f59106` | Verbatim Transcript | paul | False | Functional | Plaud template community |
-| `interview-case-management-481fca70` | Case Management | Paul Fairchild | False | Interview | Plaud template community |
-| `general-therapy-session-notes-4673db03` | Therapy session notes | Paul Hammat | False | General | Plaud template community |
-| `legal-estate-plan-document-draft-review-meeting-aa76bb00` | Estate Plan Document Draft Review Meeting | Paul Sullivan | False | Legal | Plaud template community |
-| `legal-appointment-notes-and-client-summary-c4ececcf` | Appointment Notes and Client Summary | Paul-Roger Gontard | False | Legal | Plaud template community |
-| `meeting-meeting-minutes-with-actions-9a1f66bf` | Meeting Minutes With Actions | Paula Cole | False | Meeting | Plaud template community |
-| `education-podcast-youtube-44219160` | Podcast YouTube | Pawel Bu | False | Education | Plaud template community |
-| `legal-law-report-fde2041a` | Law Report | pawel.krawiec78 | False | Legal | Plaud template community |
-| `call-1-phone-call-note-286f2cad` | 1. Phone call - note | Paweł Zajchowski | False | Call | Plaud template community |
-| `call-phone-call-c709d594` | Phone Call (3) | Paweł Zajchowski | False | Call | Plaud template community |
-| `functional-expert-assistant-89d01633` | Expert Assistant | Pedro Sanz | False | Functional | Plaud template community |
-| `education-sermon-9fb70673` | Sermon | Pedrobcantu Cantu | False | Education | Plaud template community |
-| `meeting-meeting-with-client-bfacbfaa` | Meeting with Client | pedromdorea | False | Meeting | Plaud template community |
-| `medical-office-visit-bafc7f33` | Office visit | pedromramirez | False | Medical | Plaud template community |
-| `meeting-hoa-bod-meeting-713a01ae` | HOA BOD Meeting | Peggy Haskins | False | Meeting | Plaud template community |
-| `call-call-notes-astp-659e4386` | Call Notes - ASTP | Pete Sparkes | False | Call | Plaud template community |
-| `it-engineering-technical-account-manager-2b9cc03a` | Technical Account Manager | peter | False | IT & Engineering | Plaud template community |
-| `consulting-erp-3fd5084f` | ERP | Peter Chen | False | Consulting | Plaud template community |
-| `call-phone-call-03367c69` | Phone Call | Peter Oosterbroek | False | Call | Plaud template community |
-| `general-daily-summary-c0fb4d3c` | Daily Summary | Petra Holzer | False | General | Plaud template community |
-| `call-family-call-short-summary-f425ab19` | Family Call - Short Summary | petrbystrak | False | Call | Plaud template community |
-| `education-book-creator-2e161b90` | Book Creator | Petricelli | False | Education | Plaud template community |
-| `interview-interview-summaries-podcast-add0898c` | Interview Summaries (Podcast) | Petricelli | False | Interview | Plaud template community |
-| `general-dungeons-and-dragons-f004cb61` | Dungeons and Dragons | PeuptMaPance | False | General | Plaud template community |
-| `medical-super-soap-ce57e236` | Super Soap | Phillip Burrer | False | Medical | Plaud template community |
-| `consulting-transformational-coaching-session-5ae2523c` | Transformational Coaching Session | Pierre-Boris Kalitventzeff | False | Consulting | Plaud template community |
-| `functional-fitness-journal-performance-tracking-425fac0c` | Fitness Journal & Performance Tracking | Pinchy Cool Arrow | False | Functional | Plaud template community |
-| `sales-btoc-sales-analysis-6b804bc6` | BtoC Sales Analysis | Plaud Igor | False | Sales | Plaud template community |
-| `consulting-customer-service-consultation-39333974` | customer service - consultation | plaud Josiel | False | Consulting | Plaud template community |
-| `financial-investment-project-discovery-2d4b7a30` | Investment Project Discovery | Plaud Pro Agricourtage | False | Financial | Plaud template community |
-| `sales-real-estate-door-to-door-sales-ea9bf62c` | Real Estate Door-to-Door Sales | plaud-admin003 | False | Sales | Plaud template community |
-| `education-audible-audiobook-deep-summary-chapters-reflection-c62bc83f` | Audible Audiobook Deep Summary (Chapters + Reflection + Counterpoints) | plaud.ai.twelve458 | False | Education | Plaud template community |
-| `education-youtube-learning-capture-personal-growth-work-lear-e9cfaeea` | YouTube Learning Capture (Personal Growth + Work Learning) | plaud.ai.twelve458 | False | Education | Plaud template community |
-| `meeting-meeting-minutes-b162c9e6` | Meeting Minutes (4) | plaud_ai | False | Meeting | Plaud template community |
-| `meeting-v2-2-9-15-2fb32549` | 店長會議紀錄v2.2版(9/15) | Plaude_MB31 | False | Meeting | Plaud template community |
-| `consulting-process-steps-from-discussion-c94b9069` | Process Steps From Discussion | Ponn Sthitphokwanich | False | Consulting | Plaud template community |
-| `general-social-worker-home-visit-narrative-081c8863` | Social worker Home visit Narrative | post2dennis | False | General | Plaud template community |
-| `interview-interview-65092295` | Interview | Praveen A | False | Interview | Plaud template community |
-| `sales-sales-meeting-summarizer-1f0dbe6f` | Sales Meeting Summarizer | prayaag.kasundra | False | Sales | Plaud template community |
-| `legal-automatic-generation-of-police-intervention-report-38d05dd3` | Automatic Generation of Police Intervention Reports | prevost.jeremy | False | Legal | Plaud template community |
-| `meeting-meeting-minutes-pro-personal-organization-c5be382b` | meeting minutes (pro, personal, organization) | prevost.jeremy | False | Meeting | Plaud template community |
-| `legal-hearing-e49e866d` | Hearing | Prof.Ainuddin | False | Legal | Plaud template community |
-| `medical-session-report-in-cbt-90ec6c2c` | SESSION REPORT IN CBT | Psicólogo Antonio Esquivel | False | Medical | Plaud template community |
-| `medical-progress-note-f3e808ea` | Progress Note | PSY | False | Medical | Plaud template community |
-| `general-seminar-8e53016a` | Seminar | pt pechploy | False | General | Plaud template community |
-| `it-engineering-tli-data-archiving-project-meeting-summary-c3339d94` | TLI Data Archiving Project Meeting Summary | puyisme | False | IT & Engineering | Plaud template community |
-| `meeting-short-meeting-notes-5c715cb6` | Short Meeting Notes | Přidal Jaroslav | False | Meeting | Plaud template community |
-| `legal-delegation-task-assignment-internal-a9b914f0` | Delegation & Task Assignment — Internal | qhz8sjggv9 | False | Legal | Plaud template community |
-| `consulting-career-counseling-interview-d1ae5118` | Career Counseling Interview | qtesunny | False | Consulting | Plaud template community |
-| `general-psychotherapy-note-with-feedback-for-therapist-c7633a2a` | Psychotherapy Note with Feedback for therapist | Rachel | False | General | Plaud template community |
-| `financial-financial-advisor-call-summary-with-client-6f23de7b` | Financial Advisor Call Summary with Client | Radek Šalena | False | Financial | Plaud template community |
-| `sales-product-discovery-e63469e4` | Product Discovery | Raees Sayed | False | Sales | Plaud template community |
-| `functional-5-min-summary-91e50273` | 5-Min Summary | Rafael Fratazzi | False | Functional | Plaud template community |
-| `speech-emotional-rewriter-58a8bf21` | Emotional Rewriter | Rafael Fratazzi | False | Speech | Plaud template community |
-| `consulting-legal-consultation-with-client-9de4fb09` | Legal Consultation with Client | Rafael Fratazzi | False | Consulting | Plaud template community |
-| `speech-text-rewriter-e16699ef` | Text Rewriter | Rafael Fratazzi | False | Speech | Plaud template community |
-| `consulting-knowledge-base-v2-fc8da55e` | Knowledge Base V2 | Rafael Gasparin | False | Consulting | Plaud template community |
-| `interview-initial-psychiatric-assessment-w-icd-10-and-dsm-5-9be9401f` | Initial Psychiatric Assessment w/ ICD-10 and DSM-5 | Rafael Sanchez | False | Interview | Plaud template community |
-| `financial-visit-report-d59a8856` | Visit Report | rafael.dallaqua | False | Financial | Plaud template community |
-| `speech-verbatim-54fd3985` | Verbatim | rahmatsorani | False | Speech | Plaud template community |
-| `financial-private-investment-meetings-6eb08671` | Private Investment Meetings | raissamelo | False | Financial | Plaud template community |
-| `education-school-general-detailed-lecture-notes-04bc06c2` | School General Detailed Lecture Notes | rakeshbassi1972 | False | Education | Plaud template community |
-| `consulting-meeting-note-8f27d865` | Meeting Note | Ralph Audörsch | False | Consulting | Plaud template community |
-| `education-seminar-lecture-summary-notes-e60f8a3a` | Seminar/Lecture: Summary Notes | Rana | False | Education | Plaud template community |
-| `interview-job-interview-5463a56d` | Job Interview (2) | raphael ella | False | Interview | Plaud template community |
-| `consulting-process-mapping-242bc010` | Process Mapping | raphaelgoncalvessantos | False | Consulting | Plaud template community |
-| `consulting-process-mapping-process-focus-3d9ccf71` | Process Mapping (process focus) | raphaelgoncalvessantos | False | Consulting | Plaud template community |
-| `education-learning-engine-thinking-framework-2dccc87f` | 📚 Learning engine 🧠 Thinking framework | Ravi Shekhaar Singh | False | Education | Plaud template community |
-| `consulting-initial-client-consultation-6b571739` | Initial Client Consultation | Ray Rueda | False | Consulting | Plaud template community |
-| `call-career-conversation-d86765e7` | career conversation | rc.hc3 | False | Call | Plaud template community |
-| `it-engineering-npdes-ms4-drainage-inspection-c42ce2e7` | NPDES/MS4 Drainage Inspection | RCS Righteous Constuction Servic | False | IT & Engineering | Plaud template community |
-| `meeting-strategy-program-design-template-b4ff0150` | Strategy / Program Design Template | Reagan Morrow | False | Meeting | Plaud template community |
-| `legal-deposition-e6acb8f8` | Deposition | reagancwarner | False | Legal | Plaud template community |
-| `functional-ref-match-eval-summary-soccer-bf406986` | Ref match eval summary - soccer | refpi | False | Functional | Plaud template community |
-| `speech-podcast-9ceaa0be` | podcast | regnier.maxtar | False | Speech | Plaud template community |
-| `legal-law-enforcement-interview-synopsis-c999e459` | Law Enforcement Interview Synopsis | rendonadrian79 | False | Legal | Plaud template community |
-| `interview-annual-review-positive-health-1-4-6011839a` | Annual Review Positive Health (1.4) | René Koppelmans | False | Interview | Plaud template community |
-| `sales-business-meeting-59acb2c2` | Business meeting | Reunion IA comexi | False | Sales | Plaud template community |
-| `education-personal-journal-of-the-day-with-your-child-4062ed7f` | personal journal of the day with your child | revelerwan | False | Education | Plaud template community |
-| `interview-interlocucao-1959e1bb` | interlocucao | rfleuri | False | Interview | Plaud template community |
-| `functional-ai-prompt-98709e38` | AI Prompt | Rhett Neese | False | Functional | Plaud template community |
-| `construction-construction-field-notes-ric-76726d44` | Construction Field Notes – Ric | Ricardo Soares | False | Construction | Plaud template community |
-| `sales-sales-discovery-865cd830` | Sales Discovery | ricardohenriquez55 | False | Sales | Plaud template community |
-| `it-engineering-knowledge-process-agent-26af2414` | knowledge process agent | ricardojr88 | False | IT & Engineering | Plaud template community |
-| `sales-new-patient-exam-notes1-52120293` | New Patient Exam Notes1 | richard | False | Sales | Plaud template community |
-| `meeting-detailed-summary-51302311` | detailed summary | Richard of WEA | False | Meeting | Plaud template community |
-| `medical-psychiatric-consultation-with-scales-and-dsm-v-tr-8f5756a2` | Psychiatric Consultation with Scales and DSM-V-TR | rikedias | False | Medical | Plaud template community |
-| `functional-process-mapping-0975a3c2` | Process Mapping | Riskin | False | Functional | Plaud template community |
-| `it-engineering-bpm-process-flow-c20022d4` | BPM PROCESS FLOW. | RIVAS ARGOLO | False | IT & Engineering | Plaud template community |
-| `interview-psychological-interview-cdd22201` | Psychological Interview | Rizzya Amarante | False | Interview | Plaud template community |
-| `education-college-class-notes-a09100a7` | College Class Notes | Rob Ballou | False | Education | Plaud template community |
-| `sales-meeting-odoo-crm-dc0cffc0` | Meeting Odoo CRM | Rob Brizzi | False | Sales | Plaud template community |
-| `speech-speaker-presentation-18f74ed5` | Speaker presentation | Rob Jackson FRSA | False | Speech | Plaud template community |
-| `sales-electrum-ignite-salesscore-auto-detect-ai-9e890bad` | Electrum Ignite - SalesScore Auto-Detect AI | Rob Wolfe | False | Sales | Plaud template community |
-| `call-client-phone-call-summary-analysis-d091abe9` | Client Phone Call Summary/Analysis | rob.corney | False | Call | Plaud template community |
-| `call-investor-framework-1286d93e` | Investor Framework | Robby Marsh | False | Call | Plaud template community |
-| `construction-co-star-autopilot-b0b89656` | Co-Star AutoPilot | Robert Cordero | False | Construction | Plaud template community |
-| `call-meeting-minutes-f9a6dfc0` | Meeting Minutes | Robert Kwasny | False | Call | Plaud template community |
-| `construction-walk-notes-217aa221` | Walk Notes | Robert McCreary | False | Construction | Plaud template community |
-| `general-verbatim-transcription-ecc133dd` | Verbatim transcription | Robert Pimentel | False | General | Plaud template community |
-| `speech-conference-mode-with-personal-note-84c69d69` | 🎧 Conference Mode (with Personal Note) | Roberto Deleón | False | Speech | Plaud template community |
-| `education-university-class-summary-template-5c732271` | UNIVERSITY CLASS SUMMARY TEMPLATE | robertpock2023 | False | Education | Plaud template community |
-| `medical-gynecological-consultation-3645974d` | Gynecological consultation | Robin Yokoyama | False | Medical | Plaud template community |
-| `general-interview-80e2a115` | Interview | robinbaby | False | General | Plaud template community |
-| `construction-meeting-minutes-tempate-a50d3356` | Meeting Minutes Tempate | robyn.hoagland | False | Construction | Plaud template community |
-| `interview-oc-s-template-9eeb5c85` | Oc's Template | roceguera133 | False | Interview | Plaud template community |
-| `education-law-class-summary-e250f3b1` | Law Class Summary | Rodrigo Adry | False | Education | Plaud template community |
-| `speech-lecture-summary-7374c348` | Lecture Summary | Rodrigo Adry | False | Speech | Plaud template community |
-| `meeting-meeting-9b871141` | Meeting (2) | Rodrigo Adry | False | Meeting | Plaud template community |
-| `speech-samurai-lecture-cb98e71f` | Samurai Lecture | Rodrigo Goltzman | False | Speech | Plaud template community |
-| `speech-catholic-homilies-53ee5b94` | Catholic Homilies | rodrigoribas | False | Speech | Plaud template community |
-| `medical-summary-of-hospitalized-patients-veterinary-5e5c228f` | Summary of Hospitalized Patients (Veterinary) | rodrigosantana_30 | False | Medical | Plaud template community |
-| `education-veterinary-lecture-notes-264541b1` | VETERINARY LECTURE NOTES | rodrigosantana_30 | False | Education | Plaud template community |
-| `speech-conversation-analysis-accfd082` | Conversation Analysis | Roger Arave | False | Speech | Plaud template community |
-| `general-call-f08c8082` | call | Romaric Come | False | General | Plaud template community |
-| `meeting-action-and-decision-list-766de9f7` | Action and Decision List | Roy Palmen | False | Meeting | Plaud template community |
-| `speech-comprehensive-speech-forum-record-e89fa90a` | Comprehensive Speech & Forum Record | RS | False | Speech | Plaud template community |
-| `legal-meeting-legal-chronology-18a90561` | Meeting Legal Chronology | rs28sztr4h | False | Legal | Plaud template community |
-| `legal-legal-meeting-report-81d9c479` | Legal Meeting Report | Rudy van Reijswoud | False | Legal | Plaud template community |
-| `interview-business-hearing-minutes-summary-59636ad2` | Business Hearing Minutes Summary | ruitanaka | False | Interview | Plaud template community |
-| `interview-hr-template-04b89d82` | hr template | Ruslan Gatin | False | Interview | Plaud template community |
-| `education-interactive-class-53351af4` | Interactive Class | rvfalcao | False | Education | Plaud template community |
-| `education-interactive-classroom-0ed99f12` | Interactive Classroom | rvfalcao | False | Education | Plaud template community |
-| `medical-medical-consultation-aeff9f69` | Medical Consultation | rvfalcao | False | Medical | Plaud template community |
-| `meeting-1-on-1-summary-a8efc133` | 1 on 1 Summary | Ryan Anderson | False | Meeting | Plaud template community |
-| `legal-smart-transcript-reasoner-a31a3495` | Smart Transcript Reasoner (2) | Ryan Garcia | False | Legal | Plaud template community |
-| `sales-spin-bant-0f01edc4` | SPIN / BANT | Ryan Lewis | False | Sales | Plaud template community |
-| `real-estate-vhg-agent-template-4198c708` | VHG Agent Template | Ryan Reed | False | Real Estate | Plaud template community |
-| `legal-expert-opinion-summary-0f470518` | Expert Opinion Summary | ryankopf | False | Legal | Plaud template community |
-| `interview-care-manager-s-visit-record-progress-record-a4c10290` | Care Manager's Visit Record (Progress Record) | Ryo Muramatsu | False | Interview | Plaud template community |
-| `meeting-meeting-minutes-0355b5ae` | Meeting Minutes | Ryoga Terada | False | Meeting | Plaud template community |
-| `consulting-consultant-document-creation-d4fd1b5a` | Consultant Document Creation | Ryota Horikoshi (Holy) | False | Consulting | Plaud template community |
-| `interview-parental-custody-interview-acda2b57` | Parental Custody Interview | Rô Vieira | False | Interview | Plaud template community |
-| `construction-minute-taker-architecture-office-59c83bb4` | Minute Taker / Architecture Office | s-projekt | False | Construction | Plaud template community |
-| `call-phone-call-0bb3e737` | Phone Call (6) | s.olivia567 | False | Call | Plaud template community |
-| `sales-sfdc-template-a1133d88` | SFDC Template | S5.Plaudnotepin | False | Sales | Plaud template community |
-| `sales-ocean-version-visit-summary-spell-cc7ab93a` | Ocean Version Visit Summary Spell | S6.Plaudnotepin | False | Sales | Plaud template community |
-| `medical-class-summary-7afa26a0` | Class Summary | sabrina_fernandes | False | Medical | Plaud template community |
-| `meeting-minutes-of-meeting-76f82e4f` | Minutes of Meeting | Saleh | False | Meeting | Plaud template community |
-| `functional-monitoring-template-57996d66` | Monitoring Template | saltflavour | False | Functional | Plaud template community |
-| `functional-text-direct-from-transcription-7aae4086` | Text direct from transcription | Sam Townsend | False | Functional | Plaud template community |
-| `construction-construction-consultation-cd44ebfa` | Construction Consultation | Sam Wright | False | Construction | Plaud template community |
-| `medical-clinic-consultation-6b103b7f` | clinic consultation | Samara Zanin | False | Medical | Plaud template community |
-| `financial-financial-meeting-d66cf4c4` | Financial Meeting | Samara Zanin | False | Financial | Plaud template community |
-| `medical-emergency-room-physician-encounter-ea86f060` | Emergency room physician encounter | Sameer Irfan | False | Medical | Plaud template community |
-| `interview-panel-discussion-8ecca0d3` | Panel Discussion | Samsung | False | Interview | Plaud template community |
-| `financial-meeting-between-a-financial-planner-and-a-client-a984d2ac` | Meeting between a Financial Planner and a Client | Samuel Proulx | False | Financial | Plaud template community |
-| `legal-estate-planning-legal-summary-and-action-items-bf6c31d9` | Estate Planning Legal Summary and Action Items | samuel.m.dipietro | False | Legal | Plaud template community |
-| `education-yoga-class-documentation-d21d32b8` | Yoga Class Documentation | Sandra Kaufhold | False | Education | Plaud template community |
-| `sales-meddpicc-based-meeting-summary-f5e0d6d4` | Meddpicc Based Meeting Summary | saqib.rizvi | False | Sales | Plaud template community |
-| `education-lecture-to-manual-de7c3b5d` | Lecture to Manual 🎀 | Sara Siverio | False | Education | Plaud template community |
-| `consulting-detailed-summary-and-coaching-34c3eb6f` | Detailed Summary and Coaching | Sarang Datye | False | Consulting | Plaud template community |
-| `interview-candidate-interview-cf193bee` | Candidate Interview (2) | sararottiers | False | Interview | Plaud template community |
-| `interview-key-messages-3b87064e` | Key Messages | Sascha Wesselsky | False | Interview | Plaud template community |
-| `interview-summary-bc5916fd` | Summary | Sascha Wesselsky | False | Interview | Plaud template community |
-| `speech-bible-study-and-sermon-guru-efc1dd3c` | ⛪️ Bible Study and Sermon Guru | SaulGOOD | False | Speech | Plaud template community |
-| `interview-basic-witness-model-8f9fc0c1` | BASIC WITNESS MODEL | sbeaufils | False | Interview | Plaud template community |
-| `it-engineering-service-operations-summary-69826494` | Service Operations Summary | scoota | False | IT & Engineering | Plaud template community |
-| `meeting-key-points-decisions-tasks-deadlines-actions-1eba169e` | Key Points, Decisions, Tasks, Deadlines & Actions (2) | scottsmyth2000 | False | Meeting | Plaud template community |
-| `legal-client-vs-service-client-cf16ce8d` | Client vs Service Client | sebastien.malpuech | False | Legal | Plaud template community |
-| `it-engineering-train-driver-troubleshooting-b6818eaf` | Train Driver Troubleshooting | sebastien.malpuech | False | IT & Engineering | Plaud template community |
-| `financial-business-financial-model-summary-65e1f9f8` | Business Financial Model Summary | Sergey | False | Financial | Plaud template community |
-| `it-engineering-key-it-insights-f179e68b` | Key IT Insights | Serhii | False | IT & Engineering | Plaud template community |
-| `call-phone-call-summary-general-8138f56a` | Phone Call Summary - General | Seth Sheppard | False | Call | Plaud template community |
-| `financial-initial-meeting-discovery-903e420f` | Initial Meeting (Discovery) | sgenoff | False | Financial | Plaud template community |
-| `financial-soa-request-b328d4e8` | SOA Request | sgenoff | False | Financial | Plaud template community |
-| `education-lesson-plans-f724e7c5` | Lesson Plans | sh4y35 | False | Education | Plaud template community |
-| `functional-multi-convo-relationship-analysis-cf7f3659` | Multi-Convo Relationship Analysis | Shab 2.0 | False | Functional | Plaud template community |
-| `medical-psychiatric-soap-note-b2131f3a` | Psychiatric SOAP note | shakevatiller | False | Medical | Plaud template community |
-| `general-clear-clean-and-highly-detailed-c8e48cd5` | Clear, clean, and highly detailed. | Shane | False | General | Plaud template community |
-| `legal-client-meeting-summary-1700f753` | Client Meeting Summary | Shannon | False | Legal | Plaud template community |
-| `financial-deal-analysis-40402e10` | Deal Analysis | Shannon | False | Financial | Plaud template community |
-| `medical-health-coach-soap-note-and-pt-summary-d5ceb20c` | Health Coach SOAP Note and Pt Summary | Shannon Bundy | False | Medical | Plaud template community |
-| `medical-pmhnp-soap-1599cb4a` | PMHNP SOAP | Shannon Ritzert | False | Medical | Plaud template community |
-| `consulting-lead-cp-quality-assurance-visit-f81344fc` | Lead CP Quality Assurance Visit | Shannon.Carithers | False | Consulting | Plaud template community |
-| `real-estate-client-meeting-for-leasing-agents-f7f7b56a` | Client Meeting for Leasing Agents | shawnprawn | False | Real Estate | Plaud template community |
-| `real-estate-real-estate-leasing-ae9ed501` | Real Estate Leasing | shawnprawn | False | Real Estate | Plaud template community |
-| `interview-qualitative-data-collection-1621800a` | Qualitative Data Collection | Shelbi | False | Interview | Plaud template community |
-| `speech-multi-session-transcriber-60544099` | Multi-Session Transcriber | Shiva Kakkar | False | Speech | Plaud template community |
-| `speech-speak-like-a-ceo-efcea3a5` | Speak Like a CEO | shoaibkhanz | False | Speech | Plaud template community |
-| `consulting-c2-meeting-minutes-964ca48e` | C2=>Meeting Minutes | Shoji OKADA | False | Consulting | Plaud template community |
-| `functional-from-chaos-to-clarity-tagged-daily-recap-37e9f54a` | From Chaos to Clarity – Tagged Daily Recap | shrutirmohan | False | Functional | Plaud template community |
-| `functional-song-lyrics-90191412` | Song Lyrics | sicklecellmn | False | Functional | Plaud template community |
-| `interview-interview-with-heads-b46cc845` | Interview with Heads | Sidney Vicentini | False | Interview | Plaud template community |
-| `sales-commercial-dossier-160c3190` | Commercial Dossier | silveiradpm | False | Sales | Plaud template community |
-| `education-exam-simulator-questions-of-increasing-difficulty--146679ad` | Exam Simulator – Questions of increasing difficulty for self-assessment | Silvia | False | Education | Plaud template community |
-| `education-university-lectures-ffec2d10` | University Lectures | Silvia | False | Education | Plaud template community |
-| `consulting-executive-reports-70b6ba3d` | Executive Reports | Silvina Valdiviezo | False | Consulting | Plaud template community |
-| `call-simon-beesley-call-summary-0d5cc11d` | Simon Beesley Call Summary | Simon Beesley | False | Call | Plaud template community |
-| `sales-setting-analysis-summary-evaluation-25593fa7` | Setting Analysis (Summary & Evaluation) | Simon Fuchtmann | False | Sales | Plaud template community |
-| `consulting-swot-e1993673` | SWOT | SIMON GEA MORENO | False | Consulting | Plaud template community |
-| `call-meeting-report-a64db692` | Meeting Report | Simon Zwaga | False | Call | Plaud template community |
-| `consulting-process-mapping-e021a65c` | Process Mapping (2) | Sindy Castro | False | Consulting | Plaud template community |
-| `functional-diary-37464e6c` | Diary | skomisarov | False | Functional | Plaud template community |
-| `construction-insurance-adjuster-roof-inspection-9dbbf950` | Insurance Adjuster Roof Inspection | Sky Shield Consulting | False | Construction | Plaud template community |
-| `meeting-project-manager-notes-a744ec7e` | Project manager notes | SL-M bv | False | Meeting | Plaud template community |
-| `legal-case-meeting-criminal-defense-0e67663c` | Case Meeting (Criminal defense) | smxtfwsjgq | False | Legal | Plaud template community |
-| `legal-jail-visit-criminal-defense-attorney-68da1262` | Jail Visit (Criminal Defense Attorney) | smxtfwsjgq | False | Legal | Plaud template community |
-| `consulting-follow-up-email-5f57a71e` | Follow-up eMail | Sonja Hönig | False | Consulting | Plaud template community |
-| `sales-appraisal-listing-appointment-extraction-brief-7e17689a` | ** Appraisal & Listing Appointment Extraction Brief ** | Sophie Carter | False | Sales | Plaud template community |
-| `legal-interview-minutes-c26161bb` | Interview Minutes | soumu | False | Legal | Plaud template community |
-| `speech-adhd-exec-single-speaker-stream-of-consciousness-a97b7d50` | ADHD Exec: Single-Speaker Stream-of-Consciousness | SourceChild | False | Speech | Plaud template community |
-| `meeting-meeting-summary-actions-and-chit-chat-removal-7ec94fd7` | meeting summary, actions and chit chat removal | ssimpson | False | Meeting | Plaud template community |
-| `financial-investment-committee-meeting-dc66bc22` | Investment Committee Meeting | ST | False | Financial | Plaud template community |
-| `real-estate-real-estate-agent-to-do-list-34debfee` | real estate agent to do list | St. John's Life Real Estate Team | False | Real Estate | Plaud template community |
-| `meeting-church-council-meeting-minutes-d83404db` | Church Council Meeting Minutes | St. Paul's Lutheran Church | False | Meeting | Plaud template community |
-| `speech-coaching-effectiveness-049573ae` | Coaching effectiveness | Stan | False | Speech | Plaud template community |
-| `it-engineering-my-meeting-minutes-template-abe562e6` | My Meeting Minutes Template | Stanley | False | IT & Engineering | Plaud template community |
-| `general-full-transcription-structured-0e450246` | Full Transcription Structured | Starke | False | General | Plaud template community |
-| `speech-structure-dictation-36d0384f` | Structure dictation | stefan thorpe | False | Speech | Plaud template community |
-| `general-abstract-fbc4d089` | Abstract | Stefano Salvotelli | False | General | Plaud template community |
-| `it-engineering-ai-strategy-architect-d8e48b13` | AI Strategy Architect | Stefano Salvotelli | False | IT & Engineering | Plaud template community |
-| `general-email-aee9c87a` | Email | Stefano Salvotelli | False | General | Plaud template community |
-| `functional-general-scheme-general-structure-33239114` | General Scheme / General Structure | Stephan Bassler | False | Functional | Plaud template community |
-| `legal-general-civil-attorney-daily-calls-and-meetings-f80f4495` | General Civil Attorney - Daily Calls and Meetings | Stephanie | False | Legal | Plaud template community |
-| `meeting-board-meeting-minutes-faf79041` | Board Meeting Minutes | stephen | False | Meeting | Plaud template community |
-| `call-phone-note-5ac8f5e2` | Phone Note | Stephen Hoppe | False | Call | Plaud template community |
-| `legal-lawyer-phone-call-summary-daf660d3` | Lawyer Phone Call Summary | Stephen R Bloomquest | False | Legal | Plaud template community |
-| `general-simple-to-do-fdb8ebf8` | Simple To Do | Stephen Williams | False | General | Plaud template community |
-| `sales-client-call-next-steps-a250940e` | 🔹 Client Call – Next Steps | stephsellserie | False | Sales | Plaud template community |
-| `meeting-markdown-meeting-summary-action-items-on-the-top-5059f09b` | Markdown Meeting Summary Action Items on the Top | Steve | False | Meeting | Plaud template community |
-| `construction-final-measure-8-27-25-90ee7750` | Final Measure 8.27.25 | Steve Kern | False | Construction | Plaud template community |
-| `functional-conversation-analysis-and-improvement-53c4ca99` | CONVERSATION ANALYSIS AND IMPROVEMENT | Steven Smit | False | Functional | Plaud template community |
-| `financial-financial-planning-client-meeting-summary-analysis-fc0dc7ae` | Financial Planning Client Meeting - Summary, Analysis & Follow-Up Email | Stock_Jeep | False | Financial | Plaud template community |
-| `financial-prospect-call-report-for-wealth-audit-eb8bfc3c` | Prospect call report for wealth audit | Stéphane Galliez | False | Financial | Plaud template community |
-| `general-service-provider-meeting-minutes-f3cec4d6` | Service Provider Meeting Minutes | suetake Seiji | False | General | Plaud template community |
-| `general-support-progress-record-ac990db5` | Support Progress Record | suetake Seiji | False | General | Plaud template community |
-| `it-engineering-meeting-minutes-creation-development-project-2dd7ca23` | Meeting Minutes Creation <Development Project> | sugesawa | False | IT & Engineering | Plaud template community |
-| `sales-sales-conversation-customer-intake-002d0dae` | Sales Conversation / Customer Intake | Sungy | False | Sales | Plaud template community |
-| `interview-interview-key-person-interview-d87032dd` | Interview_Key Person Interview | sycle bike | False | Interview | Plaud template community |
-| `meeting-cse-meeting-minutes-5c9ca3f8` | CSE Meeting Minutes | Syded CE | False | Meeting | Plaud template community |
-| `speech-keynote-summary-ac762b7f` | Keynote summary | Sydney Brouwer | False | Speech | Plaud template community |
-| `legal-legal-time-keeping-green-sheet-031dcdeb` | Legal Time Keeping Green Sheet ✅ ⌛ | T. Brooke II @HHLawVa | False | Legal | Plaud template community |
-| `legal-to-do-items-and-task-aim-91e4b360` | 🚩🚩 To-Do Items and Task AIM | T. Brooke II @HHLawVa | False | Legal | Plaud template community |
-| `legal-interviews-interrogations-0cb2ac22` | Interviews/interrogations | T.K Lunsford | False | Legal | Plaud template community |
-| `interview-conversations-34cc17d4` | Conversations | t.musters | False | Interview | Plaud template community |
-| `construction-construction-log-summary-a0b38277` | Construction Log Summary | T.O.M. Technisches Oberflächenmanagement | False | Construction | Plaud template community |
-| `medical-soap-5e736af9` | SOAP | Taiane Brito | False | Medical | Plaud template community |
-| `education-class-38f4bac3` | Class | taishu | False | Education | Plaud template community |
-| `consulting-executive-minutes-tn-003-jan-2026-cb1e2906` | Executive Minutes TN-003_Jan 2026 | Takashi Tim N | False | Consulting | Plaud template community |
-| `construction-meeting-minutes-tn-006-jan-2026-28c60910` | Meeting Minutes_TN-006_Jan 2026 | Takashi Tim N | False | Construction | Plaud template community |
-| `it-engineering-meeting-minutes-creation-prompt-0e2f44cd` | Meeting Minutes Creation Prompt | Takuya K | False | IT & Engineering | Plaud template community |
-| `call-buyer-call-2599c05c` | Buyer Call | Tal Tamir | False | Call | Plaud template community |
-| `interview-intake-report-4857ece5` | Intake Report | Tamara Rigters | False | Interview | Plaud template community |
-| `call-real-estate-calls-690a717c` | Real Estate Calls | Tanner west | False | Call | Plaud template community |
-| `meeting-new-meeting-summary-e65f9571` | New meeting summary | Tara Karen | False | Meeting | Plaud template community |
-| `meeting-nextoutils-meeting-summary-with-prospect-71e11481` | NEXTOUTILS - Meeting Summary with Prospect | Tarek Aghenda | False | Meeting | Plaud template community |
-| `speech-sermon-transcript-82dfe545` | Sermon Transcript | Tate Ledbetter | False | Speech | Plaud template community |
-| `education-in-depth-notes-for-students-36aefa11` | IN-DEPTH NOTES FOR STUDENTS 📚 | Taynara Crispim 🌻 | False | Education | Plaud template community |
-| `education-notes-in-medicine-13ad15f9` | NOTES IN MEDICINE 🩺 🚑 | Taynara Crispim 🌻 | False | Education | Plaud template community |
-| `speech-lecture-generate-book-2a2624d2` | Lecture - Generate Book | Taígo Soares | False | Speech | Plaud template community |
-| `construction-plaud-ai-meeting-notes-prompt-template-for-project-5b57a6f8` | PLAUD AI MEETING NOTES PROMPT TEMPLATE (FOR PROJECT MANAGERS) | tbgrammar | False | Construction | Plaud template community |
-| `medical-psychiatric-consultation-9c48c221` | Psychiatric Consultation | tdubois6 | False | Medical | Plaud template community |
-| `general-to-do-list-3e1c446d` | To-Do List | tea2000cc | False | General | Plaud template community |
-| `sales-sales-meetings-37a997ee` | Sales Meetings | technique | False | Sales | Plaud template community |
-| `general-proposal-generator-44b5f6f4` | Proposal Generator | Tendencia Digital | False | General | Plaud template community |
-| `real-estate-real-estate-wholesaling-in-person-appointment-scor-4724eda8` | Real Estate Wholesaling - In-Person Appointment Scoring Template | Terence | False | Real Estate | Plaud template community |
-| `legal-client-interview-teresa-model-1cc09bbd` | Client Interview: Teresa Model | teresa | False | Legal | Plaud template community |
-| `legal-interview-3172d700` | Interview | teresa | False | Legal | Plaud template community |
-| `education-pedagogical-observation-3f2d1a51` | Pedagogical Observation | Teresa Iby | False | Education | Plaud template community |
-| `medical-initial-ed-note-18065e12` | Initial ED note | terryktran | False | Medical | Plaud template community |
-| `education-expo-hall-discussions-60884405` | Expo Hall Discussions | Tersh Blissett | False | Education | Plaud template community |
-| `interview-clean-transcipt-84117c78` | Clean Transcipt | tgolobic | False | Interview | Plaud template community |
-| `real-estate-property-visit-report-da78c554` | Property Visit Report | thalerjulien | False | Real Estate | Plaud template community |
-| `interview-interview-transcription-8c3d2e7c` | Interview transcription | TheDouje | False | Interview | Plaud template community |
-| `real-estate-property-viewing-for-sale-or-rent-427ab6df` | Property viewing for sale or rent | Thibaud | False | Real Estate | Plaud template community |
-| `financial-cr-r1-7cc1d742` | CR R1 (2) | Thierry Boulet | False | Financial | Plaud template community |
-| `financial-cr-r2-ab0d7933` | CR R2 | Thierry Boulet | False | Financial | Plaud template community |
-| `construction-measurement-work-e7db56ef` | Measurement / Work | Thomas Helmschrott | False | Construction | Plaud template community |
-| `construction-project-meeting-95b698cf` | Project Meeting | Thomas Helmschrott | False | Construction | Plaud template community |
-| `construction-tw-8f6ef0e2` | TW | Thomas Helmschrott | False | Construction | Plaud template community |
-| `real-estate-object-recording-as-an-expert-3e055559` | Object Recording as an Expert | Thomas Raizner | False | Real Estate | Plaud template community |
-| `real-estate-purchase-consultation-as-expert-6f371c30` | Purchase Consultation as Expert | Thomas Raizner | False | Real Estate | Plaud template community |
-| `general-next-level-transcript-intelligence-mentor-for-less-7fb1e5c7` | Next-Level Transcript Intelligence Mentor for Lesson Notes: Your All-in-One Prompt | Thomas Robinson | False | General | Plaud template community |
-| `education-course-120ca2be` | Course | Théo Denq | False | Education | Plaud template community |
-| `speech-adapted-for-worship-meetings-classes-b6ffcbea` | adapted for worship meetings/classes | tiago | False | Speech | Plaud template community |
-| `sales-commercial-meeting-summary-spin-selling-fd453522` | Commercial Meeting Summary (SPIN Selling) | Tiago Molinari | False | Sales | Plaud template community |
-| `medical-psychiatric-consultation-2-1365e6e7` | Psychiatric Consultation 2 | tiagodcorrea | False | Medical | Plaud template community |
-| `general-conference-complete-and-synthetic-transcription-13d02f4c` | Conference: Complete and Synthetic Transcription | Timothy Leoncini | False | General | Plaud template community |
-| `interview-child-interviews-eb45011a` | Child Interviews | Tina Grabowski | False | Interview | Plaud template community |
-| `call-inspirational-quote-and-title-generator-38873924` | Inspirational Quote and Title Generator | ting.jia+test05 | False | Call | Plaud template community |
-| `speech-university-master-s-lecture-29b49d54` | University Master's lecture | tizianasinisgalli | False | Speech | Plaud template community |
-| `construction-disaster-recovery-inspection-report-4a9ecc5f` | Disaster Recovery Inspection Report | Tj Wiberley | False | Construction | Plaud template community |
-| `interview-interview-notes-assistant-f03dbbfc` | Interview Notes Assistant | tjjh10417 | False | Interview | Plaud template community |
-| `general-daily-topic-sorter-5dedd253` | Daily Topic Sorter | tlnelson1 | False | General | Plaud template community |
-| `general-most-detailed-summary-d3bb6663` | Most Detailed Summary | tobcrma | False | General | Plaud template community |
-| `sales-conference-71c90d2b` | Conference | tobewest | False | Sales | Plaud template community |
-| `financial-fact-finder-612b831a` | Fact Finder | Todd Orloff | False | Financial | Plaud template community |
-| `financial-teachers-fact-finder-1390a2a2` | Teachers Fact Finder | Todd Orloff | False | Financial | Plaud template community |
-| `functional-daily-life-template-02ab0cdc` | Daily Life Template | Tom Freeland | False | Functional | Plaud template community |
-| `education-professional-learning-reflection-template-fcd23ee3` | 🧠 PROFESSIONAL LEARNING & REFLECTION TEMPLATE | tombaker_1995 | False | Education | Plaud template community |
-| `medical-care-manager-monitoring-sheet-for-support-progress-09bea72f` | ⭐️ Care Manager Monitoring Sheet, for Support Progress Attachment | TOMO | False | Medical | Plaud template community |
-| `consulting-small-and-medium-enterprise-consultant-expert-disp-05554761` | Small and Medium Enterprise Consultant Expert Dispatch Report Template | tomoya M | False | Consulting | Plaud template community |
-| `general-blog-post-9ce5f4a0` | Blog post | Tomáš Radecký | False | General | Plaud template community |
-| `functional-ttrpg-session-summary-2697a9b2` | TTRPG Session Summary | Ton Ancheta | False | Functional | Plaud template community |
-| `legal-meeting-secretary-legal-5dd1bf8f` | Meeting Secretary (Legal) | Tony | False | Legal | Plaud template community |
-| `real-estate-summary-listing-appointment-tg-ecb2390f` | Summary Listing Appointment (TG) | Tony Galarza | False | Real Estate | Plaud template community |
-| `speech-english-lecture-7b627def` | English Lecture | Tony Qu | False | Speech | Plaud template community |
-| `speech-deep-empathy-be103479` | Deep Empathy | Torben Lew Krackow | False | Speech | Plaud template community |
-| `speech-ta-analysis-174e9dad` | TA Analysis | Torben Lew Krackow | False | Speech | Plaud template community |
-| `functional-personality-analysis-of-each-speaker-fbcfec07` | Personality Analysis of Each Speaker | toshikazu arashida | False | Functional | Plaud template community |
-| `education-review-summary-for-e-learning-etc-557984be` | Review Summary for E-learning, etc. | toshikazu arashida | False | Education | Plaud template community |
-| `speech-summary-of-panel-discussions-interview-sessions-se-7a8abfa0` | Summary of Panel Discussions, Interview Sessions, Seminars, etc. | toshikazu arashida | False | Speech | Plaud template community |
-| `interview-miiwrap-discovery-e51e1f3e` | MIIwrap Discovery | totalhealthmartha | False | Interview | Plaud template community |
-| `interview-hr-individual-meeting-report-3965f5b2` | [HR] Individual Meeting Report | trame digitali | False | Interview | Plaud template community |
-| `construction-low-voltage-consultation-template-1-0-d3be0be1` | Low Voltage Consultation Template 1.0 | Travis Bain | False | Construction | Plaud template community |
-| `sales-sales-discovery-call-901181ec` | Sales Discovery Call | Tray McConchie | False | Sales | Plaud template community |
-| `construction-jobsite-walkthrough-sterling-434bccaa` | Jobsite Walkthrough sterling | Trevor Schiller | False | Construction | Plaud template community |
-| `real-estate-debt-side-asset-management-client-prospect-meeting-7103d601` | Debt-Side Asset Management – Client & Prospect Meetings | Trey | False | Real Estate | Plaud template community |
-| `sales-presentation-closing-and-strategic-follow-up-e4df05d5` | PRESENTATION, CLOSING AND STRATEGIC FOLLOW-UP | TriIA Company | False | Sales | Plaud template community |
-| `real-estate-buyer-seller-real-estate-consultations-ca707121` | Buyer/Seller Real Estate Consultations | Troy Hokanson | False | Real Estate | Plaud template community |
-| `real-estate-summary-of-real-estate-conversations-with-customer-0619053f` | Summary of Real Estate Conversations with Customers (Kotobuki Real Estate) | Tsutsui Kazuomi | False | Real Estate | Plaud template community |
-| `sales-sales-summary-9105b326` | Sales Summary | tunca.oezkan | False | Sales | Plaud template community |
-| `call-call-recording-953eabda` | Call Recording | ty6hsgmktv | False | Call | Plaud template community |
-| `sales-product-discovery-6af15cf3` | Product Discovery (2) | Tyler Conn | False | Sales | Plaud template community |
-| `sales-sales-appointment-35ac510f` | Sales Appointment | Tyler Malinauskas | False | Sales | Plaud template community |
-| `sales-networking-call-breakdown-1caa5c46` | Networking call breakdown | Tyler Palocsik | False | Sales | Plaud template community |
-| `call-quick-call-notes-2fe80b66` | Quick call notes | Tyler Palocsik | False | Call | Plaud template community |
-| `interview-investigator-interview-86bc354e` | Investigator Interview | Tyler Webb | False | Interview | Plaud template community |
-| `construction-construction-sales-and-supervision-328d9484` | Construction Sales and Supervision | Tymon Kapelski | False | Construction | Plaud template community |
-| `sales-qoutes-stories-impact-statements-b77b2c3d` | Qoutes, Stories, Impact Statements | Uncompromisable Success Group | False | Sales | Plaud template community |
-| `meeting-cornell-meeting-notes-da0958e9` | Cornell Meeting notes | Unionguy79 | False | Meeting | Plaud template community |
-| `it-engineering-project-team-meetings-with-multiple-participants-p-b8e14ce8` | Project Team Meetings with Multiple Participants - PI | UNITEC - GESIS | False | IT & Engineering | Plaud template community |
-| `functional-strength-training-csv-summary-b0d4f689` | Strength Training - CSV Summary | v94vz7hj4j | False | Functional | Plaud template community |
-| `consulting-business-process-analysis-and-mapping-specialist-a-b630e095` | Business Process Analysis and Mapping Specialist Assistant | valderi.bastos | False | Consulting | Plaud template community |
-| `call-voicemails-new-138ac70c` | Voicemails - new! - | Valentijn | False | Call | Plaud template community |
-| `call-cold-call-b28e56c1` | Cold call | valeri.moissejev | False | Call | Plaud template community |
-| `call-telephone-conversation-c78ae992` | Telephone Conversation | Valerii R | False | Call | Plaud template community |
-| `legal-lawyer-template-b7a3a33e` | Lawyer Template | Valérie REYNAUD | False | Legal | Plaud template community |
-| `legal-proposal-generation-from-client-meeting-transcript-df3f915f` | Proposal Generation from Client Meeting Transcript | Vanessa | False | Legal | Plaud template community |
-| `legal-court-hearing-summary-template-9e7a97aa` | Court Hearing Summary Template | vanessalau | False | Legal | Plaud template community |
-| `legal-solic-client-meeting-telecon-summary-template-f089a7ad` | Solic & Client Meeting/Telecon Summary Template | vanessalau | False | Legal | Plaud template community |
-| `general-plaud-gpt-summary-eba9cd92` | Plaud GPT Summary | Victor Alves | False | General | Plaud template community |
-| `financial-forex-mentor-1-1-8bc7fdf9` | Forex mentor 1-1 | Victor Borgonjon | False | Financial | Plaud template community |
-| `interview-uk-summer-placement-compatibility-report-5dcf62fb` | UK Summer Placement Compatibility Report | Victor Gaspar | False | Interview | Plaud template community |
-| `speech-executive-communication-6193126e` | Executive Communication | victor.e.bomfim | False | Speech | Plaud template community |
-| `it-engineering-it-retrospective-d3f941f0` | IT retrospective | Vincent | False | IT & Engineering | Plaud template community |
-| `call-meeting-phone-call-summary-2ebb1033` | Meeting/Phone Call Summary | Vincent Casiano | False | Call | Plaud template community |
-| `financial-cfp-financial-meeting-notes-for-crm-671e4a56` | CFP Financial Meeting Notes for CRM | Vincent Harambasic | False | Financial | Plaud template community |
-| `sales-client-meeting-aec5d44f` | client meeting | Vincent Lemonde | False | Sales | Plaud template community |
-| `construction-independent-insurance-inspection-fae30c56` | Independent Insurance Inspection | Vincent Swiderski | False | Construction | Plaud template community |
-| `medical-anatomopathological-report-45de6cbc` | Anatomopathological Report | vitorsousa.patol | False | Medical | Plaud template community |
-| `it-engineering-meeting-at-an-engineering-company-4deb9daf` | Meeting at an Engineering Company | vladimirbakshaev | False | IT & Engineering | Plaud template community |
-| `medical-psychiatric-home-visit-nursing-visit-record-chrono-39229eed` | Psychiatric Home-Visit Nursing Visit Record (Chronological Record) | vm2mc2vcjm | False | Medical | Plaud template community |
-| `meeting-raw-verbatim-timestamp-39862573` | Raw Verbatim + Timestamp | vs6hh7pdcf | False | Meeting | Plaud template community |
-| `sales-listening-to-a-sales-conversation-21a16107` | Listening to a Sales Conversation | Václav Vais | False | Sales | Plaud template community |
-| `functional-meeting-action-item-tracker-24de81a8` | Meeting Action Item Tracker | wallace3377 | False | Functional | Plaud template community |
-| `speech-deeply-detailed-speech-details-quotes-and-concepts-6475e873` | Deeply detailed Speech details, quotes and concepts | Walter G Jr | False | Speech | Plaud template community |
-| `speech-prompt-for-ai-analysis-of-a-speech-from-the-speake-25960d19` | Prompt for AI Analysis of a Speech (from the Speaker's Perspective) | Walter G Jr | False | Speech | Plaud template community |
-| `call-summary-of-legal-consultation-phone-calls-36adf94d` | Summary of Legal Consultation Phone Calls | wangshaofeng | False | Call | Plaud template community |
-| `real-estate-market-appraisal-notes-22def742` | market appraisal notes | Wayne | False | Real Estate | Plaud template community |
-| `interview-treatment-plan-18035bcb` | Treatment Plan | Wayne Johnson | False | Interview | Plaud template community |
-| `meeting-high-fidelity-chronological-recap-5da58569` | High-Fidelity Chronological Recap | Weber,YE | False | Meeting | Plaud template community |
-| `functional-prompt-for-plaud-trainings-5281fa79` | Prompt for Plaud – Trainings | Wellington Piveta | False | Functional | Plaud template community |
-| `education-law-class-legal-notes-228a008b` | Law Class, legal notes. | Wellington Wilson | False | Education | Plaud template community |
-| `call-telefonat-kandidat-kunde-d870fdfb` | Telefonat Kandidat/Kunde | wessels | False | Call | Plaud template community |
-| `functional-follow-up-email-8e13c244` | Follow-Up Email | whycats | False | Functional | Plaud template community |
-| `functional-what-s-next-amplifier-f2c1ebbd` | “What’s Next?” Amplifier | whycats | False | Functional | Plaud template community |
-| `it-engineering-input-for-claude-code-afe3710a` | Input for Claude Code | Wiggert | False | IT & Engineering | Plaud template community |
-| `real-estate-structured-meeting-summary-fe7ffb06` | Structured Meeting Summary | wim.wuytack | False | Real Estate | Plaud template community |
-| `meeting-meeting-summary-project-management-9ba3cd30` | Meeting summary - Project management | Wouter Mæhlum | False | Meeting | Plaud template community |
-| `legal-immigration-eoir-uscis-2026-intake-736c0fd3` | Immigration EOIR-USCIS 2026 Intake | wurquilla | False | Legal | Plaud template community |
-| `general-arguments-high-intensity-discussions-81580f91` | Arguments/High-Intensity Discussions | Xander King | False | General | Plaud template community |
-| `it-engineering-meeting-report-f7417344` | Meeting Report | xavier.bourreau | False | IT & Engineering | Plaud template community |
-| `general-transcription-formatting-a1e6e937` | Transcription Formatting | y!s | False | General | Plaud template community |
-| `consulting-visit-report-for-tax-accountant-offices-medical-cl-8de6c39f` | Visit Report (For Tax Accountant Offices / Medical Clients) | y.常田 | False | Consulting | Plaud template community |
-| `financial-financial-meeting-notes-template-buyout-609d132b` | Financial Meeting Notes Template (Buyout) | yanik.jomphe | False | Financial | Plaud template community |
-| `financial-insurance-notes-template-sales-268dd94f` | Insurance Notes Template - Sales | yanik.jomphe | False | Financial | Plaud template community |
-| `financial-meeting-note-template-for-insurance-advisor-541b132d` | Meeting Note Template for Insurance Advisor | yanik.jomphe | False | Financial | Plaud template community |
-| `financial-structured-summary-of-financial-client-meeting-64270936` | Structured Summary of Financial Client Meeting | yanik.jomphe | False | Financial | Plaud template community |
-| `sales-vertical-meeting-report-56654941` | VERTICAL Meeting Report | Yannis | False | Sales | Plaud template community |
-| `general-conversation-and-memory-curator-e0176330` | Conversation and Memory Curator | Yash | False | General | Plaud template community |
-| `interview-interview-article-creation-7a17c593` | Interview Article Creation | yasu3867 | False | Interview | Plaud template community |
-| `construction-construction-meeting-71fab516` | Construction Meeting (2) | Yekda Cam | False | Construction | Plaud template community |
-| `sales-sales-call-coaching-b61b68f2` | Sales Call coaching | yesvaldes | False | Sales | Plaud template community |
-| `sales-north-kanto-branch-improved-5-point-selected-promp-e4d57e32` | North Kanto Branch Improved 5-Point Selected Prompt | yokohama.bigs | False | Sales | Plaud template community |
-| `medical-personality-analysis-afa593f3` | Personality Analysis | Yolanda Muñoz | False | Medical | Plaud template community |
-| `medical-dchart-945010f6` | DCHART | YorkyPoo | False | Medical | Plaud template community |
-| `interview-my-journaling-2ac989de` | My Journaling | Yoshiaki Okuma | False | Interview | Plaud template community |
-| `speech-full-spanish-translation-no-summary-3f39e835` | Full Spanish Translation - No Summary | ysanchezsantana | False | Speech | Plaud template community |
-| `meeting-detailed-meeting-minutes-transcription-ac872252` | Detailed Meeting Minutes (Transcription) | yttkdna2008 | False | Meeting | Plaud template community |
-| `sales-roleplay-evaluation-fa45a8c1` | Roleplay Evaluation | yuhei | False | Sales | Plaud template community |
-| `financial-101-vc-pe-investor-model-startup-m-a-ff65ab3b` | 101 VC PE Investor Model (Startup / M&A) | Yuki Keith ISOBE | False | Financial | Plaud template community |
-| `real-estate-comprehensive-summary-for-real-estate-investors-3a3c58ad` | Comprehensive Summary for Real Estate Investors | Yusa Muhsin devrim | False | Real Estate | Plaud template community |
-| `sales-sale-6ba75a52` | Sale | z75mw6ffg6 | False | Sales | Plaud template community |
-| `legal-deputy-sheriff-report-84e3ae63` | Deputy Sheriff Report | Zachary Van Der Zanden | False | Legal | Plaud template community |
-| `sales-building-material-order-reception-f6e1f820` | Building Material Order Reception | zai.31513151 | False | Sales | Plaud template community |
-| `real-estate-real-estate-property-discovery-10ca0e93` | Real estate property discovery | Zanic.swan | False | Real Estate | Plaud template community |
-| `speech-keynote-speaker-notes-e8dcef11` | Keynote Speaker Notes | Zsan Shaikh | False | Speech | Plaud template community |
-| `real-estate-formal-inspection-report-generator-fd0e2f63` | Formal Inspection Report Generator | ztxvrqns4s | False | Real Estate | Plaud template community |
-| `it-engineering-business-intelligence-f906eac7` | Business Intelligence | Éd Jorge | False | IT & Engineering | Plaud template community |
-| `general-negotiations-5c615d91` | Negotiations | Евгений Томилов | False | General | Plaud template community |
-| `call-call-analysis-in-the-mfc-call-center-of-primorsky--ac0a4862` | Call Analysis in the MFC Call Center of Primorsky Krai. | Евгения Штейнле | False | Call | Plaud template community |
-| `interview-interview-a6d56992` | Interview (2) | Ил | False | Interview | Plaud template community |
-| `speech-transcription-1c2b5295` | Transcription | Сергей Шулик | False | Speech | Plaud template community |
-| `financial-from-an-investment-bank-s-perspective-95a154dd` | From an Investment Bank's Perspective | احسان کریم خانی | False | Financial | Plaud template community |
-| `call-phone-call-237f73d2` | Phone Call (2) | あいぷろ相談 | False | Call | Plaud template community |
-| `medical-new-home-care-nursing-record-ae278191` | New Home Care Nursing Record | あすく | False | Medical | Plaud template community |
-| `medical-medical-interview-record-for-continuous-consultati-87c0e171` | Medical Interview Record for Continuous Consultations | いとまさ | False | Medical | Plaud template community |
-| `call-sales-call-inside-follow-up-daac0a55` | Sales Call (Inside/Follow-up) | うさボッチ | False | Call | Plaud template community |
-| `construction-summary-of-meeting-contents-81c46b5d` | Summary of Meeting Contents | かまぼこ | False | Construction | Plaud template community |
-| `sales-business-negotiation-c3016724` | Business Negotiation | け | False | Sales | Plaud template community |
-| `education-individual-support-plan-hearing-memo-b34c3eb1` | Individual Support Plan Hearing Memo | けんけんぽーけんけんぽー | False | Education | Plaud template community |
-| `education-child-development-support-plan-monitoring-142de651` | Child Development Support Plan Monitoring | こじか園 | False | Education | Plaud template community |
-| `medical-service-provider-meeting-0a0ba854` | Service Provider Meeting | こねくと | False | Medical | Plaud template community |
-| `education-parent-teacher-meeting-record-12357e40` | Parent-Teacher Meeting Record | しょう | False | Education | Plaud template community |
-| `meeting-monitoring-report-consultation-support-specialist-dbf751f8` | Monitoring Report [Consultation Support Specialist] | まぁ〜るい心 | False | Meeting | Plaud template community |
-| `real-estate-residential-building-meeting-organization-3637f6d4` | Residential Building Meeting Organization | らりるれろ | False | Real Estate | Plaud template community |
-| `real-estate-customer-meeting-report-6d9fc674` | Customer Meeting Report | ソレイユメイン | False | Real Estate | Plaud template community |
-| `functional-short-video-golden-phrases-b11d2217` | Short Video Golden Phrases | 一天行 | False | Functional | Plaud template community |
-| `functional-tien-hsun-short-video-viral-quote-extraction-exper-1d305268` | Tien-Hsun Short Video Viral Quote Extraction Expert | 一天行 | False | Functional | Plaud template community |
-| `interview-consultation-support-front-user-response-1294aa45` | Consultation Support Front User Response | 上川龍馬 | False | Interview | Plaud template community |
-| `general-for-note-use-458d59ca` | For note use | 上津原研介 | False | General | Plaud template community |
-| `it-engineering-frequently-used-meeting-minutes-summary-2f7a30f0` | Frequently Used Meeting Minutes Summary | 佐藤領 | False | IT & Engineering | Plaud template community |
-| `interview-1on1-kpt-a94d575b` | 1on1【KPT】 | 八木　達也 | False | Interview | Plaud template community |
-| `interview-interview-6d-748d05c2` | Interview+6D | 六爷 | False | Interview | Plaud template community |
-| `meeting-key-points-decisions-tasks-deadlines-actions-38fd2a65` | Key Points, Decisions, Tasks, Deadlines & Actions | 六爷 | False | Meeting | Plaud template community |
-| `meeting-meeting-minutes-edc689d6` | Meeting Minutes+ | 六爷 | False | Meeting | Plaud template community |
-| `interview-interview-memo-cdc04d97` | Interview Memo | 加嶋諒 | False | Interview | Plaud template community |
-| `financial-meeting-assistant-93dbb510` | Meeting Assistant | 号子 | False | Financial | Plaud template community |
-| `financial-target-interview-a52d44b4` | Target Interview | 号子 | False | Financial | Plaud template community |
-| `interview-satsuki-plan-document-04c276ad` | Satsuki Plan Document | 合同会社ファミリー齋藤 | False | Interview | Plaud template community |
-| `education-study-notes-lecture-summary-template-c46ac59c` | Study Notes / Lecture Summary Template | 吉祥会研修 | False | Education | Plaud template community |
-| `education-coaching-skill-improvement-99230b69` | Coaching Skill Improvement | 名和　史紘 | False | Education | Plaud template community |
-| `construction-meeting-record-book-e7786a91` | Meeting Record Book | 堀田楓 | False | Construction | Plaud template community |
-| `general-job-interview-evaluation-summary-prompt-281225ed` | Job Interview Evaluation Summary Prompt | 増本 | False | General | Plaud template community |
-| `medical-for-interviews-ed74a4a1` | For Interviews | 大塚PLAUD | False | Medical | Plaud template community |
-| `medical-home-care-support-progress-6b4cfdb0` | Home Care Support Progress | 天野健太郎 | False | Medical | Plaud template community |
-| `education-council-meeting-minutes-q-a-transcript-version-e18ee27f` | Council Meeting Minutes_Q&A Transcript Version | 学長室 | False | Education | Plaud template community |
-| `real-estate-appraisal-sales-meeting-with-the-seller-c068e166` | Appraisal: Sales meeting with the seller | 山本富貴 | False | Real Estate | Plaud template community |
-| `legal-interview-story-format-8899433b` | Interview, Story Format | 山本賢太郎 | False | Legal | Plaud template community |
-| `medical-orthopedic-clinic-koc-e8c230d6` | Orthopedic Clinic KOC | 岸谷整形外科クリニック | False | Medical | Plaud template community |
-| `medical-orthopedic-interview-kmo-82383a09` | Orthopedic Interview KMO | 岸谷整形外科問診 | False | Medical | Plaud template community |
-| `consulting-soul-interview-transformation-and-creation-953c59b2` | Soul Interview Transformation and Creation | 強森 | False | Consulting | Plaud template community |
-| `speech-speech-and-lecture-d6f464bd` | Speech and Lecture | 李世平 | False | Speech | Plaud template community |
-| `financial-expert-interview-v2-45d9b013` | Expert Interview V2 | 杨岭 | False | Financial | Plaud template community |
-| `financial-investment-research-meeting-multi-scenario-1e72c5c6` | Investment Research Meeting - Multi-scenario | 杨浩 | False | Financial | Plaud template community |
-| `general-transcription-7977c76d` | Transcription | 東北計画 | False | General | Plaud template community |
-| `sales-beauty-salon-chart-156d48c9` | Beauty Salon Chart | 松原　佑弥 | False | Sales | Plaud template community |
-| `meeting-meeting-minutes-updated-2025-12-05-f0afc71d` | Meeting Minutes (Updated 2025.12.05) | 松本裕也 | False | Meeting | Plaud template community |
-| `consulting-meeting-179d2fbe` | #Meeting# | 株式会社ファミリー商事 | False | Consulting | Plaud template community |
-| `it-engineering-meeting-minutes-template-for-sier-cffd88fd` | Meeting Minutes Template (for SIer) | 株式会社日本SI研究所 | False | IT & Engineering | Plaud template community |
-| `education-lesson-improvement-8453b498` | Lesson Improvement | 森田 | False | Education | Plaud template community |
-| `education-manual-creation-from-audio-e4b25d01` | Manual Creation from Audio | 樋口勝也 | False | Education | Plaud template community |
-| `medical-soap-sh-sh-kai-3e7eac3e` | SOAP Shōshōkai | 段　俊行 | False | Medical | Plaud template community |
-| `legal-statement-letter-4ab67f2f` | Statement Letter | 水越聡 | False | Legal | Plaud template community |
-| `financial-meeting-minutes-with-investment-prospect-2-8c0ab3d0` | Meeting Minutes with Investment Prospect 2 | 田中正人 | False | Financial | Plaud template community |
-| `speech-convert-presentation-audio-to-script-6c564dd5` | Convert Presentation Audio to Script | 田辺雅貴 | False | Speech | Plaud template community |
-| `speech-convert-presentation-audio-to-script-for-practice-32c29f55` | Convert Presentation Audio to Script [For Practice] | 田辺雅貴 | False | Speech | Plaud template community |
-| `interview-consultation-support-monitoring-550813c1` | 【Consultation Support】Monitoring | 相談支援ジョイーレ | False | Interview | Plaud template community |
-| `general-daily-support-record-61b43f2a` | Daily Support Record | 相談支援事業所クラルテ | False | General | Plaud template community |
-| `general-monitoring-report-continuous-service-use-support-d0b081e1` | Monitoring Report (Continuous Service Use Support) | 相談支援事業所クラルテ | False | General | Plaud template community |
-| `medical-visiting-nursing-record-ii-basic-template-2025-4290fb13` | Visiting Nursing Record II Basic Template 2025 | 矢野稔 | False | Medical | Plaud template community |
-| `education-elementary-classroom-analysis-72ebe4af` | Elementary Classroom Analysis | 纳米物语 | False | Education | Plaud template community |
-| `construction-template-for-meeting-minutes-of-custom-built-home--3fef68c3` | Template for Meeting Minutes of Custom-Built Home Discussions with Clients | 藤本工務店 | False | Construction | Plaud template community |
-| `general-service-provider-meeting-2a74909e` | Service Provider Meeting | 蛯原卓也 | False | General | Plaud template community |
-| `real-estate-prompt-for-summarizing-customer-interviews-for-hou-3288a8ec` | Prompt for summarizing customer interviews for housing sales | 西川恵理也 | False | Real Estate | Plaud template community |
-| `education--3fdb6dfe` | 大学講義テンプレート（学習最適化版） | 角(小林)敬吾 | False | Education | Plaud template community |
-| `call-product-features-and-selling-point-refinement-a8b48398` | Product Features and Selling Point Refinement | 谢彬001 | False | Call | Plaud template community |
-| `consulting-erp-consultant-s-organized-record-of-client-resear-c194d176` | ERP Consultant's Organized Record of Client Research Interviews | 鄭書豪Charley | False | Consulting | Plaud template community |
-| `meeting-detailed-minutes-494db6e6` | Detailed Minutes | 野田大貴 | False | Meeting | Plaud template community |
-| `meeting-strategic-minutes-08e3b6c5` | Strategic Minutes | 野田大貴 | False | Meeting | Plaud template community |
-| `construction-regular-meeting-abe555df` | Regular Meeting | 金城　昭一郎 | False | Construction | Plaud template community |
-| `functional-service-provider-meeting-df33d1c7` | Service Provider Meeting | 鈴木繁広 | False | Functional | Plaud template community |
-| `construction-technical-terms-in-the-water-pipe-industry-70e4760c` | Technical Terms in the Water Pipe Industry | 関口英生 | False | Construction | Plaud template community |
-| `consulting-dr-chen-yujie-orthopedic-clinic-doctor-patient-com-0a17c5e9` | Dr. Chen Yujie Orthopedic Clinic Doctor-Patient Communication Mentor | 陳昱傑 | False | Consulting | Plaud template community |
-| `consulting-consultation-guidance-record-summary-8f966e26` | Consultation Guidance Record Summary | 陳耀庭 | False | Consulting | Plaud template community |
-| `medical-pharmacy-dispensing-guidance-soap-r8-4-24-revision-9f67b8ca` | Pharmacy Dispensing Guidance (SOAP) R8.4.24 Revision | 高木諭志 | False | Medical | Plaud template community |
-| `real-estate-customer-proposal-document-creation-5a92955c` | Customer Proposal Document Creation | 黒しょ | False | Real Estate | Plaud template community |
-| `financial-insurance-face-to-face-solicitation-history-fd0a1dbb` | Insurance | Face-to-Face | Solicitation History | 齋藤充 | False | Financial | Plaud template community |
-| `financial-insurance-in-person-meeting-minutes-no-solicitatio-8b586b7e` | Insurance | In-person | Meeting Minutes (No Solicitation) | 齋藤充 | False | Financial | Plaud template community |
-| `financial-insurance-phone-meeting-minutes-no-solicitation-ac-bb081a14` | Insurance | Phone | Meeting Minutes (No Solicitation Activity) | 齋藤充 | False | Financial | Plaud template community |
-| `financial-insurance-phone-recruitment-history-d6055b24` | Insurance | Phone | Recruitment History | 齋藤充 | False | Financial | Plaud template community |
-| `financial-real-face-to-face-sales-record-5a0f9ec9` | ReaL: Face-to-Face / Sales Record | 齋藤充 | False | Financial | Plaud template community |
-| `financial-real-phone-general-correspondence-c7e19e73` | ReaL: Phone / General Correspondence | 齋藤充 | False | Financial | Plaud template community |
-| `construction-detailed-meeting-minutes-preparation-8964e025` | Detailed Meeting Minutes Preparation | 박민균 | False | Construction | Plaud template community |
-| `speech-pastor-s-sermon-0b6dcf53` | Pastor's Sermon | 임용군 | False | Speech | Plaud template community |
-| `education-training-session-summary-and-coaching-analysis-tem-974f26f2` | Training Session Summary and Coaching Analysis Template | 최영 | False | Education | Plaud template community |
+| `plaud.general.adaptive-summary.fb11e581075c` | Adaptive Summary | Velum | True | general | Velum template catalog |
+| `plaud.sales.bant.64aa67bb95e7` | BANT | Velum | True | sales | Velum template catalog |
+| `plaud.call.call-discussion.0bdd6651c74e` | Call Discussion | Velum | True | call | Velum template catalog |
+| `plaud.general.call-note.c857aeac9809` | Call Note | Velum | True | general | Velum template catalog |
+| `plaud.meeting.chat-note.f036b2a6a8cb` | Chat Note | Velum | True | meeting | Velum template catalog |
+| `plaud.speech.class-note.7f0cd29268c8` | Class Note | Velum | True | speech | Velum template catalog |
+| `plaud.consulting.client-needs.4224becdc35b` | Client Needs | Velum | True | consulting | Velum template catalog |
+| `plaud.extractive.concept-insights.41d89f1f02f2` | Concept Insights | Velum | True | extractive | Velum template catalog |
+| `plaud.meeting.consultation-qa.e22177358857` | Consultation Q&A | Velum | True | meeting | Velum template catalog |
+| `plaud.speech.dictation-note.10da0282bc01` | Dictation Note | Velum | True | speech | Velum template catalog |
+| `plaud.meeting.discussion-summary.980d81f1570b` | Discussion Summary | Velum | True | meeting | Velum template catalog |
+| `plaud.meeting.formal-meeting.3f9c58633702` | Formal Meeting | Velum | True | meeting | Velum template catalog |
+| `plaud.medical.healthcare-consultation.f95517fa076b` | Healthcare Consultation | Velum | True | medical | Velum template catalog |
+| `plaud.extractive.intent-analysis.88752dfdc300` | Intent Analysis | Velum | True | extractive | Velum template catalog |
+| `plaud.general.interview-note.4cd8baf56ca6` | Interview Note | Velum | True | general | Velum template catalog |
+| `plaud.interview.job-interview.6e8159d5ae23` | Job Interview | Velum | True | interview | Velum template catalog |
+| `plaud.general.key-points.e08d620ca94e` | Key Points | Velum | True | general | Velum template catalog |
+| `plaud.extractive.key-quotes.d1db524c1495` | Key Quotes | Velum | True | extractive | Velum template catalog |
+| `plaud.general.lecture.b45d67ed0ddb` | Lecture | Velum | True | general | Velum template catalog |
+| `plaud.speech.lecture-summary.77dda96dbd02` | Lecture Summary | Velum | True | speech | Velum template catalog |
+| `plaud.extractive.meeting-effectiveness.50d7e5eaccd8` | Meeting Effectiveness | Velum | True | extractive | Velum template catalog |
+| `plaud.extractive.meeting-highlights.a6312d8a7b27` | Meeting Highlights | Velum | True | extractive | Velum template catalog |
+| `plaud.extractive.meeting-minutes.5428e947e4ad` | Meeting Minutes | Velum | True | extractive | Velum template catalog |
+| `plaud.general.meeting-note.3e9fe07c1239` | Meeting Note | Velum | True | general | Velum template catalog |
+| `plaud.meeting.meeting-report.3d3ea32469c7` | Meeting Report | Velum | True | meeting | Velum template catalog |
+| `plaud.interview.panel-discussion.f7d65630fd5f` | Panel Discussion | Velum | True | interview | Velum template catalog |
+| `plaud.call.phone-qa.249ecaea3bfb` | Phone Q&A | Velum | True | call | Velum template catalog |
+| `plaud.extractive.power-dynamics.025caeec702a` | Power Dynamics | Velum | True | extractive | Velum template catalog |
+| `plaud.12-cbd8f428ed` | Project Hand Off | Velum | True | construction | Velum template catalog |
+| `plaud.medical.psychotherapy-note.47a0eb0324c3` | Psychotherapy Note | Velum | True | medical | Velum template catalog |
+| `plaud.construction.punch-list.cb86d22aef6a` | Punch List | Velum | True | construction | Velum template catalog |
+| `plaud.extractive.quantitative-data.db2ec99295b1` | Quantitative Data | Velum | True | extractive | Velum template catalog |
+| `plaud.general.reasoning-summary.295c422779d9` | Reasoning Summary | Velum | True | general | Velum template catalog |
+| `plaud.interview.research-interview.5625d8c5000a` | Research Interview | Velum | True | interview | Velum template catalog |
+| `plaud.medical.soap.5ece5968fcad` | SOAP | Velum | True | medical | Velum template catalog |
+| `plaud.meeting.task-assignment.43f2a33485ec` | Task Assignment | Velum | True | meeting | Velum template catalog |
+| `plaud.call.task-by-call.1d6ef3ccce6b` | Task by Call | Velum | True | call | Velum template catalog |
+| `plaud.education.teaching-note.8cdab7d2d25b` | Teaching Note | Velum | True | education | Velum template catalog |
+| `plaud.extractive.todo-list.a2ee20ff2062` | To-do List | Velum | True | extractive | Velum template catalog |
+| `plaud.speech.training-summary.48a5a18a4dd8` | Training Summary | Velum | True | speech | Velum template catalog |
+| `plaud.general.voice-note.2e0a447c33e3` | Voice Note | Velum | True | general | Velum template catalog |
+| `plaud.0-f62dde0fc6` | - Daily P.O.D - a.m | Velum | False | construction | Velum template catalog |
+| `plaud.105-f849378e07` | 1 on 1 Real Estate investor consult | Velum | False | estate | Velum template catalog |
+| `plaud.168-bb7bbbc726` | 1-2-1 Deal and Forecast Discussion | Velum | False | sales | Velum template catalog |
+| `plaud.401` | 1003 Loan App | Velum | False | estate | Velum template catalog |
+| `plaud.4709` | 101 VC PE Investor Model (Startup / M&A) | Velum | False | financial | Velum template catalog |
+| `plaud.0-300ffca21b` | 12h Workday Filtered Calendar Log | Velum | False | extractive | Velum template catalog |
+| `plaud.43-2bd66e0898` | 1933519Z!5+4+3=2.1 | Velum | False | general | Velum template catalog |
+| `plaud.343-bfb3f8ad42` | 1:1 mentor & mentee template | Velum | False | it | Velum template catalog |
+| `plaud.18-29c1e07ac7` | 1:1, Status Sync, and Check-In Summary | Velum | False | meeting | Velum template catalog |
+| `plaud.4954-cbc0a454ec` | 1on1【KPT】 | Velum | False | interview | Velum template catalog |
+| `plaud.3-f9450bdaab` | 1|1 Sale | Velum | False | sales | Velum template catalog |
+| `plaud.12-ee8eacdd57` | 2 sketch notes | Velum | False | education | Velum template catalog |
+| `plaud.0-68b697f3d6` | 21.08.2026 | Velum | False | meeting | Velum template catalog |
+| `plaud.4-516d8fc476` | 24MAX Mortgage Consultant | Velum | False | financial | Velum template catalog |
+| `plaud.3-6024a71de7` | 33@#¥¥%% | Velum | False | medical | Velum template catalog |
+| `plaud.17-cccab571f2` | 6877_Lecture Review | Velum | False | education | Velum template catalog |
+| `plaud.2-9501703890` | <Change Room> Meeting Minutes | Velum | False | meeting | Velum template catalog |
+| `plaud.99` | [EVR] Executive Study Map 2.0 | Velum | False | education | Velum template catalog |
+| `plaud.2-ed916bc903` | [FR] Idea capture for solo game dev project | Velum | False | it | Velum template catalog |
+| `plaud.0-a0ebe63cbe` | A clinic script that I wrote | Velum | False | medical | Velum template catalog |
+| `plaud.1777` | A Layer Deeper | Velum | False | extractive | Velum template catalog |
+| `plaud.5-efbea4ec34` | A4L Visit Report | Velum | False | meeting | Velum template catalog |
+| `plaud.12-fd42a4401c` | ABA ABCs | Velum | False | consulting | Velum template catalog |
+| `plaud.7-592538a9be` | Academic Critical Book Review | Velum | False | education | Velum template catalog |
+| `plaud.8-1a8e5a6575` | Academy94 - Feedback | Velum | False | education | Velum template catalog |
+| `plaud.5-aa8e3d05f3` | Accidents - Interviewing Accident Participants | Velum | False | extractive | Velum template catalog |
+| `plaud.92-e1a4bd2ac1` | Accounting Meeting | Velum | False | consulting | Velum template catalog |
+| `plaud.115-f60f251bfb` | Accounting, Tax, and Legal Expertise | Velum | False | financial | Velum template catalog |
+| `plaud.23-66550506db` | Accurate Court Transcription | Velum | False | legal | Velum template catalog |
+| `plaud.3-d60ac390a0` | Acquisition / sales call | Velum | False | sales | Velum template catalog |
+| `plaud.7-675cb8a291` | ACS - Funding Department Intake Form | Velum | False | estate | Velum template catalog |
+| `plaud.2-038bdab363` | ADHD diagnostic Initial Assessment Temp | Velum | False | medical | Velum template catalog |
+| `plaud.36-6e7149f322` | ADHD proforma | Velum | False | consulting | Velum template catalog |
+| `plaud.0-3b2530a88c` | Advanced Agrilytics RAG | Velum | False | extractive | Velum template catalog |
+| `plaud.70-d05f410331` | Advanced Analyst Visit Report | Velum | False | financial | Velum template catalog |
+| `plaud.5-329cd10ba7` | AdviserCloud Template | Velum | False | financial | Velum template catalog |
+| `plaud.1-d4ae1d1f61` | Advisor Consulting Template | Velum | False | consulting | Velum template catalog |
+| `plaud.18-a02864f05a` | Advisor Recruiting | Velum | False | meeting | Velum template catalog |
+| `plaud.0-379eb12b5b` | Aggreko Template | Velum | False | meeting | Velum template catalog |
+| `plaud.3-ec3a022e4c` | Agile Sprint Daily Standup | Velum | False | meeting | Velum template catalog |
+| `plaud.1-8c17356891` | AGM — Investment Manager Summary | Velum | False | financial | Velum template catalog |
+| `plaud.70-3223b99bd4` | AI Analysis & Workflow Intelligence | Velum | False | general | Velum template catalog |
+| `plaud.16-f85192ef23` | AI Context Awareness · Knowledge Distillation v0.4 by Astra | Velum | False | general | Velum template catalog |
+| `plaud.34-c9615eac10` | AI Engineer - Solver | Velum | False | general | Velum template catalog |
+| `plaud.1-048e97f679` | AI Summary and Reporting Template for Real Estate Sales 2026.5.8 | Velum | False | call | Velum template catalog |
+| `plaud.3138` | AI Transcription Template for the Insurance Industry | Velum | False | financial | Velum template catalog |
+| `plaud.10-066913caa5` | aiops poc and demo | Velum | False | call | Velum template catalog |
+| `plaud.3-3e403d7fc4` | AJDN - Client Meeting | Velum | False | legal | Velum template catalog |
+| `plaud.2-0e6679a086` | Alder & Ash Staging Site Visit | Velum | False | estate | Velum template catalog |
+| `plaud.161-cf233d9fb1` | Analysis - Labor Hearing for Instruction | Velum | False | legal | Velum template catalog |
+| `plaud.196-397039a01b` | Analysis of Interview and Contribution of Individual Speakers | Velum | False | speech | Velum template catalog |
+| `plaud.0-aa94601f59` | Analytical Meeting Notes Template | Velum | False | consulting | Velum template catalog |
+| `plaud.14-6ce2e6cdcf` | anamnese | Velum | False | interview | Velum template catalog |
+| `plaud.12-71ad611ab7` | Anamnesis - Facial Dystonia | Velum | False | medical | Velum template catalog |
+| `plaud.0-9e8d241cd1` | Anchoring Interview | Velum | False | interview | Velum template catalog |
+| `plaud.4508` | Animal Hospital | Velum | False | medical | Velum template catalog |
+| `plaud.6-831cf29dcb` | Annual individual performance review | Velum | False | interview | Velum template catalog |
+| `plaud.18-19930d8d17` | ANNUAL INTERVIEW FOR HEALTHCARE EXECUTIVE | Velum | False | interview | Velum template catalog |
+| `plaud.9-fbd32f149f` | Annual Performance Review Preparation Grid Generation | Velum | False | interview | Velum template catalog |
+| `plaud.21-1204040ce7` | Annual Review | Velum | False | consulting | Velum template catalog |
+| `plaud.18-b08e0c7737` | annual review | Velum | False | financial | Velum template catalog |
+| `plaud.43-8c47fc5e6a` | anonymous podcast and or news story | Velum | False | legal | Velum template catalog |
+| `plaud.155-d59962de57` | Application Project Development Meetings. | Velum | False | it | Velum template catalog |
+| `plaud.0-0e4741b3c9` | Appointment 2 BC | Velum | False | interview | Velum template catalog |
+| `plaud.77-771d055504` | Appraisal: Sales meeting with the seller | Velum | False | estate | Velum template catalog |
+| `plaud.0-954316104b` | APS/USF 210797 | Velum | False | medical | Velum template catalog |
+| `plaud.21-175fd54d3e` | Aptitude & Reasoning Evaluation | Velum | False | interview | Velum template catalog |
+| `plaud.0-01f8ae333f` | AR Note Template | Velum | False | financial | Velum template catalog |
+| `plaud.15-baa38a5685` | Arbitration Hearing Transcription | Velum | False | legal | Velum template catalog |
+| `plaud.0-06b50341e5` | Architectural Interview Writing | Velum | False | interview | Velum template catalog |
+| `plaud.2-4084e26418` | Aresgroup Software Architect | Velum | False | it | Velum template catalog |
+| `plaud.0-148c87fddd` | ARTICLES NEWSLETTER | Velum | False | call | Velum template catalog |
+| `plaud.2-56352249fe` | ARY LAND CO. | LISTING APPOINTMENT & PROPERTY INTAKE | Velum | False | estate | Velum template catalog |
+| `plaud.2-0b46dee4ea` | Assessment - Customer Facing | Velum | False | it | Velum template catalog |
+| `plaud.18-b758882aef` | Assessment and Monitoring Record by SSW | Velum | False | interview | Velum template catalog |
+| `plaud.59-ffac88a856` | Assessment Sheet | Velum | False | interview | Velum template catalog |
+| `plaud.529` | Attorney Client Meeting- Summary with Draft-Ready Notes | Velum | False | legal | Velum template catalog |
+| `plaud.0-77e6249c82` | Attorney Prompt for Initial Estate Planning Meeting | Velum | False | legal | Velum template catalog |
+| `plaud.183-0b66033216` | Audible Audiobook Deep Summary (Chapters + Reflection + Counterpoints) | Velum | False | education | Velum template catalog |
+| `plaud.17-83637e41f2` | Audit - Internal Controls Narrative | Velum | False | financial | Velum template catalog |
+| `plaud.2-4e2432eed0` | AUKG AOV Service | Velum | False | extractive | Velum template catalog |
+| `plaud.30-16ce08514c` | Automatic Report Generation for Real Estate Trader Activities | Velum | False | estate | Velum template catalog |
+| `plaud.6-9480161f8a` | Aval Comercial PRZN | Velum | False | medical | Velum template catalog |
+| `plaud.0-df6ecf76e3` | Ayurveda for the Client | Velum | False | medical | Velum template catalog |
+| `plaud.132-fdbc91b0be` | BA Model | Velum | False | it | Velum template catalog |
+| `plaud.2-9934aca5c1` | Bahadır's Notetaker | Velum | False | meeting | Velum template catalog |
+| `plaud.6-bc4d0689b8` | Bali Gaya - Land Discovery Facts Sheet | Velum | False | estate | Velum template catalog |
+| `plaud.31-488a354d48` | Banker/Broker Intro Call Summary Template | Velum | False | call | Velum template catalog |
+| `plaud.0-7746b3ad93` | BANTCH | Velum | False | general | Velum template catalog |
+| `plaud.18-6e17d0fdeb` | Batch Meeting Minutes Creator | Velum | False | meeting | Velum template catalog |
+| `plaud.0-55383b85f5` | BCSocpe | Velum | False | general | Velum template catalog |
+| `plaud.0` | Bestag - Sales Coach | Velum | False | call | Velum template catalog |
+| `plaud.2-2b3f0c3686` | BI - SURVEY | Velum | False | extractive | Velum template catalog |
+| `plaud.106-7f315c5c10` | Biblical and Theological Notes for Sermon and Lecture Preperation | Velum | False | speech | Velum template catalog |
+| `plaud.94-7da5e3dbd2` | Binary Options Trading Courses | Velum | False | financial | Velum template catalog |
+| `plaud.0-89df2f56a3` | Bins Agrorealty e-FarmValuation Engineer | Velum | False | estate | Velum template catalog |
+| `plaud.12-69978d9803` | Biography Devotion | Velum | False | interview | Velum template catalog |
+| `plaud.1-28b78e9ff3` | BL Construction Site Report 2.0 | Velum | False | construction | Velum template catalog |
+| `plaud.2-38a8cac8e9` | BL Site Report | Velum | False | construction | Velum template catalog |
+| `plaud.11-83474b5c22` | Blackhat Technical Training | Velum | False | it | Velum template catalog |
+| `plaud.0-2685b64b5a` | BM Interview Template | Velum | False | interview | Velum template catalog |
+| `plaud.715` | Board Meeting Minutes | Velum | False | estate | Velum template catalog |
+| `plaud.32-89c25912f6` | Board meeting minutes summary | Velum | False | meeting | Velum template catalog |
+| `plaud.9-efb22ae82b` | Board Minutes Template | Velum | False | meeting | Velum template catalog |
+| `plaud.0-de7dcb438a` | Body Contouring Plastic Surgery Consultation | Velum | False | medical | Velum template catalog |
+| `plaud.174` | Book Creator | Velum | False | education | Velum template catalog |
+| `plaud.133-78b169e6d8` | Bookkeeping | Velum | False | financial | Velum template catalog |
+| `plaud.0-56e7c6cdc6` | BPI Discovery | Velum | False | construction | Velum template catalog |
+| `plaud.1-9a8a6ce1ad` | Bprrower PreApproval | Velum | False | financial | Velum template catalog |
+| `plaud.416-a2e5e1be8e` | BRAINSTORMING → PRESENTATION | Velum | False | it | Velum template catalog |
+| `plaud.0-370cd416f6` | Breast Plastic Surgery Consultation | Velum | False | medical | Velum template catalog |
+| `plaud.2-47f6627ef5` | Briefing call | Velum | False | sales | Velum template catalog |
+| `plaud.3-c4076d3c87` | BSA PI Planning | Velum | False | meeting | Velum template catalog |
+| `plaud.3-d2205a6e5a` | BT Sales Tour | Velum | False | sales | Velum template catalog |
+| `plaud.2-ec89321de8` | Bug registration KYP | Velum | False | it | Velum template catalog |
+| `plaud.2-941d434295` | Building Diagnostic Synthesis Prompt | Velum | False | sales | Velum template catalog |
+| `plaud.7-875e7c071d` | Building inspection | Velum | False | estate | Velum template catalog |
+| `plaud.8-2e140a0cd1` | Business Inspection | Velum | False | estate | Velum template catalog |
+| `plaud.1568` | Business Intelligence | Velum | False | it | Velum template catalog |
+| `plaud.8-bbceea7b3a` | Business Meeting Template | Velum | False | meeting | Velum template catalog |
+| `plaud.6-83c7bef4b7` | Business Negotiation / Call Minutes Template | Velum | False | meeting | Velum template catalog |
+| `plaud.433` | Business Psyche Assessment | Velum | False | interview | Velum template catalog |
+| `plaud.8-9ffe0ca4db` | Business Sales Meeting Breakdown and Analysis | Velum | False | sales | Velum template catalog |
+| `plaud.84-7f67d00622` | Business Trip Sharing Report | Velum | False | speech | Velum template catalog |
+| `plaud.13-03edd75cba` | Buyer Calls | Velum | False | financial | Velum template catalog |
+| `plaud.0-be250aec6c` | Buyer Client Call | Velum | False | estate | Velum template catalog |
+| `plaud.17-53934d58d1` | Buyer Consultation Questions/Template/Prequalification | Velum | False | estate | Velum template catalog |
+| `plaud.0-ae4205404e` | Buyer Follow Up | Velum | False | sales | Velum template catalog |
+| `plaud.85-f8c0f5c76c` | Buyer/seller call summary | Velum | False | estate | Velum template catalog |
+| `plaud.243-0b58fd09ce` | Buyer/Seller Meeting Summary | Velum | False | estate | Velum template catalog |
+| `plaud.1192-dca708c66d` | Buyer/Seller Real Estate Consultations | Velum | False | estate | Velum template catalog |
+| `plaud.59-444e87dc37` | BWP Client Meeting | Velum | False | financial | Velum template catalog |
+| `plaud.7-34be020269` | BWP Client Meeting | Velum | False | financial | Velum template catalog |
+| `plaud.8-278d56670e` | CA Public Meeting Note Taker | Velum | False | meeting | Velum template catalog |
+| `plaud.2-15724dbbe7` | Call Analysis and Communication Coach Template | Velum | False | call | Velum template catalog |
+| `plaud.4-9d6e44be70` | Call Analysis in the MFC Call Center of Primorsky Krai. | Velum | False | call | Velum template catalog |
+| `plaud.11-a6fc63fd53` | Call Expert | Velum | False | sales | Velum template catalog |
+| `plaud.10-810c58c874` | Call Grading ABA | Velum | False | call | Velum template catalog |
+| `plaud.2` | Call Note | Velum | False | call | Velum template catalog |
+| `plaud.1-5631bc5533` | Call Recording | Velum | False | call | Velum template catalog |
+| `plaud.18-33ee0c4954` | Call Summary (Japanese) | Velum | False | call | Velum template catalog |
+| `plaud.3-8669c013e8` | Call/Meeting Notes | Velum | False | call | Velum template catalog |
+| `plaud.54-67f377a13b` | candidate call/meeting | Velum | False | financial | Velum template catalog |
+| `plaud.259-dd0be8866d` | Candidate Interview | Velum | False | interview | Velum template catalog |
+| `plaud.49-8b2afbbaed` | Candidate Interview Feedback Summary | Velum | False | interview | Velum template catalog |
+| `plaud.43-eae22dff36` | Candidate Prescreen | Velum | False | interview | Velum template catalog |
+| `plaud.0-866c780d82` | CANSO CONSTRUCTION DAYS | Velum | False | construction | Velum template catalog |
+| `plaud.3-7314473f21` | Car test drive notes | Velum | False | sales | Velum template catalog |
+| `plaud.4-0f3a85e465` | Care Manager Meeting for Public Release | Velum | False | medical | Velum template catalog |
+| `plaud.17-291409f449` | Care Needs Assessment Survey - Special Notes | Velum | False | medical | Velum template catalog |
+| `plaud.2-0cd5018d06` | Career Development & Coaching Plan | Velum | False | consulting | Velum template catalog |
+| `plaud.0-249b5b858f` | CasaGest | Velum | False | estate | Velum template catalog |
+| `plaud.3-c7afb84865` | Case Conference Template | Velum | False | medical | Velum template catalog |
+| `plaud.1-6ee176c22c` | Case Management Note | Velum | False | call | Velum template catalog |
+| `plaud.77-16f3db8487` | Case Review | Velum | False | legal | Velum template catalog |
+| `plaud.380-146a63ddb7` | Catholic Homily | Velum | False | speech | Velum template catalog |
+| `plaud.1-aff3290ffc` | CBT interview | Velum | False | medical | Velum template catalog |
+| `plaud.0-21198254bc` | Centrii Sales Meeting [Virtual] | Velum | False | sales | Velum template catalog |
+| `plaud.861-31b0fab426` | Certification Survey Special Notes | Velum | False | general | Velum template catalog |
+| `plaud.66-502d822270` | CFO Financial Advisory Board | Velum | False | financial | Velum template catalog |
+| `plaud.1-4342c6c751` | CG Discussion | Velum | False | extractive | Velum template catalog |
+| `plaud.1-09dd122767` | Chad's Financial Advisor Client Meeting Notes | Velum | False | meeting | Velum template catalog |
+| `plaud.3-3d91a99e17` | Chaplain In-Person Visit | Velum | False | meeting | Velum template catalog |
+| `plaud.11-92e66d5e7d` | Chaplain Pastoral call | Velum | False | call | Velum template catalog |
+| `plaud.172` | Chat Assistant for Good Friends | Velum | False | call | Velum template catalog |
+| `plaud.0-a19ff077ea` | ChatGPT integration for me events | Velum | False | consulting | Velum template catalog |
+| `plaud.5-0445277246` | check-in | Velum | False | it | Velum template catalog |
+| `plaud.0-fb2bcdf411` | Chemical Sales Negotiation | Velum | False | meeting | Velum template catalog |
+| `plaud.0-a6f5fa91be` | Chen Yu-Chieh Orthopedics Consultation Coach | Velum | False | consulting | Velum template catalog |
+| `plaud.76-68d8a663f3` | Child Forensic Interview - Kansas Child First protocol | Velum | False | interview | Velum template catalog |
+| `plaud.146-99f4438649` | Child Interviews | Velum | False | interview | Velum template catalog |
+| `plaud.65-9c1e640a07` | Child-Centered Play Analysis | Velum | False | education | Velum template catalog |
+| `plaud.16-ea0ec6a01d` | Children's behavior data | Velum | False | extractive | Velum template catalog |
+| `plaud.1-f70b398880` | Chronic Pelvic Pain Consultation | Velum | False | medical | Velum template catalog |
+| `plaud.27-e0839bd338` | Church Board Meeting | Velum | False | meeting | Velum template catalog |
+| `plaud.153-3dd534eebe` | CHURCH OF JESUS CHRIST | Velum | False | speech | Velum template catalog |
+| `plaud.2-b8d1b73f07` | Civil Court (Role - Defendant) | Velum | False | legal | Velum template catalog |
+| `plaud.2-2cfd66ad9a` | Civil Court (Role - Plaintiff) | Velum | False | legal | Velum template catalog |
+| `plaud.55` | Civil Engineering and Surveying Phone Call | Velum | False | call | Velum template catalog |
+| `plaud.33-0b7ff31662` | Civil Hearing Synthesizer | Velum | False | legal | Velum template catalog |
+| `plaud.0-86ccf5a652` | Class Analyst - Magnetic Flows | Velum | False | it | Velum template catalog |
+| `plaud.7-7303380df4` | Class Council Report | Velum | False | education | Velum template catalog |
+| `plaud.124-1359eadcd5` | Class Overview Template (Updated) | Velum | False | education | Velum template catalog |
+| `plaud.12-880a5bab33` | Classroom Learning and Exam Review | Velum | False | education | Velum template catalog |
+| `plaud.2672` | Clear, clean, and highly detailed. | Velum | False | call | Velum template catalog |
+| `plaud.0-6d7a87e29d` | Client Brief | Velum | False | consulting | Velum template catalog |
+| `plaud.343-3223c3b2a1` | Client Call | Velum | False | legal | Velum template catalog |
+| `plaud.31-a444015fda` | Client chronical | Velum | False | financial | Velum template catalog |
+| `plaud.48-51349e1425` | Client Consultation | Velum | False | consulting | Velum template catalog |
+| `plaud.0-41bdd6ff2e` | Client Consultation Intake Form | Velum | False | call | Velum template catalog |
+| `plaud.9-f6a779e726` | Client conversations and file documentation for accounting firm | Velum | False | financial | Velum template catalog |
+| `plaud.0-06835aa466` | Client Intake Checklist | Velum | False | call | Velum template catalog |
+| `plaud.26-089a8f6d75` | Client Meeting Follow-up | Velum | False | financial | Velum template catalog |
+| `plaud.34-d376ceade0` | Client Meeting for Leasing Agents | Velum | False | estate | Velum template catalog |
+| `plaud.88-cca55c2556` | Client Meeting Notes | Velum | False | sales | Velum template catalog |
+| `plaud.7-865ca98299` | Client Note - Complete | Velum | False | financial | Velum template catalog |
+| `plaud.20724` | Client Phone Call Summary/Analysis | Velum | False | call | Velum template catalog |
+| `plaud.883` | Client Review Meeting | Velum | False | financial | Velum template catalog |
+| `plaud.5-78b93e4ace` | Client Sales Meeting Template | Velum | False | sales | Velum template catalog |
+| `plaud.18-9f89423a7f` | Client Summary Sheet for Renovation Project | Velum | False | sales | Velum template catalog |
+| `plaud.1-6b5a95a1c1` | CLIMAT — Investment Kick-off — Standard v1 | Velum | False | general | Velum template catalog |
+| `plaud.6-ffe9c6a66d` | Clinic Script | Velum | False | medical | Velum template catalog |
+| `plaud.1319` | Clinical | Velum | False | speech | Velum template catalog |
+| `plaud.534-3fca0230fb` | Clinical Intake History Summary | Velum | False | medical | Velum template catalog |
+| `plaud.1407` | Clinical Psychologist Report | Velum | False | medical | Velum template catalog |
+| `plaud.9-1e6811f261` | Clinical Session Record | Gestalt Therapy | Velum | False | medical | Velum template catalog |
+| `plaud.3-de56e00753` | CM punch list | Velum | False | construction | Velum template catalog |
+| `plaud.2-a385324d8b` | CMA Analysis | Velum | False | estate | Velum template catalog |
+| `plaud.0-55ebf6ffbe` | CMA Presentation | Velum | False | estate | Velum template catalog |
+| `plaud.4-a970e748a4` | CNIC Observation & Recommendations (AAR) Template | Velum | False | extractive | Velum template catalog |
+| `plaud.139-7d4fccb7a3` | Coach | Velum | False | extractive | Velum template catalog |
+| `plaud.12-092f391b34` | Coach of Eastern Disciplines Buddhism Hinduism Taoism | Velum | False | speech | Velum template catalog |
+| `plaud.506-f1090248c8` | Coaching Meeting | Velum | False | interview | Velum template catalog |
+| `plaud.6-c0e14a2923` | Coaching Plan | Velum | False | consulting | Velum template catalog |
+| `plaud.819` | Coaching Transcription | Velum | False | education | Velum template catalog |
+| `plaud.19` | Cold call | Velum | False | call | Velum template catalog |
+| `plaud.26-0df48648bd` | Cold Calling | Velum | False | call | Velum template catalog |
+| `plaud.17` | Colleague Call | Velum | False | call | Velum template catalog |
+| `plaud.8-237d3d364e` | Collect Customer Financial and Family Background Fact Sheet | Velum | False | sales | Velum template catalog |
+| `plaud.2-8aa7e61355` | COLLECTION MONITOR | Velum | False | call | Velum template catalog |
+| `plaud.3-c989a0054c` | Command of the Message | Velum | False | sales | Velum template catalog |
+| `plaud.18-f739afee69` | Commander's Analysis Lense | Velum | False | extractive | Velum template catalog |
+| `plaud.2-667dbee0b4` | Commercial - Daily | Velum | False | sales | Velum template catalog |
+| `plaud.21-27060739a1` | Commercial Meeting for Resale of Inputs | Velum | False | sales | Velum template catalog |
+| `plaud.1077` | Commercial Meeting Summary (SPIN Selling) | Velum | False | sales | Velum template catalog |
+| `plaud.19-53c6947204` | Commercial Property Inspection Checklist Generator | Velum | False | estate | Velum template catalog |
+| `plaud.11-70bf04ae5e` | Commercial Site Visit & Business Discovery | Velum | False | financial | Velum template catalog |
+| `plaud.1-613390fadc` | Commerical Equipment Financing: Credit submission and overview | Velum | False | financial | Velum template catalog |
+| `plaud.61-4cee11f6d1` | Committee Minutes | Velum | False | estate | Velum template catalog |
+| `plaud.0-519118920d` | Commods Candidate Profile | Velum | False | financial | Velum template catalog |
+| `plaud.26-90b036d95b` | Communication Growth Coach │ By Robin Allard, LMFT | Velum | False | extractive | Velum template catalog |
+| `plaud.10-93e59ec9fc` | Company Clarification/Pre-award Meeting | Velum | False | construction | Velum template catalog |
+| `plaud.0-3ee9ae32c6` | Company Discovery Conversation | Velum | False | meeting | Velum template catalog |
+| `plaud.119-c5f9ebf503` | Company Interview Template | Velum | False | interview | Velum template catalog |
+| `plaud.0-36a2d2af30` | Complete Clinical History + Preceptorship Comments | Velum | False | medical | Velum template catalog |
+| `plaud.42-3f18664cd6` | COMPLETE MEDICAL-OCCUPATIONAL CLINICAL RECORD | Velum | False | medical | Velum template catalog |
+| `plaud.222-c6f6bd1080` | Complete Psychotherapy Note CBT and Schema | Velum | False | general | Velum template catalog |
+| `plaud.0-d020726ddd` | Comprehensive AOD Assessment Template | Velum | False | interview | Velum template catalog |
+| `plaud.647` | Comprehensive Nursing School Lecture Notes | Velum | False | education | Velum template catalog |
+| `plaud.3152` | Comprehensive Relationship Analysis | Velum | False | general | Velum template catalog |
+| `plaud.3-209a98160c` | COMPREHENSIVE RENOVATION BUDGET | Velum | False | construction | Velum template catalog |
+| `plaud.20-3018473959` | Comprehensive technical Meeting Minutes & Action Tracker | Velum | False | construction | Velum template catalog |
+| `plaud.0-55b2e3ade0` | Concall Summary 2.0 | Velum | False | general | Velum template catalog |
+| `plaud.3-7e5f693cb3` | Concall Summary 2.1 | Velum | False | general | Velum template catalog |
+| `plaud.30-a1f91cfd42` | Concise Meeting Minutes | Velum | False | meeting | Velum template catalog |
+| `plaud.0-89a8b7b681` | condominium | Velum | False | legal | Velum template catalog |
+| `plaud.117-0540a5d47d` | Condominium meeting minutes | Velum | False | estate | Velum template catalog |
+| `plaud.36-ef7d363371` | Condominium Owners' Association Assembly | Velum | False | estate | Velum template catalog |
+| `plaud.621-b7b996dca5` | Conference & Seminar Intelligence | Velum | False | speech | Velum template catalog |
+| `plaud.1437` | Conference/Seminar – Summary | Velum | False | speech | Velum template catalog |
+| `plaud.8-cad03e5d08` | Construction Meeting / Design Team BITB | Velum | False | construction | Velum template catalog |
+| `plaud.0-17d2544c61` | Construction Project Category List | Velum | False | construction | Velum template catalog |
+| `plaud.1-eca89d7f17` | Construction Sales and Supervision V2 | Velum | False | construction | Velum template catalog |
+| `plaud.3-828997dd7a` | Construction Team (Dutch) | Velum | False | construction | Velum template catalog |
+| `plaud.8-c68f0941a4` | Construction Team-v01 | Velum | False | construction | Velum template catalog |
+| `plaud.7-a69ddf3d46` | Construction/Contractor — Calls, Meetings & Action Items | Velum | False | construction | Velum template catalog |
+| `plaud.0-f5e4855083` | consult | Velum | False | consulting | Velum template catalog |
+| `plaud.10-8c921ec675` | Consultancy Activity Meeting | Velum | False | meeting | Velum template catalog |
+| `plaud.1-e102394177` | Consultation - general summary. | Velum | False | legal | Velum template catalog |
+| `plaud.59-e562279c83` | Consultation Analysis and Summary with Email | Velum | False | financial | Velum template catalog |
+| `plaud.0-fbb14f6c91` | Consultation and Discussion with Clients - Summary of Key Points | Velum | False | legal | Velum template catalog |
+| `plaud.medical.consultation-ccm.d7f13712039c` | Consultation CCM | Velum | False | medical | Velum template catalog |
+| `plaud.4-67acee102d` | Consultation Checklist | Velum | False | medical | Velum template catalog |
+| `plaud.63-3199dd07b7` | Consultation Support Front User Response | Velum | False | interview | Velum template catalog |
+| `plaud.61-db44000ea9` | Consultative Sales for New Homes | Velum | False | sales | Velum template catalog |
+| `plaud.158-3d9e137630` | Consulting - meeting session | Velum | False | consulting | Velum template catalog |
+| `plaud.4-f5fc5b4ac7` | Consulting 3.0 [EN] | Velum | False | consulting | Velum template catalog |
+| `plaud.1-d54f89b8ef` | Content Analysis and Summary Generation Prompt | Velum | False | speech | Velum template catalog |
+| `plaud.370-6717deca1a` | Content Analysis Template for Personal Recordings. | Velum | False | speech | Velum template catalog |
+| `plaud.3-073c5b7ee5` | Contextual organization of important facts and messages (YK spec) | Velum | False | interview | Velum template catalog |
+| `plaud.4-b51c45d88d` | Continuous Improvement Manager | Velum | False | consulting | Velum template catalog |
+| `plaud.279-12b6443054` | Continuous Recorder for Dental Patients | Velum | False | medical | Velum template catalog |
+| `plaud.0-8cd6aff0c6` | CONTRADICTION CALL REPORT | Velum | False | interview | Velum template catalog |
+| `plaud.832` | CONVERSATION ANALYSIS AND IMPROVEMENT | Velum | False | extractive | Velum template catalog |
+| `plaud.61` | Conversation Documentation Assistant for Separated Parents with Joint Custody | Velum | False | call | Velum template catalog |
+| `plaud.1-97bc435b35` | Conversation Note by Alnuni | Velum | False | call | Velum template catalog |
+| `plaud.89-d856e2ca5f` | Conversation Report 2 | Velum | False | meeting | Velum template catalog |
+| `plaud.74-14031a658d` | Conversation Tone, Roles & Contradiction Review) | Velum | False | meeting | Velum template catalog |
+| `plaud.62` | Conversation Tone, Roles & Contradiction Review) | Velum | False | call | Velum template catalog |
+| `plaud.4-e574debc63` | Corporate Education | Velum | False | education | Velum template catalog |
+| `plaud.2-5268b0524c` | Counseling Assistant ~ Jr Stylist | Velum | False | interview | Velum template catalog |
+| `plaud.8-d211fa2525` | court hearing arbitration/general jurisdiction | Velum | False | legal | Velum template catalog |
+| `plaud.9-4bd93d4189` | Court hearings AI transcription | Velum | False | legal | Velum template catalog |
+| `plaud.680` | Court Reporter With Time Markers | Velum | False | legal | Velum template catalog |
+| `plaud.0-e02ed11f9a` | Cover letter to professional colleagues | Velum | False | legal | Velum template catalog |
+| `plaud.293` | CPA – Tax Preparation + Tax Planning | Velum | False | financial | Velum template catalog |
+| `plaud.0-31793cb2c7` | CPR - client review meeting | Velum | False | financial | Velum template catalog |
+| `plaud.4-0b9699c8d1` | CPT 97155: Adaptive Behavior Treatment with Protocol Modification | Velum | False | consulting | Velum template catalog |
+| `plaud.69-d162adb1b7` | CPT 97156: Family Adaptive Behavior Treatment Guidance | Velum | False | consulting | Velum template catalog |
+| `plaud.1-eb3f2eac2d` | CPT 97157: Multiple-family Group Adaptive Behavior Treatment Guidance | Velum | False | consulting | Velum template catalog |
+| `plaud.0-f43b97396f` | CRE Broker / Investor Meetings | Velum | False | estate | Velum template catalog |
+| `plaud.0-1ed7524686` | Creator Frequency Scan | Velum | False | extractive | Velum template catalog |
+| `plaud.7-b03f54c284` | CRG PROPERTY WALKTHROUGH | Velum | False | estate | Velum template catalog |
+| `plaud.49-0e0bfc3a14` | Crime Report | Velum | False | legal | Velum template catalog |
+| `plaud.1-575fe899f8` | Criminal Conference (Charge Instructions) | Velum | False | legal | Velum template catalog |
+| `plaud.6-c14dc190ba` | Criminal Defense Consult – Strategy & Promise | Velum | False | legal | Velum template catalog |
+| `plaud.20-afef0fb012` | Criminal Hearing Synthesizer | Velum | False | legal | Velum template catalog |
+| `plaud.5-62c8aea38a` | Criminal Investigation Interviews | Velum | False | interview | Velum template catalog |
+| `plaud.47-454d75ae19` | Criminal Law Assistant | Velum | False | legal | Velum template catalog |
+| `plaud.41-b940fa241a` | CRIMINAL LEGAL ADVISOR | Velum | False | legal | Velum template catalog |
+| `plaud.0-231ff5e917` | Critical Path - NHC | Velum | False | estate | Velum template catalog |
+| `plaud.1-28ab400823` | CRM Notes "SITUATION TODAY" | Velum | False | sales | Velum template catalog |
+| `plaud.22-2c9bd1fad8` | CRM template | Velum | False | it | Velum template catalog |
+| `plaud.23-426477c0a2` | Crush's 1:1 Executive Coaching Template | Velum | False | call | Velum template catalog |
+| `plaud.0-76a4f69af4` | CSE WNR | Velum | False | meeting | Velum template catalog |
+| `plaud.43-a40888d476` | Custom HIGH-YIELD FLASHCARDS | Velum | False | education | Velum template catalog |
+| `plaud.68-cbccaab230` | Custom Meeting Summary v.1.0.1 | Velum | False | meeting | Velum template catalog |
+| `plaud.1-8204f3dce8` | Customer conversation outline | Velum | False | financial | Velum template catalog |
+| `plaud.9-bbd0374eec` | Customer Meeting Template | Velum | False | sales | Velum template catalog |
+| `plaud.2-a45bafab1a` | CUSTOMER NOTE + FOLLOW-UP TEMPLATE | Velum | False | sales | Velum template catalog |
+| `plaud.0-08f470e948` | Customer Requirements, Product/Service Negotiation Summary v0.2 by Astra | Velum | False | sales | Velum template catalog |
+| `plaud.6-5cd7ebc28f` | Customer Service Template | Velum | False | estate | Velum template catalog |
+| `plaud.10-e569503f59` | CWI MASTER STUDY | Velum | False | education | Velum template catalog |
+| `plaud.47-e5150d8698` | Cybersecurity Audit - Detailed Transcript | Velum | False | interview | Velum template catalog |
+| `plaud.1-be7798d088` | CZ Brainstorming — concise (quick bullet-point writing) | Velum | False | interview | Velum template catalog |
+| `plaud.19-1e4b300dcf` | D&D Session | Velum | False | general | Velum template catalog |
+| `plaud.24-ccd2098f62` | Daily - Development | Velum | False | it | Velum template catalog |
+| `plaud.11-08732f9163` | Daily Calendar Notes | Velum | False | extractive | Velum template catalog |
+| `plaud.4-78e974ee66` | Daily Documentation Log | Velum | False | general | Velum template catalog |
+| `plaud.160-117c01d809` | Daily Engineering Stand-up | Velum | False | it | Velum template catalog |
+| `plaud.194-e7df3a1b7e` | Daily Insights | Velum | False | extractive | Velum template catalog |
+| `plaud.0-c59b3ded06` | Daily Management Shift | Velum | False | extractive | Velum template catalog |
+| `plaud.4-28f7ede2bf` | Daily Manager Report | Velum | False | sales | Velum template catalog |
+| `plaud.6-e6432858c4` | Daily scrum | Velum | False | it | Velum template catalog |
+| `plaud.13-f880a93d20` | Daily Scrum | Velum | False | it | Velum template catalog |
+| `plaud.4-2f60814ab8` | Daily Standup | Velum | False | estate | Velum template catalog |
+| `plaud.76-5107e40880` | Daily Write up | Velum | False | general | Velum template catalog |
+| `plaud.8-d8edb53992` | Daniel G | Velum | False | sales | Velum template catalog |
+| `plaud.15-083e3207b8` | Dashboard Creation (Website) | Velum | False | it | Velum template catalog |
+| `plaud.10-b9a341c02f` | Data Discovery | Velum | False | it | Velum template catalog |
+| `plaud.12574` | DayLog | Velum | False | extractive | Velum template catalog |
+| `plaud.0-9551d02eb0` | DAYZEE CREATOR FREQUENCY SCAN - April 5th, 2026 | Velum | False | it | Velum template catalog |
+| `plaud.3-2338431a3c` | DBM SV | Velum | False | construction | Velum template catalog |
+| `plaud.1-0140a4df40` | DBT | Velum | False | medical | Velum template catalog |
+| `plaud.132-556bd02ef6` | Deal Analysis | Velum | False | financial | Velum template catalog |
+| `plaud.3-af7693bb5f` | Debrief | Velum | False | meeting | Velum template catalog |
+| `plaud.5-511ce091c4` | Debt-Side Asset Management – Client & Prospect Meetings | Velum | False | estate | Velum template catalog |
+| `plaud.1-d81b82a4f6` | DECISION DOCUMENTATION (ADR) | Velum | False | it | Velum template catalog |
+| `plaud.14-8b3ad6f348` | Decision Framing Note | Velum | False | consulting | Velum template catalog |
+| `plaud.10-120778ac0f` | Decision Index | Velum | False | extractive | Velum template catalog |
+| `plaud.44-e6629e71ed` | Deconstruct Lecture Content into Multiple Uses | Velum | False | sales | Velum template catalog |
+| `plaud.83-0b2e59fcff` | Deep Empathy | Velum | False | speech | Velum template catalog |
+| `plaud.556` | deep learning | Velum | False | education | Velum template catalog |
+| `plaud.103974` | Deeply detailed Speech details, quotes and concepts | Velum | False | speech | Velum template catalog |
+| `plaud.17-589032603f` | Dench Prompt v3 | Velum | False | sales | Velum template catalog |
+| `plaud.0-14d3f60a2b` | Dental Consult | Velum | False | consulting | Velum template catalog |
+| `plaud.51-1567abd620` | Dental Consultant (Adult Orthodontics) Sales Coach | Velum | False | medical | Velum template catalog |
+| `plaud.177-63140bd29c` | Dental Dx&Tx plan: panoramic findings | Velum | False | medical | Velum template catalog |
+| `plaud.0-2e686d5a37` | denture consult | Velum | False | consulting | Velum template catalog |
+| `plaud.0-4917c9c0bc` | Dep report | Velum | False | legal | Velum template catalog |
+| `plaud.1459-fca10ec674` | Depo Summary | Velum | False | legal | Velum template catalog |
+| `plaud.92-6fac833bad` | Deposition (Personal Injury) | Velum | False | legal | Velum template catalog |
+| `plaud.92-720d3c2912` | Deposition Summary, Insights & Action Plan: Capture / Analyze / Strategize | Velum | False | legal | Velum template catalog |
+| `plaud.4-10c02c2ad5` | Design Meeting Summary | Velum | False | general | Velum template catalog |
+| `plaud.1-a56daa7047` | Design Meeting Summary | Velum | False | call | Velum template catalog |
+| `plaud.0-b6145fc5a8` | Detailed clinical history for reporting to insurers | Velum | False | medical | Velum template catalog |
+| `plaud.18-c50060f651` | Detailed Factual Multi-Pass v.2 | Velum | False | construction | Velum template catalog |
+| `plaud.8-c39d130cc9` | Detailed Hierarchical Meeting Minutes Prompt | Velum | False | meeting | Velum template catalog |
+| `plaud.39-1da9cfce72` | Detailed Meeting Summary (Information Security) | Velum | False | it | Velum template catalog |
+| `plaud.178-0b065bb278` | detailed notes on reading | Velum | False | extractive | Velum template catalog |
+| `plaud.23-f215721600` | Detailed Room Condition Report | Velum | False | estate | Velum template catalog |
+| `plaud.629` | Detailed Study | Velum | False | education | Velum template catalog |
+| `plaud.12-d778ff71b7` | Detailed Summary | Velum | False | general | Velum template catalog |
+| `plaud.30-ed4b9731a7` | Detection of instincts in the Enneagram | Velum | False | consulting | Velum template catalog |
+| `plaud.7-2e832cef67` | Detection of Operational Risks, Manipulation and Recommendations | Velum | False | consulting | Velum template catalog |
+| `plaud.0-a4e3b4986b` | DETECTIVE INTELLIGENCE ANALYSIS | Velum | False | general | Velum template catalog |
+| `plaud.0-17f41e17bf` | Development & Growth Focus 1:1 | Velum | False | meeting | Velum template catalog |
+| `plaud.0-798881d879` | DevLearn Session | Velum | False | extractive | Velum template catalog |
+| `plaud.5-e930fb720c` | Diagnosis and Work Order | Velum | False | extractive | Velum template catalog |
+| `plaud.6-6f67847f61` | Didactic and academic note material for Law and Legal Sciences studies. | Velum | False | education | Velum template catalog |
+| `plaud.20-7d1b5a60ca` | Digital Forensics Intake & Examination Summary | Velum | False | it | Velum template catalog |
+| `plaud.2-0b990018d1` | Digital Marketing Lecture - MKT 324, McGinnis | Velum | False | speech | Velum template catalog |
+| `plaud.23-df6a20fb6f` | Diligence Summary | Velum | False | it | Velum template catalog |
+| `plaud.7-f5f86f23ab` | DIMITRIADIS | Velum | False | estate | Velum template catalog |
+| `plaud.1-e51ef612a4` | DIPA Sales Robot Chat Evaluator | Velum | False | call | Velum template catalog |
+| `plaud.1-69a91f02de` | Director MTG | Velum | False | estate | Velum template catalog |
+| `plaud.2-9889e42c9e` | Director of Construction Summary | Velum | False | construction | Velum template catalog |
+| `plaud.2-fdf286008d` | Directors Meeting | Velum | False | financial | Velum template catalog |
+| `plaud.384` | Disaster Recovery Inspection Report | Velum | False | construction | Velum template catalog |
+| `plaud.0-7eb87aeb55` | Disco call 1 | Velum | False | call | Velum template catalog |
+| `plaud.6-4ede00beb6` | Discovery Call | Velum | False | call | Velum template catalog |
+| `plaud.60-50ca30de4d` | Discovery Model | Velum | False | sales | Velum template catalog |
+| `plaud.31239` | Discussing with Experts | Velum | False | consulting | Velum template catalog |
+| `plaud.143-16e534deec` | divorce summary | Velum | False | legal | Velum template catalog |
+| `plaud.0-6dae8ee3d3` | DL Energy Consultation | Velum | False | construction | Velum template catalog |
+| `plaud.0-0266e44b4d` | DMFLEX — Production Meeting | Minutes + Actions + Deadlines | Velum | False | meeting | Velum template catalog |
+| `plaud.2-a7d8bdb035` | Doctrinal Legal Summary Master’s in Criminal Law | Velum | False | legal | Velum template catalog |
+| `plaud.0-33dab82c3f` | Domestic Violence Adult Protection Case Opening Assessment Form | Velum | False | interview | Velum template catalog |
+| `plaud.0-40f0b21727` | DONNA | Velum | False | estate | Velum template catalog |
+| `plaud.1-1ca0f0de97` | Door to door | Velum | False | sales | Velum template catalog |
+| `plaud.327` | Dr Collotte's Surgery Consultation | Velum | False | extractive | Velum template catalog |
+| `plaud.17-c0d1c2e9e1` | Dr. Argos - Criminal Law | Velum | False | legal | Velum template catalog |
+| `plaud.17-f25c9966ca` | Dr. Chen Yu-Chieh Orthopedics 1151025 Doctor-Patient Communication Practice | Velum | False | medical | Velum template catalog |
+| `plaud.3330` | Dr. Chen Yujie Orthopedic Clinic Doctor-Patient Communication Mentor | Velum | False | consulting | Velum template catalog |
+| `plaud.1-8f6c2977e2` | Drafting proposal for renovations | Velum | False | general | Velum template catalog |
+| `plaud.9-8132c0c146` | Dream | Velum | False | speech | Velum template catalog |
+| `plaud.12-e4b6c69255` | Dream Tending | Velum | False | general | Velum template catalog |
+| `plaud.2-eb385cb778` | Drone Flight Checklist | Velum | False | extractive | Velum template catalog |
+| `plaud.0-1ebb2103de` | Drone Tuning Test Record Template | Velum | False | construction | Velum template catalog |
+| `plaud.2-15a06d5ccd` | DT | Velum | False | sales | Velum template catalog |
+| `plaud.2-339682629e` | Due Diligence Report | Velum | False | it | Velum template catalog |
+| `plaud.51-703b06cb0c` | Dungeons & Dragons Campaign Chronicle | Velum | False | general | Velum template catalog |
+| `plaud.0-e2db94ecfd` | DUQUE PLASTIC SURGERY | Velum | False | medical | Velum template catalog |
+| `plaud.4-970445693b` | EAV LECTURES | Velum | False | education | Velum template catalog |
+| `plaud.0-d7ad75c3e9` | EDHQ | Velum | False | interview | Velum template catalog |
+| `plaud.1-06a449ef9a` | Editorial Meeting | Velum | False | interview | Velum template catalog |
+| `plaud.1-59cad2de0d` | Educatum PHAW 1st Review Outcome | Velum | False | general | Velum template catalog |
+| `plaud.1-347b0ad6d1` | Educatum PHAW 2nd Review Outcome | Velum | False | general | Velum template catalog |
+| `plaud.1-45044cab4a` | Educatum PHAW Final Review Outcome | Velum | False | general | Velum template catalog |
+| `plaud.8-40ea1897e5` | Educatum Stage 1 Outcome | Velum | False | general | Velum template catalog |
+| `plaud.1-f419e2b28a` | EG Client Meeting Record | Velum | False | general | Velum template catalog |
+| `plaud.0-4ab2066490` | EHS | Velum | False | consulting | Velum template catalog |
+| `plaud.6-01a9153535` | Electrical Client Call Intake and Job Notes | Velum | False | construction | Velum template catalog |
+| `plaud.23-c4d9ee1682` | Electrical Estimate Walk-Through | Velum | False | construction | Velum template catalog |
+| `plaud.0-7c9b1123a1` | electrical project management | Velum | False | construction | Velum template catalog |
+| `plaud.30-0c601a8120` | Electrical Works Intake | Velum | False | sales | Velum template catalog |
+| `plaud.880` | Electrum Ignite - SalesScore Auto-Detect AI | Velum | False | sales | Velum template catalog |
+| `plaud.1333` | Elementary Classroom Analysis | Velum | False | education | Velum template catalog |
+| `plaud.1-c40e37dd4c` | Emergency Medical Care 210797 | Velum | False | medical | Velum template catalog |
+| `plaud.1-3428b1d300` | Emergency medicine clinical observation | Velum | False | medical | Velum template catalog |
+| `plaud.280` | Employee consultation with HR | Velum | False | consulting | Velum template catalog |
+| `plaud.115-a4965eabb3` | Employee Relations Investigation Summary | Velum | False | interview | Velum template catalog |
+| `plaud.195-9536234e60` | Employment Law Intake Form | Velum | False | legal | Velum template catalog |
+| `plaud.1-bbcbe4a248` | Engineering Assistant | Velum | False | construction | Velum template catalog |
+| `plaud.381-7712563f61` | English Lecture | Velum | False | speech | Velum template catalog |
+| `plaud.7-5d10a3e479` | English speaking coach | Velum | False | speech | Velum template catalog |
+| `plaud.0-f6fe4cedb6` | Enterprise Account Manager: Customer Session Recording Template | Velum | False | sales | Velum template catalog |
+| `plaud.58-b829323ed0` | Enterprise Risk Manager | Velum | False | it | Velum template catalog |
+| `plaud.4-fd6def7c7d` | Enterprise Sales Template | Velum | False | sales | Velum template catalog |
+| `plaud.8-4715a0056a` | EP Design Template | Velum | False | legal | Velum template catalog |
+| `plaud.3-a1e2f591b7` | EP Intake 1 | Velum | False | legal | Velum template catalog |
+| `plaud.2-07febcf3b9` | EP Intake V2_JB | Velum | False | legal | Velum template catalog |
+| `plaud.4-dcc0621223` | EP Signing Meeting Analysi | Velum | False | legal | Velum template catalog |
+| `plaud.0-cad8a3a345` | Equipment Diagnostic Log | Velum | False | construction | Velum template catalog |
+| `plaud.0-3c3978b766` | ERRUTAKI - Quick | Velum | False | call | Velum template catalog |
+| `plaud.328` | ESL Personal Lesson Report | Velum | False | education | Velum template catalog |
+| `plaud.61-7ed647a91b` | Estate Plan Design Meeting - Notes in Outline format. | Velum | False | legal | Velum template catalog |
+| `plaud.34-c8f2dbf167` | Estate Planning intake meeting | Velum | False | legal | Velum template catalog |
+| `plaud.31-619b6bd8c6` | Estate Planning Summary for Married Couple Trust | Velum | False | legal | Velum template catalog |
+| `plaud.40-d6faee45cb` | Ethics Committee | Velum | False | interview | Velum template catalog |
+| `plaud.0-49693f926c` | Evaluation Support Tools | Velum | False | general | Velum template catalog |
+| `plaud.0-dcf5365e81` | Event Stamp Card & Activity Roadmap Summary | Velum | False | speech | Velum template catalog |
+| `plaud.6-5156b123c6` | Everyday Companion Seed | Velum | False | it | Velum template catalog |
+| `plaud.0-26ee23cb54` | Exceptional Roofing Key Person Meeting | Velum | False | sales | Velum template catalog |
+| `plaud.2-9570a7fd80` | EXECUTIVE ASSISTANT - MEETING SUMMARY | Velum | False | consulting | Velum template catalog |
+| `plaud.133` | executive level chapter summary | Velum | False | consulting | Velum template catalog |
+| `plaud.28-006400ae02` | Executive Meeting | Velum | False | consulting | Velum template catalog |
+| `plaud.557-8894a486fc` | Executive Strategic Summary | Leadership Team | Velum | False | meeting | Velum template catalog |
+| `plaud.0-3070ef5a4c` | Exhibition setting | Velum | False | extractive | Velum template catalog |
+| `plaud.0-365035dcf5` | Existing Leads - New Market | Velum | False | sales | Velum template catalog |
+| `plaud.21-3067609c8e` | Expert Audit for Unhealthy Conditions | Velum | False | interview | Velum template catalog |
+| `plaud.638` | EXPERT OPINION CD1 | Velum | False | construction | Velum template catalog |
+| `plaud.1421` | Expert Report | Velum | False | construction | Velum template catalog |
+| `plaud.28-1acdcfbd50` | EXPERT REPORT | Velum | False | it | Velum template catalog |
+| `plaud.149-b783130a00` | Expertise Report | Velum | False | construction | Velum template catalog |
+| `plaud.0-6ff7c476b5` | External Lecture Evaluation | Velum | False | speech | Velum template catalog |
+| `plaud.1-e0059e6b47` | External Manager of a Construction Company | Velum | False | estate | Velum template catalog |
+| `plaud.0-e2cc8792ed` | Extract Company Logo Information | Velum | False | estate | Velum template catalog |
+| `plaud.0-11fef6b945` | Extract Idea of Meeting | Velum | False | consulting | Velum template catalog |
+| `plaud.0-a8bc25a9cc` | Fact Finder | Velum | False | financial | Velum template catalog |
+| `plaud.1-3c0231ed64` | Factual Job-Site / Construction Meetings_v.5 | Velum | False | construction | Velum template catalog |
+| `plaud.1-29b5a9464e` | Family Assistance | Velum | False | consulting | Velum template catalog |
+| `plaud.54-9427892d40` | Family Function Assessment Structured Summary | Velum | False | extractive | Velum template catalog |
+| `plaud.42-61363801fd` | Family Law Attorney – Call / Meeting / Mediation | Velum | False | general | Velum template catalog |
+| `plaud.4-e9a99d0e27` | Family Law – Financial Expert Initial Meeting Valuation Engagement | Velum | False | financial | Velum template catalog |
+| `plaud.7` | Family Law: Initial Inquiry Client to Financial Professional | Velum | False | call | Velum template catalog |
+| `plaud.116` | Family Mediator | Velum | False | consulting | Velum template catalog |
+| `plaud.3-d618d60976` | Family Story Extraction — v1 | Velum | False | interview | Velum template catalog |
+| `plaud.0-016635b660` | FBI FD-302 | Velum | False | interview | Velum template catalog |
+| `plaud.0-4d76bacfec` | FELA Toxic Exposure Summary | Velum | False | legal | Velum template catalog |
+| `plaud.134-17b6a141ea` | Feminist Communications Analysis | Velum | False | general | Velum template catalog |
+| `plaud.1-66db01e51f` | Festival Program Presentation | Velum | False | speech | Velum template catalog |
+| `plaud.1-37ae15b490` | FIA3 Pro BTP Collection | Velum | False | interview | Velum template catalog |
+| `plaud.545` | Fiction Writer | Velum | False | extractive | Velum template catalog |
+| `plaud.39-192386305e` | Fiction Writer - Anticipation and horror. | Velum | False | extractive | Velum template catalog |
+| `plaud.23-dd2bede6ac` | Field - Reconnaissance Trip | Velum | False | construction | Velum template catalog |
+| `plaud.0-01379424d9` | Field Inspection Report – Pest & Lawn | Velum | False | extractive | Velum template catalog |
+| `plaud.9-6296b0c6ad` | Field Sheet v2 | Velum | False | estate | Velum template catalog |
+| `plaud.28-e70dd41963` | Fin4She Summit | Velum | False | speech | Velum template catalog |
+| `plaud.1-cb028122e0` | Final Measure 8.27.25 | Velum | False | construction | Velum template catalog |
+| `plaud.36-dc2156b1ce` | Financial Adviser Client Review Checklist | Velum | False | financial | Velum template catalog |
+| `plaud.5-e51ffb5701` | Financial Advisor (K2026) | Velum | False | financial | Velum template catalog |
+| `plaud.439` | Financial Meeting | Velum | False | financial | Velum template catalog |
+| `plaud.1431` | Financial Planning Client Meeting - Summary, Analysis & Follow-Up Email | Velum | False | financial | Velum template catalog |
+| `plaud.18-4148ea686b` | Financial Planning Meeting Template | Velum | False | financial | Velum template catalog |
+| `plaud.197-a1a28938b0` | Financial Review Meeting Summary | Velum | False | financial | Velum template catalog |
+| `plaud.1-167f6629c3` | Fire Service Decision Log | Velum | False | extractive | Velum template catalog |
+| `plaud.0-3e345e3ebd` | first orthodontic visit | Velum | False | medical | Velum template catalog |
+| `plaud.1-f5d0c50104` | First-time consult | Velum | False | medical | Velum template catalog |
+| `plaud.0-53b8655f74` | Fisher Dugmore Financial test | Velum | False | financial | Velum template catalog |
+| `plaud.171-96165ce72a` | Fitness Journal & Performance Tracking | Velum | False | extractive | Velum template catalog |
+| `plaud.0-0562242d6d` | Flash AAR Report | Velum | False | consulting | Velum template catalog |
+| `plaud.0-dcb3bc78f3` | Flight Plan - isaac | Velum | False | sales | Velum template catalog |
+| `plaud.17-4029a7e11b` | FlowBee | Call Summary | Velum | False | call | Velum template catalog |
+| `plaud.0-b1bb67c00d` | Flushing Protocol Thermal Disinfection | Velum | False | it | Velum template catalog |
+| `plaud.3-67efadab72` | Follow-up HZT | Velum | False | consulting | Velum template catalog |
+| `plaud.138-2bfe674f6c` | Follow-up Notes | Velum | False | medical | Velum template catalog |
+| `plaud.105-870ad5ba68` | For Facility Interview Survey | Velum | False | extractive | Velum template catalog |
+| `plaud.134-851f1fa09e` | For Public Election Speech | Velum | False | speech | Velum template catalog |
+| `plaud.3-6b014850a1` | For Real Estate Agent Visits | Velum | False | estate | Velum template catalog |
+| `plaud.13-22651010fb` | For Teacher's Lecture Organization | Velum | False | education | Velum template catalog |
+| `plaud.2691` | foreign language class | Velum | False | education | Velum template catalog |
+| `plaud.8-c3ff10d31a` | Forensic Evidence Transcript Template – Exhaustive Record for Legal & Safety Use | Velum | False | legal | Velum template catalog |
+| `plaud.2-17517fddf0` | FORENSIC EXAMINATION – PSYCHOPEDAGOGY AND PEDAGOGY - DR REGINALDO | Velum | False | medical | Velum template catalog |
+| `plaud.8-8a6dae80a8` | Formal Committee Meeting Minutes | Velum | False | meeting | Velum template catalog |
+| `plaud.12-d285c8a472` | Formal Engineering Meeting Minutes Prompt | Velum | False | construction | Velum template catalog |
+| `plaud.350-6336cc960c` | Foundations of Nursing Lecture | Velum | False | speech | Velum template catalog |
+| `plaud.11-9d37f093ea` | Foxx IPC Expo 2026 | Velum | False | general | Velum template catalog |
+| `plaud.3-dd23a5fa20` | Franky | YouTube Video Tutorials | Velum | False | speech | Velum template catalog |
+| `plaud.7-598df41cce` | From an Investment Bank's Perspective | Velum | False | financial | Velum template catalog |
+| `plaud.0-b20fe579ab` | FSP first draft | Velum | False | general | Velum template catalog |
+| `plaud.2-da468d4d4b` | Full Conversation – Clear Read | Velum | False | general | Velum template catalog |
+| `plaud.241` | Full Verified Transcript | Velum | False | extractive | Velum template catalog |
+| `plaud.0-ad32db5da8` | Function Manual Interviews for PROCESS DIGITIZATION - DIGITAL TRANSFORMATION | Velum | False | interview | Velum template catalog |
+| `plaud.20-cf9a151cce` | Fund Sales | Velum | False | financial | Velum template catalog |
+| `plaud.0-72a0638885` | FWP Debt Elimination Form Template | Velum | False | financial | Velum template catalog |
+| `plaud.2-ff0490370c` | FWP Fact Finder | Velum | False | financial | Velum template catalog |
+| `plaud.12-09f4f6bde0` | GEMBA WALK ANALYSIS | Velum | False | consulting | Velum template catalog |
+| `plaud.9` | Generic Call Summary | Velum | False | call | Velum template catalog |
+| `plaud.0-6d390ae09e` | GFS — Sales Consultation Analysis USE THIS ONE | Velum | False | sales | Velum template catalog |
+| `plaud.1-8394ed6498` | Github Issue Bug Report | Velum | False | it | Velum template catalog |
+| `plaud.7-8a929e3d83` | GOB CHEM1123 Lecture | Velum | False | education | Velum template catalog |
+| `plaud.17-e3ee99f73a` | Godly notes | Velum | False | education | Velum template catalog |
+| `plaud.97-5ff35bfe64` | GPT PA | Velum | False | consulting | Velum template catalog |
+| `plaud.51-8b45867516` | GPT1 | Velum | False | interview | Velum template catalog |
+| `plaud.0-dbd25e9471` | Grade Summary | Velum | False | meeting | Velum template catalog |
+| `plaud.7-7a3deb70c4` | Graduate School Lecture Notes (English Lecture to Korean) | Velum | False | education | Velum template catalog |
+| `plaud.0-7894223021` | Gregory | Velum | False | speech | Velum template catalog |
+| `plaud.60-8d9f1fe562` | Grey Rock Gaurdian | Velum | False | legal | Velum template catalog |
+| `plaud.4-0a12b78cff` | Guardian Patrol Report Template New | Velum | False | consulting | Velum template catalog |
+| `plaud.0-dccc1c9b51` | Guardianship of a ward or proposed ward | Velum | False | legal | Velum template catalog |
+| `plaud.1-4ba4b9f516` | GYA | Payroll 360: Updates + PILA + Electronic Payroll | Velum | False | consulting | Velum template catalog |
+| `plaud.9-9493a3933e` | Gynecology and Obstetrics Medical Consultations | Velum | False | medical | Velum template catalog |
+| `plaud.0-dd0dcb1fe4` | Happiness Management Index | Velum | False | general | Velum template catalog |
+| `plaud.0-7f6876a6b1` | HCPN Finishing Cohort Assessments | Velum | False | interview | Velum template catalog |
+| `plaud.0-7c7ca539db` | Hearing | Velum | False | meeting | Velum template catalog |
+| `plaud.46-2467661f18` | Helpdesk - Onsite troubleshooting notes | Velum | False | it | Velum template catalog |
+| `plaud.2-42ec80c7d7` | Hernando's Site Diary | Velum | False | it | Velum template catalog |
+| `plaud.3-f2290e6a20` | Hierarchical Defect Report Summary | Velum | False | consulting | Velum template catalog |
+| `plaud.0-d03cbd10cc` | High-Cost Medical Equipment Purchase Application Prompt | Velum | False | medical | Velum template catalog |
+| `plaud.108-89b0ba1a65` | Hiring Profile | Velum | False | interview | Velum template catalog |
+| `plaud.1-3924117167` | History | Velum | False | extractive | Velum template catalog |
+| `plaud.0-40281a46ff` | HMC Project MOM Generator — Healthcare Projects | Velum | False | construction | Velum template catalog |
+| `plaud.1-fb10a3503e` | Hoel Roofing Inspection Report | Velum | False | construction | Velum template catalog |
+| `plaud.1-4da106bb8c` | Home Seller Closing Meeting | Velum | False | estate | Velum template catalog |
+| `plaud.139-0d4caa78b3` | Home Services Sales Coach | Velum | False | construction | Velum template catalog |
+| `plaud.11-34c009e2d0` | Home Services Sales Process | Velum | False | construction | Velum template catalog |
+| `plaud.0-ba60befbc5` | Home Supervision | Velum | False | extractive | Velum template catalog |
+| `plaud.0-401c3f2ab4` | HOMILETIC ANALYSIS AND PREACHING RESOURCES | Velum | False | speech | Velum template catalog |
+| `plaud.109-428c4f7404` | HOPCoPilot Gemba Walk Agent using the 4Ds to identify waste in operations | Velum | False | financial | Velum template catalog |
+| `plaud.7-e758c793ab` | Hot Debrief New Version | Velum | False | extractive | Velum template catalog |
+| `plaud.1-23fd6dc44c` | How to approach personal-professional life in a serene and human 4.0 way | Velum | False | general | Velum template catalog |
+| `plaud.8-32f02735bf` | How to face personal and professional life in a serene and human way 5.0 | Velum | False | general | Velum template catalog |
+| `plaud.3-7e968e3f93` | HR Interviews | Velum | False | interview | Velum template catalog |
+| `plaud.4-f71f6f3796` | HRAN Dermatology Evolution | Velum | False | education | Velum template catalog |
+| `plaud.8-f0ffb32557` | HVA/PPG Buy Call & Buy Appointment Coach | Velum | False | sales | Velum template catalog |
+| `plaud.1-b33b7a82d0` | HVAC and building equipment | Velum | False | construction | Velum template catalog |
+| `plaud.15-c68e30a763` | HVAC COMPANY REVIEW MEETING MASTER CAPTURE ENGINE | Velum | False | construction | Velum template catalog |
+| `plaud.3-85031daa22` | HVAC COMPANY WORK ORDER SUMMARY ENGINE | Velum | False | construction | Velum template catalog |
+| `plaud.1-90a7654426` | HVAC Estimate Creators | Velum | False | construction | Velum template catalog |
+| `plaud.1-cca8bff6c0` | IaG Job Note | Velum | False | it | Velum template catalog |
+| `plaud.1-b14493691d` | IBTK Construction Report | Velum | False | construction | Velum template catalog |
+| `plaud.0-bad57b8035` | ICU shift handoff | Velum | False | medical | Velum template catalog |
+| `plaud.41-67d374135d` | Idea Capture Overview | Velum | False | general | Velum template catalog |
+| `plaud.20-9b4085bada` | Idea for my business ecosystem | Velum | False | extractive | Velum template catalog |
+| `plaud.0-a584daa2b9` | IDEIA- Labor Technical Expert Report (Unhealthiness / NR-15) | Velum | False | consulting | Velum template catalog |
+| `plaud.107-d5dd0ffda4` | Immersion | Velum | False | speech | Velum template catalog |
+| `plaud.407-77535aed7a` | Immigration Consultation | Velum | False | legal | Velum template catalog |
+| `plaud.750-7ffede7bb0` | Immigration EOIR-USCIS 2026 Intake | Velum | False | legal | Velum template catalog |
+| `plaud.0-8ba124a251` | In-depth Diagnostic Sheets | Velum | False | general | Velum template catalog |
+| `plaud.1947` | IN-DEPTH NOTES FOR STUDENTS 📚 | Velum | False | education | Velum template catalog |
+| `plaud.182` | In-depth summary | Velum | False | education | Velum template catalog |
+| `plaud.3-15fb9c5673` | In-depth summary of communication dialogue. | Velum | False | general | Velum template catalog |
+| `plaud.1-e167bf3a24` | In-Person ver2.0 | Velum | False | meeting | Velum template catalog |
+| `plaud.0-d495fe63c8` | Incorporation of Terms Related to the Serious Accident Punishment Act | Velum | False | legal | Velum template catalog |
+| `plaud.232-165f0acc5d` | Independent Insurance Inspection | Velum | False | construction | Velum template catalog |
+| `plaud.284` | Individual Consultation | Velum | False | consulting | Velum template catalog |
+| `plaud.27-0fa2e6c512` | Individual Focused Growth Coach │ By Robin Allard, LMFT | Velum | False | extractive | Velum template catalog |
+| `plaud.9-37bb6192b8` | Indoor Environmental Consulting Report | Velum | False | construction | Velum template catalog |
+| `plaud.172-8684a343a7` | Industrial physician interview (mental health return to work) | Velum | False | medical | Velum template catalog |
+| `plaud.2-fccb0dc924` | Industrial SME Diagnosis – Professional Report | Velum | False | consulting | Velum template catalog |
+| `plaud.6-d5c1ca59e5` | Industry Briefing | Detailed Intelligence | Velum | False | construction | Velum template catalog |
+| `plaud.0-1582620624` | Infant Child FTF In Home (Child Welfare Case Management Narrative) | Velum | False | interview | Velum template catalog |
+| `plaud.1325` | Influence & Persuasion Analysis | Velum | False | extractive | Velum template catalog |
+| `plaud.91-fc7f0ee5fd` | Informal Conversation | Velum | False | extractive | Velum template catalog |
+| `plaud.22-730ecf1e05` | Infosec Adversarial Analysis | Velum | False | it | Velum template catalog |
+| `plaud.23-c9567d1558` | Initial Client Conference Notes | Velum | False | legal | Velum template catalog |
+| `plaud.1-3868a9127f` | Initial Client Meeting (Legal Case/Litigation Client) - English Law | Velum | False | legal | Velum template catalog |
+| `plaud.80-d172e45755` | Initial Consult - Family Law | Velum | False | legal | Velum template catalog |
+| `plaud.0-10c8742d15` | Initial Data Description - AN | Velum | False | interview | Velum template catalog |
+| `plaud.6-b4ee1989d0` | Initial Diagnosis | Velum | False | medical | Velum template catalog |
+| `plaud.6-da6d60e8bb` | Initial Estate Planning Consult | Velum | False | consulting | Velum template catalog |
+| `plaud.0-906c885ee5` | INITIAL INTERVIEW | Velum | False | interview | Velum template catalog |
+| `plaud.5-a187a603e4` | Initial Psychiatric Evaluation | Velum | False | consulting | Velum template catalog |
+| `plaud.19-9f1268307e` | Injuries - Record | Velum | False | extractive | Velum template catalog |
+| `plaud.30-a0ee63b12a` | Inspection Notes | Velum | False | construction | Velum template catalog |
+| `plaud.31-7a150f5609` | Inspections | Velum | False | estate | Velum template catalog |
+| `plaud.2-1f7f1ee6c3` | INSTRUCTIONS - GOVERNANCE OFFICER | Velum | False | consulting | Velum template catalog |
+| `plaud.29-e2f69cfe39` | Insurance Adjuster Roof Inspection | Velum | False | construction | Velum template catalog |
+| `plaud.2-8eba0f181e` | Insurance Broker - Commercial | Velum | False | sales | Velum template catalog |
+| `plaud.1502` | Insurance | Face-to-Face | Solicitation History | Velum | False | financial | Velum template catalog |
+| `plaud.21-7c9547984c` | Insurance | In-person | Meeting Minutes (No Solicitation) | Velum | False | financial | Velum template catalog |
+| `plaud.282-b8a4d997ab` | Insurance | Phone | Meeting Minutes (No Solicitation Activity) | Velum | False | financial | Velum template catalog |
+| `plaud.4-ff4bcf9b27` | Insurance | Web | Sales History | Velum | False | financial | Velum template catalog |
+| `plaud.1-b440715d8f` | INTAKE CALL Sheet Generator | Velum | False | call | Velum template catalog |
+| `plaud.14-fefa4682f9` | Integrated Automation (Korea, Japan) | Velum | False | extractive | Velum template catalog |
+| `plaud.1-1dcaeef27a` | Integrative Cancer Care Follow-Up Visit Note | Velum | False | medical | Velum template catalog |
+| `plaud.99-a8ca3297cf` | Interaction Trade Shows and Events (Marketing) | Velum | False | sales | Velum template catalog |
+| `plaud.13-d3357561b8` | Interactive Law Class | Velum | False | education | Velum template catalog |
+| `plaud.347-5f0c6097ff` | Interactive Visual Roadmap | Velum | False | it | Velum template catalog |
+| `plaud.24-f019c718e4` | interlocucao | Velum | False | interview | Velum template catalog |
+| `plaud.70-1418179c5a` | Intermittent/Discontinuous Therapy | Velum | False | interview | Velum template catalog |
+| `plaud.0-4840400bbe` | Internal | Velum | False | construction | Velum template catalog |
+| `plaud.17-ef3fbe8cf7` | Internal Audit Reporting | Velum | False | interview | Velum template catalog |
+| `plaud.4-72c1f4ddb0` | Internal legal Memorandum with direction | Velum | False | legal | Velum template catalog |
+| `plaud.6-5ca877d425` | Internal Ops & Team Performance Review | Velum | False | call | Velum template catalog |
+| `plaud.2-c050cf1cb1` | INTERNAL REPORT - legal consultation lawyer / client | Velum | False | consulting | Velum template catalog |
+| `plaud.5-f25086aa1d` | Internal Strategy Meeting | Velum | False | sales | Velum template catalog |
+| `plaud.73-46facf1f70` | Interpretation and Report | Velum | False | medical | Velum template catalog |
+| `plaud.2-ac3549dcba` | Intervener EAA Model | Velum | False | interview | Velum template catalog |
+| `plaud.73-26a937c4b8` | Interview Detailed Summary | Velum | False | sales | Velum template catalog |
+| `plaud.0-ab01375b9c` | Interview Filter - Consulting | Velum | False | interview | Velum template catalog |
+| `plaud.3-f4b90892a5` | interview informan | Velum | False | interview | Velum template catalog |
+| `plaud.457-a1d34e5312` | Interview Memo | Velum | False | legal | Velum template catalog |
+| `plaud.48-9699f9f8f9` | Interview Questionnaire for Organizational Diagnosis and Digital Maturity in SMEs | Velum | False | consulting | Velum template catalog |
+| `plaud.26-2cd3d36270` | Interview Record 2025/09/17 Revised | Velum | False | consulting | Velum template catalog |
+| `plaud.5-3d7f4bd3a3` | Interview Report | Velum | False | interview | Velum template catalog |
+| `plaud.0-d1049b5fea` | Interview Template | Velum | False | interview | Velum template catalog |
+| `plaud.9-1458e030dd` | INTERVIEW TEMPLATE WITH TIMESTAMPS | Velum | False | interview | Velum template catalog |
+| `plaud.0-640c8377bf` | Interview to investigate ADHD in a child | Velum | False | medical | Velum template catalog |
+| `plaud.15-2550a61ae0` | Interview with Heads | Velum | False | interview | Velum template catalog |
+| `plaud.0-08192c378f` | Interview with letterheads, time, and word cloud in bigrams and trigrams | Velum | False | interview | Velum template catalog |
+| `plaud.3-314863b959` | interview with the leader (in English) | Velum | False | consulting | Velum template catalog |
+| `plaud.923` | Introspective SubStack Blog Cleaner-Upper | Velum | False | extractive | Velum template catalog |
+| `plaud.85-ae9898cb57` | Investigative Supplement | Velum | False | interview | Velum template catalog |
+| `plaud.14-a7a5b4648a` | Investigative Supplement | Velum | False | legal | Velum template catalog |
+| `plaud.0-395e4f4715` | Investment [T->T] | Velum | False | financial | Velum template catalog |
+| `plaud.75-8ffd44574b` | Investment Fiduciary Committee Meeting Minutes | Velum | False | financial | Velum template catalog |
+| `plaud.124-a6f2756361` | Investment Project Discovery | Velum | False | financial | Velum template catalog |
+| `plaud.971` | Investment Research Meeting - Multi-scenario | Velum | False | financial | Velum template catalog |
+| `plaud.22-f437aa1843` | Investor Communication | Velum | False | financial | Velum template catalog |
+| `plaud.0-a9bea26ef5` | IQAr Department/Course Council Meeting Minutes | Velum | False | meeting | Velum template catalog |
+| `plaud.0-496068b376` | Ironworker Interview | Velum | False | construction | Velum template catalog |
+| `plaud.0-b1b05fea11` | ISMP Stakeholder Interview | Velum | False | consulting | Velum template catalog |
+| `plaud.1-ac884dbcfb` | ISTDP Supervision | Velum | False | medical | Velum template catalog |
+| `plaud.11` | IT Bussness Owner Calls | Velum | False | call | Velum template catalog |
+| `plaud.3-6dca74cf26` | IT Consulting - Strategy Session | Velum | False | it | Velum template catalog |
+| `plaud.37507` | IT Meeting | Velum | False | it | Velum template catalog |
+| `plaud.29-ff6b4895d4` | IT Minutes — Decisions, Actions, Owners | Velum | False | it | Velum template catalog |
+| `plaud.5-3eae519aba` | IT Product Meeting (Agro) | Velum | False | it | Velum template catalog |
+| `plaud.591-71f3316481` | IT Products Meeting Recorder | Velum | False | it | Velum template catalog |
+| `plaud.24-99f0bf96b8` | IT Tech Meeting Test | Velum | False | it | Velum template catalog |
+| `plaud.1-02c1c07f0b` | Jacob Alford - Defendant Driver/Corporate Rep Deposition | Velum | False | legal | Velum template catalog |
+| `plaud.90-41deb52dc8` | Jail calls | Velum | False | legal | Velum template catalog |
+| `plaud.0-d816ad10df` | Japanese Business Meeting Minutes (Summary Version) | Velum | False | general | Velum template catalog |
+| `plaud.0-f5f2742546` | JC meeting minutes | Velum | False | it | Velum template catalog |
+| `plaud.0-b1ec7b8271` | jhsjdhahdashdka | Velum | False | extractive | Velum template catalog |
+| `plaud.22-f8110fee04` | Jira summary | Velum | False | it | Velum template catalog |
+| `plaud.0-f01a4c4c92` | Job Call - Event Information | Velum | False | call | Velum template catalog |
+| `plaud.234-c751be976c` | Job Interview — 1st Round: Hiring Manager Screen (Candidate) | Velum | False | it | Velum template catalog |
+| `plaud.0-c0fbbb2f60` | Job Profile Alignment | Velum | False | interview | Velum template catalog |
+| `plaud.8-1d54f4c620` | Job Site Consultation | Velum | False | construction | Velum template catalog |
+| `plaud.2-dd235ca6c6` | Jongsma | Velum | False | sales | Velum template catalog |
+| `plaud.1-db1a3d9285` | JP TEMPLATE | Velum | False | call | Velum template catalog |
+| `plaud.9-402aa3c47d` | Judedude New Client Template | Velum | False | sales | Velum template catalog |
+| `plaud.1204` | judicial expertise | Velum | False | legal | Velum template catalog |
+| `plaud.0-e6316065b6` | Judicial Liquidation Report | Velum | False | legal | Velum template catalog |
+| `plaud.398` | Jungian Dream Interpretations | Velum | False | extractive | Velum template catalog |
+| `plaud.0-b6dc464570` | Junior Project Manager - 2nd Round Technical Interview Scorecard | Velum | False | interview | Velum template catalog |
+| `plaud.57` | KA-RÉ Quote | Velum | False | construction | Velum template catalog |
+| `plaud.149` | Key Person Meeting | Velum | False | construction | Velum template catalog |
+| `plaud.1-0c08ea64bf` | Kids' Fun Recap v1.0 | Velum | False | general | Velum template catalog |
+| `plaud.219-def2b1cc6c` | Knowledge Transfer | Velum | False | extractive | Velum template catalog |
+| `plaud.81-4c6eae30f6` | Knowledge Transfer & Documentation | Velum | False | it | Velum template catalog |
+| `plaud.39-0bc0c077db` | Kristhian Cavalcante | Velum | False | medical | Velum template catalog |
+| `plaud.0-78cc469b82` | KYC v2 | Velum | False | interview | Velum template catalog |
+| `plaud.9-1790d4f673` | Labor Expert Report | Velum | False | extractive | Velum template catalog |
+| `plaud.2-89f14f4234` | Land-e-Valuator | Velum | False | estate | Velum template catalog |
+| `plaud.129-9f35cfa817` | LASD Field Investigation | Velum | False | legal | Velum template catalog |
+| `plaud.0-542091249d` | LAST, FIRST: MM.DD.YY - Initial Consultation | Velum | False | legal | Velum template catalog |
+| `plaud.537-46329ed6be` | Law Enforcement Investigative Narrative Report | Velum | False | legal | Velum template catalog |
+| `plaud.201-cd98d51035` | Law School - NSL | Velum | False | legal | Velum template catalog |
+| `plaud.1429` | Law School Master Prompt outline | Velum | False | education | Velum template catalog |
+| `plaud.124-351d78a2e2` | law School Note-Taking Prompt (Master Prompt) | Velum | False | legal | Velum template catalog |
+| `plaud.0-87ff597a57` | LAW STUDENT - LEANDRO OLIVEIRA | Velum | False | meeting | Velum template catalog |
+| `plaud.201-5c423f5bd9` | Lawyer/Meeting/Summary | Velum | False | legal | Velum template catalog |
+| `plaud.1-6564afc023` | LBL - Ideas | Velum | False | general | Velum template catalog |
+| `plaud.2-d179697acd` | LCJ Meeting Minutes (Headquarters Use) | Velum | False | medical | Velum template catalog |
+| `plaud.0-8df9fa165f` | Lead Analyse Template (PotAnalysen+DCs) | Velum | False | call | Velum template catalog |
+| `plaud.3-e25c878c68` | Lead Call - Mortgage | Velum | False | call | Velum template catalog |
+| `plaud.31-f2580bbcfe` | Leadership Challenge | Velum | False | consulting | Velum template catalog |
+| `plaud.130-5e4887f920` | Lecture | Velum | False | speech | Velum template catalog |
+| `plaud.127-8b54262bee` | Lecture Notes | Velum | False | education | Velum template catalog |
+| `plaud.637-668a57bbf3` | Lecture Summary | Velum | False | education | Velum template catalog |
+| `plaud.39-822e9f8dcc` | Lectures | Velum | False | education | Velum template catalog |
+| `plaud.65-c67b69c249` | Lectures by Lucy | Velum | False | education | Velum template catalog |
+| `plaud.0-857acff7c3` | LEGAL AND FACTUAL ANALYSIS. Analysis of conversations, notes, and documents for law, evidence, risks, and contradictions. | Velum | False | construction | Velum template catalog |
+| `plaud.862` | Legal depo summary | Velum | False | legal | Velum template catalog |
+| `plaud.8-9686cc15c5` | Legal Grade Transcript Writer | Velum | False | consulting | Velum template catalog |
+| `plaud.10-4333ef7436` | Legal Master - Dr. Fabrício | Velum | False | consulting | Velum template catalog |
+| `plaud.43-ec21f3b6f5` | Legal Meeting Summary and File Note Template | Velum | False | legal | Velum template catalog |
+| `plaud.294-fbc1716f48` | Legal Memo Style Summary | Velum | False | legal | Velum template catalog |
+| `plaud.129-fe1ac40f59` | Legal Summary | Velum | False | legal | Velum template catalog |
+| `plaud.2-142a1e49e1` | LegalTech - Labor Law - Debate | Velum | False | interview | Velum template catalog |
+| `plaud.4-3a11576d58` | LeoPrompt | Velum | False | speech | Velum template catalog |
+| `plaud.6-d0739271c0` | Lesson 2.0 Npsi | Velum | False | education | Velum template catalog |
+| `plaud.11-12dc22fda9` | Lesson Observation Report | Velum | False | education | Velum template catalog |
+| `plaud.33-97d51b58cd` | Lift Technicians Meeting Minutes | Velum | False | construction | Velum template catalog |
+| `plaud.0-764eff43b2` | LINUX MASTER — Linux Comprehensive Course Lecture Analysis Template | Velum | False | it | Velum template catalog |
+| `plaud.123-0bcad2cd88` | Listing Consultation Summary | Velum | False | estate | Velum template catalog |
+| `plaud.42-d8c3c21412` | Little dialogue, focus on information and analysis | Velum | False | speech | Velum template catalog |
+| `plaud.1-cd5559ace1` | LIVENT Meeting Hearing | Velum | False | interview | Velum template catalog |
+| `plaud.0-c7524130d1` | lksjdkjakdjklasV2 | Velum | False | extractive | Velum template catalog |
+| `plaud.193` | LMG OAC Meeting | Velum | False | construction | Velum template catalog |
+| `plaud.3869` | Long, Unstructured Transcript | Velum | False | general | Velum template catalog |
+| `plaud.106-40d937e8c5` | Long-term Care Certification Home Visit Survey | Velum | False | general | Velum template catalog |
+| `plaud.5-39d5b08a57` | Lovable Projects | Velum | False | it | Velum template catalog |
+| `plaud.1-8090ef689c` | Low Voltage Consultation Template 1.0 | Velum | False | construction | Velum template catalog |
+| `plaud.0-ecab825e75` | LP1 | Velum | False | sales | Velum template catalog |
+| `plaud.13-269979058d` | lpugliesi pro | Velum | False | extractive | Velum template catalog |
+| `plaud.1-460cc925bc` | LUA Consulting 2 | Velum | False | consulting | Velum template catalog |
+| `plaud.4-2332167f59` | Lucas Leal Advogados (Health Law) | Velum | False | call | Velum template catalog |
+| `plaud.165` | Lume Method University 2.0 | Velum | False | education | Velum template catalog |
+| `plaud.158-31a35ae411` | M&A Advisory AI Note Taker | Velum | False | financial | Velum template catalog |
+| `plaud.3-e302d9f315` | M&A Firm Discovery Call - Financial Services | Velum | False | financial | Velum template catalog |
+| `plaud.5-0e3935c99f` | M&A Legal Transaction Call Notes Template | Velum | False | legal | Velum template catalog |
+| `plaud.40-88b2bd526a` | Macroeconomic Meetings Classifier | Velum | False | financial | Velum template catalog |
+| `plaud.0-cf2906efa3` | Maintenance Report | Velum | False | construction | Velum template catalog |
+| `plaud.4-c853758888` | Managed Repair TPA: Initial Inspection – Scope Comment & Narrative Build | Velum | False | construction | Velum template catalog |
+| `plaud.6-dc028cae0e` | Management Meeting Minutes | Velum | False | meeting | Velum template catalog |
+| `plaud.70-ed15ab66fe` | MANAGER LED CONFLICT RESOLUTION CALL | Velum | False | call | Velum template catalog |
+| `plaud.9014` | Manager/Employee One-on-One Session | Velum | False | call | Velum template catalog |
+| `plaud.8-32f128491c` | Manifast AI - Post Meeting Prompts | Velum | False | extractive | Velum template catalog |
+| `plaud.2-c46f432a45` | Mario test 1 | Velum | False | speech | Velum template catalog |
+| `plaud.3-9841bc7db3` | Market and Broker Engagement Feedback | Velum | False | estate | Velum template catalog |
+| `plaud.1-58dad90ec0` | Market Appraisal inspection | Velum | False | estate | Velum template catalog |
+| `plaud.2-369ba79f4a` | market appraisal notes | Velum | False | estate | Velum template catalog |
+| `plaud.353-ca8558ab12` | MASTER LAW SCHOOL READING, NOTES, CASE BRIEF & EXAM-PREP PROMPT | Velum | False | general | Velum template catalog |
+| `plaud.6-0f6a520f1c` | MASTER MOSS course | Velum | False | education | Velum template catalog |
+| `plaud.8` | Master Prompt for Analysing Telephone Funding Call Transcripts (For Disabled Veterans Seeking Funding or Support) | Velum | False | call | Velum template catalog |
+| `plaud.0-d97e07b2b9` | master template Esd | Velum | False | consulting | Velum template catalog |
+| `plaud.0-0414151e77` | Master Velum Meeting Template | Velum | False | meeting | Velum template catalog |
+| `plaud.22-a7c2701f99` | Masterclass Capture — High Fidelity | Velum | False | education | Velum template catalog |
+| `plaud.21-2dd018a058` | Masters Bible Study | Velum | False | speech | Velum template catalog |
+| `plaud.13-0ceee8dcc0` | Masters in Teaching Class Note | Velum | False | education | Velum template catalog |
+| `plaud.4-b0da87d0f0` | Material List | Velum | False | sales | Velum template catalog |
+| `plaud.26-7ac80633b8` | Mattelsa. Retention interview. QUANTITATIVE | Velum | False | interview | Velum template catalog |
+| `plaud.8-7ed95b3fd6` | MC Meeting Minutes (Subcontractor) | Velum | False | construction | Velum template catalog |
+| `plaud.0-8af54e15ac` | MCST Council Meeting Minutes | Velum | False | estate | Velum template catalog |
+| `plaud.17-48d9cd23df` | MDA Project Meeting Minutes | Velum | False | meeting | Velum template catalog |
+| `plaud.24-96b3e44f60` | Measurement | Velum | False | construction | Velum template catalog |
+| `plaud.373` | MED SCHOOL EXAM PREP (HIGH-YIELD / USMLE) | Velum | False | education | Velum template catalog |
+| `plaud.10-33806a13c7` | MEDDPICC | Velum | False | sales | Velum template catalog |
+| `plaud.12-386a4a855a` | Mediation Opening Stmt Analysis | Velum | False | legal | Velum template catalog |
+| `plaud.26-e2755c83da` | Medical Appointment | Velum | False | medical | Velum template catalog |
+| `plaud.0-f23fd5a23f` | Medical Consultation 2 | Velum | False | medical | Velum template catalog |
+| `plaud.2-72f7c4f8d8` | Medical Consultation UPDATED | Velum | False | medical | Velum template catalog |
+| `plaud.59-e402c865ad` | Medical Interview Hospitality Skill Test | Velum | False | medical | Velum template catalog |
+| `plaud.2-11e0887a38` | Medical Malpractice Template | Velum | False | general | Velum template catalog |
+| `plaud.0-a96f7c8c6e` | Medical Product Indications Summary | Velum | False | call | Velum template catalog |
+| `plaud.7-bdbcb88354` | Medical Training | Velum | False | education | Velum template catalog |
+| `plaud.166-1dc49d2de9` | Medicine - Renato | Velum | False | education | Velum template catalog |
+| `plaud.248` | Medicine 3 - Nicole | Velum | False | education | Velum template catalog |
+| `plaud.0-8bab9ea881` | Meeting Assistant | Velum | False | general | Velum template catalog |
+| `plaud.3556` | Meeting Assistant | Velum | False | financial | Velum template catalog |
+| `plaud.156-e42681c2e0` | Meeting at a Mechanical Engineering Company | Velum | False | it | Velum template catalog |
+| `plaud.759-39d8cae83b` | Meeting at an Engineering Company | Velum | False | it | Velum template catalog |
+| `plaud.196-7bdbf276bb` | Meeting Content Outline | Velum | False | meeting | Velum template catalog |
+| `plaud.0-16f5699302` | Meeting Execution Memo | Velum | False | meeting | Velum template catalog |
+| `plaud.2-0617322ec2` | Meeting Intelligence & Actions | Velum | False | general | Velum template catalog |
+| `plaud.0-6cbb72a951` | Meeting Memo Creation Template | Velum | False | meeting | Velum template catalog |
+| `plaud.116-b97aa6728a` | Meeting Minutes - Synchronization Meeting | Velum | False | meeting | Velum template catalog |
+| `plaud.43-84a94bbb21` | Meeting Minutes Creation by Each Requirement | Velum | False | it | Velum template catalog |
+| `plaud.4-709b43eecf` | Meeting Minutes Creation Prompt | Velum | False | it | Velum template catalog |
+| `plaud.0-48b97c2c40` | Meeting Minutes Creation Support_ver.1.0 | Velum | False | meeting | Velum template catalog |
+| `plaud.0-01e9dba680` | Meeting Minutes EBC 21082026 | Velum | False | construction | Velum template catalog |
+| `plaud.1-d11e1e98e9` | Meeting Minutes Summary v1.1 | Velum | False | meeting | Velum template catalog |
+| `plaud.3-eb3b175b9c` | Meeting Minutes Vieira Group | Velum | False | meeting | Velum template catalog |
+| `plaud.0-61740649e5` | Meeting Minutes within the Ministry of Land, Infrastructure, Transport and Tourism | Velum | False | general | Velum template catalog |
+| `plaud.124-ff30340ef2` | Meeting Power Dynamics & Behavioral Analysis | Velum | False | speech | Velum template catalog |
+| `plaud.11-d0e6e4cde7` | MEETING PROTOCOL | Velum | False | meeting | Velum template catalog |
+| `plaud.240-48016012c7` | Meeting Q&A | Velum | False | speech | Velum template catalog |
+| `plaud.0-3671122930` | Meeting Report | Velum | False | meeting | Velum template catalog |
+| `plaud.35` | Meeting Report | Velum | False | call | Velum template catalog |
+| `plaud.2-9a5853a44f` | Meeting report for an accountant short on time and looking to add value | Velum | False | financial | Velum template catalog |
+| `plaud.23-f913a0dc2e` | Meeting Report Slack | Velum | False | meeting | Velum template catalog |
+| `plaud.0-664929de16` | Meeting Summary - MG | Velum | False | meeting | Velum template catalog |
+| `plaud.4-82d4f8494f` | Meeting Summary Mauricio | Velum | False | meeting | Velum template catalog |
+| `plaud.9-8779c62758` | Meeting to CRM-ready Notes | Velum | False | consulting | Velum template catalog |
+| `plaud.0-2f94700ad8` | Meeting with Managers / Bussines owners / Team members/ | Velum | False | meeting | Velum template catalog |
+| `plaud.3-6e157ee10a` | Memo | Velum | False | construction | Velum template catalog |
+| `plaud.3-6e9ee9c970` | Mentor | Velum | False | consulting | Velum template catalog |
+| `plaud.11-1c2f574f2e` | Metropolitan Police Department | Velum | False | legal | Velum template catalog |
+| `plaud.13-1359ca89e0` | MFF Idea into Story Outline | Velum | False | interview | Velum template catalog |
+| `plaud.0-0dbffe63dd` | MFOME | Velum | False | consulting | Velum template catalog |
+| `plaud.70-a36c9845c3` | MHS Formal Observation Template | Velum | False | education | Velum template catalog |
+| `plaud.0-83684fd3f6` | Mia 4 | Velum | False | general | Velum template catalog |
+| `plaud.18-ad048b7d44` | Minds Guideline Development: EtD Framework | Velum | False | medical | Velum template catalog |
+| `plaud.478-f43160cf3f` | Minds to Article (Lossless) | Velum | False | speech | Velum template catalog |
+| `plaud.0-09747fbef5` | Mindshapers The Leadership Experience | Velum | False | sales | Velum template catalog |
+| `plaud.33-4c5b63d5a4` | Ministrações | Velum | False | speech | Velum template catalog |
+| `plaud.0-1ace032e6e` | Minto Pyramid Principle | Velum | False | meeting | Velum template catalog |
+| `plaud.3-66fd654dde` | Minutes of the Appeal Hearing | Velum | False | legal | Velum template catalog |
+| `plaud.0-7d257086a5` | MIS Board | Velum | False | consulting | Velum template catalog |
+| `plaud.0-cbf8e3444f` | Mission to Market- Staging Walkthrough | Velum | False | consulting | Velum template catalog |
+| `plaud.0-71e6ff6ec6` | MM Generator | Velum | False | meeting | Velum template catalog |
+| `plaud.7-f7fc161cdc` | Mobile Device Notification Style Event Reminder | Velum | False | speech | Velum template catalog |
+| `plaud.0-a135cf2b00` | MODEL 4 — PROFESSIONAL PHONE CALL | Velum | False | call | Velum template catalog |
+| `plaud.14-b46bf08e40` | Model for Broker Training or Sales Sprint | Velum | False | estate | Velum template catalog |
+| `plaud.25-a3fd0a23aa` | Monitoring | Velum | False | medical | Velum template catalog |
+| `plaud.64-d25ebbad39` | Monitoring Template | Velum | False | extractive | Velum template catalog |
+| `plaud.5-7eb2a70cd7` | Monthly Report | Velum | False | legal | Velum template catalog |
+| `plaud.0-dc87b59cbf` | Morning Call | Velum | False | call | Velum template catalog |
+| `plaud.12-ffda87fa07` | Mortgage application | Velum | False | call | Velum template catalog |
+| `plaud.3-b7ccbac1da` | Mortgage Broker Client Discovery and Needs Analysis | Velum | False | financial | Velum template catalog |
+| `plaud.82` | Mortgage Calls | Velum | False | call | Velum template catalog |
+| `plaud.22-7b7d8b44a8` | Mortgage Customer Information Intake | Velum | False | estate | Velum template catalog |
+| `plaud.0-6e03ac861e` | Mortgage Daily Recap | Velum | False | financial | Velum template catalog |
+| `plaud.17-683843a1ff` | Mortgage Factfinding Call | Velum | False | financial | Velum template catalog |
+| `plaud.3-45806a0b50` | Mortgage Initial Consultation | Velum | False | estate | Velum template catalog |
+| `plaud.0-8ac04950ee` | Mortgage Suitability Wording for Purchase/Re-Mortgage/PT | Velum | False | meeting | Velum template catalog |
+| `plaud.6-7b2a473861` | Mortgage Suitability Wording for Purchase/Re-Mortgage/PT (Debt Con, Risks) | Velum | False | financial | Velum template catalog |
+| `plaud.19-b1bc2c2f06` | Moving Sales Consultant Note Taker | Velum | False | sales | Velum template catalog |
+| `plaud.1-b2c9a29fda` | MTC Course – Review Sheet | Velum | False | speech | Velum template catalog |
+| `plaud.882` | Multi-Convo Relationship Analysis | Velum | False | extractive | Velum template catalog |
+| `plaud.407-ce341aab34` | Multi-Level Universal Summary | Velum | False | general | Velum template catalog |
+| `plaud.16-a05c710663` | Music Lesson | Velum | False | education | Velum template catalog |
+| `plaud.8-2d659dd299` | music lesson v2 | Velum | False | education | Velum template catalog |
+| `plaud.26-f17098573d` | Music Production Session | Velum | False | general | Velum template catalog |
+| `plaud.50-09fe774a44` | MUSIC PRODUCTION TRAINING | Velum | False | education | Velum template catalog |
+| `plaud.5-98f62f672b` | Music Theory Lesson Notes | Velum | False | education | Velum template catalog |
+| `plaud.6-b44a73c609` | MVR & customer/wholesaler interaction | Velum | False | sales | Velum template catalog |
+| `plaud.1-d4371aad8a` | MY 2ND PROMPT: ADVANCED PATIENT PROFILE MAPPING | Velum | False | medical | Velum template catalog |
+| `plaud.220-82bbf60a38` | My Meeting Minutes Template | Velum | False | it | Velum template catalog |
+| `plaud.4-d34864dc56` | My Own Exec. Assistant | Velum | False | estate | Velum template catalog |
+| `plaud.216` | My PunchList | Velum | False | construction | Velum template catalog |
+| `plaud.7-90b9fbbbc8` | my template | Velum | False | speech | Velum template catalog |
+| `plaud.0-b7b71f0f54` | My TU and Clients Template | Velum | False | sales | Velum template catalog |
+| `plaud.0-2234c27993` | Naturaltech | Reference Template | Velum | False | speech | Velum template catalog |
+| `plaud.1-cbbdfe2b86` | NEC4 Early Warning Meeting Summary | Velum | False | meeting | Velum template catalog |
+| `plaud.264` | Needs Analysis for Automation and AI Research | Velum | False | consulting | Velum template catalog |
+| `plaud.23-3e6775f7df` | Negotiation Intelligence 360 | Velum | False | construction | Velum template catalog |
+| `plaud.0-da05e54847` | Nejat Concierge Template | Velum | False | general | Velum template catalog |
+| `plaud.0-e14f58c3c7` | NEO summary into a Knowledge Base (KB) article | Velum | False | it | Velum template catalog |
+| `plaud.0-f6f2b8a20a` | Network Marketing & Strategy Session Summary | Velum | False | consulting | Velum template catalog |
+| `plaud.3-4795cf77e0` | Network marketing (with correct and effective prompt structure)3.0. | Velum | False | general | Velum template catalog |
+| `plaud.1-8e8fd6ae28` | New Fund, Business - Discovery & Qualification | Velum | False | sales | Velum template catalog |
+| `plaud.44-a7c4c75a6a` | New Project Consultation | Velum | False | construction | Velum template catalog |
+| `plaud.15` | New Project Registration & Quotation Form | Velum | False | construction | Velum template catalog |
+| `plaud.92-e30de92cae` | News Briefing Analysis | Velum | False | education | Velum template catalog |
+| `plaud.216-437d6de8fa` | Nexus Expository Sermon Summary | Velum | False | speech | Velum template catalog |
+| `plaud.14-6b2fa6ff7d` | NIS2 Template | Velum | False | consulting | Velum template catalog |
+| `plaud.1-35801b638f` | Nizhong | Velum | False | speech | Velum template catalog |
+| `plaud.51-27c6aabc18` | NLP Analysis | Velum | False | speech | Velum template catalog |
+| `plaud.254-1898d9bf02` | North Kanto Branch Improved 5-Point Selected Prompt | Velum | False | sales | Velum template catalog |
+| `plaud.37-5000594373` | NotebookLM-ready podcast scripts | Velum | False | speech | Velum template catalog |
+| `plaud.968` | NOTES IN MEDICINE 🩺 🚑 | Velum | False | education | Velum template catalog |
+| `plaud.6-90339e6350` | Nursing Course Summary | Velum | False | education | Velum template catalog |
+| `plaud.61-388c6cf394` | Nursing Lecture Expander 4.0 | Velum | False | education | Velum template catalog |
+| `plaud.81-641733ac95` | Nursing Notes | Velum | False | education | Velum template catalog |
+| `plaud.88-7bbccab7eb` | Nursing School Master Template | Velum | False | education | Velum template catalog |
+| `plaud.1-15866adc03` | NWP Client Meeting 0526 | Velum | False | it | Velum template catalog |
+| `plaud.speech.object-recognition-and-description.c997c0616453` | Object Recognition and Description | Velum | False | speech | Velum template catalog |
+| `plaud.610-12983eec08` | Object Recording as an Expert | Velum | False | estate | Velum template catalog |
+| `plaud.2-d7c2bbb2e8` | Objective evaluation of attorneys’ performance in hearing | Velum | False | legal | Velum template catalog |
+| `plaud.1-4be3a7a6bc` | Obsidian Template | Velum | False | meeting | Velum template catalog |
+| `plaud.6-2716e021f0` | Obsidian — Meeting Note (Bartek) | Velum | False | meeting | Velum template catalog |
+| `plaud.34-2a986c343d` | Offer 2 | Velum | False | estate | Velum template catalog |
+| `plaud.53-5c25d05fd4` | Offer Creation | Velum | False | sales | Velum template catalog |
+| `plaud.12-6fb56cb34a` | Official Procedure and Script Generator | Velum | False | construction | Velum template catalog |
+| `plaud.1330` | Ohio Sheriff Detective Narrative | Velum | False | legal | Velum template catalog |
+| `plaud.0-2bef69a87f` | Older Child FTF at School (Child Welfare Case Management Narrative) | Velum | False | interview | Velum template catalog |
+| `plaud.0-9ce20b15df` | Older Child FTF Case Management Narrative (Child Welfare) | Velum | False | interview | Velum template catalog |
+| `plaud.0-66d6d16cf5` | Olga | Velum | False | general | Velum template catalog |
+| `plaud.4-fc3e46eb0f` | On-site Inspection N.4495/17 | Velum | False | it | Velum template catalog |
+| `plaud.10-7ec081c11a` | On-Site Meeting & Site Measure – Pools | Velum | False | construction | Velum template catalog |
+| `plaud.8-9ae8613b54` | One-on-One - Store Managers | Velum | False | meeting | Velum template catalog |
+| `plaud.12-d8bfa90dee` | Onsite Tech Visit | Velum | False | it | Velum template catalog |
+| `plaud.73-157a7c2db4` | Operations Meeting Summary (Template) | Velum | False | meeting | Velum template catalog |
+| `plaud.78-89ba6e905f` | Or-top | Velum | False | medical | Velum template catalog |
+| `plaud.2-c162576796` | Order | Velum | False | sales | Velum template catalog |
+| `plaud.26-4a60025a4f` | Organization Management - Second Half | Velum | False | interview | Velum template catalog |
+| `plaud.19-a0b02c2c65` | Organizational Change Management Analysis | Velum | False | consulting | Velum template catalog |
+| `plaud.2-a054c26ced` | Orsa call | Velum | False | call | Velum template catalog |
+| `plaud.0-a726496363` | Orthodontic Patient Consultation | Velum | False | medical | Velum template catalog |
+| `plaud.0-4c2b6a726b` | Orthopedic Clinical History | Velum | False | medical | Velum template catalog |
+| `plaud.55-073e4f30d4` | OSA LISTING APPOINTMENT GRADING | Velum | False | estate | Velum template catalog |
+| `plaud.2-cad63c1c9a` | OSS Preadvice Voice Dictation | Velum | False | consulting | Velum template catalog |
+| `plaud.4-29c90fed4a` | OT Assistent | Velum | False | it | Velum template catalog |
+| `plaud.0-12e2060498` | OT Consulting | Velum | False | consulting | Velum template catalog |
+| `plaud.2-1cd07cd49c` | Outpatient Psychiatric Consultation | Velum | False | medical | Velum template catalog |
+| `plaud.1-ec1ac84054` | Overton Windows (Quick) | Velum | False | meeting | Velum template catalog |
+| `plaud.3-0c50a6db99` | Owner Controlled Preconstruction Meeting | Velum | False | construction | Velum template catalog |
+| `plaud.80-2ca7d7d598` | Owner's Perspective: Practical Application Focused Version | Velum | False | construction | Velum template catalog |
+| `plaud.2-71c28e9369` | PA GmbH Construction Log | Velum | False | estate | Velum template catalog |
+| `plaud.21-602f19416f` | Pain Point Discovery | Velum | False | general | Velum template catalog |
+| `plaud.0-aade2a2f3a` | Paint Inspector Daily Log | Velum | False | it | Velum template catalog |
+| `plaud.0-5523628607` | Parent FTF (Child Welfare Case Management Narrative) | Velum | False | interview | Velum template catalog |
+| `plaud.204-5f96b8873c` | Partner Communication Analysis │ By Robin Allard, LMFT | Velum | False | extractive | Velum template catalog |
+| `plaud.13-8c662ccae5` | Pastoral Preaching Outline | Velum | False | speech | Velum template catalog |
+| `plaud.66-7a0084c141` | Patent | Velum | False | legal | Velum template catalog |
+| `plaud.11-9568487989` | Patient Communication Script Compliance Analysis | Velum | False | call | Velum template catalog |
+| `plaud.68-30dbe6d8da` | Patient Complaint | Velum | False | medical | Velum template catalog |
+| `plaud.73-8e01fe02e4` | PATIENT SUMMARY | Velum | False | medical | Velum template catalog |
+| `plaud.1-7d855a1e9e` | Patrol officer Draft Report | Velum | False | legal | Velum template catalog |
+| `plaud.57-4b416bb9bc` | PAW DAILY WAREHOUSE WALK PROMPT | Velum | False | general | Velum template catalog |
+| `plaud.0-6c03e78680` | PC sales meeting | Velum | False | sales | Velum template catalog |
+| `plaud.7-012838ca13` | PCC Marker-Based Coaching Analysis | Velum | False | general | Velum template catalog |
+| `plaud.1-0d64d3d1ac` | PCM Joao | Velum | False | consulting | Velum template catalog |
+| `plaud.0-c43702d716` | PD Weekly 1:1 Supervision Log | Velum | False | meeting | Velum template catalog |
+| `plaud.1-040c6955d1` | PDX Reno Outside Closer Template | Velum | False | estate | Velum template catalog |
+| `plaud.0-0a9193b230` | PE Session Analysis System (Compact Version) | Velum | False | meeting | Velum template catalog |
+| `plaud.2-36b1f891be` | Pedro's Sermon Template | Velum | False | speech | Velum template catalog |
+| `plaud.102-20b308cb84` | Pentecostal Sermon Outline Style | Velum | False | speech | Velum template catalog |
+| `plaud.0-7f6ca33baa` | People to People [Company and Job Seeker Interview] | Velum | False | interview | Velum template catalog |
+| `plaud.0-cfea820627` | People to People [Company and Job Seeker Interview] | Velum | False | consulting | Velum template catalog |
+| `plaud.0-900e50b6c3` | Performance Mental Coaching | Velum | False | consulting | Velum template catalog |
+| `plaud.0-874b14c415` | Performance Review | Velum | False | construction | Velum template catalog |
+| `plaud.7-2ee2356db7` | Performance Review | Velum | False | extractive | Velum template catalog |
+| `plaud.0-415940b246` | Person-Centered/Active Listening (OARS) Note | Velum | False | call | Velum template catalog |
+| `plaud.105-319efd7f43` | Personal Co-Author for My Book Writing | Velum | False | general | Velum template catalog |
+| `plaud.0-23d616d4cc` | Personal conversations (sapeginp) | Velum | False | meeting | Velum template catalog |
+| `plaud.10-b6238aba83` | Personal Insurance Needs Analysis | Velum | False | financial | Velum template catalog |
+| `plaud.1-8d650da4bb` | Personal SaaS Sales Template - Federal | Velum | False | sales | Velum template catalog |
+| `plaud.29-234ab99c47` | Personalgespräch | Velum | False | speech | Velum template catalog |
+| `plaud.14-f3dbe6de19` | Personality Snapshot (Evidence-Based) | Velum | False | interview | Velum template catalog |
+| `plaud.0-3541308a61` | PevocoCapital client meeting | Velum | False | financial | Velum template catalog |
+| `plaud.0-f83b991756` | PFH Walkthrough Template | Velum | False | estate | Velum template catalog |
+| `plaud.0-577c27632a` | PFS QA Meeting | Velum | False | sales | Velum template catalog |
+| `plaud.231-50e9b3f0f9` | Pharmacology Lecture | Velum | False | speech | Velum template catalog |
+| `plaud.91-5f68e9c6fd` | Philosophy Classes - Critical Analysis | Velum | False | education | Velum template catalog |
+| `plaud.34` | Phone Call | Velum | False | call | Velum template catalog |
+| `plaud.3-8b3d60a853` | PHONE CALL REPORT | Velum | False | call | Velum template catalog |
+| `plaud.283-11c98bf465` | Phone Calls | Velum | False | call | Velum template catalog |
+| `plaud.894` | Phone Note | Velum | False | call | Velum template catalog |
+| `plaud.10` | Phone Qualification | Velum | False | call | Velum template catalog |
+| `plaud.190` | Phone Technical Support | Velum | False | call | Velum template catalog |
+| `plaud.0-13458eec5c` | PHTLS | Velum | False | medical | Velum template catalog |
+| `plaud.8-96445638d8` | Physiological and Neurological System Changes | Velum | False | medical | Velum template catalog |
+| `plaud.2-4aedb60dda` | PI Attorney Call Assistant | Velum | False | call | Velum template catalog |
+| `plaud.0-59579f09c7` | PIC_T® — Knowledge Capture | Velum | False | general | Velum template catalog |
+| `plaud.39-5aa6390273` | Pipeline Meeting | Velum | False | estate | Velum template catalog |
+| `plaud.0-b8bcb0d288` | Plaintiff depo summary | Velum | False | legal | Velum template catalog |
+| `plaud.47-a3643c67f6` | Plastic Consultation AJ | Velum | False | medical | Velum template catalog |
+| `plaud.0-1e0f76957e` | Plastic Surgery Consultation - EsThesia | Velum | False | medical | Velum template catalog |
+| `plaud.7-06e58b9971` | Platinum – Court Hearing Advocacy Note (Timed) with letter 26.6.26 | Velum | False | legal | Velum template catalog |
+| `plaud.4-90d9d12eca` | PlaySight – Player Interview | Velum | False | interview | Velum template catalog |
+| `plaud.1-e2380a2d3a` | Podiatric Biomechanical Study | Velum | False | medical | Velum template catalog |
+| `plaud.10-1e2650cd1b` | Police Calls | Velum | False | legal | Velum template catalog |
+| `plaud.0-e9e518cbe1` | Police Training Quick Reference & Detailed Learning Guide | Velum | False | legal | Velum template catalog |
+| `plaud.1-d08d2c4654` | POP | Velum | False | consulting | Velum template catalog |
+| `plaud.0-1c2ba6df0d` | Pop & Par Event Intake Call | Velum | False | call | Velum template catalog |
+| `plaud.19-c1865aff04` | POP and WI retail | Velum | False | education | Velum template catalog |
+| `plaud.11-7366ee6dbc` | Post-Incident Environmental Assessment Summary | Velum | False | estate | Velum template catalog |
+| `plaud.14-209e2edba1` | Postgraduate Work Tutoring | Velum | False | education | Velum template catalog |
+| `plaud.0-f0f39a29d4` | Power Meeting Secretary - Action First Summary with Smart Task Tracking | Velum | False | meeting | Velum template catalog |
+| `plaud.0-0466456f8b` | Power of Attorney | Velum | False | legal | Velum template catalog |
+| `plaud.0-a9ee36ea91` | PQ First Consultation | Velum | False | medical | Velum template catalog |
+| `plaud.0-233836a830` | PQ Follow-up Consultation | Velum | False | medical | Velum template catalog |
+| `plaud.1-ff4b7733cb` | PR Strategy | Velum | False | extractive | Velum template catalog |
+| `plaud.4-699ab30ddf` | Pre-Sales TA – Internal Sales Call to Session Planning | Velum | False | sales | Velum template catalog |
+| `plaud.2-b8ecb592f5` | Pre-wedding interview with the couple - wedding speech | Velum | False | speech | Velum template catalog |
+| `plaud.17-e980bef78c` | Prelist Walkthough- Home features, Measurements & Task list | Velum | False | estate | Velum template catalog |
+| `plaud.1-04ccba1d92` | Preop Summary | Velum | False | medical | Velum template catalog |
+| `plaud.0-f153880f03` | PREPA CSJ | Velum | False | legal | Velum template catalog |
+| `plaud.1-407971ca4c` | PreQualification Questions | Velum | False | call | Velum template catalog |
+| `plaud.1158` | Present State and Planning Capture | Velum | False | consulting | Velum template catalog |
+| `plaud.292-00aea8ae0b` | Presentation rating | Velum | False | speech | Velum template catalog |
+| `plaud.54-31d6da99a9` | PRESENTATION, CLOSING AND STRATEGIC FOLLOW-UP | Velum | False | sales | Velum template catalog |
+| `plaud.12-3543842a4d` | Presentations | Velum | False | speech | Velum template catalog |
+| `plaud.0-1d121f0f4d` | President’s Meeting Command Centre – Decisions, Actions & Follow-ups | Velum | False | general | Velum template catalog |
+| `plaud.0-3014614f57` | Prework condition report - Attachment | Velum | False | estate | Velum template catalog |
+| `plaud.32-768a7de6e9` | Privacy Product Manager - Xfn Engagement | Velum | False | it | Velum template catalog |
+| `plaud.23-5337a5c4f0` | Private for Me | Velum | False | general | Velum template catalog |
+| `plaud.16-ce2dd88ea1` | Private Investigation Phone Call | Velum | False | call | Velum template catalog |
+| `plaud.96-952d65337f` | Private Investment Meetings | Velum | False | financial | Velum template catalog |
+| `plaud.56-03c261b827` | Problem Solving PDCA | Velum | False | consulting | Velum template catalog |
+| `plaud.508` | Process Creation | Velum | False | construction | Velum template catalog |
+| `plaud.910-5ae8a3da89` | Process Mapping | Velum | False | extractive | Velum template catalog |
+| `plaud.144-c8346813f9` | Product Demo IT Infrastructure / Security / Platform Tools Analysis | Velum | False | consulting | Velum template catalog |
+| `plaud.68-100e76133f` | Product Description and Specification Extractor | Velum | False | speech | Velum template catalog |
+| `plaud.8-fa5e680929` | Product Education Extractor (Social Retail) | Velum | False | education | Velum template catalog |
+| `plaud.32-68325b9c14` | Product Key Information Extraction | Velum | False | speech | Velum template catalog |
+| `plaud.0-290520f669` | Product Title Generator | Velum | False | call | Velum template catalog |
+| `plaud.2-5f7101e5ac` | Production Meeting | Velum | False | meeting | Velum template catalog |
+| `plaud.2-d27d17aad8` | Production Support Daily Stand Up | Velum | False | it | Velum template catalog |
+| `plaud.6-1bc2238564` | Professional Client Meeting Summary & Digital Client File Drafting – Allianz Expertise & Conseil | Velum | False | financial | Velum template catalog |
+| `plaud.20-ffca1c751c` | Professional premises search | Velum | False | estate | Velum template catalog |
+| `plaud.0-1bfbc1f05e` | Program | Velum | False | speech | Velum template catalog |
+| `plaud.1-7e3d57ff4b` | Project 007 Discovery | Velum | False | interview | Velum template catalog |
+| `plaud.2567` | Project Manager - Construction Update | Velum | False | construction | Velum template catalog |
+| `plaud.42496` | Project Meeting | Velum | False | construction | Velum template catalog |
+| `plaud.23-7de22f0d58` | Project Meeting / Weekly OAC | Velum | False | construction | Velum template catalog |
+| `plaud.0-863a5f72c4` | Project Meeting Minutes 10/26 | Velum | False | meeting | Velum template catalog |
+| `plaud.129-c498dfe0fb` | PROJECT Meeting Summary | Velum | False | construction | Velum template catalog |
+| `plaud.350-d9c84e68d4` | Project Team Meetings with Multiple Participants - PI | Velum | False | it | Velum template catalog |
+| `plaud.2-576815fc64` | project-lift-report | Velum | False | general | Velum template catalog |
+| `plaud.20-ec73b34a2c` | Prompt for Claude Code | Velum | False | it | Velum template catalog |
+| `plaud.0-bc4ff0dccc` | Prompt for Creating Employment Condition Statement for Dispatched Workers | Velum | False | legal | Velum template catalog |
+| `plaud.72-e857a658df` | Prompt for Deeper Analysis of the Entire Lecture | Velum | False | speech | Velum template catalog |
+| `plaud.19-2b11a67f51` | Prompt for preparing a report on the project presentation meeting about positive attitude, conducted by Paulo Corsi: | Velum | False | meeting | Velum template catalog |
+| `plaud.151-49e8c48108` | Prompt Master | Velum | False | it | Velum template catalog |
+| `plaud.41-c765a32fd5` | Prompt Opus 5.5 | Velum | False | it | Velum template catalog |
+| `plaud.20-7117783181` | Prompt specialized for site supervisors | Velum | False | construction | Velum template catalog |
+| `plaud.1-690fb56969` | PROPAGANDA DETECTOR (ANIMAL FARM MODE) | Velum | False | speech | Velum template catalog |
+| `plaud.8-2048423ae8` | Property Discovery Sheet | Velum | False | estate | Velum template catalog |
+| `plaud.1-3827516cd2` | Property Dispute | Velum | False | legal | Velum template catalog |
+| `plaud.2-b03d598d58` | Property Management Rentals | Velum | False | general | Velum template catalog |
+| `plaud.3-6ec297bc47` | Property Management Sales Discovery Call | Velum | False | sales | Velum template catalog |
+| `plaud.33-e229b3f65c` | Property Management – First Contact & Review | Velum | False | call | Velum template catalog |
+| `plaud.1-575b7cadcd` | Property valuation | Velum | False | estate | Velum template catalog |
+| `plaud.0-4e9cddaa1f` | PROPERTY VISIT WITH CLIENTS | Velum | False | estate | Velum template catalog |
+| `plaud.48-0fbb77a372` | Proposal Generation from Client Meeting Transcript | Velum | False | legal | Velum template catalog |
+| `plaud.120-21ef963870` | Pros and Cons Analysis for All Business Scenarios | Velum | False | general | Velum template catalog |
+| `plaud.12-cbbc78f950` | Prospect call report for wealth audit | Velum | False | financial | Velum template catalog |
+| `plaud.12-4eebbb9ebf` | Prospect Initial Meeting Questions | Velum | False | it | Velum template catalog |
+| `plaud.13-482cc695a8` | Prospecting | Velum | False | estate | Velum template catalog |
+| `plaud.0-2aabd7d0fc` | Protocol for a Purchase Accompaniment | Velum | False | estate | Velum template catalog |
+| `plaud.103-d2cedb2373` | Protokoll Ortstermin - ifb | Velum | False | construction | Velum template catalog |
+| `plaud.18-ba159305a0` | Prototype overview | Velum | False | extractive | Velum template catalog |
+| `plaud.16-af7bbc547b` | Proveko – To-Do list for Microsoft Planner | Velum | False | extractive | Velum template catalog |
+| `plaud.0-af15fe77c1` | Prtho AI Pro Primary THA | Velum | False | medical | Velum template catalog |
+| `plaud.0-38602df354` | Psychiatric Acute Ward Nursing Handover | Velum | False | medical | Velum template catalog |
+| `plaud.80-94544ebec5` | Psychiatric Evaluation | Velum | False | medical | Velum template catalog |
+| `plaud.3171` | Psychiatric Home-Visit Nursing Record | Velum | False | medical | Velum template catalog |
+| `plaud.105-b483b80513` | Psychiatric Outpatient Initial Consultation Edition | Velum | False | medical | Velum template catalog |
+| `plaud.0-5b5b838d44` | Psychoanalytic Session Record and Analysis - Psychoanalyst Reginaldo Ferrare | Velum | False | medical | Velum template catalog |
+| `plaud.0-5564b2756b` | Psychotherapy session summary for an interdisciplinary integrative approach | Velum | False | medical | Velum template catalog |
+| `plaud.25-b758edda98` | Purchase Consultation - Property | Velum | False | call | Velum template catalog |
+| `plaud.6-b36d1cc225` | Purchase Follow Up | Velum | False | extractive | Velum template catalog |
+| `plaud.0-1b5536320b` | QA Test Case Generation Prompt | Velum | False | speech | Velum template catalog |
+| `plaud.7-151e9bd900` | QHHT Session Master Summary | Velum | False | general | Velum template catalog |
+| `plaud.6-2a82763cb9` | Question-led class | Velum | False | medical | Velum template catalog |
+| `plaud.23-2e15621e6d` | Questions and Answers | Velum | False | interview | Velum template catalog |
+| `plaud.149-d94cc7c331` | Quick reference guides | Velum | False | medical | Velum template catalog |
+| `plaud.25-46127f59af` | R1- FPClient | Velum | False | financial | Velum template catalog |
+| `plaud.0-6cad7b018f` | R2 - FP | Velum | False | financial | Velum template catalog |
+| `plaud.59-38ecb34951` | Radio interview | Velum | False | speech | Velum template catalog |
+| `plaud.9-20fab08ec0` | RAH Inquiry Call | Velum | False | call | Velum template catalog |
+| `plaud.91-131577c49d` | Railroad | Velum | False | general | Velum template catalog |
+| `plaud.15-bd97d07239` | RANEPA (thesis from the lecture) | Velum | False | education | Velum template catalog |
+| `plaud.8-e791cde378` | raw template without edit | Velum | False | speech | Velum template catalog |
+| `plaud.29-4dbf8c14c6` | RC/RCD Expert Report | Velum | False | construction | Velum template catalog |
+| `plaud.97-4d09d5bc49` | RCT notes | Velum | False | medical | Velum template catalog |
+| `plaud.1-4621d7e3e2` | Reading Coach | Velum | False | general | Velum template catalog |
+| `plaud.183-67df0929ad` | Real Estate Buyer Discovery | Velum | False | estate | Velum template catalog |
+| `plaud.70` | Real Estate Call Analysis and Action Summary | Velum | False | call | Velum template catalog |
+| `plaud.8-bacbb541ff` | Real Estate Call Insight Brief | Velum | False | estate | Velum template catalog |
+| `plaud.22-0d18a052c2` | Real Estate Development Team Quarterly Meeting Recap | Velum | False | estate | Velum template catalog |
+| `plaud.9-446aeeccb7` | Real Estate Leasing | Velum | False | estate | Velum template catalog |
+| `plaud.35-cf88992075` | real estate pro | Velum | False | estate | Velum template catalog |
+| `plaud.1-00e4f20bba` | Real Estate Sales Call Summary | Velum | False | call | Velum template catalog |
+| `plaud.2-52a2f94e2f` | Real Estate Sales Plan Generator | Velum | False | estate | Velum template catalog |
+| `plaud.115-193b375f79` | Real Estate Wholesaling - In-Person Appointment Scoring Template | Velum | False | estate | Velum template catalog |
+| `plaud.521-54059aac60` | Real Estate – Listing Appointment (In-Person) | Velum | False | estate | Velum template catalog |
+| `plaud.118` | Real Estate – Phone Call / Lead Scrub Template | Velum | False | call | Velum template catalog |
+| `plaud.13-685283df06` | ReaL: Call/Recruitment History | Velum | False | financial | Velum template catalog |
+| `plaud.110-1ce4987da4` | ReaL: Face-to-Face / Sales Record | Velum | False | financial | Velum template catalog |
+| `plaud.46-32a333df24` | ReaL: In-person / General Correspondence | Velum | False | financial | Velum template catalog |
+| `plaud.207` | ReaL: Phone / General Correspondence | Velum | False | financial | Velum template catalog |
+| `plaud.0-090dc7411b` | ReaL: Web / Recruitment History | Velum | False | financial | Velum template catalog |
+| `plaud.9-99dc211268` | ReaL: Web/General Support | Velum | False | financial | Velum template catalog |
+| `plaud.24-1d3c679192` | Recall Appointment | Velum | False | sales | Velum template catalog |
+| `plaud.293-11d721b354` | Record | Velum | False | medical | Velum template catalog |
+| `plaud.0-9b8e4b3f7d` | Record of Investigation and Interview of Domestic Violence Victim Not Leading to Case Opening | Velum | False | interview | Velum template catalog |
+| `plaud.185-3c406480e5` | Record of the Care Manager's Staff Meeting at the Special Nursing Home for the Elderly | Velum | False | extractive | Velum template catalog |
+| `plaud.28-197a882f27` | Recorded Statement - Unlisted, Permissive, Excluded driver | Velum | False | interview | Velum template catalog |
+| `plaud.29` | Recruiter Call — Candidate Opportunity Brief | Velum | False | call | Velum template catalog |
+| `plaud.157` | Recruitment | Velum | False | financial | Velum template catalog |
+| `plaud.1-f3edefe1af` | Recruitment Interview for Self-Employed Agents | Velum | False | interview | Velum template catalog |
+| `plaud.0-8ee50f7b68` | Refresco Site EHS Lead Team Meeting Minutes | Velum | False | meeting | Velum template catalog |
+| `plaud.0-5e5bfee32c` | REI Home Energy Audit | Velum | False | consulting | Velum template catalog |
+| `plaud.0-4a24b5bee8` | RENAH Template | Velum | False | estate | Velum template catalog |
+| `plaud.25-1f53fe551e` | RENOVATION PROJECT ASSESSMENT | Velum | False | construction | Velum template catalog |
+| `plaud.1-b7dcfaee70` | REPKA | Velum | False | it | Velum template catalog |
+| `plaud.8-32d4c9ca64` | Report for Mortgage Application PB1 | Velum | False | financial | Velum template catalog |
+| `plaud.21-6ddd721a57` | Report for Process - IT Procedure - 2026 | Velum | False | it | Velum template catalog |
+| `plaud.6-f6c561dd86` | Report of an OV Meeting | Velum | False | meeting | Velum template catalog |
+| `plaud.3-e9b30dccf6` | Report on a Parliamentary Session | Velum | False | legal | Velum template catalog |
+| `plaud.2-689e05b6d3` | Report on Presentations Made by Area Managers During the Executive Circuit Visit | Velum | False | meeting | Velum template catalog |
+| `plaud.114-1d4f9a8f62` | Requirement Gathering Analysis - MH | Velum | False | extractive | Velum template catalog |
+| `plaud.14-86beb44c1c` | Resume for Mycase about Criminal Cases | Velum | False | legal | Velum template catalog |
+| `plaud.20-3869cda83d` | Resumo master 360 | Velum | False | general | Velum template catalog |
+| `plaud.0-c81cbc950e` | Retail project owner | Velum | False | consulting | Velum template catalog |
+| `plaud.59-0e384d1577` | Retention For Visual Learners | Velum | False | education | Velum template catalog |
+| `plaud.0-bb90965544` | retranscription de relecture articles | Velum | False | speech | Velum template catalog |
+| `plaud.115-e9d004edac` | Review Evidence | Velum | False | legal | Velum template catalog |
+| `plaud.32-472bd8cf52` | Review report | Velum | False | general | Velum template catalog |
+| `plaud.4557` | Rewrite - Inspire, persuade and move people to take action. (UVP, CTA) | Velum | False | sales | Velum template catalog |
+| `plaud.2-ae71f89700` | RHF Mental Health - RECORD OF PSYCHOANALYTIC SESSION EVOLUTION | Velum | False | medical | Velum template catalog |
+| `plaud.0-ed863d7d0a` | Rio Innovation Week | Velum | False | speech | Velum template catalog |
+| `plaud.19-f632e7bcbb` | Risk & Blocker Escalations Template | Velum | False | it | Velum template catalog |
+| `plaud.1-439f459ba5` | RIVAS | Velum | False | it | Velum template catalog |
+| `plaud.0-ba27ff941e` | rizal 1 | Velum | False | general | Velum template catalog |
+| `plaud.1-2137336cc0` | Roadshow Memo | Velum | False | financial | Velum template catalog |
+| `plaud.3-39b2c1baea` | ROCA Method | Velum | False | extractive | Velum template catalog |
+| `plaud.103-b5c110c705` | Role-play | Velum | False | financial | Velum template catalog |
+| `plaud.13-f7d7e2008e` | Role-play Customer Service Evaluation | Velum | False | sales | Velum template catalog |
+| `plaud.13-e28bf2bb24` | Roof Takeoff | Velum | False | construction | Velum template catalog |
+| `plaud.14-0fd303b8a2` | Roofing - (Existing Customer) | Velum | False | sales | Velum template catalog |
+| `plaud.1-8fcbd9377f` | Roofing Site Visit Quote Preparation | Velum | False | construction | Velum template catalog |
+| `plaud.4-03f2c19967` | Rotary Meeting | Velum | False | meeting | Velum template catalog |
+| `plaud.2-90fe291b95` | Roteirex | Velum | False | speech | Velum template catalog |
+| `plaud.21-af5ee49107` | RPBDC session | Velum | False | interview | Velum template catalog |
+| `plaud.0-022c8fce05` | RS Report | Velum | False | extractive | Velum template catalog |
+| `plaud.62-8ebd15c496` | Russian to English Chat Translator | Velum | False | speech | Velum template catalog |
+| `plaud.114-cc53fc52cd` | S.O.P. Creation | Velum | False | extractive | Velum template catalog |
+| `plaud.0-dfdc178db3` | s.plan investigation | Velum | False | construction | Velum template catalog |
+| `plaud.2-93aa1e396d` | S2 Coaching / Strategy Meeting Facilitator Feedback | Velum | False | consulting | Velum template catalog |
+| `plaud.6-81bf4ba0a0` | S5_Visit Summary_Template | Velum | False | sales | Velum template catalog |
+| `plaud.9-4140a75f33` | Sales | Velum | False | sales | Velum template catalog |
+| `plaud.9-977ad651fd` | Sales Call Between a Lawyer and a Potential Client | Velum | False | legal | Velum template catalog |
+| `plaud.1-481199738a` | sales coach with notes of the meeting | Velum | False | sales | Velum template catalog |
+| `plaud.676-3bb238f3b2` | Sales Coaching | Velum | False | sales | Velum template catalog |
+| `plaud.3-d1a508d266` | Sales Consultant Interview Summary | Velum | False | interview | Velum template catalog |
+| `plaud.0-116c025f6b` | Sales Conversation | Velum | False | sales | Velum template catalog |
+| `plaud.3-e3b7223dac` | Sales Discovery | Velum | False | sales | Velum template catalog |
+| `plaud.8415` | Sales Discovery Call | Velum | False | sales | Velum template catalog |
+| `plaud.0-f8de936911` | sales in healthcare | Velum | False | medical | Velum template catalog |
+| `plaud.3-353b2c5b05` | Sales phone template | Velum | False | call | Velum template catalog |
+| `plaud.3024` | Sales Pitch for Calls | Velum | False | call | Velum template catalog |
+| `plaud.1-48228b1b34` | Sales Representative Handover Document (Customer-Specific Detailed Version) | Velum | False | general | Velum template catalog |
+| `plaud.927-099d390b13` | Samurai Lecture | Velum | False | speech | Velum template catalog |
+| `plaud.1-ebdcf1618c` | Sanitary Surveillance Class | Velum | False | general | Velum template catalog |
+| `plaud.286` | Satir Model Session Record | Velum | False | consulting | Velum template catalog |
+| `plaud.139-90d99f2229` | Satsuki Monitoring | Velum | False | interview | Velum template catalog |
+| `plaud.3-b82ffcc495` | SB Outside Sales | Velum | False | sales | Velum template catalog |
+| `plaud.4-41a383796e` | SBA INTERVIEW | Velum | False | interview | Velum template catalog |
+| `plaud.1-425d485f55` | SBDC Strategic or Business Architectural & Client Satisfaction Analysis Report | Velum | False | consulting | Velum template catalog |
+| `plaud.11-af274f271f` | Scaling Up Quarterly/Yearly Planning | Velum | False | consulting | Velum template catalog |
+| `plaud.3-2d345c7f07` | SCARS Meeting Minutes | Velum | False | meeting | Velum template catalog |
+| `plaud.1-5997120e1e` | SCB Standard | Velum | False | estate | Velum template catalog |
+| `plaud.6-ba988aca35` | Schematic overview lecture/college | Velum | False | education | Velum template catalog |
+| `plaud.1-0b55be4219` | Second and subsequent sessions | Velum | False | legal | Velum template catalog |
+| `plaud.3-16fa47d5c4` | Security / CISO Meeting | Velum | False | it | Velum template catalog |
+| `plaud.9-ce38afda48` | Security Architecture Discussion Template | Velum | False | it | Velum template catalog |
+| `plaud.17-ad0e3c6ee6` | Security Assessment for Vendors & Partners | Velum | False | it | Velum template catalog |
+| `plaud.312-d81e4090f6` | Security Expert | Velum | False | it | Velum template catalog |
+| `plaud.614` | Security Review | Velum | False | it | Velum template catalog |
+| `plaud.71-b4c3881854` | Self-Journal Template: Quick Reflection + Idea Capture → Practical Actions (with Values + Review) | Velum | False | education | Velum template catalog |
+| `plaud.0-52b37b7ebc` | Seller Listing Appointment | Velum | False | estate | Velum template catalog |
+| `plaud.0-c0ca88ed28` | Seller Motivation & Constraints | Velum | False | estate | Velum template catalog |
+| `plaud.0-bd7b90dd6c` | Seller Prequal Call - LPTMAMA Listing | Velum | False | estate | Velum template catalog |
+| `plaud.29-69db69af51` | Semi-schematic and comprehensive university notes | Velum | False | education | Velum template catalog |
+| `plaud.160-34c326e837` | Seminar & Conferences: for AI Use & Personal Coaching | Velum | False | general | Velum template catalog |
+| `plaud.686` | Senior Construction Project Manager | Velum | False | construction | Velum template catalog |
+| `plaud.2-2ebe36c26d` | Senior Executive Retail Marketing outreach _ Micro | Velum | False | extractive | Velum template catalog |
+| `plaud.1209` | Senior Sales Coach | Velum | False | sales | Velum template catalog |
+| `plaud.69-c138a7f503` | Sermon | Velum | False | education | Velum template catalog |
+| `plaud.406-16dd10b5dc` | Sermon Notes | Velum | False | speech | Velum template catalog |
+| `plaud.55-c41c0e0362` | Sermon Notes Organizer v0.4 | Velum | False | speech | Velum template catalog |
+| `plaud.58-de38d7a540` | Sermon Notes Pro | Velum | False | speech | Velum template catalog |
+| `plaud.0-96bd2ad581` | Sermon Study Creation Outline | Velum | False | speech | Velum template catalog |
+| `plaud.68-0bd838ac85` | Sermon Study Notes Template | Velum | False | education | Velum template catalog |
+| `plaud.72-6f29e58f4b` | Sermon Summary (Highlights Only) | Velum | False | speech | Velum template catalog |
+| `plaud.0-309b1ee828` | Service Call and Resolution Tracker | Velum | False | call | Velum template catalog |
+| `plaud.1054-350fbe0cad` | Service Minutes | Velum | False | medical | Velum template catalog |
+| `plaud.166-a3a149168d` | Service Provider Case Meeting | Velum | False | general | Velum template catalog |
+| `plaud.131-5883868ae7` | Service Provider Meeting (Visit) | Velum | False | meeting | Velum template catalog |
+| `plaud.470` | Service Record | Velum | False | medical | Velum template catalog |
+| `plaud.160` | Service Technician Diagnosis, Troubleshooting, and Summary Guide | Velum | False | construction | Velum template catalog |
+| `plaud.0-20cde5ae35` | Services - Indemnification Claims - Public Defender's Office | Velum | False | legal | Velum template catalog |
+| `plaud.0-d228ea768c` | SGA Letter - Professional tone Letter to IRS | Velum | False | financial | Velum template catalog |
+| `plaud.0-2ccc3d2082` | Sherry's Meeting Template | Velum | False | sales | Velum template catalog |
+| `plaud.3-40eade5549` | Shiur | Velum | False | speech | Velum template catalog |
+| `plaud.0-9e63c62a9e` | Shoping List | Velum | False | call | Velum template catalog |
+| `plaud.9-9b0d6e986b` | Short term memory loss | Velum | False | extractive | Velum template catalog |
+| `plaud.5-c9cacaadb2` | SIGUE Scheme | Velum | False | interview | Velum template catalog |
+| `plaud.281-64e09b2696` | SIRIS Witness Statement | Velum | False | interview | Velum template catalog |
+| `plaud.16-ab511926c3` | Site Audit | Velum | False | general | Velum template catalog |
+| `plaud.160-3ca96f1f9c` | Site Inspection for Real Estate Valuation Expert | Velum | False | estate | Velum template catalog |
+| `plaud.0-2c805e91dc` | Site Visit Appointment | Velum | False | sales | Velum template catalog |
+| `plaud.417` | Site Visit Report | Velum | False | construction | Velum template catalog |
+| `plaud.7-dd9a593b5e` | Site-walk documentation assistant | Velum | False | construction | Velum template catalog |
+| `plaud.5-9db8d85f73` | Sitech la presentation template | Velum | False | sales | Velum template catalog |
+| `plaud.3-50f58869d3` | SJ/AJ Meeting Minutes (Summary & Tasks) GPT final | Velum | False | meeting | Velum template catalog |
+| `plaud.0-00b75df6a6` | Skill-Creator | Velum | False | it | Velum template catalog |
+| `plaud.0-fbcdf15943` | slavkigen | Velum | False | call | Velum template catalog |
+| `plaud.3-7a41b52491` | SLR | Velum | False | construction | Velum template catalog |
+| `plaud.12-afbba806a2` | Small Company Internal Meetings - Execution & Decisions | Velum | False | meeting | Velum template catalog |
+| `plaud.78-a3527df8ac` | SMART CONFERENCE NOTES | Velum | False | education | Velum template catalog |
+| `plaud.0-c4c5826844` | SME Interview for KBs | Velum | False | interview | Velum template catalog |
+| `plaud.36-200005ece6` | SOA Request | Velum | False | financial | Velum template catalog |
+| `plaud.20-497e563692` | Soccer Coach Training Session Feedback Analysis | Velum | False | education | Velum template catalog |
+| `plaud.0-216039e3a0` | Soccer Player Recruitment Intelligence Capture System (SPRICS) | Velum | False | general | Velum template catalog |
+| `plaud.71-7db8d41a1d` | social media | Velum | False | extractive | Velum template catalog |
+| `plaud.40-3836a93e07` | Social Media Quotes & Soundbites Extraction | Velum | False | speech | Velum template catalog |
+| `plaud.1-e74ef3a5fc` | Social Security Law Practice | Velum | False | consulting | Velum template catalog |
+| `plaud.142-4769db687b` | Social Work | Velum | False | medical | Velum template catalog |
+| `plaud.1-7c46660558` | SofIA 1.0 | Velum | False | general | Velum template catalog |
+| `plaud.0-5c24caa9f2` | SofIA 10.0 | Velum | False | general | Velum template catalog |
+| `plaud.13-3840353310` | SofIA 13.0 | Velum | False | general | Velum template catalog |
+| `plaud.1-a2b10a295f` | SofIA 3.0 | Velum | False | general | Velum template catalog |
+| `plaud.0-9a39459278` | SofIA 6.0 | Velum | False | general | Velum template catalog |
+| `plaud.0-0c69e40a9e` | SofIA 8.0 | Velum | False | general | Velum template catalog |
+| `plaud.21-d6b023d83b` | Software Demo | Velum | False | it | Velum template catalog |
+| `plaud.1828` | Software Product Manager | Velum | False | it | Velum template catalog |
+| `plaud.10879` | Software Requirements Gathering | Velum | False | it | Velum template catalog |
+| `plaud.4-74d01e1cf7` | Software Team — Daily Standup Minutes | Velum | False | it | Velum template catalog |
+| `plaud.24-a9266c1257` | Software Walkthrough Review | Velum | False | it | Velum template catalog |
+| `plaud.0-d0cb0d04c7` | Solar Plants | Velum | False | consulting | Velum template catalog |
+| `plaud.1-abc2efdb63` | Solo Podcast for Developing Critical Thinking | Velum | False | speech | Velum template catalog |
+| `plaud.1-b121379505` | SommetGF_Client Note Summary | Velum | False | financial | Velum template catalog |
+| `plaud.3-f42238b347` | sop - client death process | Velum | False | extractive | Velum template catalog |
+| `plaud.36-4cd80b9eca` | SOP - Purpose Planning | Velum | False | financial | Velum template catalog |
+| `plaud.7-3e9527b53e` | SOP's | Velum | False | extractive | Velum template catalog |
+| `plaud.14-f1a46914c0` | Sort Free Thoughts | Velum | False | extractive | Velum template catalog |
+| `plaud.54-bdcdf56336` | Spanish to English | Velum | False | speech | Velum template catalog |
+| `plaud.85-42e28700c5` | Speak Like a CEO | Velum | False | speech | Velum template catalog |
+| `plaud.42-39117ec6d8` | Speaker Coaching Report | Velum | False | speech | Velum template catalog |
+| `plaud.76-810752596c` | Special Needs | Velum | False | medical | Velum template catalog |
+| `plaud.0-7f92061fa0` | SPECIALIZED ASSESSMENT OF FETAL HEALTH | Velum | False | medical | Velum template catalog |
+| `plaud.0-b24b65e495` | spectrum calls | Velum | False | call | Velum template catalog |
+| `plaud.214-105ab8ef93` | Speech Draft to Knowledge Planet Article | Velum | False | speech | Velum template catalog |
+| `plaud.4523` | Speech to Text | Velum | False | call | Velum template catalog |
+| `plaud.0-1c9cc6d7bc` | Spiritual Exercises for Catholic Priests— Faithful Transcript | Velum | False | speech | Velum template catalog |
+| `plaud.17-ec94300d9b` | Spiritual Theme Title Page Generator | Velum | False | education | Velum template catalog |
+| `plaud.71-ef43e2562b` | SPIW 2026 | Velum | False | speech | Velum template catalog |
+| `plaud.6-ed6ddf28cd` | SPORTS BETTING RECORD AND ANALYSIS TEMPLATE | Velum | False | financial | Velum template catalog |
+| `plaud.65-e5bfa5c751` | Sprint Kickoffs | Velum | False | it | Velum template catalog |
+| `plaud.1-955778428c` | SPS Supplier Visits | Velum | False | meeting | Velum template catalog |
+| `plaud.4-2d87648243` | SRPD REPORT ASSISTANT | Velum | False | legal | Velum template catalog |
+| `plaud.1-08c2a47373` | SSP Field Sales Template | Velum | False | sales | Velum template catalog |
+| `plaud.16-44c33515e1` | staff crozon 2026 | Velum | False | meeting | Velum template catalog |
+| `plaud.0-f8c8f1ecd9` | Stair Running | Velum | False | extractive | Velum template catalog |
+| `plaud.4-6814963534` | stakeholder management training | Velum | False | sales | Velum template catalog |
+| `plaud.14-1cfe794d07` | Stakeholder Signal Tracker | Velum | False | consulting | Velum template catalog |
+| `plaud.117` | Stan Lee CSR Grading & Coaching Template | Velum | False | call | Velum template catalog |
+| `plaud.1-17568319b2` | Startup Pitch & Investor Q&A Summary | Velum | False | financial | Velum template catalog |
+| `plaud.0-9b7744321b` | Statement Flow-Oriented Minutes System | Velum | False | meeting | Velum template catalog |
+| `plaud.116-397a5ff9ea` | Statement of Advice (SOA) presentation | Velum | False | financial | Velum template catalog |
+| `plaud.4-6f908196fd` | Statement of suitability | Velum | False | financial | Velum template catalog |
+| `plaud.39-80c98b382c` | Steering Committee Meeting Minutes | Velum | False | meeting | Velum template catalog |
+| `plaud.94-29f3d92cd1` | Step-by-step Understanding Support Template (English/Japanese Compatible, for Learning) | Velum | False | education | Velum template catalog |
+| `plaud.23-6063b133ed` | Storytelling Maker - Alnuni | Velum | False | speech | Velum template catalog |
+| `plaud.119-14043df443` | Strategic 1:1 for Technology Leaders | Velum | False | it | Velum template catalog |
+| `plaud.58-96e948affb` | Strategic Agendas Between Areas | Velum | False | it | Velum template catalog |
+| `plaud.3-bb52ad6069` | Strategic Dialogue Narrative Transformer, SNDT | Velum | False | interview | Velum template catalog |
+| `plaud.829-ed64b6cdcf` | Strategic Minutes | Velum | False | meeting | Velum template catalog |
+| `plaud.13-d60f266fb6` | Strategic Planning Secretary - PWR Management | Velum | False | consulting | Velum template catalog |
+| `plaud.4-577325c810` | Strategic Summary | Velum | False | sales | Velum template catalog |
+| `plaud.13-fe80d8392a` | Structured CODIR Meeting Minutes | Velum | False | meeting | Velum template catalog |
+| `plaud.1-6894a9c708` | Structured Customer Call Report | Velum | False | sales | Velum template catalog |
+| `plaud.6-b811f3177d` | Structured Document - Personal | Velum | False | speech | Velum template catalog |
+| `plaud.2-63078a9c22` | Structured Interview Report Supermarket Research | Velum | False | extractive | Velum template catalog |
+| `plaud.12-d5ff162292` | STRUCTURED SAL | Velum | False | it | Velum template catalog |
+| `plaud.3-f1120cbcbb` | Structured Summary of Drug Information | Velum | False | call | Velum template catalog |
+| `plaud.64-4dca8acf67` | Structured Summary of Medical Evolution in ICU | Velum | False | medical | Velum template catalog |
+| `plaud.133-9969ad5d77` | STRUCTURED SUMMARY OF UNIVERSITY CLASS | Velum | False | education | Velum template catalog |
+| `plaud.5-b6171dd4cf` | Structured summary of university lecture | Velum | False | education | Velum template catalog |
+| `plaud.101-75a55bbc99` | Structured Summary Prompt for Client Consultations | Velum | False | consulting | Velum template catalog |
+| `plaud.10-1dca09605c` | Student Counselling Summary | Velum | False | education | Velum template catalog |
+| `plaud.0-625c187376` | Student Interview Summary Sheet | Velum | False | interview | Velum template catalog |
+| `plaud.0-2c6fc1361a` | sub meeting | Velum | False | construction | Velum template catalog |
+| `plaud.17-42119f9046` | summariser | Velum | False | meeting | Velum template catalog |
+| `plaud.279` | Summarization of Audio Content | Velum | False | general | Velum template catalog |
+| `plaud.201-37ca24b8fe` | Summary (Minutes) | Velum | False | education | Velum template catalog |
+| `plaud.7-e0e9802c10` | Summary (Report) | Velum | False | education | Velum template catalog |
+| `plaud.0-73784ed3f9` | Summary - buyer | Velum | False | call | Velum template catalog |
+| `plaud.1722` | Summary - Medicine | Velum | False | education | Velum template catalog |
+| `plaud.2-cf4b6fc084` | Summary Agent with MPM | Velum | False | it | Velum template catalog |
+| `plaud.0-62b4b5501e` | summary meetingp | Velum | False | financial | Velum template catalog |
+| `plaud.190-86474b1edd` | SUMMARY OF EVIDENTIARY AND TRIAL HEARINGS | Velum | False | extractive | Velum template catalog |
+| `plaud.86-14ed5850fc` | SUMMARY OF LEGAL SERVICES IN PRIVATE LAW PRACTICE | Velum | False | extractive | Velum template catalog |
+| `plaud.1679` | Summary of Meeting Contents | Velum | False | construction | Velum template catalog |
+| `plaud.244-e51930f32b` | Summary of Real Estate Conversations with Customers (Kotobuki Real Estate) | Velum | False | estate | Velum template catalog |
+| `plaud.0-7d8ee7bb58` | Summary of Religious Event Report | Velum | False | speech | Velum template catalog |
+| `plaud.0-1cc337436d` | Summary Study Leuven | Velum | False | speech | Velum template catalog |
+| `plaud.0-78af55f13f` | SUPERVISION MHD | Velum | False | interview | Velum template catalog |
+| `plaud.0-2e808326c8` | Sustainability Real Estate Industry | Velum | False | estate | Velum template catalog |
+| `plaud.5-88bbeebf07` | SVU TEMPLATE | Velum | False | legal | Velum template catalog |
+| `plaud.362-778ade684c` | SXSW Template | Velum | False | speech | Velum template catalog |
+| `plaud.685` | SYMBOLIC SEDUCTION ANALYSIS | Velum | False | extractive | Velum template catalog |
+| `plaud.135` | Systemic Counseling | Velum | False | consulting | Velum template catalog |
+| `plaud.117-e0396f940a` | Systemic psychotherapy session | Velum | False | medical | Velum template catalog |
+| `plaud.0-f2994bdc61` | Table of Investment Amounts by Financial Institution and Time Series | Velum | False | sales | Velum template catalog |
+| `plaud.0-e662d2e09c` | Table Travel Itinerary Generator | Velum | False | extractive | Velum template catalog |
+| `plaud.1-c233eba556` | Tabular Communication Log | Velum | False | legal | Velum template catalog |
+| `plaud.0-66f74e16a7` | Tabular Thickness Measurement Log | Velum | False | it | Velum template catalog |
+| `plaud.12-ed1afdea5c` | Tactical meetings | Velum | False | meeting | Velum template catalog |
+| `plaud.12-45b0b797fd` | Tara Report v2 | Velum | False | meeting | Velum template catalog |
+| `plaud.13-efe9433dbd` | Target Market Research Interviews | Velum | False | interview | Velum template catalog |
+| `plaud.138-5b3d5871c2` | TASK LIST Spreadsheet. | Velum | False | extractive | Velum template catalog |
+| `plaud.15-17c9f0c7c3` | Task Planner | Velum | False | it | Velum template catalog |
+| `plaud.3-635e49c6ca` | TEA - HSD - Presenting to a Failed House Seller | Velum | False | estate | Velum template catalog |
+| `plaud.0-8b2f604235` | Teachers Fact Finder | Velum | False | financial | Velum template catalog |
+| `plaud.0-5c461292c7` | TEAM & PARTNER MEETING | Velum | False | general | Velum template catalog |
+| `plaud.571` | Teams Meeting | Velum | False | meeting | Velum template catalog |
+| `plaud.1-b8dacfde2c` | Tech Transfer Commercialization Eval | Velum | False | financial | Velum template catalog |
+| `plaud.6-efcdb1fd79` | Technical Consultant Site Meetings HVAC | Velum | False | construction | Velum template catalog |
+| `plaud.1-e8a030f108` | Technical Discussion Key Points Checklist | Velum | False | speech | Velum template catalog |
+| `plaud.57-e38994d6fd` | Technical Inspection Report Summary | Velum | False | consulting | Velum template catalog |
+| `plaud.6-712db07a8b` | Technical Summary | Velum | False | meeting | Velum template catalog |
+| `plaud.60-7f1629cc86` | Technical Visit Report | Velum | False | it | Velum template catalog |
+| `plaud.41-595d249ff1` | Technology Runbook | Velum | False | it | Velum template catalog |
+| `plaud.23-94bd71c053` | Technology Training | Velum | False | education | Velum template catalog |
+| `plaud.0-260891d451` | TEHB Acquisitions Call Grading System | Velum | False | estate | Velum template catalog |
+| `plaud.3` | Telefonat Kandidat/Kunde | Velum | False | call | Velum template catalog |
+| `plaud.0-25a5973a18` | Telemedicine Anamnesis | Velum | False | medical | Velum template catalog |
+| `plaud.128` | Telephone Conversation | Velum | False | call | Velum template catalog |
+| `plaud.7-aa9f9cca26` | Telephone Order Management | Velum | False | sales | Velum template catalog |
+| `plaud.0-bc8c15c02a` | Telephone screening prompt | Velum | False | call | Velum template catalog |
+| `plaud.204` | Telephone Support | Velum | False | call | Velum template catalog |
+| `plaud.11-55952d01b7` | Template for Daqi Team Night Vocational School Lecture | Velum | False | speech | Velum template catalog |
+| `plaud.674` | Template for Meeting Minutes of Custom-Built Home Discussions with Clients | Velum | False | construction | Velum template catalog |
+| `plaud.21-d4d1c2d40b` | Template for PM | Velum | False | it | Velum template catalog |
+| `plaud.2-0b3a7f1dd3` | Template for Property Viewing | Velum | False | estate | Velum template catalog |
+| `plaud.766` | TEMPLATE – PHONE CALL | Velum | False | call | Velum template catalog |
+| `plaud.3-802cb99871` | Tender - Site survey Template / specification document | Velum | False | construction | Velum template catalog |
+| `plaud.0-aa05ed5b71` | Terrain Pilot Client Call - English | Velum | False | interview | Velum template catalog |
+| `plaud.1-55d8d2f78d` | Terros full assessment | Velum | False | interview | Velum template catalog |
+| `plaud.5-7a0d3ec586` | Test 2 | Velum | False | sales | Velum template catalog |
+| `plaud.0-02daf0b3dc` | test 2 | Velum | False | sales | Velum template catalog |
+| `plaud.0-924a130e09` | Test if deletion allows successful publication | Velum | False | call | Velum template catalog |
+| `plaud.0-d4f374a65d` | test Mobula6 | Velum | False | construction | Velum template catalog |
+| `plaud.0-51e058a191` | Test Template | Velum | False | call | Velum template catalog |
+| `plaud.38-4b429b5bc9` | The "Agile Daily Sync" Velum Prompt | Velum | False | it | Velum template catalog |
+| `plaud.14-0d6698c34c` | The cycle of documenting | Velum | False | education | Velum template catalog |
+| `plaud.1-9285ad4ce3` | The Deal Analyzer | Velum | False | financial | Velum template catalog |
+| `plaud.0-56b0721d13` | The Fraker Group - Client Call, Mid-Transaction, | Velum | False | estate | Velum template catalog |
+| `plaud.60-cd44515fbe` | The Fraker Group - Initial Client Consultation | Velum | False | estate | Velum template catalog |
+| `plaud.2-7d905157c8` | The Meeting DistilleriNator | Velum | False | it | Velum template catalog |
+| `plaud.47-01c1cc0d88` | The Quantum Revenue Engine: Forensic Deal Analysis Protocol | Velum | False | sales | Velum template catalog |
+| `plaud.14-70b1670621` | The Wise Mind Method - Agent Path V1 | Velum | False | estate | Velum template catalog |
+| `plaud.21-031d46dae4` | Therapy Course | Velum | False | education | Velum template catalog |
+| `plaud.160-a1c469e035` | Therapy Session Protocol | Velum | False | consulting | Velum template catalog |
+| `plaud.4-e830fdacc2` | Thesis advisory, professional internship report, or evidence portfolio for normal school students | Velum | False | education | Velum template catalog |
+| `plaud.82-95a1069952` | THESIS REVIEW SESSION | Velum | False | education | Velum template catalog |
+| `plaud.13-68e24621ed` | Thinking | Velum | False | general | Velum template catalog |
+| `plaud.0-3a0c7adb7e` | Thoughts | Velum | False | extractive | Velum template catalog |
+| `plaud.745` | Thoughts | Velum | False | extractive | Velum template catalog |
+| `plaud.16-c8638dea59` | Tien-Hsun Short Video Viral Quote Extraction Expert | Velum | False | extractive | Velum template catalog |
+| `plaud.20-005610f206` | Title EN | Velum | False | general | Velum template catalog |
+| `plaud.72-78a2c21d61` | TLI Data Archiving Project Meeting Summary | Velum | False | it | Velum template catalog |
+| `plaud.1-f2bfc9b0d3` | TMP Vision of Success - status | Velum | False | meeting | Velum template catalog |
+| `plaud.3-bc22744c69` | To do list | Velum | False | estate | Velum template catalog |
+| `plaud.8-df8284dd03` | To do list from transcripts - Check boxes for transcripts to include | Velum | False | sales | Velum template catalog |
+| `plaud.5-ff05919d96` | To do list per google calendar | Velum | False | extractive | Velum template catalog |
+| `plaud.15-1ccbe4fa35` | Toastmasters speech analyzer | Velum | False | speech | Velum template catalog |
+| `plaud.78` | todo and done | Velum | False | consulting | Velum template catalog |
+| `plaud.0-4af5e32188` | Tour Support | Velum | False | medical | Velum template catalog |
+| `plaud.34-c803fa1272` | Trade off Analysis | Velum | False | financial | Velum template catalog |
+| `plaud.916-2efbb9e2a4` | Trade Show Booth Interaction (Marketing) | Velum | False | sales | Velum template catalog |
+| `plaud.74-b876ca277c` | Trade Show Conversations | Velum | False | sales | Velum template catalog |
+| `plaud.6-bc6b7aa4d6` | Trainer Assessment Matrix | Velum | False | education | Velum template catalog |
+| `plaud.0-c2f4834233` | Trainer Debriefing | Velum | False | interview | Velum template catalog |
+| `plaud.106-9b1dc2aada` | Training Dashboard & Notes Generator | Velum | False | extractive | Velum template catalog |
+| `plaud.11-a063be30b6` | Training Journal Log Entry | Velum | False | extractive | Velum template catalog |
+| `plaud.97-29a24ee4f8` | Training Methodology | Velum | False | education | Velum template catalog |
+| `plaud.77-08a41c79fc` | Training tara | Velum | False | education | Velum template catalog |
+| `plaud.11-f13f603533` | Transcript Analyst | Velum | False | general | Velum template catalog |
+| `plaud.7-0b648212bd` | Transcript of Campus Sexual Harassment Incident | Velum | False | extractive | Velum template catalog |
+| `plaud.24-bbfdb14536` | Transcript Summary_02 | Velum | False | consulting | Velum template catalog |
+| `plaud.147-f677bc70e0` | Transcript tidyup | Velum | False | meeting | Velum template catalog |
+| `plaud.153-d2231205d3` | Transcript++ — As it should have been said | Velum | False | speech | Velum template catalog |
+| `plaud.0-e082abf6de` | Transcription 1013 Revised | Velum | False | interview | Velum template catalog |
+| `plaud.26-68062575b4` | Transform a transcript into a detailed document | Velum | False | speech | Velum template catalog |
+| `plaud.64-eb7db05e5f` | Trust Admin Consulation | Velum | False | legal | Velum template catalog |
+| `plaud.3-54545dfda4` | TTB HANDYMAN SALES EVALUATION | Velum | False | sales | Velum template catalog |
+| `plaud.320` | Turn Any Talk into a Top-Tier Journal Article | Velum | False | education | Velum template catalog |
+| `plaud.0-6eb56f47dd` | Types and Levels | Velum | False | sales | Velum template catalog |
+| `plaud.31-c8eeea21df` | UAX | Velum | False | consulting | Velum template catalog |
+| `plaud.8-e3c8c389f3` | UK Chiropractic Consultation | Velum | False | medical | Velum template catalog |
+| `plaud.3-84dbf6ee4b` | Uk Criminal Defence – Court Hearing Advocacy Note (Timed) | Velum | False | legal | Velum template catalog |
+| `plaud.11-2b4811bcfe` | UK CRIMINAL DEFENCE – Defence Client Conference Attendance Note (Timed) | Velum | False | legal | Velum template catalog |
+| `plaud.16-c814c92f17` | UNI for university notes | Velum | False | education | Velum template catalog |
+| `plaud.2-238347b92f` | Universal Conversation Memory | Velum | False | general | Velum template catalog |
+| `plaud.0-48202ef0c8` | Universal Network Velum | Velum | False | it | Velum template catalog |
+| `plaud.2-dce0b14572` | Universal Phone Call Summary Prompt | Velum | False | call | Velum template catalog |
+| `plaud.0-02847e4352` | Universal Real Estate Prompt (Catch-all_V.1.0) | Velum | False | estate | Velum template catalog |
+| `plaud.0-26d44118ae` | Universal Trucking Call | Velum | False | call | Velum template catalog |
+| `plaud.0-aa9929f4cb` | Universal Work Meeting | Velum | False | meeting | Velum template catalog |
+| `plaud.85-476de83ee5` | University Lecture | Velum | False | education | Velum template catalog |
+| `plaud.20-7e19fc10a2` | UNIVERSITY LECTURE TRANSCRIPTIONS | Velum | False | education | Velum template catalog |
+| `plaud.17-6438106ce1` | UNIVERSITY, WORK, CONGRESS/MEET | Velum | False | general | Velum template catalog |
+| `plaud.0-31fb9707bb` | Updated ISP - Discovery Session | Velum | False | consulting | Velum template catalog |
+| `plaud.0-84fa3df7e3` | urology medical consultation | Velum | False | medical | Velum template catalog |
+| `plaud.1-558ed69b20` | UU Shopper | Velum | False | interview | Velum template catalog |
+| `plaud.0-f4fbacdd77` | Value Framework - Customer Meetings | Velum | False | sales | Velum template catalog |
+| `plaud.111-c6ecf6aae6` | VCIO - SBR Recap | Velum | False | it | Velum template catalog |
+| `plaud.1-dcd78d8f45` | Veldman – Mortgage Advice Conversation | Velum | False | meeting | Velum template catalog |
+| `plaud.63-b57675d81a` | Velum Analysis Script — "Exploratory Interview (RPS – Gollac Model)" | Velum | False | interview | Velum template catalog |
+| `plaud.60-bc7b977bc0` | Velum Neuro-Audio Lecture Translator | Velum | False | education | Velum template catalog |
+| `plaud.41-192d2f6ede` | Velum-to-Training Slide Converter – OT & Automation | Velum | False | it | Velum template catalog |
+| `plaud.56-8b256135d7` | VENDOR EVALUATION | Velum | False | it | Velum template catalog |
+| `plaud.31-a1309223d8` | Venue Tour | Velum | False | sales | Velum template catalog |
+| `plaud.4-77585b499b` | VERTICAL Meeting Report | Velum | False | sales | Velum template catalog |
+| `plaud.8-5e1cdd63fe` | Veteran Risk Analyst | Velum | False | financial | Velum template catalog |
+| `plaud.7-b0762ce93f` | Veterinary Behavioral Assessment Report Generator | Velum | False | consulting | Velum template catalog |
+| `plaud.407` | VETERINARY LECTURE NOTES | Velum | False | education | Velum template catalog |
+| `plaud.1-d3cf5db7d0` | Veterinary Medical Examination | Velum | False | medical | Velum template catalog |
+| `plaud.0-a88f693a2b` | Veterinary Psychiatry Consultation | Velum | False | medical | Velum template catalog |
+| `plaud.80-383c11b16a` | Veterinary Ultrasound | Velum | False | medical | Velum template catalog |
+| `plaud.19-df4061ac37` | VHG Agent Template | Velum | False | estate | Velum template catalog |
+| `plaud.238-37ca3912dc` | Video Notes / Talk / Webinar | Velum | False | speech | Velum template catalog |
+| `plaud.55-e5295bc74c` | Viral Snippet Finder | Velum | False | speech | Velum template catalog |
+| `plaud.1-2caa5cb909` | Visit Appointment Booking | Velum | False | interview | Velum template catalog |
+| `plaud.0-bb1978a9d8` | Visit Innovation Center | Velum | False | it | Velum template catalog |
+| `plaud.0-f30892bac8` | Visit Properties Asunción | Velum | False | estate | Velum template catalog |
+| `plaud.82-cb3798e98e` | Vitor's Diary | Velum | False | extractive | Velum template catalog |
+| `plaud.1-6818bf453e` | voice memo Notes2.0 | Velum | False | call | Velum template catalog |
+| `plaud.65-cce57b73db` | Walkthrough Inspection Report | Velum | False | estate | Velum template catalog |
+| `plaud.2-f3e4ae3598` | WCPD Interview | Velum | False | interview | Velum template catalog |
+| `plaud.30-722d07ff8c` | Wealth Management Consultation Meeting | Velum | False | financial | Velum template catalog |
+| `plaud.93-9c19fee4a9` | Webinar summary article | Velum | False | financial | Velum template catalog |
+| `plaud.32-5a5c3e461d` | Wedding Appointment Debrief | Velum | False | sales | Velum template catalog |
+| `plaud.3-417966be48` | Wedding Transcription | Velum | False | speech | Velum template catalog |
+| `plaud.1-1d5536e237` | weekly project meeting minute | Velum | False | it | Velum template catalog |
+| `plaud.1-8ef88c3a9e` | weekly sync Notes | Velum | False | extractive | Velum template catalog |
+| `plaud.0-b4751579be` | weekly sync NotesV2 | Velum | False | extractive | Velum template catalog |
+| `plaud.19-72d49fffab` | Weekly Team Meeting Construction Projects | Velum | False | estate | Velum template catalog |
+| `plaud.1-f5925c6d4b` | Weekly WHS Meeting | Velum | False | call | Velum template catalog |
+| `plaud.0-234157e249` | Welfare Equipment Rental Office Visit Record | Velum | False | sales | Velum template catalog |
+| `plaud.6-848d400b73` | West Berkshire EHCP Annual Review | Velum | False | education | Velum template catalog |
+| `plaud.0-eea7ce1393` | WESTIRON — Residential Remodel Walkthrough | Velum | False | construction | Velum template catalog |
+| `plaud.221` | What was said today? | Velum | False | extractive | Velum template catalog |
+| `plaud.0-1585bf61fa` | WING LOG REPORTS | Velum | False | consulting | Velum template catalog |
+| `plaud.35-b708e25b85` | Wise Summary | Velum | False | call | Velum template catalog |
+| `plaud.0-20230818af` | Work Done | Velum | False | construction | Velum template catalog |
+| `plaud.27-8ec63ca462` | Work Incapacity | Velum | False | interview | Velum template catalog |
+| `plaud.26-549971da38` | Workflows for Seniors | Velum | False | education | Velum template catalog |
+| `plaud.74` | Workshop Process Analysis Table | Velum | False | consulting | Velum template catalog |
+| `plaud.1-2bd3ffa285` | Workstation — Client Meeting Summary | Velum | False | estate | Velum template catalog |
+| `plaud.27-2bc6cdf1d8` | Workstation — Tender Pitch Debrief | Velum | False | estate | Velum template catalog |
+| `plaud.0-24400e6a70` | YC Dep | Velum | False | legal | Velum template catalog |
+| `plaud.2-c46a6a7d06` | Year End Warranty Walk | Velum | False | construction | Velum template catalog |
+| `plaud.3-ba8a959fd6` | Yoshihito Kamogashira's **Facebook Post Text** | Velum | False | speech | Velum template catalog |
+| `plaud.67-7ea8f40480` | Your Personal Second Brain | Velum | False | consulting | Velum template catalog |
+| `plaud.204-76fb4220d9` | YouTube Learning Capture (Personal Growth + Work Learning) | Velum | False | education | Velum template catalog |
+| `plaud.14-508af4371b` | YouTube Video Producer Tool | Velum | False | extractive | Velum template catalog |
+| `plaud.16-56ac778542` | Z Report | Velum | False | extractive | Velum template catalog |
+| `plaud.0-3fa8705f16` | ZCP_PLAUDIO_v1.2 – Field Visit Voice Protocol (Bidding Phase) | Velum | False | construction | Velum template catalog |
+| `plaud.2-04b7978258` | ZEN MASTER | Velum | False | general | Velum template catalog |
+| `plaud.4-ce3038d4c6` | Zendesk Tutorials Notes for Systems Analyst | Velum | False | general | Velum template catalog |
+| `plaud.22-4b77e23922` | Zi Wei Dou Shu | Velum | False | education | Velum template catalog |
+| `plaud.0-e1aed11c17` | Íris 3P | Velum | False | estate | Velum template catalog |
+| `plaud.3-b49588c09e` | Операционная инструкция для анализа звонков брокеров | Velum | False | call | Velum template catalog |
+| `plaud.0-00416aa03a` | ⚖️ Court Proceedings | Velum | False | legal | Velum template catalog |
+| `plaud.4023` | ⛪️ Bible Study and Sermon Guru | Velum | False | speech | Velum template catalog |
+| `plaud.20720` | ❤️‍🔥 Executive Protocol & Strategic AI Companion | Velum | False | meeting | Velum template catalog |
+| `plaud.780` | ⭐️Discharge Conference (for Care Managers) | Velum | False | medical | Velum template catalog |
+| `plaud.1325-51e7bcc8a4` | ⭐️Key Points of the Service Provider Meeting (For Care Managers) | Velum | False | meeting | Velum template catalog |
+| `plaud.10-f795704d04` | ⭐️🪔Deep psychological/philosophical journal analyst | Velum | False | general | Velum template catalog |
+| `plaud.36-a3ead59870` | 【For Business Negotiations】Meeting Minutes Creation Support ver3 | Velum | False | it | Velum template catalog |
+| `plaud.1-f8617f03ea` | 컨설턴트 전용 회의록_고객인터뷰 | Velum | False | consulting | Velum template catalog |
+| `plaud.2053` | 🎯 Clarify What Matters (With Production Report) | Velum | False | extractive | Velum template catalog |
+| `plaud.446` | 🏛️ Law Class Study | Velum | False | education | Velum template catalog |
+| `plaud.32-7791718cc2` | 🏠Mortgage- Purchase Lead intake call | Velum | False | estate | Velum template catalog |
+| `plaud.534-e25bf02969` | 👉BLUNT TO THE POINT - Absolute Mode | Velum | False | speech | Velum template catalog |
+| `plaud.7-a02571c905` | 💻 Assistant / Real Estate Broker | Velum | False | estate | Velum template catalog |
+| `plaud.0-8f295ed529` | 📊 Live Universe - Administrative/Financial | Velum | False | financial | Velum template catalog |
+| `plaud.39-a05c52def2` | 📌 CLIENT REPORT (FINANCIAL PLANNING) | Velum | False | financial | Velum template catalog |
+| `plaud.156-38bcbaea71` | 📚 Learning engine 🧠 Thinking framework | Velum | False | education | Velum template catalog |
+| `plaud.6-cb0bb5221b` | 📝Domestic Legal Meeting Secretary - Virginia Applicable | Velum | False | legal | Velum template catalog |
+| `plaud.0-ed5e986501` | 🚌 - POP VIA BRASIL MOBILITY | Standard Operating Procedure for B2G Urban Mobility | Velum | False | consulting | Velum template catalog |
+| `plaud.4-b6904bd440` | 🦀 MAMMARY NEOPLASIA FORM | Velum | False | medical | Velum template catalog |
+| `plaud.196` | 🧠 PROFESSIONAL LEARNING & REFLECTION TEMPLATE | Velum | False | education | Velum template catalog |
+| `plaud.358-1c184e3711` | 🧠 Velum SALES CALL REVIEW TEMPLATE | Velum | False | sales | Velum template catalog |
+| `plaud.0-2b1d686b26` | 🧾 AVIOR MEETING NOTES TEMPLATE | Velum | False | financial | Velum template catalog |
 
 ### Authors
 
-- **007** — 1 template(s)
-- **0624648464** — 1 template(s)
-- **5Dev** — 1 template(s)
-- **5dfxtx7bjg** — 1 template(s)
-- **65cf9jnj7x** — 1 template(s)
-- **7gfrgxq7mq** — 1 template(s)
-- **7qgfqhp4ys** — 1 template(s)
-- **7点中** — 3 template(s)
-- **8bcwdstfd2** — 1 template(s)
-- **8kz8h77vkv** — 1 template(s)
-- **8mdj4hpym8** — 1 template(s)
-- **9z2tvm2n2s** — 2 template(s)
-- **A G** — 1 template(s)
-- **a junjun** — 1 template(s)
-- **a.agredano** — 1 template(s)
-- **a.alshareef** — 1 template(s)
-- **a.beer** — 1 template(s)
-- **a.hosdey** — 2 template(s)
-- **a.kosnaki** — 1 template(s)
-- **AA** — 1 template(s)
-- **aaithal** — 1 template(s)
-- **Abdul Luton** — 1 template(s)
-- **Abigail Cipriano** — 1 template(s)
-- **accounts** — 1 template(s)
-- **Adam** — 1 template(s)
-- **Adam S Di Dio, MD** — 1 template(s)
-- **adamgotlin** — 1 template(s)
-- **Adamjasonmoore** — 6 template(s)
-- **Adedamola Alfred** — 1 template(s)
-- **Adolfo Gutierrez** — 1 template(s)
-- **adrian0309.adrian0309** — 1 template(s)
-- **Adrianus** — 1 template(s)
-- **adv-kab.lazarenko** — 1 template(s)
-- **aeteux** — 1 template(s)
-- **ag** — 1 template(s)
-- **Agustín Gentini** — 1 template(s)
-- **ahmannschlieker** — 1 template(s)
-- **ahmedaesaid** — 1 template(s)
-- **aimeevora** — 1 template(s)
-- **ajh824** — 1 template(s)
-- **Akira** — 1 template(s)
-- **Alain Dubé (418) 868-5314** — 1 template(s)
-- **Alan Bell** — 1 template(s)
-- **aleburvil** — 1 template(s)
-- **Alecia Scott** — 1 template(s)
-- **Alejandro Orozco** — 1 template(s)
-- **Alejandro Rubin Cymerman** — 1 template(s)
-- **Aleksandur Mitrev** — 1 template(s)
-- **Alessandra Samico** — 1 template(s)
-- **Alessandro Armanasco** — 1 template(s)
-- **Alessandro Pineda** — 1 template(s)
-- **alex** — 1 template(s)
-- **Alex Park** — 1 template(s)
-- **Alex Vrt** — 1 template(s)
-- **Alexander Marschner** — 1 template(s)
-- **alexis.plancon** — 1 template(s)
-- **Alfons Tefa** — 1 template(s)
-- **Alfonso E. Núñez N.** — 1 template(s)
-- **alfred_esposito34** — 1 template(s)
-- **Alice Ma** — 1 template(s)
-- **Alina.kraemer** — 1 template(s)
-- **Allan Bonvallat** — 1 template(s)
-- **Allan Vargas** — 1 template(s)
-- **Allen** — 1 template(s)
-- **Ally** — 1 template(s)
-- **Alvaro Augusto Vovio Spinola (Guto Spinola)** — 1 template(s)
-- **alypietra** — 1 template(s)
-- **Amir Hezareh** — 1 template(s)
-- **Amos Carrick** — 1 template(s)
-- **Amran Muhamad** — 1 template(s)
-- **Anastas Maraslis** — 1 template(s)
-- **anaya.n.khan** — 1 template(s)
-- **Andranik Karapetyan** — 1 template(s)
-- **Andre Kent** — 1 template(s)
-- **andrea brescia** — 1 template(s)
-- **Andrew Kraut** — 1 template(s)
-- **Andrew Leyden** — 1 template(s)
-- **Andrew McCulloch** — 1 template(s)
-- **andrewpollesel** — 1 template(s)
-- **ANDRÉ FILIPE** — 1 template(s)
-- **André Luiz Kammler** — 1 template(s)
-- **angus.unwin-rose** — 1 template(s)
-- **anjavdwesthuizen85** — 1 template(s)
-- **Anna Koontz** — 1 template(s)
-- **Anna Smith** — 1 template(s)
-- **Annette Weibel-Ranger** — 1 template(s)
-- **annhua99** — 1 template(s)
-- **Annie Koutouan** — 1 template(s)
-- **Anthony Mazzeo** — 1 template(s)
-- **anthonyfps1993** — 1 template(s)
-- **Antoine Robbe** — 1 template(s)
-- **Anton Klochkov** — 1 template(s)
-- **Antonio Lucena de Faria** — 1 template(s)
-- **antonio.martinese** — 1 template(s)
-- **antonio.santos** — 1 template(s)
-- **Antwan Collier** — 1 template(s)
-- **April Spaulding** — 1 template(s)
-- **aprilgraberallen** — 1 template(s)
-- **arantza_gar_fer** — 1 template(s)
-- **architekt.leymann** — 1 template(s)
-- **archiviorick1** — 3 template(s)
-- **Archi•2M Michaël Mesa** — 1 template(s)
-- **arthur beck** — 1 template(s)
-- **Arthur Röell** — 2 template(s)
-- **Artur Levitan** — 1 template(s)
-- **AS** — 1 template(s)
-- **As** — 1 template(s)
-- **as224.g** — 1 template(s)
-- **austin** — 1 template(s)
-- **aymeric** — 1 template(s)
-- **b.lauer** — 1 template(s)
-- **Baghdasaryan** — 1 template(s)
-- **balling1** — 1 template(s)
-- **baptiste.crete** — 1 template(s)
-- **Bastien.launayd** — 1 template(s)
-- **bataillearnaud** — 1 template(s)
-- **Beau Gedrick** — 1 template(s)
-- **Becky Graffius** — 1 template(s)
-- **bekupper** — 1 template(s)
-- **Ben Byers** — 1 template(s)
-- **Ben drover** — 1 template(s)
-- **benedettipaulo** — 1 template(s)
-- **benedikt.sulzer** — 1 template(s)
-- **Benjamin ACHER** — 2 template(s)
-- **Benjamin B** — 1 template(s)
-- **Benjaminignacio** — 1 template(s)
-- **Benny** — 2 template(s)
-- **Benoit HUCHELOUP** — 1 template(s)
-- **benstenger** — 1 template(s)
-- **bertbunnik** — 1 template(s)
-- **betinhocar94** — 1 template(s)
-- **bidinvites** — 1 template(s)
-- **Bill Brown** — 1 template(s)
-- **Bill McCracken** — 5 template(s)
-- **Bill Olsen** — 2 template(s)
-- **bjgerber** — 1 template(s)
-- **bmaaskant76** — 1 template(s)
-- **bmense** — 2 template(s)
-- **Bobbin Toms (Tom)** — 1 template(s)
-- **Bobby Christian** — 1 template(s)
-- **Bonnie Douglas** — 1 template(s)
-- **Brad Wallace** — 1 template(s)
-- **bradenainsworth54** — 1 template(s)
-- **Brandan C** — 1 template(s)
-- **Brandon Graff** — 1 template(s)
-- **Brennan Cashiola** — 1 template(s)
-- **Brian** — 3 template(s)
-- **Brian McQueen** — 2 template(s)
-- **Brian Phanichkarn** — 1 template(s)
-- **Brian Van Burkleo** — 1 template(s)
-- **Brian Witt** — 1 template(s)
-- **Brieuc Thoumsin** — 1 template(s)
-- **Brindi Riley** — 1 template(s)
-- **britney** — 1 template(s)
-- **BRL Plaud** — 2 template(s)
-- **Brooks C.** — 1 template(s)
-- **Bruce.gorry** — 1 template(s)
-- **Bruno Sagas Lopes** — 4 template(s)
-- **Bryan Almeida** — 1 template(s)
-- **Bryan Thompson** — 1 template(s)
-- **bryancannon4491** — 1 template(s)
-- **Buddy Davis** — 1 template(s)
-- **Buk** — 1 template(s)
-- **bypm4pj2y9** — 1 template(s)
-- **byt3x** — 1 template(s)
-- **C Anais** — 1 template(s)
-- **C J** — 1 template(s)
-- **c.dratwa** — 2 template(s)
-- **c.faddoul** — 1 template(s)
-- **c6w55frshz** — 1 template(s)
-- **Caitlin Hartman** — 1 template(s)
-- **Callid Keefe-Perry (Callid)** — 1 template(s)
-- **Cap WAEL alhamarnah** — 1 template(s)
-- **Carlos Silva Júnior** — 1 template(s)
-- **Carmen** — 1 template(s)
-- **Carolina Lacerda** — 1 template(s)
-- **Carraig S** — 1 template(s)
-- **Carter B** — 1 template(s)
-- **CARVEN** — 2 template(s)
-- **catelain** — 1 template(s)
-- **Catherine Gayral** — 1 template(s)
-- **cbhifia+plaud** — 1 template(s)
-- **ccallihan** — 1 template(s)
-- **ccarbiener** — 1 template(s)
-- **cezzane.see** — 1 template(s)
-- **ch.abbou** — 1 template(s)
-- **Chad Hart** — 1 template(s)
-- **Chase Hughes** — 1 template(s)
-- **chon wai chan** — 1 template(s)
-- **Chris** — 1 template(s)
-- **Chris Carrigan** — 1 template(s)
-- **Chris Empson** — 2 template(s)
-- **Chris F** — 1 template(s)
-- **Chris Nguyen** — 1 template(s)
-- **Chris Reynolds** — 1 template(s)
-- **Chris Simmons** — 1 template(s)
-- **christian** — 1 template(s)
-- **Christian Galvis** — 1 template(s)
-- **Christian Mayer** — 1 template(s)
-- **Christian.Jandrisovits** — 1 template(s)
-- **christineknific** — 1 template(s)
-- **Christoph** — 1 template(s)
-- **christoph** — 1 template(s)
-- **Christophe VOISIN** — 1 template(s)
-- **Christopher Phares** — 2 template(s)
-- **Ci** — 1 template(s)
-- **ciweaver09** — 1 template(s)
-- **cjflanagan** — 1 template(s)
-- **ck** — 1 template(s)
-- **CK25** — 1 template(s)
-- **claireackermanrealtor** — 1 template(s)
-- **clanappo** — 1 template(s)
-- **claudiapiedra.c** — 1 template(s)
-- **claytonrfe** — 1 template(s)
-- **clementgau** — 1 template(s)
-- **Clint** — 1 template(s)
-- **Colby Doak** — 1 template(s)
-- **Cole Gerke** — 1 template(s)
-- **coleton** — 1 template(s)
-- **COLIZZI ENG** — 1 template(s)
-- **colleranamanda** — 1 template(s)
-- **COMMUNITAS** — 1 template(s)
-- **communities** — 1 template(s)
-- **contact** — 1 template(s)
-- **contato** — 1 template(s)
-- **cool2008cool** — 1 template(s)
-- **Cory Conner** — 1 template(s)
-- **Craig Tunks** — 1 template(s)
-- **Creighton Carey** — 1 template(s)
-- **cristiano zambarbieri** — 1 template(s)
-- **cs.ng.eric** — 1 template(s)
-- **Curt Casady** — 1 template(s)
-- **curt.dueck** — 1 template(s)
-- **cvirshup** — 1 template(s)
-- **Cyrus Kilburn** — 1 template(s)
-- **cécile Zeste** — 1 template(s)
-- **Cédric** — 1 template(s)
-- **Céline DE MARCHI** — 1 template(s)
-- **César Castaño** — 1 template(s)
-- **C’Ville ER** — 1 template(s)
-- **D K** — 1 template(s)
-- **d.toellner** — 1 template(s)
-- **d.winkler** — 1 template(s)
-- **Dan's Plaud Pen** — 1 template(s)
-- **Danell Riggs** — 1 template(s)
-- **Daniel Sadlis** — 1 template(s)
-- **Daniel Santos** — 1 template(s)
-- **Daniel Seglias** — 1 template(s)
-- **danielle.morrison** — 1 template(s)
-- **daniloesposto** — 1 template(s)
-- **Dannie Than** — 3 template(s)
-- **Danny.white** — 2 template(s)
-- **dannytrapp25** — 1 template(s)
-- **Dariusz Bujalski** — 1 template(s)
-- **Darth Vader** — 1 template(s)
-- **Daryl m** — 1 template(s)
-- **Dave Trevino** — 1 template(s)
-- **dave.j.johnson24** — 1 template(s)
-- **David** — 1 template(s)
-- **David Johnston** — 1 template(s)
-- **David Lough** — 1 template(s)
-- **David NGUYEN** — 1 template(s)
-- **david.mlejnek** — 3 template(s)
-- **davidmulligan** — 1 template(s)
-- **DC** — 1 template(s)
-- **deankward** — 1 template(s)
-- **Debra Li** — 1 template(s)
-- **Demetrick Ferguson** — 1 template(s)
-- **demetries75** — 1 template(s)
-- **Demischa Wielkens** — 2 template(s)
-- **Dene** — 1 template(s)
-- **Denis Pellizzari** — 2 template(s)
-- **Denis Seguier** — 1 template(s)
-- **Denis Skydan** — 1 template(s)
-- **Denis Zaytsev** — 1 template(s)
-- **Dennis** — 1 template(s)
-- **devyn.smith94** — 1 template(s)
-- **Diego Araya Chacón** — 1 template(s)
-- **Diego Uceda** — 1 template(s)
-- **DIETMAR LAHM** — 1 template(s)
-- **diocelio** — 1 template(s)
-- **Diogo Gomes da Silva** — 1 template(s)
-- **Dirk Harris** — 1 template(s)
-- **dkishimo** — 1 template(s)
-- **dm** — 1 template(s)
-- **Dmitry Zamotkin** — 1 template(s)
-- **dom** — 1 template(s)
-- **Dominick Ricciardi** — 1 template(s)
-- **Donato Ammirabile** — 1 template(s)
-- **Dott. Giorgio Nicolanti** — 1 template(s)
-- **Dr Ken Greaves** — 1 template(s)
-- **Dr. Daniel Dorta** — 1 template(s)
-- **Dr. Sasha Nuñez PT, DPT, CMPT** — 1 template(s)
-- **Dr. Tom Cockerell** — 1 template(s)
-- **drchadgroce** — 1 template(s)
-- **drlarkin** — 1 template(s)
-- **drphone69** — 1 template(s)
-- **dt** — 1 template(s)
-- **Duda S.** — 1 template(s)
-- **Duke of Watts Electric** — 1 template(s)
-- **Dustin Beisch** — 1 template(s)
-- **Dwayne** — 1 template(s)
-- **dylan** — 2 template(s)
-- **Dylan Ryan** — 1 template(s)
-- **E S** — 1 template(s)
-- **e.kuipers70** — 1 template(s)
-- **Easy T** — 1 template(s)
-- **ebmeindl** — 1 template(s)
-- **Edoardo Lumetti** — 1 template(s)
-- **edoperry** — 1 template(s)
-- **Eduardo Alves** — 1 template(s)
-- **eduardo rincon** — 1 template(s)
-- **Edward Watkin** — 1 template(s)
-- **edwinzeegers** — 1 template(s)
-- **eggnunes** — 1 template(s)
-- **eistef** — 1 template(s)
-- **El viajero** — 2 template(s)
-- **Elena Acciai** — 2 template(s)
-- **Elena Gómez de la Orden** — 1 template(s)
-- **Elena Nikitina** — 1 template(s)
-- **Eliah Halm** — 1 template(s)
-- **Elkin D. Gonzalez** — 1 template(s)
-- **Ella Drummond** — 1 template(s)
-- **Elnaz Khalili** — 1 template(s)
-- **email** — 1 template(s)
-- **emanu.piantedosi** — 1 template(s)
-- **Emerson** — 1 template(s)
-- **Emerson Moscoso** — 1 template(s)
-- **emilien.castro** — 1 template(s)
-- **emmanuel.garrelon** — 1 template(s)
-- **Emmanuelle** — 1 template(s)
-- **endo.panchi** — 2 template(s)
-- **Endrigo Antonini** — 1 template(s)
-- **Enrico Baccati** — 1 template(s)
-- **Enrico Busto** — 1 template(s)
-- **erasmussen** — 1 template(s)
-- **Eric H** — 2 template(s)
-- **Eric Milestone** — 1 template(s)
-- **eric.chen.1白名单** — 1 template(s)
-- **Erica H.** — 1 template(s)
-- **ericalindsay24** — 1 template(s)
-- **Erin Copes** — 1 template(s)
-- **ESCA IBS** — 1 template(s)
-- **Evan Chung** — 1 template(s)
-- **Evan Million** — 1 template(s)
-- **f.wagnersachverstaendiger** — 1 template(s)
-- **f16.sunny** — 1 template(s)
-- **Fabio Alencar** — 1 template(s)
-- **fabrizio.alampi** — 4 template(s)
-- **Fadhil Maulana** — 1 template(s)
-- **Fajar** — 1 template(s)
-- **faustino-santos** — 1 template(s)
-- **Felice** — 1 template(s)
-- **Felipe Cortez** — 1 template(s)
-- **felipe dutra neves** — 1 template(s)
-- **Felipe Fabro** — 1 template(s)
-- **Felipe Salles** — 1 template(s)
-- **Felipehbussolo** — 1 template(s)
-- **Fernando Blancas** — 1 template(s)
-- **Feynman** — 1 template(s)
-- **Filippo Bonaccorso** — 1 template(s)
-- **Fingz** — 1 template(s)
-- **Fintop** — 1 template(s)
-- **flaviasamaral** — 1 template(s)
-- **Florian Rex** — 1 template(s)
-- **Francesco Francomagro** — 1 template(s)
-- **Frank Schaefer** — 1 template(s)
-- **fred.pereziii** — 1 template(s)
-- **frederic.girard.ard** — 1 template(s)
-- **Frédéric Lemaire** — 1 template(s)
-- **Fuji** — 1 template(s)
-- **fuji** — 1 template(s)
-- **fujita** — 1 template(s)
-- **fumi23progress** — 1 template(s)
-- **Fuzzy** — 1 template(s)
-- **G$** — 1 template(s)
-- **Gabiosis** — 1 template(s)
-- **Gabriel Sigarroa** — 1 template(s)
-- **Gabriela Heleno** — 1 template(s)
-- **Gabriela Menezes Mendes de Lima** — 1 template(s)
-- **GAERNER** — 1 template(s)
-- **gandiavictoria1206** — 1 template(s)
-- **GARCIA Carlos** — 1 template(s)
-- **Garon Nemyre** — 1 template(s)
-- **Garret Myhan** — 2 template(s)
-- **Garrett & Sylvia McGrath** — 1 template(s)
-- **Garth** — 1 template(s)
-- **garu.asakawa** — 1 template(s)
-- **Gary Bedrosian, DDS, MSD** — 1 template(s)
-- **Gary Crisci** — 1 template(s)
-- **Geco** — 1 template(s)
-- **gemini** — 3 template(s)
-- **Gene Ens** — 1 template(s)
-- **Gentry Giles** — 1 template(s)
-- **geny0608** — 1 template(s)
-- **Gerhard** — 1 template(s)
-- **GERLANDO RUSSO INTROITO** — 1 template(s)
-- **gertjan.fiers** — 1 template(s)
-- **Ghye** — 1 template(s)
-- **giacomo carlesso** — 1 template(s)
-- **Gil Lozano** — 1 template(s)
-- **Giulio Castellari** — 1 template(s)
-- **Glen Morris** — 3 template(s)
-- **glenn.house.sr** — 1 template(s)
-- **gn2r9vg9x8** — 1 template(s)
-- **gpiplauduser04** — 1 template(s)
-- **grace hasler** — 1 template(s)
-- **greg vb** — 2 template(s)
-- **Griffin Evans** — 1 template(s)
-- **gsoberanis** — 3 template(s)
-- **Guido Nass** — 1 template(s)
-- **Guilherme Hahn** — 1 template(s)
-- **Guillaume** — 1 template(s)
-- **gurpaltoor** — 1 template(s)
-- **Gustavo Cabral** — 1 template(s)
-- **Gustavo izar barbosa** — 1 template(s)
-- **gustavo_dps** — 1 template(s)
-- **Guy Mitschler** — 1 template(s)
-- **h.conradie** — 1 template(s)
-- **h.takeuchi** — 1 template(s)
-- **h86zs65xqs** — 1 template(s)
-- **haha** — 1 template(s)
-- **Hajir** — 1 template(s)
-- **Hakodesu853** — 1 template(s)
-- **Hana Green** — 1 template(s)
-- **Hanna Eadeh** — 1 template(s)
-- **Harold Cath** — 1 template(s)
-- **Harsh Pant** — 1 template(s)
-- **Haseeb Uddin** — 1 template(s)
-- **Hawk Bowman** — 2 template(s)
-- **hcsslsd.kz** — 1 template(s)
-- **Heckmann Thomas** — 1 template(s)
-- **Hector Daniel Cueto Romero** — 1 template(s)
-- **Heinrich Traude** — 1 template(s)
-- **helen** — 1 template(s)
-- **hendrix1234** — 2 template(s)
-- **Henrique Andrade** — 1 template(s)
-- **Herman Venegas** — 1 template(s)
-- **Hillel Glazer** — 1 template(s)
-- **hody** — 1 template(s)
-- **HOPCoPilot Agents** — 2 template(s)
-- **hotta** — 1 template(s)
-- **hsantos** — 1 template(s)
-- **Hugo Az** — 1 template(s)
-- **hugoaap** — 1 template(s)
-- **i f.** — 1 template(s)
-- **iA** — 4 template(s)
-- **Ian** — 2 template(s)
-- **ianjjosh71** — 1 template(s)
-- **ibi2k3** — 1 template(s)
-- **iGotOptions** — 1 template(s)
-- **indole.nl** — 1 template(s)
-- **info** — 4 template(s)
-- **Inversiones CAP** — 1 template(s)
-- **invoices** — 1 template(s)
-- **Irene Plat** — 1 template(s)
-- **Iris** — 1 template(s)
-- **isa.rizzi** — 1 template(s)
-- **ittetsu12345** — 1 template(s)
-- **Ittiphan Jearkjirm** — 1 template(s)
-- **Ivan Braun** — 1 template(s)
-- **ivanjose** — 1 template(s)
-- **ivyhoken** — 1 template(s)
-- **izarhart** — 1 template(s)
-- **İlker Galın** — 7 template(s)
-- **J. Rashid (@frcphysicaltherapy)** — 1 template(s)
-- **J.Grimes** — 1 template(s)
-- **j.wallace** — 1 template(s)
-- **J3Pádel Academy** — 1 template(s)
-- **Jack** — 2 template(s)
-- **Jack Holt** — 1 template(s)
-- **Jacob Delk** — 1 template(s)
-- **Jacob Savary** — 1 template(s)
-- **jacobprice1024** — 1 template(s)
-- **jaimecanales** — 1 template(s)
-- **jake** — 1 template(s)
-- **Jake Carr** — 1 template(s)
-- **Jake Henry** — 1 template(s)
-- **Jake Ratermann** — 1 template(s)
-- **Jake Sturk** — 1 template(s)
-- **Jakub Korbelar** — 1 template(s)
-- **James** — 1 template(s)
-- **James Conley** — 1 template(s)
-- **James.wilson** — 1 template(s)
-- **james_barber93** — 1 template(s)
-- **jameschen1016** — 1 template(s)
-- **Jamie** — 1 template(s)
-- **Jan-Willem Radstake** — 1 template(s)
-- **Janderson Santos** — 1 template(s)
-- **jannik.ehlert** — 1 template(s)
-- **January Faye Risonar-Bello** — 2 template(s)
-- **Jared Nicolaisen** — 1 template(s)
-- **Jarle** — 1 template(s)
-- **jarrod.keith** — 2 template(s)
-- **jason** — 1 template(s)
-- **Jason Taylor** — 1 template(s)
-- **Jay Cui** — 1 template(s)
-- **Jay Gaither** — 1 template(s)
-- **Jay Mandalawi** — 1 template(s)
-- **Jay Patel** — 1 template(s)
-- **jdix** — 1 template(s)
-- **Jean Mortaza** — 1 template(s)
-- **Jean-Charles Dervieux** — 1 template(s)
-- **Jean-Plaude 🤖** — 1 template(s)
-- **jean_sebastien.duprat** — 1 template(s)
-- **jeanrsalles** — 1 template(s)
-- **Jeff** — 1 template(s)
-- **Jeff Packer** — 1 template(s)
-- **Jeff Wolf** — 1 template(s)
-- **Jennifer** — 1 template(s)
-- **Jeremiah Harvey** — 2 template(s)
-- **Jeremy** — 1 template(s)
-- **Jeroen van Asch** — 1 template(s)
-- **jerome pecon** — 1 template(s)
-- **jessbeasley** — 1 template(s)
-- **Jessica McConnell** — 1 template(s)
-- **jferrato7** — 1 template(s)
-- **jgrillas** — 3 template(s)
-- **Jhonathan Almeida** — 1 template(s)
-- **Jim Duffy** — 1 template(s)
-- **jjbeus11** — 1 template(s)
-- **Jk's Gold Grillz** — 1 template(s)
-- **jkolb** — 1 template(s)
-- **Jmbourke** — 1 template(s)
-- **jnaverill** — 1 template(s)
-- **jngriffith84** — 1 template(s)
-- **Jo's Plaud Note** — 1 template(s)
-- **Joe** — 1 template(s)
-- **joe.towers** — 1 template(s)
-- **Johann Blackaller** — 1 template(s)
-- **John B** — 1 template(s)
-- **John Douche** — 2 template(s)
-- **John Duazo-Fleming** — 1 template(s)
-- **John Joel Seow** — 1 template(s)
-- **John Kauffman** — 1 template(s)
-- **John lopez** — 1 template(s)
-- **John Obaid** — 1 template(s)
-- **John Poindexter** — 1 template(s)
-- **John Richerson** — 1 template(s)
-- **john.d.parker.85** — 1 template(s)
-- **Johnathan Eagle** — 1 template(s)
-- **johnpeterson2828** — 1 template(s)
-- **johnslabbekoorn** — 1 template(s)
-- **Jon** — 1 template(s)
-- **Jon Stevens** — 1 template(s)
-- **Jonathan Barzilai** — 1 template(s)
-- **Jonathan Duran** — 1 template(s)
-- **Jonathan Hamp** — 1 template(s)
-- **Jonathan HEILI** — 1 template(s)
-- **Jonathan Vasquez** — 1 template(s)
-- **Jordan Felix** — 2 template(s)
-- **Jorge** — 1 template(s)
-- **Joseph Ranola** — 3 template(s)
-- **Josh** — 1 template(s)
-- **Josh Bourgeois** — 3 template(s)
-- **Josh McDowell** — 1 template(s)
-- **Josh Meltzer** — 1 template(s)
-- **Josh Williams** — 1 template(s)
-- **josumi** — 1 template(s)
-- **José Vicente** — 1 template(s)
-- **Joy Lee** — 1 template(s)
-- **João Marocco** — 1 template(s)
-- **jr** — 1 template(s)
-- **jsgordon87** — 1 template(s)
-- **Juan Manuel Fraga Sastrias** — 2 template(s)
-- **Jubran Coelho** — 1 template(s)
-- **Julien coppi** — 1 template(s)
-- **Julien Fabbri** — 1 template(s)
-- **Julien PRÉVEL** — 1 template(s)
-- **Julio Leite** — 1 template(s)
-- **Justin** — 1 template(s)
-- **justin** — 1 template(s)
-- **jwearda** — 1 template(s)
-- **jwilson** — 1 template(s)
-- **jwptrs** — 1 template(s)
-- **jxmptzzj5s** — 1 template(s)
-- **Jörg** — 1 template(s)
-- **k-ogawa** — 1 template(s)
-- **k.yoshitaka1984** — 1 template(s)
-- **k9b469p46p** — 1 template(s)
-- **KA CHEUK LAI** — 1 template(s)
-- **kago84** — 1 template(s)
-- **kara** — 1 template(s)
-- **Karim GARCIA** — 1 template(s)
-- **Karim Khowaja** — 1 template(s)
-- **Kasey Jay** — 1 template(s)
-- **Kate Allen** — 1 template(s)
-- **Katharina`s Plaud** — 1 template(s)
-- **kathleen tremblay** — 1 template(s)
-- **kav.ei** — 1 template(s)
-- **kawachi** — 1 template(s)
-- **Kayla Howsare** — 1 template(s)
-- **kaylennho** — 1 template(s)
-- **keagan newby** — 1 template(s)
-- **keith.kornegger** — 1 template(s)
-- **keithyamashita** — 1 template(s)
-- **Kenneth Gipson** — 1 template(s)
-- **Kenny Ruiz** — 1 template(s)
-- **kenta shibata** — 1 template(s)
-- **Keven David** — 2 template(s)
-- **Kevin Hogrebe** — 1 template(s)
-- **Kevin Merino** — 1 template(s)
-- **kevindavila717** — 1 template(s)
-- **kgmplaud_minutes_0020** — 1 template(s)
-- **Khemmachart Chutapetch (คุณ นาย)** — 1 template(s)
-- **Kim Dula** — 1 template(s)
-- **kimura_ayumu** — 1 template(s)
-- **kingsconnor** — 1 template(s)
-- **kinm04112752137** — 1 template(s)
-- **kippersluis.leon** — 1 template(s)
-- **Kirk** — 1 template(s)
-- **Kit Betts-Masters** — 1 template(s)
-- **km** — 1 template(s)
-- **knadolny** — 1 template(s)
-- **kobayashi hirotaka** — 1 template(s)
-- **komi5320** — 1 template(s)
-- **Kozo Hoshino** — 1 template(s)
-- **Kris** — 2 template(s)
-- **Krystal Seeley** — 1 template(s)
-- **Kuersat.tuel** — 1 template(s)
-- **KuhlmanOffice** — 2 template(s)
-- **Kurt Krueger** — 1 template(s)
-- **kyle** — 1 template(s)
-- **Kyle McNabb** — 1 template(s)
-- **Kyle Myers** — 1 template(s)
-- **kyletay60** — 2 template(s)
-- **Kylie Jesus** — 1 template(s)
-- **l.rosas07** — 1 template(s)
-- **LACI** — 1 template(s)
-- **lamborghini.porsche** — 1 template(s)
-- **Lance Vicente** — 1 template(s)
-- **Lannick CHENUS** — 1 template(s)
-- **Lauren B** — 1 template(s)
-- **Lawrenz Ong** — 1 template(s)
-- **lboswell** — 1 template(s)
-- **Le Goubey Architecture / PERENE** — 1 template(s)
-- **Lee** — 1 template(s)
-- **lee** — 1 template(s)
-- **Leonardo Rios** — 1 template(s)
-- **Leonardo Rosário** — 1 template(s)
-- **Leonid DaSilva** — 1 template(s)
-- **leosungwonlee** — 1 template(s)
-- **Leslie Cb** — 1 template(s)
-- **levi silverberg** — 1 template(s)
-- **lewon.khajo** — 1 template(s)
-- **Liem Vo-Nguyen** — 2 template(s)
-- **Linda Ibbotson** — 1 template(s)
-- **liorcracked** — 1 template(s)
-- **lisa** — 2 template(s)
-- **Lit S10** — 1 template(s)
-- **lizzie** — 1 template(s)
-- **longran2004** — 1 template(s)
-- **Lonny Joynt** — 1 template(s)
-- **Loren R Elks** — 1 template(s)
-- **lorenzo** — 1 template(s)
-- **Loïc** — 1 template(s)
-- **LPugliesi** — 1 template(s)
-- **ls.griffith** — 1 template(s)
-- **Luca Lenzi** — 1 template(s)
-- **Lucas Borges** — 3 template(s)
-- **Lucas Conradi** — 1 template(s)
-- **lucasosporto** — 1 template(s)
-- **Lucio Salazar** — 1 template(s)
-- **Luis Arvizu** — 1 template(s)
-- **Luiz Fernando Goulart** — 1 template(s)
-- **Lukas Huguet Sanchez** — 1 template(s)
-- **Luke.simpson** — 1 template(s)
-- **Lunar** — 1 template(s)
-- **Lurk Skywalker** — 1 template(s)
-- **Luuk** — 1 template(s)
-- **Lyahn** — 1 template(s)
-- **lyn** — 1 template(s)
-- **lyndeeann99** — 1 template(s)
-- **M Cook** — 1 template(s)
-- **m.teichmann** — 1 template(s)
-- **m.vernon** — 1 template(s)
-- **M_0_D** — 1 template(s)
-- **Madelaine Robillard** — 1 template(s)
-- **MAFDS** — 1 template(s)
-- **Maguro** — 1 template(s)
-- **mahmud.syaltout** — 2 template(s)
-- **Maken El Comte** — 1 template(s)
-- **Makoto O** — 1 template(s)
-- **Manabu Watabe** — 1 template(s)
-- **manuel ricci** — 1 template(s)
-- **Manuel Villanueva Serrano** — 1 template(s)
-- **manuel.lopez21** — 1 template(s)
-- **Manú** — 1 template(s)
-- **Marc Scheneder** — 1 template(s)
-- **Marcel Komatsu** — 1 template(s)
-- **Marcelo Rodrigues Machado** — 3 template(s)
-- **Marcelo Trajano** — 1 template(s)
-- **Marco** — 1 template(s)
-- **marcofmen** — 1 template(s)
-- **Marcos Goulart** — 1 template(s)
-- **marcosantoniali** — 1 template(s)
-- **Marcus Cruz** — 1 template(s)
-- **Marcus Saulo** — 1 template(s)
-- **Margnilien** — 1 template(s)
-- **Maria Castro Calzada, PA-C** — 1 template(s)
-- **Maria Fernanda Cerini** — 1 template(s)
-- **Maria Giuseppina Canevisio** — 1 template(s)
-- **Mariano Ventura Barreira** — 1 template(s)
-- **Marie Cameron** — 1 template(s)
-- **MarieDupont** — 1 template(s)
-- **Marijan Stanic** — 1 template(s)
-- **marioeaviles** — 1 template(s)
-- **Mark** — 1 template(s)
-- **Mark Anthony** — 1 template(s)
-- **Mark Mulcahy** — 1 template(s)
-- **mark_mason79** — 1 template(s)
-- **marketing** — 2 template(s)
-- **markh389** — 1 template(s)
-- **markus.thielemann** — 1 template(s)
-- **martin** — 3 template(s)
-- **Martin Hrňa** — 1 template(s)
-- **Martin Stam** — 1 template(s)
-- **Marty Kearns** — 1 template(s)
-- **Masa Kato** — 1 template(s)
-- **Maschal Malek** — 1 template(s)
-- **Massimo Mensi** — 3 template(s)
-- **Mat Nisbet** — 1 template(s)
-- **Math Stein** — 1 template(s)
-- **matheus.meirellessilva** — 1 template(s)
-- **matheusrdluz** — 1 template(s)
-- **mathieu** — 1 template(s)
-- **mathieukott** — 2 template(s)
-- **Matis Minzière** — 1 template(s)
-- **matk** — 1 template(s)
-- **Matt** — 1 template(s)
-- **Matt Blaylock** — 1 template(s)
-- **Matt Mitchell** — 1 template(s)
-- **Matteo Delle Foglie** — 1 template(s)
-- **Matthew Eckes** — 1 template(s)
-- **Matthew Griffin** — 1 template(s)
-- **matthias.reetz** — 3 template(s)
-- **Mattia Cavaliere** — 1 template(s)
-- **max** — 1 template(s)
-- **Max DL** — 1 template(s)
-- **Max Giamanco** — 1 template(s)
-- **Maxime Benoit** — 1 template(s)
-- **maxime figureau** — 1 template(s)
-- **Maximilian Fischer** — 1 template(s)
-- **mazni kamlin** — 2 template(s)
-- **Małgorzata Kołucka** — 1 template(s)
-- **mbaggot** — 1 template(s)
-- **MC Hammer** — 3 template(s)
-- **mcarmino33** — 1 template(s)
-- **McKenna Stewart** — 1 template(s)
-- **mcrueckert** — 1 template(s)
-- **mhernandez** — 1 template(s)
-- **michael** — 4 template(s)
-- **Michael Byrnes** — 1 template(s)
-- **Michael Gamböck** — 1 template(s)
-- **Michael K. GASSER** — 1 template(s)
-- **Michael Karnolt** — 1 template(s)
-- **Michael Nibarger** — 1 template(s)
-- **michael stroud** — 1 template(s)
-- **Michael Warren** — 1 template(s)
-- **michael.dean27** — 1 template(s)
-- **michal.cipro** — 1 template(s)
-- **Michele Morgese (Dott. Michele Morgese)** — 1 template(s)
-- **Mighty Bornfreedom** — 1 template(s)
-- **Mike Carter** — 3 template(s)
-- **minagawa_t** — 1 template(s)
-- **Mirko Cioni** — 1 template(s)
-- **mitsuya31daaa** — 1 template(s)
-- **mj.iyer** — 1 template(s)
-- **mlfscl.smm** — 1 template(s)
-- **mm** — 1 template(s)
-- **Mo Frankenfeld** — 1 template(s)
-- **Mohsin Khan** — 1 template(s)
-- **Moises Guindi** — 1 template(s)
-- **Morgan Bartlett** — 1 template(s)
-- **morganmoore0618** — 2 template(s)
-- **mpeixotojr** — 1 template(s)
-- **mr_head86** — 1 template(s)
-- **mrsannamorris** — 1 template(s)
-- **mrskimbley** — 1 template(s)
-- **mstac** — 1 template(s)
-- **Muir.kevin12** — 2 template(s)
-- **Mustafa Kumas** — 1 template(s)
-- **mvpdentistlin** — 3 template(s)
-- **n.baumann** — 1 template(s)
-- **N.K** — 1 template(s)
-- **n5jf7ztd6g** — 1 template(s)
-- **naisa225 44** — 1 template(s)
-- **nakabow2** — 1 template(s)
-- **Nakamura Ayaka** — 1 template(s)
-- **nakamuray41104** — 1 template(s)
-- **Nangila** — 1 template(s)
-- **Nathalie** — 1 template(s)
-- **Nathan W** — 1 template(s)
-- **Naveen Kumar** — 1 template(s)
-- **nb2qjf658z** — 1 template(s)
-- **NB情報技術基盤本部** — 1 template(s)
-- **neal70** — 1 template(s)
-- **nelifes** — 1 template(s)
-- **neomatrixyzy** — 1 template(s)
-- **nfabbris99** — 2 template(s)
-- **Nic Lydon** — 3 template(s)
-- **Nicholas Fisk** — 2 template(s)
-- **Nicholas Pilz** — 1 template(s)
-- **nick** — 4 template(s)
-- **Nick** — 1 template(s)
-- **Nick Bluth** — 3 template(s)
-- **Nick DC** — 1 template(s)
-- **Nick Xenos** — 1 template(s)
-- **NickD** — 1 template(s)
-- **Nico Zwaneveld** — 4 template(s)
-- **Nicola Busca** — 1 template(s)
-- **Nicole Leonel** — 2 template(s)
-- **Niko** — 1 template(s)
-- **Nils Hoppe** — 1 template(s)
-- **Niuslux** — 1 template(s)
-- **NK** — 1 template(s)
-- **nncdxjxcf5** — 1 template(s)
-- **Norv Buchloh** — 1 template(s)
-- **npmikeelrod** — 1 template(s)
-- **nrpln** — 1 template(s)
-- **numajiri** — 1 template(s)
-- **Nurse Angela** — 1 template(s)
-- **o39393** — 1 template(s)
-- **OHM.BSTE** — 1 template(s)
-- **okabuya** — 1 template(s)
-- **OKD** — 1 template(s)
-- **Olga Lukianenko** — 1 template(s)
-- **oliver** — 1 template(s)
-- **Olivia Adenubi** — 2 template(s)
-- **Olivier Ranocha** — 1 template(s)
-- **OllyOvation** — 1 template(s)
-- **Oma Lore** — 1 template(s)
-- **onodera** — 1 template(s)
-- **OQVA Management GmbH** — 1 template(s)
-- **orelllll** — 1 template(s)
-- **orenline56** — 1 template(s)
-- **Osman** — 2 template(s)
-- **Pablo Alejandro Mercado Martínez** — 1 template(s)
-- **pablo chaer** — 1 template(s)
-- **Paige** — 1 template(s)
-- **pan louis** — 1 template(s)
-- **Paoli Dental Center srl** — 1 template(s)
-- **Pate Bryant** — 1 template(s)
-- **Patricia** — 1 template(s)
-- **Patricia Earnhardt Tyndall** — 1 template(s)
-- **Patricia Smith** — 1 template(s)
-- **patrick** — 1 template(s)
-- **Patrick Schäfer** — 1 template(s)
-- **Patrick Sekhem “Sekhem” Zeigler** — 1 template(s)
-- **Patrick.nathe** — 1 template(s)
-- **paul** — 2 template(s)
-- **Paul** — 1 template(s)
-- **Paul Fairchild** — 1 template(s)
-- **Paul Hammat** — 1 template(s)
-- **Paul Sullivan** — 1 template(s)
-- **Paul-Roger Gontard** — 1 template(s)
-- **Paula Cole** — 1 template(s)
-- **Pawel Bu** — 1 template(s)
-- **pawel.krawiec78** — 1 template(s)
-- **Paweł Zajchowski** — 2 template(s)
-- **Pedro Sanz** — 1 template(s)
-- **Pedrobcantu Cantu** — 1 template(s)
-- **pedromdorea** — 1 template(s)
-- **pedromramirez** — 1 template(s)
-- **Peggy Haskins** — 1 template(s)
-- **Pete Sparkes** — 1 template(s)
-- **peter** — 1 template(s)
-- **Peter Chen** — 1 template(s)
-- **Peter Oosterbroek** — 1 template(s)
-- **Petra Holzer** — 1 template(s)
-- **petrbystrak** — 1 template(s)
-- **Petricelli** — 2 template(s)
-- **PeuptMaPance** — 1 template(s)
-- **Phillip Burrer** — 1 template(s)
-- **Pierre-Boris Kalitventzeff** — 1 template(s)
-- **Pinchy Cool Arrow** — 1 template(s)
-- **Plaud** — 41 template(s)
-- **Plaud Igor** — 1 template(s)
-- **plaud Josiel** — 1 template(s)
-- **Plaud Pro Agricourtage** — 1 template(s)
-- **plaud-admin003** — 1 template(s)
-- **plaud.ai.twelve458** — 2 template(s)
-- **plaud_ai** — 1 template(s)
-- **Plaude_MB31** — 1 template(s)
-- **Ponn Sthitphokwanich** — 1 template(s)
-- **post2dennis** — 1 template(s)
-- **Praveen A** — 1 template(s)
-- **prayaag.kasundra** — 1 template(s)
-- **prevost.jeremy** — 2 template(s)
-- **Prof.Ainuddin** — 1 template(s)
-- **Psicólogo Antonio Esquivel** — 1 template(s)
-- **PSY** — 1 template(s)
-- **pt pechploy** — 1 template(s)
-- **puyisme** — 1 template(s)
-- **Přidal Jaroslav** — 1 template(s)
-- **qhz8sjggv9** — 1 template(s)
-- **qtesunny** — 1 template(s)
-- **Rachel** — 1 template(s)
-- **Radek Šalena** — 1 template(s)
-- **Raees Sayed** — 1 template(s)
-- **Rafael Fratazzi** — 4 template(s)
-- **Rafael Gasparin** — 1 template(s)
-- **Rafael Sanchez** — 1 template(s)
-- **rafael.dallaqua** — 1 template(s)
-- **rahmatsorani** — 1 template(s)
-- **raissamelo** — 1 template(s)
-- **rakeshbassi1972** — 1 template(s)
-- **Ralph Audörsch** — 1 template(s)
-- **Rana** — 1 template(s)
-- **raphael ella** — 1 template(s)
-- **raphaelgoncalvessantos** — 2 template(s)
-- **Ravi Shekhaar Singh** — 1 template(s)
-- **Ray Rueda** — 1 template(s)
-- **rc.hc3** — 1 template(s)
-- **RCS Righteous Constuction Servic** — 1 template(s)
-- **Reagan Morrow** — 1 template(s)
-- **reagancwarner** — 1 template(s)
-- **refpi** — 1 template(s)
-- **regnier.maxtar** — 1 template(s)
-- **rendonadrian79** — 1 template(s)
-- **René Koppelmans** — 1 template(s)
-- **Reunion IA comexi** — 1 template(s)
-- **revelerwan** — 1 template(s)
-- **rfleuri** — 1 template(s)
-- **Rhett Neese** — 1 template(s)
-- **Ricardo Soares** — 1 template(s)
-- **ricardohenriquez55** — 1 template(s)
-- **ricardojr88** — 1 template(s)
-- **richard** — 1 template(s)
-- **Richard of WEA** — 1 template(s)
-- **rikedias** — 1 template(s)
-- **Riskin** — 1 template(s)
-- **RIVAS ARGOLO** — 1 template(s)
-- **Rizzya Amarante** — 1 template(s)
-- **Rob Ballou** — 1 template(s)
-- **Rob Brizzi** — 1 template(s)
-- **Rob Jackson FRSA** — 1 template(s)
-- **Rob Wolfe** — 1 template(s)
-- **rob.corney** — 1 template(s)
-- **Robby Marsh** — 1 template(s)
-- **Robert Cordero** — 1 template(s)
-- **Robert Kwasny** — 1 template(s)
-- **Robert McCreary** — 1 template(s)
-- **Robert Pimentel** — 1 template(s)
-- **Roberto Deleón** — 1 template(s)
-- **robertpock2023** — 1 template(s)
-- **Robin Yokoyama** — 1 template(s)
-- **robinbaby** — 1 template(s)
-- **robyn.hoagland** — 1 template(s)
-- **roceguera133** — 1 template(s)
-- **Rodrigo Adry** — 3 template(s)
-- **Rodrigo Goltzman** — 1 template(s)
-- **rodrigoribas** — 1 template(s)
-- **rodrigosantana_30** — 2 template(s)
-- **Roger Arave** — 1 template(s)
-- **Romaric Come** — 1 template(s)
-- **Roy Palmen** — 1 template(s)
-- **RS** — 1 template(s)
-- **rs28sztr4h** — 1 template(s)
-- **Rudy van Reijswoud** — 1 template(s)
-- **ruitanaka** — 1 template(s)
-- **Ruslan Gatin** — 1 template(s)
-- **rvfalcao** — 3 template(s)
-- **Ryan Anderson** — 1 template(s)
-- **Ryan Garcia** — 1 template(s)
-- **Ryan Lewis** — 1 template(s)
-- **Ryan Reed** — 1 template(s)
-- **ryankopf** — 1 template(s)
-- **Ryo Muramatsu** — 1 template(s)
-- **Ryoga Terada** — 1 template(s)
-- **Ryota Horikoshi (Holy)** — 1 template(s)
-- **Rô Vieira** — 1 template(s)
-- **s-projekt** — 1 template(s)
-- **s.olivia567** — 1 template(s)
-- **S5.Plaudnotepin** — 1 template(s)
-- **S6.Plaudnotepin** — 1 template(s)
-- **sabrina_fernandes** — 1 template(s)
-- **Saleh** — 1 template(s)
-- **saltflavour** — 1 template(s)
-- **Sam Townsend** — 1 template(s)
-- **Sam Wright** — 1 template(s)
-- **Samara Zanin** — 2 template(s)
-- **Sameer Irfan** — 1 template(s)
-- **Samsung** — 1 template(s)
-- **Samuel Proulx** — 1 template(s)
-- **samuel.m.dipietro** — 1 template(s)
-- **Sandra Kaufhold** — 1 template(s)
-- **saqib.rizvi** — 1 template(s)
-- **Sara Siverio** — 1 template(s)
-- **Sarang Datye** — 1 template(s)
-- **sararottiers** — 1 template(s)
-- **Sascha Wesselsky** — 2 template(s)
-- **SaulGOOD** — 1 template(s)
-- **sbeaufils** — 1 template(s)
-- **scoota** — 1 template(s)
-- **scottsmyth2000** — 1 template(s)
-- **sebastien.malpuech** — 2 template(s)
-- **Sergey** — 1 template(s)
-- **Serhii** — 1 template(s)
-- **Seth Sheppard** — 1 template(s)
-- **sgenoff** — 2 template(s)
-- **sh4y35** — 1 template(s)
-- **Shab 2.0** — 1 template(s)
-- **shakevatiller** — 1 template(s)
-- **Shane** — 1 template(s)
-- **Shannon** — 2 template(s)
-- **Shannon Bundy** — 1 template(s)
-- **Shannon Ritzert** — 1 template(s)
-- **Shannon.Carithers** — 1 template(s)
-- **shawnprawn** — 2 template(s)
-- **Shelbi** — 1 template(s)
-- **Shiva Kakkar** — 1 template(s)
-- **shoaibkhanz** — 1 template(s)
-- **Shoji OKADA** — 1 template(s)
-- **shrutirmohan** — 1 template(s)
-- **sicklecellmn** — 1 template(s)
-- **Sidney Vicentini** — 1 template(s)
-- **silveiradpm** — 1 template(s)
-- **Silvia** — 2 template(s)
-- **Silvina Valdiviezo** — 1 template(s)
-- **Simon Beesley** — 1 template(s)
-- **Simon Fuchtmann** — 1 template(s)
-- **SIMON GEA MORENO** — 1 template(s)
-- **Simon Zwaga** — 1 template(s)
-- **Sindy Castro** — 1 template(s)
-- **skomisarov** — 1 template(s)
-- **Sky Shield Consulting** — 1 template(s)
-- **SL-M bv** — 1 template(s)
-- **smxtfwsjgq** — 2 template(s)
-- **Sonja Hönig** — 1 template(s)
-- **Sophie Carter** — 1 template(s)
-- **soumu** — 1 template(s)
-- **SourceChild** — 1 template(s)
-- **ssimpson** — 1 template(s)
-- **ST** — 1 template(s)
-- **St. John's Life Real Estate Team** — 1 template(s)
-- **St. Paul's Lutheran Church** — 1 template(s)
-- **Stan** — 1 template(s)
-- **Stanley** — 1 template(s)
-- **Starke** — 1 template(s)
-- **stefan thorpe** — 1 template(s)
-- **Stefano Salvotelli** — 3 template(s)
-- **Stephan Bassler** — 1 template(s)
-- **Stephanie** — 1 template(s)
-- **stephen** — 1 template(s)
-- **Stephen Hoppe** — 1 template(s)
-- **Stephen R Bloomquest** — 1 template(s)
-- **Stephen Williams** — 1 template(s)
-- **stephsellserie** — 1 template(s)
-- **Steve** — 1 template(s)
-- **Steve Kern** — 1 template(s)
-- **Steven Smit** — 1 template(s)
-- **Stock_Jeep** — 1 template(s)
-- **Stéphane Galliez** — 1 template(s)
-- **suetake Seiji** — 2 template(s)
-- **sugesawa** — 1 template(s)
-- **Sungy** — 1 template(s)
-- **sycle bike** — 1 template(s)
-- **Syded CE** — 1 template(s)
-- **Sydney Brouwer** — 1 template(s)
-- **T. Brooke II @HHLawVa** — 2 template(s)
-- **T.K Lunsford** — 1 template(s)
-- **t.musters** — 1 template(s)
-- **T.O.M. Technisches Oberflächenmanagement** — 1 template(s)
-- **Taiane Brito** — 1 template(s)
-- **taishu** — 1 template(s)
-- **Takashi Tim N** — 2 template(s)
-- **Takuya K** — 1 template(s)
-- **Tal Tamir** — 1 template(s)
-- **Tamara Rigters** — 1 template(s)
-- **Tanner west** — 1 template(s)
-- **Tara Karen** — 1 template(s)
-- **Tarek Aghenda** — 1 template(s)
-- **Tate Ledbetter** — 1 template(s)
-- **Taynara Crispim 🌻** — 2 template(s)
-- **Taígo Soares** — 1 template(s)
-- **tbgrammar** — 1 template(s)
-- **tdubois6** — 1 template(s)
-- **tea2000cc** — 1 template(s)
-- **technique** — 1 template(s)
-- **Tendencia Digital** — 1 template(s)
-- **Terence** — 1 template(s)
-- **teresa** — 2 template(s)
-- **Teresa Iby** — 1 template(s)
-- **terryktran** — 1 template(s)
-- **Tersh Blissett** — 1 template(s)
-- **tgolobic** — 1 template(s)
-- **thalerjulien** — 1 template(s)
-- **TheDouje** — 1 template(s)
-- **Thibaud** — 1 template(s)
-- **Thierry Boulet** — 2 template(s)
-- **Thomas Helmschrott** — 3 template(s)
-- **Thomas Raizner** — 2 template(s)
-- **Thomas Robinson** — 1 template(s)
-- **Théo Denq** — 1 template(s)
-- **tiago** — 1 template(s)
-- **Tiago Molinari** — 1 template(s)
-- **tiagodcorrea** — 1 template(s)
-- **Timothy Leoncini** — 1 template(s)
-- **Tina Grabowski** — 1 template(s)
-- **ting.jia+test05** — 1 template(s)
-- **tizianasinisgalli** — 1 template(s)
-- **Tj Wiberley** — 1 template(s)
-- **tjjh10417** — 1 template(s)
-- **tlnelson1** — 1 template(s)
-- **tobcrma** — 1 template(s)
-- **tobewest** — 1 template(s)
-- **Todd Orloff** — 2 template(s)
-- **Tom Freeland** — 1 template(s)
-- **tombaker_1995** — 1 template(s)
-- **TOMO** — 1 template(s)
-- **tomoya M** — 1 template(s)
-- **Tomáš Radecký** — 1 template(s)
-- **Ton Ancheta** — 1 template(s)
-- **Tony** — 1 template(s)
-- **Tony Galarza** — 1 template(s)
-- **Tony Qu** — 1 template(s)
-- **Torben Lew Krackow** — 2 template(s)
-- **toshikazu arashida** — 3 template(s)
-- **totalhealthmartha** — 1 template(s)
-- **trame digitali** — 1 template(s)
-- **Travis Bain** — 1 template(s)
-- **Tray McConchie** — 1 template(s)
-- **Trevor Schiller** — 1 template(s)
-- **Trey** — 1 template(s)
-- **TriIA Company** — 1 template(s)
-- **Troy Hokanson** — 1 template(s)
-- **Tsutsui Kazuomi** — 1 template(s)
-- **tunca.oezkan** — 1 template(s)
-- **ty6hsgmktv** — 1 template(s)
-- **Tyler Conn** — 1 template(s)
-- **Tyler Malinauskas** — 1 template(s)
-- **Tyler Palocsik** — 2 template(s)
-- **Tyler Webb** — 1 template(s)
-- **Tymon Kapelski** — 1 template(s)
-- **Uncompromisable Success Group** — 1 template(s)
-- **Unionguy79** — 1 template(s)
-- **UNITEC - GESIS** — 1 template(s)
-- **v94vz7hj4j** — 1 template(s)
-- **valderi.bastos** — 1 template(s)
-- **Valentijn** — 1 template(s)
-- **valeri.moissejev** — 1 template(s)
-- **Valerii R** — 1 template(s)
-- **Valérie REYNAUD** — 1 template(s)
-- **Vanessa** — 1 template(s)
-- **vanessalau** — 2 template(s)
-- **Victor Alves** — 1 template(s)
-- **Victor Borgonjon** — 1 template(s)
-- **Victor Gaspar** — 1 template(s)
-- **victor.e.bomfim** — 1 template(s)
-- **Vincent** — 1 template(s)
-- **Vincent Casiano** — 1 template(s)
-- **Vincent Harambasic** — 1 template(s)
-- **Vincent Lemonde** — 1 template(s)
-- **Vincent Swiderski** — 1 template(s)
-- **vitorsousa.patol** — 1 template(s)
-- **vladimirbakshaev** — 1 template(s)
-- **vm2mc2vcjm** — 1 template(s)
-- **vs6hh7pdcf** — 1 template(s)
-- **Václav Vais** — 1 template(s)
-- **wallace3377** — 1 template(s)
-- **Walter G Jr** — 2 template(s)
-- **wangshaofeng** — 1 template(s)
-- **Wayne** — 1 template(s)
-- **Wayne Johnson** — 1 template(s)
-- **Weber,YE** — 1 template(s)
-- **Wellington Piveta** — 1 template(s)
-- **Wellington Wilson** — 1 template(s)
-- **wessels** — 1 template(s)
-- **whycats** — 2 template(s)
-- **Wiggert** — 1 template(s)
-- **wim.wuytack** — 1 template(s)
-- **Wouter Mæhlum** — 1 template(s)
-- **wurquilla** — 1 template(s)
-- **Xander King** — 1 template(s)
-- **xavier.bourreau** — 1 template(s)
-- **y!s** — 1 template(s)
-- **y.常田** — 1 template(s)
-- **yanik.jomphe** — 4 template(s)
-- **Yannis** — 1 template(s)
-- **Yash** — 1 template(s)
-- **yasu3867** — 1 template(s)
-- **Yekda Cam** — 1 template(s)
-- **yesvaldes** — 1 template(s)
-- **yokohama.bigs** — 1 template(s)
-- **Yolanda Muñoz** — 1 template(s)
-- **YorkyPoo** — 1 template(s)
-- **Yoshiaki Okuma** — 1 template(s)
-- **ysanchezsantana** — 1 template(s)
-- **yttkdna2008** — 1 template(s)
-- **yuhei** — 1 template(s)
-- **Yuki Keith ISOBE** — 1 template(s)
-- **Yusa Muhsin devrim** — 1 template(s)
-- **z75mw6ffg6** — 1 template(s)
-- **Zachary Van Der Zanden** — 1 template(s)
-- **zai.31513151** — 1 template(s)
-- **Zanic.swan** — 1 template(s)
-- **Zsan Shaikh** — 1 template(s)
-- **ztxvrqns4s** — 1 template(s)
-- **Éd Jorge** — 1 template(s)
-- **Евгений Томилов** — 1 template(s)
-- **Евгения Штейнле** — 1 template(s)
-- **Ил** — 1 template(s)
-- **Сергей Шулик** — 1 template(s)
-- **احسان کریم خانی** — 1 template(s)
-- **あいぷろ相談** — 1 template(s)
-- **あすく** — 1 template(s)
-- **いとまさ** — 1 template(s)
-- **うさボッチ** — 1 template(s)
-- **かまぼこ** — 1 template(s)
-- **け** — 1 template(s)
-- **けんけんぽーけんけんぽー** — 1 template(s)
-- **こじか園** — 1 template(s)
-- **こねくと** — 1 template(s)
-- **しょう** — 1 template(s)
-- **まぁ〜るい心** — 1 template(s)
-- **らりるれろ** — 1 template(s)
-- **ソレイユメイン** — 1 template(s)
-- **一天行** — 2 template(s)
-- **上川龍馬** — 1 template(s)
-- **上津原研介** — 1 template(s)
-- **佐藤領** — 1 template(s)
-- **八木　達也** — 1 template(s)
-- **六爷** — 3 template(s)
-- **加嶋諒** — 1 template(s)
-- **号子** — 2 template(s)
-- **合同会社ファミリー齋藤** — 1 template(s)
-- **吉祥会研修** — 1 template(s)
-- **名和　史紘** — 1 template(s)
-- **堀田楓** — 1 template(s)
-- **増本** — 1 template(s)
-- **大塚PLAUD** — 1 template(s)
-- **天野健太郎** — 1 template(s)
-- **学長室** — 1 template(s)
-- **山本富貴** — 1 template(s)
-- **山本賢太郎** — 1 template(s)
-- **岸谷整形外科クリニック** — 1 template(s)
-- **岸谷整形外科問診** — 1 template(s)
-- **強森** — 1 template(s)
-- **李世平** — 1 template(s)
-- **杨岭** — 1 template(s)
-- **杨浩** — 1 template(s)
-- **東北計画** — 1 template(s)
-- **松原　佑弥** — 1 template(s)
-- **松本裕也** — 1 template(s)
-- **株式会社ファミリー商事** — 1 template(s)
-- **株式会社日本SI研究所** — 1 template(s)
-- **森田** — 1 template(s)
-- **樋口勝也** — 1 template(s)
-- **段　俊行** — 1 template(s)
-- **水越聡** — 1 template(s)
-- **田中正人** — 1 template(s)
-- **田辺雅貴** — 2 template(s)
-- **相談支援ジョイーレ** — 1 template(s)
-- **相談支援事業所クラルテ** — 2 template(s)
-- **矢野稔** — 1 template(s)
-- **纳米物语** — 1 template(s)
-- **藤本工務店** — 1 template(s)
-- **蛯原卓也** — 1 template(s)
-- **西川恵理也** — 1 template(s)
-- **角(小林)敬吾** — 1 template(s)
-- **谢彬001** — 1 template(s)
-- **鄭書豪Charley** — 1 template(s)
-- **野田大貴** — 2 template(s)
-- **金城　昭一郎** — 1 template(s)
-- **鈴木繁広** — 1 template(s)
-- **関口英生** — 1 template(s)
-- **陳昱傑** — 1 template(s)
-- **陳耀庭** — 1 template(s)
-- **高木諭志** — 1 template(s)
-- **黒しょ** — 1 template(s)
-- **齋藤充** — 6 template(s)
-- **박민균** — 1 template(s)
-- **임용군** — 1 template(s)
-- **최영** — 1 template(s)
+- **Velum** — 1500 template(s)
 

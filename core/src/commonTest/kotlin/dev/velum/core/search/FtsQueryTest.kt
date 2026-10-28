@@ -61,6 +61,14 @@ class RecordingSearchTest {
         assertEquals(listOf("b", "a"), result.map { it.id })
     }
 
+    @Test
+    fun templates_listSearch_includes_tags() {
+        val withTag = template("1", "Meeting notes", tags = "action-items,minutes")
+        val other = template("2", "Lecture", tags = "lecture")
+        val result = RecordingSearch.templates(listOf(withTag, other), "action-items", emptyList())
+        assertEquals(listOf("1"), result.map { it.id })
+    }
+
     private fun recording(id: String, title: String) = dev.velum.core.db.Recording(
         id = id,
         session_id = null,
@@ -76,6 +84,23 @@ class RecordingSearchTest {
         summary_markdown = null,
         status = "ready",
         trashed = 0,
+        created_at = 1,
+    )
+
+    private fun template(id: String, name: String, tags: String) = dev.velum.core.db.Template(
+        id = id,
+        name = name,
+        category = "meeting",
+        description = "",
+        author = "Velum",
+        system_prompt = "Summarize",
+        uses = 0,
+        builtin = 1,
+        featured = 1,
+        tags = tags,
+        lang = "en",
+        preferred_model = null,
+        preferred_endpoint_profile_id = null,
         created_at = 1,
     )
 }

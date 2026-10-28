@@ -93,3 +93,10 @@ models/
 
 # Needle static libs (fetched by scripts/fetch-needle-android.sh)
 ai/src/androidMain/cpp/prebuilt/
+
+# Template hygiene intermediates (regenerate via tools/templates/run_all.sh)
+docs/templates/cleaned/
+docs/templates/plaud_templates_full.jsonl
+
+__pycache__/
+*.py[cod]

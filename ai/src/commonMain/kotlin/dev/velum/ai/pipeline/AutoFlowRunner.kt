@@ -9,6 +9,7 @@ import dev.velum.core.calendar.createCalendarEventProvider
 import dev.velum.core.data.VelumRepository
 import dev.velum.core.db.Autoflow
 import dev.velum.core.db.Recording
+import dev.velum.core.settings.ApiModelOverride
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -76,7 +77,8 @@ class AutoFlowRunner(
                             continue
                         }
                         processedIds.add(recording.id)
-                        val ready = runProcessing(recording.id, match.template_id)
+                        val override = autoflowModelOverride(match)
+                        val ready = runProcessing(recording.id, match.template_id, override)
                         if (ready) {
                             firePostAction(match, recording.id)
                         }
@@ -96,13 +98,18 @@ class AutoFlowRunner(
     }
 
     /** @return true when the recording finished as `ready` (post-actions may run). */
-    private suspend fun runProcessing(recordingId: String, templateId: String?): Boolean {
+    private suspend fun runProcessing(
+        recordingId: String,
+        templateId: String?,
+        apiModelOverride: ApiModelOverride? = null,
+    ): Boolean {
         val scheduler = jobScheduler
         if (scheduler != null) {
             scheduler.enqueue(
                 recordingId = recordingId,
                 templateId = templateId,
                 retranscribe = true,
+                apiModelOverride = apiModelOverride,
             )
             return awaitReadyStatus(recordingId)
         }
@@ -111,10 +118,18 @@ class AutoFlowRunner(
             recordingId = recordingId,
             templateId = templateId,
             retranscribe = true,
+            apiModelOverride = apiModelOverride,
         ).collect { progress ->
             if (progress is JobProgress.Succeeded) succeeded = true
         }
         return succeeded || repository.getRecording(recordingId)?.status == "ready"
+    }
+
+    private fun autoflowModelOverride(flow: Autoflow): ApiModelOverride? {
+        val modelId = flow.model_id?.takeIf { it.isNotBlank() }
+        val profileId = flow.endpoint_profile_id?.takeIf { it.isNotBlank() }
+        if (modelId == null && profileId == null) return null
+        return ApiModelOverride(profileId = profileId, modelId = modelId)
     }
 
     private suspend fun awaitReadyStatus(recordingId: String): Boolean {

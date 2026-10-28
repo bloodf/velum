@@ -5,6 +5,7 @@ import dev.velum.ai.engine.AiTaskRouter
 import dev.velum.ai.engine.LlmRequest
 import dev.velum.core.data.VelumRepository
 import dev.velum.core.model.ComputeMode
+import dev.velum.core.settings.AiApiTask
 import dev.velum.core.settings.SettingsRepository
 
 /**
@@ -55,13 +56,14 @@ class AskAiChat(
         val llm = aiRouter.llm()
         val model = when (cfg.summaryMode) {
             ComputeMode.Local -> cfg.localLlmModelId.orEmpty()
-            ComputeMode.Api -> cfg.chatModel.orEmpty()
+            ComputeMode.Api -> ""
         }
         return llm.complete(
             LlmRequest(
                 systemPrompt = system,
                 userPrompt = user,
                 outputLanguage = cfg.outputLanguage,
+                apiTask = AiApiTask.Ask,
             ),
             model,
         ).text
@@ -69,7 +71,8 @@ class AskAiChat(
 
     private suspend fun ensureApiKeyIfNeeded(mode: ComputeMode) {
         if (mode != ComputeMode.Api) return
-        val key = settings.getApiKey()
+        val resolved = settings.resolveApiModel(AiApiTask.Ask)
+        val key = settings.getProfileApiKey(resolved.profileId)
         if (key.isNullOrBlank()) {
             throw MissingApiKeyException(
                 "API key required for Ask AI. Add your OpenAI-compatible key in Settings → AI provider.",

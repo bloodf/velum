@@ -21,6 +21,7 @@ import androidx.work.workDataOf
 import dev.velum.ai.R
 import dev.velum.ai.engine.JobProgress
 import dev.velum.core.model.ComputeMode
+import dev.velum.core.settings.ApiModelOverride
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
 
@@ -41,6 +42,13 @@ class RecordingProcessWorker(
         val recordingId = inputData.getString(KEY_RECORDING_ID) ?: return Result.failure()
         val templateId = inputData.getString(KEY_TEMPLATE_ID)
         val retranscribe = inputData.getBoolean(KEY_RETRANSCRIBE, true)
+        val overrideModel = inputData.getString(KEY_MODEL_ID)?.takeIf { it.isNotBlank() }
+        val overrideProfile = inputData.getString(KEY_PROFILE_ID)?.takeIf { it.isNotBlank() }
+        val apiOverride = if (overrideModel == null && overrideProfile == null) {
+            null
+        } else {
+            ApiModelOverride(profileId = overrideProfile, modelId = overrideModel)
+        }
         val processor = AiRuntimeHolder.processor
         val repository = AiRuntimeHolder.repository
         if (processor == null || repository == null) {
@@ -69,6 +77,7 @@ class RecordingProcessWorker(
                 recordingId = recordingId,
                 templateId = templateId,
                 retranscribe = retranscribe,
+                apiModelOverride = apiOverride,
             ).collect { progress ->
                 ThermalMonitor.awaitCool(
                     powerManager = powerManager,
@@ -165,6 +174,8 @@ class RecordingProcessWorker(
         const val KEY_RECORDING_ID = "recordingId"
         const val KEY_TEMPLATE_ID = "templateId"
         const val KEY_RETRANSCRIBE = "retranscribe"
+        const val KEY_MODEL_ID = "modelId"
+        const val KEY_PROFILE_ID = "profileId"
         const val KEY_ERROR = "error"
         const val STATUS_PAUSED_THERMAL = "paused_thermal"
         const val MAX_HOLDER_RETRIES = 5
@@ -176,12 +187,17 @@ class RecordingProcessWorker(
             recordingId: String,
             templateId: String? = null,
             retranscribe: Boolean = true,
+            apiModelOverride: ApiModelOverride? = null,
         ) {
             val data = Data.Builder()
                 .putString(KEY_RECORDING_ID, recordingId)
                 .putBoolean(KEY_RETRANSCRIBE, retranscribe)
                 .apply {
                     if (!templateId.isNullOrBlank()) putString(KEY_TEMPLATE_ID, templateId)
+                    apiModelOverride?.modelId?.takeIf { it.isNotBlank() }
+                        ?.let { putString(KEY_MODEL_ID, it) }
+                    apiModelOverride?.profileId?.takeIf { it.isNotBlank() }
+                        ?.let { putString(KEY_PROFILE_ID, it) }
                 }
                 .build()
             val constraints = Constraints.Builder()
@@ -229,11 +245,12 @@ class RecordingProcessWorker(
 }
 
 fun createWorkManagerRecordingJobScheduler(context: Context): RecordingJobScheduler =
-    RecordingJobScheduler { recordingId, templateId, retranscribe ->
+    RecordingJobScheduler { recordingId, templateId, retranscribe, apiModelOverride ->
         RecordingProcessWorker.enqueue(
             context = context.applicationContext,
             recordingId = recordingId,
             templateId = templateId,
             retranscribe = retranscribe,
+            apiModelOverride = apiModelOverride,
         )
     }
