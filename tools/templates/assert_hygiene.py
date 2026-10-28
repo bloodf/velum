@@ -43,10 +43,13 @@ def load_jsonl(path: Path) -> list[dict]:
 def check_set(label: str, rows: list[dict], *, require_featured: bool | None) -> list[str]:
     errors: list[str] = []
     ids: set[str] = set()
-    exact: dict[str, str] = {}
+    exact_title_body: dict[str, str] = {}
+    exact_bodies: dict[str, str] = {}
     for i, row in enumerate(rows):
         name = (row.get("name") or "").strip()
-        body = (row.get("body") or "").strip()
+        # Hygiene length checks use stripped body; exact-body uniqueness uses raw body (#99).
+        raw_body = row.get("body") if isinstance(row.get("body"), str) else ""
+        body = raw_body.strip()
         desc = (row.get("description") or "").strip()
         tid = (row.get("id") or "").strip()
         cat = (row.get("category") or "").strip()
@@ -70,10 +73,18 @@ def check_set(label: str, rows: list[dict], *, require_featured: bool | None) ->
             errors.append(f"{label}: duplicate id {tid}")
         ids.add(tid)
         key = norm_key(name) + "\n" + norm_key(body)
-        if key in exact:
-            errors.append(f"{label}: exact duplicate title+body {tid} == {exact[key]}")
+        if key in exact_title_body:
+            errors.append(
+                f"{label}: exact duplicate title+body {tid} == {exact_title_body[key]}"
+            )
         else:
-            exact[key] = tid
+            exact_title_body[key] = tid
+        if raw_body in exact_bodies:
+            errors.append(
+                f"{label}: exact duplicate body {tid} == {exact_bodies[raw_body]}"
+            )
+        else:
+            exact_bodies[raw_body] = tid
         blob = f"{name}\n{desc}\n{body}"
         if RE_EMAIL.search(blob):
             errors.append(f"{label}: email PII in {tid}")

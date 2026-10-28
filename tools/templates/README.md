@@ -65,6 +65,23 @@ python3 tools/templates/assert_hygiene.py \
 6. Remove Plaud product/UI branding so copy reads as generic Velum templates.
 7. Tag language (`lang`); fix or drop wrong/missing category.
 8. Assign discoverability `tags` (controlled vocabulary; always ≥1 via category default).
-9. Delete identical duplicates (normalized title + prompt) — keep exactly one.
+9. Delete identical duplicates (normalized title + prompt) during early hygiene.
+10. **Exact body dedupe (#99):** collapse rows whose `body` strings are equal with
+    **no** whitespace, line-ending, case, or Unicode normalization
+    (`tools/templates/body_dedupe.py`). Survivor order: official → Featured →
+    lexicographic name → canonical JSON. Tags/usage/official/featured flags from
+    dropped copies merge into the survivor. Bodies that differ only in trailing
+    spaces or letter case are kept as distinct.
+
+```bash
+# Re-run body dedupe on an already-curated full JSONL (idempotent):
+python3 tools/templates/body_dedupe.py \
+  --input docs/templates/plaud_templates_full.jsonl \
+  --output docs/templates/plaud_templates_full.jsonl \
+  --report docs/audit/templates-body-dedupe.md \
+  --remap docs/templates/body_dedupe_remap.json
+
+python3 tools/templates/test_body_dedupe.py
+```
 
 Display rules in the app (unchanged): no official badge, no author credit (except Velum PR `contributor`).

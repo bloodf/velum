@@ -3,7 +3,8 @@
 Full data-hygiene pass over the collected template dump.
 
 Writes cleaned per-category JSONL under --out-dir and a Markdown report to --report.
-Identical duplicates (normalized title + body) are deleted — exactly one survivor kept.
+Exact duplicate bodies (no whitespace/case normalization; see body_dedupe.py) collapse
+to one deterministic survivor.
 """
 from __future__ import annotations
 
@@ -17,6 +18,7 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from body_dedupe import dedupe_by_exact_body
 from tags import VOCABULARY, assign_tags
 
 CATEGORY_MAP = {
@@ -163,6 +165,7 @@ class Stats:
     language_counts: Counter = field(default_factory=Counter)
     tag_counts: Counter = field(default_factory=Counter)
     exact_dupes_removed: int = 0
+    duplicate_body_groups: int = 0
 
 
 def nfkc(s: str) -> str:
@@ -478,26 +481,13 @@ def clean_row(raw: dict, stats: Stats) -> dict | None:
 
 
 def dedupe_exact(rows: list[dict], stats: Stats) -> list[dict]:
-    best: dict[str, dict] = {}
-    for row in rows:
-        key = exact_key(row["name"], row["body"])
-        prev = best.get(key)
-        if prev is None:
-            best[key] = row
-            continue
-        stats.exact_dupes_removed += 1
-        stats.removed["exact_duplicate"] += 1
-        # Prefer official, then longer body, then existing higher usage
-        def rank(r: dict) -> tuple:
-            return (
-                1 if r.get("official") else 0,
-                len(r.get("body") or ""),
-                int(r.get("usageCount") or 0),
-                r.get("id") or "",
-            )
-        if rank(row) > rank(prev):
-            best[key] = row
-    return list(best.values())
+    """Collapse exact duplicate bodies (see body_dedupe.py); keep one survivor."""
+    result = dedupe_by_exact_body(rows)
+    stats.exact_dupes_removed = result.removed_rows
+    stats.duplicate_body_groups = result.duplicate_body_groups
+    if result.removed_rows:
+        stats.removed["exact_duplicate_body"] = result.removed_rows
+    return result.survivors
 
 
 def write_outputs(out_dir: Path, rows: list[dict]) -> None:
@@ -528,8 +518,14 @@ def write_report(path: Path, stats: Stats) -> None:
     lines.append("## Totals")
     lines.append("")
     lines.append(f"- Input rows considered: **{stats.before_total}**")
-    lines.append(f"- Output rows (exact-deduped): **{stats.after_total}**")
-    lines.append(f"- Exact duplicates removed: **{stats.exact_dupes_removed}**")
+    lines.append(f"- Duplicate body groups: **{stats.duplicate_body_groups}**")
+    lines.append(f"- Removed rows (exact duplicate bodies): **{stats.exact_dupes_removed}**")
+    lines.append(f"- Output rows: **{stats.after_total}**")
+    lines.append("")
+    lines.append(
+        "Exact duplicate = identical `body` string with no whitespace/case/Unicode "
+        "normalization (`tools/templates/body_dedupe.py`)."
+    )
     lines.append("")
     lines.append("## Removals by reason")
     lines.append("")
@@ -621,9 +617,10 @@ def main(argv: list[str] | None = None) -> int:
     print(
         json.dumps(
             {
-                "before": stats.before_total,
-                "after": stats.after_total,
-                "exact_dupes_removed": stats.exact_dupes_removed,
+                "input_rows": stats.before_total,
+                "duplicate_body_groups": stats.duplicate_body_groups,
+                "removed_rows": stats.exact_dupes_removed,
+                "output_rows": stats.after_total,
                 "removed": dict(stats.removed),
             },
             indent=2,
