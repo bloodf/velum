@@ -49,6 +49,11 @@ data class PlaudAdvertisement(
         return result
     }
 
+    /** Never include serial or raw manufacturer bytes (contain identity) in logs. */
+    override fun toString(): String =
+        "PlaudAdvertisement(modelCode=$modelCode, serial=[REDACTED], " +
+            "protocolVersion=$protocolVersion, rawManufacturerData=[REDACTED])"
+
     companion object {
         /** Observed Note Pro family protocol / port versions (inclusive). */
         val NOTE_PRO_PORT_VERSION_RANGE: IntRange = 20..29

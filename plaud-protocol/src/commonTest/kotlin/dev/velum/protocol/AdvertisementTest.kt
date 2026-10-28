@@ -67,6 +67,23 @@ class AdvertisementTest {
     }
 
     @Test
+    fun toString_redactsSerialAndRawManufacturerData() {
+        val serial = "881SECRET"
+        val data = AdvertisementFixtures.notePro881(portVersion = 20, serial = serial)
+        val adv = PlaudAdvertisement.parseManufacturerData(data)
+        assertNotNull(adv)
+        val text = adv.toString()
+        assertEquals(
+            "PlaudAdvertisement(modelCode=881, serial=[REDACTED], " +
+                "protocolVersion=20, rawManufacturerData=[REDACTED])",
+            text,
+        )
+        assertFalse(serial in text)
+        assertFalse(data.contentToString() in text)
+        assertFalse(adv.rawManufacturerData.contentToString() in text)
+    }
+
+    @Test
     fun crc16Ccitt_knownVector() {
         // CRC-16/CCITT-FALSE("123456789") = 0x29B1
         val crc = Crc16Ccitt.compute("123456789".encodeToByteArray())

@@ -1,5 +1,8 @@
 package dev.velum.protocol
 
+/** Fixed token for identity / key material in toString — matches #89. */
+private const val REDACTED = "[REDACTED]"
+
 /**
  * Protocol-20 RSA unlock framing (pre-handshake).
  *
@@ -117,7 +120,7 @@ data class Protocol20SessionSecret(
 
     /** Never include key material in logs or exception text. */
     override fun toString(): String =
-        "Protocol20SessionSecret(key=[REDACTED], nonce=[REDACTED], aad=[REDACTED])"
+        "Protocol20SessionSecret(key=$REDACTED, nonce=$REDACTED, aad=$REDACTED)"
 }
 
 /**
@@ -187,8 +190,8 @@ data class DeviceIdentityKeys(
 
     /** Never include serial, signature, PEMs, or bind token in logs / crash text. */
     override fun toString(): String =
-        "DeviceIdentityKeys(serialNumber=[REDACTED], serialSignature=[REDACTED], " +
-            "publicKeyPem=[REDACTED], privateKeyPem=[REDACTED], bindToken=[REDACTED])"
+        "DeviceIdentityKeys(serialNumber=$REDACTED, serialSignature=$REDACTED, " +
+            "publicKeyPem=$REDACTED, privateKeyPem=$REDACTED, bindToken=$REDACTED)"
 }
 
 /**
