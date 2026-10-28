@@ -43,6 +43,33 @@ class ForbiddenOpcodesTest {
     }
 
     @Test
+    fun fe20_detectionUsesLittleEndianOpcodeEncoding() {
+        // Plaud framing encodes opcodes with Bytes.u16Le / Bytes.readU16Le
+        // (see Framing.encodeCommand and PlaudOutboundGuard). 0xFE20 therefore
+        // appears on the wire as little-endian bytes [0x20, 0xFE], not big-endian
+        // [0xFE, 0x20].
+        val le = Bytes.u16Le(ForbiddenOpcodes.FE20)
+        assertEquals(0x20, le[0].toInt() and 0xFF)
+        assertEquals(0xFE, le[1].toInt() and 0xFF)
+        assertEquals(ForbiddenOpcodes.FE20, Bytes.readU16Le(le, 0))
+        assertFailsWith<IllegalArgumentException> {
+            PlaudOutboundGuard.requireAllowed(le)
+        }
+        assertFailsWith<IllegalArgumentException> {
+            PlaudOutboundGuard.requireAllowed(
+                byteArrayOf(Framing.APP_PREFIX) + le,
+            )
+        }
+
+        // Big-endian layout [0xFE, 0x20] reads as 0x20FE via readU16Le — not FE20.
+        val beLayout = byteArrayOf(0xFE.toByte(), 0x20)
+        assertEquals(0x20FE, Bytes.readU16Le(beLayout, 0))
+        assertFalse(ForbiddenOpcodes.isForbidden(0x20FE))
+        PlaudOutboundGuard.requireAllowed(beLayout)
+        PlaudOutboundGuard.requireAllowed(byteArrayOf(Framing.APP_PREFIX) + beLayout)
+    }
+
+    @Test
     fun safeOpcodesAllowed() {
         listOf(1, 9, 26, 28, 29, 0xFE10, 0xFE11, 0xFE12, 138).forEach { op ->
             assertFalse(ForbiddenOpcodes.isForbidden(op))
