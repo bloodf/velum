@@ -16,6 +16,7 @@
 
 | Sev | Finding | Location | Fix | SHA |
 |-----|---------|----------|-----|-----|
+| **blocker** | Device-walk StrictMode before `AndroidJUnitRunner.onCreate` + main-thread `filesDir` in `Application.onCreate` → instrumentation Process crashed (0 tests) | `DeviceWalkTestRunner`, `VelumApplication` | Install StrictMode after runner onCreate; move filesDir/models onto IO | `aca0ea5` / `7f16e01` |
 | **blocker** | Fresh install / emulator wipe: `KeyPermanentlyInvalidatedException` on first SecureStore encrypt crashed launch | `AndroidSecureStore.encrypt` | Delete alias, clear vault, recreate key; smoke clears app data + longer wait | `55d30ef` |
 | **high** | Recording ids `rec-{epoch}-{1000..9999}` + SQLDelight `INSERT OR REPLACE` → birthday collision silently destroys another recording | `AppContainer.createLocalRecording` / `persistDownloadedSession` | `RecordingIds.newId()` with 1e9–1e10 random; collision + overwrite regression tests | `0d1f5ce` |
 | **high** | AutoFlow `awaitReadyStatus` accepted pre-enqueue `ready` → post-actions fired before WorkManager job started (wrong/stale template notes) | `AutoFlowRunner.runProcessing` / `awaitReadyStatus` | Force `queued` before enqueue; require in-flight before accepting `ready`; race test | `0d1f5ce` |
