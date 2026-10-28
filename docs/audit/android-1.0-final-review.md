@@ -1,9 +1,9 @@
 # Android 1.0 final review (skeptical re-pass)
 
 **Date:** 2026-10-28  
-**Head reviewed:** `e9ebb67` + follow-up fixes on `main`  
+**Head reviewed:** `00db857` on `main` (prior fix commit `e9ebb67`)  
 **Target:** Samsung Galaxy S26 Ultra + Plaud Note Pro  
-**Method:** Code + JVM tests + `assembleRelease` (R8) + Roborazzi light/dark EN/pt-BR. Interactive emulator in this VM hit KVM permission / System UI ANR under software accel; CI emulator smoke on `e9ebb67` is the authoritative device-launch signal.
+**Method:** Code + JVM tests + `assembleRelease` (R8) + Roborazzi light/dark EN/pt-BR. Interactive emulator in this VM hit KVM permission / System UI ANR under software accel; CI emulator smoke is the authoritative device-launch signal.
 
 Prior docs (`android-1.0-audit.md`, `android-1.0-ux-review.md`, `templates-hygiene.md`) were **not trusted** — every claim below was re-verified from code/tests/build.
 
@@ -21,8 +21,8 @@ Remaining non-blockers for *this* ship (accepted / out of scope): SoftAP WS `:80
 
 | Sev | Finding | Location | Fix | SHA |
 |-----|---------|----------|-----|-----|
-| **blocker** | `assembleRelease` / R8 failed: missing optional zstd + JVM `ManagementFactory` | `composeApp/proguard-rules.pro` | `-dontwarn` for commons-compress zstd + Ktor debug detector; CI now runs `assembleRelease` | *(this commit)* |
-| **high** | First launch ANR risk: Featured ~1500 template seed + FTS on **main thread** in `Application.onCreate` | `VelumApplication`, `AppContainer` → `VelumRepository` init | Build `AppContainer` on `Dispatchers.IO`; splash `setKeepOnScreenCondition` until ready | *(this commit)* |
+| **blocker** | `assembleRelease` / R8 failed: missing optional zstd + JVM `ManagementFactory` | `composeApp/proguard-rules.pro` | `-dontwarn` for commons-compress zstd + Ktor debug detector; CI now runs `assembleRelease` | `00db857` |
+| **high** | First launch ANR risk: Featured ~1500 template seed + FTS on **main thread** in `Application.onCreate` | `VelumApplication`, `AppContainer` → `VelumRepository` init | Build `AppContainer` on `Dispatchers.IO`; splash `setKeepOnScreenCondition` until ready | `00db857` |
 | **high** | `template_fts` **DROP** on every cold start → full FTS rebuild (jank after All import) | `FtsIndex.ensureSchema` | Recreate only when tags column missing; rebuild only when needed | `e9ebb67` |
 | **high** | Wipe deleted AutoFlows but left seed marker → **no default AutoFlow** after wipe | `VelumRepository.wipeAllUserData`, `SeedData` | `clearSeedMarker` + reseed; tests | `e9ebb67` |
 | **high** | Schema v3→v4 created empty `summary_version`; existing notes invisible in Versions | `migrations/3.sqm`, repo init | Backfill active version from `summary_markdown`; Versions sheet calls `ensureBaselineVersion` | `e9ebb67` |
@@ -31,7 +31,7 @@ Remaining non-blockers for *this* ship (accepted / out of scope): SoftAP WS `:80
 | **high** | Notes tab showed forever **Generating** when summary blank (even `ready`) | `RecordingDetailScreen` NotesPane | Split generating vs empty CTA | `e9ebb67` |
 | **medium** | Ask AI / import showed raw exception text | Detail / ImportHub | Localized `genericError` | `e9ebb67` |
 | **medium** | Hardcoded EN: template import status, `" min"`, prefs language codes, ranking badge | Templates / Files / Preferences | New `Strings` keys + labels | `e9ebb67` |
-| **medium** | Gradle race: `validateAutoflowTemplates` vs `processDebugJavaRes` | `core/build.gradle.kts` | Depend on `*JavaRes` tasks | *(this commit)* |
+| **medium** | Gradle race: `validateAutoflowTemplates` vs `processDebugJavaRes` | `core/build.gradle.kts` | Depend on `*JavaRes` tasks | `00db857` |
 | **low** | Template back `contentDescription` missing | `TemplatesScreen` | a11y back label | `e9ebb67` |
 | **low** | Templates grid no empty state | `TemplatesScreen` | `EmptyState` when filtered empty | `e9ebb67` |
 | **accepted** | `BleTransport.write` ungated | `KableBleTransport` | Production path triple-gated; leave as M3 residual | — |
@@ -81,7 +81,7 @@ Remaining non-blockers for *this* ship (accepted / out of scope): SoftAP WS `:80
 | JVM unit tests | OK |
 | Roborazzi record | OK (pt-BR light/dark + EN matrix) |
 | CI on `e9ebb67` | **success** run `40656553741` |
-| Final head CI | *(subscribe after push — see report)* |
+| CI on `00db857` | Watched via `gh` / CI subscription (must include new `assembleRelease` job step) |
 
 ### Emulator note
 
