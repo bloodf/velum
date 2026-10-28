@@ -7,6 +7,8 @@ APK_DIR="${1:-apk}"
 APK="$(ls "$APK_DIR"/*.apk | head -1)"
 echo "Installing $APK"
 adb install -r "$APK"
+# Fresh prefs + Keystore-bound ciphertext for this package (survives -r installs).
+adb shell pm clear dev.velum.app >/dev/null 2>&1 || true
 adb logcat -c
 adb shell am force-stop dev.velum.app || true
 
@@ -14,7 +16,8 @@ START_OUT="$(adb shell am start -W -n dev.velum.app/.MainActivity 2>&1 || true)"
 echo "$START_OUT"
 
 # Give Application.attach / Activity a moment to crash if config is broken.
-sleep 8
+# Splash waits for IO AppContainer init — allow more than a few seconds on cold emulator.
+sleep 20
 
 PID="$(adb shell pidof -s dev.velum.app || true)"
 echo "pid=$PID"

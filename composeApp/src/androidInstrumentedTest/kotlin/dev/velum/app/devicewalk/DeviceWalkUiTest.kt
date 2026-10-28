@@ -204,7 +204,7 @@ class DeviceWalkUiTest {
         waitUntil(120_000) {
             runBlocking {
                 val rec = container.repository.getRecording(id)
-                rec?.status == "ready" && !rec.summaryMarkdown.isNullOrBlank()
+                rec?.status == "ready" && !rec.summary_markdown.isNullOrBlank()
             }
         }
         covered += "transcription/device-walk-engine"
