@@ -45,9 +45,10 @@ class DownloadedSessionAudioPersistTest {
     }
 
     @Test
-    fun persist_opaquePcm_streamsWavHeaderFields_andLogsWithoutIdentity() {
+    fun persist_opaquePcm_writesFullWavByteForByte_andLogsWithoutIdentity() {
         withTempDir { dir ->
             val pcm = ByteArray(64) { (it % 40).toByte() }
+            val expected = PcmWav.encode(pcm, sampleRateHz = 16_000, channels = 1)
             val logs = ArrayList<String>()
             val written = DownloadedSessionAudioPersist.persistToDirectory(
                 decryptedBytes = pcm,
@@ -60,17 +61,12 @@ class DownloadedSessionAudioPersistTest {
             assertEquals("wav", written.extension)
             assertFalse(File("${written.absolutePath}.partial").exists())
             val out = File(written.absolutePath).readBytes()
-            assertTrue(PcmWav.looksLikeWav(out))
-            assertEquals(44 + pcm.size, out.size)
-            assertEquals(36 + pcm.size, u32le(out, 4))
-            assertEquals(1, u16le(out, 20)) // PCM format
-            assertEquals(1, u16le(out, 22)) // mono
-            assertEquals(16_000, u32le(out, 24))
-            assertEquals(32_000, u32le(out, 28)) // byte rate
-            assertEquals(2, u16le(out, 32)) // block align
-            assertEquals(16, u16le(out, 34)) // bits
-            assertEquals(pcm.size, u32le(out, 40))
-            assertTrue(out.copyOfRange(44, out.size).contentEquals(pcm))
+            // #86 AC: whole file (header + body) must match PcmWav.encode byte-for-byte.
+            assertTrue(
+                out.contentEquals(expected),
+                "written WAV must equal PcmWav.encode (len=${out.size} expected=${expected.size})",
+            )
+            assertEquals(expected.size.toLong(), written.sizeBytes)
             assertEquals(1, logs.size)
             assertTrue(logs[0].contains("sizeBytes=${pcm.size}"))
             assertTrue(logs[0].contains("sniff=none"))
@@ -143,13 +139,4 @@ class DownloadedSessionAudioPersistTest {
             dir.deleteRecursively()
         }
     }
-
-    private fun u32le(bytes: ByteArray, at: Int): Int =
-        (bytes[at].toInt() and 0xff) or
-            ((bytes[at + 1].toInt() and 0xff) shl 8) or
-            ((bytes[at + 2].toInt() and 0xff) shl 16) or
-            ((bytes[at + 3].toInt() and 0xff) shl 24)
-
-    private fun u16le(bytes: ByteArray, at: Int): Int =
-        (bytes[at].toInt() and 0xff) or ((bytes[at + 1].toInt() and 0xff) shl 8)
 }

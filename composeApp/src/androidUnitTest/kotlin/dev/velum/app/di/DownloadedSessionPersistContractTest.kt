@@ -91,9 +91,13 @@ class DownloadedSessionPersistContractTest {
         assertTrue(path.endsWith(".wav"), "must not be .bin: $path")
         assertFalse(path.endsWith(".bin"))
         val bytes = File(path).readBytes()
-        assertTrue(PcmWav.looksLikeWav(bytes))
-        assertEquals(44 + pcm.size, bytes.size)
-        assertTrue(bytes.copyOfRange(44, bytes.size).contentEquals(pcm))
+        val expected = PcmWav.encode(
+            pcm,
+            sampleRateHz = DownloadedSessionAudioPersist.DEFAULT_SAMPLE_RATE_HZ,
+            channels = DownloadedSessionAudioPersist.DEFAULT_CHANNELS,
+        )
+        // Whole WAV (header + body) must match PcmWav.encode byte-for-byte.
+        assertTrue(bytes.contentEquals(expected))
         assertFalse(File("$path.partial").exists())
         // Landed under the installed recordings dir.
         assertTrue(path.startsWith(recordingsDirectoryPath()))
