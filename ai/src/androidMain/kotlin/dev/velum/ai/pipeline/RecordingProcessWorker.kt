@@ -220,10 +220,10 @@ class RecordingProcessWorker(
                 .addTag("recording:$recordingId")
                 .build()
             // KEEP drops a later AutoFlow enqueue (template/model) after download/import
-            // enqueued with nulls. UPDATE upgrades pending work when AutoFlow params arrive;
+            // enqueued with nulls. REPLACE upgrades pending work when AutoFlow params arrive;
             // null-only enqueues still KEEP so we do not cancel an in-flight job.
             val policy = if (recordingWorkHasAutoFlowParams(templateId, apiModelOverride)) {
-                ExistingWorkPolicy.UPDATE
+                ExistingWorkPolicy.REPLACE
             } else {
                 ExistingWorkPolicy.KEEP
             }
