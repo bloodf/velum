@@ -2,6 +2,7 @@ package dev.velum.ble.fake
 
 import dev.velum.ble.AbstractBleTransport
 import dev.velum.ble.BleConnectionState
+import dev.velum.ble.BleSealedWriteSink
 import dev.velum.ble.GattProfile
 import dev.velum.ble.GattProfiles
 import dev.velum.ble.PlaudWriteGuard
@@ -121,19 +122,23 @@ class FakeBleTransport(
         }
     }
 
-    internal override suspend fun writeSealedAlreadyGuarded(
-        characteristic: String,
-        payload: ByteArray,
-        withoutResponse: Boolean,
-    ) {
-        mutex.withLock {
-            check(_state.value is BleConnectionState.Connected) { "Not connected" }
-            val profile = activeProfile ?: error("No active GATT profile")
-            val ch = profile.characteristic(characteristic)
-            // No opcode parse — caller must have checked plaintext already.
-            recordAndForward(characteristic, profile, ch.uuid, payload)
+    private val sealedSink = object : BleSealedWriteSink {
+        override suspend fun writeSealedAlreadyGuarded(
+            characteristic: String,
+            payload: ByteArray,
+            withoutResponse: Boolean,
+        ) {
+            mutex.withLock {
+                check(_state.value is BleConnectionState.Connected) { "Not connected" }
+                val profile = activeProfile ?: error("No active GATT profile")
+                val ch = profile.characteristic(characteristic)
+                // No opcode parse — caller must have checked plaintext already.
+                recordAndForward(characteristic, profile, ch.uuid, payload)
+            }
         }
     }
+
+    internal override fun sealedWriteSink(): BleSealedWriteSink = sealedSink
 
     private suspend fun recordAndForward(
         characteristic: String,
