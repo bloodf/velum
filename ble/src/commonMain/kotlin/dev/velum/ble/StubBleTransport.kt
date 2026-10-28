@@ -24,6 +24,16 @@ class StubBleTransport(
     private var _activeProfile: GattProfile? = null
     override val activeProfile: GattProfile? get() = _activeProfile
 
+    private val sealedSink = object : BleSealedWriteSink {
+        override suspend fun writeSealedAlreadyGuarded(
+            characteristic: String,
+            payload: ByteArray,
+            withoutResponse: Boolean,
+        ) {
+            error(unavailableReason)
+        }
+    }
+
     override fun advertisements(): Flow<ConnectedDevice> = emptyFlow()
 
     override suspend fun startScan() {
@@ -64,13 +74,7 @@ class StubBleTransport(
         error(unavailableReason)
     }
 
-    internal override suspend fun writeSealedAlreadyGuarded(
-        characteristic: String,
-        payload: ByteArray,
-        withoutResponse: Boolean,
-    ) {
-        error(unavailableReason)
-    }
+    internal override fun sealedWriteSink(): BleSealedWriteSink = sealedSink
 
     override fun notifications(characteristic: String): Flow<ByteArray> = flowOf()
 }

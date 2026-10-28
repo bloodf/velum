@@ -222,23 +222,27 @@ class KableBleTransport : AbstractBleTransport() {
         }
     }
 
-    internal override suspend fun writeSealedAlreadyGuarded(
-        characteristic: String,
-        payload: ByteArray,
-        withoutResponse: Boolean,
-    ) {
-        mutex.withLock {
-            val p = peripheral ?: error("Not connected")
-            val profile = activeProfile ?: error("No active GATT profile")
-            val ch = profile.characteristic(characteristic)
-            require(ch.canWrite) {
-                "Characteristic '${ch.name}' on profile '${profile.id}' is not writable"
+    private val sealedSink = object : BleSealedWriteSink {
+        override suspend fun writeSealedAlreadyGuarded(
+            characteristic: String,
+            payload: ByteArray,
+            withoutResponse: Boolean,
+        ) {
+            mutex.withLock {
+                val p = peripheral ?: error("Not connected")
+                val profile = activeProfile ?: error("No active GATT profile")
+                val ch = profile.characteristic(characteristic)
+                require(ch.canWrite) {
+                    "Characteristic '${ch.name}' on profile '${profile.id}' is not writable"
+                }
+                val serviceUuid = profile.resolveServiceUuid(ch)
+                // No opcode parse — plaintext already checked by PlaudEncryptedSession.
+                writeToPeripheral(p, serviceUuid, ch.uuid, payload, withoutResponse)
             }
-            val serviceUuid = profile.resolveServiceUuid(ch)
-            // No opcode parse — plaintext already checked by PlaudEncryptedSession.
-            writeToPeripheral(p, serviceUuid, ch.uuid, payload, withoutResponse)
         }
     }
+
+    internal override fun sealedWriteSink(): BleSealedWriteSink = sealedSink
 
     private suspend fun writeToPeripheral(
         p: Peripheral,

@@ -59,9 +59,9 @@ class PublicBleTransportGuardTest {
         )
         assertTrue(
             AbstractBleTransport::class.java.methods.none {
-                it.name == "writeSealedAlreadyGuarded" && Modifier.isPublic(it.modifiers)
+                it.name == "writeSealedAlreadyGuarded"
             },
-            "AbstractBleTransport.writeSealedAlreadyGuarded must not be a public JVM method",
+            "writeSealedAlreadyGuarded must live only on BleSealedWriteSink, not AbstractBleTransport",
         )
         // writeEncrypted takes a single plaintext ByteArray (+ optional boolean), not sealed.
         val writeEncrypted = PlaudEncryptedSession::class.java.methods
@@ -78,41 +78,25 @@ class PublicBleTransportGuardTest {
     }
 
     @Test
-    fun concreteTransports_writeSealedAlreadyGuarded_notPublicOnJvm() {
-        // Kotlin mangles `internal` to writeSealedAlreadyGuarded$<module>. The
-        // unmangled name must not appear as a public JVM method.
+    fun concreteTransports_haveNoWriteSealedAlreadyGuardedMethod() {
+        // Sealed write lives only on internal BleSealedWriteSink (private adapters).
         val concretes = buildList {
             add(FakeBleTransport::class.java)
             add(StubBleTransport::class.java)
             add(AbstractBleTransport::class.java)
-            // Kable lives in mobileMain; present on Android unit classpath, optional on JVM.
             runCatching { Class.forName("dev.velum.ble.KableBleTransport") }
                 .getOrNull()
                 ?.let { add(it) }
         }
         assertTrue(concretes.size >= 3, "expected Fake + Stub + Abstract at minimum")
         concretes.forEach { type ->
-            val unmangledPublic = type.methods.filter {
-                it.name == "writeSealedAlreadyGuarded" && Modifier.isPublic(it.modifiers)
+            val named = (type.declaredMethods + type.methods).filter {
+                it.name == "writeSealedAlreadyGuarded" ||
+                    it.name.startsWith("writeSealedAlreadyGuarded\$")
             }
             assertTrue(
-                unmangledPublic.isEmpty(),
-                "${type.simpleName}: unmangled writeSealedAlreadyGuarded must not be public: " +
-                    unmangledPublic.map { it.name },
-            )
-            val unmangledDeclared = type.declaredMethods.filter { it.name == "writeSealedAlreadyGuarded" }
-            assertTrue(
-                unmangledDeclared.isEmpty(),
-                "${type.simpleName}: unmangled writeSealedAlreadyGuarded must not be declared: " +
-                    unmangledDeclared.map { it.name },
-            )
-            // Internal override still exists under the module-mangled name.
-            val mangled = (type.declaredMethods + type.methods).filter {
-                it.name.startsWith("writeSealedAlreadyGuarded\$")
-            }
-            assertTrue(
-                mangled.isNotEmpty(),
-                "${type.simpleName} should declare mangled internal writeSealedAlreadyGuarded\$…",
+                named.isEmpty(),
+                "${type.simpleName} must not declare writeSealedAlreadyGuarded: ${named.map { it.name }}",
             )
         }
     }
