@@ -36,7 +36,6 @@ import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.TravelExplore
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
@@ -551,15 +550,10 @@ private fun RecordingRow(
             Checkbox(
                 checked = checked,
                 onCheckedChange = { onClick() },
-                colors = CheckboxDefaults.colors(
-                    checkedColor = VelumInk,
-                    uncheckedColor = VelumInkSecondary,
-                    checkmarkColor = VelumBg,
-                ),
             )
             Spacer(Modifier.width(8.dp))
         }
-        Column(Modifier = Modifier.weight(1f)) {
+        Column(Modifier.weight(1f)) {
             Text(
                 text = titleAnnotated,
                 color = VelumInk,
