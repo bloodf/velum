@@ -2,12 +2,12 @@ package dev.velum.core.security
 
 import java.nio.file.Files
 import java.nio.file.Path
-import java.nio.file.attribute.PosixFilePermission
 import java.util.Properties
 import javax.crypto.SecretKey
 import kotlin.io.path.exists
 import kotlin.io.path.inputStream
-import kotlin.io.path.outputStream
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * Desktop secure store: AES-256-GCM ciphertext in a properties file.
@@ -15,14 +15,17 @@ import kotlin.io.path.outputStream
  * The software AES key lives in a sibling file (not Android Keystore — that is
  * Android-only / non-exportable). Identity values must never appear as plaintext
  * in the properties file.
+ *
+ * All mutate + flush sequences share one [Mutex]; flushes snapshot the map and
+ * write via temp file + atomic move.
  */
 class DesktopSecureStore(
     private val file: Path = Path.of(System.getProperty("user.home"), ".velum", "secure.properties"),
     private val keyFile: Path = file.resolveSibling("secure.aes256"),
 ) : SecureStore {
+    private val mutex = Mutex()
     private val key: SecretKey = loadOrCreateKey(keyFile)
     private val backend = linkedMapOf<String, String>()
-    private val encrypted = JvmAesGcmSecureStore(key = key, backend = backend)
 
     init {
         if (file.exists()) {
@@ -34,38 +37,52 @@ class DesktopSecureStore(
         }
     }
 
-    private fun flush() {
-        Files.createDirectories(file.parent)
-        val props = Properties()
-        backend.forEach { (k, v) -> props.setProperty(k, v) }
-        file.outputStream().use { props.store(it, "Velum AES-GCM ciphertext — do not commit") }
+    /** Snapshot + atomic write. Caller must hold [mutex]. */
+    private fun flushLocked() {
+        atomicWriteProperties(
+            target = file,
+            snapshot = backend.toMap(),
+            comment = "Velum AES-GCM ciphertext — do not commit",
+        )
     }
 
     override suspend fun putString(key: String, value: String) {
-        encrypted.putString(key, value)
-        flush()
+        mutex.withLock {
+            backend[key] = AesGcmSecurePayload.encrypt(this.key, value.toByteArray(Charsets.UTF_8))
+            flushLocked()
+        }
     }
 
-    override suspend fun getString(key: String): String? {
-        val hadEntry = backend.containsKey(key)
-        val value = encrypted.getString(key)
-        // Corrupt ciphertext is dropped inside [encrypted]; persist the removal.
-        if (hadEntry && !backend.containsKey(key)) {
-            flush()
+    override suspend fun getString(key: String): String? = mutex.withLock {
+        val stored = backend[key] ?: return@withLock null
+        when (val result = AesGcmSecurePayload.decryptResult(this.key, stored)) {
+            is AesGcmDecryptResult.Ok ->
+                result.plaintext.toString(Charsets.UTF_8)
+            AesGcmDecryptResult.StructurallyMalformed -> {
+                backend.remove(key)
+                flushLocked()
+                null
+            }
+            AesGcmDecryptResult.CryptographicFailure -> null
         }
-        return value
     }
 
     override suspend fun remove(key: String) {
-        encrypted.remove(key)
-        flush()
+        mutex.withLock {
+            backend.remove(key)
+            flushLocked()
+        }
     }
 
-    override suspend fun contains(key: String): Boolean = encrypted.contains(key)
+    override suspend fun contains(key: String): Boolean = mutex.withLock {
+        backend.containsKey(key)
+    }
 
     override suspend fun wipe() {
-        encrypted.wipe()
-        flush()
+        mutex.withLock {
+            backend.clear()
+            flushLocked()
+        }
     }
 
     companion object {
@@ -76,13 +93,10 @@ class DesktopSecureStore(
             }
             Files.createDirectories(path.parent)
             val generated = JvmAesGcmSecureStore.generateAes256Key()
+            // Create with owner-only mode before writing key bytes (no umask window).
+            createOwnerOnlyFile(path)
             Files.write(path, generated.encoded)
-            runCatching {
-                Files.setPosixFilePermissions(
-                    path,
-                    setOf(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE),
-                )
-            }
+            setOwnerOnlyPermissions(path)
             return generated
         }
     }
