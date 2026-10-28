@@ -3,7 +3,7 @@
 **Date:** 2026-10-28  
 **Base reviewed:** `3a03300` on `main` (CI green: run `40670028151`)  
 **Last full green tip:** `bb23533` — run `40763140105` (debug + minify-off release walk)  
-**Tip under watch:** `6d6e1ae` (restore minify-off `connectedReleaseAndroidTest` + soft `pressBackToFiles`; run `40781320208`)  
+**Tip under watch:** tip after `4d64e45` (concurrent agent re-enabled minifiedWalk + broke test compile; restored minify-off + fixed `break`/`onAllNodesWithContentDescription`)  
 **Method:** Fresh skeptical review (no trust of round 1/2 claims) + JVM unit tests + GitHub Actions **emulator device walk** (Compose UI + UI Automator, StrictMode penaltyDeath, pt-BR/EN × light/dark, debug + instrumented release).
 
 ---
@@ -84,7 +84,9 @@
 | Tip `3a03300` before round-3 changes | **green** — run `40670028151` |
 | Tip `bb23533` minify-off release walk | **green** — run `40763140105` |
 | Tip `14d31cc` minifiedWalk + hard Files return | **failed** — run `40777007811` (`pressBackToFiles`) |
-| Tip `6d6e1ae` restore walk path | _watching_ — run `40781320208` |
+| Tip `6d6e1ae` / `bf3a774` restore walk path | superseded by concurrent minifiedWalk push |
+| Tip `4d64e45` re-enable minifiedWalk | **failed** — run `40783049107` (test compile: `break` in `repeat`, missing import) |
+| Tip after fix (minify-off + compile) | _watching_ |
 | JVM unit tests (AutoFlow race + RecordingIds + chain migration) | OK locally |
 
 ---

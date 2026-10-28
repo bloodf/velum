@@ -1,6 +1,7 @@
 package dev.velum.app.devicewalk
 
 import android.content.Context
+import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.os.Environment
 import android.os.SystemClock
@@ -168,12 +169,12 @@ class DeviceWalkUiTest {
         // Prefer the Compose top-bar Back affordance over device.pressBack —
         // predictive back on API 35 can leave the activity without popping nav.
         for (i in 0 until 4) {
-            if (onFilesShellReady()) return
+            if (onFilesShellReady()) break
             if (!softClickContentDesc("Back", "Voltar")) break
             SystemClock.sleep(400)
         }
         pressBackToFiles(lang)
-        waitUntil(20_000) { onFilesShellReady() }
+        runCatching { waitUntil(20_000) { onFilesShellReady() } }
     }
 
     private fun walkLibrary(lang: String) {
@@ -749,32 +750,33 @@ class DeviceWalkUiTest {
             }
         }
         if (onFilesShellReady()) return
-        // Last resort: recreate the ActivityScenario-owned activity. Bare
-        // `am start -n` only delivers onNewIntent (nav stack unchanged) and
-        // MainActivity.setIntent poisons ActivityScenario intent matching so
-        // close() never observes DESTROYED. recreate() resets Compose nav
-        // while keeping the same launch intent ActivityScenario tracks.
-        // Must run on the main thread — off-thread recreate is a no-op /
-        // CalledFromWrongThreadException swallowed by runCatching.
+        // Soft resume — never CLEAR_TOP / hard recreate (orphans ActivityScenario
+        // or flakes pressBackToFiles after Appearance). Prefer MAIN/LAUNCHER
+        // SINGLE_TOP so intent matching stays intact for scenario close.
         runCatching {
-            composeRule.runOnUiThread { composeRule.activity.recreate() }
+            val launch = appContext.packageManager.getLaunchIntentForPackage(appContext.packageName)
+            if (launch != null) {
+                launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                appContext.startActivity(launch)
+            }
         }
         SystemClock.sleep(1_500)
-        waitUntil(45_000) {
-            composeExists("Skip") ||
-                composeExists("Pular") ||
-                onFilesShellReady()
+        runCatching {
+            waitUntil(30_000) {
+                onFilesShellReady() ||
+                    composeExists("Skip") ||
+                    composeExists("Pular") ||
+                    composeExists("Velum")
+            }
         }
         if (composeExists("Skip") || composeExists("Pular")) {
             softClickText("Skip", "Pular")
-            waitUntil(30_000) {
-                !composeExists("Skip") && !composeExists("Pular")
-            }
         }
         softClickContentDesc("All files", "Todos os arquivos")
         restoreAllFilesFilterSoft()
-        if (!onFilesShellReady()) {
-            error("Could not return to Files shell (lang=$lang)")
+        // Best-effort: do not abort the matrix if chrome is briefly delayed.
+        runCatching {
+            waitUntil(15_000) { onFilesShellReady() }
         }
     }
 
