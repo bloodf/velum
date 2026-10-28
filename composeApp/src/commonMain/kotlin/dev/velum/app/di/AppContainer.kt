@@ -233,21 +233,27 @@ class AppContainer(
             epochSecondsNow()
         }
         val title = formatRecordingTitle(started)
-        repository.insertRecording(
-            id = id,
-            sessionId = session.sessionId,
-            folderId = null,
-            title = title,
-            source = "note_pro",
-            deviceSerial = session.deviceSerial,
-            startedAt = started,
-            durationSeconds = 0,
-            sizeBytes = written.sizeBytes,
-            localPath = written.absolutePath,
-            transcript = null,
-            summaryMarkdown = null,
-            status = "queued",
-        )
+        try {
+            repository.insertRecording(
+                id = id,
+                sessionId = session.sessionId,
+                folderId = null,
+                title = title,
+                source = "note_pro",
+                deviceSerial = session.deviceSerial,
+                startedAt = started,
+                durationSeconds = 0,
+                sizeBytes = written.sizeBytes,
+                localPath = written.absolutePath,
+                transcript = null,
+                summaryMarkdown = null,
+                status = "queued",
+            )
+        } catch (t: Throwable) {
+            // Audio landed on disk before the row — do not orphan the file on DB failure.
+            runCatching { ModelStoreDir(written.absolutePath).deleteRecursively() }
+            throw t
+        }
         // Resolve AutoFlow before first enqueue so KEEP cannot drop template/model.
         val match = repository.findMatchingAutoflow(
             source = "note_pro",
