@@ -5,6 +5,7 @@ import android.content.pm.ActivityInfo
 import android.os.Environment
 import android.os.SystemClock
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -166,7 +167,7 @@ class DeviceWalkUiTest {
         SystemClock.sleep(750)
         // Prefer the Compose top-bar Back affordance over device.pressBack —
         // predictive back on API 35 can leave the activity without popping nav.
-        repeat(4) {
+        for (i in 0 until 4) {
             if (onFilesShellReady()) return
             if (!softClickContentDesc("Back", "Voltar")) break
             SystemClock.sleep(400)
