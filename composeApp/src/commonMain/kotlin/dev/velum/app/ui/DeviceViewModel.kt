@@ -2,36 +2,26 @@ package dev.velum.app.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import dev.velum.app.download.SessionDownloadManager
+import dev.velum.app.download.SessionDownloadRequest
 import dev.velum.app.i18n.DeviceUiCopy
-import dev.velum.app.platform.DownloadNotifyKind
-import dev.velum.app.platform.DownloadProgressNotifier
-import dev.velum.app.platform.SessionDownloadKeepAliveGate
 import dev.velum.app.platform.systemLanguageTag
 import dev.velum.ble.BleConnectionState
 import dev.velum.ble.BleTransport
 import dev.velum.ble.client.PlaudDeviceClient
-import dev.velum.ble.client.createTempSessionFile
-import dev.velum.ble.crypto.createFileDecryptor
 import dev.velum.ble.crypto.createSessionCipher
 import dev.velum.core.model.ConnectedDevice
 import dev.velum.core.security.DeviceKeyImporter
 import dev.velum.protocol.DeviceCapabilities
 import dev.velum.protocol.DeviceCapabilityRegistry
-import dev.velum.protocol.PlaudFileCrypto
 import dev.velum.protocol.SessionEntry
 import dev.velum.recorder.RecorderDriverRegistry
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withContext
 
 data class DeviceSessionUi(
     val batteryPercent: Int? = null,
@@ -55,14 +45,16 @@ data class DownloadedSessionAudio(
     val decryptedBytes: ByteArray,
 )
 
+/**
+ * Device screen state. Session downloads are owned by [SessionDownloadManager]
+ * (app scope + FGS); this ViewModel only starts/cancels and mirrors [SessionDownloadManager.state].
+ */
 class DeviceViewModel(
     private val ble: BleTransport,
     private val keyImporter: DeviceKeyImporter? = null,
     @Suppress("unused")
     private val preferWifiFastPath: () -> Boolean = { true },
-    private val persistDownloadedSession: suspend (DownloadedSessionAudio) -> String = {
-        error("persistDownloadedSession not configured")
-    },
+    private val sessionDownloads: SessionDownloadManager,
     private val localeTag: () -> String = { systemLanguageTag() },
 ) : ViewModel() {
     val connectionState: StateFlow<BleConnectionState> =
@@ -76,9 +68,6 @@ class DeviceViewModel(
 
     private var client: PlaudDeviceClient? = null
     private var connectedSerial: String? = null
-    private var downloadJob: Job? = null
-    private val downloadMutex = Mutex()
-    private val downloadKeepAlive = SessionDownloadKeepAliveGate()
 
     init {
         viewModelScope.launch {
@@ -92,6 +81,18 @@ class DeviceViewModel(
                     is BleConnectionState.Failed,
                     -> closeClient()
                 }
+            }
+        }
+        viewModelScope.launch {
+            sessionDownloads.state.collect { dl ->
+                _sessionUi.value = _sessionUi.value.copy(
+                    downloadingSessionId = dl.downloadingSessionId,
+                    downloadProgress = dl.downloadProgress,
+                    statusMessage = dl.statusMessage ?: _sessionUi.value.statusMessage,
+                    lastDownloadedRecordingId = dl.lastDownloadedRecordingId
+                        ?: _sessionUi.value.lastDownloadedRecordingId,
+                    sessions = dl.sessionsUpdate ?: _sessionUi.value.sessions,
+                )
             }
         }
     }
@@ -114,7 +115,7 @@ class DeviceViewModel(
     fun disconnect() {
         viewModelScope.launch {
             cancelDownload()
-            downloadJob?.join()
+            sessionDownloads.join()
             closeClient()
             _sessionUi.value = DeviceSessionUi()
             ble.disconnect()
@@ -122,148 +123,40 @@ class DeviceViewModel(
     }
 
     fun cancelDownload() {
-        val locale = localeTag()
-        downloadJob?.cancel()
-        // Stop FGS before dismissing so we never cancel an active startForeground notification.
-        downloadKeepAlive.onDownloadEnd()
-        DownloadProgressNotifier.dismiss(DownloadNotifyKind.DeviceSession)
-        DownloadProgressNotifier.setCancelHandler(DownloadNotifyKind.DeviceSession, null)
-        if (_sessionUi.value.downloadingSessionId != null) {
-            _sessionUi.value = _sessionUi.value.copy(
-                downloadingSessionId = null,
-                downloadProgress = null,
-                statusMessage = DeviceUiCopy.downloadCancelled(locale),
-            )
-        }
+        sessionDownloads.cancel()
     }
 
     fun downloadSession(sessionId: Long) {
-        if (downloadJob?.isActive == true && _sessionUi.value.downloadingSessionId != null) return
-        val previous = downloadJob
-        val started = viewModelScope.launch {
-            previous?.join()
-            try {
-                downloadMutex.withLock {
-                    runDownloadSession(sessionId)
-                }
-            } finally {
-                downloadKeepAlive.onDownloadEnd()
-                DownloadProgressNotifier.dismiss(DownloadNotifyKind.DeviceSession)
-                DownloadProgressNotifier.setCancelHandler(DownloadNotifyKind.DeviceSession, null)
+        if (sessionDownloads.isDownloadActive && _sessionUi.value.downloadingSessionId != null) return
+        // Only resolve keys / client here; the download job itself runs on SessionDownloadManager.
+        viewModelScope.launch {
+            val locale = localeTag()
+            val entry = _sessionUi.value.sessions.firstOrNull { it.sessionId == sessionId }
+            if (entry == null) {
+                _sessionUi.value = _sessionUi.value.copy(statusMessage = DeviceUiCopy.sessionNotFound(locale))
+                return@launch
             }
-        }
-        downloadJob = started
-        started.invokeOnCompletion {
-            if (downloadJob === started) downloadJob = null
-        }
-    }
-
-    private suspend fun runDownloadSession(sessionId: Long) {
-        val locale = localeTag()
-        val entry = _sessionUi.value.sessions.firstOrNull { it.sessionId == sessionId }
-        if (entry == null) {
-            _sessionUi.value = _sessionUi.value.copy(statusMessage = DeviceUiCopy.sessionNotFound(locale))
-            return
-        }
-        val c = client
-        if (c == null) {
-            _sessionUi.value = _sessionUi.value.copy(statusMessage = DeviceUiCopy.notConnected(locale))
-            return
-        }
-        val keys = keyImporter?.loadKeys()
-        if (keys == null) {
-            _sessionUi.value = _sessionUi.value.copy(statusMessage = DeviceUiCopy.importKeysToDownload(locale))
-            return
-        }
-        val totalBytes = entry.sizeBytes.coerceAtLeast(1L)
-        _sessionUi.value = _sessionUi.value.copy(
-            downloadingSessionId = sessionId,
-            downloadProgress = 0f,
-            statusMessage = DeviceUiCopy.downloadingSession(locale, sessionId),
-            lastDownloadedRecordingId = null,
-        )
-        // Promote connectedDevice FGS before the long transfer so backgrounding cannot kill it.
-        downloadKeepAlive.onDownloadBegin()
-        DownloadProgressNotifier.ensureChannel()
-        DownloadProgressNotifier.setCancelHandler(DownloadNotifyKind.DeviceSession) { cancelDownload() }
-        DownloadProgressNotifier.show(
-            kind = DownloadNotifyKind.DeviceSession,
-            title = DeviceUiCopy.downloadNotificationTitle(locale),
-            body = DeviceUiCopy.downloadingSession(locale, sessionId),
-            progress = 0f,
-            cancelLabel = DeviceUiCopy.cancel(locale),
-        )
-        try {
-            val recordingId = withContext(Dispatchers.IO) {
-                assembleDecryptAndPersist(
-                    client = c,
+            val c = client
+            if (c == null) {
+                _sessionUi.value = _sessionUi.value.copy(statusMessage = DeviceUiCopy.notConnected(locale))
+                return@launch
+            }
+            val keys = keyImporter?.loadKeys()
+            if (keys == null) {
+                _sessionUi.value = _sessionUi.value.copy(statusMessage = DeviceUiCopy.importKeysToDownload(locale))
+                return@launch
+            }
+            sessionDownloads.start(
+                SessionDownloadRequest(
                     sessionId = sessionId,
                     sizeBytes = entry.sizeBytes,
-                    totalBytes = totalBytes,
                     privateKeyPem = keys.privateKeyPem,
                     deviceSerial = keys.serialNumber.ifBlank { connectedSerial },
                     startedAtEpochSeconds = sessionId.coerceAtLeast(0L),
-                )
-            }
-            val sessions = c.listSessions()
-            _sessionUi.value = _sessionUi.value.copy(
-                sessions = sessions.entries,
-                downloadingSessionId = null,
-                downloadProgress = null,
-                lastDownloadedRecordingId = recordingId,
-                statusMessage = DeviceUiCopy.downloadedSession(localeTag(), sessionId),
-            )
-        } catch (e: CancellationException) {
-            _sessionUi.value = _sessionUi.value.copy(
-                downloadingSessionId = null,
-                downloadProgress = null,
-                statusMessage = DeviceUiCopy.downloadCancelled(localeTag()),
-            )
-            throw e
-        } catch (_: Exception) {
-            _sessionUi.value = _sessionUi.value.copy(
-                downloadingSessionId = null,
-                downloadProgress = null,
-                statusMessage = DeviceUiCopy.downloadFailed(localeTag()),
+                    client = c,
+                ),
             )
         }
-    }
-
-    private suspend fun assembleDecryptAndPersist(
-        client: PlaudDeviceClient,
-        sessionId: Long,
-        sizeBytes: Long,
-        totalBytes: Long,
-        privateKeyPem: String,
-        deviceSerial: String?,
-        startedAtEpochSeconds: Long,
-    ): String {
-        fun onProgress(received: Long) {
-            val progress = (received.toDouble() / totalBytes.toDouble()).toFloat().coerceIn(0f, 0.99f)
-            _sessionUi.value = _sessionUi.value.copy(downloadProgress = progress)
-            DownloadProgressNotifier.update(DownloadNotifyKind.DeviceSession, progress)
-        }
-        val temp = createTempSessionFile()
-        val encrypted = if (temp != null) {
-            try {
-                client.downloadSessionTo(sessionId, sizeBytes, temp, ::onProgress)
-                temp.readAll()
-            } finally {
-                temp.delete()
-            }
-        } else {
-            client.downloadSession(sessionId, sizeBytes, ::onProgress)
-        }
-        val decrypted = PlaudFileCrypto.decrypt(encrypted, privateKeyPem, createFileDecryptor())
-        return persistDownloadedSession(
-            DownloadedSessionAudio(
-                sessionId = sessionId,
-                deviceSerial = deviceSerial,
-                startedAtEpochSeconds = startedAtEpochSeconds,
-                sizeBytes = decrypted.size.toLong(),
-                decryptedBytes = decrypted,
-            ),
-        )
     }
 
     private fun closeClient() {
