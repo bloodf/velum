@@ -159,6 +159,7 @@ Software-only coverage against protocol fixtures + `FakePlaudPeripheral` (no rad
 - Disconnect → reconnect re-runs FE10; handshake + battery remain usable on the new session (required by #5 software side).
 - Battery cmd-9 poll and unsolicited notify update the reported level; empty / out-of-range battery payloads fail closed.
 - Recorded plaintext outbound traffic on unlock/battery/reconnect paths contains none of opcodes **5 / 104 / 128 / 0xFE20 / 143** and no writes to settings **4 / 26**; send-path + transport guards still block bypass attempts after unlock.
+- Encrypted-session sealed writes use `PlaudBleTransport.writeSealedAfterPlaintextGuard` (internal `BleSealedWriteSink`); forbidden plaintext is rejected before sealing — tests assert write counts only, never ciphertext.
 
 **Not claimed:** real Note Pro advertising, unlock with owner keys, or live battery notify — still unconfirmed (#5 / needs-hardware).
 
