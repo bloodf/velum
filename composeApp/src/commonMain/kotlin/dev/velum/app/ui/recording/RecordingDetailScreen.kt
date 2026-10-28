@@ -144,7 +144,7 @@ fun RecordingDetailScreen(
                 recording?.status != "queued")
         )
 
-    fun enqueueAfterGate(retranscribe: Boolean) {
+    fun enqueueAfterGate(retranscribe: Boolean, templateId: String? = "velum.meeting") {
         processError = null
         val tasks = listOf(AiTask.Transcription, AiTask.Diarization, AiTask.Summary)
         for (task in tasks) {
@@ -159,12 +159,13 @@ fun RecordingDetailScreen(
         }
         container.enqueueProcessing(
             recordingId = recordingId,
-            templateId = "velum.meeting",
+            templateId = templateId,
             retranscribe = retranscribe,
         )
     }
 
-    fun launchProcessing(retranscribe: Boolean) = enqueueAfterGate(retranscribe)
+    fun launchProcessing(retranscribe: Boolean, templateId: String? = "velum.meeting") =
+        enqueueAfterGate(retranscribe, templateId)
 
     fun exportMarkdown() {
         val rec = recording ?: return
@@ -443,9 +444,15 @@ fun RecordingDetailScreen(
         ) {
             GenerateSheetContent(
                 onClose = { showGenerate = false },
-                onApply = {
+                onApply = { templateId, language, autoLabel ->
                     showGenerate = false
-                    launchProcessing(retranscribe = true)
+                    scope.launch {
+                        if (language != "auto") {
+                            container.settingsRepository.setAudioLanguage(language)
+                        }
+                        container.settingsRepository.setAutoSpeakerLabel(autoLabel)
+                        launchProcessing(retranscribe = true, templateId = templateId)
+                    }
                 },
             )
         }
@@ -462,8 +469,11 @@ fun RecordingDetailScreen(
                     when (need.task) {
                         AiTask.Transcription ->
                             container.settingsRepository.setTranscriptionMode(ComputeMode.Api)
-                        AiTask.Diarization ->
-                            container.settingsRepository.setDiarizationMode(ComputeMode.Api)
+                        AiTask.Diarization -> {
+                            // No API diarization contract — keep Local and open model manager.
+                            modelPrompt = need
+                            return@launch
+                        }
                         AiTask.Summary ->
                             container.settingsRepository.setSummaryMode(ComputeMode.Api)
                     }
@@ -1333,17 +1343,15 @@ private fun formatTalk(seconds: Long): String {
 @Composable
 fun GenerateSheetContent(
     onClose: () -> Unit,
-    onApply: () -> Unit = onClose,
+    onApply: (templateId: String, language: String, autoLabel: Boolean) -> Unit = { _, _, _ -> onClose() },
     templates: List<String> = listOf("velum.meeting", "velum.general", "velum.it"),
     languages: List<String> = listOf("auto", "pt", "en", "es"),
-    models: List<String> = listOf("automatic", "parakeet-tdt-0.6b-v3-int8", "whisper-large-v3-turbo"),
 ) {
     val strings = LocalStrings.current
     var auto by remember { mutableStateOf(true) }
     var templateIdx by remember { mutableStateOf(0) }
     var autoLabel by remember { mutableStateOf(true) }
     var langIdx by remember { mutableStateOf(0) }
-    var modelIdx by remember { mutableStateOf(0) }
     val templateLabels = templates.map { id ->
         BuiltinTemplateCatalog.get(id)?.displayName(strings.localeTag) ?: id
     }
@@ -1360,13 +1368,15 @@ fun GenerateSheetContent(
             ModeChip(strings.generateCustom, !auto) { auto = false }
         }
         Spacer(Modifier.height(8.dp))
-        ChevronRow(
-            strings.template,
-            {
-                templateIdx = (templateIdx + 1) % templates.size.coerceAtLeast(1)
-            },
-            value = templateLabels.getOrElse(templateIdx) { templates[templateIdx] },
-        )
+        if (!auto) {
+            ChevronRow(
+                strings.template,
+                {
+                    templateIdx = (templateIdx + 1) % templates.size.coerceAtLeast(1)
+                },
+                value = templateLabels.getOrElse(templateIdx) { templates[templateIdx] },
+            )
+        }
         ChevronRow(
             strings.autoLabelVoice,
             { autoLabel = !autoLabel },
@@ -1376,15 +1386,21 @@ fun GenerateSheetContent(
             strings.audioLanguage,
             { langIdx = (langIdx + 1) % languages.size.coerceAtLeast(1) },
             value = languages[langIdx],
-        )
-        ChevronRow(
-            strings.aiModel,
-            { modelIdx = (modelIdx + 1) % models.size.coerceAtLeast(1) },
-            value = if (modelIdx == 0) strings.automatic else models[modelIdx],
             showDivider = false,
         )
         Spacer(Modifier.height(12.dp))
-        BlackButton(strings.apply, onApply, modifier = Modifier.padding(horizontal = 20.dp))
+        BlackButton(
+            strings.apply,
+            {
+                val templateId = if (auto) {
+                    "velum.meeting"
+                } else {
+                    templates.getOrElse(templateIdx) { "velum.meeting" }
+                }
+                onApply(templateId, languages[langIdx], autoLabel)
+            },
+            modifier = Modifier.padding(horizontal = 20.dp),
+        )
     }
 }
 

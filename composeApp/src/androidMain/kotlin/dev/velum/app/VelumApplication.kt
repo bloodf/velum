@@ -66,6 +66,13 @@ class VelumApplication : Application() {
                 recoverPartialMicRecordings(
                     recordingsDirPath = recordingsDirectoryPath(),
                     repository = built.repository,
+                    onRecovered = { recordingId ->
+                        built.enqueueProcessing(
+                            recordingId = recordingId,
+                            templateId = null,
+                            retranscribe = true,
+                        )
+                    },
                 )
             }.onFailure { t ->
                 Log.e(TAG, "Partial mic recovery failed", t)

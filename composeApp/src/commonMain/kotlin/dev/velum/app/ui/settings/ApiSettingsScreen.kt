@@ -247,12 +247,7 @@ fun ApiSettingsScreen(
                 models = filtered,
                 onSelect = viewModel::selectChatModel,
             )
-            TaskModelPicker(
-                title = strings.settingsUi.modelForEmbeddings,
-                selectedId = settings.embeddingModel,
-                models = filtered,
-                onSelect = viewModel::selectEmbeddingModel,
-            )
+            // Embedding API picker omitted until Ask ranking uses remote embeddings.
         }
         if (listingFailed || settings.cachedModels.isEmpty()) {
             Spacer(Modifier.height(12.dp))

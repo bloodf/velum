@@ -22,7 +22,6 @@ import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Headphones
 import androidx.compose.material.icons.outlined.MicExternalOn
 import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material.icons.outlined.TravelExplore
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -35,6 +34,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -56,6 +56,7 @@ import dev.velum.core.db.Recording
 import dev.velum.core.search.FtsQuery
 import dev.velum.core.search.RecordingSearch
 import dev.velum.core.time.VelumDateTime
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -69,20 +70,32 @@ fun FilesScreen(
     initialSearchQuery: String = "",
 ) {
     val strings = LocalStrings.current
+    val scope = rememberCoroutineScope()
     val recordings by container.repository.observeRecordings().collectAsState(emptyList())
+    val trashed by container.repository.observeTrashed().collectAsState(emptyList())
     var showFilter by remember { mutableStateOf(false) }
     var showSearch by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf(initialSearchQuery) }
+    var libraryFilter by remember { mutableStateOf(LibraryFilter.All) }
+    var searchError by remember { mutableStateOf(false) }
     // FTS hits for non-blank queries; blank search shows [recordings] immediately
     // (avoids an empty first frame in ImageComposeScene / Roborazzi).
     var ftsIds by remember { mutableStateOf<List<String>?>(null) }
 
-    LaunchedEffect(recordings, searchQuery) {
+    val baseList = when (libraryFilter) {
+        LibraryFilter.All -> recordings
+        LibraryFilter.Trash -> trashed
+        LibraryFilter.NotePro -> recordings.filter { it.source == "note_pro" }
+    }
+
+    LaunchedEffect(baseList, searchQuery) {
+        searchError = false
         val match = FtsQuery.fromUserInput(searchQuery)
         ftsIds = if (match != null) {
             try {
                 container.repository.searchRecordingIdsFts(match)
             } catch (_: Throwable) {
+                searchError = true
                 null
             }
         } else {
@@ -90,9 +103,9 @@ fun FilesScreen(
         }
     }
     val visible = if (searchQuery.isBlank()) {
-        recordings
+        baseList
     } else {
-        RecordingSearch.recordings(recordings, searchQuery, ftsIds)
+        RecordingSearch.recordings(baseList, searchQuery, ftsIds)
     }
 
     Column(
@@ -106,10 +119,6 @@ fun FilesScreen(
                 .padding(horizontal = 16.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(Icons.Outlined.MicExternalOn, null, tint = VelumInk, modifier = Modifier.size(20.dp))
-            Spacer(Modifier.width(6.dp))
-            Icon(Icons.Outlined.Sync, null, tint = VelumInkSecondary, modifier = Modifier.size(16.dp))
-            Icon(Icons.Outlined.ExpandMore, null, tint = VelumInkSecondary, modifier = Modifier.size(18.dp))
             Spacer(Modifier.weight(1f))
             Box(
                 Modifier
@@ -156,7 +165,11 @@ fun FilesScreen(
 
         Spacer(Modifier.height(8.dp))
         DisplayTitle(
-            text = strings.allFiles,
+            text = when (libraryFilter) {
+                LibraryFilter.All -> strings.allFiles
+                LibraryFilter.Trash -> strings.trash
+                LibraryFilter.NotePro -> strings.ux.sourceNotePro
+            },
             trailing = {
                 Box(
                     Modifier
@@ -173,6 +186,14 @@ fun FilesScreen(
                 }
             },
         )
+        if (searchError) {
+            Text(
+                strings.ux.searchUnavailable,
+                color = VelumInkSecondary,
+                fontSize = 13.sp,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+            )
+        }
         if (searchQuery.isNotBlank()) {
             Text(
                 strings.searchResultsCount.replace("%d", visible.size.toString()),
@@ -197,7 +218,16 @@ fun FilesScreen(
                     RecordingRow(
                         rec = rec,
                         selected = rec.id == selectedRecordingId,
-                    ) { onOpenRecording(rec.id) }
+                    ) {
+                        if (libraryFilter == LibraryFilter.Trash) {
+                            scope.launch {
+                                container.repository.restoreRecording(rec.id)
+                                onOpenRecording(rec.id)
+                            }
+                        } else {
+                            onOpenRecording(rec.id)
+                        }
+                    }
                 }
             }
         }
@@ -210,8 +240,14 @@ fun FilesScreen(
             containerColor = VelumSurface,
         ) {
             FilterSortSheet(
-                total = recordings.size,
-                onClose = { showFilter = false },
+                allCount = recordings.size,
+                trashCount = trashed.size,
+                noteProCount = recordings.count { it.source == "note_pro" },
+                selected = libraryFilter,
+                onSelect = { filter ->
+                    libraryFilter = filter
+                    showFilter = false
+                },
             )
         }
     }
@@ -262,32 +298,49 @@ private fun RecordingRow(rec: Recording, selected: Boolean = false, onClick: () 
     }
 }
 
+private enum class LibraryFilter {
+    All,
+    Trash,
+    NotePro,
+}
+
 @Composable
-private fun FilterSortSheet(total: Int, onClose: () -> Unit) {
+private fun FilterSortSheet(
+    allCount: Int,
+    trashCount: Int,
+    noteProCount: Int,
+    selected: LibraryFilter,
+    onSelect: (LibraryFilter) -> Unit,
+) {
     val strings = LocalStrings.current
     Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
         Text(strings.filterSort, fontWeight = FontWeight.Thin, fontSize = 28.sp, color = VelumInk)
-        Spacer(Modifier.height(20.dp))
-        Text(strings.sortByCreated, fontSize = 16.sp, color = VelumInk)
         Spacer(Modifier.height(16.dp))
         ThinDivider(0)
-        FilterLine(strings.allFiles, "$total", selected = true)
-        FilterLine(strings.unclassified, "0", selected = false)
-        FilterLine(strings.trash, "0", selected = false)
-        Spacer(Modifier.height(12.dp))
-        Text(strings.folders, fontWeight = FontWeight.Medium, fontSize = 15.sp)
-        Spacer(Modifier.height(8.dp))
-        Text(strings.comesFrom, fontWeight = FontWeight.Medium, fontSize = 15.sp)
-        FilterLine(strings.ux.sourceNotePro, "1", selected = false)
+        FilterLine(strings.allFiles, "$allCount", selected == LibraryFilter.All) {
+            onSelect(LibraryFilter.All)
+        }
+        FilterLine(strings.trash, "$trashCount", selected == LibraryFilter.Trash) {
+            onSelect(LibraryFilter.Trash)
+        }
+        FilterLine(strings.ux.sourceNotePro, "$noteProCount", selected == LibraryFilter.NotePro) {
+            onSelect(LibraryFilter.NotePro)
+        }
         Spacer(Modifier.height(32.dp))
     }
 }
 
 @Composable
-private fun FilterLine(label: String, count: String, selected: Boolean) {
+private fun FilterLine(
+    label: String,
+    count: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .clickable(onClick = onClick)
             .padding(vertical = 14.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {

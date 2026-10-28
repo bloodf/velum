@@ -31,7 +31,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -43,6 +42,7 @@ import dev.velum.app.ui.components.ChevronRow
 import dev.velum.app.ui.components.DisplayTitle
 import dev.velum.app.ui.theme.VelumBg
 import dev.velum.app.ui.theme.VelumBlack
+import dev.velum.app.ui.theme.VelumOnBlack
 
 @Composable
 fun ExploreScreen(
@@ -108,13 +108,13 @@ fun ExploreScreen(
         ) {
             Text(
                 "${strings.modelStatus}: $modelLabel",
-                color = Color.White,
+                color = VelumOnBlack,
                 fontSize = 14.sp,
             )
             Spacer(Modifier.height(4.dp))
             Text(
                 "${strings.localUsage}: $localLabel",
-                color = Color.White.copy(alpha = 0.72f),
+                color = VelumOnBlack.copy(alpha = 0.72f),
                 fontSize = 13.sp,
             )
             Spacer(Modifier.height(14.dp))
@@ -123,7 +123,7 @@ fun ExploreScreen(
                     .fillMaxWidth()
                     .height(48.dp)
                     .clip(RoundedCornerShape(24.dp))
-                    .background(Color.White)
+                    .background(VelumOnBlack)
                     .clickable(onClick = onApiSettings),
                 contentAlignment = Alignment.Center,
             ) {
@@ -154,8 +154,8 @@ fun ExploreScreen(
             {
                 showInfo(
                     strings.privacySecurity,
-                    "Velum é local-first: sem telemetria Plaud/Datadog/PostHog. " +
-                        "Chaves e BYO API ficam no armazenamento seguro do aparelho.",
+                    strings.settingsUi.privacyOnDeviceStatement + "\n\n" +
+                        strings.settingsUi.privacyNoTelemetry,
                 )
             },
             icon = Icons.Outlined.Security,
@@ -165,7 +165,7 @@ fun ExploreScreen(
             {
                 showInfo(
                     strings.helpSupport,
-                    "Use Configurações → Conta para BYO API, gerenciador de modelos e importação de chaves do Note Pro.",
+                    strings.settingsUi.apiHint,
                 )
             },
             icon = Icons.AutoMirrored.Outlined.HelpOutline,
@@ -175,7 +175,7 @@ fun ExploreScreen(
             {
                 showInfo(
                     strings.aboutVelum,
-                    "Velum 0.1.0-foundation\nProcessamento local + API OpenAI-compatível (BYO).\nSem servidores Plaud.",
+                    strings.settingsUi.aboutBody,
                 )
             },
             icon = Icons.Outlined.Info,

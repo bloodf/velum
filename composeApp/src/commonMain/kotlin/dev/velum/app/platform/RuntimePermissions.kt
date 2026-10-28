@@ -6,6 +6,10 @@ enum class AppPermission {
     RecordAudio,
     ReadCalendar,
     PostNotifications,
+    /** Android 12+ `BLUETOOTH_SCAN` (neverForLocation). Not required below API 31. */
+    BluetoothScan,
+    /** Android 12+ `BLUETOOTH_CONNECT`. Not required below API 31. */
+    BluetoothConnect,
 }
 
 sealed class PermissionOutcome {

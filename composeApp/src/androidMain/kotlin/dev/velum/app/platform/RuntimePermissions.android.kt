@@ -32,6 +32,19 @@ actual fun rememberPermissionRequester(
             } else {
                 null
             }
+        AppPermission.BluetoothScan ->
+            if (Build.VERSION.SDK_INT >= 31) {
+                Manifest.permission.BLUETOOTH_SCAN
+            } else {
+                // Pre-31 scan used legacy BLUETOOTH + location (manifest maxSdkVersion=30).
+                Manifest.permission.ACCESS_FINE_LOCATION
+            }
+        AppPermission.BluetoothConnect ->
+            if (Build.VERSION.SDK_INT >= 31) {
+                Manifest.permission.BLUETOOTH_CONNECT
+            } else {
+                null
+            }
     }
     var pendingCallback by remember { mutableStateOf<((PermissionOutcome) -> Unit)?>(null) }
     var showRationale by remember { mutableStateOf(false) }

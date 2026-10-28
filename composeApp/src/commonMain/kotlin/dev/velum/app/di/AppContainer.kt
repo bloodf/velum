@@ -24,7 +24,10 @@ import dev.velum.ai.integrations.WebhookDispatcher
 import dev.velum.app.platform.ExportFolderStore
 import dev.velum.app.platform.MicCapture
 import dev.velum.app.platform.createMicCapture
+import dev.velum.app.platform.recordingsDirectoryPath
+import dev.velum.app.platform.writeBytesToPath
 import dev.velum.app.ui.DeviceViewModel
+import dev.velum.app.ui.DownloadedSessionAudio
 import dev.velum.app.ui.SettingsViewModel
 import dev.velum.ble.BleTransport
 import dev.velum.ble.createBleTransport
@@ -75,6 +78,7 @@ class AppContainer(
         ble = ble,
         keyImporter = deviceKeyImporter,
         preferWifiFastPath = { settingsRepository.preferences.value.preferWifiFastPath },
+        persistDownloadedSession = { session -> persistDownloadedSession(session) },
     )
     val integrationAuth = IntegrationAuthStore(secureStore, integrationConfig)
     val webhookSettings = WebhookSettingsStore(secureStore)
@@ -188,6 +192,54 @@ class AppContainer(
         )
         return id
     }
+
+    suspend fun persistDownloadedSession(session: DownloadedSessionAudio): String {
+        val id = "rec-${epochSecondsNow()}-${(1000..9999).random()}"
+        val ext = when {
+            looksLikeOgg(session.decryptedBytes) -> "ogg"
+            looksLikeWav(session.decryptedBytes) -> "wav"
+            else -> "bin"
+        }
+        val path = "${recordingsDirectoryPath()}/$id.$ext"
+        writeBytesToPath(path, session.decryptedBytes)
+        val started = if (session.startedAtEpochSeconds > 1_000_000_000L) {
+            session.startedAtEpochSeconds
+        } else {
+            epochSecondsNow()
+        }
+        repository.insertRecording(
+            id = id,
+            sessionId = session.sessionId,
+            folderId = null,
+            title = formatRecordingTitle(started),
+            source = "note_pro",
+            deviceSerial = session.deviceSerial,
+            startedAt = started,
+            durationSeconds = 0,
+            sizeBytes = session.sizeBytes,
+            localPath = path,
+            transcript = null,
+            summaryMarkdown = null,
+            status = "queued",
+        )
+        enqueueProcessing(id, templateId = null, retranscribe = true)
+        return id
+    }
+
+    private fun looksLikeOgg(bytes: ByteArray): Boolean =
+        bytes.size >= 4 &&
+            bytes[0] == 'O'.code.toByte() &&
+            bytes[1] == 'g'.code.toByte() &&
+            bytes[2] == 'g'.code.toByte() &&
+            bytes[3] == 'S'.code.toByte()
+
+    private fun looksLikeWav(bytes: ByteArray): Boolean =
+        bytes.size >= 12 &&
+            bytes[0] == 'R'.code.toByte() &&
+            bytes[1] == 'I'.code.toByte() &&
+            bytes[2] == 'F'.code.toByte() &&
+            bytes[3] == 'F'.code.toByte()
+
 
     private fun formatRecordingTitle(epochSeconds: Long): String {
         val locale = settingsRepository.preferences.value.appLanguage

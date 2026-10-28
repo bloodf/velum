@@ -20,6 +20,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -138,7 +139,7 @@ fun AiProcessingScreen(
                         {
                             scope.launch {
                                 container.settingsRepository.setTranscriptionMode(ComputeMode.Api)
-                                container.settingsRepository.setDiarizationMode(ComputeMode.Api)
+                                // Diarization has no remote contract — stay Local.
                                 container.settingsRepository.setSummaryMode(ComputeMode.Api)
                             }
                         },
@@ -171,25 +172,31 @@ fun AiProcessingScreen(
         )
         Spacer(Modifier.height(16.dp))
         SectionLabel(strings.taskDiarization)
+        // API diarization has no remote contract — Local only.
+        LaunchedEffect(settings.diarizationMode) {
+            if (settings.diarizationMode == ComputeMode.Api) {
+                container.settingsRepository.setDiarizationMode(ComputeMode.Local)
+            }
+        }
         ModePicker(
-            selected = settings.diarizationMode,
+            selected = ComputeMode.Local,
             onSelect = { mode ->
-                if (mode == ComputeMode.Local) {
-                    when (
-                        val r = container.aiRouter.resolveModeOrPrompt(
-                            AiTask.Diarization,
-                            container.localModelManager,
-                        )
-                    ) {
-                        is ModeResolution.NeedLocalModel -> {
-                            modelPrompt = r
-                            return@ModePicker
-                        }
-                        is ModeResolution.Proceed -> Unit
+                if (mode != ComputeMode.Local) return@ModePicker
+                when (
+                    val r = container.aiRouter.resolveModeOrPrompt(
+                        AiTask.Diarization,
+                        container.localModelManager,
+                    )
+                ) {
+                    is ModeResolution.NeedLocalModel -> {
+                        modelPrompt = r
+                        return@ModePicker
                     }
+                    is ModeResolution.Proceed -> Unit
                 }
-                scope.launch { container.settingsRepository.setDiarizationMode(mode) }
+                scope.launch { container.settingsRepository.setDiarizationMode(ComputeMode.Local) }
             },
+            allowApi = false,
         )
         Spacer(Modifier.height(16.dp))
         SectionLabel(strings.taskSummaries)
@@ -292,8 +299,11 @@ fun AiProcessingScreen(
                     when (need.task) {
                         AiTask.Transcription ->
                             container.settingsRepository.setTranscriptionMode(ComputeMode.Api)
-                        AiTask.Diarization ->
-                            container.settingsRepository.setDiarizationMode(ComputeMode.Api)
+                        AiTask.Diarization -> {
+                            // No API diarization — keep prompting for local download.
+                            modelPrompt = need
+                            return@launch
+                        }
                         AiTask.Summary ->
                             container.settingsRepository.setSummaryMode(ComputeMode.Api)
                     }
@@ -343,6 +353,7 @@ private fun LanguagePickerSheet(
 private fun ModePicker(
     selected: ComputeMode,
     onSelect: (ComputeMode) -> Unit,
+    allowApi: Boolean = true,
 ) {
     val strings = LocalStrings.current
     Row(
@@ -357,12 +368,14 @@ private fun ModePicker(
             onClick = { onSelect(ComputeMode.Local) },
             modifier = Modifier.weight(1f),
         )
-        ModeChip(
-            label = strings.computeApi,
-            selected = selected == ComputeMode.Api,
-            onClick = { onSelect(ComputeMode.Api) },
-            modifier = Modifier.weight(1f),
-        )
+        if (allowApi) {
+            ModeChip(
+                label = strings.computeApi,
+                selected = selected == ComputeMode.Api,
+                onClick = { onSelect(ComputeMode.Api) },
+                modifier = Modifier.weight(1f),
+            )
+        }
     }
 }
 

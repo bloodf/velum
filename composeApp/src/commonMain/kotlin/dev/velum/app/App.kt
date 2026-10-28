@@ -513,7 +513,11 @@ private fun VelumRoot(container: AppContainer) {
                         )
                     }
                     composable(Routes.DEVICE) {
-                        DeviceScreen(container.ble, container.deviceViewModel)
+                        DeviceScreen(
+                            ble = container.ble,
+                            viewModel = container.deviceViewModel,
+                            onBack = { navController.popBackStack() },
+                        )
                     }
                 }
             }
@@ -632,7 +636,7 @@ private fun VelumRoot(container: AppContainer) {
                 onUseApi = {
                     scope.launch {
                         container.settingsRepository.setTranscriptionMode(ComputeMode.Api)
-                        container.settingsRepository.setDiarizationMode(ComputeMode.Api)
+                        // Diarization stays Local (no remote contract).
                         container.settingsRepository.setSummaryMode(ComputeMode.Api)
                         container.repository.markFirstRunDone()
                         showFirstRun = false

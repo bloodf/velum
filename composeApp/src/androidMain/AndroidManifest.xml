@@ -51,21 +51,14 @@
                 <data android:mimeType="application/ogg" />
                 <data android:mimeType="video/mp4" />
             </intent-filter>
+            <!-- Prefer content:// + audio MIME; avoid file:// and */* confused-deputy surface. -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="content" />
-                <data android:scheme="file" />
-                <data android:mimeType="*/*" />
-                <data android:pathPattern=".*\\.mp3" />
-                <data android:pathPattern=".*\\.m4a" />
-                <data android:pathPattern=".*\\.wav" />
-                <data android:pathPattern=".*\\.ogg" />
-                <data android:pathPattern=".*\\.opus" />
-                <data android:pathPattern=".*\\.flac" />
-                <data android:pathPattern=".*\\.amr" />
-                <data android:pathPattern=".*\\.webm" />
+                <data android:mimeType="audio/*" />
+                <data android:mimeType="application/ogg" />
             </intent-filter>
         </activity>
 

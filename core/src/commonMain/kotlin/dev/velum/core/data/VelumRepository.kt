@@ -149,6 +149,10 @@ class VelumRepository(
         q.trashRecording(id)
     }
 
+    suspend fun restoreRecording(id: String) = withContext(Dispatchers.Default) {
+        q.restoreRecording(id)
+    }
+
     suspend fun moveRecordingToFolder(id: String, folderId: String?) = withContext(Dispatchers.Default) {
         q.updateRecordingFolder(folderId, id)
     }

@@ -30,8 +30,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.unit.dp
+import androidx.compose.material3.CircularProgressIndicator
 import dev.velum.app.i18n.DeviceUiCopy
 import dev.velum.app.i18n.LocalStrings
+import dev.velum.app.platform.AppPermission
+import dev.velum.app.platform.PermissionOutcome
+import dev.velum.app.platform.rememberPermissionRequester
+import dev.velum.app.ui.components.ScreenTopBar
 import dev.velum.ble.BleConnectionState
 import dev.velum.ble.BleTransport
 import dev.velum.core.model.ConnectedDevice
@@ -41,19 +46,46 @@ import dev.velum.protocol.DeviceCapabilityRegistry
 fun DeviceScreen(
     ble: BleTransport,
     viewModel: DeviceViewModel,
+    onBack: (() -> Unit)? = null,
 ) {
     val state by viewModel.connectionState.collectAsState()
     val devices by viewModel.devices.collectAsState()
     val sessionUi by viewModel.sessionUi.collectAsState()
+    val strings = LocalStrings.current
+    val requestScan = rememberPermissionRequester(
+        permission = AppPermission.BluetoothScan,
+        rationaleTitle = strings.ux.scan,
+        rationaleBody = DeviceUiCopy.blePermissionBody(strings.localeTag),
+    )
+    val requestConnect = rememberPermissionRequester(
+        permission = AppPermission.BluetoothConnect,
+        rationaleTitle = strings.ux.scan,
+        rationaleBody = DeviceUiCopy.blePermissionBody(strings.localeTag),
+    )
     DeviceScreenContent(
         state = state,
         devices = devices,
         sessionUi = sessionUi,
         bleAvailable = ble.isAvailable,
-        onStartScan = { viewModel.startScan() },
+        onBack = onBack,
+        onStartScan = {
+            requestScan { scanOutcome ->
+                if (scanOutcome == PermissionOutcome.Denied) return@requestScan
+                requestConnect { connectOutcome ->
+                    if (connectOutcome != PermissionOutcome.Denied) {
+                        viewModel.startScan()
+                    }
+                }
+            }
+        },
         onStopScan = { viewModel.stopScan() },
         onDisconnect = { viewModel.disconnect() },
-        onConnect = { viewModel.connect(it) },
+        onConnect = { id ->
+            requestConnect { outcome ->
+                if (outcome != PermissionOutcome.Denied) viewModel.connect(id)
+            }
+        },
+        onDownloadSession = { viewModel.downloadSession(it) },
     )
 }
 
@@ -68,6 +100,8 @@ fun DeviceScreenContent(
     onStopScan: () -> Unit,
     onDisconnect: () -> Unit,
     onConnect: (String) -> Unit,
+    onBack: (() -> Unit)? = null,
+    onDownloadSession: (Long) -> Unit = {},
 ) {
     Column(
         modifier = Modifier
@@ -85,17 +119,22 @@ fun DeviceScreenContent(
     ) {
         val strings = LocalStrings.current
         val locale = strings.localeTag
-        Text(
-            text = "Velum",
-            style = MaterialTheme.typography.displayLarge,
-            color = MaterialTheme.colorScheme.onBackground,
-        )
-        Text(
-            text = DeviceUiCopy.tagline(locale),
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(Modifier.height(20.dp))
+        if (onBack != null) {
+            ScreenTopBar(title = strings.settingsUi.sectionDevices, onBack = onBack)
+            Spacer(Modifier.height(8.dp))
+        } else {
+            Text(
+                text = "Velum",
+                style = MaterialTheme.typography.displayLarge,
+                color = MaterialTheme.colorScheme.onBackground,
+            )
+            Text(
+                text = DeviceUiCopy.tagline(locale),
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(20.dp))
+        }
 
         StatusBanner(state = state, bleAvailable = bleAvailable, localeTag = locale)
         sessionUi.statusMessage?.let { msg ->
@@ -138,12 +177,36 @@ fun DeviceScreenContent(
                 text = DeviceUiCopy.sessionsOnDevice(locale),
                 style = MaterialTheme.typography.titleLarge,
             )
-            sessionUi.sessions.take(8).forEach { entry ->
-                Text(
-                    text = "#${entry.sessionId} · ${entry.sizeBytes} B",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+            sessionUi.sessions.take(24).forEach { entry ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 6.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "#${entry.sessionId} · ${formatSessionSize(entry.sizeBytes)}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f),
+                    )
+                    val downloading = sessionUi.downloadingSessionId == entry.sessionId
+                    if (downloading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier
+                                .height(28.dp)
+                                .padding(end = 8.dp),
+                            strokeWidth = 2.dp,
+                        )
+                    }
+                    Button(
+                        onClick = { onDownloadSession(entry.sessionId) },
+                        enabled = !downloading && sessionUi.downloadingSessionId == null,
+                    ) {
+                        Text(strings.download)
+                    }
+                }
             }
         }
 
@@ -215,7 +278,7 @@ private fun StatusBanner(
                 ).displayName
                 DeviceUiCopy.connected(localeTag, "${d.name ?: d.serial ?: d.id} · $model")
             }
-            is BleConnectionState.Failed -> state.message
+            is BleConnectionState.Failed -> DeviceUiCopy.connectionFailed(localeTag)
         }
     }
     Box(
@@ -301,4 +364,10 @@ private fun DeviceRow(device: ConnectedDevice, onConnect: () -> Unit) {
             Button(onClick = onConnect) { Text(strings.connect) }
         }
     }
+}
+
+private fun formatSessionSize(bytes: Long): String = when {
+    bytes >= 1_000_000 -> "${bytes / 1_000_000} MB"
+    bytes >= 1_000 -> "${bytes / 1_000} KB"
+    else -> "$bytes B"
 }

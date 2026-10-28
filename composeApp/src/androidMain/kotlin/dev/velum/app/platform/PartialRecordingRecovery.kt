@@ -39,8 +39,8 @@ suspend fun recoverPartialMicRecordings(
             durationSeconds = finished.durationSeconds,
             sizeBytes = finished.sizeBytes,
         )
-        // Live session is gone; keep the audio addressable without re-entering live UI.
-        repository.updateStatus(id, "ready")
+        // Queue transcription — audio survived process death; do not leave an empty transcript.
+        repository.updateStatus(id, "queued")
         onRecovered(id)
         Log.i(TAG, "Recovered interrupted mic recording $id (${finished.sizeBytes} bytes)")
     }

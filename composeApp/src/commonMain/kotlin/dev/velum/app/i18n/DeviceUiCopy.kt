@@ -43,8 +43,19 @@ object DeviceUiCopy {
         else "No devices yet. Power on your recorder and tap Scan."
 
     fun desktopBleLater(localeTag: String): String =
-        if (isPt(localeTag)) "Bluetooth no desktop vem depois. Use o app Android para o hardware."
-        else "Desktop Bluetooth comes later. Use the Android app to talk to hardware."
+        if (isPt(localeTag)) "Bluetooth indisponível neste ambiente. Use o app Android para o hardware."
+        else "Bluetooth unavailable here. Use the Android app to talk to hardware."
+
+    fun connectionFailed(localeTag: String): String =
+        if (isPt(localeTag)) "Falha na conexão. Tente buscar e conectar de novo."
+        else "Connection failed. Try scanning and connecting again."
+
+    fun blePermissionBody(localeTag: String): String =
+        if (isPt(localeTag)) {
+            "O Velum precisa de Bluetooth para encontrar e conectar ao seu gravador."
+        } else {
+            "Velum needs Bluetooth to find and connect to your recorder."
+        }
 
     fun wifiCapable(localeTag: String): String =
         if (isPt(localeTag)) "Com Wi‑Fi" else "Wi‑Fi capable"

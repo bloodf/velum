@@ -32,6 +32,11 @@ class NoTelemetryUiStringsTest {
         "setForLater",
         "sendSuggestion",
         "currentWorkspace",
+        "milestone M1",
+        "from your account",
+        "will land here",
+        "coming later",
+        "not wired on-device",
     )
 
     @Test
