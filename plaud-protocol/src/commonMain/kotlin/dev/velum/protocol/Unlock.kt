@@ -180,6 +180,11 @@ data class DeviceIdentityKeys(
         result = 31 * result + bindToken.hashCode()
         return result
     }
+
+    /** Never include serial, signature, PEMs, or bind token in logs / crash text. */
+    override fun toString(): String =
+        "DeviceIdentityKeys(serialNumber=[REDACTED], serialSignature=[REDACTED], " +
+            "publicKeyPem=[REDACTED], privateKeyPem=[REDACTED], bindToken=[REDACTED])"
 }
 
 /**
