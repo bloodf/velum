@@ -22,4 +22,5 @@
     <string name="download_cancel">Cancel</string>
     <string name="session_download_fgs_title">Downloading session</string>
     <string name="session_download_fgs_body">Keeping the transfer alive in the background</string>
+    <string name="session_download_fgs_failed">Could not keep the download alive in the background</string>
 </resources>

@@ -114,8 +114,7 @@ class DeviceViewModel(
 
     fun disconnect() {
         viewModelScope.launch {
-            cancelDownload()
-            sessionDownloads.join()
+            sessionDownloads.cancelAndJoin()
             closeClient()
             _sessionUi.value = DeviceSessionUi()
             ble.disconnect()
@@ -123,7 +122,9 @@ class DeviceViewModel(
     }
 
     fun cancelDownload() {
-        sessionDownloads.cancel()
+        viewModelScope.launch {
+            sessionDownloads.cancelAndJoin()
+        }
     }
 
     fun downloadSession(sessionId: Long) {

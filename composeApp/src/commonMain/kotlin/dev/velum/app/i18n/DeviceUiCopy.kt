@@ -101,6 +101,20 @@ object DeviceUiCopy {
         if (isPt(localeTag)) "Download cancelado."
         else "Download cancelled."
 
+    fun downloadNeedsBluetooth(localeTag: String): String =
+        if (isPt(localeTag)) {
+            "É necessária a permissão de Bluetooth para baixar sessões do aparelho."
+        } else {
+            "Bluetooth permission is required to download device sessions."
+        }
+
+    fun downloadKeepAliveFailed(localeTag: String): String =
+        if (isPt(localeTag)) {
+            "Não foi possível manter o download em segundo plano. Tente de novo com o app aberto."
+        } else {
+            "Could not keep the download alive in the background. Try again with the app open."
+        }
+
     fun downloadNotificationTitle(localeTag: String): String =
         if (isPt(localeTag)) "Baixando sessão do aparelho"
         else "Downloading device session"

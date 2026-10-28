@@ -3,7 +3,9 @@ package dev.velum.app.download
 import dev.velum.app.i18n.DeviceUiCopy
 import dev.velum.app.platform.DownloadNotifyKind
 import dev.velum.app.platform.DownloadProgressNotifier
+import dev.velum.app.platform.SessionDownloadKeepAlive
 import dev.velum.app.platform.SessionDownloadKeepAliveGate
+import dev.velum.app.platform.SessionDownloadKeepAliveStart
 import dev.velum.app.ui.DownloadedSessionAudio
 import dev.velum.ble.client.PlaudDeviceClient
 import dev.velum.ble.client.createTempSessionFile
@@ -14,6 +16,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -96,6 +99,9 @@ class SessionDownloadManager(
     private val localeTag: () -> String,
     private val transfer: SessionDownloadTransfer,
     private val keepAlive: SessionDownloadKeepAliveGate = SessionDownloadKeepAliveGate(),
+    private val installPromoteFailureHandler: (((String) -> Unit)?) -> Unit = {
+        SessionDownloadKeepAlive.setPromoteFailureHandler(it)
+    },
 ) {
     private val _state = MutableStateFlow(SessionDownloadUiState())
     val state: StateFlow<SessionDownloadUiState> = _state.asStateFlow()
@@ -119,7 +125,8 @@ class SessionDownloadManager(
                     runDownload(request)
                 }
             } finally {
-                // Single release point for success / failure / cancel.
+                installPromoteFailureHandler(null)
+                // Single release point for success / failure / cancel — after job unwind.
                 keepAlive.onDownloadEnd()
                 DownloadProgressNotifier.dismiss(DownloadNotifyKind.DeviceSession)
                 DownloadProgressNotifier.setCancelHandler(DownloadNotifyKind.DeviceSession, null)
@@ -131,8 +138,18 @@ class SessionDownloadManager(
         }
     }
 
+    /** Fire-and-forget cancel that still waits for FGS teardown in the job finally. */
     fun cancel() {
-        downloadJob?.cancel()
+        val job = downloadJob ?: return
+        scope.launch { job.cancelAndJoin() }
+    }
+
+    /**
+     * Cancel the in-flight download and wait until its finally block has released
+     * the keep-alive / FGS. Prefer this over [cancel] + [join] from UI paths.
+     */
+    suspend fun cancelAndJoin() {
+        downloadJob?.cancelAndJoin()
     }
 
     suspend fun join() {
@@ -149,9 +166,37 @@ class SessionDownloadManager(
             lastDownloadedRecordingId = null,
             sessionsUpdate = null,
         )
-        keepAlive.onDownloadBegin()
+        installPromoteFailureHandler { message ->
+            _state.value = SessionDownloadUiState(
+                downloadingSessionId = null,
+                downloadProgress = null,
+                statusMessage = message,
+            )
+            downloadJob?.cancel(CancellationException(message))
+        }
+        when (val startResult = keepAlive.onDownloadBegin()) {
+            SessionDownloadKeepAliveStart.Started -> Unit
+            SessionDownloadKeepAliveStart.DeniedBluetooth -> {
+                _state.value = SessionDownloadUiState(
+                    downloadingSessionId = null,
+                    downloadProgress = null,
+                    statusMessage = DeviceUiCopy.downloadNeedsBluetooth(locale),
+                )
+                return
+            }
+            SessionDownloadKeepAliveStart.Failed -> {
+                _state.value = SessionDownloadUiState(
+                    downloadingSessionId = null,
+                    downloadProgress = null,
+                    statusMessage = DeviceUiCopy.downloadKeepAliveFailed(locale),
+                )
+                return
+            }
+        }
         DownloadProgressNotifier.ensureChannel()
-        DownloadProgressNotifier.setCancelHandler(DownloadNotifyKind.DeviceSession) { cancel() }
+        DownloadProgressNotifier.setCancelHandler(DownloadNotifyKind.DeviceSession) {
+            scope.launch { cancelAndJoin() }
+        }
         DownloadProgressNotifier.show(
             kind = DownloadNotifyKind.DeviceSession,
             title = DeviceUiCopy.downloadNotificationTitle(locale),
@@ -177,11 +222,15 @@ class SessionDownloadManager(
                 statusMessage = DeviceUiCopy.downloadedSession(localeTag(), request.sessionId),
             )
         } catch (e: CancellationException) {
-            _state.value = SessionDownloadUiState(
-                downloadingSessionId = null,
-                downloadProgress = null,
-                statusMessage = DeviceUiCopy.downloadCancelled(localeTag()),
-            )
+            if (_state.value.statusMessage == null ||
+                _state.value.downloadingSessionId != null
+            ) {
+                _state.value = SessionDownloadUiState(
+                    downloadingSessionId = null,
+                    downloadProgress = null,
+                    statusMessage = DeviceUiCopy.downloadCancelled(localeTag()),
+                )
+            }
             throw e
         } catch (_: Exception) {
             _state.value = SessionDownloadUiState(
