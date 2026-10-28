@@ -11,6 +11,8 @@ import kotlinx.coroutines.test.runTest
  * Covers AndroidSecureStore vault policy (#92 items 1–2) without Robolectric:
  * permanent invalidation is the only clear; transient failures keep entries;
  * structurally malformed blobs are dropped alone (via [JvmAesGcmSecureStore]).
+ *
+ * Classification matches exception **class names only** — never message text.
  */
 class KeystoreFailureClassifierTest {
 
@@ -25,18 +27,31 @@ class KeystoreFailureClassifierTest {
         assertEquals(
             KeystoreVaultAction.ClearAndRegenerate,
             KeystoreFailureClassifier.actionFor(
-                classNames = listOf("java.security.ProviderException"),
-                messages = listOf("Key permanently invalidated"),
-            ),
-        )
-        assertEquals(
-            KeystoreVaultAction.ClearAndRegenerate,
-            KeystoreFailureClassifier.actionFor(
                 classNames = listOf(
                     "javax.crypto.IllegalBlockSizeException",
                     "android.security.keystore.KeyPermanentlyInvalidatedException",
                 ),
             ),
+        )
+    }
+
+    @Test
+    fun message_text_alone_never_clears_vault() {
+        // Phrase matches the permanent-invalidation wording, but the class is not
+        // KeyPermanentlyInvalidatedException — entries must be kept.
+        assertEquals(
+            KeystoreVaultAction.KeepEntries,
+            KeystoreFailureClassifier.actionFor(
+                classNames = listOf("java.security.ProviderException"),
+            ),
+        )
+        val wrapped = RuntimeException(
+            "Key permanently invalidated",
+            IllegalStateException("Key permanently invalidated"),
+        )
+        assertEquals(
+            KeystoreVaultAction.KeepEntries,
+            KeystoreFailureClassifier.actionFor(wrapped),
         )
     }
 
@@ -56,13 +71,6 @@ class KeystoreFailureClassifierTest {
                 "expected KeepEntries for $names",
             )
         }
-        assertEquals(
-            KeystoreVaultAction.KeepEntries,
-            KeystoreFailureClassifier.actionFor(
-                classNames = listOf("java.lang.NullPointerException"),
-                messages = listOf("invalid null input"),
-            ),
-        )
     }
 
     @Test
@@ -74,16 +82,10 @@ class KeystoreFailureClassifierTest {
         store.putString(SecureKeys.DEVICE_BIND_TOKEN, "synth-keep-b")
         val snapshot = backend.toMap()
 
-        // Simulate Android getString path after a transient Keystore failure:
-        // classifier says KeepEntries → do not mutate the backend.
         val action = KeystoreFailureClassifier.actionFor(
             classNames = listOf("java.security.UnrecoverableKeyException"),
-            messages = listOf("Transient keystore glitch"),
         )
         assertEquals(KeystoreVaultAction.KeepEntries, action)
-        if (action != KeystoreVaultAction.ClearAndRegenerate) {
-            // Mirror AndroidSecureStore: return null without clearing.
-        }
         assertEquals(snapshot, backend)
         assertEquals("SYNTH-KEEP-A", store.getString(SecureKeys.DEVICE_SERIAL))
         assertEquals("synth-keep-b", store.getString(SecureKeys.DEVICE_BIND_TOKEN))
@@ -114,7 +116,6 @@ class KeystoreFailureClassifierTest {
             classNames = listOf("java.security.InvalidKeyException"),
         )
         assertEquals(KeystoreVaultAction.KeepEntries, keep)
-        // Transient: Android must not clear.
         assertEquals(2, backend.size)
 
         val clear = KeystoreFailureClassifier.actionFor(

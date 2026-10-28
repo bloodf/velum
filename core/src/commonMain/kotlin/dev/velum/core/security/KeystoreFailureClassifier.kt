@@ -7,6 +7,9 @@ package dev.velum.core.security
  * permanently invalidated — the old key is gone and ciphertext sealed with it can
  * never be opened. Every other exception (transient crypto, auth, or Keystore
  * glitches) must keep all stored entries.
+ *
+ * Matching is by exception **class name only** (`KeyPermanentlyInvalidatedException`
+ * anywhere in the cause chain). Message text is never consulted.
  */
 enum class KeystoreVaultAction {
     /** Delete the Keystore alias, clear every ciphertext entry, mint a fresh key. */
@@ -19,42 +22,34 @@ enum class KeystoreVaultAction {
 /**
  * Pure classifier for Android Keystore failures.
  *
- * Accepts class names + messages so JVM unit tests can cover the policy without
- * Robolectric or the Android Keystore types.
+ * Accepts class names (simple or FQCN) so JVM unit tests can cover the policy
+ * without Robolectric or the Android Keystore types.
  */
 object KeystoreFailureClassifier {
     private const val PERMANENT_SIMPLE = "KeyPermanentlyInvalidatedException"
-    private const val PERMANENT_MESSAGE = "Key permanently invalidated"
 
     /**
-     * Classify a throwable chain described by [classNames] (simple or FQCN) and
-     * [messages] (parallel cause-chain messages; may be shorter).
+     * Classify a throwable chain described by [classNames] (simple or FQCN).
+     * Only [PERMANENT_SIMPLE] triggers a vault clear.
      */
-    fun actionFor(classNames: List<String>, messages: List<String?> = emptyList()): KeystoreVaultAction {
+    fun actionFor(classNames: List<String>): KeystoreVaultAction {
         for (name in classNames) {
             val simple = name.substringAfterLast('.')
             if (simple == PERMANENT_SIMPLE) {
                 return KeystoreVaultAction.ClearAndRegenerate
             }
         }
-        for (msg in messages) {
-            if (msg?.contains(PERMANENT_MESSAGE, ignoreCase = true) == true) {
-                return KeystoreVaultAction.ClearAndRegenerate
-            }
-        }
         return KeystoreVaultAction.KeepEntries
     }
 
-    /** Classify a live throwable by walking its cause chain. */
+    /** Classify a live throwable by walking its cause chain (class names only). */
     fun actionFor(throwable: Throwable): KeystoreVaultAction {
         val names = ArrayList<String>(4)
-        val messages = ArrayList<String?>(4)
         var cur: Throwable? = throwable
         while (cur != null) {
             names += cur::class.java.name
-            messages += cur.message
             cur = cur.cause
         }
-        return actionFor(names, messages)
+        return actionFor(names)
     }
 }
