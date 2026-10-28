@@ -286,6 +286,89 @@ class SimulatedPeripheralRegressionTest {
         env.client.close()
     }
 
+    /**
+     * After simulated unlock, sealed writes go through
+     * [PlaudBleTransport.writeSealedAfterPlaintextGuard]: allowed plaintext
+     * seals and records a write; forbidden opcodes / settings 4 & 26 are
+     * rejected on plaintext before any sealed bytes are recorded.
+     *
+     * Assertions use write counts only — never inspect ciphertext.
+     */
+    @Test
+    fun encryptedSession_sealedWrite_guardsPlaintextBeforeSeal() = runTest {
+        val env = unlockedEnv(requirePublicKey = false)
+        env.client.handshake()
+        assertTrue(env.client.isUnlocked)
+        env.ble.clearRecordedWrites()
+
+        // Allowed plaintext → sealed path succeeds (real seal via client).
+        assertEquals(93, env.client.readBattery().percent)
+        assertTrue(
+            env.ble.recordedWrites.isNotEmpty(),
+            "allowed sealed battery write must reach transport after unlock",
+        )
+        env.ble.clearRecordedWrites()
+
+        val plaud = PlaudBleTransport(env.ble)
+        // Dummy sealed payload is never inspected and must not be recorded
+        // when plaintext is rejected.
+        val dummySealed = byteArrayOf(0xAA.toByte(), 0xBB.toByte(), 0xCC.toByte())
+
+        // Explicit forbidden set: 104, 5, 0xFE20 (LE [0x20,0xFE]), 128, 143.
+        val forbiddenOps = listOf(
+            ForbiddenOpcodes.CLEAR_ALL,
+            ForbiddenOpcodes.DEPAIR,
+            ForbiddenOpcodes.FE20,
+            ForbiddenOpcodes.RESET_FINDMY,
+            ForbiddenOpcodes.OTA,
+        )
+        assertEquals(setOf(104, 5, 0xFE20, 128, 143), forbiddenOps.toSet())
+        assertEquals(
+            byteArrayOf(0x20, 0xFE.toByte()).toList(),
+            Bytes.u16Le(ForbiddenOpcodes.FE20).toList(),
+        )
+
+        forbiddenOps.forEach { op ->
+            assertFailsWith<IllegalArgumentException>("sealed-path plaintext opcode $op") {
+                plaud.writeSealedAfterPlaintextGuard(
+                    plaintext = ForbiddenOpcodeLayersTest.rawAppCommand(op),
+                    sealed = dummySealed,
+                )
+            }
+            assertTrue(
+                env.ble.recordedWrites.isEmpty(),
+                "forbidden plaintext $op must not reach sealed write",
+            )
+            assertFailsWith<IllegalArgumentException>("client sealed-path opcode $op") {
+                env.client.writeCommandForTest(op)
+            }
+            assertTrue(env.ble.recordedWrites.isEmpty())
+        }
+
+        listOf(ForbiddenSettings.AUTO_DELETE, ForbiddenSettings.AUTO_SYNC).forEach { setting ->
+            assertTrue(setting == 4 || setting == 26, "expected settings 4 or 26, got $setting")
+            assertFailsWith<IllegalArgumentException>("sealed-path setting $setting") {
+                plaud.writeSealedAfterPlaintextGuard(
+                    plaintext = ForbiddenOpcodeLayersTest.rawAppCommand(
+                        8,
+                        byteArrayOf(setting.toByte(), 1),
+                    ),
+                    sealed = dummySealed,
+                )
+            }
+            assertTrue(env.ble.recordedWrites.isEmpty())
+            assertFailsWith<IllegalArgumentException>("client sealed-path setting $setting") {
+                env.client.writeCommandForTest(8, byteArrayOf(setting.toByte(), 1))
+            }
+            assertTrue(env.ble.recordedWrites.isEmpty())
+        }
+
+        // Allowed sealed write still works after rejection attempts.
+        assertEquals(93, env.client.readBattery().percent)
+        assertTrue(env.ble.recordedWrites.isNotEmpty())
+        env.client.close()
+    }
+
     private data class Env(
         val keys: DeviceIdentityKeys,
         val cipher: dev.velum.protocol.SessionCipher,

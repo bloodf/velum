@@ -1,11 +1,13 @@
 package dev.velum.protocol
 
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
  * Identity values must never appear in toString() (logs / exceptions / test output).
+ * Compatible with #89: fixed `[REDACTED]` tokens, never print identity values.
  */
 class IdentityRedactionTest {
     @Test
@@ -20,7 +22,11 @@ class IdentityRedactionTest {
             bindToken = tokenMarker,
         )
         val text = keys.toString()
-        assertTrue("redacted" in text)
+        assertEquals(
+            "DeviceIdentityKeys(serialNumber=[REDACTED], serialSignature=[REDACTED], " +
+                "publicKeyPem=[REDACTED], privateKeyPem=[REDACTED], bindToken=[REDACTED])",
+            text,
+        )
         assertFalse(marker in text)
         assertFalse(tokenMarker in text)
         assertFalse("881SYNTH1" in text)
@@ -35,7 +41,11 @@ class IdentityRedactionTest {
             aad = ByteArray(12) { 9 },
         )
         val text = secret.toString()
-        assertTrue("redacted" in text)
+        assertEquals(
+            "Protocol20SessionSecret(key=[REDACTED], nonce=[REDACTED], aad=[REDACTED])",
+            text,
+        )
+        assertTrue("[REDACTED]" in text)
         assertFalse(secret.key.contentToString() in text)
         assertFalse(secret.nonce.contentToString() in text)
         assertFalse(secret.aad.contentToString() in text)

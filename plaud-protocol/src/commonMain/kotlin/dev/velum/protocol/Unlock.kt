@@ -117,8 +117,7 @@ data class Protocol20SessionSecret(
 
     /** Never include key material in logs or exception text. */
     override fun toString(): String =
-        "Protocol20SessionSecret(key=<redacted ${key.size} bytes>, " +
-            "nonce=<redacted ${nonce.size} bytes>, aad=<redacted ${aad.size} bytes>)"
+        "Protocol20SessionSecret(key=[REDACTED], nonce=[REDACTED], aad=[REDACTED])"
 }
 
 /**
@@ -186,11 +185,10 @@ data class DeviceIdentityKeys(
         return result
     }
 
-    /** Identity values are secrets — never emit them via toString / logs. */
+    /** Never include serial, signature, PEMs, or bind token in logs / crash text. */
     override fun toString(): String =
-        "DeviceIdentityKeys(serialNumber=<redacted>, " +
-            "serialSignature=<redacted ${serialSignature.size} bytes>, " +
-            "publicKeyPem=<redacted>, privateKeyPem=<redacted>, bindToken=<redacted>)"
+        "DeviceIdentityKeys(serialNumber=[REDACTED], serialSignature=[REDACTED], " +
+            "publicKeyPem=[REDACTED], privateKeyPem=[REDACTED], bindToken=[REDACTED])"
 }
 
 /**
