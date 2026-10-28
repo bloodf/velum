@@ -2,29 +2,21 @@
 
 **Status:** Implemented and on. JVM fake SoftAP E2E green (preamble, encrypted frame, BLE fallback). Confirm on real Note Pro hardware.
 
-## Plaud APK 3.30.0 parity
+## Summary
 
 | Piece | Behavior |
 |-------|----------|
 | SoftAP | Phone joins device SoftAP via `WifiNetworkSpecifier` (WPA2) |
-| Transport | Phone runs **WebSocket server on `:8081`** (`org.java_websocket`, same as Plaud) |
-| Crypto | Same BLE session **key / nonce / aad**; ChaCha20-Poly1305, or **AES-GCM** when cmd 138 bit `0x08` |
-| Nonce | **Fixed for the whole session** — **required** for Note Pro; do not rotate. **Accepted risk (review S13):** rotating per-message would break Plaud SoftAP parity; BLE session isolation + SoftAP preamble + BLE fallback mitigate exposure. Revisit only after owner hardware SoftAP confirms a compatible alternative. |
-| Seq | Each WS binary frame uses its own seq (`seq ‖ packet` plaintext) |
-| BLE | Active BLE session required; Wi-Fi is an acceleration path |
+| Transport | Phone listens WebSocket **`:8081`** (`org.java_websocket`); device connects as client |
+| Crypto | BLE session **key / aad**; ChaCha20-Poly1305, or **AES-GCM** when cmd 138 bit `0x08` |
+| Nonce | **Unique 96-bit per SoftAP frame** from a CSPRNG (review **S13 resolved**). Wire = `nonce[12] ‖ ciphertext‖tag`. Plaintext = `seq_u32_le ‖ packet`. BLE link packets still use Plaud's fixed session nonce; SoftAP never reuses a (key, nonce) pair. |
 
-## Velum additions (safe)
+## Hardening (beyond Plaud APK)
 
 - **Socket-level SoftAP bind** via SoftAP host bind / `Network.bindSocket` — never `bindProcessToNetwork`.
 - **Preamble** first WS binary message (`VELUM-WIFI-v1:<bindToken>`) so a random SoftAP client is rejected.
 - **BLE fallback** (`WifiTransferCoordinator` / `PlaudDeviceClient.downloadSessionPreferWifi`) on timeout, SoftAP failure, preamble mismatch, or cipher errors.
 
-## Code map
+## Hardware note
 
-- `WifiFastTransferSession` / `WifiTransferServer` / `WifiTransferCoordinator` / `WifiTransferPreamble`
-- Android: `AndroidWifiSoftApJoiner`, `AndroidWifiTransferServer`
-- JVM fake: `FakeWifiSoftApJoiner`, `FakeWifiDeviceClient`, `JavaWebsocketTransferServer`
-- Sync entry: `PlaudDeviceClient.downloadSessionPreferWifi`
-- Tests: `WifiFastPathE2ETest`
-
-No Plaud servers are contacted.
+Real Note Pro SoftAP that still expects the Plaud fixed-nonce SoftAP layout will fail open and fall back to BLE until owner hardware confirms the unique-nonce wire format (or a negotiated upgrade). JVM fake SoftAP speaks the Velum unique-nonce layout.

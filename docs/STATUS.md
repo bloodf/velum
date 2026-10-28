@@ -124,7 +124,7 @@ Phone-only / external (no Plaud required):
 
 - [x] Chunked / windowed ASR + BLE-to-file sync (Y14/Y17); PCM above ~48 MiB spills to temp file and is window-read (no 200 MiB hard fail)
 - [x] Mic + processing foreground services (FOREGROUND_SERVICE) — mic `microphone` + processing `dataSync`
-- [x] SoftAP + WebSocket `:8081` per-socket bind + token preamble + BLE fallback (fixed AEAD nonce kept for Plaud SoftAP parity — see `docs/protocol/WIFI_FAST_PATH.md`)
+- [x] SoftAP + WebSocket `:8081` per-socket bind + token preamble + BLE fallback (unique SoftAP AEAD nonce per frame — see `docs/protocol/WIFI_FAST_PATH.md`)
 
 ### Release / distribution (code-ready; Play upload needs owner secrets)
 
@@ -132,7 +132,7 @@ Phone-only / external (no Plaud required):
 - [x] Tag workflow `.github/workflows/release.yml` builds signed AAB when secrets present
 - [x] R8/ProGuard minify + shrink on release; crash-free process start (Keystore/`VoiceProfileStore` guarded)
 - [x] Privacy policy `docs/PRIVACY.md` + About link (pt-BR + en); Play/F-Droid metadata under `fastlane/metadata/` + `metadata/dev.velum.app.yml`
-- [x] OSV CI job (`osv-scan`); SoftAP fixed AEAD nonce **accepted** (S13) — see `docs/REVIEW_2026-10.md`
+- [x] OSV CI job (`osv-scan` on main; further OSV CI hardening deferred); SoftAP unique AEAD nonce **resolved** (S13 / #28) — see `docs/REVIEW_2026-10.md`
 - [ ] Owner: create upload keystore, set GitHub secrets, push `v*` tag, complete Play Console data-safety + internal track
 - [ ] Owner: decide Renovate PR #2; open F-Droid `fdroiddata` PR from `metadata/dev.velum.app.yml`
 

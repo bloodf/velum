@@ -107,7 +107,7 @@ Status legend: `Open` · `Fixed` · `Deferred (owner/hardware)` · `Accepted ris
 | L7 Decorative Mic/Sync icons | Fixed (`b851722`) | Removed |
 | L8 Seek contentDescriptions | Fixed (`1b33ae3`) | `seekBack15` / `seekForward15` |
 | L9 Integrations HMAC label | Fixed (`1b33ae3`) | User-facing `webhookSigned` (EN/pt-BR) |
-| L10 Fixed SoftAP AEAD nonce | Accepted (S13) | |
+| L10 Fixed SoftAP AEAD nonce | Resolved (S13 / #28 — unique SoftAP nonce) | |
 
 ---
 
