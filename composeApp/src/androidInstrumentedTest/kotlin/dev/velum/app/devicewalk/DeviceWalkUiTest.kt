@@ -196,12 +196,15 @@ class DeviceWalkUiTest {
                 status = "queued",
             )
         }
+        // In-process processor — WorkManager battery/network constraints flake on CI AVDs.
+        assertTrue(DeviceWalkMode.isEnabled(), "DeviceWalkMode required for fake ASR/LLM")
         runBlocking {
-            container.enqueueProcessing(id, templateId = null, retranscribe = true)
+            container.recordingProcessor
+                .process(recordingId = id, templateId = null, retranscribe = true)
+                .collect { /* drain progress */ }
         }
         covered += "import/bundled-wav"
-        // Wait for fake ASR + LLM
-        waitUntil(120_000) {
+        waitUntil(60_000) {
             runBlocking {
                 val rec = container.repository.getRecording(id)
                 rec?.status == "ready" && !rec.summary_markdown.isNullOrBlank()
