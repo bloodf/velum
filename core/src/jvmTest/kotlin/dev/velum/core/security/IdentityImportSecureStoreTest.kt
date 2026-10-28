@@ -305,4 +305,66 @@ class IdentityImportSecureStoreTest {
             dir.toFile().deleteRecursively()
         }
     }
+
+    @Test
+    fun file_backed_wrong_key_new_entry_preserves_original_on_restore() = runTest {
+        val dir = kotlin.io.path.createTempDirectory("velum-secure-roundtrip")
+        val props = dir.resolve("secure.properties")
+        val keyFile = dir.resolve("secure.aes256")
+        try {
+            val first = DesktopSecureStore(file = props, keyFile = keyFile)
+            first.putString(SecureKeys.DEVICE_SERIAL, SyntheticIdentityFixtures.SERIAL)
+            val originalKeyBytes = java.nio.file.Files.readAllBytes(keyFile)
+            assertEquals(32, originalKeyBytes.size)
+
+            // Force failed decrypt with a different key file.
+            val otherKey = JvmAesGcmSecureStore.generateAes256Key()
+            java.nio.file.Files.write(keyFile, otherKey.encoded)
+            val wrong = DesktopSecureStore(file = props, keyFile = keyFile)
+            assertNull(wrong.getString(SecureKeys.DEVICE_SERIAL))
+            assertTrue(wrong.contains(SecureKeys.DEVICE_SERIAL))
+            wrong.putString(SecureKeys.AI_API_KEY, "sk-test-not-real")
+
+            // Restore original key — original entry must decrypt again.
+            java.nio.file.Files.write(keyFile, originalKeyBytes)
+            val restored = DesktopSecureStore(file = props, keyFile = keyFile)
+            assertEquals(
+                SyntheticIdentityFixtures.SERIAL,
+                restored.getString(SecureKeys.DEVICE_SERIAL),
+            )
+            assertTrue(restored.contains(SecureKeys.AI_API_KEY))
+            assertNull(restored.getString(SecureKeys.AI_API_KEY))
+        } finally {
+            dir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun desktop_wrong_length_key_file_generates_new_key_keeps_ciphertext() = runTest {
+        val dir = kotlin.io.path.createTempDirectory("velum-secure-short-key")
+        val props = dir.resolve("secure.properties")
+        val keyFile = dir.resolve("secure.aes256")
+        try {
+            val first = DesktopSecureStore(file = props, keyFile = keyFile)
+            first.putString(SecureKeys.DEVICE_SERIAL, SyntheticIdentityFixtures.SERIAL)
+            first.putString(SecureKeys.DEVICE_BIND_TOKEN, SyntheticIdentityFixtures.BIND_TOKEN)
+
+            // Truncated key (crash between create and write) — treat as missing.
+            java.nio.file.Files.write(keyFile, byteArrayOf(0x01, 0x02, 0x03))
+            val second = DesktopSecureStore(file = props, keyFile = keyFile)
+            assertEquals(32, java.nio.file.Files.readAllBytes(keyFile).size)
+            assertNull(second.getString(SecureKeys.DEVICE_SERIAL))
+            assertNull(second.getString(SecureKeys.DEVICE_BIND_TOKEN))
+            assertTrue(second.contains(SecureKeys.DEVICE_SERIAL))
+            assertTrue(second.contains(SecureKeys.DEVICE_BIND_TOKEN))
+
+            val onDisk = props.toFile().readText()
+            assertTrue(onDisk.contains(SecureKeys.DEVICE_SERIAL))
+            assertTrue(onDisk.contains(SecureKeys.DEVICE_BIND_TOKEN))
+            val bundle = SyntheticIdentityFixtures.validBundle()
+            assertFalse(IdentityRedaction.containsSecret(onDisk, bundle))
+        } finally {
+            dir.toFile().deleteRecursively()
+        }
+    }
 }

@@ -10,6 +10,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import org.junit.Assume.assumeTrue
 
 class DesktopSecureStoreConcurrencyTest {
 
@@ -52,22 +53,31 @@ class DesktopSecureStoreConcurrencyTest {
 
     @Test
     fun posix_owner_only_permissions_on_key_and_properties() {
-        if (!supportsPosixPermissions()) return
+        assumeTrue("POSIX permissions required", supportsPosixPermissions())
 
         val dir = kotlin.io.path.createTempDirectory("velum-secure-perms")
         val props = dir.resolve("secure.properties")
         val keyFile = dir.resolve("secure.aes256")
         try {
+            val expected = setOf(
+                PosixFilePermission.OWNER_READ,
+                PosixFilePermission.OWNER_WRITE,
+            )
+            // Key file mode right after creation, before any properties data is written.
+            createOwnerOnlyFile(keyFile)
+            assertTrue(Files.exists(keyFile))
+            val keyPermsAtCreation = Files.getPosixFilePermissions(keyFile)
+            if (keyPermsAtCreation != expected) {
+                fail("key file permissions were not owner-only at creation")
+            }
+            Files.delete(keyFile)
+
             runBlocking {
                 val store = DesktopSecureStore(file = props, keyFile = keyFile)
                 store.putString("probe", "x")
             }
             assertTrue(Files.exists(keyFile))
             assertTrue(Files.exists(props))
-            val expected = setOf(
-                PosixFilePermission.OWNER_READ,
-                PosixFilePermission.OWNER_WRITE,
-            )
             val keyPerms = Files.getPosixFilePermissions(keyFile)
             val propsPerms = Files.getPosixFilePermissions(props)
             if (keyPerms != expected) {
