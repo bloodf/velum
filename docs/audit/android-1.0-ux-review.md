@@ -213,7 +213,7 @@ Store under `docs/audit/ux/` as `after-<screen>-<theme>-<locale>.png` (Velum UI 
 - Deferred / light polish: INT3, SET3, SET5, SET6, X2, X3.  
 - Intentionally not done: SoftAP E2E (#8), BLE connectedDevice FGS timing (#85), multi-hour OOM HW (#86), OAuth, Velum Cloud.  
 - After screenshots: `docs/audit/ux/after-*.png` (13 captures).  
-- Green CI: fill after main push (run id + head SHA).  
+- Green CI (pre-packaging-fix): run `40651939251` on `be5c0be`. Packaging fix for template JSONL in APK follows on main.  
 - Owner hardware checklist: below.
 
 ### Owner check on Samsung Galaxy S26 Ultra + Plaud Note Pro

@@ -51,6 +51,10 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+    // KMP commonMain/resources are not always merged into the Android classpath.
+    // Pin them on the AGP main source set so classLoader.getResourceAsStream works
+    // for PlaudTemplateAsset / AutoFlowTemplateAsset / PlaudFullTemplateAsset.
+    sourceSets.getByName("main").resources.srcDir("src/commonMain/resources")
 }
 
 sqldelight {

@@ -49,6 +49,10 @@ jobs:
           grep -E 'lib/arm64-v8a/libc\+\+_shared\.so' /tmp/apk-listing.txt
           # network_security_config must be in the APK resources
           unzip -p "$APK" resources.arsc >/dev/null
+          # Template catalogs must be on the Android classpath (classLoader resources).
+          grep -E 'plaud_templates\.jsonl$' /tmp/apk-listing.txt
+          grep -E 'plaud_templates_full\.jsonl\.gz$' /tmp/apk-listing.txt
+          grep -E 'autoflow_templates\.jsonl$' /tmp/apk-listing.txt
 
       - name: Assert 16 KB page-size compatibility
         run: |
