@@ -1,5 +1,7 @@
 package dev.velum.ble
 
+import dev.velum.protocol.Protocol20SessionSecret
+import dev.velum.protocol.SessionCipher
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -9,9 +11,9 @@ import kotlinx.coroutines.flow.Flow
  * [dev.velum.ble.client.PlaudDeviceClient] while routing I/O through the Plaud
  * [GattProfiles.Plaud] characteristic names.
  *
- * Plaintext writes always hit the public transport guard. Encrypted-session
- * writes use [writeSealedAfterPlaintextGuard] (public entry point for #93),
- * which checks plaintext then calls the internal [BleSealedWriteSink].
+ * Pre-unlock plaintext uses [write] (always opcode-guarded). After unlock, use
+ * [openEncryptedSession] and [PlaudEncryptedSession.writeEncrypted] — plaintext
+ * only; sealing stays inside `:ble`.
  */
 class PlaudBleTransport(
     private val transport: BleTransport,
@@ -32,26 +34,22 @@ class PlaudBleTransport(
     }
 
     /**
-     * Transport-layer plaintext guard, then write [sealed] without re-parsing.
+     * Start an encrypted link session after unlock.
      *
-     * Public entry point (Velum Dev #93). Forbidden opcodes are rejected on
-     * [plaintext]; [sealed] ciphertext is written only via the internal
-     * [BleSealedWriteSink] so callers outside `:ble` cannot skip the guard.
+     * The returned [PlaudEncryptedSession] owns sealing; callers pass plaintext
+     * to [PlaudEncryptedSession.writeEncrypted] only.
      */
-    suspend fun writeSealedAfterPlaintextGuard(
-        plaintext: ByteArray,
-        sealed: ByteArray,
-        withoutResponse: Boolean = false,
-    ) {
-        PlaudWriteGuard.requireAllowedPlaintext(plaintext)
-        val sink = transport as? BleSealedWriteSink
-            ?: error("BLE transport does not support sealed session writes")
-        sink.writeSealedAlreadyGuarded(
-            characteristic = GattProfiles.PLAUD_WRITE,
-            payload = sealed,
-            withoutResponse = withoutResponse,
+    fun openEncryptedSession(
+        cipher: SessionCipher,
+        secret: Protocol20SessionSecret,
+        initialSendSeq: Long = 2,
+    ): PlaudEncryptedSession =
+        PlaudEncryptedSession(
+            transport = transport,
+            cipher = cipher,
+            secret = secret,
+            initialSendSeq = initialSendSeq,
         )
-    }
 
     fun notifications(): Flow<ByteArray> =
         transport.notifications(GattProfiles.PLAUD_NOTIFY)
