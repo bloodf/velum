@@ -30,6 +30,11 @@ import kotlinx.coroutines.flow.asStateFlow
 /**
  * True microphone foreground service: AudioRecord + periodic WAV header rewrite/fsync,
  * persistent notification with Pause/Stop. Survives backgrounding and screen-off.
+ *
+ * Invariants:
+ * - [startForeground] runs on the main thread **before** disk / AudioRecord init.
+ * - AudioRecord I/O and [Thread.join] never run on the main thread (ANR).
+ * - Pause/resume are flag-only; the read loop keeps AudioRecord started.
  */
 class MicRecordingService : Service() {
 
@@ -58,7 +63,14 @@ class MicRecordingService : Service() {
                     ?: MicInputSource.Mic.name
                 val input = runCatching { MicInputSource.valueOf(sourceName) }
                     .getOrDefault(MicInputSource.Mic)
-                beginRecording(path, input)
+                // Must promote to FGS before any disk / AudioRecord work (timeout crash).
+                if (!promoteToForeground()) {
+                    publish(MicSessionState.Failed("Already capturing"))
+                    return START_NOT_STICKY
+                }
+                thread(name = "velum-mic-init", isDaemon = true) {
+                    beginRecordingAfterForeground(path, input)
+                }
             }
             ACTION_PAUSE -> pauseRecording()
             ACTION_RESUME -> resumeRecording()
@@ -66,7 +78,12 @@ class MicRecordingService : Service() {
                 val label = intent.getStringExtra(EXTRA_MARK_LABEL).orEmpty()
                 dropMarker(label)
             }
-            ACTION_STOP -> stopRecording(fromUser = true)
+            ACTION_STOP -> {
+                // Join + finalize off main — onStartCommand must not block.
+                thread(name = "velum-mic-stop", isDaemon = true) {
+                    stopRecording(fromUser = true)
+                }
+            }
             else -> Unit
         }
         // NOT_STICKY: process death is recovered via WavWriter.recoverOrFinalize, not sticky restart.
@@ -75,21 +92,42 @@ class MicRecordingService : Service() {
 
     override fun onDestroy() {
         if (capturing.get()) {
-            stopRecording(fromUser = false)
+            // Best-effort finalize without blocking the main destroy path on join.
+            thread(name = "velum-mic-destroy-stop", isDaemon = true) {
+                stopRecording(fromUser = false)
+            }
         }
         super.onDestroy()
     }
 
-    private fun beginRecording(
+    /**
+     * Enter foreground immediately so [startForegroundService] cannot time out.
+     * Returns false if a capture session is already active.
+     */
+    private fun promoteToForeground(): Boolean {
+        if (!capturing.compareAndSet(false, true)) {
+            return false
+        }
+        ensureNotificationChannel(this)
+        val notification = buildNotification(paused = false)
+        ServiceCompat.startForeground(
+            this,
+            NOTIFICATION_ID,
+            notification,
+            if (Build.VERSION.SDK_INT >= 29) {
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+            } else {
+                0
+            },
+        )
+        return true
+    }
+
+    private fun beginRecordingAfterForeground(
         absolutePath: String,
         inputSource: MicInputSource = MicInputSource.Mic,
     ) {
-        if (!capturing.compareAndSet(false, true)) {
-            publish(MicSessionState.Failed("Already capturing"))
-            return
-        }
         synchronized(markersLock) { sessionMarkers.clear() }
-        ensureNotificationChannel(this)
         val file = File(absolutePath)
         file.parentFile?.mkdirs()
 
@@ -99,9 +137,7 @@ class MicRecordingService : Service() {
             AudioFormat.ENCODING_PCM_16BIT,
         )
         if (minBuf <= 0) {
-            capturing.set(false)
-            publish(MicSessionState.Failed("AudioRecord buffer unavailable ($minBuf)"))
-            stopSelf()
+            failAndStop("AudioRecord buffer unavailable ($minBuf)")
             return
         }
 
@@ -115,16 +151,12 @@ class MicRecordingService : Service() {
                 minBuf * 2,
             )
         } catch (t: Throwable) {
-            capturing.set(false)
-            publish(MicSessionState.Failed(t.message ?: t.toString()))
-            stopSelf()
+            failAndStop(t.message ?: t.toString())
             return
         }
         if (recorder.state != AudioRecord.STATE_INITIALIZED) {
             recorder.release()
-            capturing.set(false)
-            publish(MicSessionState.Failed("AudioRecord failed to initialize"))
-            stopSelf()
+            failAndStop("AudioRecord failed to initialize")
             return
         }
 
@@ -137,9 +169,17 @@ class MicRecordingService : Service() {
             recorder.startRecording()
         } catch (t: Throwable) {
             recorder.release()
-            capturing.set(false)
-            publish(MicSessionState.Failed(t.message ?: t.toString()))
-            stopSelf()
+            failAndStop(t.message ?: t.toString())
+            return
+        }
+
+        // Stop may have raced in during init — tear down and bail.
+        if (!capturing.get()) {
+            try {
+                recorder.stop()
+            } catch (_: Throwable) {
+            }
+            recorder.release()
             return
         }
 
@@ -150,18 +190,6 @@ class MicRecordingService : Service() {
         pauseStartedElapsedMs = 0
         paused.set(false)
         audioRecord = recorder
-
-        val notification = buildNotification(paused = false)
-        ServiceCompat.startForeground(
-            this,
-            NOTIFICATION_ID,
-            notification,
-            if (Build.VERSION.SDK_INT >= 29) {
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
-            } else {
-                0
-            },
-        )
 
         publish(
             MicSessionState.Recording(
@@ -178,6 +206,7 @@ class MicRecordingService : Service() {
                     raf.seek(44)
                     while (capturing.get()) {
                         if (paused.get()) {
+                            // Flag-only pause: keep AudioRecord running; skip writes.
                             SystemClock.sleep(50)
                             continue
                         }
@@ -227,6 +256,17 @@ class MicRecordingService : Service() {
         }
     }
 
+    private fun failAndStop(message: String) {
+        capturing.set(false)
+        // Don't clobber a terminal Stopped from a racing ACTION_STOP during init.
+        if (state.value is MicSessionState.Stopped) {
+            stopSelfSafely()
+            return
+        }
+        publish(MicSessionState.Failed(message))
+        stopSelfSafely()
+    }
+
     private fun recordedOffsetMs(): Long {
         if (startedAtElapsedMs <= 0L) return 0L
         val now = SystemClock.elapsedRealtime()
@@ -246,33 +286,22 @@ class MicRecordingService : Service() {
         }
     }
 
+    /** Pause is flag-only — never AudioRecord.stop() while the read loop may be in read(). */
     private fun pauseRecording() {
         if (!capturing.get() || !paused.compareAndSet(false, true)) return
         pauseStartedElapsedMs = SystemClock.elapsedRealtime()
-        try {
-            audioRecord?.stop()
-        } catch (t: Throwable) {
-            Log.e(TAG, "pause stop failed", t)
-        }
         val path = outputFile?.absolutePath ?: return
         publish(MicSessionState.Paused(absolutePath = path, bytesWritten = bytesWritten))
         val nm = getSystemService(NotificationManager::class.java)
         nm?.notify(NOTIFICATION_ID, buildNotification(paused = true))
     }
 
+    /** Resume clears the pause flag; AudioRecord stays started for the whole session. */
     private fun resumeRecording() {
         if (!capturing.get() || !paused.compareAndSet(true, false)) return
         if (pauseStartedElapsedMs > 0) {
             pausedAccumulatedMs += SystemClock.elapsedRealtime() - pauseStartedElapsedMs
             pauseStartedElapsedMs = 0
-        }
-        try {
-            audioRecord?.startRecording()
-        } catch (t: Throwable) {
-            Log.e(TAG, "resume startRecording failed", t)
-            paused.set(true)
-            publish(MicSessionState.Failed(t.message ?: t.toString()))
-            return
         }
         val path = outputFile?.absolutePath ?: return
         publish(MicSessionState.Recording(absolutePath = path, bytesWritten = bytesWritten))
