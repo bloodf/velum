@@ -1,17 +1,18 @@
 package dev.velum.ble.wifi
 
 import dev.velum.protocol.FeatureFlags
-import dev.velum.protocol.Protocol20SessionSecret
-import dev.velum.protocol.SessionCipher
 import kotlinx.coroutines.flow.Flow
 
 /**
  * Cipher for Wi-Fi fast-transfer frames.
  *
- * APK 3.30.0 (Plaud parity): every WebSocket frame uses the **same BLE session**
- * key/nonce/aad (ChaCha20-Poly1305 by default, or AES-GCM when FeatureRequest bit
- * `0x08` is set), with its own sequence. Fixed nonce is required for Note Pro —
- * do not "fix" it. No Plaud cloud is involved.
+ * SoftAP frames use the BLE session **key** and **aad**, ChaCha20-Poly1305 by
+ * default (or AES-GCM when FeatureRequest bit `0x08` is set), with a **unique
+ * 96-bit nonce per message** (CSPRNG). Wire layout: `nonce[12] ‖ ciphertext‖tag`.
+ * Plaintext = `seq_u32_le ‖ packet`. No Plaud cloud is involved.
+ *
+ * BLE link packets still use Plaud's fixed session nonce via [SessionCipher];
+ * SoftAP deliberately diverges so (key, nonce) pairs are never reused on Wi-Fi.
  */
 enum class WifiPayloadCipher {
     ChaCha20Poly1305,
@@ -62,23 +63,6 @@ interface WifiFrameCipher {
     val mode: WifiPayloadCipher
     fun seal(sequence: Long, packet: ByteArray): ByteArray
     fun open(sequence: Long, ciphertextAndTag: ByteArray): Pair<Long, ByteArray>?
-}
-
-/**
- * ChaCha20-Poly1305 Wi-Fi frames via the BLE [SessionCipher] (fixed key/nonce/aad —
- * Plaud session parity).
- */
-class BleSessionWifiFrameCipher(
-    private val cipher: SessionCipher,
-    private val secret: Protocol20SessionSecret,
-) : WifiFrameCipher {
-    override val mode: WifiPayloadCipher = WifiPayloadCipher.ChaCha20Poly1305
-
-    override fun seal(sequence: Long, packet: ByteArray): ByteArray =
-        cipher.sealPacket(secret, sequence, packet)
-
-    override fun open(sequence: Long, ciphertextAndTag: ByteArray): Pair<Long, ByteArray>? =
-        cipher.openPacket(secret, sequence, ciphertextAndTag)
 }
 
 /** SoftAP joiner that refuses to run (JVM / desktop tests use [FakeWifiSoftApJoiner]). */

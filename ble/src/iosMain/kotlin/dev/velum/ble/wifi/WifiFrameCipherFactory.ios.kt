@@ -8,7 +8,7 @@ actual fun createWifiFrameCipher(
     secret: Protocol20SessionSecret,
     mode: WifiPayloadCipher,
 ): WifiFrameCipher = when (mode) {
-    WifiPayloadCipher.ChaCha20Poly1305 -> BleSessionWifiFrameCipher(cipher, secret)
+    WifiPayloadCipher.ChaCha20Poly1305 -> UniqueNonceChaChaWifiFrameCipher(cipher, secret)
     WifiPayloadCipher.AesGcm ->
         error("AES-GCM Wi-Fi frame cipher on iOS lands with CryptoKit later")
 }

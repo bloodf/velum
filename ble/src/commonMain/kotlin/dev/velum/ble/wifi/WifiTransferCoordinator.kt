@@ -12,9 +12,9 @@ import kotlin.time.Duration.Companion.seconds
 /**
  * Tries SoftAP + WebSocket :8081 fast transfer; on any failure falls back to [bleDownload].
  *
- * Plaud parity: phone runs WS server on 8081; device joins SoftAP and pushes frames encrypted
- * with the BLE session key/nonce/aad (ChaCha20-Poly1305 or AES-GCM when feature bit 0x08).
- * Fixed nonce is **required** for Note Pro interoperability — not optional debt.
+ * Phone runs WS server on 8081; device joins SoftAP and pushes frames encrypted with the
+ * BLE session key/aad (ChaCha20-Poly1305 or AES-GCM when feature bit 0x08) and a **unique
+ * 96-bit nonce per frame**. BLE fallback remains for SoftAP/cipher failures.
  *
  * Gated by [DeviceCapabilityRegistry.supportsWifiFastPath] — Note (888) and handshake
  * `wifiSupported=false` skip SoftAP and go straight to BLE.

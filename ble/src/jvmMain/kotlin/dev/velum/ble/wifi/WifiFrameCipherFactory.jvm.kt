@@ -1,6 +1,5 @@
 package dev.velum.ble.wifi
 
-import dev.velum.protocol.Bytes
 import dev.velum.protocol.Protocol20SessionSecret
 import dev.velum.protocol.SessionCipher
 import javax.crypto.Cipher
@@ -12,48 +11,50 @@ actual fun createWifiFrameCipher(
     secret: Protocol20SessionSecret,
     mode: WifiPayloadCipher,
 ): WifiFrameCipher = when (mode) {
-    WifiPayloadCipher.ChaCha20Poly1305 -> BleSessionWifiFrameCipher(cipher, secret)
+    WifiPayloadCipher.ChaCha20Poly1305 -> UniqueNonceChaChaWifiFrameCipher(cipher, secret)
     WifiPayloadCipher.AesGcm -> AesGcmWifiFrameCipher(secret)
 }
 
 /**
- * AES-GCM Wi-Fi frames with the BLE session key / fixed 12-byte nonce as IV /
- * fixed aad (APK bit 0x08 path). Plaintext = seq u32 LE ‖ packet.
- *
- * Fixed nonce is Plaud parity debt — required for Note Pro SoftAP;
- * Velum SoftAP path uses the same cipher for interoperability.
+ * AES-GCM SoftAP frames with a unique 96-bit nonce per seal (FeatureRequest bit 0x08).
+ * Wire: `nonce[12] ‖ ciphertext‖tag`. Plaintext = `seq_u32_le ‖ packet`.
+ * Session key + aad; never reuse a (key, nonce) pair.
  */
 internal class AesGcmWifiFrameCipher(
     private val secret: Protocol20SessionSecret,
+    private val nextNonce: () -> ByteArray = ::wifiSecureRandomNonce,
 ) : WifiFrameCipher {
     override val mode: WifiPayloadCipher = WifiPayloadCipher.AesGcm
 
     override fun seal(sequence: Long, packet: ByteArray): ByteArray {
-        val plaintext = Bytes.u32Le(sequence) + packet
+        val nonce = nextNonce()
+        require(nonce.size == WifiAeadFrame.NONCE_LEN) {
+            "Wi-Fi AEAD nonce must be ${WifiAeadFrame.NONCE_LEN} bytes"
+        }
         val c = Cipher.getInstance("AES/GCM/NoPadding")
         c.init(
             Cipher.ENCRYPT_MODE,
             SecretKeySpec(secret.key, "AES"),
-            GCMParameterSpec(128, secret.nonce),
+            GCMParameterSpec(128, nonce),
         )
         c.updateAAD(secret.aad)
-        return c.doFinal(plaintext)
+        val ct = c.doFinal(WifiAeadFrame.plaintext(sequence, packet))
+        return WifiAeadFrame.pack(nonce, ct)
     }
 
     override fun open(sequence: Long, ciphertextAndTag: ByteArray): Pair<Long, ByteArray>? {
         return try {
+            val nonce = WifiAeadFrame.extractNonce(ciphertextAndTag) ?: return null
+            val body = WifiAeadFrame.ciphertextAndTag(ciphertextAndTag) ?: return null
             val c = Cipher.getInstance("AES/GCM/NoPadding")
             c.init(
                 Cipher.DECRYPT_MODE,
                 SecretKeySpec(secret.key, "AES"),
-                GCMParameterSpec(128, secret.nonce),
+                GCMParameterSpec(128, nonce),
             )
             c.updateAAD(secret.aad)
-            val plain = c.doFinal(ciphertextAndTag)
-            if (plain.size < 4) return null
-            val seq = Bytes.readU32Le(plain, 0)
-            if (seq != sequence) return null
-            seq to plain.copyOfRange(4, plain.size)
+            val plain = c.doFinal(body)
+            WifiAeadFrame.parsePlaintext(plain, sequence)
         } catch (_: Exception) {
             null
         }
