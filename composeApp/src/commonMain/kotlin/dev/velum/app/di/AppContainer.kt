@@ -176,8 +176,13 @@ class AppContainer(
     init {
         appScope.launch {
             runCatching { settingsRepository.load() }
-            // Keystore may be unavailable in Robolectric; never crash process start.
-            runCatching { voiceProfileStore.ensureKey() }
+            // Early prime — nothing may depend on this finishing. Failures are recorded on
+            // voiceProfileStore.primingState (Failed) for UI Retry; do not swallow into Unit.
+            try {
+                voiceProfileStore.ensureKey()
+            } catch (_: Exception) {
+                // ensureKey already published VoiceKeyPrimingState.Failed.
+            }
             autoFlowRunner.start()
         }
     }

@@ -16,6 +16,8 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -26,6 +28,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.velum.ai.local.VoiceKeyPrimingState
 import dev.velum.ai.local.VoiceProfile
 import dev.velum.app.di.AppContainer
 import dev.velum.app.i18n.LocalStrings
@@ -48,7 +51,9 @@ fun VoiceProfilesScreen(
 ) {
     val strings = LocalStrings.current
     val scope = rememberCoroutineScope()
-    var profiles by remember { mutableStateOf(container.voiceProfileStore.listProfiles()) }
+    val priming by container.voiceProfileStore.primingState.collectAsState()
+    var profiles by remember { mutableStateOf<List<VoiceProfile>>(emptyList()) }
+    var loaded by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf<VoiceProfile?>(null) }
     var status by remember { mutableStateOf<String?>(null) }
     var exportText by remember { mutableStateOf<String?>(null) }
@@ -56,9 +61,14 @@ fun VoiceProfilesScreen(
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showWipeConfirm by remember { mutableStateOf(false) }
 
-    fun refresh() {
+    suspend fun refresh() {
         profiles = container.voiceProfileStore.listProfiles()
         selected = selected?.id?.let { id -> profiles.firstOrNull { it.id == id } }
+        loaded = true
+    }
+
+    LaunchedEffect(Unit) {
+        runCatching { refresh() }
     }
 
     Column(
@@ -69,136 +79,187 @@ fun VoiceProfilesScreen(
     ) {
         ScreenTopBar(strings.voiceProfiles, onBack = onBack)
         Column(Modifier.padding(20.dp)) {
-            Text(
-                strings.ux.voiceProfilesHint,
-                color = VelumInkSecondary,
-                fontSize = 14.sp,
-                lineHeight = 20.sp,
-            )
-            Spacer(Modifier.height(16.dp))
-            if (profiles.isEmpty()) {
-                Text(strings.ux.voiceProfilesEmpty, color = VelumInkSecondary)
-            } else {
-                profiles.forEach { p ->
-                    Column(
-                        Modifier
-                            .fillMaxWidth()
-                            .clickable { selected = p }
-                            .padding(vertical = 10.dp),
-                    ) {
-                        Text(p.displayName, fontWeight = FontWeight.SemiBold, color = VelumInk)
-                        Text(
-                            buildString {
-                                append(
-                                    strings.ux.voiceProfilesSamplesFormat.replace(
-                                        "%d",
-                                        p.sampleCount.toString(),
-                                    ),
-                                )
-                                if (p.role.isNotBlank()) append(" · ${p.role}")
-                                if (p.company.isNotBlank()) append(" · ${p.company}")
-                                if (p.email.isNotBlank()) append(" · ${p.email}")
-                            },
-                            color = VelumInkSecondary,
-                            fontSize = 12.sp,
-                        )
-                    }
-                }
-            }
-            Spacer(Modifier.height(16.dp))
-            selected?.let { p ->
-                ProfileEditor(
-                    profile = p,
-                    onSave = { name, role, company, email, notes ->
-                        container.voiceProfileStore.rename(p.id, name)
-                        container.voiceProfileStore.updateMeta(
-                            p.id,
-                            role = role,
-                            company = company,
-                            email = email,
-                            notes = notes,
-                        )
-                        refresh()
-                        status = strings.ux.voiceProfilesSaved
-                    },
-                    onDelete = { showDeleteConfirm = true },
-                )
-                Spacer(Modifier.height(12.dp))
-            }
-            OutlineButton(
-                strings.ux.voiceProfilesExport,
-                {
-                    exportText = container.voiceProfileStore.exportEncrypted()
-                    status = strings.ux.voiceProfilesExportReady
-                },
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Spacer(Modifier.height(8.dp))
-            exportText?.let {
-                Text(it.take(400) + if (it.length > 400) "…" else "", color = VelumInkSecondary, fontSize = 11.sp)
-                Spacer(Modifier.height(8.dp))
-            }
-            Text(strings.ux.voiceProfilesImportTitle, fontWeight = FontWeight.SemiBold, color = VelumInk)
-            Spacer(Modifier.height(6.dp))
-            BasicTextField(
-                value = importDraft,
-                onValueChange = { importDraft = it },
-                textStyle = TextStyle(color = VelumInk, fontSize = 13.sp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(100.dp)
-                    .background(VelumBg)
-                    .padding(8.dp),
-            )
-            Spacer(Modifier.height(8.dp))
-            OutlineButton(
-                strings.ux.voiceProfilesImport,
-                {
-                    runCatching {
-                        val n = container.voiceProfileStore.importEncrypted(importDraft)
-                        refresh()
-                        status = strings.ux.voiceProfilesImportedFormat.replace("%d", n.toString())
-                        importDraft = ""
-                    }.onFailure { status = strings.ux.genericError }
-                },
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Spacer(Modifier.height(8.dp))
-            OutlineButton(
-                strings.ux.voiceProfilesWipe,
-                { showWipeConfirm = true },
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                strings.ux.voiceProfilesThreshold,
-                fontWeight = FontWeight.SemiBold,
-                color = VelumInk,
-            )
-            Row(Modifier.fillMaxWidth()) {
-                listOf(0.45f, 0.55f, 0.65f, 0.75f).forEach { t ->
-                    OutlineButton(
-                        "%.2f".format(t),
+            when (val state = priming) {
+                is VoiceKeyPrimingState.Failed -> {
+                    Text(
+                        strings.ux.voiceProfilesKeyError,
+                        color = VelumInkSecondary,
+                        fontSize = 14.sp,
+                        lineHeight = 20.sp,
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    BlackButton(
+                        strings.ux.voiceProfilesKeyRetry,
                         {
                             scope.launch {
-                                container.settingsRepository.setSpeakerMatchThreshold(t)
-                                status = strings.ux.voiceProfilesThresholdSet
+                                runCatching { container.voiceProfileStore.ensureKey() }
+                                runCatching { refresh() }
                             }
                         },
-                        modifier = Modifier.weight(1f).padding(horizontal = 2.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    // Keep class name only — never key material.
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        state.errorClassName,
+                        color = VelumInkSecondary,
+                        fontSize = 12.sp,
+                    )
+                }
+                else -> {
+                    Text(
+                        strings.ux.voiceProfilesHint,
+                        color = VelumInkSecondary,
+                        fontSize = 14.sp,
+                        lineHeight = 20.sp,
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    if (!loaded) {
+                        Text(strings.ux.voiceProfilesEmpty, color = VelumInkSecondary)
+                    } else if (profiles.isEmpty()) {
+                        Text(strings.ux.voiceProfilesEmpty, color = VelumInkSecondary)
+                    } else {
+                        profiles.forEach { p ->
+                            Column(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clickable { selected = p }
+                                    .padding(vertical = 10.dp),
+                            ) {
+                                Text(p.displayName, fontWeight = FontWeight.SemiBold, color = VelumInk)
+                                Text(
+                                    buildString {
+                                        append(
+                                            strings.ux.voiceProfilesSamplesFormat.replace(
+                                                "%d",
+                                                p.sampleCount.toString(),
+                                            ),
+                                        )
+                                        if (p.role.isNotBlank()) append(" · ${p.role}")
+                                        if (p.company.isNotBlank()) append(" · ${p.company}")
+                                        if (p.email.isNotBlank()) append(" · ${p.email}")
+                                    },
+                                    color = VelumInkSecondary,
+                                    fontSize = 12.sp,
+                                )
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    selected?.let { p ->
+                        ProfileEditor(
+                            profile = p,
+                            onSave = { name, role, company, email, notes ->
+                                scope.launch {
+                                    runCatching {
+                                        container.voiceProfileStore.rename(p.id, name)
+                                        container.voiceProfileStore.updateMeta(
+                                            p.id,
+                                            role = role,
+                                            company = company,
+                                            email = email,
+                                            notes = notes,
+                                        )
+                                        refresh()
+                                        status = strings.ux.voiceProfilesSaved
+                                    }.onFailure { status = strings.ux.genericError }
+                                }
+                            },
+                            onDelete = { showDeleteConfirm = true },
+                        )
+                        Spacer(Modifier.height(12.dp))
+                    }
+                    OutlineButton(
+                        strings.ux.voiceProfilesExport,
+                        {
+                            scope.launch {
+                                runCatching {
+                                    exportText = container.voiceProfileStore.exportEncrypted()
+                                    status = strings.ux.voiceProfilesExportReady
+                                }.onFailure { status = strings.ux.genericError }
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    exportText?.let {
+                        Text(
+                            it.take(400) + if (it.length > 400) "…" else "",
+                            color = VelumInkSecondary,
+                            fontSize = 11.sp,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                    }
+                    Text(
+                        strings.ux.voiceProfilesImportTitle,
+                        fontWeight = FontWeight.SemiBold,
+                        color = VelumInk,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    BasicTextField(
+                        value = importDraft,
+                        onValueChange = { importDraft = it },
+                        textStyle = TextStyle(color = VelumInk, fontSize = 13.sp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(100.dp)
+                            .background(VelumBg)
+                            .padding(8.dp),
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    OutlineButton(
+                        strings.ux.voiceProfilesImport,
+                        {
+                            scope.launch {
+                                runCatching {
+                                    val n = container.voiceProfileStore.importEncrypted(importDraft)
+                                    refresh()
+                                    status = strings.ux.voiceProfilesImportedFormat
+                                        .replace("%d", n.toString())
+                                    importDraft = ""
+                                }.onFailure { status = strings.ux.genericError }
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    OutlineButton(
+                        strings.ux.voiceProfilesWipe,
+                        { showWipeConfirm = true },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        strings.ux.voiceProfilesThreshold,
+                        fontWeight = FontWeight.SemiBold,
+                        color = VelumInk,
+                    )
+                    Row(Modifier.fillMaxWidth()) {
+                        listOf(0.45f, 0.55f, 0.65f, 0.75f).forEach { t ->
+                            OutlineButton(
+                                "%.2f".format(t),
+                                {
+                                    scope.launch {
+                                        container.settingsRepository.setSpeakerMatchThreshold(t)
+                                        status = strings.ux.voiceProfilesThresholdSet
+                                    }
+                                },
+                                modifier = Modifier.weight(1f).padding(horizontal = 2.dp),
+                            )
+                        }
+                    }
+                    status?.let {
+                        Spacer(Modifier.height(12.dp))
+                        Text(it, color = VelumInkSecondary, fontSize = 13.sp)
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        strings.ux.voiceProfilesEnrollHint,
+                        color = VelumInkSecondary,
+                        fontSize = 12.sp,
                     )
                 }
             }
-            status?.let {
-                Spacer(Modifier.height(12.dp))
-                Text(it, color = VelumInkSecondary, fontSize = 13.sp)
-            }
-            Spacer(Modifier.height(8.dp))
-            Text(
-                strings.ux.voiceProfilesEnrollHint,
-                color = VelumInkSecondary,
-                fontSize = 12.sp,
-            )
         }
     }
 
@@ -215,8 +276,10 @@ fun VoiceProfilesScreen(
                         if (p != null) {
                             container.voiceProfileStore.delete(p.id)
                             selected = null
-                            refresh()
-                            status = strings.ux.voiceProfilesDeleted
+                            scope.launch {
+                                runCatching { refresh() }
+                                status = strings.ux.voiceProfilesDeleted
+                            }
                         }
                     },
                 ) { Text(strings.delete) }
@@ -237,8 +300,10 @@ fun VoiceProfilesScreen(
                         showWipeConfirm = false
                         container.voiceProfileStore.wipeAll()
                         selected = null
-                        refresh()
-                        status = strings.ux.voiceProfilesWiped
+                        scope.launch {
+                            runCatching { refresh() }
+                            status = strings.ux.voiceProfilesWiped
+                        }
                     },
                 ) { Text(strings.confirm) }
             },
