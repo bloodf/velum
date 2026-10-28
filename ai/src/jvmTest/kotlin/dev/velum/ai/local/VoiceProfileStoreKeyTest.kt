@@ -129,6 +129,104 @@ class VoiceProfileStoreKeyTest {
         assertIs<VoiceKeyPrimingState.Unprimed>(store.primingState.value)
     }
 
+    @Test
+    fun unreadable_existing_key_fails_without_minting_or_deleting_profiles() {
+        runBlocking {
+            val dir = tempDir("velum-vp-unreadable")
+            val root = ModelStoreDir(dir.absolutePath)
+            val mem = InMemorySecureStore()
+            val store = VoiceProfileStore(root = root, secureStore = mem)
+            store.ensureKey()
+            store.upsert("Keep", floatArrayOf(1f, 0f, 0f))
+            val originalKey = mem.getString(VoiceProfileStore.PROFILE_KEY_SECURE)
+            assertNotNull(originalKey)
+
+            val putCount = AtomicInteger(0)
+            var failReads = 1
+            val flaky = object : SecureStore {
+                override suspend fun getString(key: String): String? {
+                    if (key == VoiceProfileStore.PROFILE_KEY_SECURE && failReads > 0) {
+                        failReads--
+                        return null
+                    }
+                    return mem.getString(key)
+                }
+                override suspend fun putString(key: String, value: String) {
+                    putCount.incrementAndGet()
+                    mem.putString(key, value)
+                }
+                override suspend fun remove(key: String) = mem.remove(key)
+                override suspend fun contains(key: String): Boolean = mem.contains(key)
+            }
+            val store2 = VoiceProfileStore(root = root, secureStore = flaky)
+            assertFailsWith<VoiceProfileKeyUnreadableException> { store2.ensureKey() }
+            assertIs<VoiceKeyPrimingState.Failed>(store2.primingState.value)
+            assertEquals(0, putCount.get())
+            assertEquals(originalKey, mem.getString(VoiceProfileStore.PROFILE_KEY_SECURE))
+            assertTrue(File(dir, "voices/profiles/keep.json").exists())
+            assertTrue(File(dir, "voices/profiles/keep.enc").exists())
+
+            // Retry succeeds with the original key; profiles remain readable.
+            store2.ensureKey()
+            assertIs<VoiceKeyPrimingState.Ready>(store2.primingState.value)
+            assertEquals(1, store2.listProfiles().size)
+            assertEquals(originalKey, mem.getString(VoiceProfileStore.PROFILE_KEY_SECURE))
+            assertEquals(0, putCount.get())
+        }
+    }
+
+    @Test
+    fun matchOrNull_and_cacheOrSkip_degrade_on_priming_failure() {
+        runBlocking {
+            val dir = tempDir("velum-vp-degrade")
+            val failing = object : SecureStore {
+                override suspend fun getString(key: String): String? = error("keystore down")
+                override suspend fun putString(key: String, value: String) = error("keystore down")
+                override suspend fun remove(key: String) = Unit
+                override suspend fun contains(key: String): Boolean = false
+            }
+            val store = VoiceProfileStore(
+                root = ModelStoreDir(dir.absolutePath),
+                secureStore = failing,
+            )
+            // Must not throw — diarization degrades to unlabeled speakers.
+            assertEquals(null, store.matchOrNull(floatArrayOf(1f, 0f, 0f)))
+            store.cacheClusterEmbeddingOrSkip("rec", "S1", floatArrayOf(1f, 0f, 0f))
+            assertIs<VoiceKeyPrimingState.Failed>(store.primingState.value)
+        }
+    }
+
+    @Test
+    fun without_legacy_key_file_undecryptable_profile_is_not_deleted() {
+        runBlocking {
+            val dir = tempDir("velum-vp-no-legacy")
+            val root = ModelStoreDir(dir.absolutePath)
+            val store = VoiceProfileStore(root = root, secureStore = InMemorySecureStore())
+            store.ensureKey()
+            store.upsert("Good", floatArrayOf(1f, 0f, 0f))
+
+            val profiles = File(dir, "voices/profiles").also { it.mkdirs() }
+            File(profiles, "garbage.json").writeText(
+                Json.encodeToString(
+                    LegacyMeta(
+                        id = "garbage",
+                        displayName = "Garbage",
+                        dim = 3,
+                        encrypted = true,
+                    ),
+                ),
+            )
+            File(profiles, "garbage.enc").writeBytes(ByteArray(48) { 7 })
+
+            // Re-prime: no legacy file → purge must not run.
+            store.ensureKey()
+            assertTrue(File(profiles, "garbage.json").exists())
+            assertTrue(File(profiles, "garbage.enc").exists())
+            assertEquals(1, store.listProfiles().size)
+            assertEquals("Good", store.listProfiles().single().displayName)
+        }
+    }
+
     private fun tempDir(prefix: String): File =
         File.createTempFile(prefix, "").also { it.delete(); it.mkdirs() }
 

@@ -49,39 +49,52 @@ class VoiceProfileStore(
      * A failure does not stick: [primedKey] stays null, [primingState] becomes
      * [VoiceKeyPrimingState.Failed], and the next call retries.
      *
-     * Never logs key material — only the exception class name is published for UI.
+     * Fast path is taken only when [primingState] is already [VoiceKeyPrimingState.Ready]
+     * so readers never observe a key mid-purge. [primedKey] is published only after any
+     * legacy purge finishes; cancellation mid-purge leaves the store Unprimed/retryable.
      *
-     * On first successful prime, deletes any legacy `voices/.profile_key` and drops
-     * profile blobs that cannot be decrypted under the SecureStore key. Never decrypts
-     * with the old constant key.
+     * A new key is minted only when SecureStore confirms the slot was never written
+     * (`getString` null and `contains` false). If the key exists but cannot be read,
+     * priming fails with [VoiceProfileKeyUnreadableException] — never overwrites the
+     * key and never deletes profiles.
+     *
+     * Legacy purge runs only when `voices/.profile_key` exists (once): undecryptable
+     * blobs under that legacy migration are dropped, then the file is deleted. Normal
+     * undecryptable reads never delete profiles.
+     *
+     * Never logs key material — only the exception class name is published for UI.
      */
     suspend fun ensureKey() {
         if (cipherOverride != null) {
             _primingState.value = VoiceKeyPrimingState.Ready
             return
         }
-        if (primedKey != null) {
-            _primingState.value = VoiceKeyPrimingState.Ready
-            return
-        }
+        if (_primingState.value is VoiceKeyPrimingState.Ready) return
         keyMutex.withLock {
-            if (primedKey != null) {
-                _primingState.value = VoiceKeyPrimingState.Ready
-                return
-            }
+            if (_primingState.value is VoiceKeyPrimingState.Ready) return
             try {
                 val existing = secureStore.getString(PROFILE_KEY_SECURE)
-                val key = if (!existing.isNullOrBlank()) {
-                    Base64.decode(existing)
-                } else {
-                    val generated = ByteArray(32).also { Random.Default.nextBytes(it) }
-                    secureStore.putString(PROFILE_KEY_SECURE, Base64.encode(generated))
-                    generated
+                val key = when {
+                    !existing.isNullOrBlank() -> Base64.decode(existing)
+                    secureStore.contains(PROFILE_KEY_SECURE) ->
+                        throw VoiceProfileKeyUnreadableException()
+                    else -> {
+                        val generated = ByteArray(32).also { Random.Default.nextBytes(it) }
+                        secureStore.putString(PROFILE_KEY_SECURE, Base64.encode(generated))
+                        generated
+                    }
+                }
+                // Purge before publishing the key so no reader observes mid-purge state.
+                if (legacyKeyFile.exists()) {
+                    purgeLegacyConstantKeyArtifacts(createProfileCipher(key))
                 }
                 primedKey = key
-                purgeLegacyConstantKeyArtifacts(createProfileCipher(key))
                 _primingState.value = VoiceKeyPrimingState.Ready
             } catch (e: CancellationException) {
+                primedKey = null
+                if (_primingState.value !is VoiceKeyPrimingState.Failed) {
+                    _primingState.value = VoiceKeyPrimingState.Unprimed
+                }
                 throw e
             } catch (e: Exception) {
                 primedKey = null
@@ -102,26 +115,28 @@ class VoiceProfileStore(
     }
 
     /**
-     * Deletes the legacy constant-key file if present and removes profiles whose
-     * ciphertext cannot be opened with [cipher]. Never attempts the old constant key.
+     * One-shot legacy migration: drop profiles that cannot be opened with [cipher],
+     * then delete `voices/.profile_key` so this never runs again. Caller must only
+     * invoke when the legacy file exists. Never decrypts with the old constant key.
      */
     private fun purgeLegacyConstantKeyArtifacts(cipher: ProfileCipher) {
-        if (legacyKeyFile.exists()) {
-            legacyKeyFile.deleteRecursively()
-        }
-        if (!profilesDir.exists()) return
-        profilesDir.listChildren()
-            .filter { !it.isDirectory() && it.name.endsWith(".json") }
-            .forEach { metaFile ->
-                val id = metaFile.name.removeSuffix(".json")
-                val readable = runCatching {
-                    json.decodeFromString<VoiceProfileFile>(metaFile.readBytes().decodeToString())
-                        .toProfile(metaFile.resolveSiblingEnc(), cipher)
-                }.getOrNull() != null
-                if (!readable) {
-                    delete(id)
+        if (!legacyKeyFile.exists()) return
+        if (profilesDir.exists()) {
+            profilesDir.listChildren()
+                .filter { !it.isDirectory() && it.name.endsWith(".json") }
+                .forEach { metaFile ->
+                    val id = metaFile.name.removeSuffix(".json")
+                    val readable = runCatching {
+                        json.decodeFromString<VoiceProfileFile>(
+                            metaFile.readBytes().decodeToString(),
+                        ).toProfile(metaFile.resolveSiblingEnc(), cipher)
+                    }.getOrNull() != null
+                    if (!readable) {
+                        delete(id)
+                    }
                 }
-            }
+        }
+        legacyKeyFile.deleteRecursively()
     }
 
     suspend fun listProfiles(): List<VoiceProfile> {
@@ -225,6 +240,40 @@ class VoiceProfileStore(
             }
         }
         return best
+    }
+
+    /**
+     * Best-effort profile match for diarization: priming/cipher failures return null
+     * (unlabeled speaker) instead of crashing the pipeline. Cancellation is rethrown.
+     */
+    suspend fun matchOrNull(
+        embedding: FloatArray,
+        threshold: Float = DEFAULT_MATCH_THRESHOLD,
+    ): VoiceMatch? =
+        try {
+            match(embedding, threshold)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            null
+        }
+
+    /**
+     * Best-effort cluster-cache write for diarization. Failures are swallowed so ASR
+     * can continue without a named speaker; cancellation is rethrown.
+     */
+    suspend fun cacheClusterEmbeddingOrSkip(
+        recordingId: String,
+        speakerId: String,
+        embedding: FloatArray,
+    ) {
+        try {
+            cacheClusterEmbedding(recordingId, speakerId, embedding)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            // Degrade: keep diarization spans without a cached embedding.
+        }
     }
 
     /** Confirm a match — averages the new sample into the centroid. */
@@ -513,6 +562,16 @@ sealed interface VoiceKeyPrimingState {
     data object Ready : VoiceKeyPrimingState
     data class Failed(val errorClassName: String) : VoiceKeyPrimingState
 }
+
+/**
+ * SecureStore reports the voice-profile key slot as present ([SecureStore.contains]) but
+ * [SecureStore.getString] could not return it. Priming must fail closed — never mint a
+ * replacement key or purge profiles.
+ */
+class VoiceProfileKeyUnreadableException :
+    IllegalStateException(
+        "Voice profile key is present in SecureStore but could not be read",
+    )
 
 data class VoiceMatch(
     val profile: VoiceProfile,
