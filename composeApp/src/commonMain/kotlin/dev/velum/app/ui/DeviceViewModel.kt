@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import dev.velum.app.i18n.DeviceUiCopy
 import dev.velum.app.platform.DownloadNotifyKind
 import dev.velum.app.platform.DownloadProgressNotifier
+import dev.velum.app.platform.SessionDownloadKeepAliveGate
 import dev.velum.app.platform.systemLanguageTag
 import dev.velum.ble.BleConnectionState
 import dev.velum.ble.BleTransport
@@ -77,6 +78,7 @@ class DeviceViewModel(
     private var connectedSerial: String? = null
     private var downloadJob: Job? = null
     private val downloadMutex = Mutex()
+    private val downloadKeepAlive = SessionDownloadKeepAliveGate()
 
     init {
         viewModelScope.launch {
@@ -122,6 +124,8 @@ class DeviceViewModel(
     fun cancelDownload() {
         val locale = localeTag()
         downloadJob?.cancel()
+        // Stop FGS before dismissing so we never cancel an active startForeground notification.
+        downloadKeepAlive.onDownloadEnd()
         DownloadProgressNotifier.dismiss(DownloadNotifyKind.DeviceSession)
         DownloadProgressNotifier.setCancelHandler(DownloadNotifyKind.DeviceSession, null)
         if (_sessionUi.value.downloadingSessionId != null) {
@@ -143,6 +147,7 @@ class DeviceViewModel(
                     runDownloadSession(sessionId)
                 }
             } finally {
+                downloadKeepAlive.onDownloadEnd()
                 DownloadProgressNotifier.dismiss(DownloadNotifyKind.DeviceSession)
                 DownloadProgressNotifier.setCancelHandler(DownloadNotifyKind.DeviceSession, null)
             }
@@ -177,6 +182,8 @@ class DeviceViewModel(
             statusMessage = DeviceUiCopy.downloadingSession(locale, sessionId),
             lastDownloadedRecordingId = null,
         )
+        // Promote connectedDevice FGS before the long transfer so backgrounding cannot kill it.
+        downloadKeepAlive.onDownloadBegin()
         DownloadProgressNotifier.ensureChannel()
         DownloadProgressNotifier.setCancelHandler(DownloadNotifyKind.DeviceSession) { cancelDownload() }
         DownloadProgressNotifier.show(

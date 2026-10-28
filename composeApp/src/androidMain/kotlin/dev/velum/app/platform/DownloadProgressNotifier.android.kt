@@ -1,5 +1,6 @@
 package dev.velum.app.platform
 
+import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -12,7 +13,7 @@ import androidx.core.app.NotificationManagerCompat
 import dev.velum.app.R
 
 actual object DownloadProgressNotifier {
-    private const val CHANNEL_ID = "velum_downloads"
+    internal const val CHANNEL_ID = "velum_downloads"
     private const val ACTION_CANCEL = "dev.velum.app.download.CANCEL"
     private const val EXTRA_KIND = "kind"
 
@@ -60,7 +61,11 @@ actual object DownloadProgressNotifier {
 
     actual fun dismiss(kind: DownloadNotifyKind) {
         val context = appContextOrNull() ?: return
-        NotificationManagerCompat.from(context).cancel(notificationId(kind))
+        // When the session-download FGS holds this notification, stopForeground(REMOVE)
+        // already cleared it — cancel is still safe / idempotent.
+        runCatching {
+            NotificationManagerCompat.from(context).cancel(notificationId(kind))
+        }
         lastTitles.remove(kind)
         handlers.remove(kind)
     }
@@ -74,14 +79,24 @@ actual object DownloadProgressNotifier {
         handlers[kind]?.invoke()
     }
 
-    private fun post(
+    internal fun notificationId(kind: DownloadNotifyKind): Int = when (kind) {
+        DownloadNotifyKind.DeviceSession -> 0x56454C10
+        DownloadNotifyKind.LocalModel -> 0x56454C11
+    }
+
+    /**
+     * Shared builder for ordinary progress posts and [SessionDownloadService]
+     * [android.app.Service.startForeground]. Same id + cancel action either way.
+     */
+    internal fun buildNotification(
         context: Context,
         kind: DownloadNotifyKind,
         title: String,
         body: String,
         progress: Float,
         cancelLabel: String,
-    ) {
+        asForegroundService: Boolean = false,
+    ): Notification {
         val pct = (progress.coerceIn(0f, 1f) * 100).toInt()
         val cancelIntent = PendingIntent.getBroadcast(
             context,
@@ -91,7 +106,7 @@ actual object DownloadProgressNotifier {
                 .putExtra(EXTRA_KIND, kind.name),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+        val builder = NotificationCompat.Builder(context, CHANNEL_ID)
             .setContentTitle(title)
             .setContentText(body)
             .setSmallIcon(R.drawable.ic_stat_velum)
@@ -100,15 +115,34 @@ actual object DownloadProgressNotifier {
             .setCategory(NotificationCompat.CATEGORY_PROGRESS)
             .setProgress(100, pct, progress <= 0f)
             .addAction(0, cancelLabel, cancelIntent)
-            .build()
+        if (asForegroundService) {
+            builder.setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
+        }
+        return builder.build()
+    }
+
+    private fun post(
+        context: Context,
+        kind: DownloadNotifyKind,
+        title: String,
+        body: String,
+        progress: Float,
+        cancelLabel: String,
+    ) {
+        val notification = buildNotification(
+            context = context,
+            kind = kind,
+            title = title,
+            body = body,
+            progress = progress,
+            cancelLabel = cancelLabel,
+            asForegroundService = kind == DownloadNotifyKind.DeviceSession &&
+                SessionDownloadService.isForegroundHeld(),
+        )
+        // POST_NOTIFICATIONS may be denied — never crash the download path.
         runCatching {
             NotificationManagerCompat.from(context).notify(notificationId(kind), notification)
         }
-    }
-
-    private fun notificationId(kind: DownloadNotifyKind): Int = when (kind) {
-        DownloadNotifyKind.DeviceSession -> 0x56454C10
-        DownloadNotifyKind.LocalModel -> 0x56454C11
     }
 }
 

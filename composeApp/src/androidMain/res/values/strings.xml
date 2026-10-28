@@ -3,7 +3,7 @@
     <string name="app_name">Velum</string>
     <string name="permission_mic_rationale">Velum needs microphone access to capture phone recordings.</string>
     <string name="permission_calendar_rationale">Velum reads the current/next calendar event to name recordings and can insert events. Nothing is sent to Plaud/Google servers.</string>
-    <string name="permission_notifications_rationale">Velum shows a persistent notification while recording so capture continues in the background.</string>
+    <string name="permission_notifications_rationale">Velum shows a persistent notification while recording or downloading a session so work continues in the background.</string>
     <string name="mic_recording_channel_name">Microphone recording</string>
     <string name="mic_recording_channel_desc">Shown while Velum is recording from the microphone</string>
     <string name="mic_recording_title">Recording</string>
@@ -20,4 +20,6 @@
     <string name="download_channel_name">Downloads</string>
     <string name="download_channel_desc">Progress while Velum downloads device sessions or on-device models</string>
     <string name="download_cancel">Cancel</string>
+    <string name="session_download_fgs_title">Downloading session</string>
+    <string name="session_download_fgs_body">Keeping the transfer alive in the background</string>
 </resources>
