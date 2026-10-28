@@ -145,6 +145,10 @@ class VelumRepository(
         )
     }
 
+    suspend fun deleteAutoflow(id: String) = withContext(Dispatchers.Default) {
+        q.deleteAutoflow(id)
+    }
+
     suspend fun trashRecording(id: String) = withContext(Dispatchers.Default) {
         q.trashRecording(id)
     }

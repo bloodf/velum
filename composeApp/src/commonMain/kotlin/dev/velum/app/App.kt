@@ -7,8 +7,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -46,6 +48,7 @@ import dev.velum.app.platform.LocalHaptics
 import dev.velum.app.platform.MicStartResult
 import dev.velum.app.platform.PermissionOutcome
 import dev.velum.app.platform.consumeIncomingSharePath
+import dev.velum.app.platform.finalizeMicRecording
 import dev.velum.app.platform.openCalendarInsert
 import dev.velum.app.platform.recordingsDirectoryPath
 import dev.velum.app.platform.rememberAudioImporter
@@ -357,6 +360,18 @@ private fun VelumRoot(container: AppContainer) {
                             onBack = { navController.popBackStack() },
                             onOpenModelManager = { navController.navigate(Routes.MODEL_MANAGER) },
                             initialSeekSeconds = entry.arguments?.read { getLongOrNull("seek") } ?: 0L,
+                            onMovedToTrash = { trashedId ->
+                                scope.launch {
+                                    val result = snackbar.showSnackbar(
+                                        message = strings.ux.movedToTrash,
+                                        actionLabel = strings.ux.undo,
+                                        duration = SnackbarDuration.Short,
+                                    )
+                                    if (result == SnackbarResult.ActionPerformed) {
+                                        container.repository.restoreRecording(trashedId)
+                                    }
+                                }
+                            },
                         )
                     }
                     composable(Routes.SETTINGS) {
@@ -528,53 +543,73 @@ private fun VelumRoot(container: AppContainer) {
                 isCapturing = container.micCapture.isCapturing ||
                     container.activeMicRecordingId != null,
                 onStartRecording = {
-                    fun startPhoneRecording() {
+                    val activeId = container.activeMicRecordingId
+                    val capturing = container.micCapture.isCapturing || activeId != null
+                    if (capturing) {
+                        fabOpen = false
                         scope.launch {
-                            val id = container.createLocalRecording(
-                                source = "phone",
-                                status = "recording",
-                            )
-                            val wavPath = "${recordingsDirectoryPath()}/$id.wav"
-                            when (val started = container.micCapture.start(wavPath)) {
-                                MicStartResult.Started -> {
-                                    container.activeMicRecordingId = id
-                                    container.repository.updateLocalPath(
-                                        id = id,
-                                        localPath = wavPath,
-                                        durationSeconds = 0,
-                                        sizeBytes = 0,
-                                    )
-                                }
-                                MicStartResult.PermissionRequired -> {
-                                    snackbar.showSnackbar(strings.micPermissionRationale)
-                                    container.activeMicRecordingId = id
-                                }
-                                MicStartResult.Unsupported -> {
-                                    snackbar.showSnackbar(strings.micUnsupported)
-                                    container.activeMicRecordingId = id
-                                }
-                                is MicStartResult.Failed -> {
-                                    snackbar.showSnackbar(
-                                        started.message.ifBlank { strings.micUnsupported },
-                                    )
-                                    container.activeMicRecordingId = id
-                                }
+                            if (activeId != null) {
+                                finalizeMicRecording(container, activeId)
+                                container.repository.updateStatus(activeId, "queued")
+                                container.enqueueProcessing(
+                                    recordingId = activeId,
+                                    templateId = "velum.meeting",
+                                    retranscribe = true,
+                                )
+                                navController.navigate(Routes.recording(activeId))
+                            } else {
+                                container.micCapture.stop()
                             }
-                            fabOpen = false
-                            navController.navigate(Routes.recording(id))
                         }
-                    }
-                    requestMic { outcome ->
-                        when (outcome) {
-                            PermissionOutcome.Granted,
-                            PermissionOutcome.NotRequired,
-                            -> requestNotifications {
-                                // FGS still starts if notifications are denied; chrome may be limited.
-                                startPhoneRecording()
+                    } else {
+                        fun startPhoneRecording() {
+                            scope.launch {
+                                val id = container.createLocalRecording(
+                                    source = "phone",
+                                    status = "recording",
+                                )
+                                val wavPath = "${recordingsDirectoryPath()}/$id.wav"
+                                when (val started = container.micCapture.start(wavPath)) {
+                                    MicStartResult.Started -> {
+                                        container.activeMicRecordingId = id
+                                        container.repository.updateLocalPath(
+                                            id = id,
+                                            localPath = wavPath,
+                                            durationSeconds = 0,
+                                            sizeBytes = 0,
+                                        )
+                                    }
+                                    MicStartResult.PermissionRequired -> {
+                                        snackbar.showSnackbar(strings.micPermissionRationale)
+                                        container.activeMicRecordingId = id
+                                    }
+                                    MicStartResult.Unsupported -> {
+                                        snackbar.showSnackbar(strings.micUnsupported)
+                                        container.activeMicRecordingId = id
+                                    }
+                                    is MicStartResult.Failed -> {
+                                        snackbar.showSnackbar(
+                                            started.message.ifBlank { strings.micUnsupported },
+                                        )
+                                        container.activeMicRecordingId = id
+                                    }
+                                }
+                                fabOpen = false
+                                navController.navigate(Routes.recording(id))
                             }
-                            PermissionOutcome.Denied -> {
-                                scope.launch {
-                                    snackbar.showSnackbar(strings.micPermissionRationale)
+                        }
+                        requestMic { outcome ->
+                            when (outcome) {
+                                PermissionOutcome.Granted,
+                                PermissionOutcome.NotRequired,
+                                -> requestNotifications {
+                                    // FGS still starts if notifications are denied; chrome may be limited.
+                                    startPhoneRecording()
+                                }
+                                PermissionOutcome.Denied -> {
+                                    scope.launch {
+                                        snackbar.showSnackbar(strings.micPermissionRationale)
+                                    }
                                 }
                             }
                         }

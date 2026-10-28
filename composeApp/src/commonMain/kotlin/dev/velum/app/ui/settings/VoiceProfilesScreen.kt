@@ -12,7 +12,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -51,6 +53,8 @@ fun VoiceProfilesScreen(
     var status by remember { mutableStateOf<String?>(null) }
     var exportText by remember { mutableStateOf<String?>(null) }
     var importDraft by remember { mutableStateOf("") }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+    var showWipeConfirm by remember { mutableStateOf(false) }
 
     fun refresh() {
         profiles = container.voiceProfileStore.listProfiles()
@@ -117,12 +121,7 @@ fun VoiceProfilesScreen(
                         refresh()
                         status = strings.ux.voiceProfilesSaved
                     },
-                    onDelete = {
-                        container.voiceProfileStore.delete(p.id)
-                        selected = null
-                        refresh()
-                        status = strings.ux.voiceProfilesDeleted
-                    },
+                    onDelete = { showDeleteConfirm = true },
                 )
                 Spacer(Modifier.height(12.dp))
             }
@@ -167,12 +166,7 @@ fun VoiceProfilesScreen(
             Spacer(Modifier.height(8.dp))
             OutlineButton(
                 strings.ux.voiceProfilesWipe,
-                {
-                    container.voiceProfileStore.wipeAll()
-                    selected = null
-                    refresh()
-                    status = strings.ux.voiceProfilesWiped
-                },
+                { showWipeConfirm = true },
                 modifier = Modifier.fillMaxWidth(),
             )
             Spacer(Modifier.height(8.dp))
@@ -206,6 +200,52 @@ fun VoiceProfilesScreen(
                 fontSize = 12.sp,
             )
         }
+    }
+
+    if (showDeleteConfirm) {
+        val p = selected
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text(strings.ux.confirmDeleteTitle) },
+            text = { Text(strings.ux.confirmDeleteProfileBody) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteConfirm = false
+                        if (p != null) {
+                            container.voiceProfileStore.delete(p.id)
+                            selected = null
+                            refresh()
+                            status = strings.ux.voiceProfilesDeleted
+                        }
+                    },
+                ) { Text(strings.delete) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) { Text(strings.cancel) }
+            },
+        )
+    }
+    if (showWipeConfirm) {
+        AlertDialog(
+            onDismissRequest = { showWipeConfirm = false },
+            title = { Text(strings.ux.confirmDeleteTitle) },
+            text = { Text(strings.ux.confirmWipeProfilesBody) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showWipeConfirm = false
+                        container.voiceProfileStore.wipeAll()
+                        selected = null
+                        refresh()
+                        status = strings.ux.voiceProfilesWiped
+                    },
+                ) { Text(strings.confirm) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showWipeConfirm = false }) { Text(strings.cancel) }
+            },
+        )
     }
 }
 

@@ -210,6 +210,9 @@ WHERE id = ?;
 updateAutoflowNotify:
 UPDATE autoflow SET notify = ? WHERE id = ?;
 
+deleteAutoflow:
+DELETE FROM autoflow WHERE id = ?;
+
 selectMemories:
 SELECT * FROM memory_item ORDER BY created_at DESC;
 

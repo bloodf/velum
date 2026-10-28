@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -18,6 +19,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
@@ -27,10 +29,12 @@ import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Mic
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -46,6 +50,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -53,7 +58,9 @@ import dev.velum.app.di.AppContainer
 import dev.velum.app.i18n.LocalStrings
 import dev.velum.app.i18n.Strings
 import dev.velum.app.ui.components.DualActionRow
+import dev.velum.app.ui.components.EmptyState
 import dev.velum.app.ui.components.MetaRow
+import dev.velum.app.ui.components.OutlineButton
 import dev.velum.app.ui.components.SmallEditPill
 import dev.velum.app.ui.components.ThinDivider
 import dev.velum.app.ui.components.ToggleRow
@@ -65,6 +72,7 @@ import dev.velum.app.ui.theme.VelumInkSecondary
 import dev.velum.app.ui.theme.VelumOnBlack
 import dev.velum.app.ui.theme.VelumSurface
 import dev.velum.core.autoflow.AutoFlowPostAction
+import dev.velum.core.data.epochSecondsNow
 import kotlinx.coroutines.launch
 
 @Composable
@@ -97,7 +105,8 @@ fun AutoFlowListScreen(
             Spacer(Modifier.weight(1f))
             Box(
                 Modifier
-                    .size(36.dp)
+                    .defaultMinSize(48.dp, 48.dp)
+                    .size(48.dp)
                     .border(1.dp, VelumDivider, RoundedCornerShape(8.dp))
                     .clickable { onEdit("new") },
                 contentAlignment = Alignment.Center,
@@ -149,31 +158,41 @@ fun AutoFlowListScreen(
                 }
             },
         )
-        flows.forEach { flow ->
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .clickable { onEdit(flow.id) }
-                    .padding(horizontal = 20.dp, vertical = 14.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Outlined.Mic, null, tint = VelumInkSecondary, modifier = Modifier.size(16.dp))
-                        Text(" › ", color = VelumInkSecondary)
-                        Icon(Icons.Outlined.AutoAwesome, null, tint = VelumInkSecondary, modifier = Modifier.size(16.dp))
+        if (flows.isEmpty()) {
+            Spacer(Modifier.height(32.dp))
+            EmptyState(
+                title = strings.ux.autoFlowEmpty,
+                subtitle = strings.ux.autoFlowEmptyHint,
+                actionLabel = strings.create,
+                onAction = { onEdit("new") },
+            )
+        } else {
+            flows.forEach { flow ->
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable { onEdit(flow.id) }
+                        .padding(horizontal = 20.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Outlined.Mic, null, tint = VelumInkSecondary, modifier = Modifier.size(16.dp))
+                            Text(" › ", color = VelumInkSecondary)
+                            Icon(Icons.Outlined.AutoAwesome, null, tint = VelumInkSecondary, modifier = Modifier.size(16.dp))
+                        }
+                        Spacer(Modifier.height(6.dp))
+                        Text(flow.name, color = VelumInk, fontSize = 15.sp)
                     }
-                    Spacer(Modifier.height(6.dp))
-                    Text(flow.name, color = VelumInk, fontSize = 15.sp)
+                    androidx.compose.material3.Switch(
+                        checked = flow.enabled == 1L,
+                        onCheckedChange = { enabled ->
+                            scope.launch { container.repository.setAutoflowEnabled(flow.id, enabled) }
+                        },
+                    )
                 }
-                androidx.compose.material3.Switch(
-                    checked = flow.enabled == 1L,
-                    onCheckedChange = { enabled ->
-                        scope.launch { container.repository.setAutoflowEnabled(flow.id, enabled) }
-                    },
-                )
+                ThinDivider(20)
             }
-            ThinDivider(20)
         }
         Spacer(Modifier.height(40.dp))
     }
@@ -189,9 +208,10 @@ fun AutoFlowEditScreen(
     val strings = LocalStrings.current
     val flows by container.repository.observeAutoflows().collectAsState(emptyList())
     val templates by container.repository.observeTemplates().collectAsState(emptyList())
+    val isNew = flowId == "new"
     val flow = flows.firstOrNull { it.id == flowId }
-    var enabled by remember(flow) { mutableStateOf(flow?.enabled == 1L) }
-    var name by remember(flow) { mutableStateOf(flow?.name ?: strings.newAutoFlow) }
+    var enabled by remember(flow, isNew) { mutableStateOf(flow?.enabled == 1L || isNew) }
+    var name by remember(flow, isNew) { mutableStateOf(flow?.name ?: strings.newAutoFlow) }
     var wakePhrase by remember(flow) { mutableStateOf(flow?.wake_phrase.orEmpty()) }
     var sourceFilter by remember(flow) { mutableStateOf(flow?.source_filter ?: "note_pro") }
     var templateId by remember(flow) {
@@ -199,12 +219,19 @@ fun AutoFlowEditScreen(
     }
     var language by remember(flow) { mutableStateOf(flow?.language ?: "auto") }
     var autoLabel by remember(flow) { mutableStateOf(flow?.auto_label_voice == 1L) }
-    var notify by remember(flow) { mutableStateOf(flow?.notify == 1L) }
+    var notify by remember(flow, isNew) { mutableStateOf(flow?.notify != 0L) }
     var durationMin by remember(flow) { mutableStateOf(flow?.duration_min_seconds ?: 0L) }
     var durationMax by remember(flow) { mutableStateOf(flow?.duration_max_seconds ?: 10800L) }
+    var durationMinText by remember(flow) {
+        mutableStateOf(((flow?.duration_min_seconds ?: 0L) / 60L).toString())
+    }
+    var durationMaxText by remember(flow) {
+        mutableStateOf(((flow?.duration_max_seconds ?: 10800L) / 3600L).toString())
+    }
     var postAction by remember(flow) { mutableStateOf(flow?.post_action.orEmpty()) }
     var dirty by remember { mutableStateOf(false) }
     var showDiscard by remember { mutableStateOf(false) }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
     var editWhen by remember { mutableStateOf(false) }
     var editDo by remember { mutableStateOf(false) }
     var postActionChoices by remember {
@@ -242,8 +269,8 @@ fun AutoFlowEditScreen(
     }
 
     suspend fun persist() {
-        val id = flow?.id ?: return
-        container.repository.updateAutoflow(
+        val id = flow?.id ?: "flow-${epochSecondsNow()}-${(1000..9999).random()}"
+        container.repository.upsertAutoflow(
             id = id,
             name = name,
             enabled = enabled,
@@ -325,6 +352,10 @@ fun AutoFlowEditScreen(
             enabled = it
             markDirty()
         })
+        ToggleRow(strings.receiveNotifications, notify, {
+            notify = it
+            markDirty()
+        })
         ThinDivider(0)
         Spacer(Modifier.height(12.dp))
         Text(
@@ -391,6 +422,16 @@ fun AutoFlowEditScreen(
                     ?: strings.postActionNone,
             )
         }
+        if (!isNew && flow != null) {
+            Spacer(Modifier.height(24.dp))
+            OutlineButton(
+                strings.delete,
+                { showDeleteConfirm = true },
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp),
+            )
+        }
         Spacer(Modifier.height(40.dp))
     }
 
@@ -422,6 +463,51 @@ fun AutoFlowEditScreen(
                         markDirty()
                     },
                     singleLine = true,
+                    cursorBrush = SolidColor(VelumInk),
+                    textStyle = TextStyle(color = VelumInk, fontSize = 16.sp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 8.dp),
+                )
+                ThinDivider(0)
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    strings.ux.durationMinMinutes,
+                    color = VelumInkSecondary,
+                    fontSize = 13.sp,
+                    modifier = Modifier.padding(horizontal = 20.dp),
+                )
+                BasicTextField(
+                    value = durationMinText,
+                    onValueChange = { raw ->
+                        durationMinText = raw.filter { it.isDigit() }.take(5)
+                        durationMin = (durationMinText.toLongOrNull() ?: 0L) * 60L
+                        markDirty()
+                    },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    cursorBrush = SolidColor(VelumInk),
+                    textStyle = TextStyle(color = VelumInk, fontSize = 16.sp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 8.dp),
+                )
+                Text(
+                    strings.ux.durationMaxHours,
+                    color = VelumInkSecondary,
+                    fontSize = 13.sp,
+                    modifier = Modifier.padding(horizontal = 20.dp),
+                )
+                BasicTextField(
+                    value = durationMaxText,
+                    onValueChange = { raw ->
+                        durationMaxText = raw.filter { it.isDigit() }.take(3)
+                        val hours = durationMaxText.toLongOrNull() ?: 3L
+                        durationMax = (hours.coerceAtLeast(1L)) * 3600L
+                        markDirty()
+                    },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     cursorBrush = SolidColor(VelumInk),
                     textStyle = TextStyle(color = VelumInk, fontSize = 16.sp),
                     modifier = Modifier
@@ -488,6 +574,27 @@ fun AutoFlowEditScreen(
                 })
                 Spacer(Modifier.height(8.dp))
                 Text(
+                    strings.recordingLanguage,
+                    color = VelumInkSecondary,
+                    fontSize = 13.sp,
+                    modifier = Modifier.padding(horizontal = 20.dp),
+                )
+                listOf(
+                    "auto" to strings.automatic,
+                    "pt-BR" to strings.languagePtBr,
+                    "en" to strings.languageEn,
+                ).forEach { (value, label) ->
+                    SelectableSheetRow(
+                        label = label,
+                        selected = language == value,
+                        onClick = {
+                            language = value
+                            markDirty()
+                        },
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+                Text(
                     strings.postActionLabel,
                     color = VelumInkSecondary,
                     fontSize = 13.sp,
@@ -534,6 +641,28 @@ fun AutoFlowEditScreen(
                 })
             }
         }
+    }
+
+    if (showDeleteConfirm && flow != null) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text(strings.ux.confirmDeleteTitle) },
+            text = { Text(strings.ux.confirmDeleteAutoFlowBody) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteConfirm = false
+                        scope.launch {
+                            container.repository.deleteAutoflow(flow.id)
+                            onBack()
+                        }
+                    },
+                ) { Text(strings.delete) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) { Text(strings.cancel) }
+            },
+        )
     }
 }
 

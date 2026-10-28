@@ -69,8 +69,8 @@ import dev.velum.app.i18n.LocalStrings
 import dev.velum.app.platform.MicInputSource
 import dev.velum.app.platform.MicMarkerResult
 import dev.velum.app.platform.MicStartResult
-import dev.velum.app.platform.MicStopResult
 import dev.velum.app.platform.WavWriter
+import dev.velum.app.platform.finalizeMicRecording
 import dev.velum.app.platform.localizedLabel
 import dev.velum.app.platform.recordingsDirectoryPath
 import dev.velum.app.platform.shareText
@@ -111,6 +111,7 @@ fun RecordingDetailScreen(
     showGenerateInitially: Boolean = false,
     /** Playback seek position from Ask citations (seconds). */
     initialSeekSeconds: Long = 0,
+    onMovedToTrash: (String) -> Unit = {},
 ) {
     val strings = LocalStrings.current
     val recording by container.repository.observeRecording(recordingId).collectAsState(null)
@@ -119,6 +120,7 @@ fun RecordingDetailScreen(
     var seekSeconds by remember(recordingId, initialSeekSeconds) {
         mutableStateOf(initialSeekSeconds.coerceAtLeast(0))
     }
+    var showTrashConfirm by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
     var showSpeakers by remember { mutableStateOf(showSpeakersInitially) }
     var showGenerate by remember { mutableStateOf(showGenerateInitially) }
@@ -255,14 +257,34 @@ fun RecordingDetailScreen(
                     })
                     DropdownMenuItem({ Text(strings.moveToTrash) }, {
                         showMenu = false
-                        scope.launch {
-                            container.repository.trashRecording(recordingId)
-                            onBack()
-                        }
+                        showTrashConfirm = true
                     })
                 }
             }
             Spacer(Modifier.width(8.dp))
+        }
+
+        if (showTrashConfirm) {
+            AlertDialog(
+                onDismissRequest = { showTrashConfirm = false },
+                title = { Text(strings.ux.confirmTrashTitle) },
+                text = { Text(strings.ux.confirmTrashBody) },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            showTrashConfirm = false
+                            scope.launch {
+                                container.repository.trashRecording(recordingId)
+                                onMovedToTrash(recordingId)
+                                onBack()
+                            }
+                        },
+                    ) { Text(strings.confirm) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showTrashConfirm = false }) { Text(strings.cancel) }
+                },
+            )
         }
 
         if (pausedThermal) {
@@ -954,28 +976,7 @@ private fun LiveTranscriptPane(
                     if (container.activeMicRecordingId == recordingId ||
                         container.micCapture.isCapturing
                     ) {
-                        when (val stopped = container.micCapture.stop()) {
-                            is MicStopResult.Stopped -> {
-                                container.repository.updateLocalPath(
-                                    id = recordingId,
-                                    localPath = stopped.absolutePath,
-                                    durationSeconds = stopped.durationSeconds,
-                                    sizeBytes = stopped.sizeBytes,
-                                )
-                            }
-                            else -> {
-                                // Notification Stop may have already finalized; fix header from disk.
-                                WavWriter.recoverOrFinalize(wavPath)?.let { recovered ->
-                                    container.repository.updateLocalPath(
-                                        id = recordingId,
-                                        localPath = recovered.absolutePath,
-                                        durationSeconds = recovered.durationSeconds,
-                                        sizeBytes = recovered.sizeBytes,
-                                    )
-                                }
-                            }
-                        }
-                        container.activeMicRecordingId = null
+                        finalizeMicRecording(container, recordingId, wavPath)
                     } else {
                         val finishedWav = withContext(Dispatchers.IO) {
                             demoWavWriter.value?.finish()
