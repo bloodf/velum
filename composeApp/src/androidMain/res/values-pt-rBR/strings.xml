@@ -3,7 +3,7 @@
     <string name="app_name">Velum</string>
     <string name="permission_mic_rationale">O Velum precisa gravar áudio do microfone para criar gravações no aparelho.</string>
     <string name="permission_calendar_rationale">O Velum lê o evento atual/próximo para nomear gravações e pode inserir eventos. Sem envio a servidores Plaud/Google.</string>
-    <string name="permission_notifications_rationale">O Velum mostra uma notificação persistente durante a gravação para continuar em segundo plano.</string>
+    <string name="permission_notifications_rationale">O Velum mostra uma notificação persistente durante a gravação ou o download de uma sessão para continuar em segundo plano.</string>
     <string name="mic_recording_channel_name">Gravação pelo microfone</string>
     <string name="mic_recording_channel_desc">Exibida enquanto o Velum grava pelo microfone</string>
     <string name="mic_recording_title">Gravando</string>
@@ -20,4 +20,6 @@
     <string name="download_channel_name">Downloads</string>
     <string name="download_channel_desc">Progresso ao baixar sessões do aparelho ou modelos locais</string>
     <string name="download_cancel">Cancelar</string>
+    <string name="session_download_fgs_title">Baixando sessão</string>
+    <string name="session_download_fgs_body">Mantendo a transferência ativa em segundo plano</string>
 </resources>
