@@ -1,15 +1,21 @@
 package dev.velum.ble
 
 /**
- * Internal `:ble`-only path for writing payloads that were sealed inside this
- * module after [PlaudWriteGuard.requireAllowedPlaintext] (see
- * [PlaudEncryptedSession.writeEncrypted]).
+ * Base for platform BLE transports that support encrypted-session writes.
  *
- * Not part of the public [BleTransport] surface — other modules cannot opt out
- * of the transport opcode guard or supply pre-sealed bytes through a public API.
+ * [writeSealedAlreadyGuarded] is **internal** so sealed bytes never appear on the
+ * public JVM/API surface. Only [PlaudEncryptedSession.writeEncrypted] (after a
+ * plaintext [PlaudWriteGuard] check) may call it from inside `:ble`.
+ *
+ * Concrete transports must use `internal override` for that method.
  */
-internal interface BleSealedWriteSink {
-    suspend fun writeSealedAlreadyGuarded(
+abstract class AbstractBleTransport : BleTransport {
+    /**
+     * Write already-sealed bytes without opcode parsing.
+     *
+     * Internal only — not part of the public [BleTransport] contract.
+     */
+    internal abstract suspend fun writeSealedAlreadyGuarded(
         characteristic: String,
         payload: ByteArray,
         withoutResponse: Boolean = false,

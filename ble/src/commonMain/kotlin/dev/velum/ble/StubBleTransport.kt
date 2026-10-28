@@ -14,7 +14,7 @@ import kotlinx.coroutines.flow.flowOf
 class StubBleTransport(
     override val isAvailable: Boolean = false,
     private val unavailableReason: String = "BLE is not available on this platform yet",
-) : BleTransport, BleSealedWriteSink {
+) : AbstractBleTransport() {
     private val _state = MutableStateFlow<BleConnectionState>(BleConnectionState.Idle)
     override val connectionState: StateFlow<BleConnectionState> = _state.asStateFlow()
 
@@ -64,7 +64,7 @@ class StubBleTransport(
         error(unavailableReason)
     }
 
-    override suspend fun writeSealedAlreadyGuarded(
+    internal override suspend fun writeSealedAlreadyGuarded(
         characteristic: String,
         payload: ByteArray,
         withoutResponse: Boolean,
