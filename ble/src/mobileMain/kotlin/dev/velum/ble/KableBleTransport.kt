@@ -57,6 +57,9 @@ class KableBleTransport : BleTransport {
     private var disconnectWatchJob: Job? = null
     private val seen = mutableMapOf<String, Advertisement>()
 
+    // Plaud-only scan until issue #15 wires Omi/Pocket/Limitless session adapters.
+    // GattProfiles for those drivers remain defined; do not advertise them here
+    // or Connect would route non-Plaud devices through PlaudDeviceClient.
     private val scanner = Scanner {
         filters {
             match {
@@ -70,15 +73,6 @@ class KableBleTransport : BleTransport {
                         dataMask = null,
                     ),
                 )
-            }
-            match {
-                services = listOf(Uuid.parse(GattProfiles.Omi.serviceUuid))
-            }
-            match {
-                services = listOf(Uuid.parse(GattProfiles.Pocket.serviceUuid))
-            }
-            match {
-                services = listOf(Uuid.parse(GattProfiles.Limitless.serviceUuid))
             }
         }
     }
@@ -185,6 +179,7 @@ class KableBleTransport : BleTransport {
         characteristic: String,
         payload: ByteArray,
         withoutResponse: Boolean,
+        safety: BleWriteSafety,
     ) {
         val p = peripheral ?: error("Not connected")
         val profile = activeProfile ?: error("No active GATT profile")
@@ -192,9 +187,15 @@ class KableBleTransport : BleTransport {
         require(ch.canWrite) {
             "Characteristic '${ch.name}' on profile '${profile.id}' is not writable"
         }
-        PlaudWriteGuard.maybeRequireAllowed(profile, characteristic, payload)
+        val serviceUuid = profile.resolveServiceUuid(ch)
+        PlaudWriteGuard.maybeRequireAllowed(
+            serviceUuid = serviceUuid,
+            characteristicUuid = ch.uuid,
+            payload = payload,
+            safety = safety,
+        )
         val kableChar = characteristicOf(
-            service = Uuid.parse(profile.resolveServiceUuid(ch)),
+            service = Uuid.parse(serviceUuid),
             characteristic = Uuid.parse(ch.uuid),
         )
         val type = if (withoutResponse) WriteType.WithoutResponse else WriteType.WithResponse
