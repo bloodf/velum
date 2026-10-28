@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-28  
 **Base reviewed:** `3a03300` on `main` (CI green: run `40670028151`)  
-**Tip under watch:** `cdeeabb` (device-walk harden `3c36e34` + chain-migration test)  
+**Tip under watch:** `44154ed` (mic + AutoFlow + download/StrictMode/security UX fixes)  
 **Method:** Fresh skeptical review (no trust of round 1/2 claims) + JVM unit tests + new GitHub Actions **emulator device walk** (Compose UI + UI Automator, StrictMode penaltyDeath, pt-BR/EN × light/dark, debug + R8 release).
 
 ---
@@ -99,10 +99,11 @@
 | **high** ~~fixed~~ | Wipe leaves SecureStore secrets; Wi‑Fi banner SoftAP lie | wipe `b101759`; Wi‑Fi `6cb4d97` |
 | **high** ~~fixed~~ | OpenAI error bodies (may echo `sk-`) → WorkManager `KEY_ERROR` | → `22216f0` |
 | **high** ~~fixed~~ | User template/memory/glossary 5-digit ids + `INSERT OR REPLACE` | `UserContentIds` on tip |
-| **medium** | Wipe deletes audio after DB; EN-only permission/mic strings; unused `DATA_SYNC` FGS perm; over-broad SHARE/`video/mp4`; Appearance/All hardcoded; sherpa R8 keep | various |
-| **medium** ~~fixed~~ | AutoFlow await timeout still claims `processedIds` | claim only on terminal ready/failed |
-| **medium** ~~fixed~~ | Seed version bump wiped `flow-default` user edits | insert only if missing |
+| **medium** ~~fixed~~ | Wipe file-before-DB; EN permission/mic strings; SEND/VIEW split + drop `video/mp4`; Appearance/All strings; sherpa R8 keep; StrictMode Main I/O (share/import/playback/watched) | `7bf9b62` wipe order; `a953e29`; `d4abf6c`; `7e8c9a5`/`44154ed` |
+| **medium** ~~fixed~~ | AutoFlow await timeout still claims `processedIds` | `a88fdd0` |
+| **medium** ~~fixed~~ | Seed version bump wiped `flow-default` user edits | `e4f13e7` |
+| **info** | SoftAP code remains but UI gated BLE-only for 1.0; decrypt still peaks at full ciphertext+plaintext; `FOREGROUND_SERVICE_DATA_SYNC` kept for processing FGS | residual |
 
 ## 1.0-ready?
 
-**No.** Round-3 first findings are fixed; second-pass blockers/highs above must land with tests, device walk must stay green, then re-audit.
+**Pending green tip CI including `android-device-walk`.** Second-pass blockers/highs/mediums above are fixed on tip `44154ed` (+ `f56b2b7` WM REPLACE). Ship only after device walk stays green on debug + R8.
