@@ -1,15 +1,18 @@
 package dev.velum.core.security
 
-import kotlin.io.encoding.Base64
-import kotlin.io.encoding.ExperimentalEncodingApi
+import dev.velum.protocol.identity.IdentityBundle
+import dev.velum.protocol.identity.IdentityBundleParseResult
+import dev.velum.protocol.identity.IdentityBundleParser
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 
 /**
- * Parses a Plaud JSON export and stores identity via [DeviceKeyImporter].
- * Optional templates are returned for the caller to upsert locally.
+ * Import entry point for Plaud JSON v1 / USB identity bundles.
+ *
+ * Device identity is validated by [IdentityBundleParser] in `:plaud-protocol`.
+ * Optional templates are parsed here for local catalog upsert.
  */
-@OptIn(ExperimentalEncodingApi::class)
 object PlaudExportImporter {
     private val json = Json {
         ignoreUnknownKeys = true
@@ -17,79 +20,22 @@ object PlaudExportImporter {
     }
 
     fun parse(rawJson: String): PlaudExportParseResult {
-        val trimmed = rawJson.trim()
-        if (trimmed.isEmpty()) return PlaudExportParseResult.Failure("Empty JSON")
-        val wire = try {
-            json.decodeFromString(PlaudExportFile.serializer(), trimmed)
-        } catch (e: SerializationException) {
-            return PlaudExportParseResult.Failure("Invalid JSON: ${e.message}")
-        } catch (e: IllegalArgumentException) {
-            return PlaudExportParseResult.Failure("Invalid JSON: ${e.message}")
-        }
-        if (wire.version != PLAUD_EXPORT_SUPPORTED_VERSION) {
-            return PlaudExportParseResult.Failure(
-                "Unsupported export version ${wire.version} (expected $PLAUD_EXPORT_SUPPORTED_VERSION)",
-            )
-        }
-        if (wire.source.isBlank()) {
-            return PlaudExportParseResult.Failure("source is required")
-        }
-        val serial = wire.device.serial.trim()
-        if (serial.isEmpty()) return PlaudExportParseResult.Failure("device.serial is required")
-        val sigB64 = wire.device.snSignatureBase64.trim()
-        if (sigB64.isEmpty()) {
-            return PlaudExportParseResult.Failure("device.snSignatureBase64 is required")
-        }
-        val bind = wire.device.bindToken.trim()
-        if (bind.isEmpty()) return PlaudExportParseResult.Failure("device.bindToken is required")
-
-        val signature = try {
-            Base64.decode(sigB64)
-        } catch (t: Throwable) {
-            return PlaudExportParseResult.Failure(
-                "device.snSignatureBase64 is not valid base64: ${t.message}",
-            )
-        }
-        if (signature.size != PLAUD_EXPORT_REQUIRED_SIGNATURE_BYTES) {
-            return PlaudExportParseResult.Failure(
-                "snSignature must decode to $PLAUD_EXPORT_REQUIRED_SIGNATURE_BYTES bytes " +
-                    "(got ${signature.size})",
-            )
-        }
-
-        val templates = wire.templates.mapIndexed { index, t ->
-            val name = t.name.trim()
-            if (name.isEmpty()) {
-                return PlaudExportParseResult.Failure("templates[$index].name is required")
+        when (val identity = IdentityBundleParser.parse(rawJson)) {
+            is IdentityBundleParseResult.Failure ->
+                return PlaudExportParseResult.Failure(identity.error.userMessage())
+            is IdentityBundleParseResult.Success -> {
+                val templates = when (val parsed = parseTemplates(rawJson)) {
+                    is TemplateParse.Ok -> parsed.templates
+                    is TemplateParse.Fail ->
+                        return PlaudExportParseResult.Failure(parsed.message)
+                }
+                return PlaudExportParseResult.Success(
+                    device = identity.bundle.toValidatedDevice(),
+                    templates = templates,
+                    source = identity.bundle.source,
+                )
             }
-            val prompt = t.systemPrompt.trim().ifEmpty { t.prompt.orEmpty().trim() }
-            val rawId = t.id?.trim().orEmpty()
-            val localId = when {
-                rawId.isEmpty() ->
-                    "$PLAUD_EXPORT_TEMPLATE_ID_PREFIX${slug(name)}-$index"
-                rawId.startsWith(PLAUD_EXPORT_TEMPLATE_ID_PREFIX) -> rawId
-                else -> "$PLAUD_EXPORT_TEMPLATE_ID_PREFIX$rawId"
-            }
-            ValidatedPlaudTemplate(
-                localId = localId,
-                name = name,
-                category = t.category?.trim()?.ifBlank { null } ?: "general",
-                description = t.description?.trim().orEmpty().ifBlank { name },
-                systemPrompt = prompt,
-            )
         }
-
-        return PlaudExportParseResult.Success(
-            device = ValidatedPlaudDevice(
-                serial = serial,
-                snSignatureBase64 = sigB64,
-                bindToken = bind,
-                publicKeyPem = wire.device.publicKeyPem?.trim()?.ifBlank { null },
-                privateKeyPem = wire.device.privateKeyPem?.trim()?.ifBlank { null },
-            ),
-            templates = templates,
-            source = wire.source.trim(),
-        )
     }
 
     suspend fun importInto(
@@ -113,6 +59,39 @@ object PlaudExportImporter {
         return parsed
     }
 
+    private fun parseTemplates(rawJson: String): TemplateParse {
+        val wire = try {
+            json.decodeFromString(PlaudExportTemplatesWire.serializer(), rawJson)
+        } catch (_: SerializationException) {
+            return TemplateParse.Fail("Identity bundle is malformed or truncated")
+        } catch (_: IllegalArgumentException) {
+            return TemplateParse.Fail("Identity bundle is malformed or truncated")
+        }
+        val out = ArrayList<ValidatedPlaudTemplate>(wire.templates.size)
+        wire.templates.forEachIndexed { index, t ->
+            val name = t.name.trim()
+            if (name.isEmpty()) {
+                return TemplateParse.Fail("templates[$index].name is required")
+            }
+            val prompt = t.systemPrompt.trim().ifEmpty { t.prompt.orEmpty().trim() }
+            val rawId = t.id?.trim().orEmpty()
+            val localId = when {
+                rawId.isEmpty() ->
+                    "$PLAUD_EXPORT_TEMPLATE_ID_PREFIX${slug(name)}-$index"
+                rawId.startsWith(PLAUD_EXPORT_TEMPLATE_ID_PREFIX) -> rawId
+                else -> "$PLAUD_EXPORT_TEMPLATE_ID_PREFIX$rawId"
+            }
+            out += ValidatedPlaudTemplate(
+                localId = localId,
+                name = name,
+                category = t.category?.trim()?.ifBlank { null } ?: "general",
+                description = t.description?.trim().orEmpty().ifBlank { name },
+                systemPrompt = prompt,
+            )
+        }
+        return TemplateParse.Ok(out)
+    }
+
     private fun slug(name: String): String =
         name.lowercase()
             .map { ch -> if (ch.isLetterOrDigit()) ch else '-' }
@@ -120,4 +99,23 @@ object PlaudExportImporter {
             .trim('-')
             .ifBlank { "template" }
             .take(40)
+
+    private sealed class TemplateParse {
+        data class Ok(val templates: List<ValidatedPlaudTemplate>) : TemplateParse()
+        data class Fail(val message: String) : TemplateParse()
+    }
 }
+
+private fun IdentityBundle.toValidatedDevice(): ValidatedPlaudDevice =
+    ValidatedPlaudDevice(
+        serial = serial,
+        snSignatureBase64 = serialSignatureBase64(),
+        bindToken = bindToken,
+        publicKeyPem = publicKeyPem,
+        privateKeyPem = privateKeyPem,
+    )
+
+@Serializable
+private data class PlaudExportTemplatesWire(
+    val templates: List<PlaudExportTemplate> = emptyList(),
+)

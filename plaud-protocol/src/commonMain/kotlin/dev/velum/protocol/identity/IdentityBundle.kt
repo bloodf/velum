@@ -50,6 +50,9 @@ data class IdentityBundle(
         return result
     }
 
+    /** Base64 form of [serialSignature] for secure-store / import APIs. */
+    fun serialSignatureBase64(): String = IdentityBase64.encode(serialSignature)
+
     override fun toString(): String =
         "IdentityBundle(version=$version, source=${IdentityRedaction.PLACEHOLDER}, " +
             "serial=${IdentityRedaction.PLACEHOLDER}, " +
