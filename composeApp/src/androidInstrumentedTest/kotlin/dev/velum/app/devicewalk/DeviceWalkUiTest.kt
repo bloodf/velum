@@ -715,13 +715,11 @@ class DeviceWalkUiTest {
             dismissSystemPermissionDialogs()
         }
         if (onFilesChrome()) return
-        // Last resort: relaunch MainActivity onto the files shell.
+        // Last resort: single-top resume (never CLEAR_TOP — orphans ActivityScenario).
         runCatching {
-            val launch = appContext.packageManager.getLaunchIntentForPackage(appContext.packageName)
-            if (launch != null) {
-                launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                appContext.startActivity(launch)
-            }
+            device.executeShellCommand(
+                "am start --activity-single-top -n ${appContext.packageName}/.MainActivity",
+            )
         }
         waitUntil(45_000) {
             onFilesChrome() ||
