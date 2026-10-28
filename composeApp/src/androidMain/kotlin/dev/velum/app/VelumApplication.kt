@@ -5,7 +5,6 @@ import android.os.PowerManager
 import android.util.Log
 import androidx.annotation.Keep
 import androidx.annotation.VisibleForTesting
-import dev.velum.ai.audio.DownloadedSessionAudioPersist
 import dev.velum.ai.local.ModelStoreDir
 import dev.velum.ai.pipeline.AiRuntimeHolder
 import dev.velum.ai.pipeline.ThermalMonitor
@@ -14,6 +13,7 @@ import dev.velum.app.di.AppContainer
 import dev.velum.app.platform.DownloadProgressNotifier
 import dev.velum.app.platform.MicRecordingService
 import dev.velum.app.platform.ShareTextHolder
+import dev.velum.app.platform.cleanupStaleDownloadArtifacts
 import dev.velum.app.platform.installAppContext
 import dev.velum.app.platform.installMicCaptureContext
 import dev.velum.app.platform.installRecordingFilesDir
@@ -82,11 +82,12 @@ class VelumApplication : Application() {
                 )
                 ready.set(true)
                 containerDeferred.complete(built)
-                // Drop crashed SoftAP/download temps before mic recovery so a
-                // leftover *.download.partial is never mistaken for a mic WAV.
+                // Drop crashed SoftAP/download temps before mic recovery so leftover
+                // partials are never mistaken for mic WAVs or turned into orphans.
                 runCatching {
-                    val removed = DownloadedSessionAudioPersist.deleteStaleDownloadTemps(
-                        ModelStoreDir(recordingsDirectoryPath()),
+                    val removed = cleanupStaleDownloadArtifacts(
+                        recordingsDirPath = recordingsDirectoryPath(),
+                        repository = built.repository,
                     )
                     if (removed > 0) {
                         Log.i(TAG, "Removed $removed stale download temp(s)")

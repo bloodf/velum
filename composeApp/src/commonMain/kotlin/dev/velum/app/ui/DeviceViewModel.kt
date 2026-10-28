@@ -55,8 +55,8 @@ data class DownloadedSessionAudio(
     val decryptedBytes: ByteArray,
     /**
      * Used only when [decryptedBytes] is not already Ogg/WAV and must be wrapped as PCM WAV.
-     * Defaults match Plaud capability tables + the historic RecordingProcessor raw-PCM path.
-     * [channels] is derived from [DeviceCapabilities.maxChannels] at download time (mono fallback).
+     * Defaults match Plaud capability tables + the historic RecordingProcessor raw-PCM path
+     * ([DownloadedSessionAudioPersist.DEFAULT_CHANNELS] = mono).
      */
     val sampleRateHz: Int = DownloadedSessionAudioPersist.DEFAULT_SAMPLE_RATE_HZ,
     val channels: Int = DownloadedSessionAudioPersist.DEFAULT_CHANNELS,
@@ -265,11 +265,9 @@ class DeviceViewModel(
                 sizeBytes = decrypted.size.toLong(),
                 decryptedBytes = decrypted,
                 // Capability table is authoritative when wrapping non-container plaintext.
+                // channels uses DownloadedSessionAudio's DEFAULT_CHANNELS (mono) — not set here.
                 sampleRateHz = caps?.sampleRatesHz?.firstOrNull()
                     ?: DownloadedSessionAudioPersist.DEFAULT_SAMPLE_RATE_HZ,
-                // Handshake-refined maxChannels (falls back to mono — RP/raw-PCM path).
-                channels = (caps?.maxChannels ?: DownloadedSessionAudioPersist.DEFAULT_CHANNELS)
-                    .coerceIn(1, 2),
             ),
         )
     }
