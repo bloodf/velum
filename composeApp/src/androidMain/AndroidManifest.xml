@@ -43,17 +43,14 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <!-- Open with Velum / share sheet audio import -->
+            <!-- Share sheet audio import (SEND only — not browsable). -->
             <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
                 <data android:mimeType="audio/*" />
                 <data android:mimeType="application/ogg" />
-                <data android:mimeType="video/mp4" />
             </intent-filter>
-            <!-- Prefer content:// + audio MIME; avoid file:// and */* confused-deputy surface. -->
+            <!-- Open with Velum: content:// audio only (no video/mp4, no file://). -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />

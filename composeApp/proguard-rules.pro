@@ -43,3 +43,7 @@
 
 # Device-walk CI flag + fake engines (flipped via instrumentation runner).
 -keep class dev.velum.app.devicewalk.** { *; }
+
+# sherpa-onnx local ASR / diarization (JNI + reflection-heavy)
+-keep class com.k2fsa.sherpa.onnx.** { *; }
+-dontwarn com.k2fsa.sherpa.onnx.**
