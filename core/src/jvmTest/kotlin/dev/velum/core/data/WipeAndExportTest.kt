@@ -35,5 +35,8 @@ class WipeAndExportTest {
         repo.wipeAllUserData()
         assertEquals(0L, repo.recordingCount())
         assertEquals(0L, repo.storageUsage().bytesClaimed)
+        // Default AutoFlow must come back after wipe (seed marker cleared).
+        val flows = handle.database.velumQueries.selectAutoflows().executeAsList()
+        assertTrue(flows.any { it.id == "flow-default" })
     }
 }

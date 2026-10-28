@@ -58,7 +58,10 @@ import dev.velum.app.i18n.LocalStrings
 import dev.velum.app.platform.rememberJsonFileImporter
 import dev.velum.app.ui.components.BlackButton
 import dev.velum.app.ui.components.DisplayTitle
+import dev.velum.app.ui.components.EmptyState
 import dev.velum.app.ui.components.SearchSheet
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import dev.velum.app.ui.theme.VelumBg
 import dev.velum.app.ui.theme.VelumBlack
 import dev.velum.app.ui.theme.VelumDivider
@@ -106,8 +109,11 @@ fun TemplatesScreen(
     LaunchedEffect(tab, discoverFeaturedOnly) {
         if (tab != 1 || discoverFeaturedOnly) return@LaunchedEffect
         fullImportRunning = true
-        runCatching { container.repository.ensureFullTemplatesImported() }
+        val result = runCatching { container.repository.ensureFullTemplatesImported() }
         fullImportRunning = false
+        result.onFailure {
+            importStatus = strings.templatesImportFailed
+        }
     }
     val importJson = rememberJsonFileImporter { jsonText ->
         scope.launch {
@@ -124,9 +130,9 @@ fun TemplatesScreen(
                         builtin = false,
                     )
                 }
-                importStatus = "Imported ${specs.size} template(s)"
+                importStatus = strings.templatesImportOkFormat.replace("%d", specs.size.toString())
             }.onFailure {
-                importStatus = it.message ?: "Import failed"
+                importStatus = strings.templatesImportFailed
             }
         }
     }
@@ -219,8 +225,12 @@ fun TemplatesScreen(
         ) {
             Icon(
                 Icons.AutoMirrored.Outlined.ArrowBack,
-                null,
-                modifier = Modifier.size(40.dp).clickable(onClick = onBack).padding(8.dp),
+                contentDescription = strings.ux.back,
+                modifier = Modifier
+                    .size(40.dp)
+                    .semantics { contentDescription = strings.ux.back }
+                    .clickable(onClick = onBack)
+                    .padding(8.dp),
                 tint = VelumInk,
             )
             Spacer(Modifier.weight(1f))
@@ -232,7 +242,7 @@ fun TemplatesScreen(
             )
             Spacer(Modifier.width(12.dp))
             Text(
-                "JSON",
+                strings.templatesImportJson,
                 color = VelumInk,
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 13.sp,
@@ -354,7 +364,7 @@ fun TemplatesScreen(
                     fontWeight = FontWeight.SemiBold,
                 )
                 CategoryChip(
-                    label = if (languageTag.lowercase().startsWith("en")) "All" else "Todos",
+                    label = strings.templatesAll,
                     selected = selectedLang == null,
                 ) { selectedLang = null }
                 availableLangs.forEach { lang ->
@@ -390,6 +400,19 @@ fun TemplatesScreen(
                         }
                         Spacer(Modifier.height(16.dp))
                         DisplayTitle(strings.categories)
+                    }
+                }
+            }
+            if (shown.isEmpty() && !fullImportRunning) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Box(
+                        Modifier.fillMaxWidth().padding(vertical = 48.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        EmptyState(
+                            title = strings.templatesEmptyTitle,
+                            subtitle = strings.templatesEmptyHint,
+                        )
                     }
                 }
             }
@@ -547,6 +570,7 @@ private fun templateUiCredit(tpl: Template): String? =
 
 @Composable
 private fun RankingCard(tpl: Template, rank: Int, languageTag: String, onClick: () -> Unit) {
+    val strings = LocalStrings.current
     Column(
         Modifier
             .width(180.dp)
@@ -564,7 +588,11 @@ private fun RankingCard(tpl: Template, rank: Int, languageTag: String, onClick: 
                     .background(Color(0xFFD6C4A8))
                     .padding(horizontal = 6.dp, vertical = 2.dp),
             ) {
-                Text("No. $rank", fontSize = 11.sp, color = VelumInk)
+                Text(
+                    strings.rankingBadgeFormat.replace("%d", rank.toString()),
+                    fontSize = 11.sp,
+                    color = VelumInk,
+                )
             }
         }
         Spacer(Modifier.height(10.dp))

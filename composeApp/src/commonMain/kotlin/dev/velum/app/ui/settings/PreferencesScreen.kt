@@ -52,7 +52,12 @@ fun PreferencesScreen(
         ChevronRow(
             strings.transcriptionLanguage,
             onAiProcessing,
-            value = settings.audioLanguage,
+            value = when (settings.audioLanguage) {
+                "auto" -> strings.languageAuto
+                "pt-BR" -> strings.languagePtBr
+                "en" -> strings.languageEn
+                else -> settings.audioLanguage
+            },
         )
         ToggleRow(
             strings.cleanTranscript,

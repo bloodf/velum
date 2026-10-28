@@ -33,6 +33,32 @@ class OggOpusDemuxerTest {
         assertTrue(stream.packets.isEmpty())
     }
 
+    @Test
+    fun demuxForEach_invokes_onHeader_without_retaining_packets() {
+        val head = byteArrayOf(
+            'O'.code.toByte(), 'p'.code.toByte(), 'u'.code.toByte(), 's'.code.toByte(),
+            'H'.code.toByte(), 'e'.code.toByte(), 'a'.code.toByte(), 'd'.code.toByte(),
+            1, 1, 0, 0,
+            0x80.toByte(), 0xBB.toByte(), 0x00, 0x00,
+            0, 0, 0,
+        )
+        var headerRate = 0
+        var headerCh = 0
+        var packets = 0
+        val meta = OggOpusDemuxer.demuxForEach(
+            buildOggPage(head),
+            onHeader = { rate, ch ->
+                headerRate = rate
+                headerCh = ch
+            },
+            onPacket = { packets++ },
+        )
+        assertEquals(48_000, meta.sampleRateHz)
+        assertEquals(48_000, headerRate)
+        assertEquals(1, headerCh)
+        assertEquals(0, packets)
+    }
+
     private fun buildOggPage(packet: ByteArray): ByteArray {
         require(packet.size < 255)
         val header = ByteArray(27 + 1 + packet.size)

@@ -12,7 +12,13 @@ import app.cash.sqldelight.db.SqlDriver
  * callers must fall back to [ListSearch].
  */
 object FtsIndex {
-    fun ensureSchema(driver: SqlDriver): Boolean {
+    data class EnsureResult(
+        val available: Boolean,
+        /** True when template_fts was dropped/recreated (caller must rebuild rows). */
+        val templateSchemaRecreated: Boolean,
+    )
+
+    fun ensureSchema(driver: SqlDriver): EnsureResult {
         return try {
             driver.execute(
                 identifier = null,
@@ -27,13 +33,14 @@ object FtsIndex {
                 """.trimIndent(),
                 parameters = 0,
             )
-            // Recreate when upgrading so the tags column is always present.
-            // Callers rebuild the index after ensureSchema (VelumRepository init).
-            driver.execute(identifier = null, sql = "DROP TABLE IF EXISTS template_fts", parameters = 0)
+            val needsTagsUpgrade = templateFtsNeedsTagsColumn(driver)
+            if (needsTagsUpgrade) {
+                driver.execute(identifier = null, sql = "DROP TABLE IF EXISTS template_fts", parameters = 0)
+            }
             driver.execute(
                 identifier = null,
                 sql = """
-                    CREATE VIRTUAL TABLE template_fts USING fts5(
+                    CREATE VIRTUAL TABLE IF NOT EXISTS template_fts USING fts5(
                       template_id UNINDEXED,
                       name,
                       description,
@@ -45,10 +52,48 @@ object FtsIndex {
                 """.trimIndent(),
                 parameters = 0,
             )
-            true
+            EnsureResult(available = true, templateSchemaRecreated = needsTagsUpgrade)
         } catch (_: Exception) {
             // Robolectric / stripped SQLite: "no such module: fts5"
-            false
+            EnsureResult(available = false, templateSchemaRecreated = false)
+        }
+    }
+
+    /**
+     * True when template_fts is missing or was created before the tags column existed.
+     * Fresh installs (no table) return true so the caller rebuilds after seed.
+     */
+    private fun templateFtsNeedsTagsColumn(driver: SqlDriver): Boolean {
+        val sql = driver.executeQuery(
+            identifier = null,
+            sql = "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'template_fts'",
+            mapper = { cursor ->
+                val value = if (cursor.next().value) cursor.getString(0) else null
+                QueryResult.Value(value)
+            },
+            parameters = 0,
+        ).value
+        if (sql.isNullOrBlank()) return true
+        // FTS5 CREATE sql embeds column names; absence of tags means pre-tags schema.
+        return !sql.contains("tags", ignoreCase = true)
+    }
+
+    /** True when either FTS table has zero rows (e.g. after first seed). */
+    fun isEmpty(driver: SqlDriver): Boolean {
+        fun count(table: String): Long =
+            driver.executeQuery(
+                identifier = null,
+                sql = "SELECT COUNT(*) FROM $table",
+                mapper = { cursor ->
+                    cursor.next()
+                    QueryResult.Value(cursor.getLong(0) ?: 0L)
+                },
+                parameters = 0,
+            ).value
+        return try {
+            count("recording_fts") == 0L && count("template_fts") == 0L
+        } catch (_: Exception) {
+            true
         }
     }
 
@@ -155,7 +200,6 @@ object FtsIndex {
         ) {
             bindString(0, matchQuery)
         }.value
-}
 
     /**
      * Wrap delete+insert so a crash mid-upsert cannot leave a missing FTS row.
@@ -177,3 +221,4 @@ object FtsIndex {
             throw t
         }
     }
+}

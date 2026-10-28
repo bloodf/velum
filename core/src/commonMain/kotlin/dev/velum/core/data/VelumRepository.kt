@@ -31,9 +31,13 @@ class VelumRepository(
     constructor(handle: DatabaseHandle) : this(handle.database, handle.driver)
 
     init {
-        ftsAvailable = FtsIndex.ensureSchema(driver)
-        SeedData.maybeSeed(db)
-        if (ftsAvailable) rebuildFtsIndex()
+        val fts = FtsIndex.ensureSchema(driver)
+        ftsAvailable = fts.available
+        val seeded = SeedData.maybeSeed(db)
+        backfillSummaryVersionsFromRecording()
+        if (ftsAvailable && (fts.templateSchemaRecreated || seeded || FtsIndex.isEmpty(driver))) {
+            rebuildFtsIndex()
+        }
     }
 
     fun observeRecordings(): Flow<List<Recording>> =
@@ -335,25 +339,21 @@ class VelumRepository(
 
     /**
      * Lazy-import the gzipped full Plaud catalog once (Discover "All").
-     * Preserves existing [Template.uses] on id collision; sets featured from JSON.
+     * Streams gunzip+JSONL line-by-line (no full ~29MB String). Preserves existing
+     * [Template.uses] on id collision; sets featured from JSON.
      * @return number of rows upserted, or 0 if already imported / asset empty.
      */
     suspend fun ensureFullTemplatesImported(): Int = withContext(Dispatchers.Default) {
         if (q.getMeta(SeedData.META_FULL_TEMPLATES_IMPORTED).executeAsOneOrNull() == "1") {
             return@withContext 0
         }
-        val jsonl = PlaudFullTemplateAsset.readJsonl()
-        if (jsonl.isBlank()) {
-            return@withContext 0
-        }
-        val entries = PlaudTemplateCatalog.parseJsonl(jsonl)
-        if (entries.isEmpty()) {
-            return@withContext 0
-        }
         val now = epochSeconds()
         var upserted = 0
+        var sawAny = false
         db.transaction {
-            entries.forEach { entry ->
+            PlaudFullTemplateAsset.forEachLine { line ->
+                val entry = PlaudTemplateCatalog.parseJsonlLine(line) ?: return@forEachLine
+                sawAny = true
                 val existing = q.selectTemplateById(entry.id).executeAsOneOrNull()
                 val uses = existing?.uses ?: entry.uses
                 val createdAt = existing?.created_at ?: now
@@ -382,9 +382,11 @@ class VelumRepository(
                 )
                 upserted++
             }
-            q.setMeta(SeedData.META_FULL_TEMPLATES_IMPORTED, "1")
+            if (sawAny) {
+                q.setMeta(SeedData.META_FULL_TEMPLATES_IMPORTED, "1")
+            }
         }
-        if (ftsAvailable) rebuildFtsIndex()
+        if (upserted > 0 && ftsAvailable) rebuildFtsIndex()
         upserted
     }
 
@@ -412,8 +414,10 @@ class VelumRepository(
         q.deleteAllAutoflows()
         q.deleteAllMemories()
         q.deleteAllGlossary()
-        if (ftsAvailable) rebuildFtsIndex()
+        // Clear seed marker so maybeSeed re-inserts default AutoFlow + builtins.
+        SeedData.clearSeedMarker(db)
         SeedData.maybeSeed(db)
+        if (ftsAvailable) rebuildFtsIndex()
     }
 
     data class StorageUsage(
@@ -637,6 +641,18 @@ class VelumRepository(
         }
     }
 
+    /**
+     * After schema v3→v4 (or any open of a pre-versions DB), create an active version
+     * row for every recording that already has notes but no version history.
+     */
+    private fun backfillSummaryVersionsFromRecording() {
+        db.transaction {
+            q.selectAllRecordings().executeAsList().forEach { recording ->
+                ensureBaselineVersionLocked(recording.id)
+            }
+        }
+    }
+
     private fun ensureBaselineVersionLocked(recordingId: String) {
         val count = q.countVersionsForRecording(recordingId).executeAsOne()
         if (count > 0L) return
@@ -649,7 +665,8 @@ class VelumRepository(
             template_name = "",
             markdown = prior,
             created_at = recording.created_at.coerceAtMost(epochSeconds() - 1),
-            is_active = 0,
+            // Active: this is the live summary until the user regenerates.
+            is_active = 1,
         )
     }
 

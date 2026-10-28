@@ -570,7 +570,11 @@ private fun RecordingRow(
             )
             Spacer(Modifier.height(4.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("$timeLabel | $mins min", color = VelumInkSecondary, fontSize = 13.sp)
+                Text(
+                    "$timeLabel | ${strings.durationMinutesFormat.replace("%d", mins.toString())}",
+                    color = VelumInkSecondary,
+                    fontSize = 13.sp,
+                )
                 Spacer(Modifier.width(8.dp))
                 Icon(
                     sourceIcon,

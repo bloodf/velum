@@ -52,13 +52,26 @@ interface OpusDecoder {
      * so multi-hour recordings never allocate a single heap buffer for the full PCM.
      */
     fun decodeToPcmFile(oggBytes: ByteArray, dest: ModelStoreDir): SpilledPcmMeta
+
+    /**
+     * Decode an on-disk Ogg Opus file without loading the whole file into a ByteArray.
+     * Default reads all bytes then [decodeToPcmFile]; Android/JVM stream pages from disk.
+     */
+    fun decodePathToPcmFile(path: String, dest: ModelStoreDir): SpilledPcmMeta =
+        decodeToPcmFile(ModelStoreDir(path).readBytes(), dest)
 }
 
 expect fun createOpusDecoder(): OpusDecoder
 
+/** Stream metadata from an Ogg Opus bitstream (no packet list). */
+data class OpusStreamMeta(
+    val sampleRateHz: Int,
+    val channels: Int,
+)
+
 /**
  * Pure-Kotlin Ogg demux for Opus bitstreams (RFC 3533 / RFC 7845).
- * Returns raw Opus packets (no TOC rewrite) plus stream metadata from the ID header.
+ * Prefer [demuxForEach] so multi-hour files do not hold every Opus packet on the heap.
  */
 object OggOpusDemuxer {
     data class OpusStream(
@@ -68,57 +81,122 @@ object OggOpusDemuxer {
     )
 
     fun demux(oggBytes: ByteArray): OpusStream {
-        require(oggBytes.size >= 27) { "Ogg buffer too small" }
         val packets = ArrayList<ByteArray>()
-        var offset = 0
+        val meta = demuxForEach(oggBytes) { packets.add(it) }
+        return OpusStream(
+            sampleRateHz = meta.sampleRateHz,
+            channels = meta.channels,
+            packets = packets,
+        )
+    }
+
+    /**
+     * Walk Ogg pages in [oggBytes], invoking [onHeader] when OpusHead is seen and
+     * [onPacket] for each complete audio packet — without retaining the packet list.
+     */
+    fun demuxForEach(
+        oggBytes: ByteArray,
+        onHeader: (sampleRateHz: Int, channels: Int) -> Unit = { _, _ -> },
+        onPacket: (ByteArray) -> Unit,
+    ): OpusStreamMeta {
+        require(oggBytes.size >= 27) { "Ogg buffer too small" }
+        return demuxAtForEach(
+            size = oggBytes.size.toLong(),
+            readAt = { dest, position, length ->
+                val pos = position.toInt()
+                if (pos + length > oggBytes.size) return@demuxAtForEach -1
+                oggBytes.copyInto(
+                    destination = dest,
+                    destinationOffset = 0,
+                    startIndex = pos,
+                    endIndex = pos + length,
+                )
+                length
+            },
+            onHeader = onHeader,
+            onPacket = onPacket,
+        )
+    }
+
+    /**
+     * Stream Ogg pages from a random-access reader (file). [size] is the total byte
+     * length; [readAt] copies [length] bytes starting at [position] into [dest][0].
+     */
+    fun demuxAtForEach(
+        size: Long,
+        readAt: (dest: ByteArray, position: Long, length: Int) -> Int,
+        onHeader: (sampleRateHz: Int, channels: Int) -> Unit = { _, _ -> },
+        onPacket: (ByteArray) -> Unit,
+    ): OpusStreamMeta {
+        require(size >= 27L) { "Ogg buffer too small" }
+        var offset = 0L
         var sampleRate = 48_000
         var channels = 1
         var sawIdHeader = false
+        val packetParts = ArrayList<ByteArray>()
+        val header = ByteArray(27)
 
-        while (offset + 27 <= oggBytes.size) {
-            if (oggBytes[offset] != 'O'.code.toByte() ||
-                oggBytes[offset + 1] != 'g'.code.toByte() ||
-                oggBytes[offset + 2] != 'g'.code.toByte() ||
-                oggBytes[offset + 3] != 'S'.code.toByte()
+        while (offset + 27L <= size) {
+            require(readAt(header, offset, 27) == 27) { "Truncated Ogg page header" }
+            if (header[0] != 'O'.code.toByte() ||
+                header[1] != 'g'.code.toByte() ||
+                header[2] != 'g'.code.toByte() ||
+                header[3] != 'S'.code.toByte()
             ) {
                 throw IllegalArgumentException("Invalid Ogg page magic at offset $offset")
             }
-            val pageSegments = oggBytes[offset + 26].toInt() and 0xff
-            val segmentTableStart = offset + 27
-            val segmentTableEnd = segmentTableStart + pageSegments
-            require(segmentTableEnd <= oggBytes.size) { "Truncated Ogg segment table" }
-
+            val pageSegments = header[26].toInt() and 0xff
+            val segmentTable = ByteArray(pageSegments)
+            require(readAt(segmentTable, offset + 27L, pageSegments) == pageSegments) {
+                "Truncated Ogg segment table"
+            }
             var bodySize = 0
             for (i in 0 until pageSegments) {
-                bodySize += oggBytes[segmentTableStart + i].toInt() and 0xff
+                bodySize += segmentTable[i].toInt() and 0xff
             }
-            val bodyStart = segmentTableEnd
+            val bodyStart = offset + 27L + pageSegments
             val bodyEnd = bodyStart + bodySize
-            require(bodyEnd <= oggBytes.size) { "Truncated Ogg page body" }
+            require(bodyEnd <= size) { "Truncated Ogg page body" }
+            val body = ByteArray(bodySize)
+            if (bodySize > 0) {
+                require(readAt(body, bodyStart, bodySize) == bodySize) { "Truncated Ogg page body" }
+            }
 
-            var bodyPos = bodyStart
-            var packetBuf = ByteArray(0)
+            var bodyPos = 0
             for (i in 0 until pageSegments) {
-                val segSize = oggBytes[segmentTableStart + i].toInt() and 0xff
-                val seg = oggBytes.copyOfRange(bodyPos, bodyPos + segSize)
+                val segSize = segmentTable[i].toInt() and 0xff
+                val seg = body.copyOfRange(bodyPos, bodyPos + segSize)
                 bodyPos += segSize
-                packetBuf += seg
+                packetParts.add(seg)
                 if (segSize < 255) {
+                    val packetBuf = concatPackets(packetParts)
+                    packetParts.clear()
                     if (!sawIdHeader && packetBuf.size >= 19 && startsWithOpusHead(packetBuf)) {
                         channels = packetBuf[9].toInt() and 0xff
                         sampleRate = readLe32(packetBuf, 12)
                         sawIdHeader = true
+                        onHeader(sampleRate, channels)
                     } else if (sawIdHeader && !startsWithOpusTags(packetBuf)) {
-                        packets.add(packetBuf)
+                        onPacket(packetBuf)
                     }
-                    packetBuf = ByteArray(0)
                 }
             }
             offset = bodyEnd
         }
 
         require(sawIdHeader) { "No OpusHead page found in Ogg stream" }
-        return OpusStream(sampleRateHz = sampleRate, channels = channels, packets = packets)
+        return OpusStreamMeta(sampleRateHz = sampleRate, channels = channels)
+    }
+
+    private fun concatPackets(parts: List<ByteArray>): ByteArray {
+        val total = parts.sumOf { it.size }
+        val out = ByteArray(total)
+        var o = 0
+        for (p in parts) {
+            p.copyInto(out, o)
+            o += p.size
+        }
+        return out
     }
 
     private fun startsWithOpusHead(packet: ByteArray): Boolean =

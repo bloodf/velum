@@ -73,7 +73,7 @@ fun ImportHubScreen(
                     status = strings.ux.importDuplicate
                     onOpenRecording(r.existingRecordingId)
                 }
-                is ImportResult.Failed -> status = r.message
+                is ImportResult.Failed -> status = strings.ux.genericError
             }
             importing = false
         }

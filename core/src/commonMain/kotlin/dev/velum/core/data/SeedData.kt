@@ -20,9 +20,13 @@ object SeedData {
     /** v10: tags + lang on templates for discoverability. */
     private const val SEED_VERSION = "10"
 
-    fun maybeSeed(db: VelumDatabase) {
+    /**
+     * Seeds builtins + default AutoFlow when [META_SEEDED] is missing or outdated.
+     * @return true when seeding ran (caller should rebuild FTS).
+     */
+    fun maybeSeed(db: VelumDatabase): Boolean {
         val q = db.velumQueries
-        if (q.getMeta(META_SEEDED).executeAsOneOrNull() == SEED_VERSION) return
+        if (q.getMeta(META_SEEDED).executeAsOneOrNull() == SEED_VERSION) return false
 
         val now = 1_729_942_755L
         db.transaction {
@@ -118,6 +122,15 @@ object SeedData {
 
             q.setMeta(META_SEEDED, SEED_VERSION)
         }
+        return true
+    }
+
+    /**
+     * After a local wipe, clear the seed marker so [maybeSeed] re-inserts the default
+     * AutoFlow and builtin templates (wipe deletes AutoFlows but leaves META_SEEDED).
+     */
+    fun clearSeedMarker(db: VelumDatabase) {
+        db.velumQueries.setMeta(META_SEEDED, "")
     }
 
     data class BuiltinTemplate(

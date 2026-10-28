@@ -20,13 +20,17 @@ object PlaudTemplateCatalog {
     fun parseJsonl(text: String): List<TemplateCatalogEntry> {
         if (text.isBlank()) return emptyList()
         return text.lineSequence()
-            .map { it.trim() }
-            .filter { it.isNotEmpty() && !it.startsWith("#") }
-            .map { line ->
-                val entry = json.decodeFromString(TemplateCatalogEntry.serializer(), line)
-                normalizePlaudEntry(entry)
-            }
+            .mapNotNull { parseJsonlLine(it) }
             .toList()
+    }
+
+    /** Parse one JSONL row; returns null for blank / comment / invalid lines. */
+    fun parseJsonlLine(line: String): TemplateCatalogEntry? {
+        val trimmed = line.trim()
+        if (trimmed.isEmpty() || trimmed.startsWith("#")) return null
+        return runCatching {
+            normalizePlaudEntry(json.decodeFromString(TemplateCatalogEntry.serializer(), trimmed))
+        }.getOrNull()
     }
 
     fun toCreditsMarkdown(entries: List<TemplateCatalogEntry> = All): String {

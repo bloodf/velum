@@ -98,6 +98,7 @@ import dev.velum.app.ui.components.AiGlowFooter
 import dev.velum.app.ui.components.BlackButton
 import dev.velum.app.ui.components.ChevronRow
 import dev.velum.app.ui.components.DualActionRow
+import dev.velum.app.ui.components.EmptyState
 import dev.velum.app.ui.components.LocalModelMissingDialog
 import dev.velum.app.ui.components.OutlineButton
 import dev.velum.app.ui.components.ThinDivider
@@ -193,13 +194,10 @@ fun RecordingDetailScreen(
     val isLiveRecording = recording?.status == "recording"
     val pausedThermal = recording?.status == "paused_thermal"
     val isFailed = recording?.status == "failed"
-    val generating = !isLiveRecording && (
-        recording?.status == "generating" ||
-            pausedThermal ||
-            (recording?.summary_markdown.isNullOrBlank() &&
-                recording?.status != "failed" &&
-                recording?.status != "ready" &&
-                recording?.status != "queued")
+    // Only true while a job is actively running — blank notes on a ready recording
+    // must show an empty CTA, not the forever "Generating" skeleton.
+    val generating = recording != null && !isLiveRecording && (
+        recording?.status == "generating" || pausedThermal
         )
 
     fun enqueueAfterGate(
@@ -578,8 +576,8 @@ fun RecordingDetailScreen(
                             askError = null
                             try {
                                 askAnswer = container.askAiChat.ask(recordingId, askDraft)
-                            } catch (t: Throwable) {
-                                askError = t.message ?: t.toString()
+                            } catch (_: Throwable) {
+                                askError = strings.ux.genericError
                             } finally {
                                 askBusy = false
                             }
@@ -689,6 +687,9 @@ fun RecordingDetailScreen(
         }
     }
     if (showSummaryVersions) {
+        LaunchedEffect(recordingId) {
+            container.repository.ensureBaselineVersion(recordingId)
+        }
         val versions by container.repository.observeSummaryVersions(recordingId)
             .collectAsState(emptyList())
         ModalBottomSheet(
@@ -1440,29 +1441,42 @@ private fun NotesPane(
                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
                 )
             }
-            if (generating || summary.isNullOrBlank()) {
-                Box(Modifier.weight(1f).fillMaxWidth()) {
-                    GeneratingBody()
-                    AiGlowFooter(Modifier.align(Alignment.BottomCenter))
+            when {
+                generating -> {
+                    Box(Modifier.weight(1f).fillMaxWidth()) {
+                        GeneratingBody()
+                        AiGlowFooter(Modifier.align(Alignment.BottomCenter))
+                    }
                 }
-            } else {
-                Column(
-                    Modifier
-                        .weight(1f)
-                        .verticalScroll(rememberScrollState())
-                        .padding(20.dp),
-                ) {
-                    MarkdownPreview(summary)
-                    Spacer(Modifier.height(20.dp))
-                    OutlineButton(strings.changeTemplate, onChangeTemplate)
-                    Spacer(Modifier.height(12.dp))
-                    OutlineButton(strings.summaryVersions, onSummaryVersions)
-                    Spacer(Modifier.height(12.dp))
-                    OutlineButton(strings.mindMap, onMindMap)
-                    Spacer(Modifier.height(12.dp))
-                    BlackButton(strings.askAi, onAskAi)
-                    Spacer(Modifier.height(12.dp))
-                    OutlineButton(strings.generateCustom, onGenerate)
+                summary.isNullOrBlank() -> {
+                    Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        EmptyState(
+                            title = strings.notesEmptyTitle,
+                            subtitle = strings.notesEmptyHint,
+                            actionLabel = strings.generateCustom,
+                            onAction = onGenerate,
+                        )
+                    }
+                }
+                else -> {
+                    Column(
+                        Modifier
+                            .weight(1f)
+                            .verticalScroll(rememberScrollState())
+                            .padding(20.dp),
+                    ) {
+                        MarkdownPreview(summary)
+                        Spacer(Modifier.height(20.dp))
+                        OutlineButton(strings.changeTemplate, onChangeTemplate)
+                        Spacer(Modifier.height(12.dp))
+                        OutlineButton(strings.summaryVersions, onSummaryVersions)
+                        Spacer(Modifier.height(12.dp))
+                        OutlineButton(strings.mindMap, onMindMap)
+                        Spacer(Modifier.height(12.dp))
+                        BlackButton(strings.askAi, onAskAi)
+                        Spacer(Modifier.height(12.dp))
+                        OutlineButton(strings.generateCustom, onGenerate)
+                    }
                 }
             }
         }

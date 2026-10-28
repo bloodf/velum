@@ -63,37 +63,42 @@ class RecordingProcessor(
             if (!localPath.isNullOrBlank()) {
                 emit(JobProgress.Running(0.1f, "Decoding audio"))
                 awaitThermalGate { emit(it) }
-                val raw = readFileBytes(localPath)
                 filename = localPath.substringAfterLast('/')
                 spillRoot.createDirectories()
                 val pcmFile = spillRoot.resolve("pcm.s16le")
-                if (filename.endsWith(".ogg", ignoreCase = true) ||
-                    filename.endsWith(".opus", ignoreCase = true) ||
-                    looksLikeOgg(raw)
-                ) {
-                    // Stream frame-by-frame to disk — never hold full PCM on the heap.
-                    val meta = createOpusDecoder().decodeToPcmFile(raw, pcmFile)
+                val oggByExt = filename.endsWith(".ogg", ignoreCase = true) ||
+                    filename.endsWith(".opus", ignoreCase = true)
+                if (oggByExt) {
+                    // Stream Ogg pages from disk — never hold full Ogg or PCM on the heap.
+                    val meta = createOpusDecoder().decodePathToPcmFile(localPath, pcmFile)
                     sampleRate = meta.sampleRateHz
                     pcmBuffer = PcmAudioBuffer.fromExistingFile(pcmFile, meta.sizeBytes)
-                } else if (filename.endsWith(".wav", ignoreCase = true) || looksLikeWav(raw)) {
-                    val range = locateWavPcm(raw)
-                    sampleRate = range.sampleRateHz
-                    val pcmLen = (range.endExclusive - range.start).toLong()
-                    pcmBuffer = if (pcmLen > PcmAudioBuffer.IN_MEMORY_BUDGET_BYTES) {
-                        // Copy data chunk in slices — avoid a second full-PCM heap array.
-                        appendRangeToFile(raw, range.start, range.endExclusive, pcmFile)
-                        PcmAudioBuffer.fromExistingFile(pcmFile, pcmLen)
-                    } else {
-                        val pcm = if (pcmLen == 0L) {
-                            ByteArray(0)
-                        } else {
-                            raw.copyOfRange(range.start, range.endExclusive)
-                        }
-                        PcmAudioBuffer.fromPcmBytes(pcm, spillRoot)
-                    }
                 } else {
-                    sampleRate = 16_000
-                    pcmBuffer = PcmAudioBuffer.fromPcmBytes(raw, spillRoot)
+                    val raw = readFileBytes(localPath)
+                    if (looksLikeOgg(raw)) {
+                        val meta = createOpusDecoder().decodeToPcmFile(raw, pcmFile)
+                        sampleRate = meta.sampleRateHz
+                        pcmBuffer = PcmAudioBuffer.fromExistingFile(pcmFile, meta.sizeBytes)
+                    } else if (filename.endsWith(".wav", ignoreCase = true) || looksLikeWav(raw)) {
+                        val range = locateWavPcm(raw)
+                        sampleRate = range.sampleRateHz
+                        val pcmLen = (range.endExclusive - range.start).toLong()
+                        pcmBuffer = if (pcmLen > PcmAudioBuffer.IN_MEMORY_BUDGET_BYTES) {
+                            // Copy data chunk in slices — avoid a second full-PCM heap array.
+                            appendRangeToFile(raw, range.start, range.endExclusive, pcmFile)
+                            PcmAudioBuffer.fromExistingFile(pcmFile, pcmLen)
+                        } else {
+                            val pcm = if (pcmLen == 0L) {
+                                ByteArray(0)
+                            } else {
+                                raw.copyOfRange(range.start, range.endExclusive)
+                            }
+                            PcmAudioBuffer.fromPcmBytes(pcm, spillRoot)
+                        }
+                    } else {
+                        sampleRate = 16_000
+                        pcmBuffer = PcmAudioBuffer.fromPcmBytes(raw, spillRoot)
+                    }
                 }
             } else {
                 // Demo / seed rows have no audio file — keep existing transcript path for summary-only.
