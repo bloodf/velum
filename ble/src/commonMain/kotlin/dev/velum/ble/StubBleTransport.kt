@@ -21,8 +21,8 @@ class StubBleTransport(
     private val _devices = MutableStateFlow<List<ConnectedDevice>>(emptyList())
     override val discoveredDevices: StateFlow<List<ConnectedDevice>> = _devices.asStateFlow()
 
-    override var activeProfile: GattProfile? = null
-        private set
+    private var _activeProfile: GattProfile? = null
+    override val activeProfile: GattProfile? get() = _activeProfile
 
     override fun advertisements(): Flow<ConnectedDevice> = emptyFlow()
 
@@ -38,12 +38,12 @@ class StubBleTransport(
 
     override suspend fun connect(deviceId: String, profile: GattProfile) {
         // Connect never succeeds on the stub — do not publish an active profile.
-        activeProfile = null
+        _activeProfile = null
         _state.value = BleConnectionState.Failed(unavailableReason)
     }
 
     override suspend fun disconnect() {
-        activeProfile = null
+        _activeProfile = null
         _state.value = BleConnectionState.Idle
     }
 

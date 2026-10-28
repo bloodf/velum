@@ -47,8 +47,8 @@ class KableBleTransport : BleTransport, BleSealedWriteSink {
     private val _devices = MutableStateFlow<List<ConnectedDevice>>(emptyList())
     override val discoveredDevices: StateFlow<List<ConnectedDevice>> = _devices.asStateFlow()
 
-    override var activeProfile: GattProfile? = null
-        private set
+    private var _activeProfile: GattProfile? = null
+    override val activeProfile: GattProfile? get() = _activeProfile
 
     private val advertisementFlow = MutableSharedFlow<ConnectedDevice>(extraBufferCapacity = 64)
     private val notifyFlows =
@@ -152,7 +152,7 @@ class KableBleTransport : BleTransport, BleSealedWriteSink {
                 notifyJobs = jobs
                 val device = adv.toConnectedDevice()
                 // Publish profile only after connect + notify setup succeed.
-                activeProfile = profile
+                _activeProfile = profile
                 _state.value = BleConnectionState.Connected(device)
                 disconnectWatchJob?.cancel()
                 disconnectWatchJob = scope.launch {
@@ -165,14 +165,14 @@ class KableBleTransport : BleTransport, BleSealedWriteSink {
                                     runCatching { p.close() }
                                     peripheral = null
                                 }
-                                activeProfile = null
+                                _activeProfile = null
                                 notifyFlows.clear()
                                 _state.value = BleConnectionState.Idle
                             }
                         }
                 }
             } catch (t: Throwable) {
-                activeProfile = null
+                _activeProfile = null
                 notifyFlows.clear()
                 peripheral = null
                 _state.value = BleConnectionState.Failed(t.message ?: t.toString())
@@ -194,7 +194,7 @@ class KableBleTransport : BleTransport, BleSealedWriteSink {
             runCatching { peripheral?.disconnect() }
             peripheral?.close()
             peripheral = null
-            activeProfile = null
+            _activeProfile = null
             notifyFlows.clear()
             _state.value = BleConnectionState.Idle
         }
@@ -235,7 +235,7 @@ class KableBleTransport : BleTransport, BleSealedWriteSink {
                 "Characteristic '${ch.name}' on profile '${profile.id}' is not writable"
             }
             val serviceUuid = profile.resolveServiceUuid(ch)
-            // No opcode parse — plaintext already checked by PlaudBleTransport.
+            // No opcode parse — plaintext already checked by PlaudEncryptedSession.
             writeToPeripheral(p, serviceUuid, ch.uuid, payload, withoutResponse)
         }
     }

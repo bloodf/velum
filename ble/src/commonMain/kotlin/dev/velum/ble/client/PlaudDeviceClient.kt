@@ -2,6 +2,7 @@ package dev.velum.ble.client
 
 import dev.velum.ble.BleTransport
 import dev.velum.ble.PlaudBleTransport
+import dev.velum.ble.PlaudEncryptedSession
 import dev.velum.protocol.Battery
 import dev.velum.protocol.BatteryReading
 import dev.velum.protocol.Bytes
@@ -59,7 +60,8 @@ class PlaudDeviceClient(
     private var notifyJob: Job? = null
 
     private var secret: Protocol20SessionSecret? = null
-    private var sendSeq: Long = 2
+    /** Encrypted link owned by `:ble`; seals plaintext inside the module. */
+    private var encryptedSession: PlaudEncryptedSession? = null
     private var recvSeq: Long = 0
     private var protocolVersion: Int = 20
 
@@ -147,7 +149,11 @@ class PlaudDeviceClient(
                 "Unlock test plaintext mismatch"
             }
             secret = parsed
-            sendSeq = 2
+            encryptedSession = ble.openEncryptedSession(
+                cipher = cipher,
+                secret = parsed,
+                initialSendSeq = 2,
+            )
             recvSeq = 0
         }
     }
@@ -329,20 +335,13 @@ class PlaudDeviceClient(
         writeMutex.withLock {
             // Client send-path layer: reject forbidden opcodes/settings on plaintext.
             assertOutboundAllowed(packet)
-            val sec = secret
-            if (sec == null) {
+            val session = encryptedSession
+            if (session == null) {
                 // Transport layer also guards plaintext on public write().
                 ble.write(packet, withoutResponse = false)
             } else {
-                val sealed = cipher.sealPacket(sec, sendSeq, packet)
-                sendSeq += 1
-                // Transport-layer check on plaintext, then internal sealed write
-                // so ciphertext is never parsed as an opcode.
-                ble.writeSealedAfterPlaintextGuard(
-                    plaintext = packet,
-                    sealed = sealed,
-                    withoutResponse = false,
-                )
+                // :ble seals inside PlaudEncryptedSession after its own plaintext guard.
+                session.writeEncrypted(packet, withoutResponse = false)
             }
         }
     }
@@ -351,12 +350,12 @@ class PlaudDeviceClient(
         timeout: Duration,
         predicate: (ByteArray) -> Boolean,
     ): ByteArray {
-        val sec = secret
+        val session = encryptedSession
         return withTimeout(timeout) {
             while (true) {
                 val raw = inbound.receive()
-                val frame = if (sec != null) {
-                    val opened = cipher.openPacket(sec, recvSeq, raw) ?: continue
+                val frame = if (session != null) {
+                    val opened = session.openPacket(recvSeq, raw) ?: continue
                     recvSeq = opened.first + 1
                     opened.second
                 } else {
