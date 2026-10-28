@@ -2,6 +2,7 @@ package dev.velum.ble.fake
 
 import dev.velum.ble.BleConnectionState
 import dev.velum.ble.BleTransport
+import dev.velum.ble.BleWriteSafety
 import dev.velum.ble.GattProfile
 import dev.velum.ble.GattProfiles
 import dev.velum.ble.PlaudWriteGuard
@@ -94,29 +95,52 @@ class FakeBleTransport(
         characteristic: String,
         payload: ByteArray,
         withoutResponse: Boolean,
+        safety: BleWriteSafety,
     ) {
         check(_state.value is BleConnectionState.Connected) { "Not connected" }
         val profile = activeProfile ?: error("No active GATT profile")
-        profile.characteristic(characteristic) // validate name
-        PlaudWriteGuard.maybeRequireAllowed(profile, characteristic, payload)
+        val ch = profile.characteristic(characteristic)
+        PlaudWriteGuard.maybeRequireAllowed(
+            serviceUuid = profile.resolveServiceUuid(ch),
+            characteristicUuid = ch.uuid,
+            payload = payload,
+            safety = safety,
+        )
         _writes += characteristic to payload.copyOf()
         if (
-            profile.id == GattProfiles.Plaud.id &&
-            characteristic == GattProfiles.PLAUD_WRITE &&
-            peripheral != null
+            PlaudWriteGuard.isPlaudWriteTarget(
+                profile.resolveServiceUuid(ch),
+                ch.uuid,
+            ) &&
+            peripheral != null &&
+            safety == BleWriteSafety.GuardPlaintext
         ) {
+            peripheral.onWrite(payload)
+        } else if (
+            PlaudWriteGuard.isPlaudWriteTarget(
+                profile.resolveServiceUuid(ch),
+                ch.uuid,
+            ) &&
+            peripheral != null &&
+            safety == BleWriteSafety.AlreadyChecked
+        ) {
+            // Sealed session traffic — peripheral speaks the same cipher as the client.
             peripheral.onWrite(payload)
         }
     }
 
     override fun notifications(characteristic: String): Flow<ByteArray> {
         val profile = activeProfile
-        if (
-            profile?.id == GattProfiles.Plaud.id &&
-            characteristic == GattProfiles.PLAUD_NOTIFY &&
-            peripheral != null
-        ) {
-            return peripheral.notifications
+        if (profile != null) {
+            val ch = runCatching { profile.characteristic(characteristic) }.getOrNull()
+            if (
+                ch != null &&
+                ch.uuid.equals(PlaudUuids.NOTIFY, ignoreCase = true) &&
+                profile.resolveServiceUuid(ch).equals(PlaudUuids.SERVICE, ignoreCase = true) &&
+                peripheral != null
+            ) {
+                return peripheral.notifications
+            }
         }
         return notifyFlows[characteristic]?.asSharedFlow()
             ?: emptyFlow()
