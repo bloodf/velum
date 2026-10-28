@@ -349,14 +349,23 @@ class IdentityImportSecureStoreTest {
             first.putString(SecureKeys.DEVICE_SERIAL, SyntheticIdentityFixtures.SERIAL)
             first.putString(SecureKeys.DEVICE_BIND_TOKEN, SyntheticIdentityFixtures.BIND_TOKEN)
 
-            // Truncated key (crash between create and write) — treat as missing.
-            java.nio.file.Files.write(keyFile, byteArrayOf(0x01, 0x02, 0x03))
+            // Truncated key (crash between create and write) — quarantine, don't overwrite.
+            val badBytes = byteArrayOf(0x01, 0x02, 0x03)
+            java.nio.file.Files.write(keyFile, badBytes)
             val second = DesktopSecureStore(file = props, keyFile = keyFile)
             assertEquals(32, java.nio.file.Files.readAllBytes(keyFile).size)
             assertNull(second.getString(SecureKeys.DEVICE_SERIAL))
             assertNull(second.getString(SecureKeys.DEVICE_BIND_TOKEN))
             assertTrue(second.contains(SecureKeys.DEVICE_SERIAL))
             assertTrue(second.contains(SecureKeys.DEVICE_BIND_TOKEN))
+
+            val badFiles = java.nio.file.Files.list(dir).use { stream ->
+                stream.filter { p ->
+                    p.fileName.toString().startsWith("secure.aes256.bad-")
+                }.toList()
+            }
+            assertEquals(1, badFiles.size)
+            assertTrue(badBytes.contentEquals(java.nio.file.Files.readAllBytes(badFiles[0])))
 
             val onDisk = props.toFile().readText()
             assertTrue(onDisk.contains(SecureKeys.DEVICE_SERIAL))
