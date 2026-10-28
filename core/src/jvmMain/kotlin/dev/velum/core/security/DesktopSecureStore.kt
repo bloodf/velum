@@ -21,19 +21,24 @@ import kotlinx.coroutines.sync.withLock
  * All mutate + flush sequences share one [Mutex]; flushes snapshot the map and
  * write via temp file + atomic move.
  *
- * The AES key file is written through a temp file + atomic move (owner-only from
- * creation, no-replace create so concurrent starters converge on one key). A key
- * file of the wrong length is quarantined then treated like a missing key: a new
- * key is generated and existing ciphertext entries are kept.
- *
- * @param onOwnerOnlyTempCreated optional test hook invoked when an owner-only
- * temp file is created during key/properties writes (before any bytes are written).
+ * Key load/create runs under [AesKeyFileLock] (cross-process file lock + same-JVM
+ * monitor). New keys are published whole (temp + fsync + hard link / no-replace
+ * move) so readers never see a partial `secure.aes256`. A wrong-length key file
+ * is quarantined then replaced; existing ciphertext entries are kept.
  */
-class DesktopSecureStore(
-    private val file: Path = Path.of(System.getProperty("user.home"), ".velum", "secure.properties"),
-    private val keyFile: Path = file.resolveSibling("secure.aes256"),
-    private val onOwnerOnlyTempCreated: ((Path) -> Unit)? = null,
+class DesktopSecureStore private constructor(
+    private val file: Path,
+    private val keyFile: Path,
+    private val onOwnerOnlyTempCreated: ((Path) -> Unit)?,
 ) : SecureStore {
+    /**
+     * Production constructor — no test hooks.
+     */
+    constructor(
+        file: Path = Path.of(System.getProperty("user.home"), ".velum", "secure.properties"),
+        keyFile: Path = file.resolveSibling("secure.aes256"),
+    ) : this(file, keyFile, onOwnerOnlyTempCreated = null)
+
     private val mutex = Mutex()
     private val key: SecretKey = loadOrCreateKey(keyFile)
     private val backend = linkedMapOf<String, String>()
@@ -98,9 +103,17 @@ class DesktopSecureStore(
     }
 
     companion object {
-        private const val AES_256_KEY_BYTES = 32
+        /**
+         * Test-only factory: same as the public constructor plus an owner-only
+         * temp creation probe (not reachable from production call sites).
+         */
+        internal fun createForTest(
+            file: Path,
+            keyFile: Path,
+            onOwnerOnlyTempCreated: ((Path) -> Unit)? = null,
+        ): DesktopSecureStore = DesktopSecureStore(file, keyFile, onOwnerOnlyTempCreated)
 
-        /** Read a valid 32-byte AES key from [path], or null if missing/wrong length/raced away. */
+        /** Read a valid AES-256 key from [path], or null if missing/wrong length/raced away. */
         internal fun readValidKeyBytes(path: Path): ByteArray? {
             if (!path.exists()) return null
             val bytes = try {
@@ -113,13 +126,23 @@ class DesktopSecureStore(
 
         /**
          * Load an existing AES-256 key, quarantine a wrong-length file, or mint a
-         * new key with a CREATE_NEW write so concurrent starters share one key.
+         * new key. Entire critical section runs under [AesKeyFileLock].
+         *
+         * @param afterKeyTempReady test hook after durable temp write, before publish
          */
-        internal fun loadOrCreateKey(path: Path): SecretKey {
+        internal fun loadOrCreateKey(
+            path: Path,
+            afterKeyTempReady: (() -> Unit)? = null,
+        ): SecretKey = AesKeyFileLock.withLock(path) {
+            loadOrCreateKeyLocked(path, afterKeyTempReady)
+        }
+
+        private fun loadOrCreateKeyLocked(
+            path: Path,
+            afterKeyTempReady: (() -> Unit)?,
+        ): SecretKey {
             readValidKeyBytes(path)?.let { return JvmAesGcmSecureStore.keyFromBytes(it) }
 
-            // Wrong-length file: quarantine only if it is *still* wrong-length.
-            // A concurrent starter may have already minted a valid key at [path].
             if (path.exists()) {
                 val bytes = try {
                     Files.readAllBytes(path)
@@ -131,19 +154,7 @@ class DesktopSecureStore(
                     bytes.size == AES_256_KEY_BYTES ->
                         return JvmAesGcmSecureStore.keyFromBytes(bytes)
                     else -> {
-                        // Re-check immediately before quarantine to avoid moving a
-                        // newly minted valid key that appeared after our first read.
-                        readValidKeyBytes(path)?.let {
-                            return JvmAesGcmSecureStore.keyFromBytes(it)
-                        }
-                        val stillBad = try {
-                            Files.readAllBytes(path)
-                        } catch (_: NoSuchFileException) {
-                            null
-                        }
-                        if (stillBad != null && stillBad.size != AES_256_KEY_BYTES) {
-                            quarantineToBadSibling(path)
-                        }
+                        quarantineToBadSibling(path)
                         readValidKeyBytes(path)?.let {
                             return JvmAesGcmSecureStore.keyFromBytes(it)
                         }
@@ -156,20 +167,37 @@ class DesktopSecureStore(
 
             val generated = JvmAesGcmSecureStore.generateAes256Key()
             return try {
-                // CREATE_NEW: never replace a key another process just wrote.
-                createOwnerOnlyBytesExclusive(path, generated.encoded)
+                publishOwnerOnlyBytesExclusive(
+                    target = path,
+                    bytes = generated.encoded,
+                    afterTempReady = afterKeyTempReady,
+                )
                 generated
             } catch (_: FileAlreadyExistsException) {
-                // Winner may still be writing — wait briefly for a valid 32-byte key.
-                repeat(100) {
-                    readValidKeyBytes(path)?.let {
-                        return JvmAesGcmSecureStore.keyFromBytes(it)
-                    }
-                    Thread.sleep(1)
+                // Under the lock another creator should be impossible; re-evaluate.
+                readValidKeyBytes(path)?.let {
+                    return JvmAesGcmSecureStore.keyFromBytes(it)
                 }
-                val winner = readValidKeyBytes(path)
-                    ?: error("key file appeared but is not a valid AES-256 key")
-                JvmAesGcmSecureStore.keyFromBytes(winner)
+                if (path.exists()) {
+                    val leftover = try {
+                        Files.readAllBytes(path)
+                    } catch (_: NoSuchFileException) {
+                        null
+                    }
+                    if (leftover != null && leftover.size != AES_256_KEY_BYTES) {
+                        quarantineToBadSibling(path)
+                    }
+                }
+                readValidKeyBytes(path)?.let {
+                    return JvmAesGcmSecureStore.keyFromBytes(it)
+                }
+                val minted = JvmAesGcmSecureStore.generateAes256Key()
+                publishOwnerOnlyBytesExclusive(
+                    target = path,
+                    bytes = minted.encoded,
+                    afterTempReady = afterKeyTempReady,
+                )
+                minted
             }
         }
     }

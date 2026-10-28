@@ -1,6 +1,7 @@
 package dev.velum.core.security
 
 import java.nio.ByteBuffer
+import java.nio.channels.FileChannel
 import java.nio.file.FileAlreadyExistsException
 import java.nio.file.FileSystems
 import java.nio.file.Files
@@ -18,6 +19,9 @@ import java.nio.file.attribute.UserPrincipal
 import java.security.SecureRandom
 import java.util.EnumSet
 import java.util.Properties
+
+/** AES-256 raw key length in bytes (shared by vault blob / key-file logic). */
+internal const val AES_256_KEY_BYTES: Int = 32
 
 /** POSIX owner-read/write only (`rw-------`). */
 internal val OWNER_READ_WRITE: Set<PosixFilePermission> = setOf(
@@ -201,38 +205,92 @@ internal fun atomicWriteOwnerOnlyBytes(
 }
 
 /**
- * CREATE_NEW write of [bytes] to [target] (owner-only). Fails with
- * [FileAlreadyExistsException] if [target] already exists — used so concurrent
- * key minting converges on one winner. Prefer this over temp+ATOMIC_MOVE without
- * replace: Linux `rename(2)` can clobber even when REPLACE_EXISTING is omitted.
+ * Publish [bytes] as a complete [target] so readers never observe a partial file.
+ *
+ * Writes an owner-only temp in the same directory, fsyncs it, then links it into
+ * place with [Files.createLink] (no replace). Where hard links are unsupported,
+ * falls back to [StandardCopyOption.ATOMIC_MOVE] only when [target] is absent
+ * (caller must hold [AesKeyFileLock]).
+ *
+ * [afterTempReady] is a test-only hook invoked after the temp is durable and
+ * before the publish step (stall a writer while another loader waits on the lock).
+ *
+ * @throws FileAlreadyExistsException if [target] already exists
  */
-internal fun createOwnerOnlyBytesExclusive(target: Path, bytes: ByteArray) {
+internal fun publishOwnerOnlyBytesExclusive(
+    target: Path,
+    bytes: ByteArray,
+    onTempCreated: ((Path) -> Unit)? = null,
+    afterTempReady: (() -> Unit)? = null,
+) {
+    require(bytes.size == AES_256_KEY_BYTES) { "AES-256 key must be $AES_256_KEY_BYTES bytes" }
     Files.createDirectories(target.parent)
-    val options = setOf(StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)
-    if (supportsPosixPermissions()) {
-        try {
-            Files.newByteChannel(
-                target,
-                options,
-                PosixFilePermissions.asFileAttribute(OWNER_READ_WRITE),
-            ).use { channel ->
-                channel.write(ByteBuffer.wrap(bytes))
-            }
-            return
-        } catch (_: UnsupportedOperationException) {
-            // Fall through to ACL / plain exclusive create.
-        }
+    if (Files.exists(target)) {
+        throw FileAlreadyExistsException(target.toFile())
     }
-    // ACL / non-POSIX: exclusive empty create, then write (brief empty window).
-    createOwnerOnlyFile(target)
+    val tmp = createOwnerOnlyTempFile(
+        directory = target.parent,
+        prefix = ".${target.fileName}.",
+        suffix = ".publish.tmp",
+        onTempCreated = onTempCreated,
+    )
     try {
-        Files.write(target, bytes)
+        FileChannel.open(
+            tmp,
+            StandardOpenOption.WRITE,
+            StandardOpenOption.TRUNCATE_EXISTING,
+        ).use { channel ->
+            channel.write(ByteBuffer.wrap(bytes))
+            channel.force(/* metaData = */ true)
+        }
+        afterTempReady?.invoke()
+        try {
+            // link(existing=tmp, link=target) — target must not exist.
+            Files.createLink(target, tmp)
+        } catch (_: UnsupportedOperationException) {
+            publishByAtomicMoveNoReplace(tmp, target)
+            return
+        } catch (_: FileAlreadyExistsException) {
+            throw FileAlreadyExistsException(target.toFile())
+        }
+        // Drop the temp name; [target] keeps the inode.
+        Files.deleteIfExists(tmp)
+        setOwnerOnlyPermissions(target)
         if (!supportsPosixPermissions()) {
             applyOwnerOnlyAcl(target)
         }
+    } catch (e: FileAlreadyExistsException) {
+        Files.deleteIfExists(tmp)
+        throw e
     } catch (t: Throwable) {
+        Files.deleteIfExists(tmp)
         Files.deleteIfExists(target)
         throw t
+    }
+}
+
+/**
+ * ATOMIC_MOVE fallback when hard links are unavailable. Must run under
+ * [AesKeyFileLock]; refuses to replace an existing [target].
+ *
+ * Note: Linux `rename(2)` can clobber without REPLACE_EXISTING — we check
+ * existence first and rely on the lock so no concurrent creator races us.
+ */
+private fun publishByAtomicMoveNoReplace(tmp: Path, target: Path) {
+    if (Files.exists(target)) {
+        throw FileAlreadyExistsException(target.toFile())
+    }
+    try {
+        Files.move(tmp, target, StandardCopyOption.ATOMIC_MOVE)
+    } catch (_: java.nio.file.AtomicMoveNotSupportedException) {
+        if (Files.exists(target)) {
+            throw FileAlreadyExistsException(target.toFile())
+        }
+        Files.move(tmp, target)
+    }
+    setOwnerOnlyPermissions(target)
+    if (!supportsPosixPermissions()) {
+        applyOwnerOnlyAcl(target)
     }
 }
 
@@ -295,8 +353,8 @@ internal fun quarantineToBadSibling(
         }
         try {
             // Abort if [path] vanished or a concurrent starter already wrote a
-            // valid 32-byte AES key there — never quarantine a good key.
-            if (!Files.exists(path) || Files.size(path) == 32L) {
+            // valid AES-256 key there — never quarantine a good key.
+            if (!Files.exists(path) || Files.size(path) == AES_256_KEY_BYTES.toLong()) {
                 Files.deleteIfExists(bad)
                 return null
             }
