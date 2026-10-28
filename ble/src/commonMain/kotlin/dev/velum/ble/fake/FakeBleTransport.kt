@@ -1,8 +1,8 @@
 package dev.velum.ble.fake
 
 import dev.velum.ble.BleConnectionState
+import dev.velum.ble.BleSealedWriteSink
 import dev.velum.ble.BleTransport
-import dev.velum.ble.BleWriteSafety
 import dev.velum.ble.GattProfile
 import dev.velum.ble.GattProfiles
 import dev.velum.ble.PlaudWriteGuard
@@ -17,6 +17,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * In-process [BleTransport] for CI.
@@ -30,8 +32,10 @@ class FakeBleTransport(
     private val deviceId: String = "fake-note-pro",
     private val serial: String = "881FAKE1",
     private val name: String = "PLAUD NOTE PRO",
-) : BleTransport {
+) : BleTransport, BleSealedWriteSink {
     override val isAvailable: Boolean = true
+
+    private val mutex = Mutex()
 
     private val _state = MutableStateFlow<BleConnectionState>(BleConnectionState.Idle)
     override val connectionState: StateFlow<BleConnectionState> = _state.asStateFlow()
@@ -62,69 +66,90 @@ class FakeBleTransport(
     override fun advertisements(): Flow<ConnectedDevice> = emptyFlow()
 
     override suspend fun startScan() {
-        _state.value = BleConnectionState.Scanning
-        _devices.value = listOf(device)
+        mutex.withLock {
+            _state.value = BleConnectionState.Scanning
+            _devices.value = listOf(device)
+        }
     }
 
     override suspend fun stopScan() {
-        if (_state.value is BleConnectionState.Scanning) {
-            _state.value = BleConnectionState.Idle
+        mutex.withLock {
+            if (_state.value is BleConnectionState.Scanning) {
+                _state.value = BleConnectionState.Idle
+            }
         }
     }
 
     override suspend fun connect(deviceId: String, profile: GattProfile) {
-        peripheral?.resetUnlock()
-        activeProfile = profile
-        _writes.clear()
-        notifyFlows.clear()
-        for (ch in profile.notifyCharacteristics()) {
-            notifyFlows[ch.name] = MutableSharedFlow(extraBufferCapacity = 128)
+        mutex.withLock {
+            peripheral?.resetUnlock()
+            _writes.clear()
+            notifyFlows.clear()
+            for (ch in profile.notifyCharacteristics()) {
+                notifyFlows[ch.name] = MutableSharedFlow(extraBufferCapacity = 128)
+            }
+            _state.value = BleConnectionState.Connecting(deviceId)
+            // Set profile only after the fake "link" is up.
+            activeProfile = profile
+            _state.value = BleConnectionState.Connected(device)
         }
-        _state.value = BleConnectionState.Connecting(deviceId)
-        _state.value = BleConnectionState.Connected(device)
     }
 
     override suspend fun disconnect() {
-        peripheral?.resetUnlock()
-        activeProfile = null
-        notifyFlows.clear()
-        _state.value = BleConnectionState.Idle
+        mutex.withLock {
+            peripheral?.resetUnlock()
+            activeProfile = null
+            notifyFlows.clear()
+            _state.value = BleConnectionState.Idle
+        }
     }
 
     override suspend fun write(
         characteristic: String,
         payload: ByteArray,
         withoutResponse: Boolean,
-        safety: BleWriteSafety,
     ) {
-        check(_state.value is BleConnectionState.Connected) { "Not connected" }
-        val profile = activeProfile ?: error("No active GATT profile")
-        val ch = profile.characteristic(characteristic)
-        PlaudWriteGuard.maybeRequireAllowed(
-            serviceUuid = profile.resolveServiceUuid(ch),
-            characteristicUuid = ch.uuid,
-            payload = payload,
-            safety = safety,
-        )
+        mutex.withLock {
+            check(_state.value is BleConnectionState.Connected) { "Not connected" }
+            val profile = activeProfile ?: error("No active GATT profile")
+            val ch = profile.characteristic(characteristic)
+            PlaudWriteGuard.requireAllowedIfPlaudWrite(
+                serviceUuid = profile.resolveServiceUuid(ch),
+                characteristicUuid = ch.uuid,
+                payload = payload,
+            )
+            recordAndForward(characteristic, profile, ch.uuid, payload)
+        }
+    }
+
+    override suspend fun writeSealedAlreadyGuarded(
+        characteristic: String,
+        payload: ByteArray,
+        withoutResponse: Boolean,
+    ) {
+        mutex.withLock {
+            check(_state.value is BleConnectionState.Connected) { "Not connected" }
+            val profile = activeProfile ?: error("No active GATT profile")
+            val ch = profile.characteristic(characteristic)
+            // No opcode parse — caller must have checked plaintext already.
+            recordAndForward(characteristic, profile, ch.uuid, payload)
+        }
+    }
+
+    private suspend fun recordAndForward(
+        characteristic: String,
+        profile: GattProfile,
+        characteristicUuid: String,
+        payload: ByteArray,
+    ) {
         _writes += characteristic to payload.copyOf()
         if (
-            PlaudWriteGuard.isPlaudWriteTarget(
-                profile.resolveServiceUuid(ch),
-                ch.uuid,
-            ) &&
             peripheral != null &&
-            safety == BleWriteSafety.GuardPlaintext
-        ) {
-            peripheral.onWrite(payload)
-        } else if (
             PlaudWriteGuard.isPlaudWriteTarget(
-                profile.resolveServiceUuid(ch),
-                ch.uuid,
-            ) &&
-            peripheral != null &&
-            safety == BleWriteSafety.AlreadyChecked
+                profile.resolveServiceUuid(profile.characteristic(characteristic)),
+                characteristicUuid,
+            )
         ) {
-            // Sealed session traffic — peripheral speaks the same cipher as the client.
             peripheral.onWrite(payload)
         }
     }
