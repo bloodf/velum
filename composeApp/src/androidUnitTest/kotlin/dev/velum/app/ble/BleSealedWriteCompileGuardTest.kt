@@ -9,48 +9,109 @@ import kotlin.test.assertTrue
 import kotlin.test.fail
 
 /**
- * Compile-time negative check from **outside** `:ble` (this is `:composeApp`).
+ * Compile-time negative checks from **outside** `:ble` (this is `:composeApp`).
  *
- * Runs the Kotlin compiler against a probe that calls
- * `writeSealedAlreadyGuarded` on [dev.velum.ble.KableBleTransport],
- * [dev.velum.ble.fake.FakeBleTransport], and [dev.velum.ble.StubBleTransport].
- * That call must fail with an unresolved / invisible-member error — sealed
- * writes live only on the module-internal `BleSealedWriteSink`.
+ * 1. Calling `writeSealedAlreadyGuarded` on each concrete transport
+ *    (Fake / Stub / Kable) must fail to compile.
+ * 2. Passing a [dev.velum.protocol.SessionCipher] into
+ *    [dev.velum.ble.PlaudBleTransport.openEncryptedSession] must fail to compile.
  *
- * Locates `kotlin-compiler-embeddable` (and companion jars) from the local
- * Gradle cache so we do not need build-file changes.
+ * Locates `kotlin-compiler-embeddable` from the local Gradle cache (no build-file
+ * changes).
  */
 class BleSealedWriteCompileGuardTest {
     @Test
-    fun writeSealedAlreadyGuarded_unresolvedOnPublicTransports_outsideBleModule() {
-        val work = Files.createTempDirectory("ble-sealed-compile-guard").toFile()
-        try {
-            val probe = File(work, "SealedWriteProbe.kt")
-            probe.writeText(
-                """
+    fun writeSealedAlreadyGuarded_unresolvedOnFakeBleTransport() {
+        assertProbeFailsToCompile(
+            fileName = "FakeSealedWriteProbe.kt",
+            source = """
                 package probe
-
-                import dev.velum.ble.KableBleTransport
-                import dev.velum.ble.StubBleTransport
                 import dev.velum.ble.fake.FakeBleTransport
                 import kotlinx.coroutines.runBlocking
-
                 fun main() = runBlocking {
                     FakeBleTransport().writeSealedAlreadyGuarded("write", byteArrayOf(1))
+                }
+            """.trimIndent(),
+            mustMention = "writeSealedAlreadyGuarded",
+        )
+    }
+
+    @Test
+    fun writeSealedAlreadyGuarded_unresolvedOnStubBleTransport() {
+        assertProbeFailsToCompile(
+            fileName = "StubSealedWriteProbe.kt",
+            source = """
+                package probe
+                import dev.velum.ble.StubBleTransport
+                import kotlinx.coroutines.runBlocking
+                fun main() = runBlocking {
                     StubBleTransport().writeSealedAlreadyGuarded("write", byteArrayOf(1))
+                }
+            """.trimIndent(),
+            // Class is internal to :ble — either the type or the method is invisible.
+            mustMentionAny = listOf("StubBleTransport", "writeSealedAlreadyGuarded"),
+        )
+    }
+
+    @Test
+    fun writeSealedAlreadyGuarded_unresolvedOnKableBleTransport() {
+        assertProbeFailsToCompile(
+            fileName = "KableSealedWriteProbe.kt",
+            source = """
+                package probe
+                import dev.velum.ble.KableBleTransport
+                import kotlinx.coroutines.runBlocking
+                fun main() = runBlocking {
                     KableBleTransport().writeSealedAlreadyGuarded("write", byteArrayOf(1))
                 }
-                """.trimIndent(),
-            )
+            """.trimIndent(),
+            mustMentionAny = listOf("KableBleTransport", "writeSealedAlreadyGuarded"),
+        )
+    }
+
+    @Test
+    fun openEncryptedSession_withSessionCipher_unresolvedOutsideBle() {
+        assertProbeFailsToCompile(
+            fileName = "OpenEncryptedSessionProbe.kt",
+            source = """
+                package probe
+                import dev.velum.ble.PlaudBleTransport
+                import dev.velum.ble.createBleTransport
+                import dev.velum.ble.crypto.createSessionCipher
+                import dev.velum.protocol.Protocol20SessionSecret
+
+                fun main() {
+                    val secret = Protocol20SessionSecret(
+                        key = ByteArray(32),
+                        nonce = ByteArray(12),
+                        aad = ByteArray(12),
+                    )
+                    PlaudBleTransport(createBleTransport()).openEncryptedSession(
+                        createSessionCipher(),
+                        secret,
+                    )
+                }
+            """.trimIndent(),
+            mustMention = "openEncryptedSession",
+        )
+    }
+
+    private fun assertProbeFailsToCompile(
+        fileName: String,
+        source: String,
+        mustMention: String? = null,
+        mustMentionAny: List<String> = emptyList(),
+    ) {
+        val work = Files.createTempDirectory("ble-sealed-compile-guard").toFile()
+        try {
+            val probe = File(work, fileName)
+            probe.writeText(source)
 
             val compileClasspath = testRuntimeClasspath()
             assertTrue(
                 compileClasspath.any { it.contains("ble") || it.endsWith("classes") },
                 "expected :ble on the unit-test classpath, got: ${compileClasspath.take(8)}…",
             )
-            Class.forName("dev.velum.ble.fake.FakeBleTransport")
-            Class.forName("dev.velum.ble.StubBleTransport")
-            Class.forName("dev.velum.ble.KableBleTransport")
 
             val kotlinVersion = "2.2.21"
             val compilerJar = findGradleJar("org.jetbrains.kotlin", "kotlin-compiler-embeddable", kotlinVersion)
@@ -106,15 +167,27 @@ class BleSealedWriteCompileGuardTest {
                 "probe must fail to compile; kotlinc exited 0.\n$output",
             )
             val lower = output.lowercase()
-            val mentionsSealed = "writesealedalreadyguarded" in lower
             val looksUnresolved =
                 "unresolved" in lower ||
                     "cannot access" in lower ||
-                    "invisible" in lower
+                    "invisible" in lower ||
+                    "public /*package*/" in lower
             assertTrue(
-                mentionsSealed && looksUnresolved,
-                "expected unresolved/invisible writeSealedAlreadyGuarded, got exit=$exit:\n$output",
+                looksUnresolved,
+                "expected unresolved/invisible member error, got exit=$exit:\n$output",
             )
+            if (mustMention != null) {
+                assertTrue(
+                    mustMention.lowercase() in lower,
+                    "expected diagnostic to mention '$mustMention', got exit=$exit:\n$output",
+                )
+            }
+            if (mustMentionAny.isNotEmpty()) {
+                assertTrue(
+                    mustMentionAny.any { it.lowercase() in lower },
+                    "expected diagnostic to mention one of $mustMentionAny, got exit=$exit:\n$output",
+                )
+            }
         } finally {
             work.deleteRecursively()
         }
