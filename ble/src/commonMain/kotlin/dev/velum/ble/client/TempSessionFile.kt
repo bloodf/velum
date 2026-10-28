@@ -1,8 +1,8 @@
 package dev.velum.ble.client
 
-internal expect fun createTempSessionFile(): TempSessionFile?
+expect fun createTempSessionFile(): TempSessionFile?
 
-internal interface TempSessionFile : SessionByteSink {
+interface TempSessionFile : SessionByteSink {
     fun size(): Long
     fun readAll(): ByteArray
     fun absolutePath(): String
