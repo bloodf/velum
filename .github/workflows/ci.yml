@@ -171,11 +171,14 @@ jobs:
 
       - name: Enable KVM
         run: |
+          set -euo pipefail
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
           sudo apt-get update -y
-          sudo apt-get install -y bridge-utils libvirt-clients libvirt-daemon-system qemu-kvm
+          # Ubuntu 26.04+ dropped the qemu-kvm metapackage; install a concrete provider.
+          sudo apt-get install -y bridge-utils libvirt-clients libvirt-daemon-system \
+            qemu-system-x86 qemu-utils
           echo 'kvm group members:'
           ls -l /dev/kvm || true
 
