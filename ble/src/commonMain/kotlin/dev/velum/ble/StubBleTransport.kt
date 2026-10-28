@@ -14,7 +14,7 @@ import kotlinx.coroutines.flow.flowOf
 class StubBleTransport(
     override val isAvailable: Boolean = false,
     private val unavailableReason: String = "BLE is not available on this platform yet",
-) : BleTransport {
+) : BleTransport, BleSealedWriteSink {
     private val _state = MutableStateFlow<BleConnectionState>(BleConnectionState.Idle)
     override val connectionState: StateFlow<BleConnectionState> = _state.asStateFlow()
 
@@ -37,6 +37,7 @@ class StubBleTransport(
     }
 
     override suspend fun connect(deviceId: String, profile: GattProfile) {
+        // Connect never succeeds on the stub — do not publish an active profile.
         activeProfile = null
         _state.value = BleConnectionState.Failed(unavailableReason)
     }
@@ -50,18 +51,24 @@ class StubBleTransport(
         characteristic: String,
         payload: ByteArray,
         withoutResponse: Boolean,
-        safety: BleWriteSafety,
     ) {
         val profile = activeProfile
         if (profile != null) {
             val ch = profile.characteristic(characteristic)
-            PlaudWriteGuard.maybeRequireAllowed(
+            PlaudWriteGuard.requireAllowedIfPlaudWrite(
                 serviceUuid = profile.resolveServiceUuid(ch),
                 characteristicUuid = ch.uuid,
                 payload = payload,
-                safety = safety,
             )
         }
+        error(unavailableReason)
+    }
+
+    override suspend fun writeSealedAlreadyGuarded(
+        characteristic: String,
+        payload: ByteArray,
+        withoutResponse: Boolean,
+    ) {
         error(unavailableReason)
     }
 
