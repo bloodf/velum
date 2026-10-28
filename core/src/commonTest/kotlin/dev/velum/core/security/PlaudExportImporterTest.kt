@@ -1,7 +1,11 @@
 package dev.velum.core.security
 
+import dev.velum.protocol.identity.IdentityBundleFormat
+import dev.velum.protocol.identity.IdentityRedaction
+import dev.velum.protocol.identity.SyntheticIdentityFixtures
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
@@ -16,6 +20,17 @@ class PlaudExportImporterTest {
         assertEquals("demo-user-token", ok.device.bindToken)
         assertEquals(1, ok.templates.size)
         assertTrue(ok.templates[0].localId.startsWith(PLAUD_EXPORT_TEMPLATE_ID_PREFIX))
+    }
+
+    @Test
+    fun parse_synthetic_usb_route_bundle() {
+        val raw = SyntheticIdentityFixtures.validBundleJson(
+            templatesJson = """[{"name":"Demo custom","category":"meeting","systemPrompt":"Summarize"}]""",
+        )
+        val ok = assertIs<PlaudExportParseResult.Success>(PlaudExportImporter.parse(raw))
+        assertEquals(SyntheticIdentityFixtures.SERIAL, ok.device.serial)
+        assertEquals(SyntheticIdentityFixtures.BIND_TOKEN, ok.device.bindToken)
+        assertEquals(1, ok.templates.size)
     }
 
     @Test
@@ -34,6 +49,7 @@ class PlaudExportImporterTest {
         val result = PlaudExportImporter.parse(raw)
         val fail = assertIs<PlaudExportParseResult.Failure>(result)
         assertTrue(fail.message.contains("256"))
+        assertFalse(fail.message.contains("YQ=="))
     }
 
     @Test
@@ -47,12 +63,9 @@ class PlaudExportImporterTest {
         assertEquals("881DEMO01", importer.loadKeys()?.serialNumber)
     }
 
-
     @Test
     fun rejects_missing_serial() {
-        val sig = readResource("plaud_export_sample.json").let {
-            Regex("\"snSignatureBase64\":\\s*\"([^\"]+)\"").find(it)!!.groupValues[1]
-        }
+        val sig = SyntheticIdentityFixtures.signatureBase64()
         val raw = """
             {
               "version": 1,
@@ -66,13 +79,12 @@ class PlaudExportImporterTest {
         """.trimIndent()
         val fail = assertIs<PlaudExportParseResult.Failure>(PlaudExportImporter.parse(raw))
         assertTrue(fail.message.contains("serial"), fail.message)
+        assertFalse(fail.message.contains(sig))
     }
 
     @Test
     fun rejects_missing_bind_token() {
-        val sig = readResource("plaud_export_sample.json").let {
-            Regex("\"snSignatureBase64\":\\s*\"([^\"]+)\"").find(it)!!.groupValues[1]
-        }
+        val sig = SyntheticIdentityFixtures.signatureBase64()
         val raw = """
             {
               "version": 1,
@@ -86,6 +98,31 @@ class PlaudExportImporterTest {
         """.trimIndent()
         val fail = assertIs<PlaudExportParseResult.Failure>(PlaudExportImporter.parse(raw))
         assertTrue(fail.message.contains("bindToken"), fail.message)
+        assertFalse(fail.message.contains(sig))
+    }
+
+    @Test
+    fun rejects_wrong_version_without_leaking_secrets() {
+        val bundle = SyntheticIdentityFixtures.validBundle(includePems = true)
+        val raw = SyntheticIdentityFixtures.validBundleJson(includePems = true)
+            .replace(
+                "\"version\": ${IdentityBundleFormat.VERSION}",
+                "\"version\": 7",
+            )
+        val fail = assertIs<PlaudExportParseResult.Failure>(PlaudExportImporter.parse(raw))
+        assertTrue(fail.message.contains("7"))
+        assertFalse(IdentityRedaction.containsSecret(fail.message, bundle))
+        assertFalse(IdentityRedaction.containsSecret(fail.toString(), bundle))
+    }
+
+    @Test
+    fun success_toString_redacts_identity() {
+        val raw = SyntheticIdentityFixtures.validBundleJson(includePems = true)
+        val ok = assertIs<PlaudExportParseResult.Success>(PlaudExportImporter.parse(raw))
+        assertFalse(IdentityRedaction.containsSecret(ok.toString(), ok.let {
+            SyntheticIdentityFixtures.validBundle(includePems = true)
+        }))
+        assertFalse(IdentityRedaction.containsSecret(ok.device.toString(), SyntheticIdentityFixtures.validBundle(includePems = true)))
     }
 
     private fun readResource(name: String): String {
