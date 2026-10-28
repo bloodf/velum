@@ -31,6 +31,7 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -68,6 +69,10 @@ class AutoFlowRunnerTest {
         )
         runner.start()
         delay(200)
+        // Subscribe before the match so a buffered emit cannot be missed under load.
+        val webhook = async {
+            runner.actions.first { it is AutoFlowUiAction.PostWebhook }
+        }
 
         // Disable seed default flow; use a strict duration floor.
         repo.setAutoflowEnabled("flow-default", false)
@@ -108,14 +113,14 @@ class AutoFlowRunnerTest {
         repo.updateStatus("rec-af-1", "imported")
 
         withTimeout(15_000) {
-            while (processCalls < 1) delay(50)
+            while (processCalls < 1 || repo.getRecording("rec-af-1")?.status != "ready") {
+                delay(50)
+            }
         }
         assertEquals(1, processCalls)
         assertEquals("ready", repo.getRecording("rec-af-1")?.status)
 
-        val action = withTimeout(5_000) {
-            runner.actions.first { it is AutoFlowUiAction.PostWebhook }
-        }
+        val action = withTimeout(15_000) { webhook.await() }
         assertEquals("rec-af-1", (action as AutoFlowUiAction.PostWebhook).recordingId)
         runner.stop()
     }

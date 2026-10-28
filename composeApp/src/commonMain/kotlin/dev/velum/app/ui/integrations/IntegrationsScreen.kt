@@ -192,7 +192,7 @@ fun IntegrationsScreen(
                 title = strings.ux.webhookTitle,
                 body = strings.ux.webhookHint,
                 status = if (webhookConfigured) {
-                    strings.oauthConnected + if (webhookHasSecret) " · HMAC" else ""
+                    strings.oauthConnected + if (webhookHasSecret) " · ${strings.ux.webhookSigned}" else ""
                 } else {
                     strings.oauthDisconnected
                 },

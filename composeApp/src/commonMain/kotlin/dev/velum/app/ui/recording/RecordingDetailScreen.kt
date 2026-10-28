@@ -71,6 +71,7 @@ import dev.velum.app.platform.MicMarkerResult
 import dev.velum.app.platform.MicStartResult
 import dev.velum.app.platform.MicStopResult
 import dev.velum.app.platform.WavWriter
+import dev.velum.app.platform.localizedLabel
 import dev.velum.app.platform.recordingsDirectoryPath
 import dev.velum.app.platform.shareText
 import dev.velum.app.ui.components.AiGlowFooter
@@ -827,7 +828,7 @@ private fun LiveTranscriptPane(
         )
         if (preserveSeeded && !usingMic) {
             Text(
-                "Phone mic · live · markers $markerCount",
+                strings.ux.livePhoneMicFormat.replace("%d", markerCount.toString()),
                 color = VelumInkSecondary,
                 fontSize = 12.sp,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
@@ -837,12 +838,12 @@ private fun LiveTranscriptPane(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 OutlineButton(
-                    if (pausedUi) "Resume" else "Pause",
+                    if (pausedUi) strings.ux.liveResume else strings.ux.livePause,
                     { pausedUi = !pausedUi },
                     modifier = Modifier.weight(1f),
                 )
                 OutlineButton(
-                    "Mark",
+                    strings.ux.liveMark,
                     { markerCount += 1 },
                     modifier = Modifier.weight(1f),
                 )
@@ -857,7 +858,9 @@ private fun LiveTranscriptPane(
             )
         } else if (usingMic) {
             Text(
-                "Input: ${inputSource.name} · markers $markerCount",
+                strings.ux.liveMarkersFormat
+                    .replace("%s", inputSource.localizedLabel(strings))
+                    .replace("%d", markerCount.toString()),
                 color = VelumInkSecondary,
                 fontSize = 12.sp,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
@@ -867,7 +870,7 @@ private fun LiveTranscriptPane(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 OutlineButton(
-                    if (pausedUi) "Resume" else "Pause",
+                    if (pausedUi) strings.ux.liveResume else strings.ux.livePause,
                     {
                         if (pausedUi) {
                             container.micCapture.resume()
@@ -880,7 +883,7 @@ private fun LiveTranscriptPane(
                     modifier = Modifier.weight(1f),
                 )
                 OutlineButton(
-                    "Mark",
+                    strings.ux.liveMark,
                     {
                         when (val r = container.micCapture.addMarker()) {
                             is MicMarkerResult.Ok -> markerCount = container.micCapture.markers.size
@@ -898,7 +901,7 @@ private fun LiveTranscriptPane(
             ) {
                 MicInputSource.entries.forEach { src ->
                     OutlineButton(
-                        src.name,
+                        src.localizedLabel(strings),
                         { inputSource = src },
                         modifier = Modifier,
                     )
@@ -1164,7 +1167,7 @@ private fun PlayerBar(
             ) {
                 Icon(
                     Icons.AutoMirrored.Outlined.Undo,
-                    contentDescription = "−15",
+                    contentDescription = strings.ux.seekBack15,
                     tint = tint,
                     modifier = Modifier.size(26.dp),
                 )
@@ -1177,7 +1180,7 @@ private fun PlayerBar(
             ) {
                 Icon(
                     Icons.AutoMirrored.Outlined.Redo,
-                    contentDescription = "+15",
+                    contentDescription = strings.ux.seekForward15,
                     tint = tint,
                     modifier = Modifier.size(26.dp),
                 )

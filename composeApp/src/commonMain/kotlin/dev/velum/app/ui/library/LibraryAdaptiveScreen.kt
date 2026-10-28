@@ -104,7 +104,7 @@ fun LibraryAdaptiveScreen(
                     selected = railDestination == LibraryRailDestination.Ask,
                     onClick = { onRailDestination(LibraryRailDestination.Ask) },
                     icon = { Icon(Icons.Outlined.TravelExplore, contentDescription = strings.ux.askAcrossTitle) },
-                    label = { Text("Ask") },
+                    label = { Text(strings.ux.askAcrossShort) },
                 )
                 NavigationRailItem(
                     selected = railDestination == LibraryRailDestination.Device,
@@ -112,8 +112,13 @@ fun LibraryAdaptiveScreen(
                         onRailDestination(LibraryRailDestination.Device)
                         onOpenDevice()
                     },
-                    icon = { Icon(Icons.Outlined.MicExternalOn, contentDescription = "Device") },
-                    label = { Text("Device") },
+                    icon = {
+                        Icon(
+                            Icons.Outlined.MicExternalOn,
+                            contentDescription = strings.settingsUi.sectionDevices,
+                        )
+                    },
+                    label = { Text(strings.settingsUi.sectionDevices) },
                 )
             }
             VerticalDivider(color = VelumDivider)
@@ -154,7 +159,7 @@ fun LibraryAdaptiveScreen(
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(
-                            "Select a recording",
+                            strings.ux.selectRecording,
                             color = VelumInkSecondary,
                             fontSize = 16.sp,
                             modifier = Modifier.padding(24.dp),

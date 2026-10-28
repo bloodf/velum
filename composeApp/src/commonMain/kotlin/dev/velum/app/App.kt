@@ -174,18 +174,18 @@ private fun VelumRoot(container: AppContainer) {
                     navController.navigate(Routes.recording(result.recordingId))
                 }
                 is ImportResult.Duplicate -> {
-                    snackbar.showSnackbar("Already imported")
+                    snackbar.showSnackbar(strings.ux.importDuplicate)
                     navController.navigate(Routes.recording(result.existingRecordingId))
                 }
                 is ImportResult.Failed -> {
-                    snackbar.showSnackbar(result.message)
+                    snackbar.showSnackbar(strings.ux.genericError)
                 }
             }
         }
     }
     val pickWatchedFolder = rememberImportFolderPicker { _ ->
         scope.launch {
-            snackbar.showSnackbar("Folder saved — tap Re-sync to import new files")
+            snackbar.showSnackbar(strings.ux.folderSavedResync)
         }
     }
 
@@ -194,10 +194,10 @@ private fun VelumRoot(container: AppContainer) {
             when (val result = importPipeline.importFile(path, source = "share")) {
                 is ImportResult.Created -> navController.navigate(Routes.recording(result.recordingId))
                 is ImportResult.Duplicate -> {
-                    snackbar.showSnackbar("Already imported")
+                    snackbar.showSnackbar(strings.ux.importDuplicate)
                     navController.navigate(Routes.recording(result.existingRecordingId))
                 }
-                is ImportResult.Failed -> snackbar.showSnackbar(result.message)
+                is ImportResult.Failed -> snackbar.showSnackbar(strings.ux.genericError)
             }
         }
     }
@@ -233,7 +233,7 @@ private fun VelumRoot(container: AppContainer) {
                                     strings.ux.folderExportOkFormat.replace("%s", result.displayPath),
                                 )
                             is ExportFolderResult.Failed ->
-                                snackbar.showSnackbar(result.message)
+                                snackbar.showSnackbar(strings.ux.genericError)
                         }
                     }
                 }

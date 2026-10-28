@@ -63,5 +63,23 @@ sealed class PcmAudioBuffer {
             file.writeBytes(pcm)
             return Spilled(file, pcm.size.toLong())
         }
+
+        /**
+         * Wrap PCM already written to [file] (e.g. streaming Opus decode).
+         * Small files are loaded into [Memory]; large ones stay [Spilled].
+         */
+        fun fromExistingFile(
+            file: ModelStoreDir,
+            sizeBytes: Long = file.length(),
+            inMemoryBudget: Long = IN_MEMORY_BUDGET_BYTES,
+        ): PcmAudioBuffer {
+            require(sizeBytes <= MAX_SPILL_BYTES) {
+                "PCM $sizeBytes bytes exceeds max spill $MAX_SPILL_BYTES"
+            }
+            if (sizeBytes <= inMemoryBudget) {
+                return Memory(if (sizeBytes == 0L) ByteArray(0) else file.readBytes())
+            }
+            return Spilled(file, sizeBytes)
+        }
     }
 }

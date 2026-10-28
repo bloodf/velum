@@ -182,6 +182,33 @@ jobs:
           name: velum-debug-apk
           path: apk
 
+      - name: Set up Android SDK tools
+        uses: android-actions/setup-android@v4
+        with:
+          packages: "platform-tools"
+
+      - name: Preinstall API 35 system image (retry on corrupt zip)
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          test -n "$SDK"
+          export PATH="$SDK/cmdline-tools/latest/bin:$SDK/cmdline-tools/bin:$PATH"
+          PKG='system-images;android-35;google_apis;x86_64'
+          yes | sdkmanager --licenses >/dev/null || true
+          for attempt in 1 2 3; do
+            echo "Installing $PKG (attempt $attempt)"
+            rm -rf "$SDK/system-images/android-35/google_apis/x86_64" || true
+            rm -rf "$SDK/.temp" "$SDK/temp" || true
+            if sdkmanager --install "$PKG"; then
+              echo "System image ready"
+              exit 0
+            fi
+            echo "sdkmanager failed (often corrupt zip); retrying..."
+            sleep $((attempt * 8))
+          done
+          echo "Failed to install $PKG after retries"
+          exit 1
+
       - name: Launch smoke on API 35 emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:

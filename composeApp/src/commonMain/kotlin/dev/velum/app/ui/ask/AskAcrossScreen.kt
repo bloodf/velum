@@ -93,7 +93,7 @@ fun AskAcrossScreen(
                     scope.launch {
                         runCatching { container.askAcross.ask(question) }
                             .onSuccess { answer = it }
-                            .onFailure { error = it.message ?: it::class.simpleName }
+                            .onFailure { error = strings.ux.genericError }
                         busy = false
                     }
                 },
@@ -109,7 +109,7 @@ fun AskAcrossScreen(
                 Text(strings.ux.askAcrossEmpty, color = VelumInkSecondary, fontSize = 14.sp)
             } else {
                 Spacer(Modifier.height(24.dp))
-                Text("Answer", fontWeight = FontWeight.SemiBold, fontSize = 16.sp, color = VelumInk)
+                Text(strings.ux.askAcrossAnswer, fontWeight = FontWeight.SemiBold, fontSize = 16.sp, color = VelumInk)
                 Spacer(Modifier.height(8.dp))
                 MarkdownPreview(current.markdown)
                 if (current.citations.isNotEmpty()) {

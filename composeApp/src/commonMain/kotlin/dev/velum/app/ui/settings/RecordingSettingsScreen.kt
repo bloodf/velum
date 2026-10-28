@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.sp
 import dev.velum.app.di.AppContainer
 import dev.velum.app.i18n.LocalStrings
 import dev.velum.app.platform.MicInputSource
+import dev.velum.app.platform.localizedLabel
 import dev.velum.app.ui.components.ScreenTopBar
 import dev.velum.app.ui.components.SectionLabel
 import dev.velum.app.ui.theme.VelumInk
@@ -62,7 +63,7 @@ fun RecordingSettingsScreen(
                     }
                     .padding(horizontal = 20.dp, vertical = 14.dp),
             ) {
-                Text(src.name, color = VelumInk, fontSize = 16.sp)
+                Text(src.localizedLabel(strings), color = VelumInk, fontSize = 16.sp)
                 if (src.name == current) {
                     Text("✓", color = VelumInkSecondary, fontSize = 13.sp)
                 }

@@ -1,5 +1,7 @@
 package dev.velum.ai.audio
 
+import dev.velum.ai.local.ModelStoreDir
+
 /**
  * Decode Ogg Opus (Plaud Note Pro recordings) to 16-bit PCM.
  * Common code demuxes Ogg; platform code decodes Opus packets.
@@ -35,8 +37,21 @@ data class PcmAudio(
     }
 }
 
+/** Metadata for PCM written directly to a spill file (no full-heap ShortArray). */
+data class SpilledPcmMeta(
+    val sampleRateHz: Int,
+    val channels: Int,
+    val sizeBytes: Long,
+)
+
 interface OpusDecoder {
     fun decodeToPcm(oggBytes: ByteArray): PcmAudio
+
+    /**
+     * Demux + decode Opus packets, appending 16-bit LE PCM to [dest] in small frames
+     * so multi-hour recordings never allocate a single heap buffer for the full PCM.
+     */
+    fun decodeToPcmFile(oggBytes: ByteArray, dest: ModelStoreDir): SpilledPcmMeta
 }
 
 expect fun createOpusDecoder(): OpusDecoder

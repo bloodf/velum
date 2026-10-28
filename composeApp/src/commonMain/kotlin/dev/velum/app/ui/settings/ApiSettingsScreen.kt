@@ -205,7 +205,7 @@ fun ApiSettingsScreen(
                     401, 403 -> strings.settingsUi.modelsErrorUnauthorized
                     404 -> strings.settingsUi.modelsErrorNotFound
                     -1 -> strings.settingsUi.modelsErrorBadUrl
-                    else -> ui.error ?: strings.settingsUi.modelsErrorGeneric
+                    else -> strings.settingsUi.modelsErrorGeneric
                 }
                 Text(
                     mapped,

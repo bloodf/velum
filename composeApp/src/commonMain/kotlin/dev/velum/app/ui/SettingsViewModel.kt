@@ -104,13 +104,13 @@ class SettingsViewModel(
             } catch (t: IllegalArgumentException) {
                 _ui.value = SettingsUiState(
                     refreshing = false,
-                    error = t.message ?: t.toString(),
+                    error = "bad_url",
                     errorStatus = -1,
                 )
             } catch (t: Throwable) {
                 _ui.value = SettingsUiState(
                     refreshing = false,
-                    error = t.message ?: t.toString(),
+                    error = "generic",
                 )
             }
         }

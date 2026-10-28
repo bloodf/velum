@@ -1,5 +1,7 @@
 package dev.velum.app.platform
 
+import dev.velum.app.i18n.Strings
+
 /**
  * Capture input for phone / headset / USB audio routes.
  * Bluetooth SCO headsets typically map to [VoiceCommunication]; USB ADCs often appear as [Mic].
@@ -13,6 +15,13 @@ enum class MicInputSource {
     Unprocessed,
     /** Camcorders / USB digital mics that present as CAMCORDER. */
     Camcorder,
+}
+
+fun MicInputSource.localizedLabel(strings: Strings): String = when (this) {
+    MicInputSource.Mic -> strings.ux.micSourceMic
+    MicInputSource.VoiceCommunication -> strings.ux.micSourceVoice
+    MicInputSource.Unprocessed -> strings.ux.micSourceUnprocessed
+    MicInputSource.Camcorder -> strings.ux.micSourceCamcorder
 }
 
 data class MicMarker(

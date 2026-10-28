@@ -61,25 +61,37 @@ class RecordingProcessor(
                 emit(JobProgress.Running(0.1f, "Decoding audio"))
                 awaitThermalGate { emit(it) }
                 val raw = readFileBytes(localPath)
-                // Compressed sources may be large on disk; budget applies to decoded PCM heap only.
                 filename = localPath.substringAfterLast('/')
-                val decodedPcm: ByteArray
+                spillRoot.createDirectories()
+                val pcmFile = spillRoot.resolve("pcm.s16le")
                 if (filename.endsWith(".ogg", ignoreCase = true) ||
                     filename.endsWith(".opus", ignoreCase = true) ||
                     looksLikeOgg(raw)
                 ) {
-                    val pcm = createOpusDecoder().decodeToPcm(raw)
-                    decodedPcm = pcm.toByteArray()
-                    sampleRate = pcm.sampleRateHz
+                    // Stream frame-by-frame to disk — never hold full PCM on the heap.
+                    val meta = createOpusDecoder().decodeToPcmFile(raw, pcmFile)
+                    sampleRate = meta.sampleRateHz
+                    pcmBuffer = PcmAudioBuffer.fromExistingFile(pcmFile, meta.sizeBytes)
                 } else if (filename.endsWith(".wav", ignoreCase = true) || looksLikeWav(raw)) {
-                    val wav = stripWavToPcm(raw)
-                    decodedPcm = wav.pcm
-                    sampleRate = wav.sampleRateHz
+                    val range = locateWavPcm(raw)
+                    sampleRate = range.sampleRateHz
+                    val pcmLen = (range.endExclusive - range.start).toLong()
+                    pcmBuffer = if (pcmLen > PcmAudioBuffer.IN_MEMORY_BUDGET_BYTES) {
+                        // Copy data chunk in slices — avoid a second full-PCM heap array.
+                        appendRangeToFile(raw, range.start, range.endExclusive, pcmFile)
+                        PcmAudioBuffer.fromExistingFile(pcmFile, pcmLen)
+                    } else {
+                        val pcm = if (pcmLen == 0L) {
+                            ByteArray(0)
+                        } else {
+                            raw.copyOfRange(range.start, range.endExclusive)
+                        }
+                        PcmAudioBuffer.fromPcmBytes(pcm, spillRoot)
+                    }
                 } else {
-                    decodedPcm = raw
                     sampleRate = 16_000
+                    pcmBuffer = PcmAudioBuffer.fromPcmBytes(raw, spillRoot)
                 }
-                pcmBuffer = PcmAudioBuffer.fromPcmBytes(decodedPcm, spillRoot)
             } else {
                 // Demo / seed rows have no audio file — keep existing transcript path for summary-only.
                 filename = "missing.ogg"
@@ -371,11 +383,11 @@ class RecordingProcessor(
             bytes[10] == 'V'.code.toByte() &&
             bytes[11] == 'E'.code.toByte()
 
-    private data class WavPcm(val pcm: ByteArray, val sampleRateHz: Int)
+    private data class WavPcmRange(val start: Int, val endExclusive: Int, val sampleRateHz: Int)
 
-    /** Minimal PCM WAV reader (fmt + data chunks). */
-    private fun stripWavToPcm(bytes: ByteArray): WavPcm {
-        if (!looksLikeWav(bytes)) return WavPcm(bytes, 16_000)
+    /** Locate PCM payload bounds without copying (for large-file spill). */
+    private fun locateWavPcm(bytes: ByteArray): WavPcmRange {
+        if (!looksLikeWav(bytes)) return WavPcmRange(0, bytes.size, 16_000)
         var offset = 12
         var sampleRate = 16_000
         var dataStart = -1
@@ -399,12 +411,27 @@ class RecordingProcessor(
             offset = body + size + (size % 2) // word-align
         }
         if (dataStart < 0) {
-            // Classic 44-byte header fallback
-            val pcm = if (bytes.size > 44) bytes.copyOfRange(44, bytes.size) else ByteArray(0)
-            return WavPcm(pcm, sampleRate)
+            val start = if (bytes.size > 44) 44 else bytes.size
+            return WavPcmRange(start, bytes.size, sampleRate)
         }
         val end = (dataStart + dataSize).coerceAtMost(bytes.size)
-        return WavPcm(bytes.copyOfRange(dataStart, end), sampleRate)
+        return WavPcmRange(dataStart, end, sampleRate)
+    }
+
+    private fun appendRangeToFile(
+        bytes: ByteArray,
+        start: Int,
+        endExclusive: Int,
+        dest: ModelStoreDir,
+    ) {
+        dest.writeBytes(ByteArray(0))
+        var offset = start
+        val chunk = 256 * 1024
+        while (offset < endExclusive) {
+            val end = (offset + chunk).coerceAtMost(endExclusive)
+            dest.appendBytes(bytes.copyOfRange(offset, end))
+            offset = end
+        }
     }
 
     private fun u32le(bytes: ByteArray, at: Int): Int {

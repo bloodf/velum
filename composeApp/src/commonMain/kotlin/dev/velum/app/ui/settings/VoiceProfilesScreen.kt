@@ -51,7 +51,6 @@ fun VoiceProfilesScreen(
     var status by remember { mutableStateOf<String?>(null) }
     var exportText by remember { mutableStateOf<String?>(null) }
     var importDraft by remember { mutableStateOf("") }
-    val threshold = container.settingsRepository.settings.value.speakerMatchThreshold
 
     fun refresh() {
         profiles = container.voiceProfileStore.listProfiles()
@@ -64,18 +63,17 @@ fun VoiceProfilesScreen(
             .background(VelumBg)
             .verticalScroll(rememberScrollState()),
     ) {
-        ScreenTopBar("Voice profiles", onBack = onBack)
+        ScreenTopBar(strings.voiceProfiles, onBack = onBack)
         Column(Modifier.padding(20.dp)) {
             Text(
-                "Encrypted on-device speaker embeddings (3D-Speaker / ECAPA). " +
-                    "Auto-label uses cosine ≥ ${"%.2f".format(threshold)}. Never uploaded.",
+                strings.ux.voiceProfilesHint,
                 color = VelumInkSecondary,
                 fontSize = 14.sp,
                 lineHeight = 20.sp,
             )
             Spacer(Modifier.height(16.dp))
             if (profiles.isEmpty()) {
-                Text("No profiles yet — name a speaker in a recording to enroll.", color = VelumInkSecondary)
+                Text(strings.ux.voiceProfilesEmpty, color = VelumInkSecondary)
             } else {
                 profiles.forEach { p ->
                     Column(
@@ -87,7 +85,12 @@ fun VoiceProfilesScreen(
                         Text(p.displayName, fontWeight = FontWeight.SemiBold, color = VelumInk)
                         Text(
                             buildString {
-                                append("${p.sampleCount} sample(s)")
+                                append(
+                                    strings.ux.voiceProfilesSamplesFormat.replace(
+                                        "%d",
+                                        p.sampleCount.toString(),
+                                    ),
+                                )
                                 if (p.role.isNotBlank()) append(" · ${p.role}")
                                 if (p.company.isNotBlank()) append(" · ${p.company}")
                                 if (p.email.isNotBlank()) append(" · ${p.email}")
@@ -112,22 +115,22 @@ fun VoiceProfilesScreen(
                             notes = notes,
                         )
                         refresh()
-                        status = "Saved ${name}"
+                        status = strings.ux.voiceProfilesSaved
                     },
                     onDelete = {
                         container.voiceProfileStore.delete(p.id)
                         selected = null
                         refresh()
-                        status = "Deleted"
+                        status = strings.ux.voiceProfilesDeleted
                     },
                 )
                 Spacer(Modifier.height(12.dp))
             }
             OutlineButton(
-                "Export encrypted",
+                strings.ux.voiceProfilesExport,
                 {
                     exportText = container.voiceProfileStore.exportEncrypted()
-                    status = "Export ready — copy below (stays on device unless you share it)"
+                    status = strings.ux.voiceProfilesExportReady
                 },
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -136,7 +139,7 @@ fun VoiceProfilesScreen(
                 Text(it.take(400) + if (it.length > 400) "…" else "", color = VelumInkSecondary, fontSize = 11.sp)
                 Spacer(Modifier.height(8.dp))
             }
-            Text("Import encrypted JSON", fontWeight = FontWeight.SemiBold, color = VelumInk)
+            Text(strings.ux.voiceProfilesImportTitle, fontWeight = FontWeight.SemiBold, color = VelumInk)
             Spacer(Modifier.height(6.dp))
             BasicTextField(
                 value = importDraft,
@@ -150,31 +153,31 @@ fun VoiceProfilesScreen(
             )
             Spacer(Modifier.height(8.dp))
             OutlineButton(
-                "Import",
+                strings.ux.voiceProfilesImport,
                 {
                     runCatching {
                         val n = container.voiceProfileStore.importEncrypted(importDraft)
                         refresh()
-                        status = "Imported $n profile(s)"
+                        status = strings.ux.voiceProfilesImportedFormat.replace("%d", n.toString())
                         importDraft = ""
-                    }.onFailure { status = it.message }
+                    }.onFailure { status = strings.ux.genericError }
                 },
                 modifier = Modifier.fillMaxWidth(),
             )
             Spacer(Modifier.height(8.dp))
             OutlineButton(
-                "Wipe all profiles",
+                strings.ux.voiceProfilesWipe,
                 {
                     container.voiceProfileStore.wipeAll()
                     selected = null
                     refresh()
-                    status = "All profiles wiped"
+                    status = strings.ux.voiceProfilesWiped
                 },
                 modifier = Modifier.fillMaxWidth(),
             )
             Spacer(Modifier.height(8.dp))
             Text(
-                "Match threshold",
+                strings.ux.voiceProfilesThreshold,
                 fontWeight = FontWeight.SemiBold,
                 color = VelumInk,
             )
@@ -185,7 +188,7 @@ fun VoiceProfilesScreen(
                         {
                             scope.launch {
                                 container.settingsRepository.setSpeakerMatchThreshold(t)
-                                status = "Threshold $t"
+                                status = strings.ux.voiceProfilesThresholdSet
                             }
                         },
                         modifier = Modifier.weight(1f).padding(horizontal = 2.dp),
@@ -198,7 +201,7 @@ fun VoiceProfilesScreen(
             }
             Spacer(Modifier.height(8.dp))
             Text(
-                strings.ux.let { "Enroll: name a speaker in Fontes, or record and promote a cluster." },
+                strings.ux.voiceProfilesEnrollHint,
                 color = VelumInkSecondary,
                 fontSize = 12.sp,
             )

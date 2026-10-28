@@ -57,4 +57,27 @@ class RecordingProcessorBudgetTest {
             dir.deleteRecursively()
         }
     }
+
+    @Test
+    fun fromExistingFile_spillsWhenOverBudget() {
+        val dir = File.createTempFile("velum-pcm-exist", null).apply {
+            delete()
+            mkdirs()
+        }
+        try {
+            val file = ModelStoreDir(dir.absolutePath).resolve("pcm.s16le")
+            val pcm = ByteArray(9 * 1024) { (it % 127).toByte() }
+            file.writeBytes(pcm)
+            val spilled = PcmAudioBuffer.fromExistingFile(file, inMemoryBudget = 8 * 1024L)
+            assertIs<PcmAudioBuffer.Spilled>(spilled)
+            assertEquals(pcm.size.toLong(), spilled.sizeBytes)
+            val small = ModelStoreDir(dir.absolutePath).resolve("small.s16le")
+            small.writeBytes(ByteArray(16) { 2 })
+            val mem = PcmAudioBuffer.fromExistingFile(small, inMemoryBudget = 8 * 1024L)
+            assertIs<PcmAudioBuffer.Memory>(mem)
+            assertEquals(16, mem.sizeBytes.toInt())
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
 }

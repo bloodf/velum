@@ -17,7 +17,6 @@ object Routes {
     const val AUTOFLOW_EDIT = "autoflow/{id}"
     fun autoflowEdit(id: String) = "autoflow/$id"
     const val INTEGRATIONS = "integrations"
-    const val SPEAKER_LABELING = "speaker_labeling"
     const val DEVICE = "device"
     const val AI_PROCESSING = "ai_processing"
     const val MODEL_MANAGER = "model_manager"
