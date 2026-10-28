@@ -127,29 +127,48 @@ class DeviceWalkUiTest {
     private fun applyAppearance(lang: String, theme: String) {
         openSettings()
         // Appearance is near the bottom of the scrollable Settings hub.
-        scrollClickPrefer(
-            if (lang == "en") "Appearance" else "Aparência",
-            "Appearance",
-            "Aparência",
-        )
+        // Labels depend on the *current* UI language (prior matrix cell / system),
+        // not the target lang — always offer both EN and pt-BR copy.
+        scrollClickPrefer("Appearance", "Aparência")
         covered += "settings/appearance"
-        clickTextPrefer(
-            if (theme == "dark") {
-                if (lang == "en") "Dark" else "Escuro"
-            } else {
-                if (lang == "en") "Light" else "Claro"
-            },
-            "Dark",
-            "Escuro",
-            "Light",
-            "Claro",
-        )
-        clickTextPrefer(
-            if (lang == "en") "English" else "Português (Brasil)",
-            "English",
-            "Português (Brasil)",
-        )
+        when (theme) {
+            "dark" -> clickTextPrefer("Dark", "Escuro")
+            else -> clickTextPrefer("Light", "Claro")
+        }
+        // EN UI uses "Portuguese (Brazil)"; pt-BR UI uses "Português (Brasil)".
+        // Never fall through to the opposite language option (that was the tip
+        // failure: preferred "Português (Brasil)" missed → clicked "English").
+        if (lang == "pt-BR") {
+            clickTextPrefer("Portuguese (Brazil)", "Português (Brasil)")
+            waitUntil(20_000) {
+                composeExists("Aparência") ||
+                    composeExists("Português (Brasil)") ||
+                    composeExists("Claro") ||
+                    composeExists("Escuro")
+            }
+        } else {
+            clickTextPrefer("English")
+            waitUntil(20_000) {
+                composeExists("Appearance") ||
+                    composeExists("English") ||
+                    composeExists("Light") ||
+                    composeExists("Dark")
+            }
+        }
+        // Persist prefs before leaving (setAppLanguage is a coroutine launch).
+        SystemClock.sleep(750)
         pressBackToFiles(lang)
+        waitUntil(20_000) {
+            if (lang == "pt-BR") {
+                composeExists("Todos os arquivos") ||
+                    composeExists("Lixeira") ||
+                    composeExists("Explorar")
+            } else {
+                composeExists("All files") ||
+                    composeExists("Trash") ||
+                    composeExists("Explore")
+            }
+        }
     }
 
     private fun walkLibrary(lang: String) {
@@ -524,11 +543,15 @@ class DeviceWalkUiTest {
         if (composeExists("Pular") || composeExists("Skip")) {
             clickTextPrefer("Pular", "Skip")
         }
+        val lang = tag.substringBefore('_')
+        pressBackToFiles(if (lang == "pt-BR") "pt-BR" else "en")
         covered += "process-death-restore"
         shot("15-process-death-$tag")
     }
 
     private fun assertNoRawOrUnlocalized(lang: String) {
+        pressBackToFiles(lang)
+        restoreAllFilesFilterSoft()
         val dump = buildString {
             runCatching {
                 val out = ByteArrayOutputStream()
@@ -556,21 +579,23 @@ class DeviceWalkUiTest {
         for (b in banned) {
             assertFalse(dump.contains(b), "Raw/dev string on screen: $b")
         }
-        // Locale smoke: after appearance apply, primary chrome should match
+        // Locale smoke: shell chrome must match the language applied in appearance.
         if (lang == "pt-BR") {
             assertTrue(
-                dump.contains("Arquivos", ignoreCase = true) ||
-                    composeExists("Todos os arquivos") ||
+                composeExists("Todos os arquivos") ||
+                    composeExists("Lixeira") ||
                     composeExists("Explorar") ||
-                    composeExists("Configuração"),
+                    composeExists("Configuração") ||
+                    dump.contains("Arquivos", ignoreCase = true),
                 "Expected pt-BR chrome after locale apply",
             )
         } else {
             assertTrue(
                 composeExists("All files") ||
+                    composeExists("Trash") ||
                     composeExists("Explore") ||
                     composeExists("Settings") ||
-                    dump.contains("Settings", ignoreCase = true),
+                    dump.contains("All files", ignoreCase = true),
                 "Expected EN chrome after locale apply",
             )
         }
