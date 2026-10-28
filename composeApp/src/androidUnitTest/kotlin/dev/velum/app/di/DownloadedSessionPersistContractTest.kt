@@ -65,7 +65,7 @@ class DownloadedSessionPersistContractTest {
         assertTrue(path.endsWith(".ogg"), path)
         assertTrue(File(path).exists())
         assertTrue(File(path).readBytes().contentEquals(ogg))
-        assertFalse(File("$path.partial").exists())
+        assertFalse(File("$path${DownloadedSessionAudioPersist.TEMP_SUFFIX}").exists())
         assertEquals("ogg", DownloadedSessionAudioPersist.detectExtension(ogg))
     }
 
@@ -77,7 +77,7 @@ class DownloadedSessionPersistContractTest {
         assertNotNull(path)
         assertTrue(path.endsWith(".wav"), path)
         assertTrue(File(path).readBytes().contentEquals(wav))
-        assertFalse(File("$path.partial").exists())
+        assertFalse(File("$path${DownloadedSessionAudioPersist.TEMP_SUFFIX}").exists())
     }
 
     @Test
@@ -98,7 +98,7 @@ class DownloadedSessionPersistContractTest {
         )
         // Whole WAV (header + body) must match PcmWav.encode byte-for-byte.
         assertTrue(bytes.contentEquals(expected))
-        assertFalse(File("$path.partial").exists())
+        assertFalse(File("$path${DownloadedSessionAudioPersist.TEMP_SUFFIX}").exists())
         // Landed under the installed recordings dir.
         assertTrue(path.startsWith(recordingsDirectoryPath()))
     }

@@ -3,6 +3,7 @@ package dev.velum.app
 import android.app.Application
 import android.os.PowerManager
 import android.util.Log
+import dev.velum.ai.audio.DownloadedSessionAudioPersist
 import dev.velum.ai.local.ModelStoreDir
 import dev.velum.ai.pipeline.AiRuntimeHolder
 import dev.velum.ai.pipeline.ThermalMonitor
@@ -79,6 +80,18 @@ class VelumApplication : Application() {
                 )
                 ready.set(true)
                 containerDeferred.complete(built)
+                // Drop crashed SoftAP/download temps before mic recovery so a
+                // leftover *.download.partial is never mistaken for a mic WAV.
+                runCatching {
+                    val removed = DownloadedSessionAudioPersist.deleteStaleDownloadTemps(
+                        ModelStoreDir(recordingsDirectoryPath()),
+                    )
+                    if (removed > 0) {
+                        Log.i(TAG, "Removed $removed stale download temp(s)")
+                    }
+                }.onFailure { t ->
+                    Log.e(TAG, "Stale download temp cleanup failed", t)
+                }
                 runCatching {
                     recoverPartialMicRecordings(
                         recordingsDirPath = recordingsDirectoryPath(),
