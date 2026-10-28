@@ -366,6 +366,11 @@ class IdentityImportSecureStoreTest {
             }
             assertEquals(1, badFiles.size)
             assertTrue(badBytes.contentEquals(java.nio.file.Files.readAllBytes(badFiles[0])))
+            // Unique suffix: .bad-<millis>-<hex>
+            assertTrue(
+                Regex("""secure\.aes256\.bad-\d+-[0-9a-f]+""")
+                    .matches(badFiles[0].fileName.toString()),
+            )
 
             val onDisk = props.toFile().readText()
             assertTrue(onDisk.contains(SecureKeys.DEVICE_SERIAL))
