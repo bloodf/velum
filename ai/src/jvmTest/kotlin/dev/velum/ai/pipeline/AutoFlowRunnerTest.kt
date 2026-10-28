@@ -53,7 +53,7 @@ class AutoFlowRunnerTest {
         val (repo, processor) = harness()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         var processCalls = 0
-        val scheduler = RecordingJobScheduler { id, _, _ ->
+        val scheduler = RecordingJobScheduler { id, _, _, _ ->
             processCalls++
             kotlinx.coroutines.runBlocking {
                 repo.updateStatus(id, "generating")
@@ -129,7 +129,7 @@ class AutoFlowRunnerTest {
     fun failedProcessing_doesNotFirePostAction() = runBlocking {
         val (repo, processor) = harness()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        val scheduler = RecordingJobScheduler { id, _, _ ->
+        val scheduler = RecordingJobScheduler { id, _, _, _ ->
             kotlinx.coroutines.runBlocking {
                 repo.updateStatus(id, "generating")
                 repo.updateStatus(id, "failed")
