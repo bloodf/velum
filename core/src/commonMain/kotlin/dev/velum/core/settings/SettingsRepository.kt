@@ -464,6 +464,18 @@ class SettingsRepository(
         _preferences.update { it.copy(deleteAudioAfterProcessing = enabled) }
     }
 
+    /**
+     * Removes every stored API key (legacy + per-profile). Preferences and endpoint
+     * URLs stay; call from privacy wipe together with device/webhook secret clears.
+     */
+    suspend fun clearAllApiKeys() {
+        store.remove(SecureKeys.AI_API_KEY)
+        _settings.value.profiles.forEach { profile ->
+            store.remove(SecureKeys.apiKey(profile.id))
+        }
+        _settings.update { it.copy(hasApiKey = false) }
+    }
+
     private suspend fun loadOrMigrateProfiles(): List<ApiEndpointProfile> {
         val raw = store.getString(KEY_ENDPOINT_PROFILES)
         if (!raw.isNullOrBlank()) {

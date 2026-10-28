@@ -70,6 +70,10 @@ fun StoragePrivacyScreen(
                                 deleteFileAtPath(path)
                             }
                             container.voiceProfileStore.wipeAll()
+                            container.settingsRepository.clearAllApiKeys()
+                            container.deviceKeyImporter.clearKeys()
+                            container.webhookSettings.clear()
+                            container.integrationAuth.clearTokens()
                             status = strings.settingsUi.wipeAllDataDone
                             val usage = container.repository.storageUsage()
                             usageLabel = strings.settingsUi.storageUsageFormat
