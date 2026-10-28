@@ -22,6 +22,7 @@ Owner standing rule: nothing may remain stub/demo-only. Prefer **blocked-on-owne
 - [x] **Device capability registry** — auto-detect on scan/connect (product code + name prefix); gate Wi‑Fi SoftAP; show model name on device screen
 - [x] `PlaudDeviceClient` + JCA `SessionCipher` / `FileDecryptor` (Android + JVM)
 - [x] `FakeBleTransport` / `FakePlaudPeripheral` + JVM E2E unlock→download→decrypt (rejects empty FE10)
+- [x] **#93 simulated BLE** — advertising fixtures (881/`portVersion`), FE10 unlock + session AES, reconnect, battery poll/notify, malformed/timeout/wrong-credential failure paths; dual-layer forbidden opcode/setting guards on those paths (`SimulatedPeripheralRegressionTest`)
 - [x] Device screen: scan / connect / sessions / battery when identity keys imported
 - [x] Static analysis notes: `docs/APK_ANALYSIS.md`
 
@@ -149,9 +150,21 @@ Phone-only / external (no Plaud required):
 - Unimplemented chrome audit: Preferences “Help improve Velum” / usage-data toggle + `prefs.help_improve`; Preferences App lock (info-only dialog); Settings hub Current workspace (noop); Integrations “More apps coming” panel; Templates Photo-to-template create option; AutoFlow “Send suggestion” inert label; Template detail “Set for later” mislabel (replaced with Close)
 - Settings redesign (local-only): sectioned hub (Devices / Recording / Transcription & AI / API / Speakers / Templates / Automation / Appearance / Storage & privacy / About); Account/profile/avatar chrome removed; library top-bar person → settings gear; theme + language prefs; Devices (Wi‑Fi prefer + auto-sync watched folders); Recording default mic; Storage usage + delete-audio-after-process; library export + wipe
 
+## Simulated BLE findings (#93)
+
+Software-only coverage against protocol fixtures + `FakePlaudPeripheral` (no radio):
+
+- Manufacturer-data fixtures parse project **881/883** and `portVersion` (protocol 20–29); malformed / truncated / wrong-port fixtures do not report Note Pro discovery.
+- Matching synthetic FE10 credentials unlock and establish session AES; wrong / empty FE10, unlock timeouts, and mid-handshake disconnect leave `sessionSecret` null.
+- Disconnect → reconnect re-runs FE10; handshake + battery remain usable on the new session (required by #5 software side).
+- Battery cmd-9 poll and unsolicited notify update the reported level; empty / out-of-range battery payloads fail closed.
+- Recorded plaintext outbound traffic on unlock/battery/reconnect paths contains none of opcodes **5 / 104 / 128 / 0xFE20 / 143** and no writes to settings **4 / 26**; send-path + transport guards still block bypass attempts after unlock.
+
+**Not claimed:** real Note Pro advertising, unlock with owner keys, or live battery notify — still unconfirmed (#5 / needs-hardware).
+
 ## Confirm only on owner’s real Plaud Note Pro
 
-- Live BLE advertise `portVersion` / project 881, unlock with owner keys, battery notify
+- Live BLE advertise `portVersion` / project 881, unlock with owner keys, battery notify (**simulated side covered in #93**; hardware still open in #5)
 - Full multi-hour download resume + CRC
 - On-device Parakeet/Whisper/Gemma quality + thermal throttling on physical silicon
 - Whether FE10 alone works with E2EE off (no FE11) after one-time key import
