@@ -19,6 +19,30 @@ class ForbiddenOpcodesTest {
     }
 
     @Test
+    fun plaudOutboundGuard_rejectsForbiddenOpcodesAndSettings() {
+        fun raw(cmd: Int, params: ByteArray = ByteArray(0)): ByteArray {
+            val packet = ByteArray(1 + 2 + params.size)
+            packet[0] = Framing.APP_PREFIX
+            Bytes.u16Le(cmd).copyInto(packet, 1)
+            params.copyInto(packet, 3)
+            return packet
+        }
+        ForbiddenOpcodes.ALL.forEach { op ->
+            assertFailsWith<IllegalArgumentException> {
+                PlaudOutboundGuard.requireAllowed(raw(op))
+            }
+        }
+        assertFailsWith<IllegalArgumentException> {
+            PlaudOutboundGuard.requireAllowed(raw(8, byteArrayOf(4, 1)))
+        }
+        assertFailsWith<IllegalArgumentException> {
+            PlaudOutboundGuard.requireAllowed(raw(8, byteArrayOf(26, 1)))
+        }
+        PlaudOutboundGuard.requireAllowed(raw(9))
+        PlaudOutboundGuard.requireAllowed(raw(8, byteArrayOf(4))) // read of setting 4 OK
+    }
+
+    @Test
     fun safeOpcodesAllowed() {
         listOf(1, 9, 26, 28, 29, 0xFE10, 0xFE11, 0xFE12, 138).forEach { op ->
             assertFalse(ForbiddenOpcodes.isForbidden(op))
