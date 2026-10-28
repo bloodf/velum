@@ -28,8 +28,10 @@ Use a green CI **`velum-debug-apk`** artifact (fixed debug keystore) or a signed
 
 - [ ] Record ≥2 h on device; BLE download completes; CRC matches.
 - [ ] Interrupt mid-transfer (BT off / kill app / range); resume from last offset.
-- [ ] Screen-off + `dataSync` FGS keeps transfer alive.
-- [ ] Note transfer time and battery drain in `docs/STATUS.md`.
+- [ ] Screen-off + `connectedDevice` session-download FGS (`SessionDownloadService`) keeps transfer alive (background + Doze on S26 Ultra).
+- [ ] Process death (swipe away) vs Android force-stop: interrupted download resumes from last confirmed offset without duplicate/missing chunks; force-stop does not auto-resume.
+- [ ] Completed / resumed / Wi‑Fi→BLE fallback downloads pass CRC validation.
+- [ ] Note device config, reproduction steps, transfer time, and battery drain in `docs/STATUS.md`.
 
 ## Audio decrypt / decode (#7)
 
