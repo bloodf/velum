@@ -92,9 +92,13 @@ class AutoFlowRunner(
                         }
                         val override = AutoFlowResolve.modelOverride(match)
                         val ready = runProcessing(recording.id, match.template_id, override)
-                        // Claim only after work finishes (or fails terminally) so kill mid-run
-                        // can retry; still claim on failure to avoid infinite retry loops.
-                        processedIds.add(recording.id)
+                        // Claim only on observed terminal ready/failed. Timeout must leave
+                        // the id unclaimed so a late WorkManager finish can still rematch
+                        // and fire post-actions.
+                        val terminal = repository.getRecording(recording.id)?.status
+                        if (terminal == "ready" || terminal == "failed") {
+                            processedIds.add(recording.id)
+                        }
                         if (ready) {
                             firePostAction(match, recording.id)
                         }
