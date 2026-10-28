@@ -9,7 +9,7 @@
 
 ## Verdict
 
-**Pending green `android-device-walk` on tip `main`.** Code findings below are fixed with tests. Ship gate: emulator walk stays green (no crash/ANR/StrictMode penaltyDeath in app / raw string) on debug + R8 release for all four locale/theme cells.
+**Not ship-ready.** Device walk still under watch on tip, and a second skeptical pass (composeApp/ble + core/ai + security/UX) found additional blocker/high/medium issues now being fixed on `main` (mic FGS ANR, demo-PCM fallback, Note Pro download Main I/O, AutoFlow KEEP dual-enqueue, voice-key fallback, wipe/SecureStore, Wi‑Fi honesty, id collisions, API error sanitization).
 
 ---
 
@@ -83,6 +83,24 @@
 
 ---
 
+## Open findings (second pass — fixing on main)
+
+| Sev | Finding | Location |
+|-----|---------|----------|
+| **blocker** | Mic FGS `stop`/`join(5s)` on main → ANR; `startForeground` after disk/AudioRecord init | `MicRecordingService` |
+| **blocker** | Android mic start failure falls through to demo PCM as real capture | `RecordingDetailScreen.LiveTranscriptPane` |
+| **blocker** | Note Pro download decrypt + `writeBytes` on Main | `DeviceViewModel.downloadSession` |
+| **blocker** | AutoFlow template/model enqueue lost to `ExistingWorkPolicy.KEEP` after null enqueue | `RecordingProcessWorker.enqueue` |
+| **high** | Mic pause races `AudioRecord.stop` vs read loop | `MicRecordingService` |
+| **high** | Process-death AutoFlow rematch retranscribes finished `ready` rows | `AutoFlowRunner` |
+| **high** | AutoFlow API override key checked but ASR ignores override | `RecordingProcessor` / `OpenAiTranscriber` |
+| **high** | Voice profile cipher falls back to fixed `0x07` key until `ensureKey` | `VoiceProfileStore` |
+| **high** | Empty library forces full template FTS rebuild every cold start | `FtsIndex.isEmpty` \|\| |
+| **high** | Wipe leaves SecureStore secrets; Wi‑Fi banner claims SoftAP that isn’t shipped | wipe / Device UI |
+| **high** | OpenAI error bodies (may echo `sk-`) → WorkManager `KEY_ERROR` | `OpenAiCompatibleClient` → worker |
+| **high** | User template/memory/glossary 5-digit ids + `INSERT OR REPLACE` | Templates/Memory screens |
+| **medium** | Wipe deletes audio after DB; EN-only permission/mic strings; unused `DATA_SYNC` FGS perm; over-broad SHARE/`video/mp4`; Appearance/All hardcoded; sherpa R8 keep | various |
+
 ## 1.0-ready?
 
-**Not yet** — waiting on green device walk + full CI on tip. Open medium+ from this round are fixed; residual risk is emulator walk flakes / uncovered StrictMode main-thread I/O in paths the walk hits.
+**No.** Round-3 first findings are fixed; second-pass blockers/highs above must land with tests, device walk must stay green, then re-audit.
