@@ -126,6 +126,7 @@ import dev.velum.core.settings.ApiModelOverride
 import dev.velum.core.templates.BuiltinTemplateCatalog
 import dev.velum.core.templates.TemplateTagFilter
 import dev.velum.core.templates.TemplateTagVocabulary
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -619,29 +620,36 @@ fun RecordingDetailScreen(
                 onClose = { showSpeakers = false },
                 onConfirm = { renames ->
                     scope.launch {
-                        renames.forEach { (speakerId, name) ->
-                            val trimmed = name.trim()
-                            if (trimmed.isEmpty()) return@forEach
-                            val row = speakers.firstOrNull { it.id == speakerId } ?: return@forEach
-                            val emb = container.voiceProfileStore.cachedClusterEmbedding(
-                                recordingId,
-                                row.label,
-                            )
-                            val existing = container.voiceProfileStore.listProfiles()
-                                .firstOrNull { it.displayName.equals(trimmed, ignoreCase = true) }
-                            when {
-                                existing != null && emb != null ->
-                                    container.voiceProfileStore.refine(existing.id, emb)
-                                else ->
-                                    container.voiceProfileStore.promoteCached(
-                                        recordingId = recordingId,
-                                        speakerId = row.label,
-                                        displayName = trimmed,
-                                    )
+                        try {
+                            renames.forEach { (speakerId, name) ->
+                                val trimmed = name.trim()
+                                if (trimmed.isEmpty()) return@forEach
+                                val row = speakers.firstOrNull { it.id == speakerId } ?: return@forEach
+                                val emb = container.voiceProfileStore.cachedClusterEmbedding(
+                                    recordingId,
+                                    row.label,
+                                )
+                                val existing = container.voiceProfileStore.listProfiles()
+                                    .firstOrNull { it.displayName.equals(trimmed, ignoreCase = true) }
+                                when {
+                                    existing != null && emb != null ->
+                                        container.voiceProfileStore.refine(existing.id, emb)
+                                    else ->
+                                        container.voiceProfileStore.promoteCached(
+                                            recordingId = recordingId,
+                                            speakerId = row.label,
+                                            displayName = trimmed,
+                                        )
+                                }
+                                container.repository.renameSpeaker(recordingId, speakerId, trimmed)
                             }
-                            container.repository.renameSpeaker(recordingId, speakerId, trimmed)
+                            showSpeakers = false
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (_: Exception) {
+                            processError = strings.ux.voiceProfilesKeyError
+                            showSpeakers = false
                         }
-                        showSpeakers = false
                     }
                 },
             )

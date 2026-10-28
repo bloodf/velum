@@ -167,9 +167,16 @@ actual class LocalAsrRuntime actual constructor() {
             if (voiceProfiles != null) {
                 for ((speakerId, embedding) in embeddingsBySpeaker) {
                     if (recordingId != null) {
-                        voiceProfiles.cacheClusterEmbedding(recordingId, speakerId, embedding)
+                        voiceProfiles.cacheClusterEmbeddingOrSkip(
+                            recordingId,
+                            speakerId,
+                            embedding,
+                        )
                     }
-                    val match = voiceProfiles.match(embedding, threshold = matchThreshold)
+                    val match = voiceProfiles.matchOrNull(
+                        embedding,
+                        threshold = matchThreshold,
+                    )
                     if (match != null) {
                         named[speakerId] = match.profile.displayName
                     }
