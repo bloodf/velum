@@ -18,6 +18,10 @@ import kotlinx.coroutines.sync.withLock
  *
  * All mutate + flush sequences share one [Mutex]; flushes snapshot the map and
  * write via temp file + atomic move.
+ *
+ * The AES key file is written through a temp file + atomic move (owner-only from
+ * creation). A key file of the wrong length is treated like a missing key: a new
+ * key is generated and existing ciphertext entries are kept.
  */
 class DesktopSecureStore(
     private val file: Path = Path.of(System.getProperty("user.home"), ".velum", "secure.properties"),
@@ -86,17 +90,20 @@ class DesktopSecureStore(
     }
 
     companion object {
+        private const val AES_256_KEY_BYTES = 32
+
         private fun loadOrCreateKey(path: Path): SecretKey {
             if (path.exists()) {
                 val bytes = Files.readAllBytes(path)
-                return JvmAesGcmSecureStore.keyFromBytes(bytes)
+                if (bytes.size == AES_256_KEY_BYTES) {
+                    return JvmAesGcmSecureStore.keyFromBytes(bytes)
+                }
+                // Wrong length (e.g. crash between create and write) — treat as
+                // missing: mint a new key, keep existing ciphertext entries.
             }
             Files.createDirectories(path.parent)
             val generated = JvmAesGcmSecureStore.generateAes256Key()
-            // Create with owner-only mode before writing key bytes (no umask window).
-            createOwnerOnlyFile(path)
-            Files.write(path, generated.encoded)
-            setOwnerOnlyPermissions(path)
+            atomicWriteOwnerOnlyBytes(path, generated.encoded)
             return generated
         }
     }
