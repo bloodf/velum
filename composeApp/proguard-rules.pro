@@ -50,10 +50,9 @@
 -keep class androidx.tracing.** { *; }
 -dontwarn androidx.tracing.**
 
-# connectedReleaseAndroidTest loads kotlin.*/kotlinx.* from the app APK first.
-# R8 must not shrink/obfuscate them or androidTest (compiled against full
-# stdlib/coroutines) hits NoClassDefFoundError / NoSuchMethodError (LazyKt,
-# StringsKt, JobKt, …).
+# connectedReleaseAndroidTest loads shared libs from the app APK first.
+# R8 must not shrink them or androidTest / Compose UI test hits
+# NoClassDefFoundError (LazyKt, JobKt, InfiniteAnimationPolicy, …).
 -keep class kotlin.** { *; }
 -keepclassmembers class kotlin.** { *; }
 -keep class kotlin.Metadata { *; }
@@ -61,6 +60,15 @@
 -keep class kotlinx.** { *; }
 -keepclassmembers class kotlinx.** { *; }
 -dontwarn kotlinx.**
+-keep class androidx.compose.** { *; }
+-keep interface androidx.compose.** { *; }
+-keepclassmembers class androidx.compose.** { *; }
+-dontwarn androidx.compose.**
+-keep class androidx.lifecycle.** { *; }
+-keep class androidx.activity.** { *; }
+-keep class androidx.savedstate.** { *; }
+-dontwarn androidx.lifecycle.**
+-dontwarn androidx.activity.**
 
 # sherpa-onnx local ASR / diarization (JNI + reflection-heavy)
 -keep class com.k2fsa.sherpa.onnx.** { *; }
