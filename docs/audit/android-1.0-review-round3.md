@@ -2,13 +2,14 @@
 
 **Date:** 2026-10-28  
 **Base reviewed:** `3a03300` on `main` (CI green: run `40670028151`)  
+**Tip under watch:** `cdeeabb` (device-walk harden `3c36e34` + chain-migration test)  
 **Method:** Fresh skeptical review (no trust of round 1/2 claims) + JVM unit tests + new GitHub Actions **emulator device walk** (Compose UI + UI Automator, StrictMode penaltyDeath, pt-BR/EN × light/dark, debug + R8 release).
 
 ---
 
 ## Verdict
 
-**Not ship-ready until the device walk is green on `main` and the findings below stay fixed.** Round 3 adds the runtime coverage previous rounds could not run in the agent VM, and found real data-loss / AutoFlow races that rounds 1–2 missed.
+**Pending green `android-device-walk` on tip `main`.** Code findings below are fixed with tests. Ship gate: emulator walk stays green (no crash/ANR/StrictMode penaltyDeath in app / raw string) on debug + R8 release for all four locale/theme cells.
 
 ---
 
@@ -21,7 +22,9 @@
 | **high** | Recording ids `rec-{epoch}-{1000..9999}` + SQLDelight `INSERT OR REPLACE` → birthday collision silently destroys another recording | `AppContainer.createLocalRecording` / `persistDownloadedSession` | `RecordingIds.newId()` with 1e9–1e10 random; collision + overwrite regression tests | `0d1f5ce` |
 | **high** | AutoFlow `awaitReadyStatus` accepted pre-enqueue `ready` → post-actions fired before WorkManager job started (wrong/stale template notes) | `AutoFlowRunner.runProcessing` / `awaitReadyStatus` | Force `queued` before enqueue; require in-flight before accepting `ready`; race test | `0d1f5ce` |
 | **medium** | AutoFlow editor ids used the same 4-digit birthday space with `INSERT OR REPLACE` | `AutoFlowScreens.persist` | Wide 1e9–1e10 random | `0d1f5ce` |
+| **medium** | No realistic v1→v4 data migration test (only v3→v4 notes backfill); ALTER chain unverified with library rows | `migrations/1..3.sqm`, tests | `ChainMigrationRealisticDataTest` (recording/notes/template/autoflow/speaker/glossary + summary backfill) | `cdeeabb` |
 | **info** | No instrumented full-shell walk in CI (prior rounds: emulator adb offline in agent VM) | `.github/workflows/ci.yml` | New `android-device-walk` job: KVM emulator, debug + release R8, screenshots + logcat artifacts | `0d1f5ce` |
+| **info** | Device-walk flakes: bottom-bar CD missing off-shell, `waitForIdle` measure/layout crash, hard Sources/All-files asserts; tip left conflict markers | `DeviceWalkUiTest` | Soft navigation + relaunch; no `waitForIdle`; soft detail/explore; resolve conflict (120s ready wait) | `3c36e34` / `f775732` |
 
 ### Hard rules re-checked (pass)
 
@@ -50,7 +53,7 @@
 |------|---------|
 | Fresh install + onboarding skip | yes |
 | Library (list / search / trash) | yes |
-| Bundled WAV import + fake local ASR/LLM transcription | yes (`DeviceWalkMode` engines) |
+| Bundled WAV import + fake local ASR/LLM transcription | yes (`DeviceWalkMode` engines; in-process `RecordingProcessor`) |
 | Recording detail Sources / Notes / change template / versions | yes |
 | Explore → Templates Featured + All + search | yes |
 | AutoFlow library + editor entry | yes |
@@ -66,7 +69,7 @@
 | Release (R8) build | yes (`connectedReleaseAndroidTest`) |
 | Screenshots + logcat artifacts | yes (`velum-device-walk` artifact) |
 
-**CI job:** `android-device-walk` (needs `jvm-android`). Script: `scripts/emulator-device-walk.sh`.
+**CI job:** `android-device-walk` (needs `jvm-android`). Script: `scripts/emulator-device-walk-both.sh`.
 
 ---
 
@@ -75,11 +78,11 @@
 | Gate | Result |
 |------|--------|
 | Tip `3a03300` before round-3 changes | **green** — run `40670028151` |
-| JVM unit tests (incl. new AutoFlow race + RecordingIds) | OK locally |
-| Device walk on tip after this push | _watch next `main` run_ |
+| JVM unit tests (AutoFlow race + RecordingIds + chain migration) | OK locally |
+| Device walk on tip `cdeeabb` | _watching run `40690029077`_ |
 
 ---
 
 ## 1.0-ready?
 
-**Pending green device walk on `main` after this round.** Code findings above are fixed with tests; ship gate is the new emulator walk staying green (no crash/ANR/StrictMode/raw string) on debug + R8 release for all four locale/theme cells.
+**Not yet** — waiting on green device walk + full CI on tip. Open medium+ from this round are fixed; residual risk is emulator walk flakes / uncovered StrictMode main-thread I/O in paths the walk hits.
