@@ -112,7 +112,7 @@ private class AndroidMicCapture(
             }
             delay(25)
         }
-        return MicMarkerResult.Ok(MicMarker(offsetMs = 0, label = label))
+        return MicMarkerResult.Failed("Timed out adding marker")
     }
 
     override suspend fun stop(): MicStopResult {
