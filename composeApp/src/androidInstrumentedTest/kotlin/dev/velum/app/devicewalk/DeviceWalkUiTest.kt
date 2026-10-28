@@ -1,7 +1,6 @@
 package dev.velum.app.devicewalk
 
 import android.content.Context
-import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.os.Environment
 import android.os.SystemClock
@@ -21,7 +20,6 @@ import dev.velum.app.VelumApplication
 import java.io.ByteArrayOutputStream
 import java.io.File
 import kotlin.test.assertFalse
-import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
 import org.junit.Before
@@ -529,10 +527,9 @@ class DeviceWalkUiTest {
         // Bring the existing task forward. CLEAR_TOP + NEW_TASK spawns a second
         // MainActivity that ActivityScenario ignores, then destroys the tracked one
         // ("Cannot run onActivity since Activity has been destroyed already").
-        val pkg = appContext.packageName
-        device.executeShellCommand(
-            "am start --activity-single-top -n $pkg/.MainActivity",
-        )
+        // Must keep MAIN/LAUNCHER so MainActivity.setIntent does not poison
+        // ActivityScenario's intent filter (otherwise DESTROYED is ignored on close).
+        resumeShellActivity(singleTop = true)
         SystemClock.sleep(2_000)
         waitUntilUi(30_000) {
             uiExists("All files") ||
@@ -546,14 +543,18 @@ class DeviceWalkUiTest {
     }
 
     /**
-     * Process death via `am kill`. Relaunch creates a new MainActivity that
-     * [composeRule]'s ActivityScenario does not track — use UiAutomator only.
+     * Process death via `am kill` (app must be backgrounded first). Relaunch may
+     * create a new MainActivity — use UiAutomator only after this. Always relaunch
+     * with MAIN/LAUNCHER so any surviving ActivityScenario instance still matches.
      */
     private fun killAndRestore(lang: String, tag: String) {
         val pkg = appContext.packageName
+        // am kill only affects background processes.
+        device.pressHome()
+        SystemClock.sleep(1_000)
         device.executeShellCommand("am kill $pkg")
         SystemClock.sleep(1_500)
-        device.executeShellCommand("am start -n $pkg/.MainActivity")
+        resumeShellActivity(singleTop = false)
         waitUntilUi(60_000) {
             uiExists("Todos os arquivos") ||
                 uiExists("All files") ||
@@ -575,6 +576,24 @@ class DeviceWalkUiTest {
         shot("15-process-death-$tag")
         // Locale must survive process death (prefs persisted).
         assertUiChrome(lang)
+    }
+
+    /**
+     * Resume/relaunch [MainActivity] with the same MAIN/LAUNCHER identity
+     * ActivityScenario used to start the test. Bare `am start -n` replaces the
+     * activity intent via [MainActivity.onNewIntent] → [Activity.setIntent], after
+     * which ActivityScenario ignores all lifecycle events (including DESTROYED) and
+     * [ActivityScenario.close] times out with last transition PAUSED.
+     */
+    private fun resumeShellActivity(singleTop: Boolean) {
+        val pkg = appContext.packageName
+        val singleTopFlag = if (singleTop) "--activity-single-top " else ""
+        device.executeShellCommand(
+            "am start ${singleTopFlag}" +
+                "-a android.intent.action.MAIN " +
+                "-c android.intent.category.LAUNCHER " +
+                "-n $pkg/.MainActivity",
+        )
     }
 
     private fun assertNoRawOrUnlocalized(lang: String) {
@@ -706,21 +725,24 @@ class DeviceWalkUiTest {
     }
 
     private fun pressBackToFiles(lang: String) {
-        repeat(10) {
+        repeat(12) {
             if (onFilesChrome()) return
             // Bottom bar Files tab is only composed on shell routes.
             if (softClickContentDesc("All files", "Todos os arquivos") && onFilesChrome()) return
+            softClickText("Files", "Arquivos")
+            if (onFilesChrome()) return
             device.pressBack()
             SystemClock.sleep(250)
             dismissSystemPermissionDialogs()
         }
         if (onFilesChrome()) return
-        // Last resort: single-top resume (never CLEAR_TOP — orphans ActivityScenario).
-        runCatching {
-            device.executeShellCommand(
-                "am start --activity-single-top -n ${appContext.packageName}/.MainActivity",
-            )
-        }
+        // Last resort: recreate the ActivityScenario-owned activity. Bare
+        // `am start -n` only delivers onNewIntent (nav stack unchanged) and
+        // MainActivity.setIntent poisons ActivityScenario intent matching so
+        // close() never observes DESTROYED. recreate() resets Compose nav
+        // while keeping the same launch intent ActivityScenario tracks.
+        runCatching { composeRule.activity.recreate() }
+        SystemClock.sleep(1_500)
         waitUntil(45_000) {
             onFilesChrome() ||
                 composeExists("Skip") ||
