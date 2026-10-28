@@ -8,6 +8,7 @@ import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 /**
@@ -28,6 +29,14 @@ class LocalizationAndCopyTest {
         "OnlineRecognizer",
         "OfflineRecognizer",
         "via sherpa",
+    )
+
+    /** Engine jargon that must never appear in Voice Profiles UI strings (#87 / H13). */
+    private val bannedVoiceProfilePhrases = listOf(
+        "3D-Speaker",
+        "ECAPA",
+        "cosine",
+        "cluster",
     )
 
     @Test
@@ -84,6 +93,76 @@ class LocalizationAndCopyTest {
         assertTrue(En.firstRun.downloadRecommended.contains("Download", ignoreCase = true))
         assertFalse(PtBr.modelManagerHint.contains("APK", ignoreCase = true))
         assertFalse(En.modelManagerHint.contains("APK", ignoreCase = true))
+    }
+
+    @Test
+    fun voiceProfilesUxHasNoEngineJargonInEitherLocale() {
+        val blobs = listOf(
+            En.voiceProfiles,
+            PtBr.voiceProfiles,
+            En.ux.voiceProfilesHint,
+            PtBr.ux.voiceProfilesHint,
+            En.ux.voiceProfilesEmpty,
+            PtBr.ux.voiceProfilesEmpty,
+            En.ux.voiceProfilesEnrollHint,
+            PtBr.ux.voiceProfilesEnrollHint,
+            En.ux.voiceProfilesExport,
+            PtBr.ux.voiceProfilesExport,
+            En.ux.voiceProfilesImportTitle,
+            PtBr.ux.voiceProfilesImportTitle,
+            En.ux.voiceProfilesThreshold,
+            PtBr.ux.voiceProfilesThreshold,
+        )
+        for (text in blobs) {
+            assertTrue(text.isNotBlank())
+            for (phrase in bannedVoiceProfilePhrases) {
+                assertFalse(
+                    text.contains(phrase, ignoreCase = true),
+                    "Voice Profiles copy still contains \"$phrase\": $text",
+                )
+            }
+        }
+        assertTrue(En.ux.voiceProfilesEnrollHint.contains(En.nameSpeakers))
+        assertTrue(PtBr.ux.voiceProfilesEnrollHint.contains(PtBr.nameSpeakers))
+        assertNotEquals(En.ux.voiceProfilesEnrollHint, PtBr.ux.voiceProfilesEnrollHint)
+    }
+
+    @Test
+    fun voiceProfilesScreenUsesLocalizedStrings() {
+        val screen = resolve(
+            "composeApp/src/commonMain/kotlin/dev/velum/app/ui/settings/VoiceProfilesScreen.kt",
+        )
+        assertTrue(screen.isFile, "missing VoiceProfilesScreen.kt")
+        val text = screen.readText()
+            .replace(Regex("""/\*[\s\S]*?\*/"""), "")
+            .replace(Regex("""(?m)^\s*//.*$"""), "")
+        val bannedLiterals = listOf(
+            "\"Voice profiles\"",
+            "\"Encrypted on-device",
+            "\"3D-Speaker",
+            "\"ECAPA",
+            "\"No profiles yet",
+            "\"Export encrypted\"",
+            "\"Import encrypted JSON\"",
+            "\"Wipe all profiles\"",
+            "\"Match threshold\"",
+            "\"Enroll:",
+            "Fontes",
+            "cluster",
+        )
+        val offenders = bannedLiterals.filter { text.contains(it) }
+        assertTrue(
+            offenders.isEmpty(),
+            "VoiceProfilesScreen still hardcodes: ${offenders.joinToString()}",
+        )
+        assertTrue(text.contains("strings.voiceProfiles"))
+        assertTrue(text.contains("strings.ux.voiceProfilesHint"))
+        assertTrue(text.contains("strings.ux.voiceProfilesEnrollHint"))
+        assertTrue(text.contains("strings.ux.voiceProfilesExport"))
+        assertTrue(text.contains("strings.ux.voiceProfilesImport"))
+        assertTrue(text.contains("strings.ux.voiceProfilesWipe"))
+        assertTrue(text.contains("strings.ux.confirmWipeProfilesBody"))
+        assertTrue(text.contains("strings.ux.confirmDeleteProfileBody"))
     }
 
     @Test
