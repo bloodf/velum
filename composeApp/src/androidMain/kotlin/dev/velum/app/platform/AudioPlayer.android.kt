@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 actual fun createAudioPlayer(): AudioPlayer = AndroidAudioPlayer()
 
@@ -57,7 +58,7 @@ private class AndroidAudioPlayer : AudioPlayer {
     override val playbackSpeed: StateFlow<Float> = _playbackSpeed.asStateFlow()
     override val skipSilence: StateFlow<Boolean> = _skipSilence.asStateFlow()
 
-    override fun prepare(path: String): Boolean {
+    override suspend fun prepare(path: String): Boolean = withContext(Dispatchers.IO) {
         releasePlayerOnly()
         _isPlaying.value = false
         _positionMs.value = 0L

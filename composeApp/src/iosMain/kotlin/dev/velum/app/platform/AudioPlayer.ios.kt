@@ -19,7 +19,7 @@ private class StubAudioPlayer : AudioPlayer {
     override val playbackSpeed: StateFlow<Float> = _playbackSpeed.asStateFlow()
     override val skipSilence: StateFlow<Boolean> = _skipSilence.asStateFlow()
 
-    override fun prepare(path: String): Boolean = false
+    override suspend fun prepare(path: String): Boolean = false
     override fun play() = Unit
     override fun pause() = Unit
     override fun seekTo(positionMs: Long) = Unit

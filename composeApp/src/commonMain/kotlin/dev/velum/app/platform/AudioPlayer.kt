@@ -14,7 +14,7 @@ interface AudioPlayer {
     val skipSilence: StateFlow<Boolean>
 
     /** Prepare [path] for playback. Returns false when the file cannot be opened. */
-    fun prepare(path: String): Boolean
+    suspend fun prepare(path: String): Boolean
 
     fun play()
     fun pause()
