@@ -25,8 +25,10 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.takahirom.roborazzi.RoborazziRule
 import com.github.takahirom.roborazzi.captureRoboImage
 import dev.velum.app.di.AppContainer
+import dev.velum.app.i18n.En
 import dev.velum.app.i18n.LocalStrings
 import dev.velum.app.i18n.PtBr
+import dev.velum.app.i18n.Strings
 import dev.velum.app.ui.autoflow.AutoFlowListScreen
 import dev.velum.app.ui.brand.VelumLogo
 import dev.velum.app.ui.explore.ExploreScreen
@@ -332,6 +334,71 @@ class MainScreenshotsTest {
         }
     }
 
+    // —— English (light + dark) for 1.0 locale matrix ——
+
+    @Test
+    fun enHome() = capture("en-02-home-recordings", strings = En) {
+        FilesScreen(container, onOpenRecording = {}, onOpenSettings = {})
+        BottomChrome(ShellTab.Files, fabOpen = false)
+    }
+
+    @Test
+    fun enSettings() = capture("en-17-settings", strings = En) {
+        SettingsHubScreen(
+            onBack = {},
+            onDevices = {},
+            onRecording = {},
+            onAiProcessing = {},
+            onModelManager = {},
+            onMemory = {},
+            onPersonalization = {},
+            onPreferences = {},
+            onApi = {},
+            onVoiceProfiles = {},
+            onTemplates = {},
+            onAutoFlow = {},
+            onIntegrations = {},
+            onWatchedFolders = {},
+            onAppearance = {},
+            onStoragePrivacy = {},
+            onAbout = {},
+        )
+    }
+
+    @Test
+    fun enSummary() = capture("en-08-summary-template", strings = En) {
+        RecordingDetailScreen(container, "rec-demo-1", onBack = {}, initialTab = 1)
+    }
+
+    @Test
+    fun enDarkHome() = capture("en-dark-02-home-recordings", dark = true, strings = En) {
+        FilesScreen(container, onOpenRecording = {}, onOpenSettings = {})
+        BottomChrome(ShellTab.Files, fabOpen = false)
+    }
+
+    @Test
+    fun enDarkSettings() = capture("en-dark-17-settings", dark = true, strings = En) {
+        SettingsHubScreen(
+            onBack = {},
+            onDevices = {},
+            onRecording = {},
+            onAiProcessing = {},
+            onModelManager = {},
+            onMemory = {},
+            onPersonalization = {},
+            onPreferences = {},
+            onApi = {},
+            onVoiceProfiles = {},
+            onTemplates = {},
+            onAutoFlow = {},
+            onIntegrations = {},
+            onWatchedFolders = {},
+            onAppearance = {},
+            onStoragePrivacy = {},
+            onAbout = {},
+        )
+    }
+
     // —— Dark variants (1080×2400) ——
 
     @Test
@@ -462,10 +529,15 @@ class MainScreenshotsTest {
         }
     }
 
-    private fun capture(name: String, dark: Boolean = false, content: @Composable () -> Unit) {
+    private fun capture(
+        name: String,
+        dark: Boolean = false,
+        strings: Strings = PtBr,
+        content: @Composable () -> Unit,
+    ) {
         captureRoboImage("velum-$name.png") {
             CompositionLocalProvider(
-                LocalStrings provides PtBr,
+                LocalStrings provides strings,
                 LocalDensity provides Density(density = 3f, fontScale = 1f),
             ) {
                 VelumTheme(darkTheme = dark) {

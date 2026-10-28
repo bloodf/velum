@@ -39,6 +39,9 @@ jobs:
       - name: Assemble signed debug APK
         run: ./gradlew :composeApp:assembleDebug --stacktrace
 
+      - name: Assemble release APK (R8 minify)
+        run: ./gradlew :composeApp:assembleRelease --stacktrace
+
       - name: Assert arm64-v8a native libs packaged
         run: |
           set -euo pipefail

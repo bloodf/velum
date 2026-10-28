@@ -30,6 +30,12 @@
 -dontwarn okhttp3.**
 -dontwarn okio.**
 -keep class io.ktor.** { *; }
+# Ktor debug detector references JVM-only management APIs absent on Android.
+-dontwarn java.lang.management.ManagementFactory
+-dontwarn java.lang.management.RuntimeMXBean
+
+# commons-compress optional zstd codec (we only gunzip/tar model archives).
+-dontwarn com.github.luben.zstd.**
 
 # LiteRT / on-device LLM (reflection-heavy)
 -keep class com.google.ai.edge.** { *; }

@@ -20,19 +20,24 @@ import dev.velum.core.data.DriverFactory
 import dev.velum.core.integrations.IntegrationConfig
 import dev.velum.core.security.AndroidSecureStore
 import java.io.File
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 /**
- * Process-scoped application graph. Built once in [onCreate] so WorkManager workers
- * and Activities share the same [AppContainer] / [AiRuntimeHolder] hooks.
+ * Process-scoped application graph.
  *
- * Microphone capture runs in [MicRecordingService] (FOREGROUND_SERVICE_TYPE_MICROPHONE).
+ * Heavy work (SQLDelight open, Featured template seed ~1500 rows, FTS rebuild) runs on
+ * [Dispatchers.IO] so [Application.onCreate] does not ANR. [MainActivity] keeps the
+ * splash screen up until [isContainerReady].
  */
 class VelumApplication : Application() {
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val ready = AtomicBoolean(false)
+    private val containerDeferred = CompletableDeferred<AppContainer>()
 
     override fun onCreate() {
         super.onCreate()
@@ -44,25 +49,29 @@ class VelumApplication : Application() {
         dev.velum.ai.local.installDeviceComputeContext(applicationContext)
         MicRecordingService.ensureNotificationChannel(this)
         dev.velum.app.platform.DownloadProgressNotifier.ensureChannel()
+
         val modelsDir = File(filesDir, "models")
         val powerManager = getSystemService(PowerManager::class.java)
-        val built = AppContainer(
-            secureStore = AndroidSecureStore(applicationContext),
-            driverFactory = DriverFactory(applicationContext),
-            modelStoreRoot = ModelStoreDir(modelsDir.absolutePath),
-            integrationConfig = IntegrationConfig.fromEnv { key -> System.getenv(key) },
-            recordingJobSchedulerFactory = { _, _ ->
-                createWorkManagerRecordingJobScheduler(applicationContext)
-            },
-            thermalPolicy = ThermalMonitor.asPolicy(powerManager),
-        )
-        container = built
-        AiRuntimeHolder.install(
-            processor = built.recordingProcessor,
-            repository = built.repository,
-            settings = built.settingsRepository,
-        )
+        val appContext = applicationContext
         appScope.launch {
+            val built = AppContainer(
+                secureStore = AndroidSecureStore(appContext),
+                driverFactory = DriverFactory(appContext),
+                modelStoreRoot = ModelStoreDir(modelsDir.absolutePath),
+                integrationConfig = IntegrationConfig.fromEnv { key -> System.getenv(key) },
+                recordingJobSchedulerFactory = { _, _ ->
+                    createWorkManagerRecordingJobScheduler(appContext)
+                },
+                thermalPolicy = ThermalMonitor.asPolicy(powerManager),
+            )
+            container = built
+            AiRuntimeHolder.install(
+                processor = built.recordingProcessor,
+                repository = built.repository,
+                settings = built.settingsRepository,
+            )
+            ready.set(true)
+            containerDeferred.complete(built)
             runCatching {
                 recoverPartialMicRecordings(
                     recordingsDirPath = recordingsDirectoryPath(),
@@ -80,6 +89,10 @@ class VelumApplication : Application() {
             }
         }
     }
+
+    fun isContainerReady(): Boolean = ready.get()
+
+    suspend fun awaitContainer(): AppContainer = containerDeferred.await()
 
     companion object {
         private const val TAG = "VelumApp"

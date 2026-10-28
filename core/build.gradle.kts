@@ -84,8 +84,13 @@ val validateAutoflowTemplates = tasks.register<Exec>("validateAutoflowTemplates"
 }
 
 // Pack JSONL before resources are copied for any target that ships the catalog.
+// AGP uses process*JavaRes; KMP/JVM uses *ProcessResources.
 tasks.matching {
-    it.name.endsWith("ProcessResources") || it.name == "jvmTest"
+    val n = it.name
+    n.endsWith("ProcessResources") ||
+        n.endsWith("JavaRes") ||
+        n.contains("process") && n.contains("JavaRes", ignoreCase = true) ||
+        n == "jvmTest"
 }.configureEach {
     dependsOn(validateAutoflowTemplates)
 }
