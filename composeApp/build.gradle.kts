@@ -116,14 +116,12 @@ android {
     compileSdk = libs.versions.android.compileSdk.get().toInt()
 
     // Default debug. Device-walk CI passes -PvelumTestBuildType=release so
-    // connectedReleaseAndroidTest exists (release code paths + signing).
-    // Minify stays OFF for that instrumented leg: R8 + androidTest share a
-    // classloader and keep-rules whack-a-mole (tracing / LazyKt / JobKt / …)
-    // never converges. R8 is still exercised by assembleRelease in jvm-android.
+    // connectedReleaseAndroidTest exists and exercises the R8-minified APK.
+    // Shared androidTest/app classloader needs broad kotlin/kotlinx/Compose keeps
+    // in proguard-rules.pro (see comments there).
     val walkBuildType =
         (findProperty("velumTestBuildType") as String?)?.takeIf { it.isNotBlank() } ?: "debug"
     testBuildType = walkBuildType
-    val instrumentedReleaseWalk = walkBuildType == "release"
 
     defaultConfig {
         applicationId = "dev.velum.app"
@@ -177,18 +175,16 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
         getByName("release") {
-            isMinifyEnabled = !instrumentedReleaseWalk
-            isShrinkResources = !instrumentedReleaseWalk
+            isMinifyEnabled = true
+            isShrinkResources = true
             // Prefer upload key when present; otherwise debug keystore so CI can
-            // install + run connectedReleaseAndroidTest (device walk).
+            // install + run connectedReleaseAndroidTest (device walk on R8).
             signingConfig = signingConfigs.findByName("release")
                 ?: signingConfigs.getByName("debug")
-            if (!instrumentedReleaseWalk) {
-                proguardFiles(
-                    getDefaultProguardFile("proguard-android-optimize.txt"),
-                    "proguard-rules.pro",
-                )
-            }
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
         }
     }
     compileOptions {
