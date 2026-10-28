@@ -64,10 +64,14 @@ private class AndroidAudioPlayer : AudioPlayer {
         _positionMs.value = 0L
         _durationMs.value = 0L
         pcm16LeMono = null
-        if (path.isBlank()) return false
+        if (path.isBlank()) {
+            return@withContext false
+        }
         val file = File(path)
-        if (!file.isFile || !file.canRead()) return false
-        return try {
+        if (!file.isFile || !file.canRead()) {
+            return@withContext false
+        }
+        try {
             val mp = MediaPlayer()
             mp.setDataSource(path)
             mp.setOnCompletionListener {
