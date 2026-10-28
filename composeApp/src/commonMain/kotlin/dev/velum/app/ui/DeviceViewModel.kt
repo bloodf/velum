@@ -318,7 +318,7 @@ class DeviceViewModel(
             val hs = c.handshake()
             val caps = capsBase.withHandshake(hs)
             val sessions = c.listSessions()
-            val battery = c.readBattery()
+            val battery = c.readBatteryOrNull()
             val wifiCapable = DeviceCapabilityRegistry.supportsWifiFastPath(caps)
             _sessionUi.value = DeviceSessionUi(
                 batteryPercent = battery?.percent,

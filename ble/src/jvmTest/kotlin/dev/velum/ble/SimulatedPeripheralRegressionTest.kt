@@ -265,17 +265,17 @@ class SimulatedPeripheralRegressionTest {
     fun battery_malformedFrame_failsWithoutCorruptReading() = runTest {
         val env = unlockedEnv(requirePublicKey = false)
         env.client.handshake()
-        // Empty / truncated → null on app path (Battery.parseOrNull).
+        // Empty / truncated → null on soft app path (Battery.parseOrNull).
         env.peripheral.batteryPayloadOverride = ByteArray(0)
-        assertNull(env.client.readBattery())
+        assertNull(env.client.readBatteryOrNull())
         env.peripheral.batteryPayloadOverride = byteArrayOf(0x5d) // 1-byte truncated
-        assertNull(env.client.readBattery())
+        assertNull(env.client.readBatteryOrNull())
         // 0xFF while charging — hardware-observed; null, not throw.
         env.peripheral.batteryPayloadOverride = byteArrayOf(0x01, 0xFF.toByte())
-        assertNull(env.client.readBattery())
+        assertNull(env.client.readBatteryOrNull())
         // Valid frame still works after malformed attempts.
         env.peripheral.batteryPercent = 55
-        assertEquals(55, env.client.readBattery()!!.percent)
+        assertEquals(55, env.client.readBattery().percent)
         env.client.close()
     }
 
@@ -316,18 +316,17 @@ class SimulatedPeripheralRegressionTest {
 
         // Safe battery request still allowed through both layers.
         PlaudOutboundGuard.requireAllowed(Framing.encodeCommand(Commands.BATTERY_LIKELY))
-        assertEquals(93, env.client.readBattery()!!.percent)
+        assertEquals(93, env.client.readBattery().percent)
         assertNoForbiddenPlaintext(env.ble.recordedWrites)
         env.client.close()
     }
 
     /**
-     * After simulated unlock, sealed writes go through the single client
-     * `sendEncrypted` call site ([PlaudBleTransport.writeSealedAfterPlaintextGuard]
-     * today). Allowed plaintext seals; forbidden opcodes / settings 4 & 26 are
-     * rejected before any sealed bytes are recorded. Sealed sink bytes must
-     * open back to the checked plaintext (prove seal-of-plaintext, not just
-     * "something was written").
+     * After simulated unlock, encrypted writes go through the single client
+     * `sendEncrypted` → [PlaudEncryptedSession.writeEncrypted] path. Allowed
+     * plaintext seals inside `:ble`; forbidden opcodes / settings 4 & 26 are
+     * rejected before any sealed bytes are recorded. On-wire bytes must open
+     * back to the checked plaintext.
      */
     @Test
     fun encryptedSession_sealedWrite_guardsPlaintextBeforeSeal() = runTest {
@@ -338,27 +337,30 @@ class SimulatedPeripheralRegressionTest {
         assertNotNull(secret)
         env.ble.clearRecordedWrites()
 
-        // Allowed plaintext → sealed path succeeds; unseal proves derivation.
+        // Allowed plaintext → writeEncrypted seals; unseal proves derivation.
         // After unlock sendSeq=2; handshake consumed seq 2; battery uses seq 3.
         val expectedPlaintext = Framing.encodeCommand(Commands.BATTERY_LIKELY)
-        assertEquals(93, env.client.readBattery()!!.percent)
+        assertEquals(93, env.client.readBattery().percent)
         assertEquals(
             1,
             env.ble.recordedWrites.size,
-            "allowed sealed battery write must reach transport after unlock",
+            "allowed encrypted battery write must reach transport after unlock",
         )
         val sealedBattery = env.ble.recordedWrites.single().second
         val openedBattery = env.cipher.openPacket(secret, sequence = 3L, sealedBattery)
-        assertNotNull(openedBattery, "sealed sink bytes must open with session cipher")
+        assertNotNull(openedBattery, "on-wire bytes must open with session cipher")
         assertTrue(
             openedBattery.second.contentEquals(expectedPlaintext),
             "sealed bytes must decrypt to the checked battery plaintext",
         )
         env.ble.clearRecordedWrites()
 
-        val plaud = PlaudBleTransport(env.ble)
-        // Dummy sealed payload must not be recorded when plaintext is rejected.
-        val dummySealed = byteArrayOf(0xAA.toByte(), 0xBB.toByte(), 0xCC.toByte())
+        // Fresh session for direct writeEncrypted rejection checks (seq independent).
+        val session = PlaudBleTransport(env.ble).openEncryptedSession(
+            cipher = env.cipher,
+            secret = secret,
+            initialSendSeq = 100,
+        )
 
         // Explicit forbidden set: 104, 5, 0xFE20 (LE [0x20,0xFE]), 128, 143.
         val forbiddenOps = listOf(
@@ -375,17 +377,14 @@ class SimulatedPeripheralRegressionTest {
         )
 
         forbiddenOps.forEach { op ->
-            assertFailsWith<IllegalArgumentException>("sealed-path plaintext opcode $op") {
-                plaud.writeSealedAfterPlaintextGuard(
-                    plaintext = ForbiddenOpcodeLayersTest.rawAppCommand(op),
-                    sealed = dummySealed,
-                )
+            assertFailsWith<IllegalArgumentException>("writeEncrypted plaintext opcode $op") {
+                session.writeEncrypted(ForbiddenOpcodeLayersTest.rawAppCommand(op))
             }
             assertTrue(
                 env.ble.recordedWrites.isEmpty(),
                 "forbidden plaintext $op must not reach sealed write",
             )
-            assertFailsWith<IllegalArgumentException>("client sealed-path opcode $op") {
+            assertFailsWith<IllegalArgumentException>("client encrypted-path opcode $op") {
                 env.client.writeCommandForTest(op)
             }
             assertTrue(env.ble.recordedWrites.isEmpty())
@@ -393,30 +392,36 @@ class SimulatedPeripheralRegressionTest {
 
         listOf(ForbiddenSettings.AUTO_DELETE, ForbiddenSettings.AUTO_SYNC).forEach { setting ->
             assertTrue(setting == 4 || setting == 26, "expected settings 4 or 26, got $setting")
-            assertFailsWith<IllegalArgumentException>("sealed-path setting $setting") {
-                plaud.writeSealedAfterPlaintextGuard(
-                    plaintext = ForbiddenOpcodeLayersTest.rawAppCommand(
+            assertFailsWith<IllegalArgumentException>("writeEncrypted setting $setting") {
+                session.writeEncrypted(
+                    ForbiddenOpcodeLayersTest.rawAppCommand(
                         8,
                         byteArrayOf(setting.toByte(), 1),
                     ),
-                    sealed = dummySealed,
                 )
             }
             assertTrue(env.ble.recordedWrites.isEmpty())
-            assertFailsWith<IllegalArgumentException>("client sealed-path setting $setting") {
+            assertFailsWith<IllegalArgumentException>("client encrypted-path setting $setting") {
                 env.client.writeCommandForTest(8, byteArrayOf(setting.toByte(), 1))
             }
             assertTrue(env.ble.recordedWrites.isEmpty())
         }
 
-        // Allowed sealed write still works; again prove plaintext round-trip.
-        // Prior battery used seq 3; this one is seq 4.
-        assertEquals(93, env.client.readBattery()!!.percent)
+        // Allowed writeEncrypted still works; prove plaintext round-trip on seq 100.
+        val allowedPlain = Framing.encodeCommand(Commands.BATTERY_LIKELY)
+        session.writeEncrypted(allowedPlain)
         assertEquals(1, env.ble.recordedWrites.size)
-        val sealedAgain = env.ble.recordedWrites.single().second
-        val openedAgain = env.cipher.openPacket(secret, sequence = 4L, sealedAgain)
-        assertNotNull(openedAgain)
-        assertTrue(openedAgain.second.contentEquals(expectedPlaintext))
+        val sealedAllowed = env.ble.recordedWrites.single().second
+        val openedAllowed = session.openPacket(100L, sealedAllowed)
+        assertNotNull(openedAllowed)
+        assertTrue(openedAllowed.second.contentEquals(allowedPlain))
+        // Client path still healthy after rejection attempts (seq 4 after prior battery).
+        env.ble.clearRecordedWrites()
+        assertEquals(93, env.client.readBattery().percent)
+        val sealedClient = env.ble.recordedWrites.single().second
+        val openedClient = env.cipher.openPacket(secret, sequence = 4L, sealedClient)
+        assertNotNull(openedClient)
+        assertTrue(openedClient.second.contentEquals(expectedPlaintext))
         env.client.close()
     }
 

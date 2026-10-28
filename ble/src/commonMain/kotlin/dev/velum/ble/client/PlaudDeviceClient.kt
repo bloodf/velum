@@ -325,10 +325,19 @@ class PlaudDeviceClient(
     }
 
     /**
-     * Poll battery (cmd 9). Uses [Battery.parseOrNull] so truncated / out-of-range
-     * payloads (e.g. level `0xFF` while charging) yield null instead of throwing.
+     * Poll battery (cmd 9). Uses [Battery.parseOrNull] under the hood; truncated /
+     * out-of-range payloads fail with a clear error. Prefer [readBatteryOrNull] on
+     * UI paths that must treat `0xFF`-while-charging as unknown.
      */
-    suspend fun readBattery(): BatteryReading? {
+    suspend fun readBattery(): BatteryReading =
+        readBatteryOrNull()
+            ?: error("Battery reading unavailable (truncated or out-of-range level)")
+
+    /**
+     * Poll battery without throwing on truncated / out-of-range payloads
+     * (e.g. level `0xFF` while charging → null).
+     */
+    suspend fun readBatteryOrNull(): BatteryReading? {
         val packet = Battery.encodeBatteryRequest()
         val payload = transactCommand(Commands.BATTERY_LIKELY, packet)
         return Battery.parseOrNull(payload)
