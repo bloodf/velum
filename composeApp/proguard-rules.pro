@@ -17,6 +17,20 @@
 # Kable BLE
 -keep class com.juul.kable.** { *; }
 
+# WorkManager reflects on Worker / ListenableWorker subclasses
+-keep class * extends androidx.work.ListenableWorker {
+    public <init>(android.content.Context,androidx.work.WorkerParameters);
+}
+
+# SoftAP Wi‑Fi transfer WebSocket server (java_websocket)
+-keep class org.java_websocket.** { *; }
+-dontwarn org.java_websocket.**
+
+# Ktor / OkHttp (release minify)
+-dontwarn okhttp3.**
+-dontwarn okio.**
+-keep class io.ktor.** { *; }
+
 # LiteRT / on-device LLM (reflection-heavy)
 -keep class com.google.ai.edge.** { *; }
 -keep class org.tensorflow.lite.** { *; }

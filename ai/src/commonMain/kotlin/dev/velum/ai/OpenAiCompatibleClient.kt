@@ -1,5 +1,6 @@
 package dev.velum.ai
 
+import dev.velum.ai.audio.PcmWav
 import dev.velum.core.model.AiModelInfo
 import dev.velum.core.settings.AiBaseUrl
 import io.ktor.client.HttpClient
@@ -62,7 +63,10 @@ class OpenAiCompatibleClient(
                             "file",
                             audioBytes,
                             Headers.build {
-                                append(HttpHeaders.ContentType, "audio/ogg")
+                                append(
+                                    HttpHeaders.ContentType,
+                                    PcmWav.contentTypeForFilename(filename),
+                                )
                                 append(
                                     HttpHeaders.ContentDisposition,
                                     "filename=\"$filename\"",
@@ -132,7 +136,8 @@ class AiApiException(val status: Int, override val message: String) : Exception(
 
 /** Thrown when an API-mode task runs without a configured key. */
 class MissingApiKeyException(
-    override val message: String = "API key required. Add your OpenAI-compatible key in Account settings.",
+    override val message: String =
+        "API key required. Add your OpenAI-compatible key in Settings → AI provider.",
 ) : IllegalStateException(message)
 
 @Serializable

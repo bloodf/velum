@@ -4,17 +4,20 @@ import dev.velum.core.db.VelumDatabase
 import dev.velum.core.templates.BuiltinTemplateCatalog
 
 object DemoFlags {
-    /** When true, seed sample recordings/templates on first launch. */
-    const val SEED_DEMO_DATA: Boolean = true
+    /**
+     * When true, also insert sample demo recordings on first launch.
+     * Default false for product builds — Roborazzi / marketing screenshots seed their own fixtures.
+     * Builtin templates / default AutoFlow always seed regardless of this flag.
+     */
+    const val SEED_DEMO_DATA: Boolean = false
 }
 
 object SeedData {
     private const val META_SEEDED = "demo_seed_version"
-    /** v7: curated Plaud 1500 + Velum PR contributions; no Plaud author in UI/seed blurb. */
-    private const val SEED_VERSION = "7"
+    /** v8: templates always; demo recordings only when [DemoFlags.SEED_DEMO_DATA]. */
+    private const val SEED_VERSION = "8"
 
     fun maybeSeed(db: VelumDatabase) {
-        if (!DemoFlags.SEED_DEMO_DATA) return
         val q = db.velumQueries
         if (q.getMeta(META_SEEDED).executeAsOneOrNull() == SEED_VERSION) return
 
@@ -23,44 +26,50 @@ object SeedData {
             q.insertFolder("folder-inbox", "Inbox", now)
             q.insertFolder("folder-meetings", "Reuniões", now)
 
-            // Upsert demo recordings so upgraded seed versions refresh Markdown fixtures.
-            q.deleteRecordingHard("rec-demo-1")
-            q.deleteRecordingHard("rec-demo-2")
-            q.insertRecording(
-                id = "rec-demo-1",
-                session_id = now - 3600,
-                folder_id = "folder-meetings",
-                // Friendly title matches started_at in UTC (demo / screenshot fixture).
-                title = "26 out, 10:39",
-                source = "note_pro",
-                device_serial = "881DEMO01",
-                started_at = 1_729_939_155L,
-                duration_seconds = 36 * 60,
-                size_bytes = 8_500_000,
-                local_path = null,
-                transcript = DEMO_TRANSCRIPT_PT,
-                summary_markdown = DEMO_SUMMARY_PT,
-                status = "ready",
-                trashed = 0,
-                created_at = now - 3600,
-            )
-            q.insertRecording(
-                id = "rec-demo-2",
-                session_id = now - 86400,
-                folder_id = null,
-                title = "Planejamento de produto",
-                source = "phone",
-                device_serial = null,
-                started_at = now - 86400,
-                duration_seconds = 26 * 60 + 5,
-                size_bytes = 6_200_000,
-                local_path = null,
-                transcript = DEMO_TRANSCRIPT_GENERATING_PT,
-                summary_markdown = null,
-                status = "generating",
-                trashed = 0,
-                created_at = now - 86400,
-            )
+            if (DemoFlags.SEED_DEMO_DATA) {
+                // Upsert demo recordings so upgraded seed versions refresh Markdown fixtures.
+                q.deleteRecordingHard("rec-demo-1")
+                q.deleteRecordingHard("rec-demo-2")
+                q.insertRecording(
+                    id = "rec-demo-1",
+                    session_id = now - 3600,
+                    folder_id = "folder-meetings",
+                    // Friendly title matches started_at in UTC (demo / screenshot fixture).
+                    title = "26 out, 10:39",
+                    source = "note_pro",
+                    device_serial = "881DEMO01",
+                    started_at = 1_729_939_155L,
+                    duration_seconds = 36 * 60,
+                    size_bytes = 8_500_000,
+                    local_path = null,
+                    transcript = DEMO_TRANSCRIPT_PT,
+                    summary_markdown = DEMO_SUMMARY_PT,
+                    status = "ready",
+                    trashed = 0,
+                    created_at = now - 3600,
+                )
+                q.insertRecording(
+                    id = "rec-demo-2",
+                    session_id = now - 86400,
+                    folder_id = null,
+                    title = "Planejamento de produto",
+                    source = "phone",
+                    device_serial = null,
+                    started_at = now - 86400,
+                    duration_seconds = 26 * 60 + 5,
+                    size_bytes = 6_200_000,
+                    local_path = null,
+                    transcript = DEMO_TRANSCRIPT_GENERATING_PT,
+                    summary_markdown = null,
+                    status = "generating",
+                    trashed = 0,
+                    created_at = now - 86400,
+                )
+            } else {
+                // Drop leftover demo rows from older builds that seeded with the flag on.
+                q.deleteRecordingHard("rec-demo-1")
+                q.deleteRecordingHard("rec-demo-2")
+            }
 
             q.deleteAllBuiltinTemplates()
             BuiltinTemplateCatalog.LegacyAliases.keys.forEach { legacyId ->

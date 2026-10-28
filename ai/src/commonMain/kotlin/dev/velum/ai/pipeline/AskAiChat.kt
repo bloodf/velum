@@ -72,7 +72,7 @@ class AskAiChat(
         val key = settings.getApiKey()
         if (key.isNullOrBlank()) {
             throw MissingApiKeyException(
-                "API key required for Ask AI. Add your OpenAI-compatible key in Account settings.",
+                "API key required for Ask AI. Add your OpenAI-compatible key in Settings → AI provider.",
             )
         }
     }

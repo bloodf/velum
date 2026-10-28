@@ -3,6 +3,7 @@ package dev.velum.ai.openai
 import dev.velum.ai.ChatMessage
 import dev.velum.ai.MissingApiKeyException
 import dev.velum.ai.OpenAiCompatibleClient
+import dev.velum.ai.audio.PcmWav
 import dev.velum.ai.engine.AudioInput
 import dev.velum.ai.engine.DiarizationResult
 import dev.velum.ai.engine.Diarizer
@@ -25,17 +26,18 @@ class OpenAiTranscriber(
         val key = settings.getApiKey().orEmpty()
         if (!cfg.hasApiKey || key.isBlank()) {
             throw MissingApiKeyException(
-                "API key required for API transcription. Add your OpenAI-compatible key in Account settings.",
+                "API key required for API transcription. Add your OpenAI-compatible key in Settings → AI provider.",
             )
         }
         val model = modelId.ifBlank { cfg.transcriptionModel ?: "whisper-1" }
         val lang = input.languageHint?.takeIf { it != "auto" }
+        val (filename, audioBytes) = prepareUpload(input)
         val result = client.transcribe(
             baseUrl = cfg.baseUrl,
             apiKey = key,
             model = model,
-            filename = input.filename,
-            audioBytes = input.bytes,
+            filename = filename,
+            audioBytes = audioBytes,
             language = lang,
             prompt = input.initialPrompt,
         )
@@ -45,6 +47,20 @@ class OpenAiTranscriber(
             modelId = model,
             detectedLanguage = lang,
         )
+    }
+
+    /**
+     * RecordingProcessor always feeds PCM after decode. Wrap as WAV unless the
+     * payload is already a recognized audio container.
+     */
+    internal fun prepareUpload(input: AudioInput): Pair<String, ByteArray> {
+        if (PcmWav.looksLikeWav(input.bytes) || PcmWav.looksLikeOgg(input.bytes)) {
+            return input.filename to input.bytes
+        }
+        val wavName = input.filename
+            .substringBeforeLast('.')
+            .ifBlank { "audio" } + ".wav"
+        return wavName to PcmWav.encode(input.bytes, input.sampleRateHz.coerceAtLeast(8_000))
     }
 }
 
@@ -75,7 +91,7 @@ class OpenAiLlmEngine(
         val key = settings.getApiKey().orEmpty()
         if (!cfg.hasApiKey || key.isBlank()) {
             throw MissingApiKeyException(
-                "API key required for API summaries. Add your OpenAI-compatible key in Account settings.",
+                "API key required for API summaries. Add your OpenAI-compatible key in Settings → AI provider.",
             )
         }
         val model = modelId.ifBlank { cfg.chatModel ?: "gpt-4o-mini" }

@@ -207,7 +207,7 @@ class AskAcrossRecordings(
         val key = settings.getApiKey()
         if (key.isNullOrBlank()) {
             throw MissingApiKeyException(
-                "API key required for Ask across recordings. Add your OpenAI-compatible key in Account settings.",
+                "API key required for Ask across recordings. Add your OpenAI-compatible key in Settings → AI provider.",
             )
         }
     }

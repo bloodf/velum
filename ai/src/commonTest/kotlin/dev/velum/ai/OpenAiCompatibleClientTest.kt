@@ -92,6 +92,28 @@ class OpenAiCompatibleClientTest {
         assertEquals(404, (error as AiApiException).status)
     }
 
+    @Test
+    fun transcribe_acceptsWavUploadAndReturnsText() = runTest {
+        val engine = MockEngine {
+            respond(
+                content = """{"text":"hello from wav"}""",
+                status = HttpStatusCode.OK,
+                headers = headersOf(HttpHeaders.ContentType, "application/json"),
+            )
+        }
+        val client = OpenAiCompatibleClient(httpClient = mockClient(engine))
+        val wav = dev.velum.ai.audio.PcmWav.encode(ByteArray(16) { 1 }, 16_000)
+        val result = client.transcribe(
+            baseUrl = "https://api.example.test/v1",
+            apiKey = "k",
+            model = "whisper-1",
+            filename = "window.wav",
+            audioBytes = wav,
+        )
+        assertEquals("hello from wav", result.text)
+        assertEquals("audio/wav", dev.velum.ai.audio.PcmWav.contentTypeForFilename("window.wav"))
+    }
+
     private fun mockClient(engine: MockEngine) = HttpClient(engine) {
         install(ContentNegotiation) { json(OpenAiCompatibleClient.defaultJson) }
     }

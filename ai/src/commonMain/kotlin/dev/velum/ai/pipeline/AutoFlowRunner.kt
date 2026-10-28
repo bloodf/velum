@@ -1,5 +1,6 @@
 package dev.velum.ai.pipeline
 
+import dev.velum.ai.engine.JobProgress
 import dev.velum.core.autoflow.AutoFlowMatcher
 import dev.velum.core.autoflow.AutoFlowPostAction
 import dev.velum.core.calendar.CalendarEventProvider
@@ -62,13 +63,23 @@ class AutoFlowRunner(
                     val enabledFlows = flows.filter { it.enabled == 1L }
                     for (recording in recordings) {
                         if (recording.id in processedIds) continue
-                        processedIds.add(recording.id)
                         maybeApplyCalendarTitle(recording)
                         val match = enabledFlows.firstOrNull { flow ->
                             matches(flow, recording)
-                        } ?: continue
-                        runProcessing(recording.id, match.template_id)
-                        firePostAction(match, recording.id)
+                        }
+                        if (match == null) {
+                            // Do not permanently skip incomplete rows (duration 0 / mid-capture).
+                            // Only mark stable terminal recordings that never matched.
+                            if (isStableNonMatch(recording)) {
+                                processedIds.add(recording.id)
+                            }
+                            continue
+                        }
+                        processedIds.add(recording.id)
+                        val ready = runProcessing(recording.id, match.template_id)
+                        if (ready) {
+                            firePostAction(match, recording.id)
+                        }
                     }
                 }
         }
@@ -84,7 +95,8 @@ class AutoFlowRunner(
         maybeApplyCalendarTitle(recording)
     }
 
-    private suspend fun runProcessing(recordingId: String, templateId: String?) {
+    /** @return true when the recording finished as `ready` (post-actions may run). */
+    private suspend fun runProcessing(recordingId: String, templateId: String?): Boolean {
         val scheduler = jobScheduler
         if (scheduler != null) {
             scheduler.enqueue(
@@ -92,28 +104,34 @@ class AutoFlowRunner(
                 templateId = templateId,
                 retranscribe = true,
             )
-            awaitTerminalStatus(recordingId)
-        } else {
-            processor.process(
-                recordingId = recordingId,
-                templateId = templateId,
-                retranscribe = true,
-            ).collect { }
+            return awaitReadyStatus(recordingId)
         }
+        var succeeded = false
+        processor.process(
+            recordingId = recordingId,
+            templateId = templateId,
+            retranscribe = true,
+        ).collect { progress ->
+            if (progress is JobProgress.Succeeded) succeeded = true
+        }
+        return succeeded || repository.getRecording(recordingId)?.status == "ready"
     }
 
-    private suspend fun awaitTerminalStatus(recordingId: String) {
+    private suspend fun awaitReadyStatus(recordingId: String): Boolean {
         var sawWork = false
-        withTimeoutOrNull(AWAIT_TERMINAL_MS) {
+        val terminal = withTimeoutOrNull(AWAIT_TERMINAL_MS) {
             while (isActive) {
-                val status = repository.getRecording(recordingId)?.status ?: return@withTimeoutOrNull
+                val status = repository.getRecording(recordingId)?.status ?: return@withTimeoutOrNull null
                 when (status) {
-                    "generating", "paused_thermal" -> sawWork = true
-                    "ready", "failed" -> if (sawWork) return@withTimeoutOrNull
+                    "generating", "paused_thermal", "queued" -> sawWork = true
+                    "ready" -> return@withTimeoutOrNull "ready"
+                    "failed" -> if (sawWork) return@withTimeoutOrNull "failed"
                 }
                 delay(500)
             }
+            null
         }
+        return terminal == "ready"
     }
 
     private suspend fun maybeApplyCalendarTitle(recording: Recording) {
@@ -138,6 +156,7 @@ class AutoFlowRunner(
 
     private suspend fun firePostAction(flow: Autoflow, recordingId: String) {
         val recording = repository.getRecording(recordingId) ?: return
+        if (recording.status != "ready") return
         when (AutoFlowPostAction.fromStored(flow.post_action)) {
             AutoFlowPostAction.None -> Unit
             AutoFlowPostAction.ShareMarkdown -> {
@@ -201,6 +220,10 @@ class AutoFlowRunner(
 
     companion object {
         private const val AWAIT_TERMINAL_MS = 30L * 60L * 1000L
+
+        /** Recordings that will not gain matching fields later. */
+        internal fun isStableNonMatch(recording: Recording): Boolean =
+            recording.status == "ready" || recording.status == "failed"
     }
 }
 

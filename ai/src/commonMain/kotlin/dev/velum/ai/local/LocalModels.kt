@@ -1,5 +1,6 @@
 package dev.velum.ai.local
 
+import dev.velum.ai.createDownloadHttpClient
 import io.ktor.client.HttpClient
 import io.ktor.client.request.prepareGet
 import io.ktor.client.statement.bodyAsChannel
@@ -261,9 +262,6 @@ fun createLocalModelManager(
     httpClient: HttpClient = createDownloadHttpClient(),
 ): LocalModelManager = LocalModelManager(storeRoot, httpClient, catalog)
 
-internal fun createDownloadHttpClient(): HttpClient =
-    dev.velum.ai.createAiHttpClient()
-
 class LocalModelManager(
     private val storeRoot: ModelStoreDir = defaultModelStoreRoot(),
     private val httpClient: HttpClient,
@@ -367,7 +365,8 @@ class LocalModelManager(
 
             if (dest.exists()) dest.deleteRecursively()
             if (!partial.renameTo(dest)) {
-                dest.writeBytes(partial.readBytes())
+                // Never load multi-hundred-MB archives fully into heap on rename failure.
+                streamCopyModelFile(partial, dest)
                 partial.deleteRecursively()
             }
 
@@ -519,5 +518,27 @@ object LocalAsrRouter {
             lang in cjkLight -> CJK_LIGHT_ID
             else -> QUALITY_ID
         }
+    }
+}
+
+/** Chunked file copy — used when atomic rename is unavailable across volumes. */
+internal fun streamCopyModelFile(source: ModelStoreDir, dest: ModelStoreDir, chunkBytes: Int = 1024 * 1024) {
+    val total = source.length()
+    if (total <= 0L) {
+        dest.writeBytes(ByteArray(0))
+        return
+    }
+    var offset = 0L
+    var first = true
+    while (offset < total) {
+        val len = minOf(chunkBytes.toLong(), total - offset).toInt()
+        val chunk = source.readRange(offset, len)
+        if (first) {
+            dest.writeBytes(chunk)
+            first = false
+        } else {
+            dest.appendBytes(chunk)
+        }
+        offset += chunk.size
     }
 }

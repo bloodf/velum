@@ -33,12 +33,19 @@ class AudioImportPipeline(
             ) {
                 // Still try — MIME may have been audio without extension.
             }
-            val hash = sha256File(absolutePath)
-            val existing = container.repository.getMeta("import_sha256_$hash")
-            if (!existing.isNullOrBlank()) {
-                return@withContext ImportResult.Duplicate(existing, hash)
+            val sourceHash = sha256File(absolutePath)
+            val existingBySource = container.repository.getMeta("import_sha256_$sourceHash")
+            if (!existingBySource.isNullOrBlank()) {
+                return@withContext ImportResult.Duplicate(existingBySource, sourceHash)
             }
             val normalized = normalizer.normalizeToWav(absolutePath)
+            val contentHash = normalized.contentSha256
+            val existingByContent = container.repository.getMeta("import_sha256_$contentHash")
+            if (!existingByContent.isNullOrBlank()) {
+                // Same audio after normalize — also record source hash for next lookup.
+                container.repository.setMeta("import_sha256_$sourceHash", existingByContent)
+                return@withContext ImportResult.Duplicate(existingByContent, contentHash)
+            }
             val id = container.createLocalRecording(
                 title = titleHint ?: name.substringBeforeLast('.').ifBlank { null },
                 source = source,
@@ -54,9 +61,13 @@ class AudioImportPipeline(
                 durationSeconds = (normalized.durationMs / 1000L).coerceAtLeast(0L),
                 sizeBytes = 0L,
             )
-            container.repository.setMeta("import_sha256_${normalized.contentSha256}", id)
+            // Store both keys so source-path re-imports and content-identical WAVs dedupe.
+            container.repository.setMeta("import_sha256_$sourceHash", id)
+            if (contentHash != sourceHash) {
+                container.repository.setMeta("import_sha256_$contentHash", id)
+            }
             container.enqueueProcessing(id, templateId = null, retranscribe = true)
-            ImportResult.Created(id, normalized.wavPath, normalized.contentSha256)
+            ImportResult.Created(id, normalized.wavPath, contentHash)
         }.getOrElse { ImportResult.Failed(it.message ?: it::class.simpleName ?: "import_failed") }
     }
 }

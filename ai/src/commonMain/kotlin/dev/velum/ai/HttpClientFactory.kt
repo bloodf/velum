@@ -15,12 +15,27 @@ fun createAiHttpClient(): HttpClient = createPlatformHttpClient {
     expectSuccess = false
     install(ContentNegotiation) { json(OpenAiCompatibleClient.defaultJson) }
     install(HttpTimeout) {
-        requestTimeoutMillis = 120_000
+        // Long map-reduce / windowed ASR chat+transcription calls.
+        requestTimeoutMillis = 600_000
         connectTimeoutMillis = 30_000
-        socketTimeoutMillis = 120_000
+        socketTimeoutMillis = 600_000
     }
     defaultRequest {
         header(HttpHeaders.Accept, "application/json")
+    }
+}
+
+/**
+ * Large local-model archives (hundreds of MB). No request timeout — only connect
+ * bound — so Parakeet / Whisper turbo / Gemma downloads are not killed at 120s.
+ */
+fun createDownloadHttpClient(): HttpClient = createPlatformHttpClient {
+    expectSuccess = false
+    install(HttpTimeout) {
+        // Multi-hour model archives; null = no timeout in Ktor HttpTimeout plugin.
+        requestTimeoutMillis = null
+        connectTimeoutMillis = 60_000
+        socketTimeoutMillis = null
     }
 }
 
