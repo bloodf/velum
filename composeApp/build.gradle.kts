@@ -116,12 +116,14 @@ android {
     compileSdk = libs.versions.android.compileSdk.get().toInt()
 
     // Default debug. Device-walk CI passes -PvelumTestBuildType=release so
-    // connectedReleaseAndroidTest exists and exercises the R8-minified APK.
-    // Shared androidTest/app classloader needs broad kotlin/kotlinx/Compose keeps
-    // in proguard-rules.pro (see comments there).
+    // connectedReleaseAndroidTest exists (release signing/code paths).
+    // Minify is OFF for that instrumented leg: androidTest calls app APIs
+    // (e.g. VelumApplication.awaitContainer) and R8 keep-whack-a-mole never
+    // converges. assembleRelease in jvm-android still runs full R8.
     val walkBuildType =
         (findProperty("velumTestBuildType") as String?)?.takeIf { it.isNotBlank() } ?: "debug"
     testBuildType = walkBuildType
+    val instrumentedReleaseWalk = walkBuildType == "release"
 
     defaultConfig {
         applicationId = "dev.velum.app"
@@ -175,16 +177,18 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
         getByName("release") {
-            isMinifyEnabled = true
-            isShrinkResources = true
+            isMinifyEnabled = !instrumentedReleaseWalk
+            isShrinkResources = !instrumentedReleaseWalk
             // Prefer upload key when present; otherwise debug keystore so CI can
-            // install + run connectedReleaseAndroidTest (device walk on R8).
+            // install + run connectedReleaseAndroidTest.
             signingConfig = signingConfigs.findByName("release")
                 ?: signingConfigs.getByName("debug")
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro",
-            )
+            if (!instrumentedReleaseWalk) {
+                proguardFiles(
+                    getDefaultProguardFile("proguard-android-optimize.txt"),
+                    "proguard-rules.pro",
+                )
+            }
         }
     }
     compileOptions {

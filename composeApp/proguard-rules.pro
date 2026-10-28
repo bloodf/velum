@@ -43,10 +43,13 @@
 
 # Device-walk CI flag + fake engines (flipped via instrumentation runner).
 -keep class dev.velum.app.devicewalk.** { *; }
-# androidTest calls VelumApplication.awaitContainer(); R8 may drop the suspend
-# bridge when it thinks only MainActivity reaches the deferred.
+# androidTest calls into the app process (VelumApplication.awaitContainer,
+# AppContainer, repository). Keep the app package entry points intact under R8
+# so connectedReleaseAndroidTest does not hit NoSuchMethodError if minify is on.
 -keep class dev.velum.app.VelumApplication { *; }
 -keepclassmembers class dev.velum.app.VelumApplication { *; }
+-keep class dev.velum.app.di.AppContainer { *; }
+-keepclassmembers class dev.velum.app.di.AppContainer { *; }
 
 # AndroidJUnitRunner 1.6+ calls androidx.tracing.Trace in onCreate. Without a keep,
 # R8 strips it from the release APK and connectedReleaseAndroidTest crashes the
