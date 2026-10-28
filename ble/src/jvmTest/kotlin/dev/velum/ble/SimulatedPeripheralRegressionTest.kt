@@ -27,6 +27,7 @@ import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 
 /**
@@ -159,20 +160,23 @@ class SimulatedPeripheralRegressionTest {
             sessionFile = tinyEncryptedFile(publicPem),
             requirePublicKey = true,
         )
+        // Mute after FE10 so the client blocks waiting for FE11 / FE12.
         peripheral.muteResponses = true
         val ble = FakeBleTransport(peripheral)
         ble.connect("fake-note-pro")
-        val client = PlaudDeviceClient(ble, cipher, keys, responseTimeout = 400.milliseconds)
-        val unlockJob = async {
-            runCatching { client.unlock() }
+        val client = PlaudDeviceClient(ble, cipher, keys, responseTimeout = 5_000.milliseconds)
+        // When FE10 is observed, tear down mid-handshake (not before unlock starts).
+        val disconnectJob = launch {
+            peripheral.awaitFe10Received()
+            ble.disconnect()
+            client.close() // cancel pending FE11 waiter
         }
-        // Disconnect while the client is waiting for FE11 / FE12.
-        ble.disconnect()
-        val result = unlockJob.await()
-        assertTrue(result.isFailure)
+        val result = runCatching { client.unlock() }
+        disconnectJob.join()
+        assertTrue(result.isFailure, "mid-handshake disconnect must fail unlock")
         assertFalse(client.isUnlocked)
         assertNull(client.sessionSecret)
-        client.close()
+        assertFalse(peripheral.isUnlocked)
     }
 
     @Test
@@ -180,6 +184,7 @@ class SimulatedPeripheralRegressionTest {
         val env = unlockedEnv(requirePublicKey = false)
         env.client.handshake()
         val batteryBefore = env.client.readBattery()
+        assertNotNull(batteryBefore)
         assertEquals(0x5d, batteryBefore.percent)
         assertNoForbiddenPlaintext(env.ble.recordedWrites)
         env.client.close()
@@ -198,6 +203,7 @@ class SimulatedPeripheralRegressionTest {
         assertTrue(client2.isUnlocked)
         assertEquals(20, client2.handshake().protocolVersion)
         val batteryAfter = client2.readBattery()
+        assertNotNull(batteryAfter)
         assertEquals(0x5d, batteryAfter.percent)
         assertNoForbiddenPlaintext(env.ble.recordedWrites)
         client2.close()
@@ -209,6 +215,7 @@ class SimulatedPeripheralRegressionTest {
         env.client.handshake()
 
         val polled = env.client.readBattery()
+        assertNotNull(polled)
         assertEquals(93, polled.percent)
 
         env.peripheral.batteryPercent = 76
@@ -217,12 +224,40 @@ class SimulatedPeripheralRegressionTest {
         }
         env.peripheral.emitUnsolicitedBattery(76)
         val notified = notifyJob.await()
+        assertNotNull(notified)
         assertEquals(76, notified.percent)
 
         // Application path poll after notify still returns the updated level.
         val again = env.client.readBattery()
+        assertNotNull(again)
         assertEquals(76, again.percent)
         assertNoForbiddenPlaintext(env.ble.recordedWrites)
+        env.client.close()
+    }
+
+    @Test
+    fun battery_awaitNotification_doesNotDropInterleavedCommandResponse() = runTest {
+        val env = unlockedEnv(requirePublicKey = false)
+        env.client.handshake()
+
+        val batteryJob = async {
+            env.client.awaitBatteryNotification(timeout = 2_000.milliseconds)
+        }
+        val handshakeJob = async {
+            env.client.awaitCommandResponseForTest(
+                Commands.HANDSHAKE,
+                timeout = 2_000.milliseconds,
+            )
+        }
+        // Non-battery response first — must remain deliverable to the other waiter.
+        val hsPayload = Bytes.hexToBytes("001400051e0101000156000701")
+        env.peripheral.emitUnsolicitedCommandResponse(Commands.HANDSHAKE, hsPayload)
+        env.peripheral.emitUnsolicitedBattery(76)
+
+        val notified = batteryJob.await()
+        assertNotNull(notified)
+        assertEquals(76, notified.percent)
+        assertTrue(handshakeJob.await().contentEquals(hsPayload))
         env.client.close()
     }
 
@@ -230,17 +265,17 @@ class SimulatedPeripheralRegressionTest {
     fun battery_malformedFrame_failsWithoutCorruptReading() = runTest {
         val env = unlockedEnv(requirePublicKey = false)
         env.client.handshake()
+        // Empty / truncated → null on app path (Battery.parseOrNull).
         env.peripheral.batteryPayloadOverride = ByteArray(0)
-        assertFailsWith<IllegalArgumentException> {
-            env.client.readBattery()
-        }
-        env.peripheral.batteryPayloadOverride = byteArrayOf(0x00, 0xFF.toByte())
-        assertFailsWith<IllegalArgumentException> {
-            env.client.readBattery()
-        }
+        assertNull(env.client.readBattery())
+        env.peripheral.batteryPayloadOverride = byteArrayOf(0x5d) // 1-byte truncated
+        assertNull(env.client.readBattery())
+        // 0xFF while charging — hardware-observed; null, not throw.
+        env.peripheral.batteryPayloadOverride = byteArrayOf(0x01, 0xFF.toByte())
+        assertNull(env.client.readBattery())
         // Valid frame still works after malformed attempts.
         env.peripheral.batteryPercent = 55
-        assertEquals(55, env.client.readBattery().percent)
+        assertEquals(55, env.client.readBattery()!!.percent)
         env.client.close()
     }
 
@@ -281,37 +316,48 @@ class SimulatedPeripheralRegressionTest {
 
         // Safe battery request still allowed through both layers.
         PlaudOutboundGuard.requireAllowed(Framing.encodeCommand(Commands.BATTERY_LIKELY))
-        assertEquals(93, env.client.readBattery().percent)
+        assertEquals(93, env.client.readBattery()!!.percent)
         assertNoForbiddenPlaintext(env.ble.recordedWrites)
         env.client.close()
     }
 
     /**
-     * After simulated unlock, sealed writes go through
-     * [PlaudBleTransport.writeSealedAfterPlaintextGuard]: allowed plaintext
-     * seals and records a write; forbidden opcodes / settings 4 & 26 are
-     * rejected on plaintext before any sealed bytes are recorded.
-     *
-     * Assertions use write counts only — never inspect ciphertext.
+     * After simulated unlock, sealed writes go through the single client
+     * `sendEncrypted` call site ([PlaudBleTransport.writeSealedAfterPlaintextGuard]
+     * today). Allowed plaintext seals; forbidden opcodes / settings 4 & 26 are
+     * rejected before any sealed bytes are recorded. Sealed sink bytes must
+     * open back to the checked plaintext (prove seal-of-plaintext, not just
+     * "something was written").
      */
     @Test
     fun encryptedSession_sealedWrite_guardsPlaintextBeforeSeal() = runTest {
         val env = unlockedEnv(requirePublicKey = false)
         env.client.handshake()
         assertTrue(env.client.isUnlocked)
+        val secret = env.client.sessionSecret
+        assertNotNull(secret)
         env.ble.clearRecordedWrites()
 
-        // Allowed plaintext → sealed path succeeds (real seal via client).
-        assertEquals(93, env.client.readBattery().percent)
-        assertTrue(
-            env.ble.recordedWrites.isNotEmpty(),
+        // Allowed plaintext → sealed path succeeds; unseal proves derivation.
+        // After unlock sendSeq=2; handshake consumed seq 2; battery uses seq 3.
+        val expectedPlaintext = Framing.encodeCommand(Commands.BATTERY_LIKELY)
+        assertEquals(93, env.client.readBattery()!!.percent)
+        assertEquals(
+            1,
+            env.ble.recordedWrites.size,
             "allowed sealed battery write must reach transport after unlock",
+        )
+        val sealedBattery = env.ble.recordedWrites.single().second
+        val openedBattery = env.cipher.openPacket(secret, sequence = 3L, sealedBattery)
+        assertNotNull(openedBattery, "sealed sink bytes must open with session cipher")
+        assertTrue(
+            openedBattery.second.contentEquals(expectedPlaintext),
+            "sealed bytes must decrypt to the checked battery plaintext",
         )
         env.ble.clearRecordedWrites()
 
         val plaud = PlaudBleTransport(env.ble)
-        // Dummy sealed payload is never inspected and must not be recorded
-        // when plaintext is rejected.
+        // Dummy sealed payload must not be recorded when plaintext is rejected.
         val dummySealed = byteArrayOf(0xAA.toByte(), 0xBB.toByte(), 0xCC.toByte())
 
         // Explicit forbidden set: 104, 5, 0xFE20 (LE [0x20,0xFE]), 128, 143.
@@ -363,9 +409,14 @@ class SimulatedPeripheralRegressionTest {
             assertTrue(env.ble.recordedWrites.isEmpty())
         }
 
-        // Allowed sealed write still works after rejection attempts.
-        assertEquals(93, env.client.readBattery().percent)
-        assertTrue(env.ble.recordedWrites.isNotEmpty())
+        // Allowed sealed write still works; again prove plaintext round-trip.
+        // Prior battery used seq 3; this one is seq 4.
+        assertEquals(93, env.client.readBattery()!!.percent)
+        assertEquals(1, env.ble.recordedWrites.size)
+        val sealedAgain = env.ble.recordedWrites.single().second
+        val openedAgain = env.cipher.openPacket(secret, sequence = 4L, sealedAgain)
+        assertNotNull(openedAgain)
+        assertTrue(openedAgain.second.contentEquals(expectedPlaintext))
         env.client.close()
     }
 

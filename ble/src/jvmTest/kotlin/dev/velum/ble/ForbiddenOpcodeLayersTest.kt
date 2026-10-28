@@ -214,7 +214,7 @@ class ForbiddenOpcodeLayersTest {
         env.ble.clearRecordedWrites()
 
         val battery = env.client.readBattery()
-        assertEquals(0x5d, battery.percent)
+        assertEquals(0x5d, battery!!.percent)
         assertTrue(
             env.ble.recordedWrites.isNotEmpty(),
             "encrypted safe command must reach ble.write",

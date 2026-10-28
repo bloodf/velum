@@ -23,6 +23,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
 
@@ -86,6 +87,7 @@ class PlaudDeviceClientTest {
         assertTrue(decrypted.contentEquals(plaintextBody))
 
         val battery = client.readBattery()
+        assertNotNull(battery)
         assertEquals(0x5d, battery.percent)
 
         client.close()

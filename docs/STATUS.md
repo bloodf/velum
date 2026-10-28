@@ -157,9 +157,11 @@ Software-only coverage against protocol fixtures + `FakePlaudPeripheral` (no rad
 - Manufacturer-data fixtures parse project **881/883** and `portVersion` (protocol 20–29); malformed / truncated / wrong-port fixtures do not report Note Pro discovery.
 - Matching synthetic FE10 credentials unlock and establish session AES; wrong / empty FE10, unlock timeouts, and mid-handshake disconnect leave `sessionSecret` null.
 - Disconnect → reconnect re-runs FE10; handshake + battery remain usable on the new session (required by #5 software side).
-- Battery cmd-9 poll and unsolicited notify update the reported level; empty / out-of-range battery payloads fail closed.
+- Battery cmd-9 poll and unsolicited notify update the reported level; empty / 1-byte truncated / out-of-range (`0xFF` while charging) payloads yield null via `Battery.parseOrNull` on the app path.
+- Concurrent battery waiters no longer drop interleaved non-battery responses (demux buffer).
+- Mid-handshake disconnect waits for observed FE10 before tearing down the link.
 - Recorded plaintext outbound traffic on unlock/battery/reconnect paths contains none of opcodes **5 / 104 / 128 / 0xFE20 / 143** and no writes to settings **4 / 26**; send-path + transport guards still block bypass attempts after unlock.
-- Encrypted-session sealed writes use `PlaudBleTransport.writeSealedAfterPlaintextGuard` (internal `BleSealedWriteSink`); forbidden plaintext is rejected before sealing — tests assert write counts only, never ciphertext.
+- Encrypted-session writes use a single `sendEncrypted` call site (today `writeSealedAfterPlaintextGuard`); tests unseal recorded sink bytes and compare to the checked plaintext.
 
 **Not claimed:** real Note Pro advertising, unlock with owner keys, or live battery notify — still unconfirmed (#5 / needs-hardware).
 
