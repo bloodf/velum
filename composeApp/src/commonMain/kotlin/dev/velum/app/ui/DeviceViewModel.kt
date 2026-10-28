@@ -2,6 +2,7 @@ package dev.velum.app.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import dev.velum.ai.audio.DownloadedSessionAudioPersist
 import dev.velum.app.i18n.DeviceUiCopy
 import dev.velum.app.platform.DownloadNotifyKind
 import dev.velum.app.platform.DownloadProgressNotifier
@@ -55,9 +56,10 @@ data class DownloadedSessionAudio(
     /**
      * Used only when [decryptedBytes] is not already Ogg/WAV and must be wrapped as PCM WAV.
      * Defaults match Plaud capability tables + the historic RecordingProcessor raw-PCM path.
+     * [channels] is derived from [DeviceCapabilities.maxChannels] at download time (mono fallback).
      */
-    val sampleRateHz: Int = 16_000,
-    val channels: Int = 1,
+    val sampleRateHz: Int = DownloadedSessionAudioPersist.DEFAULT_SAMPLE_RATE_HZ,
+    val channels: Int = DownloadedSessionAudioPersist.DEFAULT_CHANNELS,
 )
 
 class DeviceViewModel(
@@ -263,8 +265,11 @@ class DeviceViewModel(
                 sizeBytes = decrypted.size.toLong(),
                 decryptedBytes = decrypted,
                 // Capability table is authoritative when wrapping non-container plaintext.
-                sampleRateHz = caps?.sampleRatesHz?.firstOrNull() ?: 16_000,
-                channels = 1, // historic RP raw-PCM path was mono
+                sampleRateHz = caps?.sampleRatesHz?.firstOrNull()
+                    ?: DownloadedSessionAudioPersist.DEFAULT_SAMPLE_RATE_HZ,
+                // Handshake-refined maxChannels (falls back to mono — RP/raw-PCM path).
+                channels = (caps?.maxChannels ?: DownloadedSessionAudioPersist.DEFAULT_CHANNELS)
+                    .coerceIn(1, 2),
             ),
         )
     }

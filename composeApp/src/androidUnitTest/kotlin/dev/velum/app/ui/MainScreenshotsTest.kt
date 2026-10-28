@@ -588,6 +588,8 @@ class MainScreenshotsTest {
         container.settingsRepository.setDiarizationMode(ComputeMode.Local)
         container.settingsRepository.setSummaryMode(ComputeMode.Api)
         container.settingsRepository.setBaseUrl("https://api.openai.com/v1")
+        // AppContainer primes the key on appScope; await it before cipher use (Robolectric race).
+        container.voiceProfileStore.ensureKey()
         // Demo voice profiles (tiny synthetic embeddings — UI list only).
         val emb = FloatArray(192) { i -> (i % 17) / 17f }
         container.voiceProfileStore.upsert("Heitor", emb, role = "Product", company = "Velum")

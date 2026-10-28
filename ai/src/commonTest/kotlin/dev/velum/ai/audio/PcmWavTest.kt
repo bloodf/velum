@@ -2,10 +2,19 @@ package dev.velum.ai.audio
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class PcmWavTest {
+    @Test
+    fun header_rejectsDataSizeThatOverflowsRiffInt() {
+        // 36 + dataSize must fit in signed 32-bit RIFF chunk size.
+        assertFailsWith<IllegalArgumentException> {
+            PcmWav.header(dataSize = Int.MAX_VALUE - 35, sampleRateHz = 16_000)
+        }
+    }
+
     @Test
     fun encode_writesRiffWaveHeaderAndPayload() {
         val pcm = ByteArray(8) { it.toByte() }

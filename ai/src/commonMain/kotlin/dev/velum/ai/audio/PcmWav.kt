@@ -16,18 +16,25 @@ object PcmWav {
         require(sampleRateHz > 0) { "sampleRateHz must be positive" }
         require(channels > 0) { "channels must be positive" }
         require(bitsPerSample % 8 == 0) { "bitsPerSample must be a multiple of 8" }
-        val byteRate = sampleRateHz * channels * bitsPerSample / 8
+        // Classic RIFF WAV uses 32-bit chunk sizes; reject near-2 GiB payloads
+        // before `36 + dataSize` wraps Int.
+        val riffChunkSize = 36L + dataSize.toLong()
+        require(riffChunkSize <= Int.MAX_VALUE.toLong()) {
+            "WAV dataSize $dataSize exceeds 32-bit RIFF limit"
+        }
+        val byteRate = sampleRateHz.toLong() * channels * (bitsPerSample / 8)
+        require(byteRate <= Int.MAX_VALUE.toLong()) { "WAV byteRate overflows Int" }
         val blockAlign = (channels * bitsPerSample / 8).toShort()
         val out = ByteArray(44)
         writeAscii(out, 0, "RIFF")
-        writeIntLe(out, 4, 36 + dataSize)
+        writeIntLe(out, 4, riffChunkSize.toInt())
         writeAscii(out, 8, "WAVE")
         writeAscii(out, 12, "fmt ")
         writeIntLe(out, 16, 16) // PCM fmt chunk size
         writeShortLe(out, 20, 1) // PCM format
         writeShortLe(out, 22, channels.toShort())
         writeIntLe(out, 24, sampleRateHz)
-        writeIntLe(out, 28, byteRate)
+        writeIntLe(out, 28, byteRate.toInt())
         writeShortLe(out, 32, blockAlign)
         writeShortLe(out, 34, bitsPerSample.toShort())
         writeAscii(out, 36, "data")
