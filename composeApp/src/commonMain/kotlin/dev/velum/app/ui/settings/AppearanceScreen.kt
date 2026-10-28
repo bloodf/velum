@@ -58,10 +58,10 @@ fun AppearanceScreen(
         ThemeOption(strings.settingsUi.languageSystem, prefs.appLanguage == "system") {
             scope.launch { container.settingsRepository.setAppLanguage("system") }
         }
-        ThemeOption("English", prefs.appLanguage == "en") {
+        ThemeOption(strings.languageEn, prefs.appLanguage == "en") {
             scope.launch { container.settingsRepository.setAppLanguage("en") }
         }
-        ThemeOption("Português (Brasil)", prefs.appLanguage == "pt-BR") {
+        ThemeOption(strings.languagePtBr, prefs.appLanguage == "pt-BR") {
             scope.launch { container.settingsRepository.setAppLanguage("pt-BR") }
         }
         Spacer(Modifier.height(40.dp))

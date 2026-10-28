@@ -14,6 +14,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import dev.velum.app.i18n.LocalStrings
 import androidx.core.content.ContextCompat
 
 @Composable
@@ -23,6 +24,7 @@ actual fun rememberPermissionRequester(
     rationaleBody: String,
 ): (onResult: (PermissionOutcome) -> Unit) -> Unit {
     val context = LocalContext.current
+    val strings = LocalStrings.current
     val manifestPermission = when (permission) {
         AppPermission.RecordAudio -> Manifest.permission.RECORD_AUDIO
         AppPermission.ReadCalendar -> Manifest.permission.READ_CALENDAR
@@ -73,7 +75,7 @@ actual fun rememberPermissionRequester(
                         showRationale = false
                         launcher.launch(manifestPermission)
                     },
-                ) { Text("OK") }
+                ) { Text(strings.ok) }
             },
             dismissButton = {
                 TextButton(
@@ -83,7 +85,7 @@ actual fun rememberPermissionRequester(
                         pendingCallback = null
                         cb?.invoke(PermissionOutcome.Denied)
                     },
-                ) { Text("Cancel") }
+                ) { Text(strings.cancel) }
             },
         )
     }

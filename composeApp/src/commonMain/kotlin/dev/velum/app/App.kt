@@ -622,9 +622,7 @@ private fun VelumRoot(container: AppContainer) {
                                         fabOpen = false
                                     }
                                     is MicStartResult.Failed -> {
-                                        snackbar.showSnackbar(
-                                            started.message.ifBlank { strings.micUnsupported },
-                                        )
+                                        snackbar.showSnackbar(strings.micStartFailed)
                                         container.repository.trashRecording(id)
                                         fabOpen = false
                                     }

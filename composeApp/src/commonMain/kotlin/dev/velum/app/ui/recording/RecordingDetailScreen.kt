@@ -2085,7 +2085,7 @@ fun GenerateSheetContent(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         ModeChip(
-                            if (languageTag.lowercase().startsWith("en")) "All" else "Todos",
+                            strings.templatesAll,
                             selectedContentLang == null,
                         ) { selectedContentLang = null }
                         pickerLangs.forEach { lang ->
