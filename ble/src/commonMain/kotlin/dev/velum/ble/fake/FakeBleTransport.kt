@@ -2,7 +2,6 @@ package dev.velum.ble.fake
 
 import dev.velum.ble.AbstractBleTransport
 import dev.velum.ble.BleConnectionState
-import dev.velum.ble.BleSealedWriteSink
 import dev.velum.ble.GattProfile
 import dev.velum.ble.GattProfiles
 import dev.velum.ble.PlaudWriteGuard
@@ -21,7 +20,11 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 /**
- * In-process [BleTransport] for CI.
+ * In-process [BleTransport] for CI / cross-module JVM tests (e.g. `:ai` E2E).
+ *
+ * Kept **public** because `:ai` jvmTest constructs it; sealed writes use an
+ * explicit `internal override` of [writeSealedAlreadyGuarded] so callers outside
+ * `:ble` cannot put unguarded ciphertext on 2BB1.
  *
  * When connected with [GattProfiles.Plaud] and a [FakePlaudPeripheral] is
  * provided, Plaud write/notify are forwarded to that peripheral. Writes are
@@ -122,23 +125,19 @@ class FakeBleTransport(
         }
     }
 
-    private val sealedSink = object : BleSealedWriteSink {
-        override suspend fun writeSealedAlreadyGuarded(
-            characteristic: String,
-            payload: ByteArray,
-            withoutResponse: Boolean,
-        ) {
-            mutex.withLock {
-                check(_state.value is BleConnectionState.Connected) { "Not connected" }
-                val profile = activeProfile ?: error("No active GATT profile")
-                val ch = profile.characteristic(characteristic)
-                // No opcode parse — caller must have checked plaintext already.
-                recordAndForward(characteristic, profile, ch.uuid, payload)
-            }
+    internal override suspend fun writeSealedAlreadyGuarded(
+        characteristic: String,
+        payload: ByteArray,
+        withoutResponse: Boolean,
+    ) {
+        mutex.withLock {
+            check(_state.value is BleConnectionState.Connected) { "Not connected" }
+            val profile = activeProfile ?: error("No active GATT profile")
+            val ch = profile.characteristic(characteristic)
+            // No opcode parse — caller must have checked plaintext already.
+            recordAndForward(characteristic, profile, ch.uuid, payload)
         }
     }
-
-    internal override fun sealedWriteSink(): BleSealedWriteSink = sealedSink
 
     private suspend fun recordAndForward(
         characteristic: String,

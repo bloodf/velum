@@ -30,7 +30,8 @@ class PlaudEncryptedSession internal constructor(
 
     /**
      * Guard [plaintext] for forbidden opcodes/settings, seal with the session
-     * cipher inside `:ble`, then write via [BleSealedWriteSink.writeSealedAlreadyGuarded].
+     * cipher inside `:ble`, then write via the transport's
+     * `internal` [AbstractBleTransport.writeSealedAlreadyGuarded].
      *
      * Takes plaintext only — there is no public overload that accepts sealed bytes.
      */
@@ -45,7 +46,7 @@ class PlaudEncryptedSession internal constructor(
             sendSeq = seq + 1
             val host = transport as? AbstractBleTransport
                 ?: error("BLE transport does not support sealed session writes")
-            host.sealedWriteSink().writeSealedAlreadyGuarded(
+            host.writeSealedAlreadyGuarded(
                 characteristic = GattProfiles.PLAUD_WRITE,
                 payload = sealed,
                 withoutResponse = withoutResponse,

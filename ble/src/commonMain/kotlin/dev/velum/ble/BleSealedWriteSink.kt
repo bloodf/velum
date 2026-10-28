@@ -1,12 +1,11 @@
 package dev.velum.ble
 
 /**
- * Module-internal sink for already-sealed Plaud link frames.
+ * Module-internal sealed-write contract.
  *
- * [writeSealedAlreadyGuarded] lives **only** here — not on the public
- * [BleTransport] surface. [PlaudEncryptedSession.writeEncrypted] obtains a sink
- * via [AbstractBleTransport.sealedWriteSink] after guarding plaintext and sealing
- * inside `:ble`.
+ * Concrete transports implement this via [AbstractBleTransport] with an
+ * **explicit** `internal override` of [writeSealedAlreadyGuarded]. A bare
+ * (public) override on a public class does **not** inherit internal visibility.
  */
 internal interface BleSealedWriteSink {
     /**
@@ -22,12 +21,23 @@ internal interface BleSealedWriteSink {
 }
 
 /**
- * Public transport base that exposes a module-internal [BleSealedWriteSink].
+ * Public transport base that carries the sealed-write entry as an
+ * **`internal abstract`** member so subclasses can use `internal override`.
  *
- * Subclasses must not put [BleSealedWriteSink.writeSealedAlreadyGuarded] on their
- * own public API; they return a sink via [sealedWriteSink] (`internal override`).
+ * (Kotlin forbids `internal override` of a public interface member on a public
+ * class; the abstract member here is itself `internal`, which allows it.)
  */
 abstract class AbstractBleTransport : BleTransport {
-    /** Module-internal sealed-write adapter. */
-    internal abstract fun sealedWriteSink(): BleSealedWriteSink
+    /**
+     * Sealed write — visible only inside the `:ble` module.
+     *
+     * This is the [BleSealedWriteSink.writeSealedAlreadyGuarded] entry point on
+     * concrete transports ([FakeBleTransport], [StubBleTransport],
+     * [KableBleTransport]).
+     */
+    internal abstract suspend fun writeSealedAlreadyGuarded(
+        characteristic: String,
+        payload: ByteArray,
+        withoutResponse: Boolean = false,
+    )
 }
