@@ -8,8 +8,10 @@ import java.nio.file.attribute.AclEntry
 import java.nio.file.attribute.AclEntryPermission
 import java.nio.file.attribute.AclEntryType
 import java.nio.file.attribute.AclFileAttributeView
+import java.nio.file.attribute.FileAttribute
 import java.nio.file.attribute.PosixFilePermission
 import java.nio.file.attribute.PosixFilePermissions
+import java.nio.file.attribute.UserPrincipal
 import java.util.EnumSet
 import java.util.Properties
 import java.util.concurrent.atomic.AtomicReference
@@ -51,31 +53,67 @@ internal fun createOwnerOnlyFile(path: Path): Path {
 }
 
 /**
- * Restrict [path] to the owning principal via ACL (Windows / ACL-capable stores).
+ * Create [path] restricted to the owning principal via ACL (Windows / ACL-capable stores).
  * Permissions: read/write data, read/write attributes, read/write ACL.
+ *
+ * Prefer [Files.createFile] with an `acl:acl` [FileAttribute] so the owner-only ACL
+ * is applied at creation. If the store rejects that attribute (or the owner cannot
+ * be resolved beforehand), falls back to create-then-[applyOwnerOnlyAcl] — that
+ * path leaves a brief window where the new file inherits the parent directory ACL.
  */
 internal fun createOwnerOnlyAclFile(path: Path): Path {
+    Files.createDirectories(path.parent)
+    val owner = resolveAclOwner(path.parent)
+    if (owner != null) {
+        try {
+            return Files.createFile(path, ownerOnlyAclAttribute(owner))
+        } catch (_: UnsupportedOperationException) {
+            // Fall through: create then tighten (documented window above).
+        } catch (_: IllegalArgumentException) {
+            // Some providers reject acl:acl on createFile.
+        }
+    }
     val created = Files.createFile(path)
     applyOwnerOnlyAcl(created)
     return created
+}
+
+internal fun ownerOnlyAclAttribute(owner: UserPrincipal): FileAttribute<List<AclEntry>> {
+    val entry = AclEntry.newBuilder()
+        .setType(AclEntryType.ALLOW)
+        .setPrincipal(owner)
+        .setPermissions(OWNER_ACL_PERMISSIONS)
+        .build()
+    val acl = listOf(entry)
+    return object : FileAttribute<List<AclEntry>> {
+        override fun name(): String = "acl:acl"
+        override fun value(): List<AclEntry> = acl
+    }
+}
+
+private val OWNER_ACL_PERMISSIONS: EnumSet<AclEntryPermission> = EnumSet.of(
+    AclEntryPermission.READ_DATA,
+    AclEntryPermission.WRITE_DATA,
+    AclEntryPermission.READ_ATTRIBUTES,
+    AclEntryPermission.WRITE_ATTRIBUTES,
+    AclEntryPermission.READ_ACL,
+    AclEntryPermission.WRITE_ACL,
+)
+
+/** Best-effort owner principal from [directory] (ACL view or [Files.getOwner]). */
+internal fun resolveAclOwner(directory: Path): UserPrincipal? {
+    Files.getFileAttributeView(directory, AclFileAttributeView::class.java)?.owner?.let { return it }
+    return runCatching { Files.getOwner(directory) }.getOrNull()
 }
 
 /** Best-effort owner-only ACL; no-op when the ACL view is unavailable. */
 internal fun applyOwnerOnlyAcl(path: Path): Boolean {
     val view = Files.getFileAttributeView(path, AclFileAttributeView::class.java) ?: return false
     val owner = view.owner
-    val permissions = EnumSet.of(
-        AclEntryPermission.READ_DATA,
-        AclEntryPermission.WRITE_DATA,
-        AclEntryPermission.READ_ATTRIBUTES,
-        AclEntryPermission.WRITE_ATTRIBUTES,
-        AclEntryPermission.READ_ACL,
-        AclEntryPermission.WRITE_ACL,
-    )
     val entry = AclEntry.newBuilder()
         .setType(AclEntryType.ALLOW)
         .setPrincipal(owner)
-        .setPermissions(permissions)
+        .setPermissions(OWNER_ACL_PERMISSIONS)
         .build()
     view.acl = listOf(entry)
     return true
@@ -91,7 +129,10 @@ internal fun setOwnerOnlyPermissions(path: Path) {
 
 /**
  * Create a sibling temp file with owner-only mode from creation (POSIX `rw-------`
- * when available; ACL owner-only otherwise).
+ * when available; ACL `acl:acl` FileAttribute at creation when possible).
+ *
+ * ACL fallback (create then [applyOwnerOnlyAcl]) leaves a brief inherited-ACL window —
+ * see [createOwnerOnlyAclFile].
  */
 internal fun createOwnerOnlyTempFile(directory: Path, prefix: String, suffix: String): Path {
     Files.createDirectories(directory)
@@ -104,31 +145,28 @@ internal fun createOwnerOnlyTempFile(directory: Path, prefix: String, suffix: St
                 PosixFilePermissions.asFileAttribute(OWNER_READ_WRITE),
             )
         } catch (_: UnsupportedOperationException) {
-            Files.createTempFile(directory, prefix, suffix).also { applyOwnerOnlyAcl(it) }
+            createTempFileWithAcl(directory, prefix, suffix)
         }
     } else {
-        Files.createTempFile(directory, prefix, suffix).also { applyOwnerOnlyAcl(it) }
+        createTempFileWithAcl(directory, prefix, suffix)
     }
     ownerOnlyTempCreatedProbe.get()?.invoke(tmp)
     return tmp
 }
 
-/**
- * Atomically rename [path] to `[filename].bad-<timestamp>` (owner-only on the
- * destination). Used to quarantine a wrong-length key file before minting a new one.
- */
-internal fun quarantineToBadSibling(path: Path): Path {
-    val bad = path.resolveSibling("${path.fileName}.bad-${System.currentTimeMillis()}")
-    try {
-        Files.move(path, bad, StandardCopyOption.ATOMIC_MOVE)
-    } catch (_: java.nio.file.AtomicMoveNotSupportedException) {
-        Files.move(path, bad)
+private fun createTempFileWithAcl(directory: Path, prefix: String, suffix: String): Path {
+    val owner = resolveAclOwner(directory)
+    if (owner != null) {
+        try {
+            return Files.createTempFile(directory, prefix, suffix, ownerOnlyAclAttribute(owner))
+        } catch (_: UnsupportedOperationException) {
+            // Fall through.
+        } catch (_: IllegalArgumentException) {
+            // Fall through.
+        }
     }
-    setOwnerOnlyPermissions(bad)
-    if (!supportsPosixPermissions()) {
-        applyOwnerOnlyAcl(bad)
-    }
-    return bad
+    // Remaining window: temp inherits parent ACL until applyOwnerOnlyAcl runs.
+    return Files.createTempFile(directory, prefix, suffix).also { applyOwnerOnlyAcl(it) }
 }
 
 /**
@@ -157,6 +195,24 @@ internal fun atomicWriteOwnerOnlyBytes(target: Path, bytes: ByteArray) {
     } finally {
         Files.deleteIfExists(tmp)
     }
+}
+
+/**
+ * Atomically rename [path] to `[filename].bad-<timestamp>` (owner-only on the
+ * destination). Used to quarantine a wrong-length key file before minting a new one.
+ */
+internal fun quarantineToBadSibling(path: Path): Path {
+    val bad = path.resolveSibling("${path.fileName}.bad-${System.currentTimeMillis()}")
+    try {
+        Files.move(path, bad, StandardCopyOption.ATOMIC_MOVE)
+    } catch (_: java.nio.file.AtomicMoveNotSupportedException) {
+        Files.move(path, bad)
+    }
+    setOwnerOnlyPermissions(bad)
+    if (!supportsPosixPermissions()) {
+        applyOwnerOnlyAcl(bad)
+    }
+    return bad
 }
 
 /**
