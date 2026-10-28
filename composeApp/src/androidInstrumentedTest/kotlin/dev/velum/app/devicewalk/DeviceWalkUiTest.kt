@@ -93,10 +93,12 @@ class DeviceWalkUiTest {
         walkSettingsTree(lang, tag)
         walkDevice(lang, tag)
         walkStorageWipe(lang, tag)
-        rotateAndBackground(tag)
-        killAndRestore(tag)
-
+        // Locale/raw-string assert while ActivityScenario still owns MainActivity.
         assertNoRawOrUnlocalized(lang)
+        rotateAndBackground(tag)
+        // Process death orphans ActivityScenario — UiAutomator only after this.
+        killAndRestore(lang, tag)
+        assertUiChrome(lang)
         assertFalse(device.hasObject(By.textContains("FATAL EXCEPTION")))
         File(shotDir, "coverage-$tag.txt").writeText(covered.sorted().joinToString("\n"))
     }
@@ -505,66 +507,80 @@ class DeviceWalkUiTest {
     }
 
     private fun rotateAndBackground(tag: String) {
-        val activity = composeRule.activity
-        activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        // Prefer UiDevice rotation — keeps ActivityScenario's activity instance.
+        runCatching { device.setOrientationLeft() }
+            .recoverCatching {
+                composeRule.activity.requestedOrientation =
+                    ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+            }
         SystemClock.sleep(1_000)
         covered += "rotate/landscape"
         shot("13-landscape-$tag")
-        activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        runCatching { device.setOrientationNatural() }
+            .recoverCatching {
+                composeRule.activity.requestedOrientation =
+                    ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            }
         SystemClock.sleep(1_000)
         covered += "rotate/portrait"
         device.pressHome()
         SystemClock.sleep(1_500)
         covered += "background"
-        val launch = appContext.packageManager.getLaunchIntentForPackage(appContext.packageName)
-        assertNotNull(launch)
-        launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-        appContext.startActivity(launch)
+        // Bring the existing task forward. CLEAR_TOP + NEW_TASK spawns a second
+        // MainActivity that ActivityScenario ignores, then destroys the tracked one
+        // ("Cannot run onActivity since Activity has been destroyed already").
+        val pkg = appContext.packageName
+        device.executeShellCommand(
+            "am start --activity-single-top -n $pkg/.MainActivity",
+        )
         SystemClock.sleep(2_000)
+        waitUntilUi(30_000) {
+            uiExists("All files") ||
+                uiExists("Todos os arquivos") ||
+                uiExists("Trash") ||
+                uiExists("Lixeira") ||
+                uiExists("Velum")
+        }
         covered += "restore-from-background"
         shot("14-restore-$tag")
     }
 
-    private fun killAndRestore(tag: String) {
-        device.executeShellCommand("am kill ${appContext.packageName}")
-        SystemClock.sleep(1_000)
-        val launch = appContext.packageManager.getLaunchIntentForPackage(appContext.packageName)
-        assertNotNull(launch)
-        launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        appContext.startActivity(launch)
-        waitUntil(60_000) {
-            composeExists("Todos os arquivos") ||
-                composeExists("All files") ||
-                composeExists("Velum") ||
-                composeExists("Pular") ||
-                composeExists("Skip")
+    /**
+     * Process death via `am kill`. Relaunch creates a new MainActivity that
+     * [composeRule]'s ActivityScenario does not track — use UiAutomator only.
+     */
+    private fun killAndRestore(lang: String, tag: String) {
+        val pkg = appContext.packageName
+        device.executeShellCommand("am kill $pkg")
+        SystemClock.sleep(1_500)
+        device.executeShellCommand("am start -n $pkg/.MainActivity")
+        waitUntilUi(60_000) {
+            uiExists("Todos os arquivos") ||
+                uiExists("All files") ||
+                uiExists("Velum") ||
+                uiExists("Pular") ||
+                uiExists("Skip")
         }
-        // Skip onboarding again if wipe somehow reset — should not after cancel-only wipe
-        if (composeExists("Pular") || composeExists("Skip")) {
-            clickTextPrefer("Pular", "Skip")
+        if (uiExists("Pular") || uiExists("Skip")) {
+            softClickUi("Pular", "Skip")
         }
-        val lang = tag.substringBefore('_')
-        pressBackToFiles(if (lang == "pt-BR") "pt-BR" else "en")
+        softClickUiDesc("All files", "Todos os arquivos")
+        waitUntilUi(30_000) {
+            uiExists("All files") ||
+                uiExists("Todos os arquivos") ||
+                uiExists("Trash") ||
+                uiExists("Lixeira")
+        }
         covered += "process-death-restore"
         shot("15-process-death-$tag")
+        // Locale must survive process death (prefs persisted).
+        assertUiChrome(lang)
     }
 
     private fun assertNoRawOrUnlocalized(lang: String) {
         pressBackToFiles(lang)
         restoreAllFilesFilterSoft()
-        val dump = buildString {
-            runCatching {
-                val out = ByteArrayOutputStream()
-                device.dumpWindowHierarchy(out)
-                append(out.toString(Charsets.UTF_8.name()))
-            }
-            runCatching {
-                device.findObjects(By.clickable(true)).forEach { obj ->
-                    obj.text?.let { appendLine(it) }
-                    obj.contentDescription?.let { appendLine(it) }
-                }
-            }
-        }
+        val dump = windowDump()
         val banned = listOf(
             "TODO",
             "FIXME",
@@ -579,26 +595,81 @@ class DeviceWalkUiTest {
         for (b in banned) {
             assertFalse(dump.contains(b), "Raw/dev string on screen: $b")
         }
-        // Locale smoke: shell chrome must match the language applied in appearance.
+        assertUiChrome(lang)
+    }
+
+    private fun assertUiChrome(lang: String) {
+        val dump = windowDump()
         if (lang == "pt-BR") {
             assertTrue(
-                composeExists("Todos os arquivos") ||
-                    composeExists("Lixeira") ||
-                    composeExists("Explorar") ||
-                    composeExists("Configuração") ||
+                uiExists("Todos os arquivos") ||
+                    uiExists("Lixeira") ||
+                    uiExists("Explorar") ||
+                    uiExists("Configuração") ||
                     dump.contains("Arquivos", ignoreCase = true),
                 "Expected pt-BR chrome after locale apply",
             )
         } else {
             assertTrue(
-                composeExists("All files") ||
-                    composeExists("Trash") ||
-                    composeExists("Explore") ||
-                    composeExists("Settings") ||
+                uiExists("All files") ||
+                    uiExists("Trash") ||
+                    uiExists("Explore") ||
+                    uiExists("Settings") ||
                     dump.contains("All files", ignoreCase = true),
                 "Expected EN chrome after locale apply",
             )
         }
+    }
+
+    private fun windowDump(): String = buildString {
+        runCatching {
+            val out = ByteArrayOutputStream()
+            device.dumpWindowHierarchy(out)
+            append(out.toString(Charsets.UTF_8.name()))
+        }
+        runCatching {
+            device.findObjects(By.clickable(true)).forEach { obj ->
+                obj.text?.let { appendLine(it) }
+                obj.contentDescription?.let { appendLine(it) }
+            }
+        }
+    }
+
+    private fun uiExists(text: String): Boolean =
+        runCatching {
+            device.findObject(By.textContains(text)) != null
+        }.getOrDefault(false) ||
+            runCatching {
+                device.findObject(By.descContains(text)) != null
+            }.getOrDefault(false)
+
+    private fun softClickUi(vararg labels: String): Boolean {
+        for (label in labels) {
+            if (label.isBlank()) continue
+            val obj = device.findObject(By.textContains(label)) ?: continue
+            runCatching { obj.click() }
+            return true
+        }
+        return false
+    }
+
+    private fun softClickUiDesc(vararg labels: String): Boolean {
+        for (label in labels) {
+            if (label.isBlank()) continue
+            val obj = device.findObject(By.descContains(label)) ?: continue
+            runCatching { obj.click() }
+            return true
+        }
+        return false
+    }
+
+    private fun waitUntilUi(timeoutMs: Long, condition: () -> Boolean) {
+        val start = SystemClock.uptimeMillis()
+        while (SystemClock.uptimeMillis() - start < timeoutMs) {
+            if (runCatching { condition() }.getOrDefault(false)) return
+            SystemClock.sleep(300)
+        }
+        error("UI condition not met within ${timeoutMs}ms")
     }
 
     private fun openSettings() {
