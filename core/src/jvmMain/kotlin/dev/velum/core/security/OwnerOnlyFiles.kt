@@ -2,7 +2,9 @@ package dev.velum.core.security
 
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
+import java.nio.file.AccessDeniedException
 import java.nio.file.FileAlreadyExistsException
+import java.nio.file.FileSystemException
 import java.nio.file.FileSystems
 import java.nio.file.Files
 import java.nio.file.Path
@@ -19,6 +21,7 @@ import java.nio.file.attribute.UserPrincipal
 import java.security.SecureRandom
 import java.util.EnumSet
 import java.util.Properties
+import java.util.concurrent.ConcurrentHashMap
 
 /** AES-256 raw key length in bytes (shared by vault blob / key-file logic). */
 internal const val AES_256_KEY_BYTES: Int = 32
@@ -204,24 +207,58 @@ internal fun atomicWriteOwnerOnlyBytes(
     }
 }
 
+/** Cached hard-link support keyed by canonical parent directory path. */
+private val hardLinkSupportedByDir = ConcurrentHashMap<String, Boolean>()
+
+private fun directoryHardLinkCacheKey(directory: Path): String =
+    try {
+        directory.toRealPath().toString()
+    } catch (_: Exception) {
+        directory.toAbsolutePath().normalize().toString()
+    }
+
+/**
+ * Best-effort fsync of a directory after publishing a name into it.
+ * Ignored when the platform rejects directory opens (typical on Windows).
+ */
+internal fun fsyncDirectoryBestEffort(directory: Path) {
+    try {
+        FileChannel.open(directory, StandardOpenOption.READ).use { channel ->
+            channel.force(/* metaData = */ true)
+        }
+    } catch (_: Throwable) {
+        // Windows / some network FS — ignore.
+    }
+}
+
 /**
  * Publish [bytes] as a complete [target] so readers never observe a partial file.
  *
  * Writes an owner-only temp in the same directory, fsyncs it, then links it into
- * place with [Files.createLink] (no replace). Where hard links are unsupported,
- * falls back to [StandardCopyOption.ATOMIC_MOVE] only when [target] is absent
- * (caller must hold [AesKeyFileLock]).
+ * place with [Files.createLink] (no replace). Where hard links are unsupported
+ * ([UnsupportedOperationException] or a plain [FileSystemException] such as on
+ * FAT/exFAT/network shares), falls back to [StandardCopyOption.ATOMIC_MOVE] only
+ * when [target] is absent (caller must hold [AesKeyFileLock]).
+ *
+ * Never falls back on [AccessDeniedException] or [FileAlreadyExistsException]
+ * (decided by exception type, never message text). Hard-link support is probed
+ * lazily and cached once per directory.
  *
  * [afterTempReady] is a test-only hook invoked after the temp is durable and
  * before the publish step (stall a writer while another loader waits on the lock).
+ * [createHardLink] is injectable for tests (`link` = new path, `existing` = tmp).
  *
  * @throws FileAlreadyExistsException if [target] already exists
+ * @throws AccessDeniedException if linking is denied (no move fallback)
  */
 internal fun publishOwnerOnlyBytesExclusive(
     target: Path,
     bytes: ByteArray,
     onTempCreated: ((Path) -> Unit)? = null,
     afterTempReady: (() -> Unit)? = null,
+    createHardLink: (link: Path, existing: Path) -> Unit = { link, existing ->
+        Files.createLink(link, existing)
+    },
 ) {
     require(bytes.size == AES_256_KEY_BYTES) { "AES-256 key must be $AES_256_KEY_BYTES bytes" }
     Files.createDirectories(target.parent)
@@ -244,14 +281,16 @@ internal fun publishOwnerOnlyBytesExclusive(
             channel.force(/* metaData = */ true)
         }
         afterTempReady?.invoke()
-        try {
-            // link(existing=tmp, link=target) — target must not exist.
-            Files.createLink(target, tmp)
-        } catch (_: UnsupportedOperationException) {
+        val linked = tryPublishViaHardLink(
+            directory = target.parent,
+            target = target,
+            tmp = tmp,
+            createHardLink = createHardLink,
+        )
+        if (!linked) {
             publishByAtomicMoveNoReplace(tmp, target)
+            fsyncDirectoryBestEffort(target.parent)
             return
-        } catch (_: FileAlreadyExistsException) {
-            throw FileAlreadyExistsException(target.toFile())
         }
         // Drop the temp name; [target] keeps the inode.
         Files.deleteIfExists(tmp)
@@ -259,6 +298,10 @@ internal fun publishOwnerOnlyBytesExclusive(
         if (!supportsPosixPermissions()) {
             applyOwnerOnlyAcl(target)
         }
+        fsyncDirectoryBestEffort(target.parent)
+    } catch (e: AccessDeniedException) {
+        Files.deleteIfExists(tmp)
+        throw e
     } catch (e: FileAlreadyExistsException) {
         Files.deleteIfExists(tmp)
         throw e
@@ -266,6 +309,41 @@ internal fun publishOwnerOnlyBytesExclusive(
         Files.deleteIfExists(tmp)
         Files.deleteIfExists(target)
         throw t
+    }
+}
+
+/**
+ * Attempt hard-link publish. Returns false when hard links are unsupported so
+ * the caller can ATOMIC_MOVE. Rethrows [AccessDeniedException] /
+ * [FileAlreadyExistsException] without falling back.
+ */
+private fun tryPublishViaHardLink(
+    directory: Path,
+    target: Path,
+    tmp: Path,
+    createHardLink: (link: Path, existing: Path) -> Unit,
+): Boolean {
+    val cacheKey = directoryHardLinkCacheKey(directory)
+    if (hardLinkSupportedByDir[cacheKey] == false) {
+        return false
+    }
+    return try {
+        // link(existing=tmp, link=target) — target must not exist.
+        createHardLink(target, tmp)
+        hardLinkSupportedByDir.putIfAbsent(cacheKey, true)
+        true
+    } catch (_: UnsupportedOperationException) {
+        hardLinkSupportedByDir[cacheKey] = false
+        false
+    } catch (e: AccessDeniedException) {
+        throw e
+    } catch (e: FileAlreadyExistsException) {
+        throw e
+    } catch (_: FileSystemException) {
+        // FAT/exFAT/network shares often raise a plain FileSystemException when
+        // hard links are unavailable — fall back under the lock.
+        hardLinkSupportedByDir[cacheKey] = false
+        false
     }
 }
 
