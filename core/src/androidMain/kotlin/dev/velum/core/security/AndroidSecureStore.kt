@@ -70,7 +70,7 @@ class AndroidSecureStore(
         val secretKey = try {
             getOrCreateKey()
         } catch (t: Throwable) {
-            Log.w(TAG, "Keystore unavailable during read: ${t::class.java.name}")
+            Log.w(TAG, "Keystore unavailable during getString: ${t::class.java.name}")
             if (KeystoreFailureClassifier.actionFor(t) == KeystoreVaultAction.ClearAndRegenerate) {
                 clearVaultAndKey()
             }
@@ -95,6 +95,39 @@ class AndroidSecureStore(
                 }
                 // Transient Keystore errors keep the stored ciphertext.
                 null
+            }
+        }
+    }
+
+    /**
+     * Non-destructive read: never removes prefs entries and never clears or
+     * regenerates the Keystore alias. An existing entry that cannot be opened
+     * is [SecureRead.Unreadable] (including [KeystoreAliasResolveAction.PropagateTransient]);
+     * [SecureRead.Missing] only when the prefs key is absent.
+     */
+    override suspend fun read(key: String): SecureRead = withContext(Dispatchers.IO) {
+        if (!prefs.contains(key)) return@withContext SecureRead.Missing
+        val stored = prefs.getString(key, null)
+            ?: return@withContext SecureRead.Missing
+        val secretKey = try {
+            peekExistingKeyForRead()
+        } catch (t: Throwable) {
+            Log.w(TAG, "Keystore unavailable during read: ${t::class.java.name}")
+            // Transient or permanent Keystore failure — Unreadable, never Missing;
+            // leave the prefs entry and the alias untouched.
+            return@withContext SecureRead.Unreadable(t::class.java.name)
+        }
+        when (val result = decryptResult(secretKey, stored)) {
+            is VaultDecrypt.Ok ->
+                SecureRead.Value(result.plaintext.toString(Charsets.UTF_8))
+            VaultDecrypt.StructurallyMalformed ->
+                SecureRead.Unreadable(VaultDecrypt.StructurallyMalformed::class.java.name)
+            VaultDecrypt.CryptographicFailure ->
+                SecureRead.Unreadable(VaultDecrypt.CryptographicFailure::class.java.name)
+            is VaultDecrypt.KeystoreFailure -> {
+                Log.w(TAG, "Keystore failure during read: ${result.throwableClassName}")
+                // Never clearVaultAndKey from read — leave entry and alias in place.
+                SecureRead.Unreadable(result.throwableClassName)
             }
         }
     }
@@ -149,6 +182,47 @@ class AndroidSecureStore(
                 val t = failure
                     ?: IllegalStateException("Keystore alias present but SecretKeyEntry missing")
                 Log.w(TAG, "Keystore getEntry failed; retaining alias: ${t::class.java.name}")
+                throw t
+            }
+        }
+    }
+
+    /**
+     * Resolve the existing Keystore key for [read] without creating, deleting,
+     * or regenerating anything. [KeystoreAliasResolveAction.PropagateTransient]
+     * and [KeystoreAliasResolveAction.ClearAndRegenerate] both throw so the
+     * caller can return [SecureRead.Unreadable] while leaving prefs intact.
+     */
+    private fun peekExistingKeyForRead(): SecretKey {
+        val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
+        val aliasPresent = keyStore.containsAlias(keyAlias)
+        val entryResult = runCatching {
+            if (!aliasPresent) null
+            else keyStore.getEntry(keyAlias, null) as? KeyStore.SecretKeyEntry
+        }
+        val entry = entryResult.getOrNull()
+        val failure = entryResult.exceptionOrNull()
+        return when (
+            KeystoreAliasResolvePolicy.decide(
+                aliasPresent = aliasPresent,
+                entryObtained = entry != null,
+                getEntryFailure = failure,
+            )
+        ) {
+            KeystoreAliasResolveAction.UseExisting ->
+                entry!!.secretKey
+            KeystoreAliasResolveAction.CreateMissing ->
+                throw IllegalStateException("Keystore alias missing during SecureStore.read")
+            KeystoreAliasResolveAction.ClearAndRegenerate -> {
+                val t = failure
+                    ?: IllegalStateException("Key permanently invalidated during SecureStore.read")
+                Log.w(TAG, "Keystore permanently invalidated on read; leaving vault: ${t::class.java.name}")
+                throw t
+            }
+            KeystoreAliasResolveAction.PropagateTransient -> {
+                val t = failure
+                    ?: IllegalStateException("Keystore alias present but SecretKeyEntry missing")
+                Log.w(TAG, "Keystore getEntry failed on read; retaining alias: ${t::class.java.name}")
                 throw t
             }
         }
