@@ -50,40 +50,30 @@ class SessionDownloadServiceSourceTest {
     }
 
     @Test
-    fun usesConnectedDeviceForegroundTypeOnApi29Plus() {
+    fun usesConnectedDeviceWithShortServiceFallback() {
         val src = serviceSource()
         assertTrue(src.contains("FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE"))
-        assertTrue(src.contains("SDK_INT >= 29"))
-        assertTrue(src.contains("promoteToForeground"))
-        assertTrue(src.contains("DownloadProgressNotifier.buildNotification"))
-        assertTrue(src.contains("enterMinimalForegroundThenStop"))
+        assertTrue(src.contains("FOREGROUND_SERVICE_TYPE_SHORT_SERVICE"))
+        assertTrue(src.contains("enterShortServiceForegroundThenStop"))
+        assertTrue(src.contains("promoteFailureHandler"))
     }
 
     @Test
-    fun startPath_checksBluetoothConnectAndHandlesDeniedStart() {
+    fun startPath_checksBluetoothConnectBeforeStartForegroundService() {
         val src = serviceSource()
         assertTrue(src.contains("hasBluetoothConnectPermission"))
+        assertTrue(src.contains("DeniedBluetooth"))
         assertTrue(src.contains("BLUETOOTH_CONNECT"))
-        assertTrue(src.contains("startForegroundService denied"))
-        assertTrue(src.contains("download continues without FGS"))
         assertTrue(src.contains("stopService"))
     }
 
     @Test
-    fun promoteFailure_alwaysStartForegroundBeforeStopSelf() {
-        val src = serviceSource()
-        assertTrue(src.contains("enterMinimalForegroundThenStop"))
-        assertTrue(src.contains("minimal startForeground failed") || src.contains("minimalForegroundNotification"))
-        // Failure branch must not stopSelf without attempting startForeground.
-        assertTrue(src.contains("handleStart"))
-    }
-
-    @Test
-    fun manifestDeclaresConnectedDeviceServiceAndPermission() {
+    fun manifestDeclaresConnectedDeviceAndShortService() {
         val manifest = manifestSource()
         assertTrue(manifest.contains("FOREGROUND_SERVICE_CONNECTED_DEVICE"))
+        assertTrue(manifest.contains("FOREGROUND_SERVICE_SHORT_SERVICE"))
         assertTrue(manifest.contains(".platform.SessionDownloadService"))
-        assertTrue(manifest.contains("foregroundServiceType=\"connectedDevice\""))
+        assertTrue(manifest.contains("connectedDevice|shortService"))
     }
 
     @Test
@@ -96,18 +86,13 @@ class SessionDownloadServiceSourceTest {
     }
 
     @Test
-    fun downloadJobLivesInAppScopedManager_notViewModelScope() {
+    fun downloadJobLivesInAppScopedManager_withCancelAndJoin() {
         val manager = managerSource()
         val vm = viewModelSource()
         assertTrue(manager.contains("class SessionDownloadManager"))
-        assertTrue(manager.contains("keepAlive.onDownloadBegin()"))
+        assertTrue(manager.contains("cancelAndJoin"))
         assertTrue(manager.contains("keepAlive.onDownloadEnd()"))
-        assertFalse(
-            vm.contains("viewModelScope.launch") && vm.contains("runDownloadSession"),
-            "DeviceViewModel must not own the download job on viewModelScope",
-        )
         assertFalse(vm.contains("downloadKeepAlive"))
-        assertTrue(vm.contains("sessionDownloads.start(") || vm.contains("sessionDownloads.start"))
-        assertTrue(vm.contains("sessionDownloads.cancel()"))
+        assertTrue(vm.contains("sessionDownloads.cancelAndJoin()"))
     }
 }

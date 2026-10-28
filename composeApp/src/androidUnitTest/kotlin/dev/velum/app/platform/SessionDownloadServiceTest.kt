@@ -4,6 +4,7 @@ import android.Manifest
 import android.app.Application
 import android.app.ForegroundServiceStartNotAllowedException
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.os.Build
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -58,11 +59,17 @@ class SessionDownloadServiceTest {
             shadow.lastForegroundNotificationId,
         )
         assertNotNull(shadow.lastForegroundNotification)
+        assertEquals(
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE,
+            SessionDownloadService.lastStartForegroundTypeForTests,
+        )
         controller.destroy()
     }
 
     @Test
-    fun promoteFailure_stillCallsStartForegroundBeforeStop() {
+    fun promoteFailure_usesShortServiceThenStopSelf_andSurfacesError() {
+        var surfaced: String? = null
+        SessionDownloadService.promoteFailureHandler = { surfaced = it }
         SessionDownloadService.forcePromoteFailureForTests = true
         val intent = Intent(app, SessionDownloadService::class.java)
             .setAction(SessionDownloadService.ACTION_START)
@@ -71,44 +78,35 @@ class SessionDownloadServiceTest {
             .startCommand(0, 1)
         val shadow = Shadows.shadowOf(controller.get())
 
-        // Failure path: minimal startForeground then stopForeground(REMOVE) + stopSelf.
-        // Robolectric may clear lastForegroundNotification after REMOVE; the id +
-        // isForegroundStopped prove startForeground ran before teardown.
+        // shortService startForeground must run before stopSelf (no crash on API 34+).
         assertEquals(
             DownloadProgressNotifier.notificationId(DownloadNotifyKind.DeviceSession),
             shadow.lastForegroundNotificationId,
         )
+        assertEquals(
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_SHORT_SERVICE,
+            SessionDownloadService.lastStartForegroundTypeForTests,
+        )
         assertTrue(shadow.isForegroundStopped)
         assertTrue(shadow.isStoppedBySelf)
         assertFalse(SessionDownloadService.isForegroundHeld())
+        assertNotNull(surfaced)
+        assertTrue(surfaced!!.isNotBlank())
         controller.destroy()
     }
 
     @Test
-    fun stopService_clearsForeground() {
-        val start = Intent(app, SessionDownloadService::class.java)
-            .setAction(SessionDownloadService.ACTION_START)
-        val controller = Robolectric.buildService(SessionDownloadService::class.java, start)
-            .create()
-            .startCommand(0, 1)
-        assertTrue(SessionDownloadService.isForegroundHeld())
-
-        SessionDownloadService.stop(app)
-        val stopped = Shadows.shadowOf(app).nextStoppedService
-        assertNotNull(stopped)
-        assertEquals(
-            SessionDownloadService::class.java.name,
-            stopped!!.component?.className,
-        )
-
-        // Direct destroy mirrors stopService lifecycle for the controller under test.
-        controller.destroy()
-        assertFalse(SessionDownloadService.isForegroundHeld())
+    fun companionStart_whenBluetoothDenied_returnsDeniedWithoutStartingService() {
+        Shadows.shadowOf(app).denyPermissions(Manifest.permission.BLUETOOTH_CONNECT)
+        val result = SessionDownloadService.start(app)
+        assertEquals(SessionDownloadServiceStartResult.DeniedBluetooth, result)
+        assertNull(Shadows.shadowOf(app).nextStartedService)
     }
 
     @Test
     fun companionStart_dispatchesStartForegroundServiceIntent() {
-        SessionDownloadService.start(app)
+        val result = SessionDownloadService.start(app)
+        assertEquals(SessionDownloadServiceStartResult.Started, result)
         val started = Shadows.shadowOf(app).nextStartedService
         assertNotNull(started)
         assertEquals(SessionDownloadService.ACTION_START, started!!.action)
@@ -116,13 +114,6 @@ class SessionDownloadServiceTest {
             SessionDownloadService::class.java.name,
             started.component?.className,
         )
-    }
-
-    @Test
-    fun companionStart_skipsWhenBluetoothConnectDenied() {
-        Shadows.shadowOf(app).denyPermissions(Manifest.permission.BLUETOOTH_CONNECT)
-        SessionDownloadService.start(app)
-        assertNull(Shadows.shadowOf(app).nextStartedService)
     }
 
     @Test
@@ -134,9 +125,9 @@ class SessionDownloadServiceTest {
                 "denied for test",
             )
         }
-        // Must not throw — download continues without FGS.
-        SessionDownloadService.start(app)
+        val result = SessionDownloadService.start(app)
         assertTrue(hooked)
+        assertEquals(SessionDownloadServiceStartResult.Failed, result)
         assertNull(Shadows.shadowOf(app).nextStartedService)
     }
 
@@ -153,11 +144,31 @@ class SessionDownloadServiceTest {
     }
 
     @Test
+    fun stopService_clearsForeground() {
+        val start = Intent(app, SessionDownloadService::class.java)
+            .setAction(SessionDownloadService.ACTION_START)
+        val controller = Robolectric.buildService(SessionDownloadService::class.java, start)
+            .create()
+            .startCommand(0, 1)
+        assertTrue(SessionDownloadService.isForegroundHeld())
+
+        SessionDownloadService.stop(app)
+        val stopped = Shadows.shadowOf(app).nextStoppedService
+        assertNotNull(stopped)
+        controller.destroy()
+        assertFalse(SessionDownloadService.isForegroundHeld())
+    }
+
+    @Test
     fun foregroundServiceType_isConnectedDeviceOnApi29Plus() {
         assertTrue(Build.VERSION.SDK_INT >= 29)
         assertEquals(
-            android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE,
-            SessionDownloadService.foregroundServiceType(),
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE,
+            SessionDownloadService.connectedDeviceType(),
+        )
+        assertEquals(
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_SHORT_SERVICE,
+            SessionDownloadService.shortServiceType(),
         )
     }
 

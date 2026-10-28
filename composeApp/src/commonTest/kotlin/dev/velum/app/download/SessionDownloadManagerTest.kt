@@ -1,6 +1,7 @@
 package dev.velum.app.download
 
 import dev.velum.app.platform.SessionDownloadKeepAliveGate
+import dev.velum.app.platform.SessionDownloadKeepAliveStart
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -27,14 +28,21 @@ class SessionDownloadManagerTest {
         client = null,
     )
 
+    private fun startedGate(
+        onStart: () -> Unit = {},
+        onStop: () -> Unit = {},
+    ) = SessionDownloadKeepAliveGate(
+        startPlatform = {
+            onStart()
+            SessionDownloadKeepAliveStart.Started
+        },
+        stopPlatform = onStop,
+    )
+
     @Test
     fun success_releasesKeepAliveInFinally() = runBlocking {
         var starts = 0
         var stops = 0
-        val gate = SessionDownloadKeepAliveGate(
-            startPlatform = { starts++ },
-            stopPlatform = { stops++ },
-        )
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val manager = SessionDownloadManager(
             scope = scope,
@@ -42,7 +50,8 @@ class SessionDownloadManagerTest {
             transfer = SessionDownloadTransfer { _, _ ->
                 SessionDownloadResult(recordingId = "rec-1", sessions = emptyList())
             },
-            keepAlive = gate,
+            keepAlive = startedGate(onStart = { starts++ }, onStop = { stops++ }),
+            installPromoteFailureHandler = {},
         )
 
         manager.start(request())
@@ -50,7 +59,7 @@ class SessionDownloadManagerTest {
 
         assertEquals(1, starts)
         assertEquals(1, stops)
-        assertFalse(gate.isActive)
+        assertFalse(manager.keepAliveActive)
         assertFalse(manager.isDownloadActive)
         assertEquals("rec-1", manager.state.value.lastDownloadedRecordingId)
         scope.cancel()
@@ -60,16 +69,13 @@ class SessionDownloadManagerTest {
     fun failure_releasesKeepAliveInFinally() = runBlocking {
         var starts = 0
         var stops = 0
-        val gate = SessionDownloadKeepAliveGate(
-            startPlatform = { starts++ },
-            stopPlatform = { stops++ },
-        )
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val manager = SessionDownloadManager(
             scope = scope,
             localeTag = { "en" },
             transfer = SessionDownloadTransfer { _, _ -> error("boom") },
-            keepAlive = gate,
+            keepAlive = startedGate(onStart = { starts++ }, onStop = { stops++ }),
+            installPromoteFailureHandler = {},
         )
 
         manager.start(request())
@@ -77,20 +83,94 @@ class SessionDownloadManagerTest {
 
         assertEquals(1, starts)
         assertEquals(1, stops)
-        assertFalse(gate.isActive)
+        assertFalse(manager.keepAliveActive)
         assertNull(manager.state.value.downloadingSessionId)
         assertTrue(manager.state.value.statusMessage != null)
         scope.cancel()
     }
 
     @Test
-    fun cancel_releasesKeepAliveInFinally_once() = runBlocking {
+    fun cancelAndJoin_stopsKeepAliveOnlyAfterJobUnwinds() = runBlocking {
         var starts = 0
         var stops = 0
-        val gate = SessionDownloadKeepAliveGate(
-            startPlatform = { starts++ },
-            stopPlatform = { stops++ },
+        var transferFinallyAt = 0L
+        var keepAliveStopAt = 0L
+        val entered = CompletableDeferred<Unit>()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val manager = SessionDownloadManager(
+            scope = scope,
+            localeTag = { "en" },
+            transfer = SessionDownloadTransfer { _, _ ->
+                entered.complete(Unit)
+                try {
+                    awaitCancellation()
+                } finally {
+                    transferFinallyAt = System.nanoTime()
+                }
+            },
+            keepAlive = startedGate(
+                onStart = { starts++ },
+                onStop = {
+                    keepAliveStopAt = System.nanoTime()
+                    stops++
+                },
+            ),
+            installPromoteFailureHandler = {},
         )
+
+        manager.start(request())
+        withTimeout(2_000) { entered.await() }
+        assertTrue(manager.keepAliveActive)
+        assertEquals(1, starts)
+
+        manager.cancelAndJoin()
+
+        assertEquals(1, starts)
+        assertEquals(1, stops)
+        assertFalse(manager.keepAliveActive)
+        assertFalse(manager.isDownloadActive)
+        assertTrue(
+            transferFinallyAt > 0L && keepAliveStopAt >= transferFinallyAt,
+            "FGS/keep-alive must stop only after the download job finally unwinds",
+        )
+        scope.cancel()
+    }
+
+    @Test
+    fun deniedBluetooth_surfacesErrorWithoutStartingTransfer() = runBlocking {
+        var transferRuns = 0
+        var stops = 0
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val manager = SessionDownloadManager(
+            scope = scope,
+            localeTag = { "en" },
+            transfer = SessionDownloadTransfer { _, _ ->
+                transferRuns++
+                error("should not run")
+            },
+            keepAlive = SessionDownloadKeepAliveGate(
+                startPlatform = { SessionDownloadKeepAliveStart.DeniedBluetooth },
+                stopPlatform = { stops++ },
+            ),
+            installPromoteFailureHandler = {},
+        )
+
+        manager.start(request())
+        manager.join()
+
+        assertEquals(0, transferRuns)
+        assertEquals(0, stops)
+        assertFalse(manager.keepAliveActive)
+        assertNull(manager.state.value.downloadingSessionId)
+        assertTrue(
+            manager.state.value.statusMessage?.contains("Bluetooth", ignoreCase = true) == true,
+        )
+        scope.cancel()
+    }
+
+    @Test
+    fun promoteFailureHandler_surfacesErrorAndCancels() = runBlocking {
+        var handler: ((String) -> Unit)? = null
         val entered = CompletableDeferred<Unit>()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val manager = SessionDownloadManager(
@@ -100,21 +180,23 @@ class SessionDownloadManagerTest {
                 entered.complete(Unit)
                 awaitCancellation()
             },
-            keepAlive = gate,
+            keepAlive = startedGate(),
+            installPromoteFailureHandler = { handler = it },
         )
 
         manager.start(request())
         withTimeout(2_000) { entered.await() }
-        assertTrue(gate.isActive)
-        assertEquals(1, starts)
+        assertTrue(manager.isDownloadActive)
 
-        manager.cancel()
+        handler!!.invoke("Could not keep the download alive in the background")
         manager.join()
 
-        assertEquals(1, starts)
-        assertEquals(1, stops)
-        assertFalse(gate.isActive)
         assertFalse(manager.isDownloadActive)
+        assertFalse(manager.keepAliveActive)
+        assertEquals(
+            "Could not keep the download alive in the background",
+            manager.state.value.statusMessage,
+        )
         scope.cancel()
     }
 
@@ -122,15 +204,10 @@ class SessionDownloadManagerTest {
     fun downloadSurvivesViewModelScopeCancellation() = runBlocking {
         var starts = 0
         var stops = 0
-        val gate = SessionDownloadKeepAliveGate(
-            startPlatform = { starts++ },
-            stopPlatform = { stops++ },
-        )
         val entered = CompletableDeferred<Unit>()
         val finished = CompletableDeferred<String>()
         val appJob = SupervisorJob()
         val appScope = CoroutineScope(appJob + Dispatchers.Unconfined)
-        // Simulates DeviceViewModel.viewModelScope — must NOT own the download.
         val viewModelJob = SupervisorJob()
         val viewModelScope = CoroutineScope(viewModelJob + Dispatchers.Unconfined)
 
@@ -144,37 +221,31 @@ class SessionDownloadManagerTest {
                 finished.complete(result.recordingId)
                 result
             },
-            keepAlive = gate,
+            keepAlive = startedGate(onStart = { starts++ }, onStop = { stops++ }),
+            installPromoteFailureHandler = {},
         )
 
-        // Mirror DeviceViewModel: only observe from VM scope; start on app-owned manager.
-        var mirroredProgress: Float? = null
-        viewModelScope.coroutineContext[Job] // ensure scope exists
+        viewModelScope.coroutineContext[Job]
         manager.start(request())
         withTimeout(2_000) { entered.await() }
 
-        // Task swipe / ViewModel clear
         viewModelJob.cancel()
         assertTrue(viewModelJob.isCancelled)
 
-        // Download must keep running on the app scope.
         assertTrue(manager.isDownloadActive)
-        assertTrue(gate.isActive)
+        assertTrue(manager.keepAliveActive)
         assertEquals("survived", withTimeout(2_000) { finished.await() })
         manager.join()
         assertEquals(1, starts)
         assertEquals(1, stops)
         assertEquals("survived", manager.state.value.lastDownloadedRecordingId)
-        mirroredProgress = manager.state.value.downloadProgress
-        assertNull(mirroredProgress)
         appJob.cancel()
     }
 
     @Test
-    fun cancelFromNotificationHandler_cancelsOwnerJob() = runBlocking {
+    fun cancelFromNotificationHandler_usesCancelAndJoin() = runBlocking {
         var cancelInvocations = 0
         val entered = CompletableDeferred<Unit>()
-        val gate = SessionDownloadKeepAliveGate(startPlatform = {}, stopPlatform = {})
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         lateinit var manager: SessionDownloadManager
         manager = SessionDownloadManager(
@@ -184,23 +255,18 @@ class SessionDownloadManagerTest {
                 entered.complete(Unit)
                 awaitCancellation()
             },
-            keepAlive = gate,
+            keepAlive = startedGate(),
+            installPromoteFailureHandler = {},
         )
-
-        // Simulate DownloadProgressNotifier cancel action → owner cancel().
-        val notificationCancel = {
-            cancelInvocations++
-            manager.cancel()
-        }
 
         manager.start(request())
         withTimeout(2_000) { entered.await() }
-        notificationCancel()
-        manager.join()
+        cancelInvocations++
+        manager.cancelAndJoin()
 
         assertEquals(1, cancelInvocations)
         assertFalse(manager.isDownloadActive)
-        assertFalse(gate.isActive)
+        assertFalse(manager.keepAliveActive)
         scope.cancel()
     }
 }
