@@ -25,6 +25,8 @@ import dev.velum.app.devicewalk.DeviceWalkDiarizer
 import dev.velum.app.devicewalk.DeviceWalkLlm
 import dev.velum.app.devicewalk.DeviceWalkMode
 import dev.velum.app.devicewalk.DeviceWalkTranscriber
+import dev.velum.app.download.SessionDownloadManager
+import dev.velum.app.download.liveSessionDownloadTransfer
 import dev.velum.app.platform.ExportFolderStore
 import dev.velum.app.platform.MicCapture
 import dev.velum.app.platform.createMicCapture
@@ -82,18 +84,28 @@ class AppContainer(
     val deviceKeyImporter: DeviceKeyImporter = SecureDeviceKeyImporter(secureStore)
     val aiClient = createOpenAiCompatibleClient()
     val settingsViewModel = SettingsViewModel(settingsRepository, aiClient)
+
+    private val localeTag: () -> String = {
+        when (settingsRepository.preferences.value.appLanguage) {
+            "en" -> "en"
+            "pt-BR" -> "pt-BR"
+            else -> systemLanguageTag()
+        }
+    }
+
+    /** App-scoped download owner — survives ViewModel clear; kept alive by download FGS. */
+    val sessionDownloads = SessionDownloadManager(
+        scope = appScope,
+        localeTag = localeTag,
+        transfer = liveSessionDownloadTransfer { session -> persistDownloadedSession(session) },
+    )
+
     val deviceViewModel = DeviceViewModel(
         ble = ble,
         keyImporter = deviceKeyImporter,
         preferWifiFastPath = { settingsRepository.preferences.value.preferWifiFastPath },
-        persistDownloadedSession = { session -> persistDownloadedSession(session) },
-        localeTag = {
-            when (settingsRepository.preferences.value.appLanguage) {
-                "en" -> "en"
-                "pt-BR" -> "pt-BR"
-                else -> systemLanguageTag()
-            }
-        },
+        sessionDownloads = sessionDownloads,
+        localeTag = localeTag,
     )
     val integrationAuth = IntegrationAuthStore(secureStore, integrationConfig)
     val webhookSettings = WebhookSettingsStore(secureStore)

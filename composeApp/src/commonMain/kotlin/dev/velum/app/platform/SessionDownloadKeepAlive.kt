@@ -14,26 +14,42 @@ expect object SessionDownloadKeepAlive {
  * Idempotent start/stop gate so shared download code can bookend a transfer
  * without leaking a platform keep-alive across repeated downloads.
  *
+ * Thread-safe via a synchronized CAS on [active]; safe to call from the
+ * [dev.velum.app.download.SessionDownloadManager] coroutine threads (not Main-only).
+ *
  * [startPlatform] / [stopPlatform] are injectable for JVM unit tests.
  */
 class SessionDownloadKeepAliveGate(
     private val startPlatform: () -> Unit = { SessionDownloadKeepAlive.start() },
     private val stopPlatform: () -> Unit = { SessionDownloadKeepAlive.stop() },
 ) {
+    private val lock = Any()
     private var active: Boolean = false
 
     val isActive: Boolean
-        get() = active
+        get() = synchronized(lock) { active }
 
     fun onDownloadBegin() {
-        if (active) return
-        active = true
-        startPlatform()
+        val shouldStart = synchronized(lock) {
+            if (active) {
+                false
+            } else {
+                active = true
+                true
+            }
+        }
+        if (shouldStart) startPlatform()
     }
 
     fun onDownloadEnd() {
-        if (!active) return
-        active = false
-        stopPlatform()
+        val shouldStop = synchronized(lock) {
+            if (!active) {
+                false
+            } else {
+                active = false
+                true
+            }
+        }
+        if (shouldStop) stopPlatform()
     }
 }
