@@ -74,10 +74,9 @@ class IdentityImportSecureStoreTest {
     fun overwrite_replaces_previous_identity() = runTest {
         val store = JvmAesGcmSecureStore()
         val importer = SecureDeviceKeyImporter(store)
-        val firstSig = SyntheticIdentityFixtures.signatureBase64()
         importer.importKeys(
             serialNumber = SyntheticIdentityFixtures.SERIAL,
-            serialSignatureBase64 = firstSig,
+            serialSignatureBase64 = SyntheticIdentityFixtures.signatureBase64(),
             bindToken = SyntheticIdentityFixtures.BIND_TOKEN,
             publicKeyPem = SyntheticIdentityFixtures.PUBLIC_KEY_PEM,
             privateKeyPem = SyntheticIdentityFixtures.PRIVATE_KEY_PEM,
@@ -105,12 +104,13 @@ class IdentityImportSecureStoreTest {
 
     @Test
     fun wipe_clears_identity_and_vault() = runTest {
-        val store = JvmAesGcmSecureStore()
+        val backend = linkedMapOf<String, String>()
+        val store = JvmAesGcmSecureStore(backend = backend)
         val importer = SecureDeviceKeyImporter(store)
         val raw = SyntheticIdentityFixtures.validBundleJson(includePems = true)
         assertIs<PlaudExportParseResult.Success>(PlaudExportImporter.importInto(raw, importer))
         assertTrue(importer.hasKeys())
-        assertTrue(store.rawCiphertextSnapshot().isNotEmpty())
+        assertTrue(backend.isNotEmpty())
 
         importer.clearKeys()
         assertFalse(importer.hasKeys())
@@ -123,13 +123,14 @@ class IdentityImportSecureStoreTest {
         store.putString(SecureKeys.AI_API_KEY, "sk-test-not-real")
         store.wipe()
         assertFalse(importer.hasKeys())
-        assertTrue(store.rawCiphertextSnapshot().isEmpty())
+        assertTrue(backend.isEmpty())
         assertNull(store.getString(SecureKeys.AI_API_KEY))
     }
 
     @Test
     fun corrupt_stored_blob_treated_as_missing() = runTest {
-        val store = JvmAesGcmSecureStore()
+        val backend = linkedMapOf<String, String>()
+        val store = JvmAesGcmSecureStore(backend = backend)
         val importer = SecureDeviceKeyImporter(store)
         importer.importKeys(
             serialNumber = SyntheticIdentityFixtures.SERIAL,
@@ -138,7 +139,7 @@ class IdentityImportSecureStoreTest {
         )
         assertTrue(importer.hasKeys())
 
-        store.putRawCiphertextForTest(SecureKeys.DEVICE_BIND_TOKEN, "not-valid-aes-gcm-ciphertext!!!")
+        backend[SecureKeys.DEVICE_BIND_TOKEN] = "not-valid-aes-gcm-ciphertext!!!"
         assertNull(store.getString(SecureKeys.DEVICE_BIND_TOKEN))
         assertFalse(store.contains(SecureKeys.DEVICE_BIND_TOKEN))
         // Incomplete identity after corrupt bind token drop.
@@ -147,8 +148,36 @@ class IdentityImportSecureStoreTest {
     }
 
     @Test
+    fun wrong_key_keeps_ciphertext_entries() = runTest {
+        val keyA = JvmAesGcmSecureStore.generateAes256Key()
+        val keyB = JvmAesGcmSecureStore.generateAes256Key()
+        val backend = linkedMapOf<String, String>()
+        val writer = JvmAesGcmSecureStore(key = keyA, backend = backend)
+        writer.putString(SecureKeys.DEVICE_SERIAL, SyntheticIdentityFixtures.SERIAL)
+        writer.putString(SecureKeys.DEVICE_BIND_TOKEN, SyntheticIdentityFixtures.BIND_TOKEN)
+        val sealedSerial = backend[SecureKeys.DEVICE_SERIAL]
+        val sealedBind = backend[SecureKeys.DEVICE_BIND_TOKEN]
+        assertNotNull(sealedSerial)
+        assertNotNull(sealedBind)
+
+        val wrongKeyStore = JvmAesGcmSecureStore(key = keyB, backend = backend)
+        assertNull(wrongKeyStore.getString(SecureKeys.DEVICE_SERIAL))
+        assertNull(wrongKeyStore.getString(SecureKeys.DEVICE_BIND_TOKEN))
+        // Entries must remain so a restored key can open them.
+        assertTrue(wrongKeyStore.contains(SecureKeys.DEVICE_SERIAL))
+        assertTrue(wrongKeyStore.contains(SecureKeys.DEVICE_BIND_TOKEN))
+        assertEquals(sealedSerial, backend[SecureKeys.DEVICE_SERIAL])
+        assertEquals(sealedBind, backend[SecureKeys.DEVICE_BIND_TOKEN])
+
+        val restored = JvmAesGcmSecureStore(key = keyA, backend = backend)
+        assertEquals(SyntheticIdentityFixtures.SERIAL, restored.getString(SecureKeys.DEVICE_SERIAL))
+        assertEquals(SyntheticIdentityFixtures.BIND_TOKEN, restored.getString(SecureKeys.DEVICE_BIND_TOKEN))
+    }
+
+    @Test
     fun malformed_bundle_rejected_without_successful_import() = runTest {
-        val store = JvmAesGcmSecureStore()
+        val backend = linkedMapOf<String, String>()
+        val store = JvmAesGcmSecureStore(backend = backend)
         val importer = SecureDeviceKeyImporter(store)
         val bundle = SyntheticIdentityFixtures.validBundle(includePems = true)
         val poisoned = SyntheticIdentityFixtures.validBundleJson(includePems = true)
@@ -157,9 +186,9 @@ class IdentityImportSecureStoreTest {
         val fail = assertIs<PlaudExportParseResult.Failure>(
             PlaudExportImporter.importInto(poisoned, importer),
         )
-        assertTrue(fail.message.contains("99"), fail.message)
+        assertTrue(fail.message.contains("99"))
         assertFalse(importer.hasKeys())
-        assertTrue(store.rawCiphertextSnapshot().isEmpty())
+        assertTrue(backend.isEmpty())
         assertFalse(IdentityRedaction.containsSecret(fail.message, bundle))
         assertFalse(IdentityRedaction.containsSecret(fail.toString(), bundle))
     }
@@ -184,24 +213,20 @@ class IdentityImportSecureStoreTest {
 
     @Test
     fun backend_holds_ciphertext_not_plaintext_identity() = runTest {
-        val store = JvmAesGcmSecureStore()
+        val backend = linkedMapOf<String, String>()
+        val store = JvmAesGcmSecureStore(backend = backend)
         val importer = SecureDeviceKeyImporter(store)
         val raw = SyntheticIdentityFixtures.validBundleJson(includePems = true)
         assertIs<PlaudExportParseResult.Success>(PlaudExportImporter.importInto(raw, importer))
 
-        val snapshot = store.rawCiphertextSnapshot()
-        assertTrue(snapshot.isNotEmpty())
-        val joined = snapshot.values.joinToString("\n")
+        assertTrue(backend.isNotEmpty())
+        val joined = backend.values.joinToString("\n")
         val bundle = SyntheticIdentityFixtures.validBundle(includePems = true)
         for (secret in IdentityRedaction.secretSamples(bundle)) {
-            assertFalse(
-                joined.contains(secret),
-                "persistence backend leaked a plaintext identity sample",
-            )
+            assertFalse(joined.contains(secret))
         }
-        // Ciphertext for the same plaintext must not be a stable empty/identity string.
-        assertNotEquals(SyntheticIdentityFixtures.SERIAL, snapshot[SecureKeys.DEVICE_SERIAL])
-        assertNotEquals(SyntheticIdentityFixtures.BIND_TOKEN, snapshot[SecureKeys.DEVICE_BIND_TOKEN])
+        assertNotEquals(SyntheticIdentityFixtures.SERIAL, backend[SecureKeys.DEVICE_SERIAL])
+        assertNotEquals(SyntheticIdentityFixtures.BIND_TOKEN, backend[SecureKeys.DEVICE_BIND_TOKEN])
     }
 
     @Test
@@ -245,6 +270,37 @@ class IdentityImportSecureStoreTest {
             val reloaded = SecureDeviceKeyImporter(second)
             assertTrue(reloaded.hasKeys())
             assertEquals(SyntheticIdentityFixtures.SERIAL, reloaded.loadKeys()?.serialNumber)
+        } finally {
+            dir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun desktop_regenerated_key_does_not_wipe_ciphertext() = runTest {
+        val dir = kotlin.io.path.createTempDirectory("velum-secure-wrong-key")
+        val props = dir.resolve("secure.properties")
+        val keyFile = dir.resolve("secure.aes256")
+        try {
+            val first = DesktopSecureStore(file = props, keyFile = keyFile)
+            first.putString(SecureKeys.DEVICE_SERIAL, SyntheticIdentityFixtures.SERIAL)
+            first.putString(SecureKeys.DEVICE_BIND_TOKEN, SyntheticIdentityFixtures.BIND_TOKEN)
+            val onDiskBefore = props.toFile().readText()
+            assertTrue(onDiskBefore.contains(SecureKeys.DEVICE_SERIAL))
+            assertTrue(onDiskBefore.contains(SecureKeys.DEVICE_BIND_TOKEN))
+
+            // Simulate lost/replaced key file while ciphertext remains.
+            java.nio.file.Files.delete(keyFile)
+            val second = DesktopSecureStore(file = props, keyFile = keyFile)
+            assertNull(second.getString(SecureKeys.DEVICE_SERIAL))
+            assertNull(second.getString(SecureKeys.DEVICE_BIND_TOKEN))
+            assertTrue(second.contains(SecureKeys.DEVICE_SERIAL))
+            assertTrue(second.contains(SecureKeys.DEVICE_BIND_TOKEN))
+
+            val onDiskAfter = props.toFile().readText()
+            assertTrue(onDiskAfter.contains(SecureKeys.DEVICE_SERIAL))
+            assertTrue(onDiskAfter.contains(SecureKeys.DEVICE_BIND_TOKEN))
+            val bundle = SyntheticIdentityFixtures.validBundle()
+            assertFalse(IdentityRedaction.containsSecret(onDiskAfter, bundle))
         } finally {
             dir.toFile().deleteRecursively()
         }
