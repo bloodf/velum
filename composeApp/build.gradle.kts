@@ -56,6 +56,7 @@ kotlin {
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
+            implementation(compose.ui)
         }
         androidMain.dependencies {
             implementation(compose.preview)
