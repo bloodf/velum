@@ -48,13 +48,17 @@ object PcmWav {
         channels: Int = 1,
         bitsPerSample: Int = 16,
     ): ByteArray {
+        val total = 44L + pcmS16le.size.toLong()
+        require(total <= Int.MAX_VALUE.toLong()) {
+            "WAV payload ${pcmS16le.size} exceeds 32-bit size limit"
+        }
         val header = header(
             dataSize = pcmS16le.size,
             sampleRateHz = sampleRateHz,
             channels = channels,
             bitsPerSample = bitsPerSample,
         )
-        val out = ByteArray(44 + pcmS16le.size)
+        val out = ByteArray(total.toInt())
         header.copyInto(out, 0)
         pcmS16le.copyInto(out, 44)
         return out

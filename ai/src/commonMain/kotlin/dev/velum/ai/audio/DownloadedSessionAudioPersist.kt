@@ -12,9 +12,8 @@ import dev.velum.ai.local.ModelStoreDir
  * processor — we now wrap that as a real WAV so streaming decode never sees
  * an opaque extension.
  *
- * All writes go to a same-directory temp file, then rename into place so the
- * destination is never half-written. Download temps use [TEMP_SUFFIX]
- * (`.download.partial`) so mic crash recovery never treats them as mic WAVs.
+ * In-flight writes land under [DOWNLOAD_TEMP_DIR_NAME] with [TEMP_SUFFIX], then
+ * rename into the recordings directory so mic crash recovery never sees them.
  */
 object DownloadedSessionAudioPersist {
     /** Matches [DeviceCapabilities.sampleRatesHz] for Plaud 1.0 models and the old RP default. */
@@ -27,9 +26,14 @@ object DownloadedSessionAudioPersist {
     const val STREAM_CHUNK_BYTES: Int = 256 * 1024
 
     /**
-     * Sibling temp suffix for in-flight download persists.
-     * Distinct from mic capture's `.wav.partial` so
-     * [dev.velum.app.platform.recoverPartialMicRecordings] never rewrites a crashed download.
+     * Sibling directory under the recordings root for in-flight download persists.
+     * Wiped wholesale at startup — never scanned by mic recovery.
+     */
+    const val DOWNLOAD_TEMP_DIR_NAME: String = ".download-tmp"
+
+    /**
+     * Temp file suffix inside [DOWNLOAD_TEMP_DIR_NAME].
+     * Distinct from mic capture's `.wav.partial`.
      */
     const val TEMP_SUFFIX: String = ".download.partial"
 
@@ -47,23 +51,39 @@ object DownloadedSessionAudioPersist {
         else -> "wav"
     }
 
-    /** True when [fileName] is a download persist temp (current or legacy). */
+    fun downloadTempDirectory(recordingsDirectory: ModelStoreDir): ModelStoreDir =
+        recordingsDirectory.resolve(DOWNLOAD_TEMP_DIR_NAME)
+
+    /**
+     * True when [fileName] is a download persist temp (current or legacy) that must never
+     * be treated as a mic `.wav.partial`. Mic captures are `rec-*.wav.partial` only.
+     */
     fun isDownloadTempName(fileName: String): Boolean {
         val name = fileName.lowercase()
         if (name.endsWith(TEMP_SUFFIX)) return true
         // Pre-#86 download temps used bare `.partial`; Ogg was never a mic capture.
         if (name.endsWith(".ogg.partial")) return true
+        // Stray `x.wav.partial` (no rec- prefix) is never a phone-mic capture.
+        if (name.endsWith(".wav.partial") && !name.startsWith("rec-")) return true
         return false
     }
 
     /**
-     * Delete leftover download temps under [destDirectory] (crashed / killed mid-persist).
-     * Safe at process startup; does not touch mic `.wav.partial` files.
+     * Delete leftover download temps under [recordingsDirectory] and its
+     * [DOWNLOAD_TEMP_DIR_NAME] child. Does not touch live mic `rec-*.wav.partial`.
      */
-    fun deleteStaleDownloadTemps(destDirectory: ModelStoreDir): Int {
-        if (!destDirectory.exists() || !destDirectory.isDirectory()) return 0
+    fun deleteStaleDownloadTemps(recordingsDirectory: ModelStoreDir): Int {
+        if (!recordingsDirectory.exists() || !recordingsDirectory.isDirectory()) return 0
         var removed = 0
-        for (child in destDirectory.listChildren()) {
+        val tempDir = downloadTempDirectory(recordingsDirectory)
+        if (tempDir.exists()) {
+            for (child in tempDir.listChildren()) {
+                if (child.isDirectory()) continue
+                runCatching { child.deleteRecursively() }
+                if (!child.exists()) removed++
+            }
+        }
+        for (child in recordingsDirectory.listChildren()) {
             if (child.isDirectory()) continue
             if (!isDownloadTempName(child.name)) continue
             runCatching { child.deleteRecursively() }
@@ -74,7 +94,8 @@ object DownloadedSessionAudioPersist {
 
     /**
      * Stream [decryptedBytes] into [destDirectory]/[fileBaseName].{ogg|wav} via a temp file
-     * and atomic rename. Never builds a full WAV copy of opaque PCM on the heap.
+     * under [DOWNLOAD_TEMP_DIR_NAME] and atomic rename. Never builds a full WAV copy of opaque
+     * PCM on the heap.
      */
     fun persistToDirectory(
         decryptedBytes: ByteArray,
@@ -91,7 +112,7 @@ object DownloadedSessionAudioPersist {
         val dest = destDirectory.resolve("$fileBaseName.$extension")
         val rate = sampleRateHz.coerceAtLeast(1)
         val ch = channels.coerceIn(1, 2)
-        writeAtomically(dest) { temp ->
+        writeAtomically(destDirectory, dest) { temp ->
             when (extension) {
                 "ogg" -> streamBytesToFile(temp, decryptedBytes, chunkBytes)
                 "wav" -> {
@@ -124,24 +145,22 @@ object DownloadedSessionAudioPersist {
     }
 
     /**
-     * Write [writeTempContents] into a sibling [TEMP_SUFFIX] file, then rename onto [dest].
-     * On any failure the temp is deleted and [dest] is left untouched (never half-written).
+     * Write [writeTempContents] into [DOWNLOAD_TEMP_DIR_NAME]/[dest].name[TEMP_SUFFIX], then
+     * rename onto [dest]. On any failure the temp is deleted and [dest] is left untouched.
      */
     internal fun writeAtomically(
+        recordingsDirectory: ModelStoreDir,
         dest: ModelStoreDir,
         rename: (from: ModelStoreDir, to: ModelStoreDir) -> Boolean = { from, to -> from.renameTo(to) },
         writeTempContents: (temp: ModelStoreDir) -> Unit,
     ): Long {
-        val temp = ModelStoreDir("${dest.absolutePath}$TEMP_SUFFIX")
+        recordingsDirectory.createDirectories()
+        val tempDir = downloadTempDirectory(recordingsDirectory)
+        tempDir.createDirectories()
+        val temp = tempDir.resolve("${dest.name}$TEMP_SUFFIX")
         try {
             if (temp.exists()) temp.deleteRecursively()
-            // Parent of dest (and temp) must exist before create/rename.
-            ModelStoreDir(
-                dest.absolutePath.substringBeforeLast('/', missingDelimiterValue = dest.absolutePath),
-            ).createDirectories()
             writeTempContents(temp)
-            // Publish only after the temp is fully written — rename replaces dest atomically
-            // when the platform supports it (same directory).
             check(rename(temp, dest)) {
                 "atomic rename failed: ${temp.absolutePath} → ${dest.absolutePath}"
             }
@@ -150,6 +169,21 @@ object DownloadedSessionAudioPersist {
             runCatching { if (temp.exists()) temp.deleteRecursively() }
             throw t
         }
+    }
+
+    /** Convenience for tests that already have a dest under a recordings directory. */
+    internal fun writeAtomically(
+        dest: ModelStoreDir,
+        rename: (from: ModelStoreDir, to: ModelStoreDir) -> Boolean = { from, to -> from.renameTo(to) },
+        writeTempContents: (temp: ModelStoreDir) -> Unit,
+    ): Long {
+        val parentPath = dest.absolutePath.substringBeforeLast('/', missingDelimiterValue = dest.absolutePath)
+        return writeAtomically(
+            recordingsDirectory = ModelStoreDir(parentPath),
+            dest = dest,
+            rename = rename,
+            writeTempContents = writeTempContents,
+        )
     }
 
     private fun streamOpaquePcmAsWav(

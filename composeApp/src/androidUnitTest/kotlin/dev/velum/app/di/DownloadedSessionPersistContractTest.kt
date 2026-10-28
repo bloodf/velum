@@ -65,7 +65,7 @@ class DownloadedSessionPersistContractTest {
         assertTrue(path.endsWith(".ogg"), path)
         assertTrue(File(path).exists())
         assertTrue(File(path).readBytes().contentEquals(ogg))
-        assertFalse(File("$path${DownloadedSessionAudioPersist.TEMP_SUFFIX}").exists())
+        assertDownloadTempGone(path)
         assertEquals("ogg", DownloadedSessionAudioPersist.detectExtension(ogg))
     }
 
@@ -77,7 +77,7 @@ class DownloadedSessionPersistContractTest {
         assertNotNull(path)
         assertTrue(path.endsWith(".wav"), path)
         assertTrue(File(path).readBytes().contentEquals(wav))
-        assertFalse(File("$path${DownloadedSessionAudioPersist.TEMP_SUFFIX}").exists())
+        assertDownloadTempGone(path)
     }
 
     @Test
@@ -98,9 +98,19 @@ class DownloadedSessionPersistContractTest {
         )
         // Whole WAV (header + body) must match PcmWav.encode byte-for-byte.
         assertTrue(bytes.contentEquals(expected))
-        assertFalse(File("$path${DownloadedSessionAudioPersist.TEMP_SUFFIX}").exists())
+        assertDownloadTempGone(path)
         // Landed under the installed recordings dir.
         assertTrue(path.startsWith(recordingsDirectoryPath()))
+    }
+
+    private fun assertDownloadTempGone(destPath: String) {
+        val dest = File(destPath)
+        val tmp = File(
+            File(dest.parentFile, DownloadedSessionAudioPersist.DOWNLOAD_TEMP_DIR_NAME),
+            dest.name + DownloadedSessionAudioPersist.TEMP_SUFFIX,
+        )
+        assertFalse(tmp.exists(), "download temp must be gone: ${tmp.absolutePath}")
+        assertFalse(File(destPath + DownloadedSessionAudioPersist.TEMP_SUFFIX).exists())
     }
 
     private fun session(bytes: ByteArray) = DownloadedSessionAudio(

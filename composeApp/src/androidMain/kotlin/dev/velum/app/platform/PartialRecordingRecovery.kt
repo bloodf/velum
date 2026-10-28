@@ -2,6 +2,7 @@ package dev.velum.app.platform
 
 import android.util.Log
 import dev.velum.ai.audio.DownloadedSessionAudioPersist
+import dev.velum.ai.local.ModelStoreDir
 import dev.velum.core.data.VelumRepository
 import java.io.File
 
@@ -9,8 +10,9 @@ import java.io.File
  * After process death, rewrite incomplete WAV headers and refresh matching
  * `status=recording` rows so the capture is not lost.
  *
- * Download persist temps use [DownloadedSessionAudioPersist.TEMP_SUFFIX] and are
- * never candidates here — see [DownloadedSessionAudioPersist.deleteStaleDownloadTemps].
+ * Download persist temps live under [DownloadedSessionAudioPersist.DOWNLOAD_TEMP_DIR_NAME]
+ * with [DownloadedSessionAudioPersist.TEMP_SUFFIX] and are wiped by
+ * [cleanupStaleDownloadArtifacts] before this runs.
  */
 suspend fun recoverPartialMicRecordings(
     recordingsDirPath: String,
@@ -49,10 +51,47 @@ suspend fun recoverPartialMicRecordings(
     }
 }
 
-/** Mic WAVs / `.wav.partial` only — never download `.download.partial` or `.ogg.partial`. */
+/**
+ * Startup cleanup for SoftAP/download crash debris, then mic recovery.
+ *
+ * Deletes:
+ * - everything under `.download-tmp/`
+ * - legacy `*.ogg.partial`, `*.download.partial`, and non-`rec-` `*.wav.partial` in recordings
+ * - orphan `rec-*.wav.partial` with no `status=recording` library row (abandoned download)
+ *
+ * Never invents a library row or orphan `.wav` from download debris.
+ */
+suspend fun cleanupStaleDownloadArtifacts(
+    recordingsDirPath: String,
+    repository: VelumRepository,
+): Int {
+    val recordings = ModelStoreDir(recordingsDirPath)
+    var removed = DownloadedSessionAudioPersist.deleteStaleDownloadTemps(recordings)
+    val dir = File(recordingsDirPath)
+    if (!dir.isDirectory) return removed
+    for (file in dir.listFiles().orEmpty()) {
+        if (!file.isFile) continue
+        val name = file.name.lowercase()
+        if (!name.endsWith(".wav.partial")) continue
+        if (DownloadedSessionAudioPersist.isDownloadTempName(name)) continue
+        // rec-*.wav.partial without an in-progress mic row is abandoned download debris.
+        val id = recordingIdFromWavName(file.name) ?: run {
+            if (file.delete()) removed++
+            continue
+        }
+        val row = repository.getRecording(id)
+        if (row == null || row.status != "recording") {
+            if (file.delete()) removed++
+        }
+    }
+    return removed
+}
+
+/** Mic WAVs / `rec-*.wav.partial` only — never download temps. */
 internal fun isMicRecoveryCandidate(fileName: String): Boolean {
     val name = fileName.lowercase()
     if (DownloadedSessionAudioPersist.isDownloadTempName(name)) return false
+    if (name == DownloadedSessionAudioPersist.DOWNLOAD_TEMP_DIR_NAME) return false
     return name.endsWith(".wav") || name.endsWith(".wav.partial")
 }
 
