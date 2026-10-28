@@ -13,6 +13,7 @@ import dev.velum.ai.engine.LlmRequest
 import dev.velum.ai.engine.LlmResult
 import dev.velum.ai.engine.Transcriber
 import dev.velum.ai.engine.TranscriptionResult
+import dev.velum.ai.local.ModelStoreDir
 import dev.velum.core.data.DriverFactory
 import dev.velum.core.data.VelumRepository
 import dev.velum.core.data.createDatabase
@@ -30,21 +31,18 @@ import kotlinx.coroutines.flow.last
 import kotlinx.coroutines.runBlocking
 
 /**
- * Simulates [dev.velum.app.di.AppContainer.persistDownloadedSession]: prepare via
- * [DownloadedSessionAudioPersist] (same helper AppContainer uses), write the file, insert the
- * recording, then run [RecordingProcessor] — covering every decrypted-body shape that helper emits.
+ * Uses [DownloadedSessionAudioPersist.persistToDirectory] (same helper AppContainer calls),
+ * then runs [RecordingProcessor] for each decrypted-body shape.
  */
 class PersistDownloadedSessionProcessorTest {
     @Test
     fun persist_oggOpusSession_streamsThroughProcessor() {
         runBlocking {
             val ogg = minimalOggOpusHead()
-            val prepared = DownloadedSessionAudioPersist.prepare(ogg)
-            assertEquals("ogg", prepared.extension)
             val last = persistAndProcess(
-                prepared = prepared,
+                decrypted = ogg,
                 recordingId = "persist-ogg",
-                existingTranscript = "seed", // header-only Ogg → empty PCM
+                existingTranscript = "seed",
             )
             assertIs<JobProgress.Succeeded>(last)
         }
@@ -53,11 +51,8 @@ class PersistDownloadedSessionProcessorTest {
     @Test
     fun persist_wavSession_streamsThroughProcessor() {
         runBlocking {
-            val pcm = ByteArray(4_096) { (it % 63).toByte() }
-            val wav = PcmWav.encode(pcm, sampleRateHz = 16_000)
-            val prepared = DownloadedSessionAudioPersist.prepare(wav)
-            assertEquals("wav", prepared.extension)
-            val last = persistAndProcess(prepared = prepared, recordingId = "persist-wav")
+            val wav = PcmWav.encode(ByteArray(4_096) { (it % 63).toByte() }, sampleRateHz = 16_000)
+            val last = persistAndProcess(decrypted = wav, recordingId = "persist-wav")
             assertIs<JobProgress.Succeeded>(last)
         }
     }
@@ -65,25 +60,20 @@ class PersistDownloadedSessionProcessorTest {
     @Test
     fun persist_rawPcmSession_wrapsWavAndStreamsWithBoundedReads() {
         runBlocking {
-            // Large enough that STREAM_COPY_CHUNK_BYTES < file size / 4.
             val pcm = ByteArray(1_500_000) { (it % 127).toByte() }
-            val prepared = DownloadedSessionAudioPersist.prepare(
-                pcm,
-                sampleRateHz = DownloadedSessionAudioPersist.DEFAULT_SAMPLE_RATE_HZ,
-                channels = DownloadedSessionAudioPersist.DEFAULT_CHANNELS,
-            )
-            assertEquals("wav", prepared.extension)
-            assertTrue(PcmWav.looksLikeWav(prepared.bytes))
-            assertTrue(prepared.bytes.size > RecordingProcessor.STREAM_COPY_CHUNK_BYTES * 4)
-
             val dir = File.createTempFile("velum-persist-raw", null).apply {
                 delete()
                 mkdirs()
             }
             try {
-                val path = File(dir, "session-raw.wav")
-                path.writeBytes(prepared.bytes)
-                // Bound check: streaming WAV copy never reads more than the chunk size.
+                val written = DownloadedSessionAudioPersist.persistToDirectory(
+                    decryptedBytes = pcm,
+                    destDirectory = ModelStoreDir(dir.absolutePath),
+                    fileBaseName = "session-raw",
+                )
+                assertEquals("wav", written.extension)
+                assertTrue(written.sizeBytes > RecordingProcessor.STREAM_COPY_CHUNK_BYTES * 4L)
+
                 var maxRead = 0
                 RecordingProcessor.streamCopyRange(
                     start = 44L,
@@ -91,7 +81,7 @@ class PersistDownloadedSessionProcessorTest {
                     chunkBytes = RecordingProcessor.STREAM_COPY_CHUNK_BYTES,
                     readAt = { offset, n ->
                         maxRead = maxOf(maxRead, n)
-                        RandomAccessFile(path, "r").use { raf ->
+                        RandomAccessFile(written.absolutePath, "r").use { raf ->
                             raf.seek(offset)
                             val buf = ByteArray(n)
                             raf.readFully(buf)
@@ -103,16 +93,13 @@ class PersistDownloadedSessionProcessorTest {
                         assertTrue(chunk.size <= RecordingProcessor.STREAM_COPY_CHUNK_BYTES)
                     },
                 )
-                assertTrue(
-                    maxRead <= RecordingProcessor.STREAM_COPY_CHUNK_BYTES,
-                    "maxRead=$maxRead",
-                )
-                assertTrue(maxRead < prepared.bytes.size / 4)
+                assertTrue(maxRead <= RecordingProcessor.STREAM_COPY_CHUNK_BYTES)
+                assertTrue(maxRead < written.sizeBytes / 4)
 
-                val last = persistAndProcess(
-                    prepared = prepared,
+                val last = processExistingFile(
+                    path = written.absolutePath,
+                    sizeBytes = written.sizeBytes,
                     recordingId = "persist-raw-pcm",
-                    destDir = dir,
                 )
                 assertIs<JobProgress.Succeeded>(last)
             } finally {
@@ -123,34 +110,60 @@ class PersistDownloadedSessionProcessorTest {
 
     @Test
     fun persist_neverEmitsBinExtension() {
-        val cases = listOf(
-            byteArrayOf('O'.code.toByte(), 'g'.code.toByte(), 'g'.code.toByte(), 'S'.code.toByte()),
-            PcmWav.encode(ByteArray(16), 16_000),
-            ByteArray(256) { 0x55 },
-        )
-        for (bytes in cases) {
-            val prepared = DownloadedSessionAudioPersist.prepare(bytes)
-            assertTrue(
-                prepared.extension == "ogg" || prepared.extension == "wav",
-                "got ${prepared.extension}",
+        val dir = File.createTempFile("velum-persist-ext", null).apply {
+            delete()
+            mkdirs()
+        }
+        try {
+            val cases = listOf(
+                byteArrayOf('O'.code.toByte(), 'g'.code.toByte(), 'g'.code.toByte(), 'S'.code.toByte()),
+                PcmWav.encode(ByteArray(16), 16_000),
+                ByteArray(256) { 0x55 },
             )
+            cases.forEachIndexed { index, bytes ->
+                val written = DownloadedSessionAudioPersist.persistToDirectory(
+                    decryptedBytes = bytes,
+                    destDirectory = ModelStoreDir(dir.absolutePath),
+                    fileBaseName = "case-$index",
+                )
+                assertTrue(
+                    written.extension == "ogg" || written.extension == "wav",
+                    "got ${written.extension}",
+                )
+            }
+        } finally {
+            dir.deleteRecursively()
         }
     }
 
     private suspend fun persistAndProcess(
-        prepared: DownloadedSessionAudioPersist.Prepared,
+        decrypted: ByteArray,
         recordingId: String,
         existingTranscript: String? = null,
-        destDir: File? = null,
     ): JobProgress {
-        val dir = destDir ?: File.createTempFile("velum-persist-$recordingId", null).apply {
+        val dir = File.createTempFile("velum-persist-$recordingId", null).apply {
             delete()
             mkdirs()
         }
-        val path = File(dir, "$recordingId.${prepared.extension}").apply {
-            writeBytes(prepared.bytes)
-            deleteOnExit()
-        }
+        val written = DownloadedSessionAudioPersist.persistToDirectory(
+            decryptedBytes = decrypted,
+            destDirectory = ModelStoreDir(dir.absolutePath),
+            fileBaseName = recordingId,
+        )
+        return processExistingFile(
+            path = written.absolutePath,
+            sizeBytes = written.sizeBytes,
+            recordingId = recordingId,
+            existingTranscript = existingTranscript,
+        )
+    }
+
+    private suspend fun processExistingFile(
+        path: String,
+        sizeBytes: Long,
+        recordingId: String,
+        existingTranscript: String? = null,
+    ): JobProgress {
         val repo = VelumRepository(createDatabase(DriverFactory()))
         val settings = SettingsRepository(InMemorySecureStore()).also {
             it.load()
@@ -191,8 +204,8 @@ class PersistDownloadedSessionProcessorTest {
             deviceSerial = "881E2E01",
             startedAt = 1_700_000_000L,
             durationSeconds = 1,
-            sizeBytes = prepared.bytes.size.toLong(),
-            localPath = path.absolutePath,
+            sizeBytes = sizeBytes,
+            localPath = path,
             transcript = existingTranscript,
             summaryMarkdown = null,
             status = "queued",

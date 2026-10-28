@@ -31,7 +31,6 @@ import dev.velum.app.platform.MicCapture
 import dev.velum.app.platform.createMicCapture
 import dev.velum.app.platform.recordingsDirectoryPath
 import dev.velum.app.platform.systemLanguageTag
-import dev.velum.app.platform.writeBytesToPath
 import dev.velum.app.ui.DeviceViewModel
 import dev.velum.app.ui.DownloadedSessionAudio
 import dev.velum.app.ui.SettingsViewModel
@@ -220,14 +219,14 @@ class AppContainer(
 
     suspend fun persistDownloadedSession(session: DownloadedSessionAudio): String {
         val id = RecordingIds.newId()
-        // Never write opaque `.bin` — Ogg/WAV as-is; otherwise wrap as PCM WAV @ session rate.
-        val prepared = DownloadedSessionAudioPersist.prepare(
+        // Stream to temp + atomic rename — never materialize a full WAV copy of opaque PCM.
+        val written = DownloadedSessionAudioPersist.persistToDirectory(
             decryptedBytes = session.decryptedBytes,
+            destDirectory = ModelStoreDir(recordingsDirectoryPath()),
+            fileBaseName = id,
             sampleRateHz = session.sampleRateHz,
             channels = session.channels,
         )
-        val path = "${recordingsDirectoryPath()}/$id.${prepared.extension}"
-        writeBytesToPath(path, prepared.bytes)
         val started = if (session.startedAtEpochSeconds > 1_000_000_000L) {
             session.startedAtEpochSeconds
         } else {
@@ -243,8 +242,8 @@ class AppContainer(
             deviceSerial = session.deviceSerial,
             startedAt = started,
             durationSeconds = 0,
-            sizeBytes = prepared.bytes.size.toLong(),
-            localPath = path,
+            sizeBytes = written.sizeBytes,
+            localPath = written.absolutePath,
             transcript = null,
             summaryMarkdown = null,
             status = "queued",
