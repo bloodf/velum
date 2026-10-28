@@ -15,11 +15,15 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
@@ -46,6 +50,13 @@ class AutoFlowRunner(
     private val _actions = MutableSharedFlow<AutoFlowUiAction>(extraBufferCapacity = 8)
     val actions: SharedFlow<AutoFlowUiAction> = _actions.asSharedFlow()
 
+    /**
+     * Increments after each combine emission is fully handled (including the seed pass).
+     * Tests await this instead of fixed delays so subscription/seed races stay deterministic.
+     */
+    private val _passIndex = MutableStateFlow(0)
+    internal val passIndex: StateFlow<Int> = _passIndex.asStateFlow()
+
     fun start() {
         if (job != null) return
         job = scope.launch {
@@ -67,6 +78,7 @@ class AutoFlowRunner(
                                 .map { it.id },
                         )
                         seeded = true
+                        _passIndex.update { it + 1 }
                         return@collect
                     }
                     val enabledFlows = flows.filter { it.enabled == 1L }
@@ -103,6 +115,7 @@ class AutoFlowRunner(
                             firePostAction(match, recording.id)
                         }
                     }
+                    _passIndex.update { it + 1 }
                 }
         }
     }
