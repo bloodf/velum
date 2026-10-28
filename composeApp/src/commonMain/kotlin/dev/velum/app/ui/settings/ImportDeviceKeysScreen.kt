@@ -102,7 +102,9 @@ fun ImportDeviceKeysScreen(
                     }
                 }
             } catch (t: Throwable) {
-                error = t.message ?: t.toString()
+                // Field-name errors only — never surface throwable text that might echo secrets.
+                error = (t as? IllegalArgumentException)?.message
+                    ?: strings.importKeys.fromPlaudJsonFailed
             }
         }
     }
@@ -216,7 +218,8 @@ fun ImportDeviceKeysScreen(
                         hasKeys = true
                         status = strings.importKeys.saved
                     } catch (t: Throwable) {
-                        error = t.message ?: t.toString()
+                        error = (t as? IllegalArgumentException)?.message
+                            ?: strings.importKeys.fromPlaudJsonFailed
                     }
                 }
             },
