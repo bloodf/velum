@@ -82,7 +82,7 @@ class VoiceProfileStoreKeyTest {
     }
 
     @Test
-    fun legacy_constant_key_file_purged_and_undecryptable_profile_dropped() {
+    fun legacy_constant_key_file_purged_and_provably_legacy_profile_dropped() {
         runBlocking {
             val dir = tempDir("velum-vp-legacy")
             val root = ModelStoreDir(dir.absolutePath)
@@ -92,29 +92,120 @@ class VoiceProfileStoreKeyTest {
             File(voices, ".profile_key").writeBytes(constantKey)
 
             val legacyCipher = createProfileCipher(constantKey)
-            val emb = floatArrayOf(0.1f, 0.2f, 0.3f, 0.4f)
-            val packed = legacyPack(listOf(emb))
-            File(profiles, "legacy.json").writeText(
-                Json.encodeToString(
-                    LegacyMeta(
-                        id = "legacy",
-                        displayName = "Legacy",
-                        dim = emb.size,
-                        encrypted = true,
-                    ),
-                ),
-            )
-            File(profiles, "legacy.enc").writeBytes(legacyCipher.encrypt(packed))
+            writeLegacyProfile(profiles, "legacy", floatArrayOf(0.1f, 0.2f, 0.3f, 0.4f), legacyCipher)
 
             val store = VoiceProfileStore(root = root, secureStore = InMemorySecureStore())
             store.ensureKey()
 
             assertFalse(File(voices, ".profile_key").exists())
+            assertTrue(File(voices, ".profile_key.purged").exists())
             assertFalse(File(profiles, "legacy.json").exists())
             assertFalse(File(profiles, "legacy.enc").exists())
             assertTrue(store.listProfiles().isEmpty())
             assertNotNull(store.upsert("Fresh", floatArrayOf(1f, 0f, 0f)))
             assertEquals(1, store.listProfiles().size)
+        }
+    }
+
+    @Test
+    fun purge_keeps_corrupt_missing_enc_and_dim_mismatch_profiles() {
+        runBlocking {
+            val dir = tempDir("velum-vp-purge-keep")
+            val root = ModelStoreDir(dir.absolutePath)
+            val voices = File(dir, "voices").also { it.mkdirs() }
+            val profiles = File(voices, "profiles").also { it.mkdirs() }
+            val constantKey = legacyConstantKeyBytesForTests()
+            File(voices, ".profile_key").writeBytes(constantKey)
+            val legacyCipher = createProfileCipher(constantKey)
+
+            // Provably legacy — should be deleted.
+            writeLegacyProfile(profiles, "drop-me", floatArrayOf(1f, 0f, 0f, 0f), legacyCipher)
+
+            // Corrupt JSON — keep.
+            File(profiles, "corrupt.json").writeText("{not-json")
+            File(profiles, "corrupt.enc").writeBytes(ByteArray(48) { 1 })
+
+            // Valid meta, missing .enc — keep.
+            File(profiles, "noenc.json").writeText(
+                Json.encodeToString(
+                    LegacyMeta(id = "noenc", displayName = "NoEnc", dim = 4, encrypted = true),
+                ),
+            )
+
+            // Decrypts under legacy key but dim in meta mismatches — keep.
+            val emb = floatArrayOf(0.5f, 0.5f, 0.5f, 0.5f)
+            File(profiles, "baddim.json").writeText(
+                Json.encodeToString(
+                    LegacyMeta(id = "baddim", displayName = "BadDim", dim = 3, encrypted = true),
+                ),
+            )
+            File(profiles, "baddim.enc").writeBytes(legacyCipher.encrypt(legacyPack(listOf(emb))))
+
+            // Random ciphertext that does not open under the legacy key — keep.
+            File(profiles, "garbage.json").writeText(
+                Json.encodeToString(
+                    LegacyMeta(id = "garbage", displayName = "Garbage", dim = 4, encrypted = true),
+                ),
+            )
+            File(profiles, "garbage.enc").writeBytes(ByteArray(64) { 9 })
+
+            val store = VoiceProfileStore(root = root, secureStore = InMemorySecureStore())
+            store.ensureKey()
+
+            assertFalse(File(profiles, "drop-me.json").exists())
+            assertTrue(File(profiles, "corrupt.json").exists())
+            assertTrue(File(profiles, "noenc.json").exists())
+            assertTrue(File(profiles, "baddim.json").exists())
+            assertTrue(File(profiles, "baddim.enc").exists())
+            assertTrue(File(profiles, "garbage.json").exists())
+            assertTrue(File(profiles, "garbage.enc").exists())
+        }
+    }
+
+    @Test
+    fun purged_marker_prevents_repeated_purge_when_legacy_file_remains() {
+        runBlocking {
+            val dir = tempDir("velum-vp-marker")
+            val root = ModelStoreDir(dir.absolutePath)
+            val voices = File(dir, "voices").also { it.mkdirs() }
+            val profiles = File(voices, "profiles").also { it.mkdirs() }
+            val constantKey = legacyConstantKeyBytesForTests()
+            File(voices, ".profile_key").writeBytes(constantKey)
+            val legacyCipher = createProfileCipher(constantKey)
+            writeLegacyProfile(profiles, "first", floatArrayOf(1f, 0f, 0f, 0f), legacyCipher)
+
+            VoiceProfileStore(root = root, secureStore = InMemorySecureStore()).ensureKey()
+            assertTrue(File(voices, ".profile_key.purged").exists())
+            assertFalse(File(profiles, "first.json").exists())
+
+            // Simulate a failed legacy-file delete: file reappears with a new legacy blob.
+            File(voices, ".profile_key").writeBytes(constantKey)
+            writeLegacyProfile(profiles, "second", floatArrayOf(0f, 1f, 0f, 0f), legacyCipher)
+
+            // Fresh SecureStore → mint again, but marker must block a second purge.
+            VoiceProfileStore(root = root, secureStore = InMemorySecureStore()).ensureKey()
+            assertTrue(File(profiles, "second.json").exists())
+            assertTrue(File(profiles, "second.enc").exists())
+        }
+    }
+
+    @Test
+    fun wipeAll_removes_legacy_key_file_and_purged_marker() {
+        runBlocking {
+            val dir = tempDir("velum-vp-wipe-legacy")
+            val root = ModelStoreDir(dir.absolutePath)
+            val voices = File(dir, "voices").also { it.mkdirs() }
+            File(voices, ".profile_key").writeBytes(legacyConstantKeyBytesForTests())
+            File(voices, ".profile_key.purged").writeBytes(byteArrayOf(1))
+            File(voices, "profiles").mkdirs()
+            File(voices, "profiles/x.json").writeText("{}")
+
+            val store = VoiceProfileStore(root = root, secureStore = InMemorySecureStore())
+            store.wipeAll()
+
+            assertFalse(File(voices, ".profile_key").exists())
+            assertFalse(File(voices, ".profile_key.purged").exists())
+            assertTrue(store.listProfiles().isEmpty())
         }
     }
 
@@ -229,6 +320,25 @@ class VoiceProfileStoreKeyTest {
 
     private fun tempDir(prefix: String): File =
         File.createTempFile(prefix, "").also { it.delete(); it.mkdirs() }
+
+    private fun writeLegacyProfile(
+        profiles: File,
+        id: String,
+        emb: FloatArray,
+        legacyCipher: ProfileCipher,
+    ) {
+        File(profiles, "$id.json").writeText(
+            Json.encodeToString(
+                LegacyMeta(
+                    id = id,
+                    displayName = id.replaceFirstChar { it.uppercase() },
+                    dim = emb.size,
+                    encrypted = true,
+                ),
+            ),
+        )
+        File(profiles, "$id.enc").writeBytes(legacyCipher.encrypt(legacyPack(listOf(emb))))
+    }
 
     private fun legacyPack(samples: List<FloatArray>): ByteArray {
         val dim = samples.first().size
