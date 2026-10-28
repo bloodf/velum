@@ -13,6 +13,7 @@ import dev.velum.protocol.ForbiddenOpcodes
 import dev.velum.protocol.ForbiddenSettings
 import dev.velum.protocol.Framing
 import dev.velum.protocol.PlaudOutboundGuard
+import dev.velum.protocol.PlaudUuids
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -21,11 +22,11 @@ import kotlinx.coroutines.test.runTest
 
 /**
  * Forbidden opcodes/settings must be rejected at the Plaud send path **and**
- * at the transport write layer for the Plaud profile. Nothing may reach the
- * fake peripheral / recorded write log.
+ * at the transport write layer for the Plaud write characteristic (UUID 2BB1).
+ * Nothing may reach the fake peripheral / recorded write log.
  *
  * Raw forbidden frames are only ever aimed at [FakeBleTransport] — never at a
- * real radio.
+ * real radio. Tests are deterministic (no reliance on random ciphertext layout).
  */
 class ForbiddenOpcodeLayersTest {
     @Test
@@ -48,12 +49,11 @@ class ForbiddenOpcodeLayersTest {
                 rawAppCommand(8, byteArrayOf(ForbiddenSettings.AUTO_SYNC.toByte(), 1)),
             )
         }
-        // Safe command still allowed.
         PlaudOutboundGuard.requireAllowed(rawAppCommand(9))
     }
 
     @Test
-    fun transportLayer_rejectsForbidden_andRecordsNothing() = runTest {
+    fun transportLayer_rejectsPlaintextForbidden_andRecordsNothing() = runTest {
         val ble = FakeBleTransport()
         ble.connect("fake-note-pro", GattProfiles.Plaud)
 
@@ -81,17 +81,169 @@ class ForbiddenOpcodeLayersTest {
                 "forbidden setting $setting must not reach fake transport writes",
             )
         }
+    }
 
-        // Non-Plaud profile is not subject to Plaud opcode parsing.
-        ble.connect("dev", GattProfiles.Omi)
-        // Omi has no write chars — use Limitless for a benign write.
+    @Test
+    fun transportLayer_alreadyChecked_doesNotParseCiphertextAsOpcode() = runTest {
+        val ble = FakeBleTransport()
+        ble.connect("fake-note-pro", GattProfiles.Plaud)
+
+        // Deterministic "ciphertext" that is byte-identical to a forbidden plaintext
+        // frame. With AlreadyChecked the transport must not reject it.
+        ForbiddenOpcodes.ALL.forEach { op ->
+            ble.clearRecordedWrites()
+            val looksForbidden = rawAppCommand(op)
+            ble.write(
+                characteristic = GattProfiles.PLAUD_WRITE,
+                payload = looksForbidden,
+                safety = BleWriteSafety.AlreadyChecked,
+            )
+            assertEquals(1, ble.recordedWrites.size, "opcode-looking sealed bytes for $op")
+            assertTrue(ble.recordedWrites.single().second.contentEquals(looksForbidden))
+        }
+
+        ble.clearRecordedWrites()
+        val looksLikeForbiddenSetting =
+            rawAppCommand(8, byteArrayOf(ForbiddenSettings.AUTO_DELETE.toByte(), 1))
+        ble.write(
+            GattProfiles.PLAUD_WRITE,
+            looksLikeForbiddenSetting,
+            safety = BleWriteSafety.AlreadyChecked,
+        )
+        assertEquals(1, ble.recordedWrites.size)
+    }
+
+    @Test
+    fun plaudWrapper_guardsPlaintextBeforeSealedWrite() = runTest {
+        val ble = FakeBleTransport()
+        ble.connect("fake-note-pro", GattProfiles.Plaud)
+        val plaud = PlaudBleTransport(ble)
+
+        val safePlain = rawAppCommand(9)
+        // Sealed bytes deliberately look like CLEAR_ALL (0x01 0x68 0x00) — must pass.
+        val sealedLookingForbidden = rawAppCommand(ForbiddenOpcodes.CLEAR_ALL)
+        plaud.writeSealedAfterPlaintextGuard(
+            plaintext = safePlain,
+            sealed = sealedLookingForbidden,
+        )
+        assertEquals(1, ble.recordedWrites.size)
+        assertTrue(ble.recordedWrites.single().second.contentEquals(sealedLookingForbidden))
+
+        ble.clearRecordedWrites()
+        ForbiddenOpcodes.ALL.forEach { op ->
+            assertFailsWith<IllegalArgumentException>("sealed-path plaintext opcode $op") {
+                plaud.writeSealedAfterPlaintextGuard(
+                    plaintext = rawAppCommand(op),
+                    sealed = byteArrayOf(0x00, 0x01, 0x02),
+                )
+            }
+            assertTrue(
+                ble.recordedWrites.isEmpty(),
+                "forbidden plaintext $op must not reach ble.write via sealed path",
+            )
+        }
+        assertFailsWith<IllegalArgumentException> {
+            plaud.writeSealedAfterPlaintextGuard(
+                plaintext = rawAppCommand(8, byteArrayOf(ForbiddenSettings.AUTO_SYNC.toByte(), 1)),
+                sealed = byteArrayOf(0x00),
+            )
+        }
+        assertTrue(ble.recordedWrites.isEmpty())
+    }
+
+    @Test
+    fun guardKeysOnPlaudWriteUuid_notProfileId() = runTest {
+        // Spoof profile id/name but same service + 2BB1 write UUID — still guarded.
+        val spoof = GattProfile(
+            id = "not-plaud",
+            displayName = "Spoof",
+            serviceUuid = PlaudUuids.SERVICE,
+            characteristics = listOf(
+                GattCharacteristic(
+                    name = "tx",
+                    uuid = PlaudUuids.WRITE,
+                    canWrite = true,
+                ),
+            ),
+        )
+        val ble = FakeBleTransport()
+        ble.connect("dev", spoof)
+        assertFailsWith<IllegalArgumentException> {
+            ble.write("tx", rawAppCommand(ForbiddenOpcodes.CLEAR_ALL))
+        }
+        assertTrue(ble.recordedWrites.isEmpty())
+
+        // Same forbidden-looking bytes on a non-Plaud UUID are not Plaud-framed.
         ble.connect("dev", GattProfiles.Limitless)
         ble.write(GattProfiles.LIMITLESS_TX, rawAppCommand(ForbiddenOpcodes.CLEAR_ALL))
         assertEquals(1, ble.recordedWrites.size)
     }
 
     @Test
-    fun plaudSendPath_rejectsForbidden_andRecordsNothingOnFake() = runTest {
+    fun plaudSendPath_rejectsForbiddenBeforeSeal_encryptedSession() = runTest {
+        val env = unlockedClient()
+        env.ble.clearRecordedWrites()
+
+        ForbiddenOpcodes.ALL.forEach { op ->
+            assertFailsWith<IllegalArgumentException>("client opcode $op") {
+                env.client.writeCommandForTest(op)
+            }
+            assertTrue(
+                env.ble.recordedWrites.isEmpty(),
+                "client forbidden opcode $op must not reach fake transport after unlock",
+            )
+        }
+
+        assertFailsWith<IllegalArgumentException> {
+            env.client.writeCommandForTest(8, byteArrayOf(ForbiddenSettings.AUTO_DELETE.toByte(), 1))
+        }
+        assertFailsWith<IllegalArgumentException> {
+            env.client.writeCommandForTest(8, byteArrayOf(ForbiddenSettings.AUTO_SYNC.toByte(), 1))
+        }
+        assertTrue(env.ble.recordedWrites.isEmpty())
+
+        assertFailsWith<IllegalArgumentException> {
+            Framing.encodeCommand(ForbiddenOpcodes.CLEAR_ALL)
+        }
+        env.client.close()
+    }
+
+    @Test
+    fun encryptedSession_safeCommandWrite_isNotRejectedAsOpcode() = runTest {
+        val env = unlockedClient()
+        env.ble.clearRecordedWrites()
+
+        // Battery (cmd 9) is allowed; after unlock it is sealed then written AlreadyChecked.
+        // Must reach the fake transport (non-empty recorded writes).
+        val battery = env.client.readBattery()
+        assertEquals(0x5d, battery.percent)
+        assertTrue(
+            env.ble.recordedWrites.isNotEmpty(),
+            "encrypted safe command must reach ble.write",
+        )
+        // Every recorded payload after unlock is sealed ciphertext (≥ tag size), not a
+        // raw APP frame — transport must not have treated it as plaintext opcode.
+        env.ble.recordedWrites.forEach { (_, payload) ->
+            assertTrue(payload.size >= 16, "sealed packet too short: ${payload.size}")
+        }
+        env.client.close()
+    }
+
+    @Test
+    fun plaudWrapper_routesThroughNamedCharacteristics() = runTest {
+        val ble = FakeBleTransport()
+        ble.connect("fake-note-pro", GattProfiles.Plaud)
+        val plaud = PlaudBleTransport(ble)
+        plaud.write(byteArrayOf(0x01, 0x09, 0x00), withoutResponse = true)
+        assertEquals(GattProfiles.PLAUD_WRITE, ble.recordedWrites.single().first)
+    }
+
+    private data class UnlockedEnv(
+        val ble: FakeBleTransport,
+        val client: PlaudDeviceClient,
+    )
+
+    private suspend fun unlockedClient(): UnlockedEnv {
         val (publicPem, privatePem) = rsaKeyPairToPem()
         val keys = DeviceIdentityKeys(
             serialNumber = "881FAKE1",
@@ -111,40 +263,7 @@ class ForbiddenOpcodeLayersTest {
         val client = PlaudDeviceClient(ble, cipher, keys)
         client.unlock()
         client.handshake()
-
-        ble.clearRecordedWrites()
-        ForbiddenOpcodes.ALL.forEach { op ->
-            assertFailsWith<IllegalArgumentException>("client opcode $op") {
-                client.writeCommandForTest(op)
-            }
-            assertTrue(
-                ble.recordedWrites.isEmpty(),
-                "client forbidden opcode $op must not reach fake transport",
-            )
-        }
-
-        assertFailsWith<IllegalArgumentException> {
-            client.writeCommandForTest(8, byteArrayOf(ForbiddenSettings.AUTO_DELETE.toByte(), 1))
-        }
-        assertFailsWith<IllegalArgumentException> {
-            client.writeCommandForTest(8, byteArrayOf(ForbiddenSettings.AUTO_SYNC.toByte(), 1))
-        }
-        assertTrue(ble.recordedWrites.isEmpty())
-
-        // Framing.encodeCommand also refuses forbidden opcodes (defense in depth).
-        assertFailsWith<IllegalArgumentException> {
-            Framing.encodeCommand(ForbiddenOpcodes.CLEAR_ALL)
-        }
-        client.close()
-    }
-
-    @Test
-    fun plaudWrapper_routesThroughNamedCharacteristics() = runTest {
-        val ble = FakeBleTransport()
-        ble.connect("fake-note-pro", GattProfiles.Plaud)
-        val plaud = PlaudBleTransport(ble)
-        plaud.write(byteArrayOf(0x01, 0x09, 0x00), withoutResponse = true)
-        assertEquals(GattProfiles.PLAUD_WRITE, ble.recordedWrites.single().first)
+        return UnlockedEnv(ble, client)
     }
 
     companion object {
