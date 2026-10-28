@@ -100,6 +100,8 @@
 | **high** | OpenAI error bodies (may echo `sk-`) → WorkManager `KEY_ERROR` | `OpenAiCompatibleClient` → worker |
 | **high** | User template/memory/glossary 5-digit ids + `INSERT OR REPLACE` | Templates/Memory screens |
 | **medium** | Wipe deletes audio after DB; EN-only permission/mic strings; unused `DATA_SYNC` FGS perm; over-broad SHARE/`video/mp4`; Appearance/All hardcoded; sherpa R8 keep | various |
+| **medium** | AutoFlow await timeout still claims `processedIds` → post-actions never retry when WM finishes later | `AutoFlowRunner` |
+| **medium** | Seed version bump `INSERT OR REPLACE`s `flow-default` and wipes user edits | `SeedData.maybeSeed` |
 
 ## 1.0-ready?
 
