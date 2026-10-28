@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "personal.travel-diary-export",
+  "category": "personal",
+  "icon": "journal",
+  "name": {
+    "en": "Travel diary → vault",
+    "pt-BR": "Diário de viagem → vault"
+  },
+  "description": {
+    "en": "Travel reflections exported to Obsidian.",
+    "pt-BR": "Reflexões de viagem exportadas para o Obsidian."
+  },
+  "preview": {
+    "en": "When a recording (5–40 min) mentions “travel”, summarize generally and export Markdown.",
+    "pt-BR": "Quando uma gravação (5–40 min) mencionar “travel”, resumir de forma geral e exportar Markdown."
+  },
+  "definition": {
+    "wake_phrase": "travel",
+    "source_filter": "all",
+    "duration_min_seconds": 300,
+    "duration_max_seconds": 2400,
+    "template_id": "velum.general",
+    "auto_label_voice": false,
+    "language": "auto",
+    "notify": true,
+    "post_action": "folder_export"
+  }
+}

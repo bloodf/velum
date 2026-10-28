@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "meetings.imported-meeting",
+  "category": "meetings",
+  "icon": "meeting",
+  "name": {
+    "en": "Imported meeting file",
+    "pt-BR": "Arquivo de reunião importado"
+  },
+  "description": {
+    "en": "Handle imported audio files as meeting notes.",
+    "pt-BR": "Trata arquivos de áudio importados como notas de reunião."
+  },
+  "preview": {
+    "en": "When you import a recording (any length up to 3 h), transcribe it with the meeting minutes template and label speakers.",
+    "pt-BR": "Quando você importar uma gravação (até 3 h), transcrever com o modelo de ata e rotular falantes."
+  },
+  "definition": {
+    "wake_phrase": null,
+    "source_filter": "import",
+    "duration_min_seconds": 0,
+    "duration_max_seconds": 10800,
+    "template_id": "velum.meeting",
+    "auto_label_voice": true,
+    "language": "auto",
+    "notify": true,
+    "post_action": null
+  }
+}

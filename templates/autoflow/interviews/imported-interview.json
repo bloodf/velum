@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "interviews.imported-interview",
+  "category": "interviews",
+  "icon": "interview",
+  "name": {
+    "en": "Imported interview tape",
+    "pt-BR": "Fita de entrevista importada"
+  },
+  "description": {
+    "en": "Process imported interview audio files.",
+    "pt-BR": "Processa arquivos de áudio de entrevista importados."
+  },
+  "preview": {
+    "en": "When you import an interview recording (up to 2 h), summarize with the interview template.",
+    "pt-BR": "Quando você importar uma gravação de entrevista (até 2 h), resumir com o modelo de entrevista."
+  },
+  "definition": {
+    "wake_phrase": null,
+    "source_filter": "import",
+    "duration_min_seconds": 0,
+    "duration_max_seconds": 7200,
+    "template_id": "velum.interview",
+    "auto_label_voice": true,
+    "language": "auto",
+    "notify": true,
+    "post_action": null
+  }
+}

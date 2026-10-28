@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "content.imported-talk",
+  "category": "content",
+  "icon": "content",
+  "name": {
+    "en": "Imported talk / keynote",
+    "pt-BR": "Palestra / keynote importada"
+  },
+  "description": {
+    "en": "Imported talks into speech notes.",
+    "pt-BR": "Palestras importadas em notas de discurso."
+  },
+  "preview": {
+    "en": "When you import a talk recording (up to 2 h), summarize with the speech template.",
+    "pt-BR": "Quando você importar uma gravação de palestra (até 2 h), resumir com o modelo de discurso."
+  },
+  "definition": {
+    "wake_phrase": null,
+    "source_filter": "import",
+    "duration_min_seconds": 0,
+    "duration_max_seconds": 7200,
+    "template_id": "velum.speech",
+    "auto_label_voice": true,
+    "language": "auto",
+    "notify": true,
+    "post_action": null
+  }
+}

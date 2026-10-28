@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "interviews.hiring-interview",
+  "category": "interviews",
+  "icon": "interview",
+  "name": {
+    "en": "Hiring interview",
+    "pt-BR": "Entrevista de contratação"
+  },
+  "description": {
+    "en": "Structured notes from candidate interviews.",
+    "pt-BR": "Notas estruturadas de entrevistas com candidatos."
+  },
+  "preview": {
+    "en": "When an interview recording (20–90 min) arrives from any source, summarize with the interview template and label speakers.",
+    "pt-BR": "Quando uma gravação de entrevista (20–90 min) chegar de qualquer fonte, resumir com o modelo de entrevista e rotular falantes."
+  },
+  "definition": {
+    "wake_phrase": "interview",
+    "source_filter": "all",
+    "duration_min_seconds": 1200,
+    "duration_max_seconds": 5400,
+    "template_id": "velum.interview",
+    "auto_label_voice": true,
+    "language": "auto",
+    "notify": true,
+    "post_action": null
+  }
+}

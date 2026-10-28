@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "productivity.imported-workshop",
+  "category": "productivity",
+  "icon": "productivity",
+  "name": {
+    "en": "Imported workshop audio",
+    "pt-BR": "Áudio de workshop importado"
+  },
+  "description": {
+    "en": "Workshop imports into meeting minutes.",
+    "pt-BR": "Workshops importados em atas de reunião."
+  },
+  "preview": {
+    "en": "When you import a workshop recording (30 min–3 h), summarize with meeting minutes.",
+    "pt-BR": "Quando você importar uma gravação de workshop (30 min–3 h), resumir com ata de reunião."
+  },
+  "definition": {
+    "wake_phrase": "workshop",
+    "source_filter": "import",
+    "duration_min_seconds": 1800,
+    "duration_max_seconds": 10800,
+    "template_id": "velum.meeting",
+    "auto_label_voice": true,
+    "language": "auto",
+    "notify": true,
+    "post_action": null
+  }
+}

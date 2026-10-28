@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "interviews.user-research",
+  "category": "interviews",
+  "icon": "interview",
+  "name": {
+    "en": "User research interview",
+    "pt-BR": "Entrevista de pesquisa com usuários"
+  },
+  "description": {
+    "en": "Capture insights from UX research sessions.",
+    "pt-BR": "Captura insights de sessões de pesquisa UX."
+  },
+  "preview": {
+    "en": "When a recording mentions “user interview” (30–90 min), summarize with interview notes and export to your vault.",
+    "pt-BR": "Quando uma gravação mencionar “user interview” (30–90 min), resumir com notas de entrevista e exportar para o vault."
+  },
+  "definition": {
+    "wake_phrase": "user interview",
+    "source_filter": "all",
+    "duration_min_seconds": 1800,
+    "duration_max_seconds": 5400,
+    "template_id": "velum.interview",
+    "auto_label_voice": true,
+    "language": "auto",
+    "notify": true,
+    "post_action": "folder_export"
+  }
+}

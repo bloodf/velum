@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "finance.expense-voice-dump",
+  "category": "finance",
+  "icon": "finance",
+  "name": {
+    "en": "Expense voice dump",
+    "pt-BR": "Despejo de despesas por voz"
+  },
+  "description": {
+    "en": "Quick expense lists via extractive notes → webhook.",
+    "pt-BR": "Listas rápidas de despesas via notas extrativas → webhook."
+  },
+  "preview": {
+    "en": "When a short recording (under 10 min) mentions “expense”, extract items and POST to your webhook.",
+    "pt-BR": "Quando uma gravação curta (menos de 10 min) mencionar “expense”, extrair itens e enviar ao webhook."
+  },
+  "definition": {
+    "wake_phrase": "expense",
+    "source_filter": "all",
+    "duration_min_seconds": 0,
+    "duration_max_seconds": 600,
+    "template_id": "velum.extractive",
+    "auto_label_voice": false,
+    "language": "auto",
+    "notify": true,
+    "post_action": "webhook"
+  }
+}

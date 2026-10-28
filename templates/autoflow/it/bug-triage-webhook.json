@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "it.bug-triage-webhook",
+  "category": "it",
+  "icon": "code",
+  "name": {
+    "en": "Bug triage → webhook",
+    "pt-BR": "Triagem de bugs → webhook"
+  },
+  "description": {
+    "en": "Push triage summaries to issue trackers via webhook.",
+    "pt-BR": "Envia resumos de triagem para trackers via webhook."
+  },
+  "preview": {
+    "en": "When a recording (10–60 min) mentions “triage”, extract key items and POST to your webhook.",
+    "pt-BR": "Quando uma gravação (10–60 min) mencionar “triage”, extrair itens-chave e enviar ao webhook."
+  },
+  "definition": {
+    "wake_phrase": "triage",
+    "source_filter": "all",
+    "duration_min_seconds": 600,
+    "duration_max_seconds": 3600,
+    "template_id": "velum.extractive",
+    "auto_label_voice": true,
+    "language": "auto",
+    "notify": true,
+    "post_action": "webhook"
+  }
+}

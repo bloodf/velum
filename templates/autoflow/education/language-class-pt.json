@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "education.language-class-pt",
+  "category": "education",
+  "icon": "education",
+  "name": {
+    "en": "Language class (pt-BR notes)",
+    "pt-BR": "Aula de idioma (notas em pt-BR)"
+  },
+  "description": {
+    "en": "Force Portuguese summaries for language classes.",
+    "pt-BR": "Força resumos em português para aulas de idioma."
+  },
+  "preview": {
+    "en": "When a recording (20–90 min) mentions “aula”, summarize in Portuguese with the education template.",
+    "pt-BR": "Quando uma gravação (20–90 min) mencionar “aula”, resumir em português com o modelo de educação."
+  },
+  "definition": {
+    "wake_phrase": "aula",
+    "source_filter": "all",
+    "duration_min_seconds": 1200,
+    "duration_max_seconds": 5400,
+    "template_id": "velum.education",
+    "auto_label_voice": true,
+    "language": "pt-BR",
+    "notify": true,
+    "post_action": null
+  }
+}

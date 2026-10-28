@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "meetings.board-meeting-long",
+  "category": "meetings",
+  "icon": "meeting",
+  "name": {
+    "en": "Board meeting (long)",
+    "pt-BR": "Reunião de conselho (longa)"
+  },
+  "description": {
+    "en": "Deep meeting minutes for long board sessions.",
+    "pt-BR": "Atas detalhadas para sessões longas de conselho."
+  },
+  "preview": {
+    "en": "When a recording longer than 45 minutes mentions “board”, produce full meeting minutes with speaker labels.",
+    "pt-BR": "Quando uma gravação de mais de 45 minutos mencionar “board”, produzir ata completa com rótulos de falantes."
+  },
+  "definition": {
+    "wake_phrase": "board",
+    "source_filter": "all",
+    "duration_min_seconds": 2700,
+    "duration_max_seconds": 10800,
+    "template_id": "velum.meeting",
+    "auto_label_voice": true,
+    "language": "auto",
+    "notify": true,
+    "post_action": null
+  }
+}

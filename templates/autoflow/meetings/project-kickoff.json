@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "meetings.project-kickoff",
+  "category": "meetings",
+  "icon": "meeting",
+  "name": {
+    "en": "Project kickoff",
+    "pt-BR": "Kickoff de projeto"
+  },
+  "description": {
+    "en": "Capture goals, scope, and owners from kickoffs.",
+    "pt-BR": "Captura metas, escopo e responsáveis de kickoffs."
+  },
+  "preview": {
+    "en": "When a kickoff recording (20 min–2 h) arrives from any source, summarize with meeting minutes and export to your notes folder.",
+    "pt-BR": "Quando uma gravação de kickoff (20 min–2 h) chegar de qualquer fonte, resumir como ata e exportar para a pasta de notas."
+  },
+  "definition": {
+    "wake_phrase": "kickoff",
+    "source_filter": "all",
+    "duration_min_seconds": 1200,
+    "duration_max_seconds": 7200,
+    "template_id": "velum.meeting",
+    "auto_label_voice": true,
+    "language": "auto",
+    "notify": true,
+    "post_action": "folder_export"
+  }
+}

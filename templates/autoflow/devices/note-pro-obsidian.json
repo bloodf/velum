@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "devices.note-pro-obsidian",
+  "category": "devices",
+  "icon": "device",
+  "name": {
+    "en": "Note Pro → Obsidian",
+    "pt-BR": "Note Pro → Obsidian"
+  },
+  "description": {
+    "en": "Every Note Pro recording exported to your vault.",
+    "pt-BR": "Toda gravação do Note Pro exportada para o vault."
+  },
+  "preview": {
+    "en": "When a Note Pro recording (any length up to 3 h) syncs, make a general summary and export Markdown to your folder.",
+    "pt-BR": "Quando uma gravação do Note Pro (até 3 h) sincronizar, gerar um resumo geral e exportar Markdown para a pasta."
+  },
+  "definition": {
+    "wake_phrase": null,
+    "source_filter": "note_pro",
+    "duration_min_seconds": 0,
+    "duration_max_seconds": 10800,
+    "template_id": "velum.general",
+    "auto_label_voice": true,
+    "language": "auto",
+    "notify": true,
+    "post_action": "folder_export"
+  }
+}

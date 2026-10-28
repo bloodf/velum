@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "sales.negotiation-webhook",
+  "category": "sales",
+  "icon": "sales",
+  "name": {
+    "en": "Negotiation → webhook",
+    "pt-BR": "Negociação → webhook"
+  },
+  "description": {
+    "en": "Push negotiation summaries to your CRM webhook.",
+    "pt-BR": "Envia resumos de negociação para o webhook do CRM."
+  },
+  "preview": {
+    "en": "When a negotiation recording (15 min–2 h) arrives, summarize with sales notes and POST JSON to your configured webhook.",
+    "pt-BR": "Quando uma gravação de negociação (15 min–2 h) chegar, resumir com notas de vendas e enviar JSON ao webhook configurado."
+  },
+  "definition": {
+    "wake_phrase": "negotiation",
+    "source_filter": "all",
+    "duration_min_seconds": 900,
+    "duration_max_seconds": 7200,
+    "template_id": "velum.sales",
+    "auto_label_voice": true,
+    "language": "auto",
+    "notify": true,
+    "post_action": "webhook"
+  }
+}

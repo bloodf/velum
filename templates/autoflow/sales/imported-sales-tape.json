@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "sales.imported-sales-tape",
+  "category": "sales",
+  "icon": "sales",
+  "name": {
+    "en": "Imported sales tape",
+    "pt-BR": "Fita de vendas importada"
+  },
+  "description": {
+    "en": "Process imported sales call recordings.",
+    "pt-BR": "Processa gravações de vendas importadas."
+  },
+  "preview": {
+    "en": "When you import a sales recording (any length up to 2 h), summarize with the sales template.",
+    "pt-BR": "Quando você importar uma gravação de vendas (até 2 h), resumir com o modelo de vendas."
+  },
+  "definition": {
+    "wake_phrase": null,
+    "source_filter": "import",
+    "duration_min_seconds": 0,
+    "duration_max_seconds": 7200,
+    "template_id": "velum.sales",
+    "auto_label_voice": true,
+    "language": "auto",
+    "notify": true,
+    "post_action": null
+  }
+}

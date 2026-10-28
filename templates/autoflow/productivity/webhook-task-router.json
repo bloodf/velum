@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "productivity.webhook-task-router",
+  "category": "productivity",
+  "icon": "productivity",
+  "name": {
+    "en": "Task dump → webhook",
+    "pt-BR": "Despejo de tarefas → webhook"
+  },
+  "description": {
+    "en": "Send extractive task dumps to automation tools.",
+    "pt-BR": "Envia despejos de tarefas extrativos para ferramentas de automação."
+  },
+  "preview": {
+    "en": "When a short recording (1–15 min) mentions “tasks”, extract items and POST JSON to your webhook.",
+    "pt-BR": "Quando uma gravação curta (1–15 min) mencionar “tasks”, extrair itens e enviar JSON ao webhook."
+  },
+  "definition": {
+    "wake_phrase": "tasks",
+    "source_filter": "all",
+    "duration_min_seconds": 60,
+    "duration_max_seconds": 900,
+    "template_id": "velum.extractive",
+    "auto_label_voice": false,
+    "language": "auto",
+    "notify": true,
+    "post_action": "webhook"
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "legal.imported-hearing",
+  "category": "legal",
+  "icon": "legal",
+  "name": {
+    "en": "Imported hearing audio",
+    "pt-BR": "Áudio de audiência importado"
+  },
+  "description": {
+    "en": "Imported hearing tapes into legal notes.",
+    "pt-BR": "Áudios de audiência importados em notas jurídicas."
+  },
+  "preview": {
+    "en": "When you import a hearing recording (up to 3 h), summarize with the legal template and keep local.",
+    "pt-BR": "Quando você importar uma gravação de audiência (até 3 h), resumir com o modelo jurídico e manter local."
+  },
+  "definition": {
+    "wake_phrase": "hearing",
+    "source_filter": "import",
+    "duration_min_seconds": 0,
+    "duration_max_seconds": 10800,
+    "template_id": "velum.legal",
+    "auto_label_voice": true,
+    "language": "auto",
+    "notify": true,
+    "post_action": null
+  }
+}

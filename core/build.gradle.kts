@@ -64,3 +64,24 @@ sqldelight {
         }
     }
 }
+
+/**
+ * Validate + pack `templates/autoflow/**/*.json` into classpath JSONL.
+ * Also runs automatically before JVM unit tests so CI catches bad contributions.
+ */
+val validateAutoflowTemplates = tasks.register<Exec>("validateAutoflowTemplates") {
+    group = "verification"
+    description = "Validate AutoFlow automation templates and sync classpath JSONL"
+    workingDir = rootProject.projectDir
+    commandLine("bash", "scripts/sync-autoflow-templates.sh")
+    inputs.dir(rootProject.file("templates/autoflow"))
+    inputs.file(rootProject.file("scripts/sync-autoflow-templates.sh"))
+    outputs.file(layout.projectDirectory.file("src/commonMain/resources/autoflow_templates.jsonl"))
+}
+
+// Pack JSONL before resources are copied for any target that ships the catalog.
+tasks.matching {
+    it.name.endsWith("ProcessResources") || it.name == "jvmTest"
+}.configureEach {
+    dependsOn(validateAutoflowTemplates)
+}

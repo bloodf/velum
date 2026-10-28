@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "devices.note-pro-call-style",
+  "category": "devices",
+  "icon": "device",
+  "name": {
+    "en": "Note Pro → call summary",
+    "pt-BR": "Note Pro → resumo de ligação"
+  },
+  "description": {
+    "en": "Treat Note Pro clips as call summaries.",
+    "pt-BR": "Trata clips do Note Pro como resumos de ligação."
+  },
+  "preview": {
+    "en": "When a Note Pro recording under 30 minutes syncs, summarize with the call template.",
+    "pt-BR": "Quando uma gravação do Note Pro com menos de 30 minutos sincronizar, resumir com o modelo de ligação."
+  },
+  "definition": {
+    "wake_phrase": null,
+    "source_filter": "note_pro",
+    "duration_min_seconds": 0,
+    "duration_max_seconds": 1800,
+    "template_id": "velum.call",
+    "auto_label_voice": true,
+    "language": "auto",
+    "notify": true,
+    "post_action": null
+  }
+}

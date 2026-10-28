@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "it.rfc-discussion-share",
+  "category": "it",
+  "icon": "code",
+  "name": {
+    "en": "RFC discussion → share",
+    "pt-BR": "Discussão de RFC → compartilhar"
+  },
+  "description": {
+    "en": "RFC talks into shareable IT summaries.",
+    "pt-BR": "Conversas de RFC em resumos de TI compartilháveis."
+  },
+  "preview": {
+    "en": "When a recording (25–90 min) mentions “RFC”, summarize with IT notes and open share.",
+    "pt-BR": "Quando uma gravação (25–90 min) mencionar “RFC”, resumir com notas de TI e abrir compartilhamento."
+  },
+  "definition": {
+    "wake_phrase": "RFC",
+    "source_filter": "all",
+    "duration_min_seconds": 1500,
+    "duration_max_seconds": 5400,
+    "template_id": "velum.it",
+    "auto_label_voice": true,
+    "language": "auto",
+    "notify": true,
+    "post_action": "share"
+  }
+}

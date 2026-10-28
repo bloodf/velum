@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "productivity.action-items-only",
+  "category": "productivity",
+  "icon": "productivity",
+  "name": {
+    "en": "Action items only",
+    "pt-BR": "Só itens de ação"
+  },
+  "description": {
+    "en": "Strip any meeting down to actionable bullets.",
+    "pt-BR": "Reduz qualquer reunião a marcadores acionáveis."
+  },
+  "preview": {
+    "en": "When any recording of at least 10 minutes arrives, extract key items with speaker labels.",
+    "pt-BR": "Quando qualquer gravação de pelo menos 10 minutos chegar, extrair itens-chave com rótulos de falantes."
+  },
+  "definition": {
+    "wake_phrase": null,
+    "source_filter": "all",
+    "duration_min_seconds": 600,
+    "duration_max_seconds": 10800,
+    "template_id": "velum.extractive",
+    "auto_label_voice": true,
+    "language": "auto",
+    "notify": true,
+    "post_action": null
+  }
+}

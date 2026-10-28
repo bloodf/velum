@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "medical.case-conference",
+  "category": "medical",
+  "icon": "medical",
+  "name": {
+    "en": "Case conference",
+    "pt-BR": "Discussão de caso"
+  },
+  "description": {
+    "en": "Multi-clinician case discussions with speaker labels.",
+    "pt-BR": "Discussões de caso entre clínicos com rótulos de falantes."
+  },
+  "preview": {
+    "en": "When a long recording (30 min–2 h) mentions “case conference”, produce medical notes with speakers labeled.",
+    "pt-BR": "Quando uma gravação longa (30 min–2 h) mencionar “case conference”, produzir notas médicas com falantes rotulados."
+  },
+  "definition": {
+    "wake_phrase": "case conference",
+    "source_filter": "all",
+    "duration_min_seconds": 1800,
+    "duration_max_seconds": 7200,
+    "template_id": "velum.medical",
+    "auto_label_voice": true,
+    "language": "auto",
+    "notify": true,
+    "post_action": null
+  }
+}

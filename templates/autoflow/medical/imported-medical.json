@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "medical.imported-medical",
+  "category": "medical",
+  "icon": "medical",
+  "name": {
+    "en": "Imported clinical audio",
+    "pt-BR": "Áudio clínico importado"
+  },
+  "description": {
+    "en": "Imported clinical tapes stay local after medical summary.",
+    "pt-BR": "Fitas clínicas importadas permanecem locais após o resumo médico."
+  },
+  "preview": {
+    "en": "When you import a clinical recording (up to 90 min), summarize with the medical template and do not auto-share.",
+    "pt-BR": "Quando você importar uma gravação clínica (até 90 min), resumir com o modelo médico e não compartilhar automaticamente."
+  },
+  "definition": {
+    "wake_phrase": null,
+    "source_filter": "import",
+    "duration_min_seconds": 0,
+    "duration_max_seconds": 5400,
+    "template_id": "velum.medical",
+    "auto_label_voice": true,
+    "language": "auto",
+    "notify": true,
+    "post_action": null
+  }
+}

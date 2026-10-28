@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "medical.telehealth-phone",
+  "category": "medical",
+  "icon": "medical",
+  "name": {
+    "en": "Telehealth phone visit",
+    "pt-BR": "Consulta por telefone"
+  },
+  "description": {
+    "en": "Phone telehealth sessions into medical notes.",
+    "pt-BR": "Consultas de telehealth por telefone em notas médicas."
+  },
+  "preview": {
+    "en": "When a phone recording (5–45 min) mentions “telehealth” or “teleconsulta”, summarize with the medical template locally.",
+    "pt-BR": "Quando uma gravação do telefone (5–45 min) mencionar “telehealth” ou “teleconsulta”, resumir com o modelo médico localmente."
+  },
+  "definition": {
+    "wake_phrase": "tele",
+    "source_filter": "phone",
+    "duration_min_seconds": 300,
+    "duration_max_seconds": 2700,
+    "template_id": "velum.medical",
+    "auto_label_voice": true,
+    "language": "auto",
+    "notify": true,
+    "post_action": null
+  }
+}

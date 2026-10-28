@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "meetings.all-hands-calendar",
+  "category": "meetings",
+  "icon": "meeting",
+  "name": {
+    "en": "All-hands → calendar",
+    "pt-BR": "All-hands → calendário"
+  },
+  "description": {
+    "en": "Summarize all-hands and draft a calendar follow-up note.",
+    "pt-BR": "Resume all-hands e prepara uma nota de acompanhamento no calendário."
+  },
+  "preview": {
+    "en": "When a long recording (30 min–3 h) titled with “all-hands” arrives, make meeting minutes and open a calendar insert with the summary.",
+    "pt-BR": "Quando uma gravação longa (30 min–3 h) com “all-hands” no título chegar, gerar ata e abrir inserção no calendário com o resumo."
+  },
+  "definition": {
+    "wake_phrase": "all-hands",
+    "source_filter": "all",
+    "duration_min_seconds": 1800,
+    "duration_max_seconds": 10800,
+    "template_id": "velum.meeting",
+    "auto_label_voice": true,
+    "language": "auto",
+    "notify": true,
+    "post_action": "calendar_insert"
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "content.interview-show",
+  "category": "content",
+  "icon": "content",
+  "name": {
+    "en": "Interview show tape",
+    "pt-BR": "Fita de programa de entrevistas"
+  },
+  "description": {
+    "en": "Show interviews into interview notes.",
+    "pt-BR": "Entrevistas de programa em notas de entrevista."
+  },
+  "preview": {
+    "en": "When a Note Pro recording (20–90 min) mentions “show”, summarize with the interview template and label speakers.",
+    "pt-BR": "Quando uma gravação do Note Pro (20–90 min) mencionar “show”, resumir com o modelo de entrevista e rotular falantes."
+  },
+  "definition": {
+    "wake_phrase": "show",
+    "source_filter": "note_pro",
+    "duration_min_seconds": 1200,
+    "duration_max_seconds": 5400,
+    "template_id": "velum.interview",
+    "auto_label_voice": true,
+    "language": "auto",
+    "notify": true,
+    "post_action": null
+  }
+}

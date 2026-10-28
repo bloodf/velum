@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "research.field-notes-phone",
+  "category": "research",
+  "icon": "research",
+  "name": {
+    "en": "Field notes (phone)",
+    "pt-BR": "Notas de campo (telefone)"
+  },
+  "description": {
+    "en": "On-site voice field notes from the phone.",
+    "pt-BR": "Notas de campo por voz no telefone."
+  },
+  "preview": {
+    "en": "When a phone recording (2–30 min) mentions “field”, extract key items locally.",
+    "pt-BR": "Quando uma gravação do telefone (2–30 min) mencionar “field”, extrair itens-chave localmente."
+  },
+  "definition": {
+    "wake_phrase": "field",
+    "source_filter": "phone",
+    "duration_min_seconds": 120,
+    "duration_max_seconds": 1800,
+    "template_id": "velum.extractive",
+    "auto_label_voice": false,
+    "language": "auto",
+    "notify": true,
+    "post_action": null
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "education.lab-session",
+  "category": "education",
+  "icon": "education",
+  "name": {
+    "en": "Lab session",
+    "pt-BR": "Sessão de laboratório"
+  },
+  "description": {
+    "en": "Lab walkthroughs into extractive checklists.",
+    "pt-BR": "Roteiros de laboratório em checklists extrativos."
+  },
+  "preview": {
+    "en": "When a Note Pro recording (15–90 min) mentions “lab”, extract key steps and keep local.",
+    "pt-BR": "Quando uma gravação do Note Pro (15–90 min) mencionar “lab”, extrair passos-chave e manter local."
+  },
+  "definition": {
+    "wake_phrase": "lab",
+    "source_filter": "note_pro",
+    "duration_min_seconds": 900,
+    "duration_max_seconds": 5400,
+    "template_id": "velum.extractive",
+    "auto_label_voice": true,
+    "language": "auto",
+    "notify": true,
+    "post_action": null
+  }
+}

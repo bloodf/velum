@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "devices.note-pro-default",
+  "category": "devices",
+  "icon": "device",
+  "name": {
+    "en": "Note Pro → meeting minutes",
+    "pt-BR": "Note Pro → ata de reunião"
+  },
+  "description": {
+    "en": "Default Note Pro pipeline: minutes on every sync.",
+    "pt-BR": "Pipeline padrão do Note Pro: ata a cada sincronização."
+  },
+  "preview": {
+    "en": "When any Note Pro recording up to 3 hours syncs, transcribe with meeting minutes and label speakers.",
+    "pt-BR": "Quando qualquer gravação do Note Pro de até 3 horas sincronizar, transcrever com ata e rotular falantes."
+  },
+  "definition": {
+    "wake_phrase": null,
+    "source_filter": "note_pro",
+    "duration_min_seconds": 0,
+    "duration_max_seconds": 10800,
+    "template_id": "velum.meeting",
+    "auto_label_voice": true,
+    "language": "auto",
+    "notify": true,
+    "post_action": null
+  }
+}

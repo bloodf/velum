@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "devices.note-pro-share-ready",
+  "category": "devices",
+  "icon": "device",
+  "name": {
+    "en": "Note Pro → share ready",
+    "pt-BR": "Note Pro → pronto para compartilhar"
+  },
+  "description": {
+    "en": "Note Pro sessions summarized and opened in share.",
+    "pt-BR": "Sessões do Note Pro resumidas e abertas no compartilhamento."
+  },
+  "preview": {
+    "en": "When a Note Pro recording of at least 10 minutes syncs, make meeting minutes and open the share sheet.",
+    "pt-BR": "Quando uma gravação do Note Pro de pelo menos 10 minutos sincronizar, gerar ata e abrir o compartilhamento."
+  },
+  "definition": {
+    "wake_phrase": null,
+    "source_filter": "note_pro",
+    "duration_min_seconds": 600,
+    "duration_max_seconds": 10800,
+    "template_id": "velum.meeting",
+    "auto_label_voice": true,
+    "language": "auto",
+    "notify": true,
+    "post_action": "share"
+  }
+}

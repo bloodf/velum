@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "content.podcast-episode",
+  "category": "content",
+  "icon": "content",
+  "name": {
+    "en": "Podcast episode notes",
+    "pt-BR": "Notas de episódio de podcast"
+  },
+  "description": {
+    "en": "Episode recordings into speech notes + share.",
+    "pt-BR": "Gravações de episódio em notas de discurso + compartilhar."
+  },
+  "preview": {
+    "en": "When a long recording (30 min–2 h) mentions “episode”, summarize with speech notes and open share.",
+    "pt-BR": "Quando uma gravação longa (30 min–2 h) mencionar “episode”, resumir com notas de discurso e abrir compartilhamento."
+  },
+  "definition": {
+    "wake_phrase": "episode",
+    "source_filter": "all",
+    "duration_min_seconds": 1800,
+    "duration_max_seconds": 7200,
+    "template_id": "velum.speech",
+    "auto_label_voice": true,
+    "language": "auto",
+    "notify": true,
+    "post_action": "share"
+  }
+}

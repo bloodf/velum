@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "productivity.decision-log",
+  "category": "productivity",
+  "icon": "productivity",
+  "name": {
+    "en": "Decision log",
+    "pt-BR": "Registro de decisões"
+  },
+  "description": {
+    "en": "Capture decisions and owners from discussions.",
+    "pt-BR": "Captura decisões e responsáveis de discussões."
+  },
+  "preview": {
+    "en": "When a recording (10–90 min) mentions “decision”, extract key items and export to your folder.",
+    "pt-BR": "Quando uma gravação (10–90 min) mencionar “decision”, extrair itens-chave e exportar para a pasta."
+  },
+  "definition": {
+    "wake_phrase": "decision",
+    "source_filter": "all",
+    "duration_min_seconds": 600,
+    "duration_max_seconds": 5400,
+    "template_id": "velum.extractive",
+    "auto_label_voice": true,
+    "language": "auto",
+    "notify": true,
+    "post_action": "folder_export"
+  }
+}

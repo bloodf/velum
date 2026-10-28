@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "real_estate.negotiation-offer",
+  "category": "real_estate",
+  "icon": "estate",
+  "name": {
+    "en": "Offer negotiation",
+    "pt-BR": "Negociação de proposta"
+  },
+  "description": {
+    "en": "Offer talks into estate notes exported to your vault.",
+    "pt-BR": "Conversas de proposta em notas imobiliárias exportadas ao vault."
+  },
+  "preview": {
+    "en": "When a recording (15–90 min) mentions “offer”, summarize with the estate template and export Markdown.",
+    "pt-BR": "Quando uma gravação (15–90 min) mencionar “offer”, resumir com o modelo imobiliário e exportar Markdown."
+  },
+  "definition": {
+    "wake_phrase": "offer",
+    "source_filter": "all",
+    "duration_min_seconds": 900,
+    "duration_max_seconds": 5400,
+    "template_id": "velum.estate",
+    "auto_label_voice": true,
+    "language": "auto",
+    "notify": true,
+    "post_action": "folder_export"
+  }
+}

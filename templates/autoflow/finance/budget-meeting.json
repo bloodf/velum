@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "finance.budget-meeting",
+  "category": "finance",
+  "icon": "finance",
+  "name": {
+    "en": "Budget meeting",
+    "pt-BR": "Reunião de orçamento"
+  },
+  "description": {
+    "en": "Budget sessions into financial notes + calendar.",
+    "pt-BR": "Sessões de orçamento em notas financeiras + calendário."
+  },
+  "preview": {
+    "en": "When a recording (20–90 min) mentions “budget”, summarize with financial notes and insert a calendar follow-up.",
+    "pt-BR": "Quando uma gravação (20–90 min) mencionar “budget”, resumir com notas financeiras e inserir acompanhamento no calendário."
+  },
+  "definition": {
+    "wake_phrase": "budget",
+    "source_filter": "all",
+    "duration_min_seconds": 1200,
+    "duration_max_seconds": 5400,
+    "template_id": "velum.financial",
+    "auto_label_voice": true,
+    "language": "auto",
+    "notify": true,
+    "post_action": "calendar_insert"
+  }
+}

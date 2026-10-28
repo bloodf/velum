@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "meetings.one-on-one",
+  "category": "meetings",
+  "icon": "meeting",
+  "name": {
+    "en": "1:1 coaching notes",
+    "pt-BR": "Notas de 1:1"
+  },
+  "description": {
+    "en": "Private 1:1 notes with consulting-style structure.",
+    "pt-BR": "Notas privadas de 1:1 com estrutura de consultoria."
+  },
+  "preview": {
+    "en": "When a phone or Note Pro recording (10–90 min) mentions “1:1” or “one on one”, summarize with the consulting template and keep it local.",
+    "pt-BR": "Quando uma gravação do telefone ou Note Pro (10–90 min) mencionar “1:1” ou “one on one”, resumir com o modelo de consultoria e manter local."
+  },
+  "definition": {
+    "wake_phrase": "1:1",
+    "source_filter": "all",
+    "duration_min_seconds": 600,
+    "duration_max_seconds": 5400,
+    "template_id": "velum.consulting",
+    "auto_label_voice": true,
+    "language": "auto",
+    "notify": true,
+    "post_action": null
+  }
+}

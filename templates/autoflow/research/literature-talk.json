@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "research.literature-talk",
+  "category": "research",
+  "icon": "research",
+  "name": {
+    "en": "Literature discussion",
+    "pt-BR": "Discussão de literatura"
+  },
+  "description": {
+    "en": "Paper clubs into lecture-style research notes.",
+    "pt-BR": "Clubes de papers em notas de pesquisa estilo aula."
+  },
+  "preview": {
+    "en": "When a recording (30 min–2 h) mentions “paper”, summarize with education notes and export to your vault.",
+    "pt-BR": "Quando uma gravação (30 min–2 h) mencionar “paper”, resumir com notas de educação e exportar para o vault."
+  },
+  "definition": {
+    "wake_phrase": "paper",
+    "source_filter": "all",
+    "duration_min_seconds": 1800,
+    "duration_max_seconds": 7200,
+    "template_id": "velum.education",
+    "auto_label_voice": true,
+    "language": "auto",
+    "notify": true,
+    "post_action": "folder_export"
+  }
+}

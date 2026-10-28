@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "personal.therapy-local",
+  "category": "personal",
+  "icon": "journal",
+  "name": {
+    "en": "Therapy session (local)",
+    "pt-BR": "Sessão de terapia (local)"
+  },
+  "description": {
+    "en": "Sensitive therapy notes stay on device.",
+    "pt-BR": "Notas sensíveis de terapia ficam no aparelho."
+  },
+  "preview": {
+    "en": "When a recording (30–90 min) mentions “therapy”, summarize with consulting notes and never auto-export.",
+    "pt-BR": "Quando uma gravação (30–90 min) mencionar “therapy”, resumir com notas de consultoria e nunca exportar automaticamente."
+  },
+  "definition": {
+    "wake_phrase": "therapy",
+    "source_filter": "all",
+    "duration_min_seconds": 1800,
+    "duration_max_seconds": 5400,
+    "template_id": "velum.consulting",
+    "auto_label_voice": false,
+    "language": "auto",
+    "notify": true,
+    "post_action": null
+  }
+}

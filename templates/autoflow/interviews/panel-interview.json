@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "interviews.panel-interview",
+  "category": "interviews",
+  "icon": "interview",
+  "name": {
+    "en": "Panel interview",
+    "pt-BR": "Entrevista em painel"
+  },
+  "description": {
+    "en": "Multi-interviewer sessions with speaker labels.",
+    "pt-BR": "Sessões com vários entrevistadores e rótulos de falantes."
+  },
+  "preview": {
+    "en": "When a recording longer than 25 minutes mentions “panel”, use interview notes with speaker labeling enabled.",
+    "pt-BR": "Quando uma gravação de mais de 25 minutos mencionar “panel”, usar notas de entrevista com rotulagem de falantes."
+  },
+  "definition": {
+    "wake_phrase": "panel",
+    "source_filter": "all",
+    "duration_min_seconds": 1500,
+    "duration_max_seconds": 10800,
+    "template_id": "velum.interview",
+    "auto_label_voice": true,
+    "language": "auto",
+    "notify": true,
+    "post_action": null
+  }
+}

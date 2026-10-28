@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "medical.consultation-local",
+  "category": "medical",
+  "icon": "medical",
+  "name": {
+    "en": "Clinical consultation (local)",
+    "pt-BR": "Consulta clínica (local)"
+  },
+  "description": {
+    "en": "On-device medical consultation notes — no auto-export.",
+    "pt-BR": "Notas de consulta médica no aparelho — sem exportação automática."
+  },
+  "preview": {
+    "en": "When a Note Pro recording (10–60 min) arrives, summarize with the medical template, label speakers, and keep everything on device.",
+    "pt-BR": "Quando uma gravação do Note Pro (10–60 min) chegar, resumir com o modelo médico, rotular falantes e manter tudo no aparelho."
+  },
+  "definition": {
+    "wake_phrase": null,
+    "source_filter": "note_pro",
+    "duration_min_seconds": 600,
+    "duration_max_seconds": 3600,
+    "template_id": "velum.medical",
+    "auto_label_voice": true,
+    "language": "auto",
+    "notify": true,
+    "post_action": null
+  }
+}

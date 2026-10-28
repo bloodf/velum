@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "education.lecture-notes",
+  "category": "education",
+  "icon": "education",
+  "name": {
+    "en": "Lecture notes",
+    "pt-BR": "Notas de aula"
+  },
+  "description": {
+    "en": "Classroom or webinar lectures into study notes.",
+    "pt-BR": "Aulas presenciais ou webinars em notas de estudo."
+  },
+  "preview": {
+    "en": "When a recording (30 min–3 h) mentions “lecture”, summarize with the education template and export to your folder.",
+    "pt-BR": "Quando uma gravação (30 min–3 h) mencionar “lecture”, resumir com o modelo de educação e exportar para a pasta."
+  },
+  "definition": {
+    "wake_phrase": "lecture",
+    "source_filter": "all",
+    "duration_min_seconds": 1800,
+    "duration_max_seconds": 10800,
+    "template_id": "velum.education",
+    "auto_label_voice": true,
+    "language": "auto",
+    "notify": true,
+    "post_action": "folder_export"
+  }
+}

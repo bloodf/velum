@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "research.imported-interview-research",
+  "category": "research",
+  "icon": "research",
+  "name": {
+    "en": "Imported research interview",
+    "pt-BR": "Entrevista de pesquisa importada"
+  },
+  "description": {
+    "en": "Imported research tapes into interview notes.",
+    "pt-BR": "Fitas de pesquisa importadas em notas de entrevista."
+  },
+  "preview": {
+    "en": "When you import a research interview (up to 2 h), summarize with the interview template.",
+    "pt-BR": "Quando você importar uma entrevista de pesquisa (até 2 h), resumir com o modelo de entrevista."
+  },
+  "definition": {
+    "wake_phrase": null,
+    "source_filter": "import",
+    "duration_min_seconds": 0,
+    "duration_max_seconds": 7200,
+    "template_id": "velum.interview",
+    "auto_label_voice": true,
+    "language": "auto",
+    "notify": true,
+    "post_action": null
+  }
+}

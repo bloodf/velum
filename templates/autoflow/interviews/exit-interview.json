@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "interviews.exit-interview",
+  "category": "interviews",
+  "icon": "interview",
+  "name": {
+    "en": "Exit interview",
+    "pt-BR": "Entrevista de desligamento"
+  },
+  "description": {
+    "en": "Sensitive exit interviews kept local with speaker labels.",
+    "pt-BR": "Entrevistas de desligamento sensíveis, locais, com rótulos de falantes."
+  },
+  "preview": {
+    "en": "When a phone recording (15–60 min) mentions “exit”, summarize with the interview template and do not auto-export.",
+    "pt-BR": "Quando uma gravação do telefone (15–60 min) mencionar “exit”, resumir com o modelo de entrevista e não exportar automaticamente."
+  },
+  "definition": {
+    "wake_phrase": "exit",
+    "source_filter": "phone",
+    "duration_min_seconds": 900,
+    "duration_max_seconds": 3600,
+    "template_id": "velum.interview",
+    "auto_label_voice": true,
+    "language": "auto",
+    "notify": true,
+    "post_action": null
+  }
+}

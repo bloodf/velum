@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "it.architecture-review",
+  "category": "it",
+  "icon": "code",
+  "name": {
+    "en": "Architecture review",
+    "pt-BR": "Revisão de arquitetura"
+  },
+  "description": {
+    "en": "Design reviews into IT meeting notes.",
+    "pt-BR": "Revisões de design em notas de reunião de TI."
+  },
+  "preview": {
+    "en": "When a recording (30 min–2 h) mentions “architecture”, summarize with the IT template and label speakers.",
+    "pt-BR": "Quando uma gravação (30 min–2 h) mencionar “architecture”, resumir com o modelo de TI e rotular falantes."
+  },
+  "definition": {
+    "wake_phrase": "architecture",
+    "source_filter": "all",
+    "duration_min_seconds": 1800,
+    "duration_max_seconds": 7200,
+    "template_id": "velum.it",
+    "auto_label_voice": true,
+    "language": "auto",
+    "notify": true,
+    "post_action": null
+  }
+}

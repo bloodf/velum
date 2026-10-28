@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "medical.intake-short",
+  "category": "medical",
+  "icon": "medical",
+  "name": {
+    "en": "Intake / triage (short)",
+    "pt-BR": "Acolhimento / triagem (curto)"
+  },
+  "description": {
+    "en": "Short intake recordings into extractive key items.",
+    "pt-BR": "Gravações curtas de acolhimento em itens-chave extrativos."
+  },
+  "preview": {
+    "en": "When a short Note Pro recording (2–15 min) mentions “intake”, extract key items without exporting.",
+    "pt-BR": "Quando uma gravação curta do Note Pro (2–15 min) mencionar “intake”, extrair itens-chave sem exportar."
+  },
+  "definition": {
+    "wake_phrase": "intake",
+    "source_filter": "note_pro",
+    "duration_min_seconds": 120,
+    "duration_max_seconds": 900,
+    "template_id": "velum.extractive",
+    "auto_label_voice": true,
+    "language": "auto",
+    "notify": true,
+    "post_action": null
+  }
+}

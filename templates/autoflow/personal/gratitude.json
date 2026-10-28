@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "personal.gratitude",
+  "category": "personal",
+  "icon": "journal",
+  "name": {
+    "en": "Gratitude note",
+    "pt-BR": "Nota de gratidão"
+  },
+  "description": {
+    "en": "Quick gratitude captures from short clips.",
+    "pt-BR": "Capturas rápidas de gratidão a partir de clips curtos."
+  },
+  "preview": {
+    "en": "When a recording under 10 minutes mentions “gratitude”, extract key items locally.",
+    "pt-BR": "Quando uma gravação com menos de 10 minutos mencionar “gratitude”, extrair itens-chave localmente."
+  },
+  "definition": {
+    "wake_phrase": "gratitude",
+    "source_filter": "all",
+    "duration_min_seconds": 0,
+    "duration_max_seconds": 600,
+    "template_id": "velum.extractive",
+    "auto_label_voice": false,
+    "language": "auto",
+    "notify": true,
+    "post_action": null
+  }
+}

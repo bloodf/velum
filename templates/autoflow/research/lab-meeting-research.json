@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "research.lab-meeting-research",
+  "category": "research",
+  "icon": "research",
+  "name": {
+    "en": "Research lab meeting",
+    "pt-BR": "Reunião de laboratório de pesquisa"
+  },
+  "description": {
+    "en": "Lab meetings into meeting minutes + vault.",
+    "pt-BR": "Reuniões de lab em atas + vault."
+  },
+  "preview": {
+    "en": "When a Note Pro recording (20 min–2 h) mentions “lab meeting”, make meeting minutes and export Markdown.",
+    "pt-BR": "Quando uma gravação do Note Pro (20 min–2 h) mencionar “lab meeting”, gerar ata e exportar Markdown."
+  },
+  "definition": {
+    "wake_phrase": "lab meeting",
+    "source_filter": "note_pro",
+    "duration_min_seconds": 1200,
+    "duration_max_seconds": 7200,
+    "template_id": "velum.meeting",
+    "auto_label_voice": true,
+    "language": "auto",
+    "notify": true,
+    "post_action": "folder_export"
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "personal.daily-journal",
+  "category": "personal",
+  "icon": "journal",
+  "name": {
+    "en": "Daily voice journal",
+    "pt-BR": "Diário de voz diário"
+  },
+  "description": {
+    "en": "Private daily reflections into a general summary.",
+    "pt-BR": "Reflexões diárias privadas em um resumo geral."
+  },
+  "preview": {
+    "en": "When a short phone recording (1–20 min) mentions “journal”, summarize generally and keep on device.",
+    "pt-BR": "Quando uma gravação curta do telefone (1–20 min) mencionar “journal”, resumir de forma geral e manter no aparelho."
+  },
+  "definition": {
+    "wake_phrase": "journal",
+    "source_filter": "phone",
+    "duration_min_seconds": 60,
+    "duration_max_seconds": 1200,
+    "template_id": "velum.general",
+    "auto_label_voice": false,
+    "language": "auto",
+    "notify": true,
+    "post_action": null
+  }
+}

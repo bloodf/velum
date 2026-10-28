@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "finance.imported-audit",
+  "category": "finance",
+  "icon": "finance",
+  "name": {
+    "en": "Imported audit discussion",
+    "pt-BR": "Discussão de auditoria importada"
+  },
+  "description": {
+    "en": "Imported audit tapes into financial notes (local).",
+    "pt-BR": "Áudios de auditoria importados em notas financeiras (local)."
+  },
+  "preview": {
+    "en": "When you import an audit recording (up to 2 h), summarize with the financial template and keep local.",
+    "pt-BR": "Quando você importar uma gravação de auditoria (até 2 h), resumir com o modelo financeiro e manter local."
+  },
+  "definition": {
+    "wake_phrase": "audit",
+    "source_filter": "import",
+    "duration_min_seconds": 0,
+    "duration_max_seconds": 7200,
+    "template_id": "velum.financial",
+    "auto_label_voice": true,
+    "language": "auto",
+    "notify": true,
+    "post_action": null
+  }
+}

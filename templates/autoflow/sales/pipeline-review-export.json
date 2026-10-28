@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "sales.pipeline-review-export",
+  "category": "sales",
+  "icon": "sales",
+  "name": {
+    "en": "Pipeline review → vault",
+    "pt-BR": "Revisão de pipeline → vault"
+  },
+  "description": {
+    "en": "Export pipeline review notes to Obsidian.",
+    "pt-BR": "Exporta notas de revisão de pipeline para o Obsidian."
+  },
+  "preview": {
+    "en": "When a recording mentions “pipeline” (20 min–2 h), use the sales template and export Markdown to your folder.",
+    "pt-BR": "Quando uma gravação mencionar “pipeline” (20 min–2 h), usar o modelo de vendas e exportar Markdown para a pasta."
+  },
+  "definition": {
+    "wake_phrase": "pipeline",
+    "source_filter": "all",
+    "duration_min_seconds": 1200,
+    "duration_max_seconds": 7200,
+    "template_id": "velum.sales",
+    "auto_label_voice": true,
+    "language": "auto",
+    "notify": true,
+    "post_action": "folder_export"
+  }
+}

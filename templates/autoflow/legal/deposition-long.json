@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "legal.deposition-long",
+  "category": "legal",
+  "icon": "legal",
+  "name": {
+    "en": "Deposition",
+    "pt-BR": "Depoimento"
+  },
+  "description": {
+    "en": "Long depositions with speaker labels, no auto-export.",
+    "pt-BR": "Depoimentos longos com rótulos de falantes, sem exportação automática."
+  },
+  "preview": {
+    "en": "When a recording longer than 45 minutes mentions “deposition”, produce legal notes locally.",
+    "pt-BR": "Quando uma gravação de mais de 45 minutos mencionar “deposition”, produzir notas jurídicas localmente."
+  },
+  "definition": {
+    "wake_phrase": "deposition",
+    "source_filter": "all",
+    "duration_min_seconds": 2700,
+    "duration_max_seconds": 10800,
+    "template_id": "velum.legal",
+    "auto_label_voice": true,
+    "language": "auto",
+    "notify": true,
+    "post_action": null
+  }
+}

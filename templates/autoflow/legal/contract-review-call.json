@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "legal.contract-review-call",
+  "category": "legal",
+  "icon": "legal",
+  "name": {
+    "en": "Contract review call",
+    "pt-BR": "Ligação de revisão de contrato"
+  },
+  "description": {
+    "en": "Contract calls into legal summary + vault export.",
+    "pt-BR": "Ligações de contrato em resumo jurídico + exportação ao vault."
+  },
+  "preview": {
+    "en": "When a call (15–90 min) mentions “contract”, summarize with legal notes and export Markdown.",
+    "pt-BR": "Quando uma ligação (15–90 min) mencionar “contract”, resumir com notas jurídicas e exportar Markdown."
+  },
+  "definition": {
+    "wake_phrase": "contract",
+    "source_filter": "all",
+    "duration_min_seconds": 900,
+    "duration_max_seconds": 5400,
+    "template_id": "velum.legal",
+    "auto_label_voice": true,
+    "language": "auto",
+    "notify": true,
+    "post_action": "folder_export"
+  }
+}

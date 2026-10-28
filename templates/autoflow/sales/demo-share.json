@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "sales.demo-share",
+  "category": "sales",
+  "icon": "sales",
+  "name": {
+    "en": "Product demo → share",
+    "pt-BR": "Demo de produto → compartilhar"
+  },
+  "description": {
+    "en": "Turn demos into a shareable sales summary.",
+    "pt-BR": "Transforma demos em um resumo de vendas compartilhável."
+  },
+  "preview": {
+    "en": "When a demo recording (15–75 min) arrives from phone or Note Pro, summarize with sales notes and open share.",
+    "pt-BR": "Quando uma gravação de demo (15–75 min) chegar do telefone ou Note Pro, resumir com notas de vendas e abrir compartilhamento."
+  },
+  "definition": {
+    "wake_phrase": "demo",
+    "source_filter": "all",
+    "duration_min_seconds": 900,
+    "duration_max_seconds": 4500,
+    "template_id": "velum.sales",
+    "auto_label_voice": true,
+    "language": "auto",
+    "notify": true,
+    "post_action": "share"
+  }
+}

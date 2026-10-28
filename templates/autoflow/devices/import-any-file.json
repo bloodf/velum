@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "devices.import-any-file",
+  "category": "devices",
+  "icon": "device",
+  "name": {
+    "en": "Import any audio file",
+    "pt-BR": "Importar qualquer arquivo de áudio"
+  },
+  "description": {
+    "en": "Imported files always get a general summary.",
+    "pt-BR": "Arquivos importados sempre recebem um resumo geral."
+  },
+  "preview": {
+    "en": "When you import any recording up to 3 hours, transcribe with a general summary.",
+    "pt-BR": "Quando você importar qualquer gravação de até 3 horas, transcrever com um resumo geral."
+  },
+  "definition": {
+    "wake_phrase": null,
+    "source_filter": "import",
+    "duration_min_seconds": 0,
+    "duration_max_seconds": 10800,
+    "template_id": "velum.general",
+    "auto_label_voice": true,
+    "language": "auto",
+    "notify": true,
+    "post_action": null
+  }
+}

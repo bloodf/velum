@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "education.thesis-defense",
+  "category": "education",
+  "icon": "education",
+  "name": {
+    "en": "Thesis defense",
+    "pt-BR": "Defesa de tese"
+  },
+  "description": {
+    "en": "Long defenses into lecture-style notes + calendar.",
+    "pt-BR": "Defesas longas em notas estilo aula + calendário."
+  },
+  "preview": {
+    "en": "When a long recording (45 min–3 h) mentions “defense”, summarize as lecture notes and insert a calendar event.",
+    "pt-BR": "Quando uma gravação longa (45 min–3 h) mencionar “defense”, resumir como notas de aula e inserir evento no calendário."
+  },
+  "definition": {
+    "wake_phrase": "defense",
+    "source_filter": "all",
+    "duration_min_seconds": 2700,
+    "duration_max_seconds": 10800,
+    "template_id": "velum.education",
+    "auto_label_voice": true,
+    "language": "auto",
+    "notify": true,
+    "post_action": "calendar_insert"
+  }
+}

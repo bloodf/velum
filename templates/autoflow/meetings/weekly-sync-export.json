@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "meetings.weekly-sync-export",
+  "category": "meetings",
+  "icon": "meeting",
+  "name": {
+    "en": "Weekly sync → Obsidian",
+    "pt-BR": "Sincronia semanal → Obsidian"
+  },
+  "description": {
+    "en": "Summarize weekly syncs and export Markdown to your vault folder.",
+    "pt-BR": "Resume sincronias semanais e exporta Markdown para a pasta do vault."
+  },
+  "preview": {
+    "en": "When a recording (15 min–2 h) with “weekly” in the title arrives, make meeting minutes and export Markdown to your Obsidian/local folder.",
+    "pt-BR": "Quando uma gravação (15 min–2 h) com “weekly” no título chegar, gerar ata e exportar Markdown para a pasta Obsidian/local."
+  },
+  "definition": {
+    "wake_phrase": "weekly",
+    "source_filter": "all",
+    "duration_min_seconds": 900,
+    "duration_max_seconds": 7200,
+    "template_id": "velum.meeting",
+    "auto_label_voice": true,
+    "language": "auto",
+    "notify": true,
+    "post_action": "folder_export"
+  }
+}

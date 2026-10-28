@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "finance.earnings-call",
+  "category": "finance",
+  "icon": "finance",
+  "name": {
+    "en": "Earnings call",
+    "pt-BR": "Conference call de resultados"
+  },
+  "description": {
+    "en": "Earnings calls into financial review notes.",
+    "pt-BR": "Calls de resultados em notas de revisão financeira."
+  },
+  "preview": {
+    "en": "When a long recording (30 min–2 h) mentions “earnings”, summarize with the financial template and export to your folder.",
+    "pt-BR": "Quando uma gravação longa (30 min–2 h) mencionar “earnings”, resumir com o modelo financeiro e exportar para a pasta."
+  },
+  "definition": {
+    "wake_phrase": "earnings",
+    "source_filter": "all",
+    "duration_min_seconds": 1800,
+    "duration_max_seconds": 7200,
+    "template_id": "velum.financial",
+    "auto_label_voice": true,
+    "language": "auto",
+    "notify": true,
+    "post_action": "folder_export"
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "real_estate.property-tour",
+  "category": "real_estate",
+  "icon": "estate",
+  "name": {
+    "en": "Property tour",
+    "pt-BR": "Tour de imóvel"
+  },
+  "description": {
+    "en": "Walkthroughs into real-estate meeting notes.",
+    "pt-BR": "Visitas em notas de reunião imobiliária."
+  },
+  "preview": {
+    "en": "When a Note Pro recording (10–60 min) mentions “tour” or “visita”, summarize with the estate template.",
+    "pt-BR": "Quando uma gravação do Note Pro (10–60 min) mencionar “tour” ou “visita”, resumir com o modelo imobiliário."
+  },
+  "definition": {
+    "wake_phrase": "tour",
+    "source_filter": "note_pro",
+    "duration_min_seconds": 600,
+    "duration_max_seconds": 3600,
+    "template_id": "velum.estate",
+    "auto_label_voice": true,
+    "language": "auto",
+    "notify": true,
+    "post_action": null
+  }
+}

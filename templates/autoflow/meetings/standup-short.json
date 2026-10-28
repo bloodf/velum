@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "meetings.standup-short",
+  "category": "meetings",
+  "icon": "meeting",
+  "name": {
+    "en": "Daily standup",
+    "pt-BR": "Daily standup"
+  },
+  "description": {
+    "en": "Capture short standups and extract wins, blockers, and plans.",
+    "pt-BR": "Captura standups curtos e extrai conquistas, bloqueios e planos."
+  },
+  "preview": {
+    "en": "When a short recording (1–20 min) titled with “standup” arrives from any source, transcribe it and extract key items.",
+    "pt-BR": "Quando uma gravação curta (1–20 min) com “standup” no título chegar de qualquer fonte, transcrever e extrair itens-chave."
+  },
+  "definition": {
+    "wake_phrase": "standup",
+    "source_filter": "all",
+    "duration_min_seconds": 60,
+    "duration_max_seconds": 1200,
+    "template_id": "velum.extractive",
+    "auto_label_voice": true,
+    "language": "auto",
+    "notify": true,
+    "post_action": null
+  }
+}

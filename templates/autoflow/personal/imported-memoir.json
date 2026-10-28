@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "personal.imported-memoir",
+  "category": "personal",
+  "icon": "journal",
+  "name": {
+    "en": "Imported memoir tape",
+    "pt-BR": "Fita de memórias importada"
+  },
+  "description": {
+    "en": "Long imported personal stories into a general summary.",
+    "pt-BR": "Histórias pessoais longas importadas em um resumo geral."
+  },
+  "preview": {
+    "en": "When you import a personal recording longer than 20 minutes, summarize generally and keep local.",
+    "pt-BR": "Quando você importar uma gravação pessoal de mais de 20 minutos, resumir de forma geral e manter local."
+  },
+  "definition": {
+    "wake_phrase": null,
+    "source_filter": "import",
+    "duration_min_seconds": 1200,
+    "duration_max_seconds": 10800,
+    "template_id": "velum.general",
+    "auto_label_voice": false,
+    "language": "auto",
+    "notify": true,
+    "post_action": null
+  }
+}

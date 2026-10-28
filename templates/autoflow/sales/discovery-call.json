@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "sales.discovery-call",
+  "category": "sales",
+  "icon": "sales",
+  "name": {
+    "en": "Discovery call",
+    "pt-BR": "Chamada de descoberta"
+  },
+  "description": {
+    "en": "Summarize discovery calls with sales structure.",
+    "pt-BR": "Resume chamadas de descoberta com estrutura de vendas."
+  },
+  "preview": {
+    "en": "When a call-length recording (10–90 min) mentions “discovery”, transcribe with the sales template, label speakers, and keep local.",
+    "pt-BR": "Quando uma gravação de ligação (10–90 min) mencionar “discovery”, transcrever com o modelo de vendas, rotular falantes e manter local."
+  },
+  "definition": {
+    "wake_phrase": "discovery",
+    "source_filter": "all",
+    "duration_min_seconds": 600,
+    "duration_max_seconds": 5400,
+    "template_id": "velum.sales",
+    "auto_label_voice": true,
+    "language": "auto",
+    "notify": true,
+    "post_action": null
+  }
+}

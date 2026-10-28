@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "meetings.retro-extract",
+  "category": "meetings",
+  "icon": "meeting",
+  "name": {
+    "en": "Sprint retrospective",
+    "pt-BR": "Retrospectiva de sprint"
+  },
+  "description": {
+    "en": "Pull went-well / improve / actions from retros.",
+    "pt-BR": "Extrai o que foi bem / melhorar / ações de retrospectivas."
+  },
+  "preview": {
+    "en": "When a recording mentions “retro” (20 min–2 h), summarize as key items so actions are easy to copy.",
+    "pt-BR": "Quando uma gravação mencionar “retro” (20 min–2 h), resumir como itens-chave para copiar as ações facilmente."
+  },
+  "definition": {
+    "wake_phrase": "retro",
+    "source_filter": "all",
+    "duration_min_seconds": 1200,
+    "duration_max_seconds": 7200,
+    "template_id": "velum.extractive",
+    "auto_label_voice": true,
+    "language": "auto",
+    "notify": true,
+    "post_action": null
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "medical.pt-session",
+  "category": "medical",
+  "icon": "medical",
+  "name": {
+    "en": "Physical therapy session",
+    "pt-BR": "Sessão de fisioterapia"
+  },
+  "description": {
+    "en": "PT session notes kept local.",
+    "pt-BR": "Notas de sessão de fisioterapia mantidas localmente."
+  },
+  "preview": {
+    "en": "When a recording (20–90 min) mentions “physio” or “PT session”, summarize with medical notes on device only.",
+    "pt-BR": "Quando uma gravação (20–90 min) mencionar “physio” ou “PT session”, resumir com notas médicas só no aparelho."
+  },
+  "definition": {
+    "wake_phrase": "physio",
+    "source_filter": "all",
+    "duration_min_seconds": 1200,
+    "duration_max_seconds": 5400,
+    "template_id": "velum.medical",
+    "auto_label_voice": true,
+    "language": "auto",
+    "notify": true,
+    "post_action": null
+  }
+}

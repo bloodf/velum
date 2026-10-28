@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "legal.client-meeting",
+  "category": "legal",
+  "icon": "legal",
+  "name": {
+    "en": "Client legal meeting",
+    "pt-BR": "Reunião jurídica com cliente"
+  },
+  "description": {
+    "en": "Attorney–client meetings into legal notes (local).",
+    "pt-BR": "Reuniões advogado–cliente em notas jurídicas (local)."
+  },
+  "preview": {
+    "en": "When a Note Pro recording (20 min–2 h) arrives, summarize with the legal template, label speakers, and keep on device.",
+    "pt-BR": "Quando uma gravação do Note Pro (20 min–2 h) chegar, resumir com o modelo jurídico, rotular falantes e manter no aparelho."
+  },
+  "definition": {
+    "wake_phrase": null,
+    "source_filter": "note_pro",
+    "duration_min_seconds": 1200,
+    "duration_max_seconds": 7200,
+    "template_id": "velum.legal",
+    "auto_label_voice": true,
+    "language": "auto",
+    "notify": true,
+    "post_action": null
+  }
+}

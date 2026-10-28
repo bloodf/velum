@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "legal.compliance-webhook",
+  "category": "legal",
+  "icon": "legal",
+  "name": {
+    "en": "Compliance review → webhook",
+    "pt-BR": "Revisão de compliance → webhook"
+  },
+  "description": {
+    "en": "Push compliance summaries to an internal webhook.",
+    "pt-BR": "Envia resumos de compliance para um webhook interno."
+  },
+  "preview": {
+    "en": "When a recording mentions “compliance” (20 min–2 h), summarize with legal notes and POST to your webhook.",
+    "pt-BR": "Quando uma gravação mencionar “compliance” (20 min–2 h), resumir com notas jurídicas e enviar ao webhook."
+  },
+  "definition": {
+    "wake_phrase": "compliance",
+    "source_filter": "all",
+    "duration_min_seconds": 1200,
+    "duration_max_seconds": 7200,
+    "template_id": "velum.legal",
+    "auto_label_voice": true,
+    "language": "auto",
+    "notify": true,
+    "post_action": "webhook"
+  }
+}

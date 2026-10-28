@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "education.study-group",
+  "category": "education",
+  "icon": "education",
+  "name": {
+    "en": "Study group",
+    "pt-BR": "Grupo de estudos"
+  },
+  "description": {
+    "en": "Peer study sessions into key-item extraction.",
+    "pt-BR": "Grupos de estudo em extração de itens-chave."
+  },
+  "preview": {
+    "en": "When a recording (20–120 min) mentions “study group”, extract key items with speaker labels.",
+    "pt-BR": "Quando uma gravação (20–120 min) mencionar “study group”, extrair itens-chave com rótulos de falantes."
+  },
+  "definition": {
+    "wake_phrase": "study group",
+    "source_filter": "all",
+    "duration_min_seconds": 1200,
+    "duration_max_seconds": 7200,
+    "template_id": "velum.extractive",
+    "auto_label_voice": true,
+    "language": "auto",
+    "notify": true,
+    "post_action": null
+  }
+}

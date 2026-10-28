@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "research.expert-interview",
+  "category": "research",
+  "icon": "research",
+  "name": {
+    "en": "Expert interview",
+    "pt-BR": "Entrevista com especialista"
+  },
+  "description": {
+    "en": "Research interviews with speaker labels.",
+    "pt-BR": "Entrevistas de pesquisa com rótulos de falantes."
+  },
+  "preview": {
+    "en": "When an interview-length recording (25–90 min) mentions “expert”, use the interview template.",
+    "pt-BR": "Quando uma gravação de duração de entrevista (25–90 min) mencionar “expert”, usar o modelo de entrevista."
+  },
+  "definition": {
+    "wake_phrase": "expert",
+    "source_filter": "all",
+    "duration_min_seconds": 1500,
+    "duration_max_seconds": 5400,
+    "template_id": "velum.interview",
+    "auto_label_voice": true,
+    "language": "auto",
+    "notify": true,
+    "post_action": null
+  }
+}

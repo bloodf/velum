@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "it.incident-postmortem",
+  "category": "it",
+  "icon": "code",
+  "name": {
+    "en": "Incident postmortem",
+    "pt-BR": "Postmortem de incidente"
+  },
+  "description": {
+    "en": "Postmortems into technical notes + vault export.",
+    "pt-BR": "Postmortems em notas técnicas + exportação ao vault."
+  },
+  "preview": {
+    "en": "When a recording (20 min–2 h) mentions “postmortem” or “incident”, summarize with the IT template and export Markdown.",
+    "pt-BR": "Quando uma gravação (20 min–2 h) mencionar “postmortem” ou “incident”, resumir com o modelo de TI e exportar Markdown."
+  },
+  "definition": {
+    "wake_phrase": "postmortem",
+    "source_filter": "all",
+    "duration_min_seconds": 1200,
+    "duration_max_seconds": 7200,
+    "template_id": "velum.it",
+    "auto_label_voice": true,
+    "language": "auto",
+    "notify": true,
+    "post_action": "folder_export"
+  }
+}

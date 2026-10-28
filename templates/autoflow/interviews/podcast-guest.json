@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "interviews.podcast-guest",
+  "category": "interviews",
+  "icon": "interview",
+  "name": {
+    "en": "Podcast guest prep",
+    "pt-BR": "Prep de convidado de podcast"
+  },
+  "description": {
+    "en": "Turn guest interviews into shareable notes.",
+    "pt-BR": "Transforma entrevistas com convidados em notas compartilháveis."
+  },
+  "preview": {
+    "en": "When a long interview (30 min–2 h) mentions “podcast”, summarize and open the share sheet.",
+    "pt-BR": "Quando uma entrevista longa (30 min–2 h) mencionar “podcast”, resumir e abrir o compartilhamento."
+  },
+  "definition": {
+    "wake_phrase": "podcast",
+    "source_filter": "all",
+    "duration_min_seconds": 1800,
+    "duration_max_seconds": 7200,
+    "template_id": "velum.interview",
+    "auto_label_voice": true,
+    "language": "auto",
+    "notify": true,
+    "post_action": "share"
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "finance.advisor-call",
+  "category": "finance",
+  "icon": "finance",
+  "name": {
+    "en": "Advisor call",
+    "pt-BR": "Ligação com assessor"
+  },
+  "description": {
+    "en": "Advisor conversations into financial notes (local).",
+    "pt-BR": "Conversas com assessor em notas financeiras (local)."
+  },
+  "preview": {
+    "en": "When a phone recording (15–60 min) mentions “advisor”, summarize with the financial template on device.",
+    "pt-BR": "Quando uma gravação do telefone (15–60 min) mencionar “advisor”, resumir com o modelo financeiro no aparelho."
+  },
+  "definition": {
+    "wake_phrase": "advisor",
+    "source_filter": "phone",
+    "duration_min_seconds": 900,
+    "duration_max_seconds": 3600,
+    "template_id": "velum.financial",
+    "auto_label_voice": true,
+    "language": "auto",
+    "notify": true,
+    "post_action": null
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "education.seminar-share",
+  "category": "education",
+  "icon": "education",
+  "name": {
+    "en": "Seminar → share",
+    "pt-BR": "Seminário → compartilhar"
+  },
+  "description": {
+    "en": "Share seminar summaries with classmates.",
+    "pt-BR": "Compartilha resumos de seminário com colegas."
+  },
+  "preview": {
+    "en": "When a seminar recording (40 min–2 h) arrives, summarize as lecture notes and open share.",
+    "pt-BR": "Quando uma gravação de seminário (40 min–2 h) chegar, resumir como notas de aula e abrir compartilhamento."
+  },
+  "definition": {
+    "wake_phrase": "seminar",
+    "source_filter": "all",
+    "duration_min_seconds": 2400,
+    "duration_max_seconds": 7200,
+    "template_id": "velum.education",
+    "auto_label_voice": true,
+    "language": "auto",
+    "notify": true,
+    "post_action": "share"
+  }
+}

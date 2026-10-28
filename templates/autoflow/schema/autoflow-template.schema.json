@@ -1,0 +1,160 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://velum.dev/schemas/autoflow-template.schema.json",
+  "title": "Velum AutoFlow automation template",
+  "description": "Ready-made AutoFlow definition bundled into the app. schema_version must match the validator.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "id",
+    "category",
+    "icon",
+    "name",
+    "description",
+    "preview",
+    "definition"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Bump only with a coordinated catalog + app change."
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(\\.[a-z0-9][a-z0-9-]*)+$",
+      "minLength": 3,
+      "maxLength": 96,
+      "description": "Stable id, usually <category>.<slug>."
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "meetings",
+        "sales",
+        "interviews",
+        "medical",
+        "legal",
+        "education",
+        "personal",
+        "productivity",
+        "research",
+        "content",
+        "real_estate",
+        "finance",
+        "it",
+        "devices"
+      ]
+    },
+    "icon": {
+      "type": "string",
+      "enum": [
+        "meeting",
+        "sales",
+        "interview",
+        "medical",
+        "legal",
+        "education",
+        "journal",
+        "productivity",
+        "research",
+        "content",
+        "estate",
+        "finance",
+        "code",
+        "device"
+      ]
+    },
+    "name": {
+      "$ref": "#/$defs/localizedString"
+    },
+    "description": {
+      "$ref": "#/$defs/localizedString"
+    },
+    "preview": {
+      "$ref": "#/$defs/localizedString",
+      "description": "Plain-language summary of what the automation does."
+    },
+    "author": {
+      "description": "Optional contributor credit. Built-in templates omit this field or set null.",
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name"],
+          "properties": {
+            "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+            "github": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9-]{1,39}$",
+              "description": "GitHub handle without @"
+            }
+          }
+        }
+      ]
+    },
+    "definition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_filter",
+        "duration_min_seconds",
+        "duration_max_seconds",
+        "template_id",
+        "auto_label_voice",
+        "language",
+        "notify",
+        "post_action"
+      ],
+      "properties": {
+        "wake_phrase": {
+          "type": ["string", "null"],
+          "maxLength": 120
+        },
+        "source_filter": {
+          "type": "string",
+          "enum": ["note_pro", "phone", "import", "all"]
+        },
+        "duration_min_seconds": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 86400
+        },
+        "duration_max_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 86400
+        },
+        "template_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "Stable note-template id from BuiltinTemplateCatalog (e.g. velum.meeting)."
+        },
+        "auto_label_voice": { "type": "boolean" },
+        "language": {
+          "type": "string",
+          "enum": ["auto", "pt-BR", "en"]
+        },
+        "notify": { "type": "boolean" },
+        "post_action": {
+          "type": ["string", "null"],
+          "enum": [null, "", "share", "calendar_insert", "folder_export", "webhook"]
+        }
+      }
+    }
+  },
+  "$defs": {
+    "localizedString": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["en", "pt-BR"],
+      "properties": {
+        "en": { "type": "string", "minLength": 1, "maxLength": 280 },
+        "pt-BR": { "type": "string", "minLength": 1, "maxLength": 280 }
+      }
+    }
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "meetings.note-pro-minutes",
+  "category": "meetings",
+  "icon": "meeting",
+  "name": {
+    "en": "Note Pro meeting minutes",
+    "pt-BR": "Ata de reunião do Note Pro"
+  },
+  "description": {
+    "en": "Transcribe Note Pro recordings into structured meeting minutes.",
+    "pt-BR": "Transcreve gravações do Note Pro em atas de reunião estruturadas."
+  },
+  "preview": {
+    "en": "When a Note Pro recording arrives (up to 3 h), transcribe it, summarize with meeting minutes, label speakers, and keep the note on device.",
+    "pt-BR": "Quando uma gravação do Note Pro chegar (até 3 h), transcrever, resumir como ata, rotular falantes e manter a nota no aparelho."
+  },
+  "definition": {
+    "wake_phrase": null,
+    "source_filter": "note_pro",
+    "duration_min_seconds": 0,
+    "duration_max_seconds": 10800,
+    "template_id": "velum.meeting",
+    "auto_label_voice": true,
+    "language": "auto",
+    "notify": true,
+    "post_action": null
+  }
+}
