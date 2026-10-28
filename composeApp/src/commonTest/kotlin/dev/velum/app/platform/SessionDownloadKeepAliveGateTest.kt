@@ -95,11 +95,34 @@ class SessionDownloadKeepAliveGateTest {
         )
 
         gate.onDownloadBegin()
-        // Mimic cancel: end keep-alive immediately, then job finally ends again.
+        // Owner finally may end twice (cancel + completion); gate stays idempotent.
         gate.onDownloadEnd()
         gate.onDownloadEnd()
         assertEquals(1, starts)
         assertEquals(1, stops)
         assertFalse(gate.isActive)
+    }
+
+    @Test
+    fun concurrentBeginEnd_isThreadSafe() {
+        var starts = 0
+        var stops = 0
+        val gate = SessionDownloadKeepAliveGate(
+            startPlatform = { starts++ },
+            stopPlatform = { stops++ },
+        )
+        val threads = (0 until 8).map { idx ->
+            Thread {
+                if (idx % 2 == 0) gate.onDownloadBegin() else gate.onDownloadEnd()
+            }
+        }
+        threads.forEach { it.start() }
+        threads.forEach { it.join() }
+        // After mixed races, settle to a clean end.
+        gate.onDownloadBegin()
+        gate.onDownloadEnd()
+        assertFalse(gate.isActive)
+        assertTrue(starts >= 1)
+        assertEquals(starts, stops)
     }
 }

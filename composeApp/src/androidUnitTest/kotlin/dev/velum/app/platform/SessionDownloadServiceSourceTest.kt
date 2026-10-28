@@ -2,6 +2,7 @@ package dev.velum.app.platform
 
 import java.io.File
 import kotlin.test.Test
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
@@ -28,20 +29,53 @@ class SessionDownloadServiceSourceTest {
         return file.readText()
     }
 
-    @Test
-    fun usesConnectedDeviceForegroundType() {
-        val src = serviceSource()
-        assertTrue(src.contains("FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE"))
-        assertTrue(src.contains("promoteToForeground"))
-        assertTrue(src.contains("DownloadProgressNotifier.buildNotification"))
+    private fun managerSource(): String {
+        val candidates = listOf(
+            File("src/commonMain/kotlin/dev/velum/app/download/SessionDownloadManager.kt"),
+            File("composeApp/src/commonMain/kotlin/dev/velum/app/download/SessionDownloadManager.kt"),
+        )
+        val file = candidates.firstOrNull { it.isFile }
+            ?: error("SessionDownloadManager.kt not found from ${File(".").absolutePath}")
+        return file.readText()
+    }
+
+    private fun viewModelSource(): String {
+        val candidates = listOf(
+            File("src/commonMain/kotlin/dev/velum/app/ui/DeviceViewModel.kt"),
+            File("composeApp/src/commonMain/kotlin/dev/velum/app/ui/DeviceViewModel.kt"),
+        )
+        val file = candidates.firstOrNull { it.isFile }
+            ?: error("DeviceViewModel.kt not found from ${File(".").absolutePath}")
+        return file.readText()
     }
 
     @Test
-    fun startPath_handlesAndroid14RestrictionsGracefully() {
+    fun usesConnectedDeviceForegroundTypeOnApi29Plus() {
         val src = serviceSource()
-        assertTrue(src.contains("startForegroundService denied") || src.contains("ForegroundService"))
-        assertTrue(src.contains("catch (t: Throwable)"))
+        assertTrue(src.contains("FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE"))
+        assertTrue(src.contains("SDK_INT >= 29"))
+        assertTrue(src.contains("promoteToForeground"))
+        assertTrue(src.contains("DownloadProgressNotifier.buildNotification"))
+        assertTrue(src.contains("enterMinimalForegroundThenStop"))
+    }
+
+    @Test
+    fun startPath_checksBluetoothConnectAndHandlesDeniedStart() {
+        val src = serviceSource()
+        assertTrue(src.contains("hasBluetoothConnectPermission"))
+        assertTrue(src.contains("BLUETOOTH_CONNECT"))
+        assertTrue(src.contains("startForegroundService denied"))
         assertTrue(src.contains("download continues without FGS"))
+        assertTrue(src.contains("stopService"))
+    }
+
+    @Test
+    fun promoteFailure_alwaysStartForegroundBeforeStopSelf() {
+        val src = serviceSource()
+        assertTrue(src.contains("enterMinimalForegroundThenStop"))
+        assertTrue(src.contains("minimal startForeground failed") || src.contains("minimalForegroundNotification"))
+        // Failure branch must not stopSelf without attempting startForeground.
+        assertTrue(src.contains("handleStart"))
     }
 
     @Test
@@ -59,5 +93,21 @@ class SessionDownloadServiceSourceTest {
         assertTrue(manifest.contains("foregroundServiceType=\"microphone\""))
         assertTrue(manifest.contains("FOREGROUND_SERVICE_DATA_SYNC"))
         assertTrue(manifest.contains("FOREGROUND_SERVICE_MICROPHONE"))
+    }
+
+    @Test
+    fun downloadJobLivesInAppScopedManager_notViewModelScope() {
+        val manager = managerSource()
+        val vm = viewModelSource()
+        assertTrue(manager.contains("class SessionDownloadManager"))
+        assertTrue(manager.contains("keepAlive.onDownloadBegin()"))
+        assertTrue(manager.contains("keepAlive.onDownloadEnd()"))
+        assertFalse(
+            vm.contains("viewModelScope.launch") && vm.contains("runDownloadSession"),
+            "DeviceViewModel must not own the download job on viewModelScope",
+        )
+        assertFalse(vm.contains("downloadKeepAlive"))
+        assertTrue(vm.contains("sessionDownloads.start(") || vm.contains("sessionDownloads.start"))
+        assertTrue(vm.contains("sessionDownloads.cancel()"))
     }
 }
