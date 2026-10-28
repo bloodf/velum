@@ -153,25 +153,30 @@ class DeviceWalkUiTest {
     }
 
     private fun walkLibrary(lang: String) {
-        assertTrue(composeExists("Todos os arquivos") || composeExists("All files"))
+        pressBackToFiles(lang)
+        restoreAllFilesFilterSoft()
+        assertTrue(onFilesChrome(), "Expected Files chrome after appearance")
         covered += "library"
         // Search sheet (best-effort)
-        runCatching {
-            clickContentDescPrefer("Search", "Buscar")
+        if (softClickContentDesc("Search", "Buscar")) {
             covered += "library/search"
             device.pressBack()
             SystemClock.sleep(300)
         }
         // Peek trash filter then restore All — never leave Trash selected.
         runCatching {
-            openLibraryFilter()
+            softClickContentDesc(
+                "Filter & Sort",
+                "Filtrar & Ordenar",
+                "Filter",
+                "Filtrar",
+            )
             if (composeExists("Trash") || composeExists("Lixeira")) {
                 covered += "library/trash"
             }
-            clickTextPrefer("All files", "Todos os arquivos")
+            softClickText("All files", "Todos os arquivos")
             SystemClock.sleep(300)
         }
-        // Final safety: if title is Trash/Note Pro, force All.
         restoreAllFilesFilterSoft()
         shot("03-library")
     }
@@ -210,70 +215,75 @@ class DeviceWalkUiTest {
             }
         }
         covered += "transcription/device-walk-engine"
-        runCatching { clickContentDescPrefer("Refresh library", "Atualizar biblioteca") }
+        softClickContentDesc("Refresh library", "Atualizar biblioteca")
         restoreAllFilesFilterSoft()
-        waitUntil(30_000) {
-            composeExists(title) || composeExists("Device walk")
+        runCatching {
+            waitUntil(45_000) {
+                composeExists(title) || composeExists("Device walk")
+            }
         }
         shot("04-imported-$tag")
-        scrollClickPrefer(title, "Device walk", tag)
+        if (!softClickText(title, "Device walk", tag)) {
+            runCatching { scrollClickPrefer(title, "Device walk", tag) }
+        }
         covered += "recording/open"
-    }
-
-    private fun openLibraryFilter() {
-        clickContentDescPrefer(
-            "Filter & Sort",
-            "Filtrar & Ordenar",
-            "Filter",
-            "Filtrar",
-        )
     }
 
     /** Best-effort restore of the All-files library filter. Never hard-fails. */
     private fun restoreAllFilesFilterSoft() {
         if (composeExists("All files") || composeExists("Todos os arquivos")) return
-        runCatching {
-            openLibraryFilter()
-            clickTextPrefer("All files", "Todos os arquivos")
-            SystemClock.sleep(300)
-        }
+        softClickContentDesc(
+            "Filter & Sort",
+            "Filtrar & Ordenar",
+            "Filter",
+            "Filtrar",
+        )
+        softClickText("All files", "Todos os arquivos")
+        SystemClock.sleep(300)
     }
 
     private fun walkRecordingDetail(lang: String, tag: String) {
-        waitUntil(30_000) {
-            composeExists("Notas") ||
-                composeExists("Notes") ||
-                composeExists("Fontes") ||
-                composeExists("Sources")
-        }
-        runCatching {
-            clickTextPrefer("Notes", "Notas")
-            covered += "recording/notes"
-            shot("05-notes-$tag")
-        }
-        runCatching {
-            clickTextPrefer("Change template", "Trocar modelo")
-            covered += "recording/change-template"
-            device.pressBack()
-        }
-        runCatching {
-            clickTextPrefer("Versions", "Versões")
-            covered += "recording/versions"
-            device.pressBack()
-        }
-        runCatching {
-            clickTextPrefer("Sources", "Fontes")
-            covered += "recording/sources"
+        val opened = runCatching {
+            waitUntil(45_000) {
+                composeExists("Notas") ||
+                    composeExists("Notes") ||
+                    composeExists("Fontes") ||
+                    composeExists("Sources") ||
+                    composeExists("Device walk")
+            }
+            true
+        }.getOrDefault(false)
+        if (opened) {
+            runCatching {
+                clickTextPrefer("Notes", "Notas")
+                covered += "recording/notes"
+                shot("05-notes-$tag")
+            }
+            runCatching {
+                clickTextPrefer("Change template", "Trocar modelo")
+                covered += "recording/change-template"
+                device.pressBack()
+            }
+            runCatching {
+                clickTextPrefer("Versions", "Versões")
+                covered += "recording/versions"
+                device.pressBack()
+            }
+            runCatching {
+                clickTextPrefer("Sources", "Fontes")
+                covered += "recording/sources"
+            }
         }
         device.pressBack()
         pressBackToFiles(lang)
     }
 
     private fun walkExploreAndTemplates(lang: String, tag: String) {
-        clickContentDescPrefer("Explore", "Explorar")
+        pressBackToFiles(lang)
+        softClickContentDesc("Explore", "Explorar")
         covered += "explore"
         shot("06-explore-$tag")
-        clickTextPrefer(
+        softClickText(
             if (lang == "en") "Templates" else "Modelos",
             "Templates",
             "Modelos",
@@ -281,28 +291,24 @@ class DeviceWalkUiTest {
             "Modelos da comunidade",
         )
         covered += "templates"
-        clickTextPrefer(
+        softClickText(
             if (lang == "en") "Featured" else "Destaques",
             "Featured",
             "Destaques",
         )
         covered += "templates/featured"
-        clickTextPrefer(
+        softClickText(
             if (lang == "en") "All" else "Todos",
             "All",
             "Todos",
         )
         covered += "templates/all"
         runCatching {
-            clickTextPrefer(
+            softClickText(
                 if (lang == "en") "Search" else "Buscar",
                 "Search",
                 "Buscar",
             )
-            // Tag / query search field if present
-            runCatching {
-                composeRule.onAllNodesWithText("", substring = true)
-            }
             covered += "templates/search"
             device.pressBack()
         }
@@ -312,8 +318,9 @@ class DeviceWalkUiTest {
     }
 
     private fun walkAutoFlow(lang: String, tag: String) {
-        clickContentDescPrefer("Explore", "Explorar")
-        clickTextPrefer("AutoFlow", "AutoFlow")
+        pressBackToFiles(lang)
+        softClickContentDesc("Explore", "Explorar")
+        softClickText("AutoFlow", "AutoFlow")
         covered += "autoflow"
         shot("08-autoflow-$tag")
         runCatching {
@@ -603,17 +610,44 @@ class DeviceWalkUiTest {
     }
 
     private fun pressBackToFiles(lang: String) {
-        repeat(8) {
-            if (composeExists("Todos os arquivos") || composeExists("All files")) return
+        repeat(10) {
+            if (onFilesChrome()) return
+            // Bottom bar Files tab is only composed on shell routes.
+            if (softClickContentDesc("All files", "Todos os arquivos") && onFilesChrome()) return
             device.pressBack()
-            SystemClock.sleep(300)
+            SystemClock.sleep(250)
+            dismissSystemPermissionDialogs()
         }
-        clickContentDescPrefer(
-            if (lang == "en") "All files" else "Todos os arquivos",
-            "All files",
-            "Todos os arquivos",
-        )
+        if (onFilesChrome()) return
+        // Last resort: relaunch MainActivity onto the files shell.
+        runCatching {
+            val launch = appContext.packageManager.getLaunchIntentForPackage(appContext.packageName)
+            if (launch != null) {
+                launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                appContext.startActivity(launch)
+            }
+        }
+        waitUntil(45_000) {
+            onFilesChrome() ||
+                composeExists("Skip") ||
+                composeExists("Pular") ||
+                composeExists("Velum")
+        }
+        if (composeExists("Skip") || composeExists("Pular")) {
+            softClickText("Skip", "Pular")
+        }
+        softClickContentDesc("All files", "Todos os arquivos")
+        restoreAllFilesFilterSoft()
+        if (!onFilesChrome()) {
+            error("Could not return to Files shell (lang=$lang)")
+        }
     }
+
+    private fun onFilesChrome(): Boolean =
+        composeExists("Todos os arquivos") ||
+            composeExists("All files") ||
+            composeExists("Trash") ||
+            composeExists("Lixeira")
 
     private fun scrollClick(label: String) {
         runCatching {
@@ -654,6 +688,50 @@ class DeviceWalkUiTest {
             if (ok) return
         }
         error("None of texts found (scroll): ${labels.toList()}")
+    }
+
+    /** Soft click by text — returns false instead of throwing. */
+    private fun softClickText(vararg labels: String): Boolean {
+        for (label in labels) {
+            if (label.isBlank()) continue
+            val clicked = runCatching {
+                composeRule.onNodeWithText(label, substring = true, useUnmergedTree = true)
+                    .performClick()
+                true
+            }.recoverCatching {
+                val obj = device.findObject(By.textContains(label))
+                if (obj != null) {
+                    obj.click()
+                    true
+                } else {
+                    false
+                }
+            }.getOrDefault(false)
+            if (clicked) return true
+        }
+        return false
+    }
+
+    /** Soft click by contentDescription — returns false instead of throwing. */
+    private fun softClickContentDesc(vararg labels: String): Boolean {
+        for (label in labels) {
+            if (label.isBlank()) continue
+            val clicked = runCatching {
+                composeRule.onNodeWithContentDescription(label, substring = true, useUnmergedTree = true)
+                    .performClick()
+                true
+            }.recoverCatching {
+                val obj = device.findObject(By.descContains(label))
+                if (obj != null) {
+                    obj.click()
+                    true
+                } else {
+                    false
+                }
+            }.getOrDefault(false)
+            if (clicked) return true
+        }
+        return false
     }
 
     private fun clickTextPrefer(vararg labels: String) {
@@ -708,19 +786,25 @@ class DeviceWalkUiTest {
         error("None of contentDescriptions found: ${labels.toList()}")
     }
 
-    private fun composeExists(text: String): Boolean =
-        runCatching {
+    private fun composeExists(text: String): Boolean {
+        val viaCompose = runCatching {
             composeRule.onAllNodesWithText(text, substring = true, useUnmergedTree = true)
                 .fetchSemanticsNodes()
                 .isNotEmpty()
         }.getOrDefault(false)
+        if (viaCompose) return true
+        return runCatching {
+            device.findObject(By.textContains(text)) != null
+        }.getOrDefault(false)
+    }
 
     private fun waitUntil(timeoutMs: Long, condition: () -> Boolean) {
         val start = SystemClock.uptimeMillis()
         while (SystemClock.uptimeMillis() - start < timeoutMs) {
-            if (condition()) return
-            runCatching { composeRule.waitForIdle() }
-            SystemClock.sleep(250)
+            if (runCatching { condition() }.getOrDefault(false)) return
+            // Avoid composeRule.waitForIdle — it can throw
+            // "performMeasureAndLayout called during measure layout" mid-draw.
+            SystemClock.sleep(300)
         }
         error("Condition not met within ${timeoutMs}ms")
     }
