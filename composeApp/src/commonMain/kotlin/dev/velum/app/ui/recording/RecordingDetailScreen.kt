@@ -89,6 +89,7 @@ import dev.velum.app.platform.WavWriter
 import dev.velum.app.platform.createAudioPlayer
 import dev.velum.app.platform.finalizeMicRecording
 import dev.velum.app.platform.localizedLabel
+import dev.velum.app.platform.shouldUseDemoPcm
 import dev.velum.app.platform.HapticKind
 import dev.velum.app.platform.LocalHaptics
 import dev.velum.app.platform.canExportPdf
@@ -1092,6 +1093,7 @@ private fun LiveTranscriptPane(
     }
     var usingMic by remember { mutableStateOf(false) }
     var stopping by remember { mutableStateOf(false) }
+    var micError by remember { mutableStateOf<String?>(null) }
     var inputSource by remember {
         val preferred = container.settingsRepository.preferences.value.defaultMicInput
         mutableStateOf(
@@ -1108,7 +1110,7 @@ private fun LiveTranscriptPane(
     val wavPath = remember(recordingId) {
         "${recordingsDirectoryPath()}/$recordingId.wav"
     }
-    // Only allocate WavWriter for the PCM-demo fallback. MicCapture/FGS owns the real file.
+    // Only allocate WavWriter for Unsupported (desktop/iOS) demo. Never on Android failure.
     val demoWavWriter = remember(recordingId) { mutableStateOf<WavWriter?>(null) }
     // Seeded transcript (Roborazzi / resume) — keep it visible; skip PCM demo overwrite.
     val preserveSeeded = seededTranscript != null
@@ -1121,6 +1123,11 @@ private fun LiveTranscriptPane(
 
     // Mic start is suspend (no main-thread runBlocking). Wire capture + optional PCM demo here.
     LaunchedEffect(recordingId, inputSource) {
+        // Changing input source while FGS is already running does not retarget capture —
+        // chips are disabled while usingMic; skip re-start.
+        if (usingMic && container.micCapture.isCapturing) {
+            return@LaunchedEffect
+        }
         streamer.onPartial = { md ->
             if (!preserveSeeded) partial = md
         }
@@ -1139,21 +1146,32 @@ private fun LiveTranscriptPane(
 
         val alreadyCapturing = container.micCapture.isCapturing
         var useDemo = false
+        micError = null
         if (alreadyCapturing) {
             container.micCapture.onPcmChunk = push
             usingMic = true
             markerCount = container.micCapture.markers.size
             pausedUi = container.micCapture.isPaused
         } else if (!preserveSeeded) {
-            when (container.micCapture.start(wavPath, inputSource)) {
+            when (val started = container.micCapture.start(wavPath, inputSource)) {
                 MicStartResult.Started -> {
                     container.activeMicRecordingId = recordingId
                     container.micCapture.onPcmChunk = push
                     usingMic = true
                 }
-                else -> {
+                MicStartResult.Unsupported -> {
+                    // Desktop/iOS (and similar): synthetic PCM demo only.
                     usingMic = false
-                    useDemo = true
+                    useDemo = shouldUseDemoPcm(started)
+                }
+                MicStartResult.PermissionRequired -> {
+                    usingMic = false
+                    micError = strings.micPermissionRationale
+                }
+                is MicStartResult.Failed -> {
+                    usingMic = false
+                    // Android (and any supported platform): show error — never demo PCM.
+                    micError = started.message.ifBlank { strings.micUnsupported }
                 }
             }
         } else {
@@ -1230,8 +1248,15 @@ private fun LiveTranscriptPane(
                     modifier = Modifier.weight(1f),
                 )
             }
+        } else if (micError != null) {
+            Text(
+                micError!!,
+                color = VelumInkSecondary,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+            )
         } else if (!usingMic) {
-            // Robolectric / desktop: PCM demo path — keep a single quiet hint.
+            // Desktop/iOS Unsupported: PCM demo path — keep a single quiet hint.
             Text(
                 strings.streamingDemoHint,
                 color = VelumInkSecondary,
@@ -1287,10 +1312,12 @@ private fun LiveTranscriptPane(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 MicInputSource.entries.forEach { src ->
+                    // Source chips do not retarget a running FGS — disable while capturing.
                     OutlineButton(
                         src.localizedLabel(strings),
                         { inputSource = src },
                         modifier = Modifier,
+                        enabled = !usingMic,
                     )
                 }
             }
@@ -1338,28 +1365,40 @@ private fun LiveTranscriptPane(
                         }
                     }
                     container.repository.updateTranscript(recordingId, finalMd)
-                    if (container.activeMicRecordingId == recordingId ||
-                        container.micCapture.isCapturing
-                    ) {
-                        finalizeMicRecording(container, recordingId, wavPath)
-                    } else {
-                        val finishedWav = withContext(Dispatchers.IO) {
-                            demoWavWriter.value?.finish()
-                                ?: WavWriter(wavPath, sampleRateHz = 16_000).finish()
+                    when {
+                        container.activeMicRecordingId == recordingId ||
+                            container.micCapture.isCapturing -> {
+                            finalizeMicRecording(container, recordingId, wavPath)
+                            container.repository.updateStatus(recordingId, "queued")
+                            container.enqueueProcessing(
+                                recordingId = recordingId,
+                                templateId = "velum.meeting",
+                                retranscribe = true,
+                            )
                         }
-                        container.repository.updateLocalPath(
-                            id = recordingId,
-                            localPath = finishedWav.absolutePath,
-                            durationSeconds = finishedWav.durationSeconds,
-                            sizeBytes = finishedWav.sizeBytes,
-                        )
+                        demoWavWriter.value != null -> {
+                            // Unsupported-platform demo only (never Android mic failure).
+                            val finishedWav = withContext(Dispatchers.IO) {
+                                demoWavWriter.value!!.finish()
+                            }
+                            container.repository.updateLocalPath(
+                                id = recordingId,
+                                localPath = finishedWav.absolutePath,
+                                durationSeconds = finishedWav.durationSeconds,
+                                sizeBytes = finishedWav.sizeBytes,
+                            )
+                            container.repository.updateStatus(recordingId, "queued")
+                            container.enqueueProcessing(
+                                recordingId = recordingId,
+                                templateId = "velum.meeting",
+                                retranscribe = true,
+                            )
+                        }
+                        else -> {
+                            // Android MicStartResult failure: no demo PCM, mark failed.
+                            container.repository.updateStatus(recordingId, "failed")
+                        }
                     }
-                    container.repository.updateStatus(recordingId, "queued")
-                    container.enqueueProcessing(
-                        recordingId = recordingId,
-                        templateId = "velum.meeting",
-                        retranscribe = true,
-                    )
                     onStoppedAndQueued()
                 }
             },
