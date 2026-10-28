@@ -108,11 +108,12 @@ object FtsIndex {
         return !sql.contains("tags", ignoreCase = true)
     }
 
-    /**
-     * True when at least one FTS table has zero rows (e.g. after first seed, or
-     * one-sided emptiness that should still trigger a rebuild).
-     */
-    fun isEmpty(driver: SqlDriver): Boolean {
+    data class Emptiness(
+        val recordingsEmpty: Boolean,
+        val templatesEmpty: Boolean,
+    )
+
+    fun emptiness(driver: SqlDriver): Emptiness {
         fun count(table: String): Long =
             driver.executeQuery(
                 identifier = null,
@@ -124,15 +125,36 @@ object FtsIndex {
                 parameters = 0,
             ).value
         return try {
-            count("recording_fts") == 0L || count("template_fts") == 0L
+            Emptiness(
+                recordingsEmpty = count("recording_fts") == 0L,
+                templatesEmpty = count("template_fts") == 0L,
+            )
         } catch (_: Exception) {
-            true
+            Emptiness(recordingsEmpty = true, templatesEmpty = true)
         }
+    }
+
+    /**
+     * True when at least one FTS table has zero rows.
+     * Prefer [emptiness] + selective rebuild — an empty library alone must not
+     * force rewriting every template on cold start.
+     */
+    fun isEmpty(driver: SqlDriver): Boolean {
+        val e = emptiness(driver)
+        return e.recordingsEmpty || e.templatesEmpty
     }
 
     /** Remove every FTS row (call before a full rebuild to drop orphans). */
     fun clearAll(driver: SqlDriver) {
+        clearRecordings(driver)
+        clearTemplates(driver)
+    }
+
+    fun clearRecordings(driver: SqlDriver) {
         driver.execute(identifier = null, sql = "DELETE FROM recording_fts", parameters = 0)
+    }
+
+    fun clearTemplates(driver: SqlDriver) {
         driver.execute(identifier = null, sql = "DELETE FROM template_fts", parameters = 0)
     }
 

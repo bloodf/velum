@@ -18,6 +18,7 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
+import dev.velum.ai.ApiErrorSanitizer
 import dev.velum.ai.R
 import dev.velum.ai.engine.JobProgress
 import dev.velum.core.model.ComputeMode
@@ -132,14 +133,18 @@ class RecordingProcessWorker(
             } else {
                 repository.updateStatus(recordingId, "failed")
                 Result.failure(
-                    workDataOf(KEY_ERROR to (t.message ?: t.toString())),
+                    workDataOf(
+                        KEY_ERROR to ApiErrorSanitizer.sanitize(t.message ?: t.toString()),
+                    ),
                 )
             }
         }
 
         return when {
             succeeded -> Result.success()
-            failedMessage != null -> Result.failure(workDataOf(KEY_ERROR to failedMessage))
+            failedMessage != null -> Result.failure(
+                workDataOf(KEY_ERROR to ApiErrorSanitizer.sanitize(failedMessage)),
+            )
             ThermalMonitor.isSevereOrCritical(powerManager) -> {
                 repository.updateProcessingCheckpoint(recordingId, STATUS_PAUSED_THERMAL)
                 Result.retry()
@@ -214,9 +219,17 @@ class RecordingProcessWorker(
                 .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
                 .addTag("recording:$recordingId")
                 .build()
+            // KEEP drops a later AutoFlow enqueue (template/model) after download/import
+            // enqueued with nulls. UPDATE upgrades pending work when AutoFlow params arrive;
+            // null-only enqueues still KEEP so we do not cancel an in-flight job.
+            val policy = if (recordingWorkHasAutoFlowParams(templateId, apiModelOverride)) {
+                ExistingWorkPolicy.UPDATE
+            } else {
+                ExistingWorkPolicy.KEEP
+            }
             WorkManager.getInstance(context).enqueueUniqueWork(
                 UNIQUE_PREFIX + recordingId,
-                ExistingWorkPolicy.KEEP,
+                policy,
                 request,
             )
         }

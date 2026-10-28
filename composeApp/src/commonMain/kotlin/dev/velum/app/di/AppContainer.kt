@@ -36,6 +36,7 @@ import dev.velum.app.ui.DownloadedSessionAudio
 import dev.velum.app.ui.SettingsViewModel
 import dev.velum.ble.BleTransport
 import dev.velum.ble.createBleTransport
+import dev.velum.core.autoflow.AutoFlowResolve
 import dev.velum.core.calendar.CalendarEventProvider
 import dev.velum.core.calendar.createCalendarEventProvider
 import dev.velum.core.data.DriverFactory
@@ -230,11 +231,12 @@ class AppContainer(
         } else {
             epochSecondsNow()
         }
+        val title = formatRecordingTitle(started)
         repository.insertRecording(
             id = id,
             sessionId = session.sessionId,
             folderId = null,
-            title = formatRecordingTitle(started),
+            title = title,
             source = "note_pro",
             deviceSerial = session.deviceSerial,
             startedAt = started,
@@ -245,7 +247,18 @@ class AppContainer(
             summaryMarkdown = null,
             status = "queued",
         )
-        enqueueProcessing(id, templateId = null, retranscribe = true)
+        // Resolve AutoFlow before first enqueue so KEEP cannot drop template/model.
+        val match = repository.findMatchingAutoflow(
+            source = "note_pro",
+            durationSeconds = 0,
+            title = title,
+        )
+        enqueueProcessing(
+            recordingId = id,
+            templateId = match?.template_id,
+            retranscribe = true,
+            apiModelOverride = match?.let { AutoFlowResolve.modelOverride(it) },
+        )
         return id
     }
 

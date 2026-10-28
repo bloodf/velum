@@ -21,6 +21,8 @@ data class AudioInput(
     val recordingId: String? = null,
     /** Whisper-style initial_prompt (glossary / vocabulary hints). */
     val initialPrompt: String? = null,
+    /** AutoFlow / UI profile+model override for API ASR (mirrors [LlmRequest.apiOverride]). */
+    val apiOverride: ApiModelOverride? = null,
 )
 
 data class TranscriptSegment(

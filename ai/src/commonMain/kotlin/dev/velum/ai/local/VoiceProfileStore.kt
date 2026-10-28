@@ -40,7 +40,12 @@ class VoiceProfileStore(
             return generated
         }
         // Synchronous path: key must already be primed via [ensureKey].
-        return primedKey ?: ByteArray(32) { 7 }
+        // Never fall back to a fixed key — that would encrypt profiles under a
+        // known constant until ensureKey races in, then fail to decrypt.
+        return primedKey
+            ?: throw IllegalStateException(
+                "VoiceProfileStore key not primed. Call ensureKey() before cipher use.",
+            )
     }
 
     @Volatile

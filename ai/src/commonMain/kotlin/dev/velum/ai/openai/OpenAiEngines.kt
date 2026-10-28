@@ -24,10 +24,15 @@ class OpenAiTranscriber(
     override val engineId: String = "openai-asr"
 
     override suspend fun transcribe(input: AudioInput, modelId: String): TranscriptionResult {
-        val override = if (modelId.isNotBlank()) {
-            ApiModelOverride(modelId = modelId)
-        } else {
-            null
+        // Prefer explicit AutoFlow/UI override (profile + model); fill blank model from modelId.
+        val override = when {
+            input.apiOverride != null && modelId.isNotBlank() ->
+                input.apiOverride.copy(
+                    modelId = input.apiOverride.modelId?.takeIf { it.isNotBlank() } ?: modelId,
+                )
+            input.apiOverride != null -> input.apiOverride
+            modelId.isNotBlank() -> ApiModelOverride(modelId = modelId)
+            else -> null
         }
         val resolved = settings.resolveApiModel(AiApiTask.Transcription, override)
         val key = settings.getProfileApiKey(resolved.profileId).orEmpty()

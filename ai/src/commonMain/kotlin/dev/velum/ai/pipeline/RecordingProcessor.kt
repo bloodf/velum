@@ -163,6 +163,7 @@ class RecordingProcessor(
                         languageHint = cfg.audioLanguage,
                         recordingId = recordingId,
                         initialPrompt = personalization.takeIf { it.isNotBlank() },
+                        apiOverride = apiModelOverride,
                     )
 
                     emit(JobProgress.Running(0.45f, "Diarizing"))
@@ -416,6 +417,7 @@ class RecordingProcessor(
         languageHint: String?,
         recordingId: String,
         initialPrompt: String?,
+        apiOverride: ApiModelOverride? = null,
     ): TranscriptionResult {
         val total = pcm.sizeBytes.toInt().coerceAtLeast(0)
         val windows = WindowedAsr.windows(total, sampleRate)
@@ -429,6 +431,7 @@ class RecordingProcessor(
                     languageHint = languageHint,
                     recordingId = recordingId,
                     initialPrompt = initialPrompt,
+                    apiOverride = apiOverride,
                 ),
                 asrModel,
             )
@@ -446,6 +449,7 @@ class RecordingProcessor(
                     languageHint = languageHint,
                     recordingId = recordingId,
                     initialPrompt = if (parts.isEmpty()) initialPrompt else null,
+                    apiOverride = apiOverride,
                 ),
                 asrModel,
             )

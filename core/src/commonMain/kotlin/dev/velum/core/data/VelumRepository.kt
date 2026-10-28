@@ -4,6 +4,9 @@ import app.cash.sqldelight.coroutines.asFlow
 import app.cash.sqldelight.coroutines.mapToList
 import app.cash.sqldelight.coroutines.mapToOneOrNull
 import app.cash.sqldelight.db.SqlDriver
+import dev.velum.core.autoflow.AutoFlowMatcher
+import dev.velum.core.autoflow.AutoFlowResolve
+import dev.velum.core.db.Autoflow
 import dev.velum.core.db.Glossary_term
 import dev.velum.core.db.Recording
 import dev.velum.core.db.Speaker
@@ -35,8 +38,22 @@ class VelumRepository(
         ftsAvailable = fts.available
         val seeded = SeedData.maybeSeed(db)
         backfillSummaryVersionsFromRecording()
-        if (ftsAvailable && (fts.templateSchemaRecreated || seeded || FtsIndex.isEmpty(driver))) {
-            rebuildFtsIndex()
+        if (ftsAvailable) {
+            when {
+                // Full rebuild after seed or template_fts schema upgrade.
+                fts.templateSchemaRecreated || seeded -> rebuildFtsIndex()
+                else -> {
+                    // Empty library makes recording_fts empty — only rebuild the empty side
+                    // so we do not rewrite every template on every cold start.
+                    val emptiness = FtsIndex.emptiness(driver)
+                    if (emptiness.recordingsEmpty || emptiness.templatesEmpty) {
+                        rebuildFtsIndex(
+                            recordings = emptiness.recordingsEmpty,
+                            templates = emptiness.templatesEmpty,
+                        )
+                    }
+                }
+            }
         }
     }
 
@@ -54,6 +71,31 @@ class VelumRepository(
 
     fun observeAutoflows() =
         q.selectAutoflows().asFlow().mapToList(Dispatchers.Default)
+
+    suspend fun listAutoflows(): List<Autoflow> = withContext(Dispatchers.Default) {
+        q.selectAutoflows().executeAsList()
+    }
+
+    /**
+     * First enabled AutoFlow matching [source]/duration]/title]/transcript].
+     * Call at download/import enqueue so template/model ride the first WorkManager request.
+     */
+    suspend fun findMatchingAutoflow(
+        source: String,
+        durationSeconds: Long,
+        title: String = "",
+        transcript: String? = null,
+    ): Autoflow? = withContext(Dispatchers.Default) {
+        AutoFlowResolve.firstMatch(
+            flows = q.selectAutoflows().executeAsList(),
+            candidate = AutoFlowMatcher.Candidate(
+                source = source,
+                durationSeconds = durationSeconds,
+                title = title,
+                transcript = transcript,
+            ),
+        )
+    }
 
     fun observeFolders() =
         q.selectAllFolders().asFlow().mapToList(Dispatchers.Default)
@@ -415,6 +457,11 @@ class VelumRepository(
         val audioPaths = q.selectAllRecordingIds().executeAsList().mapNotNull { id ->
             q.selectRecordingById(id).executeAsOneOrNull()?.local_path?.takeIf { it.isNotBlank() }
         }
+        // Delete files BEFORE DB wipe so a crash mid-transaction cannot leave audio orphaned
+        // after rows are gone (privacy). Second pass after DB is a safety net.
+        audioPaths.forEach { path ->
+            runCatching { deleteLocalFile(path) }
+        }
         q.selectAllRecordingIds().executeAsList().forEach { id ->
             q.deleteVersionsForRecording(id)
             q.deleteSpeakersForRecording(id)
@@ -519,17 +566,34 @@ class VelumRepository(
         indexRecording(id, title, transcript, summaryMarkdown)
     }
 
-    /** Reindex every recording/template into FTS (after seed or migration). */
-    fun rebuildFtsIndex() {
+    /**
+     * Reindex recordings and/or templates into FTS (after seed, migration, or one-sided empty).
+     * Prefer rebuilding only the empty side on cold start so an empty library does not
+     * rewrite every template row.
+     */
+    fun rebuildFtsIndex(
+        recordings: Boolean = true,
+        templates: Boolean = true,
+    ) {
         if (!ftsAvailable) return
+        if (!recordings && !templates) return
         db.transaction {
-            // Drop orphans (e.g. wiped custom templates) before re-upserting current rows.
-            FtsIndex.clearAll(driver)
-            q.selectAllRecordings().executeAsList().forEach { r ->
-                indexRecording(r.id, r.title, r.transcript, r.summary_markdown)
+            if (recordings && templates) {
+                FtsIndex.clearAll(driver)
+            } else if (recordings) {
+                FtsIndex.clearRecordings(driver)
+            } else {
+                FtsIndex.clearTemplates(driver)
             }
-            q.selectTemplates().executeAsList().forEach { t ->
-                indexTemplate(t.id, t.name, t.description, t.category, t.system_prompt, t.tags)
+            if (recordings) {
+                q.selectAllRecordings().executeAsList().forEach { r ->
+                    indexRecording(r.id, r.title, r.transcript, r.summary_markdown)
+                }
+            }
+            if (templates) {
+                q.selectTemplates().executeAsList().forEach { t ->
+                    indexTemplate(t.id, t.name, t.description, t.category, t.system_prompt, t.tags)
+                }
             }
         }
     }

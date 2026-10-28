@@ -185,51 +185,21 @@ class AutoFlowRunnerTest {
     }
 
     @Test
-    fun alreadyReady_doesNotFirePostActionUntilJobCompletes() = runBlocking {
+    fun terminalReady_afterSeed_isNotRetranscribed() = runBlocking {
         val (repo, processor) = harness()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         var processCalls = 0
-        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
-        val scheduler = RecordingJobScheduler { id, _, _, _ ->
+        val scheduler = RecordingJobScheduler { _, _, retranscribe, _ ->
             processCalls++
-            scope.launch {
-                repo.updateStatus(id, "generating")
-                gate.await()
-                repo.updateStatus(id, "ready")
-                repo.updateSummary(id, "## after")
-            }
+            error("must not enqueue ready rows (retranscribe=$retranscribe)")
         }
-        val runner = AutoFlowRunner(
-            repository = repo,
-            processor = processor,
-            scope = scope,
-            jobScheduler = scheduler,
-        )
-        runner.start()
-        delay(300) // let seed finish with empty library
-        repo.setAutoflowEnabled("flow-default", false)
-        repo.upsertAutoflow(
-            id = "flow-ready-race",
-            name = "All",
-            enabled = true,
-            wakePhrase = null,
-            durationMinSeconds = 0,
-            durationMaxSeconds = 3600,
-            sourceFilter = "all",
-            templateId = null,
-            autoLabelVoice = false,
-            language = "auto",
-            notify = true,
-            postAction = AutoFlowPostAction.Webhook.stored,
-        )
-        // Insert AFTER seed so processedIds does not swallow the row. Status ready
-        // reproduces the pre-enqueue ready race against awaitReadyStatus.
+        // Pre-existing ready simulates process death after WorkManager finished.
         repo.insertRecording(
-            id = "rec-ready-race",
+            id = "rec-ready-done",
             sessionId = null,
             folderId = null,
             title = "Already ready",
-            source = "phone",
+            source = "note_pro",
             deviceSerial = null,
             startedAt = 1,
             durationSeconds = 30,
@@ -239,21 +209,152 @@ class AutoFlowRunnerTest {
             summaryMarkdown = "## old",
             status = "ready",
         )
-        withTimeout(10_000) { while (processCalls < 1) delay(50) }
-        delay(400)
-        val early = mutableListOf<AutoFlowUiAction>()
-        val earlyJob = scope.launch { runner.actions.collect { early += it } }
-        delay(300)
-        earlyJob.cancel()
-        assertTrue(
-            early.none { it is AutoFlowUiAction.PostWebhook },
-            "must not post-action on pre-enqueue ready",
+        repo.setAutoflowEnabled("flow-default", false)
+        repo.upsertAutoflow(
+            id = "flow-ready-skip",
+            name = "Note Pro",
+            enabled = true,
+            wakePhrase = null,
+            durationMinSeconds = 0,
+            durationMaxSeconds = 3600,
+            sourceFilter = "note_pro",
+            templateId = "velum.meeting",
+            autoLabelVoice = false,
+            language = "auto",
+            notify = true,
+            postAction = AutoFlowPostAction.Webhook.stored,
+            modelId = "gpt-test",
+            endpointProfileId = "profile-test",
         )
-        assertEquals("generating", repo.getRecording("rec-ready-race")?.status)
-        val webhook = async { runner.actions.first { it is AutoFlowUiAction.PostWebhook } }
-        gate.complete(Unit)
-        val action = withTimeout(15_000) { webhook.await() }
-        assertEquals("rec-ready-race", (action as AutoFlowUiAction.PostWebhook).recordingId)
+        val runner = AutoFlowRunner(
+            repository = repo,
+            processor = processor,
+            scope = scope,
+            jobScheduler = scheduler,
+        )
+        runner.start()
+        delay(500)
+        // Force another combine emission after seed.
+        repo.updateRecordingTitle("rec-ready-done", "Already ready (touched)")
+        delay(500)
+        assertEquals(0, processCalls, "ready at seed must not rematch / re-ASR")
+        assertEquals("ready", repo.getRecording("rec-ready-done")?.status)
+        runner.stop()
+    }
+
+    @Test
+    fun generatingBecomesReady_withoutRematchRetranscribe() = runBlocking {
+        val (repo, processor) = harness()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        var processCalls = 0
+        val scheduler = RecordingJobScheduler { id, _, retranscribe, _ ->
+            processCalls++
+            error("orphan rematch must not retranscribe completed ready (id=$id retranscribe=$retranscribe)")
+        }
+        repo.insertRecording(
+            id = "rec-gen-to-ready",
+            sessionId = 1,
+            folderId = null,
+            title = "In flight then done",
+            source = "note_pro",
+            deviceSerial = null,
+            startedAt = 1_700_000_000L,
+            durationSeconds = 30,
+            sizeBytes = 100,
+            localPath = "/tmp/af.wav",
+            transcript = "done",
+            summaryMarkdown = "## done",
+            status = "generating",
+        )
+        repo.setAutoflowEnabled("flow-default", false)
+        repo.upsertAutoflow(
+            id = "flow-gen-ready",
+            name = "Note Pro",
+            enabled = true,
+            wakePhrase = null,
+            durationMinSeconds = 5,
+            durationMaxSeconds = 3600,
+            sourceFilter = "note_pro",
+            templateId = "velum.meeting",
+            autoLabelVoice = true,
+            language = "auto",
+            notify = true,
+            postAction = AutoFlowPostAction.None.stored,
+        )
+        val runner = AutoFlowRunner(
+            repository = repo,
+            processor = processor,
+            scope = scope,
+            jobScheduler = scheduler,
+        )
+        runner.start()
+        delay(400)
+        // WorkManager finished while app was dead / restarting — status becomes ready.
+        repo.updateStatus("rec-gen-to-ready", "ready")
+        delay(600)
+        assertEquals(0, processCalls, "terminal ready after in-flight must not re-ASR")
+        runner.stop()
+    }
+
+    @Test
+    fun seed_doesNotClaimImported_soRematchCanRun() = runBlocking {
+        val (repo, processor) = harness()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        var processCalls = 0
+        val scheduler = RecordingJobScheduler { id, templateId, _, _ ->
+            processCalls++
+            kotlinx.coroutines.runBlocking {
+                assertEquals("velum.meeting", templateId)
+                repo.updateStatus(id, "generating")
+                repo.updateStatus(id, "ready")
+                repo.updateSummary(id, "## ok")
+            }
+        }
+        repo.insertRecording(
+            id = "rec-imported-seed",
+            sessionId = null,
+            folderId = null,
+            title = "Waiting import",
+            source = "note_pro",
+            deviceSerial = null,
+            startedAt = 1,
+            durationSeconds = 20,
+            sizeBytes = 10,
+            localPath = "/tmp/imp.wav",
+            transcript = null,
+            summaryMarkdown = null,
+            status = "imported",
+        )
+        repo.setAutoflowEnabled("flow-default", false)
+        repo.upsertAutoflow(
+            id = "flow-imported",
+            name = "Note Pro",
+            enabled = true,
+            wakePhrase = null,
+            durationMinSeconds = 0,
+            durationMaxSeconds = 3600,
+            sourceFilter = "note_pro",
+            templateId = "velum.meeting",
+            autoLabelVoice = true,
+            language = "auto",
+            notify = true,
+            postAction = AutoFlowPostAction.None.stored,
+        )
+        val runner = AutoFlowRunner(
+            repository = repo,
+            processor = processor,
+            scope = scope,
+            jobScheduler = scheduler,
+        )
+        runner.start()
+        delay(400) // seed claims only ready/failed — not imported
+        assertEquals(0, processCalls, "seed pass must not enqueue")
+        // Trigger a post-seed combine emission; imported must still be matchable.
+        repo.updateRecordingTitle("rec-imported-seed", "Waiting import (touched)")
+        withTimeout(15_000) {
+            while (processCalls < 1) delay(50)
+        }
+        assertEquals(1, processCalls, "imported at seed must remain matchable")
         runner.stop()
     }
 

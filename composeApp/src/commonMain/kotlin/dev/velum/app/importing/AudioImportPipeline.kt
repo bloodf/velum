@@ -1,6 +1,7 @@
 package dev.velum.app.importing
 
 import dev.velum.app.di.AppContainer
+import dev.velum.core.autoflow.AutoFlowResolve
 import dev.velum.app.platform.AudioNormalizer
 import dev.velum.app.platform.ImportAudioFormats
 import dev.velum.app.platform.sha256File
@@ -46,8 +47,10 @@ class AudioImportPipeline(
                 container.repository.setMeta("import_sha256_$sourceHash", existingByContent)
                 return@withContext ImportResult.Duplicate(existingByContent, contentHash)
             }
+            val title = titleHint ?: name.substringBeforeLast('.').ifBlank { null }
+            val durationSeconds = (normalized.durationMs / 1000L).coerceAtLeast(0L)
             val id = container.createLocalRecording(
-                title = titleHint ?: name.substringBeforeLast('.').ifBlank { null },
+                title = title,
                 source = source,
                 localPath = normalized.wavPath,
                 status = "queued",
@@ -58,7 +61,7 @@ class AudioImportPipeline(
             container.repository.updateLocalPath(
                 id = id,
                 localPath = normalized.wavPath,
-                durationSeconds = (normalized.durationMs / 1000L).coerceAtLeast(0L),
+                durationSeconds = durationSeconds,
                 sizeBytes = 0L,
             )
             // Store both keys so source-path re-imports and content-identical WAVs dedupe.
@@ -66,7 +69,18 @@ class AudioImportPipeline(
             if (contentHash != sourceHash) {
                 container.repository.setMeta("import_sha256_$contentHash", id)
             }
-            container.enqueueProcessing(id, templateId = null, retranscribe = true)
+            // Resolve AutoFlow before first enqueue so KEEP cannot drop template/model.
+            val match = container.repository.findMatchingAutoflow(
+                source = source,
+                durationSeconds = durationSeconds,
+                title = title.orEmpty(),
+            )
+            container.enqueueProcessing(
+                recordingId = id,
+                templateId = match?.template_id,
+                retranscribe = true,
+                apiModelOverride = match?.let { AutoFlowResolve.modelOverride(it) },
+            )
             ImportResult.Created(id, normalized.wavPath, contentHash)
         }.getOrElse { ImportResult.Failed(it.message ?: it::class.simpleName ?: "import_failed") }
     }

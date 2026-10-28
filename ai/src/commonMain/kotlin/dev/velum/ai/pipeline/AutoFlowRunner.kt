@@ -3,6 +3,7 @@ package dev.velum.ai.pipeline
 import dev.velum.ai.engine.JobProgress
 import dev.velum.core.autoflow.AutoFlowMatcher
 import dev.velum.core.autoflow.AutoFlowPostAction
+import dev.velum.core.autoflow.AutoFlowResolve
 import dev.velum.core.calendar.CalendarEventProvider
 import dev.velum.core.calendar.CalendarLookupResult
 import dev.velum.core.calendar.createCalendarEventProvider
@@ -57,11 +58,12 @@ class AutoFlowRunner(
                 .distinctUntilChanged()
                 .collect { (recordings, flows) ->
                     if (!seeded) {
-                        // Seed only terminal/stable rows so an in-flight job interrupted by
-                        // process death remains eligible for rematch + post-actions.
+                        // Claim only terminal ready/failed. Do NOT claim matchable waiting
+                        // statuses (imported) or in-flight orphans (generating/queued) — those
+                        // remain eligible for rematch. Terminal rows must not re-ASR.
                         processedIds.addAll(
                             recordings
-                                .filter { it.status !in IN_FLIGHT_STATUSES }
+                                .filter { isStableNonMatch(it) }
                                 .map { it.id },
                         )
                         seeded = true
@@ -82,7 +84,13 @@ class AutoFlowRunner(
                             }
                             continue
                         }
-                        val override = autoflowModelOverride(match)
+                        // WorkManager already finished (e.g. after process death) — claim
+                        // without re-enqueue / re-ASR. True orphans keep non-terminal status.
+                        if (isStableNonMatch(recording)) {
+                            processedIds.add(recording.id)
+                            continue
+                        }
+                        val override = AutoFlowResolve.modelOverride(match)
                         val ready = runProcessing(recording.id, match.template_id, override)
                         // Claim only after work finishes (or fails terminally) so kill mid-run
                         // can retry; still claim on failure to avoid infinite retry loops.
@@ -137,13 +145,6 @@ class AutoFlowRunner(
             if (progress is JobProgress.Succeeded) succeeded = true
         }
         return succeeded || repository.getRecording(recordingId)?.status == "ready"
-    }
-
-    private fun autoflowModelOverride(flow: Autoflow): ApiModelOverride? {
-        val modelId = flow.model_id?.takeIf { it.isNotBlank() }
-        val profileId = flow.endpoint_profile_id?.takeIf { it.isNotBlank() }
-        if (modelId == null && profileId == null) return null
-        return ApiModelOverride(profileId = profileId, modelId = modelId)
     }
 
     private suspend fun awaitReadyStatus(
@@ -257,15 +258,7 @@ class AutoFlowRunner(
     companion object {
         private const val AWAIT_TERMINAL_MS = 30L * 60L * 1000L
 
-        /** Statuses that mean WorkManager / processor may still finish after process death. */
-        private val IN_FLIGHT_STATUSES = setOf(
-            "generating",
-            "queued",
-            "paused_thermal",
-            "recording",
-        )
-
-        /** Recordings that will not gain matching fields later. */
+        /** Terminal statuses — seed-claim / skip rematch; never retranscribe these. */
         internal fun isStableNonMatch(recording: Recording): Boolean =
             recording.status == "ready" || recording.status == "failed"
     }
