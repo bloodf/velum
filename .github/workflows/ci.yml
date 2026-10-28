@@ -300,9 +300,8 @@ jobs:
           force-avd-creation: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
-          script: |
-            bash scripts/emulator-device-walk.sh debug device-walk-artifacts &&
-            bash scripts/emulator-device-walk.sh release device-walk-artifacts
+          # emulator-runner wraps the script in `sh -c`; invoke a single bash entrypoint.
+          script: bash scripts/emulator-device-walk-both.sh device-walk-artifacts
 
       - name: Upload device-walk artifacts
         if: always()
