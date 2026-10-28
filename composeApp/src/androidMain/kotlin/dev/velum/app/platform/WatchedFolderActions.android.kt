@@ -23,3 +23,13 @@ actual suspend fun syncWatchedFolders(pipeline: AudioImportPipeline): List<Impor
     }
     return results
 }
+
+actual fun watchedFolderCount(): Int {
+    val context = appContextOrNull() ?: return 0
+    return WatchedFolderStore.list(context).size
+}
+
+actual fun clearWatchedFolders() {
+    val context = appContextOrNull() ?: return
+    WatchedFolderStore.clear(context)
+}

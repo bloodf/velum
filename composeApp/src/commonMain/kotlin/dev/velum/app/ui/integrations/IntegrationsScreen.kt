@@ -19,6 +19,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -43,10 +44,13 @@ import dev.velum.app.di.AppContainer
 import dev.velum.app.i18n.LocalStrings
 import dev.velum.app.platform.AppPermission
 import dev.velum.app.platform.ExportFolderStore
+import dev.velum.app.platform.HapticKind
+import dev.velum.app.platform.LocalHaptics
 import dev.velum.app.platform.PermissionOutcome
 import dev.velum.app.platform.rememberExportFolderPicker
 import dev.velum.app.platform.rememberPermissionRequester
 import dev.velum.app.ui.components.BlackButton
+import dev.velum.app.ui.components.OutlineButton
 import dev.velum.app.ui.components.ScreenTopBar
 import dev.velum.app.ui.theme.VelumBg
 import dev.velum.app.ui.theme.VelumInk
@@ -63,6 +67,7 @@ fun IntegrationsScreen(
     onBack: () -> Unit,
 ) {
     val strings = LocalStrings.current
+    val haptics = LocalHaptics.current
     val scope = rememberCoroutineScope()
     var statusLabel by remember { mutableStateOf(strings.localCalendarHint) }
     var statusColor by remember { mutableStateOf(VelumInkSecondary) }
@@ -75,6 +80,9 @@ fun IntegrationsScreen(
     var webhookHasSecret by remember { mutableStateOf(false) }
     var webhookMessage by remember { mutableStateOf<String?>(null) }
     var webhookMessageOk by remember { mutableStateOf(true) }
+    var confirmClearFolder by remember { mutableStateOf(false) }
+    var confirmClearWebhook by remember { mutableStateOf(false) }
+    var testingWebhook by remember { mutableStateOf(false) }
 
     val requestCalendar = rememberPermissionRequester(
         permission = AppPermission.ReadCalendar,
@@ -120,6 +128,55 @@ fun IntegrationsScreen(
         if (webhookUrl.isBlank()) {
             webhookUrl = container.webhookSettings.getUrl().orEmpty()
         }
+    }
+
+    if (confirmClearFolder) {
+        AlertDialog(
+            onDismissRequest = { confirmClearFolder = false },
+            title = { Text(strings.ux.confirmClearTitle) },
+            text = { Text(strings.ux.confirmClearFolderBody) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        haptics.perform(HapticKind.Medium)
+                        confirmClearFolder = false
+                        ExportFolderStore.clear()
+                        folderUri = null
+                        refreshTick++
+                    },
+                ) { Text(strings.confirm) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmClearFolder = false }) { Text(strings.cancel) }
+            },
+        )
+    }
+
+    if (confirmClearWebhook) {
+        AlertDialog(
+            onDismissRequest = { confirmClearWebhook = false },
+            title = { Text(strings.ux.confirmClearTitle) },
+            text = { Text(strings.ux.confirmClearWebhookBody) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        haptics.perform(HapticKind.Medium)
+                        confirmClearWebhook = false
+                        scope.launch {
+                            container.webhookSettings.clear()
+                            webhookUrl = ""
+                            webhookSecret = ""
+                            webhookMessage = strings.ux.webhookCleared
+                            webhookMessageOk = true
+                            refreshTick++
+                        }
+                    },
+                ) { Text(strings.confirm) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmClearWebhook = false }) { Text(strings.cancel) }
+            },
+        )
     }
 
     Column(Modifier.fillMaxSize().background(VelumBg)) {
@@ -173,13 +230,7 @@ fun IntegrationsScreen(
                 BlackButton(strings.ux.folderExportPick, pickExportFolder)
                 if (!folderUri.isNullOrBlank()) {
                     Spacer(Modifier.height(4.dp))
-                    TextButton(
-                        onClick = {
-                            ExportFolderStore.clear()
-                            folderUri = null
-                            refreshTick++
-                        },
-                    ) {
+                    TextButton(onClick = { confirmClearFolder = true }) {
                         Text(strings.ux.folderExportClear, color = VelumInkSecondary)
                     }
                 }
@@ -255,19 +306,36 @@ fun IntegrationsScreen(
                     enabled = webhookUrl.isNotBlank(),
                 )
                 if (webhookConfigured) {
-                    Spacer(Modifier.height(4.dp))
-                    TextButton(
-                        onClick = {
+                    Spacer(Modifier.height(8.dp))
+                    OutlineButton(
+                        strings.ux.webhookTest,
+                        {
+                            if (testingWebhook) return@OutlineButton
                             scope.launch {
-                                container.webhookSettings.clear()
-                                webhookUrl = ""
-                                webhookSecret = ""
-                                webhookMessage = strings.ux.webhookCleared
-                                webhookMessageOk = true
-                                refreshTick++
+                                testingWebhook = true
+                                val detail = runCatching { container.webhookDispatcher.ping() }
+                                    .getOrNull()
+                                when {
+                                    detail == null -> {
+                                        webhookMessage = strings.ux.webhookNotConfigured
+                                        webhookMessageOk = false
+                                    }
+                                    WebhookTestResult.isHttpSuccess(detail) -> {
+                                        webhookMessage = strings.ux.webhookPostedFormat.format(detail)
+                                        webhookMessageOk = true
+                                    }
+                                    else -> {
+                                        webhookMessage = strings.ux.webhookFailedFormat.format(detail)
+                                        webhookMessageOk = false
+                                    }
+                                }
+                                testingWebhook = false
                             }
                         },
-                    ) {
+                        enabled = !testingWebhook,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    TextButton(onClick = { confirmClearWebhook = true }) {
                         Text(strings.ux.webhookClear, color = VelumInkSecondary)
                     }
                 }

@@ -10,3 +10,9 @@ expect fun rememberImportFolderPicker(onPicked: (treeUri: String) -> Unit): () -
 
 /** Scan all remembered trees and import new audio files (deduped). */
 expect suspend fun syncWatchedFolders(pipeline: AudioImportPipeline): List<ImportResult>
+
+/** Number of remembered watched-folder trees (0 on desktop/iOS). */
+expect fun watchedFolderCount(): Int
+
+/** Forget all watched-folder trees. No-op when none / unsupported. */
+expect fun clearWatchedFolders()

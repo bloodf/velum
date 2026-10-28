@@ -15,6 +15,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -84,11 +86,29 @@ fun FirstRunScreen(
 
             Text(fr.howToStart, fontWeight = FontWeight.SemiBold, fontSize = 16.sp, color = VelumInk)
             Spacer(Modifier.height(12.dp))
-            BlackButton(fr.usePhoneMic, onPhoneMic, modifier = Modifier.fillMaxWidth())
+            BlackButton(
+                fr.usePhoneMic,
+                onPhoneMic,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .semantics { contentDescription = fr.usePhoneMic },
+            )
             Spacer(Modifier.height(10.dp))
-            OutlineButton(fr.importFromRecorder, onImportRecorder, modifier = Modifier.fillMaxWidth())
+            OutlineButton(
+                fr.importFromRecorder,
+                onImportRecorder,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .semantics { contentDescription = fr.importFromRecorder },
+            )
             Spacer(Modifier.height(10.dp))
-            OutlineButton(fr.connectPlaud, onConnectPlaud, modifier = Modifier.fillMaxWidth())
+            OutlineButton(
+                fr.connectPlaud,
+                onConnectPlaud,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .semantics { contentDescription = fr.connectPlaud },
+            )
 
             Spacer(Modifier.height(28.dp))
             Text(fr.modelsHeading, fontWeight = FontWeight.SemiBold, fontSize = 16.sp, color = VelumInk)
@@ -116,13 +136,44 @@ fun FirstRunScreen(
                 }
             }
             Spacer(Modifier.height(16.dp))
-            BlackButton(fr.downloadRecommended, onDownloadRecommended, modifier = Modifier.fillMaxWidth())
+            BlackButton(
+                fr.downloadRecommended,
+                onDownloadRecommended,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .semantics { contentDescription = fr.downloadRecommended },
+            )
             Spacer(Modifier.height(10.dp))
-            OutlineButton(fr.download, onDownloadModels, modifier = Modifier.fillMaxWidth())
+            OutlineButton(
+                fr.download,
+                onDownloadModels,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .semantics { contentDescription = fr.download },
+            )
             Spacer(Modifier.height(10.dp))
-            OutlineButton(fr.useApi, onUseApi, modifier = Modifier.fillMaxWidth())
+            OutlineButton(
+                fr.useApi,
+                onUseApi,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .semantics { contentDescription = fr.useApi },
+            )
             Spacer(Modifier.height(10.dp))
-            OutlineButton(fr.skip, onSkip, modifier = Modifier.fillMaxWidth())
+            OutlineButton(
+                fr.skip,
+                onSkip,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .semantics { contentDescription = fr.skip },
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                fr.skipHint,
+                color = VelumInkSecondary,
+                fontSize = 13.sp,
+                lineHeight = 18.sp,
+            )
         }
     }
 }

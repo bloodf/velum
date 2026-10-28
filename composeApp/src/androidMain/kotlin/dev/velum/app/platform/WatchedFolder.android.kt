@@ -41,6 +41,13 @@ object WatchedFolderStore {
         prefs.edit().putString(KEY_URIS, next.joinToString("\n")).apply()
     }
 
+    fun clear(context: Context) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KEY_URIS, "")
+            .apply()
+    }
+
     fun scanNewAudio(context: Context, treeUriString: String): List<WatchedFolderEntry> {
         val tree = DocumentFile.fromTreeUri(context, Uri.parse(treeUriString)) ?: return emptyList()
         val out = ArrayList<WatchedFolderEntry>()

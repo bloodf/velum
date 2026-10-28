@@ -53,5 +53,20 @@ data class WebhookPayload(
             transcript = transcript,
             summaryMarkdown = summaryMarkdown,
         )
+
+        /** Minimal payload for Integrations “Test webhook” — no recording required. */
+        fun testPing(
+            startedAt: Long? = null,
+        ): WebhookPayload = fromRecording(
+            recordingId = "velum-test",
+            title = "Velum webhook test",
+            startedAt = startedAt,
+            durationSeconds = 0,
+            source = "test",
+            speakers = emptyList(),
+            transcript = null,
+            summaryMarkdown = null,
+            tags = listOf("velum", "test"),
+        )
     }
 }

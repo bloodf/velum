@@ -43,7 +43,20 @@ class WebhookDispatcher(
             transcript = rec.transcript,
             summaryMarkdown = rec.summary_markdown,
         )
-        val body = WebhookPayload.encode(payload)
+        return postEncoded(url, WebhookPayload.encode(payload))
+    }
+
+    /**
+     * POST a minimal test payload so the user can verify URL + HMAC without a recording.
+     * @return success detail (e.g. `HTTP 200`) or error detail; null if webhook not configured.
+     */
+    suspend fun ping(): String? {
+        val url = settings.getUrl() ?: return null
+        val payload = WebhookPayload.testPing()
+        return postEncoded(url, WebhookPayload.encode(payload))
+    }
+
+    private suspend fun postEncoded(url: String, body: String): String? {
         val secret = settings.getSecret()
         var lastError: String? = null
         repeat(maxAttempts) { attempt ->

@@ -11,3 +11,7 @@ actual fun rememberImportFolderPicker(onPicked: (treeUri: String) -> Unit): () -
 
 actual suspend fun syncWatchedFolders(pipeline: AudioImportPipeline): List<ImportResult> =
     emptyList()
+
+actual fun watchedFolderCount(): Int = 0
+
+actual fun clearWatchedFolders() = Unit

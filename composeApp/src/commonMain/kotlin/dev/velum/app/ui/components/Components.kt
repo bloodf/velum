@@ -123,7 +123,7 @@ fun ChevronRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .pressableScale(haptic = false, role = Role.Button, onClick = onClick)
+                .pressableScale(haptic = true, role = Role.Button, onClick = onClick)
                 .padding(horizontal = 20.dp, vertical = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {

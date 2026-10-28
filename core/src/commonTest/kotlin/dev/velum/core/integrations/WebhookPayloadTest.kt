@@ -29,6 +29,18 @@ class WebhookPayloadTest {
     }
 
     @Test
+    fun testPing_isTaggedTestPayload() {
+        val payload = WebhookPayload.testPing(startedAt = 42L)
+        assertEquals("velum-test", payload.recordingId)
+        assertEquals("test", payload.source)
+        assertEquals(listOf("velum", "test"), payload.tags)
+        assertEquals(42L, payload.startedAt)
+        val json = WebhookPayload.encode(payload)
+        assertContains(json, "\"recording_id\":\"velum-test\"")
+        assertContains(json, "\"test\"")
+    }
+
+    @Test
     fun webhookUrl_rejectsMetadataAndPlainHttp() {
         assertFailsWith<IllegalArgumentException> {
             WebhookUrl.normalizeAndValidate("http://example.com/hook")

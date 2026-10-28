@@ -9,7 +9,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -24,7 +27,11 @@ import dev.velum.app.di.AppContainer
 import dev.velum.app.i18n.LocalStrings
 import dev.velum.app.importing.AudioImportPipeline
 import dev.velum.app.importing.ImportResult
+import dev.velum.app.platform.HapticKind
+import dev.velum.app.platform.LocalHaptics
+import dev.velum.app.platform.clearWatchedFolders
 import dev.velum.app.platform.rememberAudioImporter
+import dev.velum.app.platform.watchedFolderCount
 import dev.velum.app.ui.components.BlackButton
 import dev.velum.app.ui.components.OutlineButton
 import dev.velum.app.ui.components.ScreenTopBar
@@ -46,11 +53,16 @@ fun ImportHubScreen(
     onSyncWatchedFolder: (suspend () -> List<ImportResult>)? = null,
 ) {
     val strings = LocalStrings.current
+    val haptics = LocalHaptics.current
     val scope = rememberCoroutineScope()
     val pipeline = remember(container) { AudioImportPipeline(container) }
     var status by remember { mutableStateOf<String?>(null) }
+    var importing by remember { mutableStateOf(false) }
+    var confirmClearFolders by remember { mutableStateOf(false) }
+    val folderCount = watchedFolderCount()
     val pickFile = rememberAudioImporter { path ->
         scope.launch {
+            importing = true
             status = strings.ux.importing
             when (val r = pipeline.importFile(path, source = "import")) {
                 is ImportResult.Created -> {
@@ -63,7 +75,29 @@ fun ImportHubScreen(
                 }
                 is ImportResult.Failed -> status = r.message
             }
+            importing = false
         }
+    }
+
+    if (confirmClearFolders) {
+        AlertDialog(
+            onDismissRequest = { confirmClearFolders = false },
+            title = { Text(strings.ux.confirmClearTitle) },
+            text = { Text(strings.ux.confirmClearWatchedFoldersBody) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        haptics.perform(HapticKind.Medium)
+                        confirmClearFolders = false
+                        clearWatchedFolders()
+                        status = strings.ux.watchedFoldersCleared
+                    },
+                ) { Text(strings.confirm) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmClearFolders = false }) { Text(strings.cancel) }
+            },
+        )
     }
 
     Column(
@@ -88,13 +122,19 @@ fun ImportHubScreen(
                 lineHeight = 20.sp,
             )
             Spacer(Modifier.height(20.dp))
-            BlackButton(strings.ux.chooseAudioFile, pickFile, modifier = Modifier.fillMaxWidth())
+            BlackButton(
+                strings.ux.chooseAudioFile,
+                pickFile,
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !importing,
+            )
             Spacer(Modifier.height(12.dp))
             if (onPickWatchedFolder != null) {
                 OutlineButton(
                     strings.ux.pickWatchedFolder,
                     onPickWatchedFolder,
                     modifier = Modifier.fillMaxWidth(),
+                    enabled = !importing,
                 )
                 Spacer(Modifier.height(12.dp))
             }
@@ -103,6 +143,7 @@ fun ImportHubScreen(
                     strings.ux.syncWatchedFolders,
                     {
                         scope.launch {
+                            importing = true
                             status = strings.ux.scanning
                             val results = onSyncWatchedFolder()
                             val created = results.count { it is ImportResult.Created }
@@ -111,11 +152,26 @@ fun ImportHubScreen(
                             status = strings.ux.syncDoneFormat.format(created, dupes, failed)
                             results.filterIsInstance<ImportResult.Created>().lastOrNull()
                                 ?.let { onOpenRecording(it.recordingId) }
+                            importing = false
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
+                    enabled = !importing,
                 )
                 Spacer(Modifier.height(12.dp))
+            }
+            if (folderCount > 0) {
+                OutlineButton(
+                    strings.ux.clearWatchedFolders,
+                    { confirmClearFolders = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !importing,
+                )
+                Spacer(Modifier.height(12.dp))
+            }
+            if (importing) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                Spacer(Modifier.height(8.dp))
             }
             status?.let {
                 Spacer(Modifier.height(8.dp))

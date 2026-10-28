@@ -85,7 +85,11 @@ import dev.velum.app.platform.WavWriter
 import dev.velum.app.platform.createAudioPlayer
 import dev.velum.app.platform.finalizeMicRecording
 import dev.velum.app.platform.localizedLabel
+import dev.velum.app.platform.HapticKind
+import dev.velum.app.platform.LocalHaptics
+import dev.velum.app.platform.canExportPdf
 import dev.velum.app.platform.recordingsDirectoryPath
+import dev.velum.app.platform.sharePdf
 import dev.velum.app.platform.shareText
 import dev.velum.app.ui.components.AiGlowFooter
 import dev.velum.app.ui.components.BlackButton
@@ -127,6 +131,7 @@ fun RecordingDetailScreen(
     onMovedToTrash: (String) -> Unit = {},
 ) {
     val strings = LocalStrings.current
+    val haptics = LocalHaptics.current
     val recording by container.repository.observeRecording(recordingId).collectAsState(null)
     val folders by container.repository.observeFolders().collectAsState(emptyList())
     var tab by remember { mutableStateOf(initialTab) } // 0 fontes, 1 notas
@@ -311,6 +316,7 @@ fun RecordingDetailScreen(
                 confirmButton = {
                     TextButton(
                         onClick = {
+                            haptics.perform(HapticKind.Medium)
                             showTrashConfirm = false
                             scope.launch {
                                 container.repository.trashRecording(recordingId)
@@ -492,6 +498,12 @@ fun RecordingDetailScreen(
                     showExport = false
                     val safe = title.replace(Regex("[^a-zA-Z0-9._-]"), "_").ifBlank { "velum" }
                     shareBytes("$safe.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", RecordingExport.docxMinimal(md))
+                }
+                if (canExportPdf()) {
+                    ExportOption(strings.ux.exportPdf) {
+                        showExport = false
+                        sharePdf(title, RecordingExport.plainText(md))
+                    }
                 }
                 ExportOption(strings.ux.copyTranscript) {
                     showExport = false

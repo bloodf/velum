@@ -63,6 +63,8 @@ import androidx.compose.ui.unit.sp
 import dev.velum.app.di.AppContainer
 import dev.velum.app.i18n.LocalStrings
 import dev.velum.app.importing.AudioImportPipeline
+import dev.velum.app.platform.HapticKind
+import dev.velum.app.platform.LocalHaptics
 import dev.velum.app.platform.shareText
 import dev.velum.app.platform.syncWatchedFolders
 import dev.velum.app.ui.components.DisplayTitle
@@ -93,6 +95,7 @@ fun FilesScreen(
     initialSearchQuery: String = "",
 ) {
     val strings = LocalStrings.current
+    val haptics = LocalHaptics.current
     val scope = rememberCoroutineScope()
     val recordings by container.repository.observeRecordings().collectAsState(emptyList())
     val trashed by container.repository.observeTrashed().collectAsState(emptyList())
@@ -378,6 +381,7 @@ fun FilesScreen(
             confirmButton = {
                 TextButton(
                     onClick = {
+                        haptics.perform(HapticKind.Medium)
                         confirmTrash = false
                         scope.launch {
                             selectedIds.forEach { container.repository.trashRecording(it) }
@@ -399,6 +403,7 @@ fun FilesScreen(
             confirmButton = {
                 TextButton(
                     onClick = {
+                        haptics.perform(HapticKind.Medium)
                         confirmDeleteForever = false
                         scope.launch {
                             selectedIds.forEach { container.repository.deleteRecordingHard(it) }
@@ -420,6 +425,7 @@ fun FilesScreen(
             confirmButton = {
                 TextButton(
                     onClick = {
+                        haptics.perform(HapticKind.Medium)
                         confirmEmptyTrash = false
                         scope.launch {
                             trashed.forEach { container.repository.deleteRecordingHard(it.id) }
