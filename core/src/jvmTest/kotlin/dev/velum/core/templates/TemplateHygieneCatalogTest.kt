@@ -42,20 +42,33 @@ class TemplateHygieneCatalogTest {
         assertTrue(full.size > featured.size, "full=${full.size} featured=${featured.size}")
 
         val fullIds = mutableSetOf<String>()
-        val exactBodies = mutableSetOf<String>()
+        val normalizedBodies = mutableSetOf<String>()
         full.forEach { e ->
             assertTrue(e.id.isNotBlank())
             assertTrue(e.tags.isNotEmpty(), "empty tags in full ${e.id}")
             assertTrue(fullIds.add(e.id), "duplicate full id ${e.id}")
-            // Exact body equality with no whitespace/case normalization (#99).
-            assertTrue(exactBodies.add(e.body), "exact duplicate body in full ${e.id}")
+            // Whitespace/CRLF-normalized body uniqueness; case preserved (#99).
+            val key = normalizeBodyKey(e.body)
+            assertTrue(key.isNotEmpty(), "blank normalized body ${e.id}")
+            assertTrue(normalizedBodies.add(key), "duplicate normalized body in full ${e.id}")
         }
         featured.forEach { e ->
             assertTrue(e.id in fullIds, "Featured id missing from Full: ${e.id}")
         }
         val official = full.filter { it.official }
         assertEquals(41, official.size, "expected 41 official templates, got ${official.size}")
-        assertEquals(41, official.map { it.body }.toSet().size, "official bodies must be unique")
+        assertEquals(
+            41,
+            official.map { normalizeBodyKey(it.body) }.toSet().size,
+            "official normalized bodies must be unique",
+        )
+    }
+
+    /** Match tools/templates/body_dedupe.normalize_body_key (no casefold). */
+    private fun normalizeBodyKey(body: String): String {
+        val text = body.replace("\r\n", "\n").replace("\r", "\n")
+        val lines = text.split("\n").map { it.trimEnd() }
+        return lines.joinToString("\n").trim()
     }
 
     @Test

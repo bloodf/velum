@@ -4,10 +4,15 @@ Exact body deduplication for Velum template JSONL catalogs (#99).
 
 Exact duplicate definition
 -------------------------
-Two rows are exact duplicates when their ``body`` field strings are equal
-with **no** normalization: no whitespace trim, no line-ending rewrite, no
-case folding, and no Unicode NFKC. Bodies that differ only in trailing
-spaces or letter case are **not** duplicates.
+Two rows are duplicates when their ``body`` strings match after a conservative
+whitespace/line-ending normalization (see ``normalize_body_key``):
+
+- CRLF / CR → LF
+- trailing whitespace stripped on every line
+- leading/trailing blank lines stripped from the whole body
+
+**No** case folding and **no** Unicode NFKC: bodies that differ only in letter
+case stay distinct.
 
 Survivor selection (deterministic, lowest key wins)
 ---------------------------------------------------
@@ -53,6 +58,17 @@ CATEGORY_ORDER = [
     "it",
     "extractive",
 ]
+
+
+def normalize_body_key(body: str) -> str:
+    """
+    Conservative whitespace/line-ending key for duplicate grouping.
+
+    CRLF/CR → LF, rstrip each line, strip ends. Does **not** casefold.
+    """
+    text = body.replace("\r\n", "\n").replace("\r", "\n")
+    lines = [line.rstrip() for line in text.split("\n")]
+    return "\n".join(lines).strip()
 
 
 def canonical_row(row: dict[str, Any]) -> str:
@@ -142,10 +158,12 @@ class BodyDedupeResult:
 
 def dedupe_by_exact_body(rows: Iterable[dict[str, Any]]) -> BodyDedupeResult:
     """
-    Collapse rows that share an exact ``body`` string.
+    Collapse rows whose bodies match after ``normalize_body_key``.
 
     Rows whose body is missing, not a string, empty, or whitespace-only are kept
     as-is and never enter a duplicate group (they are not collapsed together).
+    Case-only differences remain distinct. The survivor keeps its original body
+    text (winner selection is unchanged).
     """
     materialised = [dict(r) for r in rows]
     before_per = Counter(str(r.get("category") or "") for r in materialised)
@@ -157,7 +175,11 @@ def dedupe_by_exact_body(rows: Iterable[dict[str, Any]]) -> BodyDedupeResult:
         if not isinstance(body, str) or not body.strip():
             skipped.append(row)
             continue
-        by_body[body].append(row)
+        key = normalize_body_key(body)
+        if not key:
+            skipped.append(row)
+            continue
+        by_body[key].append(row)
 
     survivors: list[dict[str, Any]] = list(skipped)
     remap: dict[str, str] = {}
@@ -253,9 +275,8 @@ def write_report(path: Path, result: BodyDedupeResult) -> None:
         "",
         "## Exact duplicate definition",
         "",
-        "Rows share an exact `body` string with **no** whitespace, line-ending,",
-        "case, or Unicode normalization. Differing only in trailing spaces or",
-        "letter case does **not** count as a duplicate.",
+        "Rows share a body after CRLF→LF, per-line rstrip, and strip ends",
+        "(`normalize_body_key`). Letter-case differences stay distinct.",
         "",
         "## Totals",
         "",

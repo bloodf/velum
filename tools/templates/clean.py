@@ -3,8 +3,8 @@
 Full data-hygiene pass over the collected template dump.
 
 Writes cleaned per-category JSONL under --out-dir and a Markdown report to --report.
-Exact duplicate bodies (no whitespace/case normalization; see body_dedupe.py) collapse
-to one deterministic survivor.
+Exact duplicate bodies (whitespace/CRLF-normalized; case-sensitive; see body_dedupe.py)
+collapse to one deterministic survivor.
 """
 from __future__ import annotations
 
@@ -523,8 +523,8 @@ def write_report(path: Path, stats: Stats) -> None:
     lines.append(f"- Output rows: **{stats.after_total}**")
     lines.append("")
     lines.append(
-        "Exact duplicate = identical `body` string with no whitespace/case/Unicode "
-        "normalization (`tools/templates/body_dedupe.py`)."
+        "Exact duplicate = same `body` after CRLF→LF + per-line rstrip + strip "
+        "(case preserved; `tools/templates/body_dedupe.py`)."
     )
     lines.append("")
     lines.append("## Removals by reason")

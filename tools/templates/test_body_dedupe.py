@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from body_dedupe import (  # noqa: E402
     dedupe_by_exact_body,
+    normalize_body_key,
     safe_usage_count,
     survivor_sort_key,
 )
@@ -87,15 +88,30 @@ class BodyDedupeTest(unittest.TestCase):
         result = dedupe_by_exact_body([plain, featured])
         self.assertEqual(result.survivors[0]["id"], "feat")
 
-    def test_whitespace_or_case_difference_is_not_duplicate(self) -> None:
+    def test_whitespace_and_crlf_variants_are_duplicates(self) -> None:
+        a = row(id="a", name="Zebra", body="Hello world")
+        b = row(id="b", name="Alpha", body="Hello world ")  # trailing space
+        c = row(id="c", name="Middle", body="Hello world\n")  # trailing newline
+        d = row(id="d", name="Beta", body="Hello world\r\n")  # CRLF
+        e = row(id="e", name="Gamma", body="Hello world  \r\n")  # CRLF + trailing spaces
+        result = dedupe_by_exact_body([a, b, c, d, e])
+        self.assertEqual(result.duplicate_body_groups, 1)
+        self.assertEqual(result.removed_rows, 4)
+        self.assertEqual(result.output_rows, 1)
+        self.assertEqual(result.survivors[0]["id"], "b")  # lex name Alpha
+        self.assertEqual(
+            normalize_body_key(a["body"]),
+            normalize_body_key(e["body"]),
+        )
+
+    def test_case_only_difference_is_not_duplicate(self) -> None:
         a = row(id="a", name="A", body="Hello world")
-        b = row(id="b", name="B", body="Hello world ")  # trailing space
-        c = row(id="c", name="C", body="hello world")  # case
-        d = row(id="d", name="D", body="Hello world\n")  # trailing newline
-        result = dedupe_by_exact_body([a, b, c, d])
+        b = row(id="b", name="B", body="hello world")
+        c = row(id="c", name="C", body="HELLO WORLD")
+        result = dedupe_by_exact_body([a, b, c])
         self.assertEqual(result.duplicate_body_groups, 0)
         self.assertEqual(result.removed_rows, 0)
-        self.assertEqual(result.output_rows, 4)
+        self.assertEqual(result.output_rows, 3)
 
     def test_shuffle_yields_identical_survivors_and_order(self) -> None:
         bodies = [

@@ -10,6 +10,8 @@ import unicodedata
 from collections import Counter
 from pathlib import Path
 
+from body_dedupe import normalize_body_key
+
 RE_EMAIL = re.compile(r"\b[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}\b", re.I)
 RE_URL = re.compile(
     r"(?i)\b(?:https?://|www\.)[^\s<>\]\"']+|\b[a-z0-9\-]+\.(?:com|net|org|io|co|app|ai|dev|me|xyz|info)(?:/[^\s]*)?"
@@ -44,10 +46,10 @@ def check_set(label: str, rows: list[dict], *, require_featured: bool | None) ->
     errors: list[str] = []
     ids: set[str] = set()
     exact_title_body: dict[str, str] = {}
-    exact_bodies: dict[str, str] = {}
+    normalized_bodies: dict[str, str] = {}
     for i, row in enumerate(rows):
         name = (row.get("name") or "").strip()
-        # Hygiene length checks use stripped body; exact-body uniqueness uses raw body (#99).
+        # Hygiene length checks use stripped body; uniqueness uses normalize_body_key (#99).
         raw_body = row.get("body") if isinstance(row.get("body"), str) else ""
         body = raw_body.strip()
         desc = (row.get("description") or "").strip()
@@ -79,12 +81,15 @@ def check_set(label: str, rows: list[dict], *, require_featured: bool | None) ->
             )
         else:
             exact_title_body[key] = tid
-        if raw_body in exact_bodies:
-            errors.append(
-                f"{label}: exact duplicate body {tid} == {exact_bodies[raw_body]}"
-            )
-        else:
-            exact_bodies[raw_body] = tid
+        body_key = normalize_body_key(raw_body)
+        if body_key:
+            if body_key in normalized_bodies:
+                errors.append(
+                    f"{label}: duplicate body (ws/CRLF-normalized) {tid} == "
+                    f"{normalized_bodies[body_key]}"
+                )
+            else:
+                normalized_bodies[body_key] = tid
         blob = f"{name}\n{desc}\n{body}"
         if RE_EMAIL.search(blob):
             errors.append(f"{label}: email PII in {tid}")

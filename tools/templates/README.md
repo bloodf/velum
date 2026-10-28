@@ -66,12 +66,12 @@ python3 tools/templates/assert_hygiene.py \
 7. Tag language (`lang`); fix or drop wrong/missing category.
 8. Assign discoverability `tags` (controlled vocabulary; always ≥1 via category default).
 9. Delete identical duplicates (normalized title + prompt) during early hygiene.
-10. **Exact body dedupe (#99):** collapse rows whose `body` strings are equal with
-    **no** whitespace, line-ending, case, or Unicode normalization
-    (`tools/templates/body_dedupe.py`). Survivor order: official → Featured →
-    lexicographic name → canonical JSON. Tags/usage/official/featured flags from
-    dropped copies merge into the survivor. Bodies that differ only in trailing
-    spaces or letter case are kept as distinct.
+10. **Exact body dedupe (#99):** collapse rows whose `body` strings match after
+    conservative whitespace/line-ending normalization (CRLF→LF, per-line rstrip,
+    strip ends; **no** case folding) via `tools/templates/body_dedupe.py`.
+    Survivor order: official → Featured → lexicographic name → canonical JSON.
+    Tags/usage/official/featured flags from dropped copies merge into the
+    survivor. Letter-case-only variants stay distinct.
 
 ```bash
 # Re-run body dedupe on an already-curated full JSONL (idempotent):
