@@ -84,19 +84,19 @@ class ForbiddenOpcodeLayersTest {
     }
 
     @Test
-    fun transportLayer_alreadyChecked_doesNotParseCiphertextAsOpcode() = runTest {
+    fun writeSealedAfterPlaintextGuard_allowsCiphertextLookingForbidden() = runTest {
         val ble = FakeBleTransport()
         ble.connect("fake-note-pro", GattProfiles.Plaud)
+        val plaud = PlaudBleTransport(ble)
 
         // Deterministic "ciphertext" that is byte-identical to a forbidden plaintext
-        // frame. With AlreadyChecked the transport must not reject it.
+        // frame. Public entry point checks safe plaintext, then internal sealed write.
         ForbiddenOpcodes.ALL.forEach { op ->
             ble.clearRecordedWrites()
             val looksForbidden = rawAppCommand(op)
-            ble.write(
-                characteristic = GattProfiles.PLAUD_WRITE,
-                payload = looksForbidden,
-                safety = BleWriteSafety.AlreadyChecked,
+            plaud.writeSealedAfterPlaintextGuard(
+                plaintext = rawAppCommand(9),
+                sealed = looksForbidden,
             )
             assertEquals(1, ble.recordedWrites.size, "opcode-looking sealed bytes for $op")
             assertTrue(ble.recordedWrites.single().second.contentEquals(looksForbidden))
@@ -105,10 +105,9 @@ class ForbiddenOpcodeLayersTest {
         ble.clearRecordedWrites()
         val looksLikeForbiddenSetting =
             rawAppCommand(8, byteArrayOf(ForbiddenSettings.AUTO_DELETE.toByte(), 1))
-        ble.write(
-            GattProfiles.PLAUD_WRITE,
-            looksLikeForbiddenSetting,
-            safety = BleWriteSafety.AlreadyChecked,
+        plaud.writeSealedAfterPlaintextGuard(
+            plaintext = rawAppCommand(9),
+            sealed = looksLikeForbiddenSetting,
         )
         assertEquals(1, ble.recordedWrites.size)
     }
@@ -120,7 +119,6 @@ class ForbiddenOpcodeLayersTest {
         val plaud = PlaudBleTransport(ble)
 
         val safePlain = rawAppCommand(9)
-        // Sealed bytes deliberately look like CLEAR_ALL (0x01 0x68 0x00) — must pass.
         val sealedLookingForbidden = rawAppCommand(ForbiddenOpcodes.CLEAR_ALL)
         plaud.writeSealedAfterPlaintextGuard(
             plaintext = safePlain,
@@ -153,7 +151,6 @@ class ForbiddenOpcodeLayersTest {
 
     @Test
     fun guardKeysOnPlaudWriteUuid_notProfileId() = runTest {
-        // Spoof profile id/name but same service + 2BB1 write UUID — still guarded.
         val spoof = GattProfile(
             id = "not-plaud",
             displayName = "Spoof",
@@ -173,7 +170,6 @@ class ForbiddenOpcodeLayersTest {
         }
         assertTrue(ble.recordedWrites.isEmpty())
 
-        // Same forbidden-looking bytes on a non-Plaud UUID are not Plaud-framed.
         ble.connect("dev", GattProfiles.Limitless)
         ble.write(GattProfiles.LIMITLESS_TX, rawAppCommand(ForbiddenOpcodes.CLEAR_ALL))
         assertEquals(1, ble.recordedWrites.size)
@@ -213,16 +209,12 @@ class ForbiddenOpcodeLayersTest {
         val env = unlockedClient()
         env.ble.clearRecordedWrites()
 
-        // Battery (cmd 9) is allowed; after unlock it is sealed then written AlreadyChecked.
-        // Must reach the fake transport (non-empty recorded writes).
         val battery = env.client.readBattery()
         assertEquals(0x5d, battery.percent)
         assertTrue(
             env.ble.recordedWrites.isNotEmpty(),
             "encrypted safe command must reach ble.write",
         )
-        // Every recorded payload after unlock is sealed ciphertext (≥ tag size), not a
-        // raw APP frame — transport must not have treated it as plaintext opcode.
         env.ble.recordedWrites.forEach { (_, payload) ->
             assertTrue(payload.size >= 16, "sealed packet too short: ${payload.size}")
         }
@@ -267,7 +259,6 @@ class ForbiddenOpcodeLayersTest {
     }
 
     companion object {
-        /** Build a plaintext APP frame without going through [Framing.encodeCommand]. */
         fun rawAppCommand(cmd: Int, params: ByteArray = ByteArray(0)): ByteArray {
             val raw = ByteArray(1 + 2 + params.size)
             raw[0] = Framing.APP_PREFIX
