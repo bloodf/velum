@@ -21,8 +21,10 @@ import kotlinx.coroutines.withContext
 /**
  * Secure store backed by the Android Keystore (AES-256-GCM).
  *
- * The secret key never leaves the Keystore; only ciphertext is persisted in
- * private SharedPreferences. Used for API keys and imported device identity.
+ * The AES-256 key is generated inside AndroidKeyStore and is **non-exportable**
+ * (Keystore hardware/software boundary — `SecretKey.encoded` is unavailable).
+ * Only ciphertext is persisted in private SharedPreferences. Used for API keys
+ * and imported device identity. Never log decrypted values.
  *
  * If the Keystore entry is permanently invalidated (emulator wipe / OEM quirks),
  * the alias is deleted and a fresh key is created so cold start cannot crash.
@@ -50,6 +52,7 @@ class AndroidSecureStore(
             decrypt(stored).toString(Charsets.UTF_8)
         }.getOrElse {
             // Corrupt, invalidated key, or legacy plaintext — remove and treat as missing.
+            // Do not include ciphertext or plaintext in any log or exception message.
             prefs.edit().remove(key).commit()
             null
         }
@@ -63,6 +66,12 @@ class AndroidSecureStore(
 
     override suspend fun contains(key: String): Boolean = withContext(Dispatchers.IO) {
         prefs.contains(key)
+    }
+
+    override suspend fun wipe() {
+        withContext(Dispatchers.IO) {
+            deleteKey()
+        }
     }
 
     private fun getOrCreateKey(): SecretKey {
@@ -84,6 +93,7 @@ class AndroidSecureStore(
 
     private fun createKey(): SecretKey {
         val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
+        // Keys minted in AndroidKeyStore are non-exportable by design (no raw key bytes).
         generator.init(
             KeyGenParameterSpec.Builder(
                 keyAlias,
@@ -93,6 +103,7 @@ class AndroidSecureStore(
                 .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
                 .setKeySize(256)
                 .setRandomizedEncryptionRequired(true)
+                .setUserAuthenticationRequired(false)
                 .build(),
         )
         return generator.generateKey()

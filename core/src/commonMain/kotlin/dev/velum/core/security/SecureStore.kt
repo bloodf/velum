@@ -5,14 +5,17 @@ import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 
 /**
- * Platform secure storage (Android Keystore / iOS Keychain / OS keyring on desktop).
- * Implementations must never write secrets to logs or plaintext prefs.
+ * Platform secure storage (Android Keystore / iOS Keychain / AES-GCM on desktop).
+ * Implementations must never write secrets to logs or plaintext prefs/files.
  */
 interface SecureStore {
     suspend fun putString(key: String, value: String)
     suspend fun getString(key: String): String?
     suspend fun remove(key: String)
     suspend fun contains(key: String): Boolean
+
+    /** Remove every entry (and platform key material when applicable). */
+    suspend fun wipe()
 }
 
 object SecureKeys {
@@ -66,10 +69,15 @@ class SecureDeviceKeyImporter(
         publicKeyPem: String,
         privateKeyPem: String,
     ) {
+        // Messages name fields only — never echo rejected values (they are secrets).
         require(serialNumber.isNotBlank()) { "serialNumber required" }
         require(serialSignatureBase64.isNotBlank()) { "snSignature (base64) required" }
         require(bindToken.isNotBlank()) { "bind token required" }
-        val signature = Base64.decode(serialSignatureBase64.trim())
+        val signature = try {
+            Base64.decode(serialSignatureBase64.trim())
+        } catch (_: Throwable) {
+            throw IllegalArgumentException("snSignature (base64) is malformed")
+        }
         require(signature.size == 256) {
             "snSignature must decode to 256 bytes (got ${signature.size})"
         }

@@ -19,4 +19,8 @@ class InMemorySecureStore : SecureStore {
     }
 
     override suspend fun contains(key: String): Boolean = mutex.withLock { map.containsKey(key) }
+
+    override suspend fun wipe() {
+        mutex.withLock { map.clear() }
+    }
 }
