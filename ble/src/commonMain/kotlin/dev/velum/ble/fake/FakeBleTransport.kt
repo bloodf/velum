@@ -2,23 +2,30 @@ package dev.velum.ble.fake
 
 import dev.velum.ble.BleConnectionState
 import dev.velum.ble.BleTransport
+import dev.velum.ble.GattProfile
+import dev.velum.ble.GattProfiles
+import dev.velum.ble.PlaudWriteGuard
 import dev.velum.core.model.ConnectedDevice
 import dev.velum.protocol.Bytes
 import dev.velum.protocol.DeviceModel
 import dev.velum.protocol.PlaudUuids
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.emptyFlow
 
 /**
- * In-process [BleTransport] backed by [FakePlaudPeripheral] for CI.
+ * In-process [BleTransport] for CI.
  *
- * Advertises Note Pro manufacturer data: company 0x005D, project 881, port 20.
+ * When connected with [GattProfiles.Plaud] and a [FakePlaudPeripheral] is
+ * provided, Plaud write/notify are forwarded to that peripheral. Writes are
+ * always recorded per characteristic name for multi-GATT tests.
  */
 class FakeBleTransport(
-    private val peripheral: FakePlaudPeripheral,
+    private val peripheral: FakePlaudPeripheral? = null,
     private val deviceId: String = "fake-note-pro",
     private val serial: String = "881FAKE1",
     private val name: String = "PLAUD NOTE PRO",
@@ -40,6 +47,17 @@ class FakeBleTransport(
     private val _devices = MutableStateFlow<List<ConnectedDevice>>(emptyList())
     override val discoveredDevices: StateFlow<List<ConnectedDevice>> = _devices.asStateFlow()
 
+    override var activeProfile: GattProfile? = null
+        private set
+
+    /** All accepted writes: characteristic name → payload copies, in order. */
+    private val _writes = mutableListOf<Pair<String, ByteArray>>()
+    val recordedWrites: List<Pair<String, ByteArray>>
+        get() = _writes.map { it.first to it.second.copyOf() }
+
+    private val notifyFlows =
+        mutableMapOf<String, MutableSharedFlow<ByteArray>>()
+
     override fun advertisements(): Flow<ConnectedDevice> = emptyFlow()
 
     override suspend fun startScan() {
@@ -53,23 +71,67 @@ class FakeBleTransport(
         }
     }
 
-    override suspend fun connect(deviceId: String) {
-        peripheral.resetUnlock()
+    override suspend fun connect(deviceId: String, profile: GattProfile) {
+        peripheral?.resetUnlock()
+        activeProfile = profile
+        _writes.clear()
+        notifyFlows.clear()
+        for (ch in profile.notifyCharacteristics()) {
+            notifyFlows[ch.name] = MutableSharedFlow(extraBufferCapacity = 128)
+        }
         _state.value = BleConnectionState.Connecting(deviceId)
         _state.value = BleConnectionState.Connected(device)
     }
 
     override suspend fun disconnect() {
-        peripheral.resetUnlock()
+        peripheral?.resetUnlock()
+        activeProfile = null
+        notifyFlows.clear()
         _state.value = BleConnectionState.Idle
     }
 
-    override suspend fun write(payload: ByteArray, withoutResponse: Boolean) {
+    override suspend fun write(
+        characteristic: String,
+        payload: ByteArray,
+        withoutResponse: Boolean,
+    ) {
         check(_state.value is BleConnectionState.Connected) { "Not connected" }
-        peripheral.onWrite(payload)
+        val profile = activeProfile ?: error("No active GATT profile")
+        profile.characteristic(characteristic) // validate name
+        PlaudWriteGuard.maybeRequireAllowed(profile, characteristic, payload)
+        _writes += characteristic to payload.copyOf()
+        if (
+            profile.id == GattProfiles.Plaud.id &&
+            characteristic == GattProfiles.PLAUD_WRITE &&
+            peripheral != null
+        ) {
+            peripheral.onWrite(payload)
+        }
     }
 
-    override fun notifications(): Flow<ByteArray> = peripheral.notifications
+    override fun notifications(characteristic: String): Flow<ByteArray> {
+        val profile = activeProfile
+        if (
+            profile?.id == GattProfiles.Plaud.id &&
+            characteristic == GattProfiles.PLAUD_NOTIFY &&
+            peripheral != null
+        ) {
+            return peripheral.notifications
+        }
+        return notifyFlows[characteristic]?.asSharedFlow()
+            ?: emptyFlow()
+    }
+
+    /** Emit a fake notification on [characteristic] (non-Plaud peripheral tests). */
+    suspend fun emitNotification(characteristic: String, payload: ByteArray) {
+        val flow = notifyFlows[characteristic]
+            ?: error("No notify flow for '$characteristic' — connect with a matching profile first")
+        flow.emit(payload.copyOf())
+    }
+
+    fun clearRecordedWrites() {
+        _writes.clear()
+    }
 
     companion object {
         /** Build 0x005D manufacturer payload: model @1, serial @9, protocol @18. */
