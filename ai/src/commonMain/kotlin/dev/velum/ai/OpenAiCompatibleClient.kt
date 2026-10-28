@@ -11,7 +11,6 @@ import io.ktor.client.request.forms.formData
 import io.ktor.client.request.get
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
-import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.Headers
 import io.ktor.http.HttpHeaders
@@ -33,7 +32,7 @@ class OpenAiCompatibleClient(
         if (!response.status.isSuccess()) {
             throw AiApiException(
                 status = response.status.value,
-                message = "GET /models failed: ${response.status} ${response.bodyAsText().take(400)}",
+                message = ApiErrorSanitizer.httpFailure("GET /models", response.status.value),
             )
         }
         val body = response.body<ModelsResponse>()
@@ -80,7 +79,7 @@ class OpenAiCompatibleClient(
         if (!response.status.isSuccess()) {
             throw AiApiException(
                 status = response.status.value,
-                message = "POST /audio/transcriptions failed: ${response.status} ${response.bodyAsText().take(400)}",
+                message = ApiErrorSanitizer.httpFailure("POST /audio/transcriptions", response.status.value),
             )
         }
         val body = response.body<TranscriptionResponse>()
@@ -109,7 +108,7 @@ class OpenAiCompatibleClient(
         if (!response.status.isSuccess()) {
             throw AiApiException(
                 status = response.status.value,
-                message = "POST /chat/completions failed: ${response.status} ${response.bodyAsText().take(400)}",
+                message = ApiErrorSanitizer.httpFailure("POST /chat/completions", response.status.value),
             )
         }
         val body = response.body<ChatCompletionResponse>()
