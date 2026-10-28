@@ -17,10 +17,10 @@
     "it": 100,
     "extractive": 100
   },
-  "full_total": 16153,
+  "full_total": 16128,
   "full_per_category": {
     "general": 2344,
-    "meeting": 4103,
+    "meeting": 4078,
     "call": 315,
     "sales": 813,
     "interview": 847,
@@ -38,5 +38,11 @@
   "min_per_category": 100,
   "featured_shortfalls": {},
   "official_in_featured": 41,
-  "official_in_full": 41
+  "official_in_full": 41,
+  "body_dedupe": {
+    "input_rows": 16153,
+    "duplicate_body_groups": 25,
+    "removed_rows": 25,
+    "output_rows": 16128
+  }
 }
