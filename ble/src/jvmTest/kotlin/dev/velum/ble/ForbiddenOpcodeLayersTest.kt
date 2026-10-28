@@ -14,6 +14,7 @@ import dev.velum.protocol.ForbiddenSettings
 import dev.velum.protocol.Framing
 import dev.velum.protocol.PlaudOutboundGuard
 import dev.velum.protocol.PlaudUuids
+import dev.velum.protocol.Protocol20SessionSecret
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -22,11 +23,11 @@ import kotlinx.coroutines.test.runTest
 
 /**
  * Forbidden opcodes/settings must be rejected at the Plaud send path **and**
- * at the transport write layer for the Plaud write characteristic (UUID 2BB1).
- * Nothing may reach the fake peripheral / recorded write log.
+ * at the transport / encrypted-session write layers for the Plaud write
+ * characteristic (UUID 2BB1). Nothing may reach the fake peripheral write log.
  *
  * Raw forbidden frames are only ever aimed at [FakeBleTransport] — never at a
- * real radio. Tests are deterministic (no reliance on random ciphertext layout).
+ * real radio.
  */
 class ForbiddenOpcodeLayersTest {
     @Test
@@ -84,69 +85,72 @@ class ForbiddenOpcodeLayersTest {
     }
 
     @Test
-    fun writeSealedAfterPlaintextGuard_allowsCiphertextLookingForbidden() = runTest {
-        val ble = FakeBleTransport()
-        ble.connect("fake-note-pro", GattProfiles.Plaud)
-        val plaud = PlaudBleTransport(ble)
-
-        // Deterministic "ciphertext" that is byte-identical to a forbidden plaintext
-        // frame. Public entry point checks safe plaintext, then internal sealed write.
-        ForbiddenOpcodes.ALL.forEach { op ->
-            ble.clearRecordedWrites()
-            val looksForbidden = rawAppCommand(op)
-            plaud.writeSealedAfterPlaintextGuard(
-                plaintext = rawAppCommand(9),
-                sealed = looksForbidden,
-            )
-            assertEquals(1, ble.recordedWrites.size, "opcode-looking sealed bytes for $op")
-            assertTrue(ble.recordedWrites.single().second.contentEquals(looksForbidden))
-        }
-
-        ble.clearRecordedWrites()
-        val looksLikeForbiddenSetting =
-            rawAppCommand(8, byteArrayOf(ForbiddenSettings.AUTO_DELETE.toByte(), 1))
-        plaud.writeSealedAfterPlaintextGuard(
-            plaintext = rawAppCommand(9),
-            sealed = looksLikeForbiddenSetting,
+    fun noPublicApi_acceptsArbitrarySealedBytes() {
+        // Negative: writeSealedAfterPlaintextGuard is gone; no public dual-ByteArray write.
+        assertTrue(
+            PlaudBleTransport::class.java.methods.none {
+                it.name == "writeSealedAfterPlaintextGuard"
+            },
         )
-        assertEquals(1, ble.recordedWrites.size)
+        assertTrue(
+            PlaudEncryptedSession::class.java.methods
+                .filter { it.name.startsWith("write") }
+                .none { method ->
+                    method.parameterTypes.count { it == ByteArray::class.java } > 1
+                },
+            "no public write* method may take multiple ByteArray args (plaintext+sealed)",
+        )
     }
 
     @Test
-    fun plaudWrapper_guardsPlaintextBeforeSealedWrite() = runTest {
+    fun writeEncrypted_rejectsForbiddenPlaintext_beforeAnySeal() = runTest {
         val ble = FakeBleTransport()
         ble.connect("fake-note-pro", GattProfiles.Plaud)
-        val plaud = PlaudBleTransport(ble)
-
-        val safePlain = rawAppCommand(9)
-        val sealedLookingForbidden = rawAppCommand(ForbiddenOpcodes.CLEAR_ALL)
-        plaud.writeSealedAfterPlaintextGuard(
-            plaintext = safePlain,
-            sealed = sealedLookingForbidden,
+        val session = PlaudBleTransport(ble).openEncryptedSession(
+            cipher = createSessionCipher(),
+            secret = Protocol20SessionSecret(
+                key = ByteArray(32) { 1 },
+                nonce = ByteArray(12) { 2 },
+                aad = ByteArray(12) { 3 },
+            ),
         )
-        assertEquals(1, ble.recordedWrites.size)
-        assertTrue(ble.recordedWrites.single().second.contentEquals(sealedLookingForbidden))
 
-        ble.clearRecordedWrites()
         ForbiddenOpcodes.ALL.forEach { op ->
-            assertFailsWith<IllegalArgumentException>("sealed-path plaintext opcode $op") {
-                plaud.writeSealedAfterPlaintextGuard(
-                    plaintext = rawAppCommand(op),
-                    sealed = byteArrayOf(0x00, 0x01, 0x02),
-                )
+            assertFailsWith<IllegalArgumentException>("encrypted opcode $op") {
+                session.writeEncrypted(rawAppCommand(op))
             }
             assertTrue(
                 ble.recordedWrites.isEmpty(),
-                "forbidden plaintext $op must not reach ble.write via sealed path",
+                "forbidden plaintext $op must not reach ble.write via writeEncrypted",
             )
         }
         assertFailsWith<IllegalArgumentException> {
-            plaud.writeSealedAfterPlaintextGuard(
-                plaintext = rawAppCommand(8, byteArrayOf(ForbiddenSettings.AUTO_SYNC.toByte(), 1)),
-                sealed = byteArrayOf(0x00),
+            session.writeEncrypted(
+                rawAppCommand(8, byteArrayOf(ForbiddenSettings.AUTO_SYNC.toByte(), 1)),
             )
         }
         assertTrue(ble.recordedWrites.isEmpty())
+    }
+
+    @Test
+    fun writeEncrypted_onWireEqualsSealOfCheckedPlaintext() = runTest {
+        val ble = FakeBleTransport()
+        ble.connect("fake-note-pro", GattProfiles.Plaud)
+        val cipher = createSessionCipher()
+        val secret = Protocol20SessionSecret(
+            key = ByteArray(32) { (it + 11).toByte() },
+            nonce = ByteArray(12) { (it + 13).toByte() },
+            aad = ByteArray(12) { (it + 17).toByte() },
+        )
+        val session = PlaudBleTransport(ble).openEncryptedSession(cipher, secret, initialSendSeq = 2)
+        val plaintext = rawAppCommand(9)
+        val seq = session.nextSendSequence
+        session.writeEncrypted(plaintext)
+
+        val onWire = ble.recordedWrites.single().second
+        val opened = cipher.openPacket(secret, seq, onWire)!!
+        assertTrue(opened.second.contentEquals(plaintext))
+        assertTrue(onWire.contentEquals(cipher.sealPacket(secret, seq, plaintext)))
     }
 
     @Test
