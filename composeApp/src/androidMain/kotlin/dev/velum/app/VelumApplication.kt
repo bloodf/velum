@@ -8,6 +8,7 @@ import dev.velum.ai.pipeline.AiRuntimeHolder
 import dev.velum.ai.pipeline.ThermalMonitor
 import dev.velum.ai.pipeline.createWorkManagerRecordingJobScheduler
 import dev.velum.app.di.AppContainer
+import dev.velum.app.platform.DownloadProgressNotifier
 import dev.velum.app.platform.MicRecordingService
 import dev.velum.app.platform.ShareTextHolder
 import dev.velum.app.platform.installAppContext
@@ -43,20 +44,23 @@ class VelumApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // Context installs only — no filesDir / SharedPreferences / File I/O on main
+        // (device-walk StrictMode penaltyDeath is active before Application.onCreate).
         ShareTextHolder.context = applicationContext
         installAppContext(applicationContext)
         installCalendarContext(applicationContext)
         installMicCaptureContext(applicationContext)
-        installRecordingFilesDir(filesDir.absolutePath)
         dev.velum.ai.local.installDeviceComputeContext(applicationContext)
         MicRecordingService.ensureNotificationChannel(this)
-        dev.velum.app.platform.DownloadProgressNotifier.ensureChannel()
+        DownloadProgressNotifier.ensureChannel()
 
-        val modelsDir = File(filesDir, "models")
         val powerManager = getSystemService(PowerManager::class.java)
         val appContext = applicationContext
         appScope.launch {
             try {
+                // filesDir / models path are disk reads — stay on Dispatchers.IO.
+                installRecordingFilesDir(filesDir.absolutePath)
+                val modelsDir = File(filesDir, "models")
                 val built = AppContainer(
                     secureStore = AndroidSecureStore(appContext),
                     driverFactory = DriverFactory(appContext),
