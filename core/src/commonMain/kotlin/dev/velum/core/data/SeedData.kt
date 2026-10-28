@@ -103,22 +103,25 @@ object SeedData {
             }
             q.setMeta(META_FULL_TEMPLATES_IMPORTED, "0")
 
-            q.insertAutoflow(
-                id = "flow-default",
-                name = "Transcrever gravações do Note Pro",
-                enabled = 1,
-                wake_phrase = null,
-                duration_min_seconds = 0,
-                duration_max_seconds = 3 * 3600,
-                source_filter = "note_pro",
-                template_id = BuiltinTemplateCatalog.DEFAULT_ID,
-                auto_label_voice = 1,
-                language = "auto",
-                notify = 1,
-                post_action = null,
-                model_id = null,
-                endpoint_profile_id = null,
-            )
+            // Never INSERT OR REPLACE flow-default — that wipes user edits on seed bumps.
+            if (q.selectAutoflows().executeAsList().none { it.id == "flow-default" }) {
+                q.insertAutoflow(
+                    id = "flow-default",
+                    name = "Transcrever gravações do Note Pro",
+                    enabled = 1,
+                    wake_phrase = null,
+                    duration_min_seconds = 0,
+                    duration_max_seconds = 3 * 3600,
+                    source_filter = "note_pro",
+                    template_id = BuiltinTemplateCatalog.DEFAULT_ID,
+                    auto_label_voice = 1,
+                    language = "auto",
+                    notify = 1,
+                    post_action = null,
+                    model_id = null,
+                    endpoint_profile_id = null,
+                )
+            }
 
             q.setMeta(META_SEEDED, SEED_VERSION)
         }
