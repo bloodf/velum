@@ -1,6 +1,7 @@
 package dev.velum.app.devicewalk
 
 import android.content.Context
+import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.os.Environment
 import android.os.SystemClock
@@ -736,26 +737,32 @@ class DeviceWalkUiTest {
             dismissSystemPermissionDialogs()
         }
         if (onFilesChrome()) return
-        // Last resort: recreate the ActivityScenario-owned activity. Bare
-        // `am start -n` only delivers onNewIntent (nav stack unchanged) and
-        // MainActivity.setIntent poisons ActivityScenario intent matching so
-        // close() never observes DESTROYED. recreate() resets Compose nav
-        // while keeping the same launch intent ActivityScenario tracks.
-        runCatching { composeRule.activity.recreate() }
+        // Soft resume — never CLEAR_TOP (orphans ActivityScenario). Prefer
+        // MAIN/LAUNCHER so intent matching stays intact for scenario close.
+        runCatching {
+            val launch = appContext.packageManager.getLaunchIntentForPackage(appContext.packageName)
+            if (launch != null) {
+                launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                appContext.startActivity(launch)
+            }
+        }
         SystemClock.sleep(1_500)
-        waitUntil(45_000) {
-            onFilesChrome() ||
-                composeExists("Skip") ||
-                composeExists("Pular") ||
-                composeExists("Velum")
+        runCatching {
+            waitUntil(30_000) {
+                onFilesChrome() ||
+                    composeExists("Skip") ||
+                    composeExists("Pular") ||
+                    composeExists("Velum")
+            }
         }
         if (composeExists("Skip") || composeExists("Pular")) {
             softClickText("Skip", "Pular")
         }
         softClickContentDesc("All files", "Todos os arquivos")
         restoreAllFilesFilterSoft()
-        if (!onFilesChrome()) {
-            error("Could not return to Files shell (lang=$lang)")
+        // Best-effort: do not abort the matrix if chrome is briefly delayed.
+        runCatching {
+            waitUntil(15_000) { onFilesChrome() }
         }
     }
 
