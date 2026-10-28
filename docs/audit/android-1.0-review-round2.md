@@ -54,7 +54,8 @@ Round 1 left real regressions and gaps (especially AppContainer hang-on-failure,
 | `:composeApp:assembleRelease` (R8) | OK (~191 MB) |
 | Release `zipalign -P 16` | OK |
 | Local interactive emulator walk | **Failed** (adb offline; QEMU idle) — use CI smoke |
-| CI | Watch tip of `main` after push |
+| CI on fix tip `4321547` | **success** run `40669936045` |
+| CI on SHA-pin `3a03300` | **success** run `40670028151` |
 
 ---
 
