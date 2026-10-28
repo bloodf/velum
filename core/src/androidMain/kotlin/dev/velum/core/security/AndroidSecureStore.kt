@@ -32,12 +32,16 @@ import kotlinx.coroutines.withContext
  * `Base64( version:1 || ivLength:1 || iv || ciphertext+tag )`. Legacy
  * unversioned blobs (`ivLength:1 || iv || ciphertext+tag`) still decrypt.
  *
- * Keystore failure policy ([KeystoreFailureClassifier]):
+ * Keystore failure policy ([KeystoreFailureClassifier] /
+ * [KeystoreAliasResolvePolicy]):
  * - [KeystoreVaultAction.ClearAndRegenerate] — only
  *   `KeyPermanentlyInvalidatedException` (the old key is gone). Delete the alias,
  *   clear every ciphertext entry, mint a fresh key.
  * - [KeystoreVaultAction.KeepEntries] — every other exception. Stored ciphertext
  *   is left untouched; a transient Keystore error must never wipe the vault.
+ * - Alias resolution: create a key only when the alias is absent (or after
+ *   permanent invalidation). A transient `getEntry` failure (including the
+ *   API 35 emulator NPE) keeps the alias and every entry.
  *
  * Decrypt policy matches the JVM store: drop an entry only when its blob is
  * structurally malformed; crypto / auth / Keystore failures keep the ciphertext
@@ -113,20 +117,41 @@ class AndroidSecureStore(
 
     private fun getOrCreateKey(): SecretKey {
         val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
-        if (keyStore.containsAlias(keyAlias)) {
-            // API 35 emulator (and some OEMs) can leave an alias that makes
-            // getEntry NPE with "invalid null input" instead of returning null.
-            val existing = runCatching {
-                keyStore.getEntry(keyAlias, null) as? KeyStore.SecretKeyEntry
-            }.getOrElse { t ->
-                Log.w(TAG, "Keystore getEntry failed; recreating alias: ${t::class.java.name}")
-                null
-            }
-            if (existing != null) return existing.secretKey
-            // Transient / corrupt alias: replace the alias only — never clear prefs.
-            deleteKeyAliasOnly()
+        val aliasPresent = keyStore.containsAlias(keyAlias)
+        if (!aliasPresent) {
+            return createKey()
         }
-        return createKey()
+        // Alias exists — never mint a replacement unless permanently invalidated.
+        // API 35 emulator NPE ("invalid null input") is transient: keep the alias.
+        val entryResult = runCatching {
+            keyStore.getEntry(keyAlias, null) as? KeyStore.SecretKeyEntry
+        }
+        val entry = entryResult.getOrNull()
+        val failure = entryResult.exceptionOrNull()
+        return when (
+            KeystoreAliasResolvePolicy.decide(
+                aliasPresent = true,
+                entryObtained = entry != null,
+                getEntryFailure = failure,
+            )
+        ) {
+            KeystoreAliasResolveAction.UseExisting ->
+                entry!!.secretKey
+            KeystoreAliasResolveAction.CreateMissing ->
+                createKey()
+            KeystoreAliasResolveAction.ClearAndRegenerate -> {
+                val name = failure?.let { it::class.java.name } ?: "unknown"
+                Log.w(TAG, "Key permanently invalidated on getEntry; clearing vault: $name")
+                clearVaultAndKey()
+                createKey()
+            }
+            KeystoreAliasResolveAction.PropagateTransient -> {
+                val t = failure
+                    ?: IllegalStateException("Keystore alias present but SecretKeyEntry missing")
+                Log.w(TAG, "Keystore getEntry failed; retaining alias: ${t::class.java.name}")
+                throw t
+            }
+        }
     }
 
     private fun createKey(): SecretKey {
