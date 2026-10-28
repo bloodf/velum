@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.velum.app.di.AppContainer
 import dev.velum.app.i18n.LocalStrings
+import dev.velum.app.platform.deleteFileAtPath
 import dev.velum.app.platform.shareText
 import dev.velum.app.ui.components.BlackButton
 import dev.velum.app.ui.components.OutlineButton
@@ -65,7 +66,9 @@ fun StoragePrivacyScreen(
                     onClick = {
                         confirmWipe = false
                         scope.launch {
-                            container.repository.wipeAllUserData()
+                            container.repository.wipeAllUserData { path ->
+                                deleteFileAtPath(path)
+                            }
                             container.voiceProfileStore.wipeAll()
                             status = strings.settingsUi.wipeAllDataDone
                             val usage = container.repository.storageUsage()

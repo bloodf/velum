@@ -184,6 +184,69 @@ class AutoFlowRunnerTest {
         runner.stop()
     }
 
+    @Test
+    fun seed_skips_in_flight_so_generating_can_rematch() = runBlocking {
+        val (repo, processor) = harness()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        var processCalls = 0
+        val scheduler = RecordingJobScheduler { id, _, _, _ ->
+            processCalls++
+            kotlinx.coroutines.runBlocking {
+                repo.updateStatus(id, "generating")
+                repo.updateStatus(id, "ready")
+                repo.updateSummary(id, "## ok")
+            }
+        }
+        // Pre-existing generating row simulates process death mid-job before runner start.
+        repo.insertRecording(
+            id = "rec-inflight",
+            sessionId = 1,
+            folderId = null,
+            title = "In flight",
+            source = "note_pro",
+            deviceSerial = null,
+            startedAt = 1_700_000_000L,
+            durationSeconds = 30,
+            sizeBytes = 100,
+            localPath = "/tmp/af.wav",
+            transcript = null,
+            summaryMarkdown = null,
+            status = "generating",
+        )
+        repo.setAutoflowEnabled("flow-default", false)
+        repo.upsertAutoflow(
+            id = "flow-death",
+            name = "Note Pro",
+            enabled = true,
+            wakePhrase = null,
+            durationMinSeconds = 5,
+            durationMaxSeconds = 3600,
+            sourceFilter = "note_pro",
+            templateId = null,
+            autoLabelVoice = true,
+            language = "auto",
+            notify = true,
+            postAction = AutoFlowPostAction.None.stored,
+        )
+
+        val runner = AutoFlowRunner(
+            repository = repo,
+            processor = processor,
+            scope = scope,
+            jobScheduler = scheduler,
+        )
+        runner.start()
+        // Let the first combine emission seed (must still see generating / skip it).
+        delay(400)
+        assertEquals(0, processCalls, "generating seed must not enqueue yet")
+        repo.updateStatus("rec-inflight", "imported")
+        withTimeout(15_000) {
+            while (processCalls < 1) delay(50)
+        }
+        assertEquals(1, processCalls, "in-flight seed skip must allow rematch after restart")
+        runner.stop()
+    }
+
     private suspend fun insert(
         repo: VelumRepository,
         status: String,

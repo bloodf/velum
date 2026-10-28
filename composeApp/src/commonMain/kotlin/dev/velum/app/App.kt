@@ -607,24 +607,28 @@ private fun VelumRoot(container: AppContainer) {
                                             durationSeconds = 0,
                                             sizeBytes = 0,
                                         )
+                                        fabOpen = false
+                                        navController.navigate(Routes.recording(id))
                                     }
                                     MicStartResult.PermissionRequired -> {
                                         snackbar.showSnackbar(strings.micPermissionRationale)
-                                        container.activeMicRecordingId = id
+                                        // Do not keep a stuck "recording" row without capture.
+                                        container.repository.trashRecording(id)
+                                        fabOpen = false
                                     }
                                     MicStartResult.Unsupported -> {
                                         snackbar.showSnackbar(strings.micUnsupported)
-                                        container.activeMicRecordingId = id
+                                        container.repository.trashRecording(id)
+                                        fabOpen = false
                                     }
                                     is MicStartResult.Failed -> {
                                         snackbar.showSnackbar(
                                             started.message.ifBlank { strings.micUnsupported },
                                         )
-                                        container.activeMicRecordingId = id
+                                        container.repository.trashRecording(id)
+                                        fabOpen = false
                                     }
                                 }
-                                fabOpen = false
-                                navController.navigate(Routes.recording(id))
                             }
                         }
                         requestMic { outcome ->

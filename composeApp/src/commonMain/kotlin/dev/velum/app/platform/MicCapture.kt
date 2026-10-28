@@ -33,6 +33,9 @@ data class MicMarker(
 /**
  * Platform microphone capture. Android writes 16 kHz mono PCM WAV under app files
  * via a microphone foreground service. Desktop/iOS return Unsupported.
+ *
+ * Start/stop/pause/resume are **suspend** so Android never blocks the main thread
+ * with `runBlocking` while waiting for the FGS (ANR risk).
  */
 interface MicCapture {
     val isSupported: Boolean
@@ -53,24 +56,24 @@ interface MicCapture {
     /**
      * Begin capture to [absolutePath] (WAV). Fails if already capturing or unsupported.
      */
-    fun start(
+    suspend fun start(
         absolutePath: String,
         inputSource: MicInputSource = MicInputSource.Mic,
     ): MicStartResult
 
     /** Pause AudioRecord; keeps the foreground service and notification. */
-    fun pause(): MicPauseResult
+    suspend fun pause(): MicPauseResult
 
     /** Resume after [pause]. */
-    fun resume(): MicPauseResult
+    suspend fun resume(): MicPauseResult
 
     /** Drop a bookmark at the current recording offset. */
-    fun addMarker(label: String = ""): MicMarkerResult
+    suspend fun addMarker(label: String = ""): MicMarkerResult
 
     /**
      * Stop capture and finalize the WAV header. Returns path + duration/size on success.
      */
-    fun stop(): MicStopResult
+    suspend fun stop(): MicStopResult
 }
 
 sealed class MicMarkerResult {

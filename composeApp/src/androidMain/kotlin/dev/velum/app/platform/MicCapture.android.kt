@@ -3,8 +3,8 @@ package dev.velum.app.platform
 import android.Manifest
 import android.content.pm.PackageManager
 import androidx.core.content.ContextCompat
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
 
 private var micAppContext: android.content.Context? = null
@@ -40,7 +40,7 @@ private class AndroidMicCapture(
             MicRecordingService.pcmListener = value
         }
 
-    override fun start(
+    override suspend fun start(
         absolutePath: String,
         inputSource: MicInputSource,
     ): MicStartResult {
@@ -66,7 +66,7 @@ private class AndroidMicCapture(
         return outcome ?: MicStartResult.Failed("Timed out starting microphone service")
     }
 
-    override fun pause(): MicPauseResult {
+    override suspend fun pause(): MicPauseResult {
         val context = contextProvider()
             ?: return MicPauseResult.Failed("No Android context")
         if (!isCapturing) return MicPauseResult.NotCapturing
@@ -82,7 +82,7 @@ private class AndroidMicCapture(
         return outcome ?: MicPauseResult.Failed("Timed out pausing")
     }
 
-    override fun resume(): MicPauseResult {
+    override suspend fun resume(): MicPauseResult {
         val context = contextProvider()
             ?: return MicPauseResult.Failed("No Android context")
         if (!isCapturing) return MicPauseResult.NotCapturing
@@ -98,24 +98,24 @@ private class AndroidMicCapture(
         return outcome ?: MicPauseResult.Failed("Timed out resuming")
     }
 
-    override fun addMarker(label: String): MicMarkerResult {
+    override suspend fun addMarker(label: String): MicMarkerResult {
         val context = contextProvider()
             ?: return MicMarkerResult.Failed("No Android context")
         if (!isCapturing) return MicMarkerResult.NotCapturing
         val before = markers.size
         MicRecordingService.mark(context, label)
-        // Marker is applied on the service thread; short poll for visibility.
-        repeat(20) {
+        // Marker is applied on the service thread; suspend-poll (never Thread.sleep on main).
+        repeat(40) {
             val list = markers
             if (list.size > before) {
                 return MicMarkerResult.Ok(list.last())
             }
-            Thread.sleep(25)
+            delay(25)
         }
         return MicMarkerResult.Ok(MicMarker(offsetMs = 0, label = label))
     }
 
-    override fun stop(): MicStopResult {
+    override suspend fun stop(): MicStopResult {
         val context = contextProvider()
             ?: return MicStopResult.Failed("No Android context")
         if (!isCapturing && MicRecordingService.state.value !is MicSessionState.Stopped) {
@@ -147,13 +147,11 @@ private class AndroidMicCapture(
         return outcome ?: MicStopResult.Failed("Timed out stopping microphone service")
     }
 
-    private fun <T> awaitState(timeoutMs: Long, map: (MicSessionState) -> T?): T? {
+    private suspend fun <T> awaitState(timeoutMs: Long, map: (MicSessionState) -> T?): T? {
         map(MicRecordingService.state.value)?.let { return it }
-        return runBlocking {
-            withTimeoutOrNull(timeoutMs.coerceAtLeast(1)) {
-                val state = MicRecordingService.state.first { map(it) != null }
-                map(state)
-            }
+        return withTimeoutOrNull(timeoutMs.coerceAtLeast(1)) {
+            val state = MicRecordingService.state.first { map(it) != null }
+            map(state)
         }
     }
 }

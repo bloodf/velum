@@ -21,6 +21,7 @@ import dev.velum.core.integrations.IntegrationConfig
 import dev.velum.core.security.AndroidSecureStore
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -32,12 +33,13 @@ import kotlinx.coroutines.launch
  *
  * Heavy work (SQLDelight open, Featured template seed ~1500 rows, FTS rebuild) runs on
  * [Dispatchers.IO] so [Application.onCreate] does not ANR. [MainActivity] keeps the
- * splash screen up until [isContainerReady].
+ * splash screen up until [isContainerReady] (or a fatal init error surfaces).
  */
 class VelumApplication : Application() {
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val ready = AtomicBoolean(false)
     private val containerDeferred = CompletableDeferred<AppContainer>()
+    private val initFailure = AtomicReference<Throwable?>(null)
 
     override fun onCreate() {
         super.onCreate()
@@ -54,43 +56,53 @@ class VelumApplication : Application() {
         val powerManager = getSystemService(PowerManager::class.java)
         val appContext = applicationContext
         appScope.launch {
-            val built = AppContainer(
-                secureStore = AndroidSecureStore(appContext),
-                driverFactory = DriverFactory(appContext),
-                modelStoreRoot = ModelStoreDir(modelsDir.absolutePath),
-                integrationConfig = IntegrationConfig.fromEnv { key -> System.getenv(key) },
-                recordingJobSchedulerFactory = { _, _ ->
-                    createWorkManagerRecordingJobScheduler(appContext)
-                },
-                thermalPolicy = ThermalMonitor.asPolicy(powerManager),
-            )
-            container = built
-            AiRuntimeHolder.install(
-                processor = built.recordingProcessor,
-                repository = built.repository,
-                settings = built.settingsRepository,
-            )
-            ready.set(true)
-            containerDeferred.complete(built)
-            runCatching {
-                recoverPartialMicRecordings(
-                    recordingsDirPath = recordingsDirectoryPath(),
-                    repository = built.repository,
-                    onRecovered = { recordingId ->
-                        built.enqueueProcessing(
-                            recordingId = recordingId,
-                            templateId = null,
-                            retranscribe = true,
-                        )
+            try {
+                val built = AppContainer(
+                    secureStore = AndroidSecureStore(appContext),
+                    driverFactory = DriverFactory(appContext),
+                    modelStoreRoot = ModelStoreDir(modelsDir.absolutePath),
+                    integrationConfig = IntegrationConfig.fromEnv { key -> System.getenv(key) },
+                    recordingJobSchedulerFactory = { _, _ ->
+                        createWorkManagerRecordingJobScheduler(appContext)
                     },
+                    thermalPolicy = ThermalMonitor.asPolicy(powerManager),
                 )
-            }.onFailure { t ->
-                Log.e(TAG, "Partial mic recovery failed", t)
+                container = built
+                AiRuntimeHolder.install(
+                    processor = built.recordingProcessor,
+                    repository = built.repository,
+                    settings = built.settingsRepository,
+                )
+                ready.set(true)
+                containerDeferred.complete(built)
+                runCatching {
+                    recoverPartialMicRecordings(
+                        recordingsDirPath = recordingsDirectoryPath(),
+                        repository = built.repository,
+                        onRecovered = { recordingId ->
+                            built.enqueueProcessing(
+                                recordingId = recordingId,
+                                templateId = null,
+                                retranscribe = true,
+                            )
+                        },
+                    )
+                }.onFailure { t ->
+                    Log.e(TAG, "Partial mic recovery failed", t)
+                }
+            } catch (t: Throwable) {
+                Log.e(TAG, "AppContainer init failed", t)
+                initFailure.set(t)
+                // Unblock splash + MainActivity; they show a fatal error UI.
+                ready.set(true)
+                containerDeferred.completeExceptionally(t)
             }
         }
     }
 
     fun isContainerReady(): Boolean = ready.get()
+
+    fun containerInitError(): Throwable? = initFailure.get()
 
     suspend fun awaitContainer(): AppContainer = containerDeferred.await()
 

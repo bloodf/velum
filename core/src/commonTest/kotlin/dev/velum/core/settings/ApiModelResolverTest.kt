@@ -106,6 +106,30 @@ class ApiModelResolverTest {
     }
 
     @Test
+    fun mergeApiOverrides_fills_blank_model_from_template() {
+        // Mirrors RecordingProcessor.mergeApiOverrides (AutoFlow profile-only override).
+        fun merge(
+            primary: ApiModelOverride?,
+            secondary: ApiModelOverride?,
+        ): ApiModelOverride? {
+            if (primary == null) return secondary
+            if (secondary == null) return primary
+            return ApiModelOverride(
+                profileId = primary.profileId?.takeIf { it.isNotBlank() }
+                    ?: secondary.profileId?.takeIf { it.isNotBlank() },
+                modelId = primary.modelId?.takeIf { it.isNotBlank() }
+                    ?: secondary.modelId?.takeIf { it.isNotBlank() },
+            )
+        }
+        val merged = merge(
+            ApiModelOverride(profileId = "ollama", modelId = null),
+            ApiModelOverride(profileId = null, modelId = "llama3"),
+        )
+        assertEquals("ollama", merged!!.profileId)
+        assertEquals("llama3", merged.modelId)
+    }
+
+    @Test
     fun diarization_hard_fallback_may_be_empty() {
         val resolved = ApiModelResolver.resolve(
             task = AiApiTask.Diarization,

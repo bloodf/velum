@@ -21,3 +21,6 @@ actual fun writeBytesToPath(absolutePath: String, bytes: ByteArray) {
     file.parentFile?.mkdirs()
     file.writeBytes(bytes)
 }
+
+actual fun deleteFileAtPath(absolutePath: String): Boolean =
+    runCatching { File(absolutePath).takeIf { it.isFile }?.delete() == true }.getOrDefault(false)

@@ -57,7 +57,13 @@ class AutoFlowRunner(
                 .distinctUntilChanged()
                 .collect { (recordings, flows) ->
                     if (!seeded) {
-                        processedIds.addAll(recordings.map { it.id })
+                        // Seed only terminal/stable rows so an in-flight job interrupted by
+                        // process death remains eligible for rematch + post-actions.
+                        processedIds.addAll(
+                            recordings
+                                .filter { it.status !in IN_FLIGHT_STATUSES }
+                                .map { it.id },
+                        )
                         seeded = true
                         return@collect
                     }
@@ -76,9 +82,11 @@ class AutoFlowRunner(
                             }
                             continue
                         }
-                        processedIds.add(recording.id)
                         val override = autoflowModelOverride(match)
                         val ready = runProcessing(recording.id, match.template_id, override)
+                        // Claim only after work finishes (or fails terminally) so kill mid-run
+                        // can retry; still claim on failure to avoid infinite retry loops.
+                        processedIds.add(recording.id)
                         if (ready) {
                             firePostAction(match, recording.id)
                         }
@@ -235,6 +243,14 @@ class AutoFlowRunner(
 
     companion object {
         private const val AWAIT_TERMINAL_MS = 30L * 60L * 1000L
+
+        /** Statuses that mean WorkManager / processor may still finish after process death. */
+        private val IN_FLIGHT_STATUSES = setOf(
+            "generating",
+            "queued",
+            "paused_thermal",
+            "recording",
+        )
 
         /** Recordings that will not gain matching fields later. */
         internal fun isStableNonMatch(recording: Recording): Boolean =

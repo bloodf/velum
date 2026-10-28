@@ -341,6 +341,9 @@ class VelumRepository(
      * Lazy-import the gzipped full Plaud catalog once (Discover "All").
      * Streams gunzip+JSONL line-by-line (no full ~29MB String). Preserves existing
      * [Template.uses] on id collision; sets featured from JSON.
+     *
+     * The "imported" meta flag is set only after a successful FTS rebuild so a
+     * process kill mid-import cannot leave All templates present but unsearchable.
      * @return number of rows upserted, or 0 if already imported / asset empty.
      */
     suspend fun ensureFullTemplatesImported(): Int = withContext(Dispatchers.Default) {
@@ -382,11 +385,11 @@ class VelumRepository(
                 )
                 upserted++
             }
-            if (sawAny) {
-                q.setMeta(SeedData.META_FULL_TEMPLATES_IMPORTED, "1")
-            }
         }
         if (upserted > 0 && ftsAvailable) rebuildFtsIndex()
+        if (sawAny) {
+            q.setMeta(SeedData.META_FULL_TEMPLATES_IMPORTED, "1")
+        }
         upserted
     }
 
@@ -402,8 +405,16 @@ class VelumRepository(
         if (ftsAvailable) FtsIndex.deleteRecording(driver, id)
     }
 
-    /** Local wipe: recordings, custom templates, AutoFlows, memory, glossary. Built-ins reseed. */
-    suspend fun wipeAllUserData() = withContext(Dispatchers.Default) {
+    /**
+     * Local wipe: recordings, custom templates, AutoFlows, memory, glossary. Built-ins reseed.
+     * [deleteLocalFile] removes on-disk audio for each recording's `local_path` (privacy).
+     */
+    suspend fun wipeAllUserData(
+        deleteLocalFile: (absolutePath: String) -> Unit = {},
+    ) = withContext(Dispatchers.Default) {
+        val audioPaths = q.selectAllRecordingIds().executeAsList().mapNotNull { id ->
+            q.selectRecordingById(id).executeAsOneOrNull()?.local_path?.takeIf { it.isNotBlank() }
+        }
         q.selectAllRecordingIds().executeAsList().forEach { id ->
             q.deleteVersionsForRecording(id)
             q.deleteSpeakersForRecording(id)
@@ -418,6 +429,9 @@ class VelumRepository(
         SeedData.clearSeedMarker(db)
         SeedData.maybeSeed(db)
         if (ftsAvailable) rebuildFtsIndex()
+        audioPaths.forEach { path ->
+            runCatching { deleteLocalFile(path) }
+        }
     }
 
     data class StorageUsage(
@@ -509,6 +523,8 @@ class VelumRepository(
     fun rebuildFtsIndex() {
         if (!ftsAvailable) return
         db.transaction {
+            // Drop orphans (e.g. wiped custom templates) before re-upserting current rows.
+            FtsIndex.clearAll(driver)
             q.selectAllRecordings().executeAsList().forEach { r ->
                 indexRecording(r.id, r.title, r.transcript, r.summary_markdown)
             }
@@ -580,14 +596,15 @@ class VelumRepository(
         markdown: String,
         templateId: String?,
         templateName: String,
-        versionId: String = newSummaryVersionId(),
+        versionId: String? = null,
         createdAt: Long = epochSeconds(),
     ): String = withContext(Dispatchers.Default) {
+        val resolvedVersionId = versionId ?: newSummaryVersionId(recordingId)
         db.transactionWithResult {
             ensureBaselineVersionLocked(recordingId)
             q.clearActiveVersionsForRecording(recordingId)
             q.insertSummaryVersion(
-                id = versionId,
+                id = resolvedVersionId,
                 recording_id = recordingId,
                 template_id = templateId,
                 template_name = templateName,
@@ -597,7 +614,7 @@ class VelumRepository(
             )
             q.updateSummary(markdown, recordingId)
             reindexRecording(recordingId)
-            versionId
+            resolvedVersionId
         }
     }
 
@@ -644,11 +661,12 @@ class VelumRepository(
     /**
      * After schema v3→v4 (or any open of a pre-versions DB), create an active version
      * row for every recording that already has notes but no version history.
+     * Includes trashed rows so restore after upgrade keeps Versions history.
      */
     private fun backfillSummaryVersionsFromRecording() {
         db.transaction {
-            q.selectAllRecordings().executeAsList().forEach { recording ->
-                ensureBaselineVersionLocked(recording.id)
+            q.selectAllRecordingIds().executeAsList().forEach { id ->
+                ensureBaselineVersionLocked(id)
             }
         }
     }
@@ -659,7 +677,7 @@ class VelumRepository(
         val recording = q.selectRecordingById(recordingId).executeAsOneOrNull() ?: return
         val prior = recording.summary_markdown?.takeIf { it.isNotBlank() } ?: return
         q.insertSummaryVersion(
-            id = newSummaryVersionId(),
+            id = newSummaryVersionId(recordingId),
             recording_id = recordingId,
             template_id = null,
             template_name = "",
@@ -670,8 +688,12 @@ class VelumRepository(
         )
     }
 
-    private fun newSummaryVersionId(): String =
-        "sv-${epochSeconds()}-${Random.nextInt(1000, 9999)}"
+    /**
+     * Collision-resistant id: recording-scoped + epoch + wide random.
+     * Never use INSERT OR REPLACE with a short birthday-collision id space.
+     */
+    private fun newSummaryVersionId(recordingId: String): String =
+        "sv-$recordingId-${epochSeconds()}-${Random.nextInt(100_000, 999_999)}"
 
     suspend fun getSpeakers(recordingId: String): List<Speaker> = withContext(Dispatchers.Default) {
         q.selectSpeakersForRecording(recordingId).executeAsList()

@@ -26,7 +26,13 @@ class KopusOpusDecoder : OpusDecoder {
                     size = size,
                     readAt = { buf, position, length ->
                         raf.seek(position)
-                        raf.read(buf, 0, length)
+                        var got = 0
+                        while (got < length) {
+                            val n = raf.read(buf, got, length - got)
+                            if (n < 0) return@demuxAtForEach if (got == 0) -1 else got
+                            got += n
+                        }
+                        got
                     },
                     onHeader = onHeader,
                     onPacket = onPacket,
@@ -49,7 +55,7 @@ class KopusOpusDecoder : OpusDecoder {
                     onHeader = { sampleRateHz, ch ->
                         rate = normalizeRate(sampleRateHz)
                         channels = ch.coerceIn(1, 2)
-                        frameSize = rate / 50
+                        frameSize = rate / 50 * 6
                         out = ShortArray(frameSize * channels)
                         samples = ShortArray(frameSize * channels * 64)
                         decoder = KopusDecoder(sampleRate = rate, channels = channels)
@@ -103,7 +109,7 @@ class KopusOpusDecoder : OpusDecoder {
                     { sampleRateHz, ch ->
                         rate = normalizeRate(sampleRateHz)
                         channels = ch.coerceIn(1, 2)
-                        frameSize = rate / 50
+                        frameSize = rate / 50 * 6
                         out = ShortArray(frameSize * channels)
                         byteChunk = ByteArray(frameSize * channels * 2)
                         decoder = KopusDecoder(sampleRate = rate, channels = channels)

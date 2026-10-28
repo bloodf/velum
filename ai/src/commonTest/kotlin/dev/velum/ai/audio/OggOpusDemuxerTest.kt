@@ -34,6 +34,35 @@ class OggOpusDemuxerTest {
     }
 
     @Test
+    fun demuxAtForEach_emits_trailing_continued_packet() {
+        val head = byteArrayOf(
+            'O'.code.toByte(), 'p'.code.toByte(), 'u'.code.toByte(), 's'.code.toByte(),
+            'H'.code.toByte(), 'e'.code.toByte(), 'a'.code.toByte(), 'd'.code.toByte(),
+            1, 1, 0, 0,
+            0x80.toByte(), 0xBB.toByte(), 0x00, 0x00,
+            0, 0, 0,
+        )
+        // Continued segment (255) then terminator — and a final continued-only page flushed at EOS.
+        val audioA = ByteArray(255) { 0x11 }
+        val audioB = byteArrayOf(0x22, 0x33)
+        val pageHead = buildOggPage(head)
+        val pageCont = buildOggPageMulti(listOf(255 to audioA, audioB.size to audioB))
+        // Continued segment (255 bytes, no terminator) left open at EOS → must flush.
+        val trailingOnly = buildOggPageMulti(listOf(255 to ByteArray(255) { 0x44 }))
+        var packets = 0
+        var lastSize = 0
+        OggOpusDemuxer.demuxForEach(
+            pageHead + pageCont + trailingOnly,
+            onPacket = {
+                packets++
+                lastSize = it.size
+            },
+        )
+        assertEquals(2, packets, "one finished packet + one EOS continued flush")
+        assertEquals(255, lastSize)
+    }
+
+    @Test
     fun demuxForEach_invokes_onHeader_without_retaining_packets() {
         val head = byteArrayOf(
             'O'.code.toByte(), 'p'.code.toByte(), 'u'.code.toByte(), 's'.code.toByte(),
@@ -61,17 +90,27 @@ class OggOpusDemuxerTest {
 
     private fun buildOggPage(packet: ByteArray): ByteArray {
         require(packet.size < 255)
-        val header = ByteArray(27 + 1 + packet.size)
+        return buildOggPageMulti(listOf(packet.size to packet))
+    }
+
+    private fun buildOggPageMulti(segments: List<Pair<Int, ByteArray>>): ByteArray {
+        val bodySize = segments.sumOf { it.second.size }
+        val header = ByteArray(27 + segments.size + bodySize)
         header[0] = 'O'.code.toByte()
         header[1] = 'g'.code.toByte()
         header[2] = 'g'.code.toByte()
         header[3] = 'S'.code.toByte()
-        header[4] = 0 // version
-        header[5] = 2 // BOS
-        // granule / serial / seq / crc left zero
-        header[26] = 1 // one segment
-        header[27] = packet.size.toByte()
-        packet.copyInto(header, 28)
+        header[4] = 0
+        header[5] = 2
+        header[26] = segments.size.toByte()
+        var o = 27
+        for ((segSize, _) in segments) {
+            header[o++] = segSize.toByte()
+        }
+        for ((_, data) in segments) {
+            data.copyInto(header, o)
+            o += data.size
+        }
         return header
     }
 }

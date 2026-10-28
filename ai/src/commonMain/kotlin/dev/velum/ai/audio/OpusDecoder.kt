@@ -184,6 +184,16 @@ object OggOpusDemuxer {
             offset = bodyEnd
         }
 
+        // EOS with a continued packet (segSize==255 only) — emit or fail loudly.
+        if (packetParts.isNotEmpty()) {
+            require(sawIdHeader) { "Trailing Ogg packet without OpusHead" }
+            val packetBuf = concatPackets(packetParts)
+            packetParts.clear()
+            if (!startsWithOpusTags(packetBuf)) {
+                onPacket(packetBuf)
+            }
+        }
+
         require(sawIdHeader) { "No OpusHead page found in Ogg stream" }
         return OpusStreamMeta(sampleRateHz = sampleRate, channels = channels)
     }

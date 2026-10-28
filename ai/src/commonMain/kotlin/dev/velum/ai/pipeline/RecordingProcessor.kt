@@ -73,18 +73,38 @@ class RecordingProcessor(
                     val meta = createOpusDecoder().decodePathToPcmFile(localPath, pcmFile)
                     sampleRate = meta.sampleRateHz
                     pcmBuffer = PcmAudioBuffer.fromExistingFile(pcmFile, meta.sizeBytes)
+                } else if (filename.endsWith(".wav", ignoreCase = true)) {
+                    // Stream WAV from disk — probe header only, then copy PCM slices.
+                    val src = ModelStoreDir(localPath)
+                    val fileLen = src.length()
+                    val probeLen = fileLen.coerceAtMost(256L * 1024L).toInt()
+                    val probe = if (probeLen > 0) src.readRange(0, probeLen) else ByteArray(0)
+                    require(looksLikeWav(probe)) { "Not a WAV file: $localPath" }
+                    var header = locateWavPcmHeader(probe, fileLen)
+                    if (header.dataStart < 0 && fileLen > probeLen) {
+                        val wideLen = fileLen.coerceAtMost(2L * 1024 * 1024).toInt()
+                        header = locateWavPcmHeader(src.readRange(0, wideLen), fileLen)
+                    }
+                    sampleRate = header.sampleRateHz
+                    val pcmStart = if (header.dataStart >= 0) header.dataStart.toLong() else 44L
+                    val pcmLen = if (header.dataSize >= 0) {
+                        header.dataSize.toLong().coerceAtMost(fileLen - pcmStart)
+                    } else {
+                        (fileLen - pcmStart).coerceAtLeast(0L)
+                    }
+                    copyFileRangeToPcm(src, pcmStart, pcmLen, pcmFile)
+                    pcmBuffer = PcmAudioBuffer.fromExistingFile(pcmFile, pcmLen)
                 } else {
                     val raw = readFileBytes(localPath)
                     if (looksLikeOgg(raw)) {
                         val meta = createOpusDecoder().decodeToPcmFile(raw, pcmFile)
                         sampleRate = meta.sampleRateHz
                         pcmBuffer = PcmAudioBuffer.fromExistingFile(pcmFile, meta.sizeBytes)
-                    } else if (filename.endsWith(".wav", ignoreCase = true) || looksLikeWav(raw)) {
+                    } else if (looksLikeWav(raw)) {
                         val range = locateWavPcm(raw)
                         sampleRate = range.sampleRateHz
                         val pcmLen = (range.endExclusive - range.start).toLong()
                         pcmBuffer = if (pcmLen > PcmAudioBuffer.IN_MEMORY_BUDGET_BYTES) {
-                            // Copy data chunk in slices — avoid a second full-PCM heap array.
                             appendRangeToFile(raw, range.start, range.endExclusive, pcmFile)
                             PcmAudioBuffer.fromExistingFile(pcmFile, pcmLen)
                         } else {
@@ -123,7 +143,12 @@ class RecordingProcessor(
                 } else {
                     emit(JobProgress.Running(0.25f, "Transcribing"))
                     awaitThermalGate { emit(it) }
-                    ensureApiKeyIfNeeded(cfg.transcriptionMode, AiApiTask.Transcription, "transcription")
+                    ensureApiKeyIfNeeded(
+                        cfg.transcriptionMode,
+                        AiApiTask.Transcription,
+                        "transcription",
+                        apiModelOverride,
+                    )
                     val asr = aiRouter.transcriber()
                     val asrModel = when (cfg.transcriptionMode) {
                         ComputeMode.Local -> requiredLocalModelId(AiTask.Transcription, cfg)
@@ -142,14 +167,19 @@ class RecordingProcessor(
 
                     emit(JobProgress.Running(0.45f, "Diarizing"))
                     awaitThermalGate { emit(it) }
-                    ensureApiKeyIfNeeded(cfg.diarizationMode, AiApiTask.Diarization, "diarization")
+                    ensureApiKeyIfNeeded(
+                        cfg.diarizationMode,
+                        AiApiTask.Diarization,
+                        "diarization",
+                        apiModelOverride,
+                    )
                     val diar = aiRouter.diarizer()
                     val diarModel = when (cfg.diarizationMode) {
                         ComputeMode.Local ->
                             cfg.localDiarizationModelId?.takeIf { it.isNotBlank() }
                                 ?: DEFAULT_LOCAL_DIARIZATION_MODEL_ID
                         ComputeMode.Api ->
-                            settings.resolveApiModel(AiApiTask.Diarization).modelId
+                            settings.resolveApiModel(AiApiTask.Diarization, apiModelOverride).modelId
                     }
                     val diarization = try {
                         // Prefer in-memory buffer; for spilled PCM diarize the first 30 min window
@@ -205,7 +235,6 @@ class RecordingProcessor(
 
             emit(JobProgress.Running(0.7f, "Summarizing"))
             awaitThermalGate { emit(it) }
-            ensureApiKeyIfNeeded(cfg.summaryMode, AiApiTask.Summary, "summaries")
             val summaryLang = SummaryLocalization.resolveLanguage(
                 outputLanguage = cfg.outputLanguage,
                 audioLanguage = cfg.audioLanguage,
@@ -248,7 +277,14 @@ class RecordingProcessor(
                     )
                 }
             }
-            val summaryOverride = apiModelOverride ?: templateOverride
+            // Field-wise merge: AutoFlow profile-only override must not drop template model.
+            val summaryOverride = mergeApiOverrides(apiModelOverride, templateOverride)
+            ensureApiKeyIfNeeded(
+                cfg.summaryMode,
+                AiApiTask.Summary,
+                "summaries",
+                summaryOverride,
+            )
             val llm = aiRouter.llm()
             val llmModel = when (cfg.summaryMode) {
                 ComputeMode.Local ->
@@ -351,9 +387,10 @@ class RecordingProcessor(
         mode: ComputeMode,
         apiTask: AiApiTask,
         label: String,
+        apiModelOverride: ApiModelOverride? = null,
     ) {
         if (mode != ComputeMode.Api) return
-        val resolved = settings.resolveApiModel(apiTask)
+        val resolved = settings.resolveApiModel(apiTask, apiModelOverride)
         val key = settings.getProfileApiKey(resolved.profileId)
         if (key.isNullOrBlank()) {
             throw MissingApiKeyException(
@@ -437,37 +474,55 @@ class RecordingProcessor(
 
     private data class WavPcmRange(val start: Int, val endExclusive: Int, val sampleRateHz: Int)
 
-    /** Locate PCM payload bounds without copying (for large-file spill). */
-    private fun locateWavPcm(bytes: ByteArray): WavPcmRange {
-        if (!looksLikeWav(bytes)) return WavPcmRange(0, bytes.size, 16_000)
+    private data class WavPcmHeader(
+        val dataStart: Int,
+        /** Declared data chunk size from the header (-1 if unknown). */
+        val dataSize: Int,
+        val sampleRateHz: Int,
+    )
+
+    /**
+     * Parse WAV fmt/data from a header probe. Unlike [locateWavPcm], does **not** clamp
+     * dataSize to the probe length — callers stream the full payload from disk.
+     */
+    private fun locateWavPcmHeader(probe: ByteArray, fileLength: Long): WavPcmHeader {
+        if (!looksLikeWav(probe)) return WavPcmHeader(-1, -1, 16_000)
         var offset = 12
         var sampleRate = 16_000
-        var dataStart = -1
-        var dataSize = 0
-        while (offset + 8 <= bytes.size) {
-            val id = fourCc(bytes, offset)
-            val size = u32le(bytes, offset + 4)
+        while (offset + 8 <= probe.size) {
+            val id = fourCc(probe, offset)
+            val size = u32le(probe, offset + 4)
             val body = offset + 8
             when (id) {
                 "fmt " -> {
-                    if (body + 16 <= bytes.size) {
-                        sampleRate = u32le(bytes, body + 4)
+                    if (body + 16 <= probe.size) {
+                        sampleRate = u32le(probe, body + 4)
                     }
                 }
                 "data" -> {
-                    dataStart = body
-                    dataSize = size.coerceAtMost(bytes.size - body)
-                    break
+                    val maxSize = (fileLength - body).coerceAtLeast(0L).coerceAtMost(Int.MAX_VALUE.toLong())
+                    return WavPcmHeader(
+                        dataStart = body,
+                        dataSize = size.toLong().coerceAtMost(maxSize).toInt(),
+                        sampleRateHz = sampleRate,
+                    )
                 }
             }
-            offset = body + size + (size % 2) // word-align
+            offset = body + size + (size % 2)
+            if (offset < 0) break // overflow guard
         }
-        if (dataStart < 0) {
+        return WavPcmHeader(-1, -1, sampleRate)
+    }
+
+    /** Locate PCM payload bounds without copying (for in-memory buffers). */
+    private fun locateWavPcm(bytes: ByteArray): WavPcmRange {
+        val header = locateWavPcmHeader(bytes, bytes.size.toLong())
+        if (header.dataStart < 0) {
             val start = if (bytes.size > 44) 44 else bytes.size
-            return WavPcmRange(start, bytes.size, sampleRate)
+            return WavPcmRange(start, bytes.size, header.sampleRateHz)
         }
-        val end = (dataStart + dataSize).coerceAtMost(bytes.size)
-        return WavPcmRange(dataStart, end, sampleRate)
+        val end = (header.dataStart + header.dataSize).coerceAtMost(bytes.size)
+        return WavPcmRange(header.dataStart, end, header.sampleRateHz)
     }
 
     private fun appendRangeToFile(
@@ -483,6 +538,25 @@ class RecordingProcessor(
             val end = (offset + chunk).coerceAtMost(endExclusive)
             dest.appendBytes(bytes.copyOfRange(offset, end))
             offset = end
+        }
+    }
+
+    /** Copy [length] bytes from [src] starting at [start] into [dest] in 256 KiB slices. */
+    private fun copyFileRangeToPcm(
+        src: ModelStoreDir,
+        start: Long,
+        length: Long,
+        dest: ModelStoreDir,
+    ) {
+        dest.writeBytes(ByteArray(0))
+        if (length <= 0L) return
+        var offset = start
+        val end = start + length
+        val chunk = 256 * 1024
+        while (offset < end) {
+            val n = ((end - offset).coerceAtMost(chunk.toLong())).toInt()
+            dest.appendBytes(src.readRange(offset, n))
+            offset += n
         }
     }
 
@@ -514,6 +588,21 @@ class RecordingProcessor(
         /** Rough ~4k tokens; map-reduce when longer. */
         const val MAP_REDUCE_CHAR_THRESHOLD = 12_000
         const val MAP_REDUCE_CHUNK_CHARS = 8_000
+
+        /** Prefer primary fields; fill blanks from secondary (template defaults). */
+        internal fun mergeApiOverrides(
+            primary: ApiModelOverride?,
+            secondary: ApiModelOverride?,
+        ): ApiModelOverride? {
+            if (primary == null) return secondary
+            if (secondary == null) return primary
+            return ApiModelOverride(
+                profileId = primary.profileId?.takeIf { it.isNotBlank() }
+                    ?: secondary.profileId?.takeIf { it.isNotBlank() },
+                modelId = primary.modelId?.takeIf { it.isNotBlank() }
+                    ?: secondary.modelId?.takeIf { it.isNotBlank() },
+            )
+        }
 
         fun chunkText(text: String, chunkChars: Int): List<String> {
             if (text.length <= chunkChars) return listOf(text)

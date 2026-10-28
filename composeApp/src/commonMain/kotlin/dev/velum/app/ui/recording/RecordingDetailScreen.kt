@@ -54,6 +54,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -148,7 +149,7 @@ fun RecordingDetailScreen(
     val haptics = LocalHaptics.current
     val recording by container.repository.observeRecording(recordingId).collectAsState(null)
     val folders by container.repository.observeFolders().collectAsState(emptyList())
-    var tab by remember { mutableStateOf(initialTab) } // 0 fontes, 1 notas
+    var tab by rememberSaveable(recordingId) { mutableStateOf(initialTab) } // 0 fontes, 1 notas
     var seekSeconds by remember(recordingId, initialSeekSeconds) {
         mutableStateOf(initialSeekSeconds.coerceAtLeast(0))
     }
@@ -1118,7 +1119,8 @@ private fun LiveTranscriptPane(
         return runCatching { streamer.finish() }.getOrDefault(partial)
     }
 
-    DisposableEffect(recordingId) {
+    // Mic start is suspend (no main-thread runBlocking). Wire capture + optional PCM demo here.
+    LaunchedEffect(recordingId, inputSource) {
         streamer.onPartial = { md ->
             if (!preserveSeeded) partial = md
         }
@@ -1135,8 +1137,8 @@ private fun LiveTranscriptPane(
             }
         }
 
-        var ownsMicSession = false
         val alreadyCapturing = container.micCapture.isCapturing
+        var useDemo = false
         if (alreadyCapturing) {
             container.micCapture.onPcmChunk = push
             usingMic = true
@@ -1147,42 +1149,33 @@ private fun LiveTranscriptPane(
                 MicStartResult.Started -> {
                     container.activeMicRecordingId = recordingId
                     container.micCapture.onPcmChunk = push
-                    ownsMicSession = true
                     usingMic = true
                 }
                 else -> {
                     usingMic = false
+                    useDemo = true
                 }
             }
         } else {
             usingMic = false
         }
 
-        val demoJob = if (!usingMic && !preserveSeeded) {
+        if (useDemo) {
             val writer = WavWriter(wavPath, sampleRateHz = 16_000)
             demoWavWriter.value = writer
-            scope.launch {
-                var tick = 0
-                while (isActive && !finished.value) {
-                    val chunk = demoPcmChunk(tick)
-                    writer.writePcm(chunk)
-                    streamer.pushPcm(chunk)
-                    tick++
-                    delay(400)
-                }
+            var tick = 0
+            while (isActive && !finished.value) {
+                val chunk = demoPcmChunk(tick)
+                writer.writePcm(chunk)
+                streamer.pushPcm(chunk)
+                tick++
+                delay(400)
             }
-        } else {
-            null
         }
-
+    }
+    DisposableEffect(recordingId) {
         onDispose {
-            demoJob?.cancel()
             container.micCapture.onPcmChunk = null
-            // Do not stop an FAB-owned session when leaving the pane briefly;
-            // only clear the PCM listener. Explicit Stop button finalizes.
-            if (ownsMicSession && container.activeMicRecordingId == recordingId) {
-                // Keep FGS running while status stays "recording".
-            }
             finishOnce()
         }
     }
@@ -1261,12 +1254,14 @@ private fun LiveTranscriptPane(
                 OutlineButton(
                     if (pausedUi) strings.ux.liveResume else strings.ux.livePause,
                     {
-                        if (pausedUi) {
-                            container.micCapture.resume()
-                            pausedUi = false
-                        } else {
-                            container.micCapture.pause()
-                            pausedUi = true
+                        scope.launch {
+                            if (pausedUi) {
+                                container.micCapture.resume()
+                                pausedUi = false
+                            } else {
+                                container.micCapture.pause()
+                                pausedUi = true
+                            }
                         }
                     },
                     modifier = Modifier.weight(1f),
@@ -1274,9 +1269,12 @@ private fun LiveTranscriptPane(
                 OutlineButton(
                     strings.ux.liveMark,
                     {
-                        when (val r = container.micCapture.addMarker()) {
-                            is MicMarkerResult.Ok -> markerCount = container.micCapture.markers.size
-                            else -> Unit
+                        scope.launch {
+                            when (container.micCapture.addMarker()) {
+                                is MicMarkerResult.Ok ->
+                                    markerCount = container.micCapture.markers.size
+                                else -> Unit
+                            }
                         }
                     },
                     modifier = Modifier.weight(1f),
