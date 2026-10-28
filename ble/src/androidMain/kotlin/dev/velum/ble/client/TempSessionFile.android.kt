@@ -3,10 +3,10 @@ package dev.velum.ble.client
 import java.io.File
 import java.io.FileOutputStream
 
-internal actual fun createTempSessionFile(): TempSessionFile? =
+actual fun createTempSessionFile(): TempSessionFile? =
     FileTempSessionFile(File.createTempFile("velum-ble-session-", ".bin"))
 
-internal class FileTempSessionFile(
+class FileTempSessionFile(
     private val file: File,
 ) : TempSessionFile {
     private val out = FileOutputStream(file)
