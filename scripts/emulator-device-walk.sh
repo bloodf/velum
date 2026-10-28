@@ -3,7 +3,7 @@
 # Used by .github/workflows/ci.yml — must be bash (emulator-runner wraps sh -c).
 set -euo pipefail
 
-BUILD_TYPE="${1:-debug}" # debug | release
+BUILD_TYPE="${1:-debug}" # debug | release | minifiedWalk
 ARTIFACT_DIR="${2:-device-walk-artifacts}"
 mkdir -p "$ARTIFACT_DIR"
 
@@ -15,10 +15,12 @@ case "$BUILD_TYPE" in
   debug)
     TASK=":composeApp:connectedDebugAndroidTest"
     ;;
-  release)
-    # Creates connectedReleaseAndroidTest via android.testBuildType=release.
-    TASK=":composeApp:connectedReleaseAndroidTest"
-    GRADLE_PROPS+=(-PvelumTestBuildType=release)
+  release|minifiedWalk|r8)
+    # Genuinely R8-minified APK via android.testBuildType=minifiedWalk.
+    # "release" / "r8" aliases kept for older CI / local invocations.
+    TASK=":composeApp:connectedMinifiedWalkAndroidTest"
+    GRADLE_PROPS+=(-PvelumTestBuildType=minifiedWalk)
+    BUILD_TYPE="minifiedWalk"
     ;;
   *)
     echo "Unknown build type: $BUILD_TYPE"
