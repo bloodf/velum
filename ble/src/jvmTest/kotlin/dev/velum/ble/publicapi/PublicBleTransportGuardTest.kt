@@ -58,10 +58,10 @@ class PublicBleTransportGuardTest {
             "internal sealed write must not appear on BleTransport",
         )
         assertTrue(
-            AbstractBleTransport::class.java.methods.none {
-                it.name == "writeSealedAlreadyGuarded"
+            PlaudBleTransport::class.java.methods.none {
+                it.name == "openEncryptedSession" && Modifier.isPublic(it.modifiers)
             },
-            "writeSealedAlreadyGuarded must live only on BleSealedWriteSink, not AbstractBleTransport",
+            "openEncryptedSession must not be a public JVM method",
         )
         // writeEncrypted takes a single plaintext ByteArray (+ optional boolean), not sealed.
         val writeEncrypted = PlaudEncryptedSession::class.java.methods
@@ -78,8 +78,9 @@ class PublicBleTransportGuardTest {
     }
 
     @Test
-    fun concreteTransports_haveNoWriteSealedAlreadyGuardedMethod() {
-        // Sealed write lives only on internal BleSealedWriteSink (private adapters).
+    fun concreteTransports_writeSealedAlreadyGuarded_isInternalNotPublic() {
+        // Explicit `internal override` mangles to writeSealedAlreadyGuarded$<module>.
+        // The unmangled name must not appear as a public JVM method.
         val concretes = buildList {
             add(FakeBleTransport::class.java)
             add(StubBleTransport::class.java)
@@ -90,13 +91,19 @@ class PublicBleTransportGuardTest {
         }
         assertTrue(concretes.size >= 3, "expected Fake + Stub + Abstract at minimum")
         concretes.forEach { type ->
-            val named = (type.declaredMethods + type.methods).filter {
-                it.name == "writeSealedAlreadyGuarded" ||
-                    it.name.startsWith("writeSealedAlreadyGuarded\$")
+            val unmangledPublic = (type.declaredMethods + type.methods).filter {
+                it.name == "writeSealedAlreadyGuarded" && Modifier.isPublic(it.modifiers)
             }
             assertTrue(
-                named.isEmpty(),
-                "${type.simpleName} must not declare writeSealedAlreadyGuarded: ${named.map { it.name }}",
+                unmangledPublic.isEmpty(),
+                "${type.simpleName}: unmangled writeSealedAlreadyGuarded must not be public",
+            )
+            val mangled = (type.declaredMethods + type.methods).filter {
+                it.name.startsWith("writeSealedAlreadyGuarded\$")
+            }
+            assertTrue(
+                mangled.isNotEmpty(),
+                "${type.simpleName} should declare mangled internal writeSealedAlreadyGuarded\$…",
             )
         }
     }
