@@ -1,11 +1,28 @@
 package dev.velum.core.security
 
+import java.nio.BufferUnderflowException
 import java.nio.ByteBuffer
 import java.security.SecureRandom
 import java.util.Base64
+import javax.crypto.AEADBadTagException
+import javax.crypto.BadPaddingException
 import javax.crypto.Cipher
+import javax.crypto.IllegalBlockSizeException
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
+
+/**
+ * Outcome of opening an AES-GCM vault blob.
+ *
+ * [StructurallyMalformed] blobs are safe to delete. [CryptographicFailure] usually
+ * means the wrong key (or bit-flip of the tag) — keep the entry so a restored key
+ * can still open it.
+ */
+internal sealed class AesGcmDecryptResult {
+    class Ok(val plaintext: ByteArray) : AesGcmDecryptResult()
+    data object StructurallyMalformed : AesGcmDecryptResult()
+    data object CryptographicFailure : AesGcmDecryptResult()
+}
 
 /**
  * Wire format shared with [AndroidSecureStore]:
@@ -19,6 +36,7 @@ internal object AesGcmSecurePayload {
     const val TRANSFORMATION: String = "AES/GCM/NoPadding"
     const val GCM_TAG_BITS: Int = 128
     const val IV_BYTES: Int = 12
+    private const val GCM_TAG_BYTES: Int = 16
     private val random = SecureRandom()
 
     fun encrypt(key: SecretKey, plaintext: ByteArray): String {
@@ -34,18 +52,41 @@ internal object AesGcmSecurePayload {
         return Base64.getEncoder().encodeToString(payload)
     }
 
-    fun decrypt(key: SecretKey, encoded: String): ByteArray {
-        val payload = Base64.getDecoder().decode(encoded)
-        require(payload.isNotEmpty()) { "Empty ciphertext" }
+    fun decryptResult(key: SecretKey, encoded: String): AesGcmDecryptResult {
+        val payload = try {
+            Base64.getDecoder().decode(encoded)
+        } catch (_: IllegalArgumentException) {
+            return AesGcmDecryptResult.StructurallyMalformed
+        }
+        if (payload.isEmpty()) return AesGcmDecryptResult.StructurallyMalformed
+
         val buffer = ByteBuffer.wrap(payload)
+        if (!buffer.hasRemaining()) return AesGcmDecryptResult.StructurallyMalformed
         val ivLength = buffer.get().toInt() and 0xFF
-        require(ivLength in 12..32) { "Unexpected IV length" }
+        if (ivLength !in 12..32) return AesGcmDecryptResult.StructurallyMalformed
+        if (buffer.remaining() < ivLength + GCM_TAG_BYTES) {
+            return AesGcmDecryptResult.StructurallyMalformed
+        }
         val iv = ByteArray(ivLength)
-        buffer.get(iv)
-        val ciphertext = ByteArray(buffer.remaining())
-        buffer.get(ciphertext)
-        val cipher = Cipher.getInstance(TRANSFORMATION)
-        cipher.init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(GCM_TAG_BITS, iv))
-        return cipher.doFinal(ciphertext)
+        val ciphertext = try {
+            buffer.get(iv)
+            ByteArray(buffer.remaining()).also { buffer.get(it) }
+        } catch (_: BufferUnderflowException) {
+            return AesGcmDecryptResult.StructurallyMalformed
+        }
+
+        return try {
+            val cipher = Cipher.getInstance(TRANSFORMATION)
+            cipher.init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(GCM_TAG_BITS, iv))
+            AesGcmDecryptResult.Ok(cipher.doFinal(ciphertext))
+        } catch (_: AEADBadTagException) {
+            AesGcmDecryptResult.CryptographicFailure
+        } catch (_: BadPaddingException) {
+            AesGcmDecryptResult.CryptographicFailure
+        } catch (_: IllegalBlockSizeException) {
+            AesGcmDecryptResult.CryptographicFailure
+        } catch (_: IllegalArgumentException) {
+            AesGcmDecryptResult.StructurallyMalformed
+        }
     }
 }

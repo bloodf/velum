@@ -14,6 +14,9 @@ import kotlinx.coroutines.sync.withLock
  * prove identity values never appear as plaintext in the persistence backend.
  * The software key is exportable on the JVM — Android Keystore non-exportable
  * keys cannot be covered here (see test notes).
+ *
+ * Inject [backend] from tests to inspect raw ciphertext without production
+ * test-only helpers.
  */
 class JvmAesGcmSecureStore(
     private val key: SecretKey = generateAes256Key(),
@@ -21,45 +24,43 @@ class JvmAesGcmSecureStore(
 ) : SecureStore {
     private val mutex = Mutex()
 
-    /** Raw ciphertext entries for inspection tests — never decrypts. */
-    fun rawCiphertextSnapshot(): Map<String, String> = synchronized(backend) { backend.toMap() }
-
-    /** Test helper: write an arbitrary blob (e.g. corrupt ciphertext) under [keyName]. */
-    fun putRawCiphertextForTest(keyName: String, raw: String) {
-        synchronized(backend) { backend[keyName] = raw }
-    }
-
     override suspend fun putString(key: String, value: String) {
         mutex.withLock {
             val encrypted = AesGcmSecurePayload.encrypt(this.key, value.toByteArray(Charsets.UTF_8))
-            synchronized(backend) { backend[key] = encrypted }
+            backend[key] = encrypted
         }
     }
 
     override suspend fun getString(key: String): String? = mutex.withLock {
-        val stored = synchronized(backend) { backend[key] } ?: return@withLock null
-        runCatching {
-            AesGcmSecurePayload.decrypt(this.key, stored).toString(Charsets.UTF_8)
-        }.getOrElse {
-            // Corrupt or wrong-key blob — drop and treat as missing. Never echo payload.
-            synchronized(backend) { backend.remove(key) }
-            null
+        val stored = backend[key] ?: return@withLock null
+        when (val result = AesGcmSecurePayload.decryptResult(this.key, stored)) {
+            is AesGcmDecryptResult.Ok ->
+                result.plaintext.toString(Charsets.UTF_8)
+            AesGcmDecryptResult.StructurallyMalformed -> {
+                // Only drop blobs that are not valid vault payloads.
+                backend.remove(key)
+                null
+            }
+            AesGcmDecryptResult.CryptographicFailure -> {
+                // Wrong key / auth failure — keep ciphertext so a restored key can open it.
+                null
+            }
         }
     }
 
     override suspend fun remove(key: String) {
         mutex.withLock {
-            synchronized(backend) { backend.remove(key) }
+            backend.remove(key)
         }
     }
 
     override suspend fun contains(key: String): Boolean = mutex.withLock {
-        synchronized(backend) { backend.containsKey(key) }
+        backend.containsKey(key)
     }
 
     override suspend fun wipe() {
         mutex.withLock {
-            synchronized(backend) { backend.clear() }
+            backend.clear()
         }
     }
 
