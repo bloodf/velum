@@ -1,8 +1,7 @@
 package dev.velum.ble.fake
 
+import dev.velum.ble.AbstractBleTransport
 import dev.velum.ble.BleConnectionState
-import dev.velum.ble.BleSealedWriteSink
-import dev.velum.ble.BleTransport
 import dev.velum.ble.GattProfile
 import dev.velum.ble.GattProfiles
 import dev.velum.ble.PlaudWriteGuard
@@ -32,7 +31,7 @@ class FakeBleTransport(
     private val deviceId: String = "fake-note-pro",
     private val serial: String = "881FAKE1",
     private val name: String = "PLAUD NOTE PRO",
-) : BleTransport, BleSealedWriteSink {
+) : AbstractBleTransport() {
     override val isAvailable: Boolean = true
 
     private val mutex = Mutex()
@@ -122,7 +121,7 @@ class FakeBleTransport(
         }
     }
 
-    override suspend fun writeSealedAlreadyGuarded(
+    internal override suspend fun writeSealedAlreadyGuarded(
         characteristic: String,
         payload: ByteArray,
         withoutResponse: Boolean,
