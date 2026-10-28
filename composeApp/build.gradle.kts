@@ -119,7 +119,11 @@ android {
         versionCode = 100
         versionName = "1.0.0"
         testInstrumentationRunner = "dev.velum.app.devicewalk.DeviceWalkTestRunner"
-        testInstrumentationRunnerArguments["velumDeviceWalk"] = "true"
+        // Prefer DSL over -Pandroid.testInstrumentationRunnerArguments.* (breaks config cache).
+        testInstrumentationRunnerArguments += mapOf(
+            "velumDeviceWalk" to "true",
+            "class" to "dev.velum.app.devicewalk.DeviceWalkUiTest",
+        )
     }
     packaging {
         jniLibs {

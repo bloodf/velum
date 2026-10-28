@@ -24,10 +24,8 @@ case "$BUILD_TYPE" in
 esac
 
 set +e
-./gradlew "$TASK" \
-  -Pandroid.testInstrumentationRunnerArguments.class=dev.velum.app.devicewalk.DeviceWalkUiTest \
-  -Pandroid.testInstrumentationRunnerArguments.velumDeviceWalk=true \
-  --stacktrace
+# Runner args (class filter + velumDeviceWalk) come from composeApp/build.gradle.kts DSL.
+./gradlew "$TASK" --stacktrace
 CODE=$?
 set -e
 
