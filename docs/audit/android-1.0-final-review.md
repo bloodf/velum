@@ -81,7 +81,8 @@ Remaining non-blockers for *this* ship (accepted / out of scope): SoftAP WS `:80
 | JVM unit tests | OK |
 | Roborazzi record | OK (pt-BR light/dark + EN matrix) |
 | CI on `e9ebb67` | **success** run `40656553741` |
-| CI on `00db857` | Watched via `gh` / CI subscription (must include new `assembleRelease` job step) |
+| CI on `00db857` | **success** run `40661583286` (includes `assembleRelease` + emulator smoke) |
+| CI on tip `8c8a6e7` | **success** run `40661637876` |
 
 ### Emulator note
 
