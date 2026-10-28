@@ -67,8 +67,18 @@ class AndroidSecureStore(
 
     private fun getOrCreateKey(): SecretKey {
         val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
-        val existing = keyStore.getEntry(keyAlias, null) as? KeyStore.SecretKeyEntry
-        if (existing != null) return existing.secretKey
+        if (keyStore.containsAlias(keyAlias)) {
+            // API 35 emulator (and some OEMs) can leave an alias that makes
+            // getEntry NPE with "invalid null input" instead of returning null.
+            val existing = runCatching {
+                keyStore.getEntry(keyAlias, null) as? KeyStore.SecretKeyEntry
+            }.getOrElse { t ->
+                Log.w(TAG, "Keystore getEntry failed; recreating alias", t)
+                null
+            }
+            if (existing != null) return existing.secretKey
+            deleteKey()
+        }
         return createKey()
     }
 
@@ -105,8 +115,8 @@ class AndroidSecureStore(
         return try {
             encryptWith(getOrCreateKey(), plaintext)
         } catch (t: Throwable) {
-            if (!isInvalidatedKey(t)) throw t
-            Log.w(TAG, "Keystore key invalidated; recreating", t)
+            if (!isRecoverableKeystoreFailure(t)) throw t
+            Log.w(TAG, "Keystore key unusable; recreating", t)
             deleteKey()
             encryptWith(createKey(), plaintext)
         }
@@ -138,8 +148,8 @@ class AndroidSecureStore(
         return try {
             decryptWith(getOrCreateKey(), iv, ciphertext)
         } catch (t: Throwable) {
-            if (!isInvalidatedKey(t)) throw t
-            Log.w(TAG, "Keystore key invalidated during decrypt; recreating", t)
+            if (!isRecoverableKeystoreFailure(t)) throw t
+            Log.w(TAG, "Keystore key unusable during decrypt; recreating", t)
             deleteKey()
             // Caller treats failure as missing value after prefs clear.
             throw t
@@ -152,7 +162,7 @@ class AndroidSecureStore(
         return cipher.doFinal(ciphertext)
     }
 
-    private fun isInvalidatedKey(t: Throwable): Boolean {
+    private fun isRecoverableKeystoreFailure(t: Throwable): Boolean {
         var cur: Throwable? = t
         while (cur != null) {
             when (cur) {
@@ -160,6 +170,12 @@ class AndroidSecureStore(
                 is UnrecoverableKeyException,
                 is InvalidKeyException,
                 -> return true
+                // Corrupt / wiped AndroidKeyStore entries (API 35 emulator).
+                is NullPointerException -> {
+                    if (cur.message?.contains("invalid null input", ignoreCase = true) == true) {
+                        return true
+                    }
+                }
             }
             // Some OEMs wrap the typed exception.
             if (cur.message?.contains("Key permanently invalidated", ignoreCase = true) == true) {
