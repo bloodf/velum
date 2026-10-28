@@ -50,8 +50,18 @@ class StubBleTransport(
         characteristic: String,
         payload: ByteArray,
         withoutResponse: Boolean,
+        safety: BleWriteSafety,
     ) {
-        PlaudWriteGuard.maybeRequireAllowed(activeProfile, characteristic, payload)
+        val profile = activeProfile
+        if (profile != null) {
+            val ch = profile.characteristic(characteristic)
+            PlaudWriteGuard.maybeRequireAllowed(
+                serviceUuid = profile.resolveServiceUuid(ch),
+                characteristicUuid = ch.uuid,
+                payload = payload,
+                safety = safety,
+            )
+        }
         error(unavailableReason)
     }
 

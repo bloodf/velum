@@ -327,14 +327,22 @@ class PlaudDeviceClient(
 
     private suspend fun writeOutbound(packet: ByteArray) {
         writeMutex.withLock {
+            // Client send-path layer: reject forbidden opcodes/settings on plaintext.
             assertOutboundAllowed(packet)
             val sec = secret
             if (sec == null) {
+                // Transport layer also guards plaintext (BleWriteSafety.GuardPlaintext).
                 ble.write(packet, withoutResponse = false)
             } else {
                 val sealed = cipher.sealPacket(sec, sendSeq, packet)
                 sendSeq += 1
-                ble.write(sealed, withoutResponse = false)
+                // Transport-layer check on plaintext, then write sealed as AlreadyChecked
+                // so ciphertext is never parsed as an opcode.
+                ble.writeSealedAfterPlaintextGuard(
+                    plaintext = packet,
+                    sealed = sealed,
+                    withoutResponse = false,
+                )
             }
         }
     }

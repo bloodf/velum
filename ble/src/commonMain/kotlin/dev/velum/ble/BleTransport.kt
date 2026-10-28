@@ -37,13 +37,18 @@ interface BleTransport {
 
     /**
      * Write [payload] to the named characteristic on the active profile.
-     * For the Plaud profile write characteristic, forbidden opcodes/settings
-     * are rejected before the radio (see [PlaudWriteGuard]).
+     *
+     * When [safety] is [BleWriteSafety.GuardPlaintext] and the target resolves
+     * to the Plaud write characteristic UUID (`2BB1`), forbidden opcodes /
+     * settings are rejected (see [PlaudWriteGuard]). Use
+     * [BleWriteSafety.AlreadyChecked] only for payloads whose plaintext was
+     * already guarded (typically sealed session ciphertext).
      */
     suspend fun write(
         characteristic: String,
         payload: ByteArray,
         withoutResponse: Boolean = false,
+        safety: BleWriteSafety = BleWriteSafety.GuardPlaintext,
     )
 
     /** Notifications from the named characteristic on the active profile. */
