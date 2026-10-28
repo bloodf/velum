@@ -25,8 +25,12 @@ internal sealed class AesGcmDecryptResult {
 }
 
 /**
- * Wire format shared with [AndroidSecureStore]:
- * `Base64( ivLength:1 || iv || ciphertext+tag )` using AES-256-GCM.
+ * Wire format shared by [AndroidSecureStore] and the JVM/desktop stores:
+ * `Base64( version:1 || ivLength:1 || iv || ciphertext+tag )` using AES-256-GCM.
+ *
+ * Version byte is [FORMAT_VERSION]. Blobs written before the version prefix
+ * (`ivLength:1 || iv || ciphertext+tag` with `ivLength` in 12..32) are still
+ * accepted as legacy so existing ciphertext keeps working.
  *
  * JVM/desktop uses a software [SecretKey]; Android uses a non-exportable
  * Android Keystore key. Payload layout must stay identical so tests can
@@ -36,10 +40,30 @@ internal object AesGcmSecurePayload {
     const val TRANSFORMATION: String = "AES/GCM/NoPadding"
     const val GCM_TAG_BITS: Int = 128
     const val IV_BYTES: Int = 12
+    /** Current on-disk blob version (first byte of the decoded payload). */
+    const val FORMAT_VERSION: Byte = 1
     private const val GCM_TAG_BYTES: Int = 16
     private val random = SecureRandom()
 
     fun encrypt(key: SecretKey, plaintext: ByteArray): String {
+        val iv = ByteArray(IV_BYTES).also { random.nextBytes(it) }
+        val cipher = Cipher.getInstance(TRANSFORMATION)
+        cipher.init(Cipher.ENCRYPT_MODE, key, GCMParameterSpec(GCM_TAG_BITS, iv))
+        val ciphertext = cipher.doFinal(plaintext)
+        val payload = ByteBuffer.allocate(2 + iv.size + ciphertext.size)
+            .put(FORMAT_VERSION)
+            .put(iv.size.toByte())
+            .put(iv)
+            .put(ciphertext)
+            .array()
+        return Base64.getEncoder().encodeToString(payload)
+    }
+
+    /**
+     * Build a legacy (unversioned) blob for migration tests.
+     * Layout: `ivLength:1 || iv || ciphertext+tag`.
+     */
+    fun encryptLegacyUnversioned(key: SecretKey, plaintext: ByteArray): String {
         val iv = ByteArray(IV_BYTES).also { random.nextBytes(it) }
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.ENCRYPT_MODE, key, GCMParameterSpec(GCM_TAG_BITS, iv))
@@ -62,7 +86,16 @@ internal object AesGcmSecurePayload {
 
         val buffer = ByteBuffer.wrap(payload)
         if (!buffer.hasRemaining()) return AesGcmDecryptResult.StructurallyMalformed
-        val ivLength = buffer.get().toInt() and 0xFF
+        val first = buffer.get().toInt() and 0xFF
+        val ivLength = when {
+            first == (FORMAT_VERSION.toInt() and 0xFF) -> {
+                if (!buffer.hasRemaining()) return AesGcmDecryptResult.StructurallyMalformed
+                buffer.get().toInt() and 0xFF
+            }
+            // Legacy unversioned blobs: first byte is the IV length.
+            first in 12..32 -> first
+            else -> return AesGcmDecryptResult.StructurallyMalformed
+        }
         if (ivLength !in 12..32) return AesGcmDecryptResult.StructurallyMalformed
         if (buffer.remaining() < ivLength + GCM_TAG_BYTES) {
             return AesGcmDecryptResult.StructurallyMalformed
