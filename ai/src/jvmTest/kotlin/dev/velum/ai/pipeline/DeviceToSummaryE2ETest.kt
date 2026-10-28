@@ -9,6 +9,7 @@ import dev.velum.ai.local.LocalTranscriber
 import dev.velum.ai.local.ModelStoreDir
 import dev.velum.ai.local.VoiceProfileStore
 import dev.velum.ai.local.createLocalModelManager
+import dev.velum.ai.local.createProfileCipher
 import dev.velum.ai.openai.OpenAiDiarizer
 import dev.velum.ai.openai.OpenAiLlmEngine
 import dev.velum.ai.openai.OpenAiTranscriber
@@ -123,7 +124,11 @@ class DeviceToSummaryE2ETest {
             File.createTempFile("velum-models", "").also { it.delete(); it.mkdirs() }.absolutePath,
         )
         val modelManager = createLocalModelManager(storeRoot = modelRoot)
-        val voices = VoiceProfileStore(modelRoot)
+        val voices = VoiceProfileStore(
+            modelRoot,
+            secureStore = InMemorySecureStore(),
+            cipherOverride = createProfileCipher(ByteArray(32) { 2 }),
+        )
         val router = AiTaskRouter(
             settings = settings.settings,
             localTranscriber = LocalTranscriber(modelManager),

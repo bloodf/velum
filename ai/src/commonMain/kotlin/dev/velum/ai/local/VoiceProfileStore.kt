@@ -3,6 +3,13 @@ package dev.velum.ai.local
 import dev.velum.core.security.SecureStore
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
+import kotlin.random.Random
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -10,78 +17,130 @@ import kotlinx.serialization.json.Json
 /**
  * Named voice profiles with encrypted embeddings, multi-sample centroids, and metadata.
  * Profiles never leave the device unless the user exports; [delete] / [wipeAll] remove blobs.
+ *
+ * **Key material:** production always constructs this store with a real [SecureStore]
+ * (Android Keystore / desktop secure prefs). There is no file-key fallback in production
+ * sources — tests pass [InMemorySecureStore][dev.velum.core.security.InMemorySecureStore]
+ * or a [cipherOverride]. Cipher operations are `suspend` and await [ensureKey] so callers
+ * never observe a "key not primed" race.
  */
 @OptIn(ExperimentalEncodingApi::class)
 class VoiceProfileStore(
     private val root: ModelStoreDir,
-    private val secureStore: SecureStore? = null,
+    private val secureStore: SecureStore,
     private val cipherOverride: ProfileCipher? = null,
 ) {
     private val json = Json { ignoreUnknownKeys = true; prettyPrint = true }
     private val profilesDir get() = root.resolve("voices").resolve("profiles")
     private val cacheDir get() = root.resolve("voices").resolve("cluster-cache")
+    private val legacyKeyFile get() = root.resolve("voices").resolve(".profile_key")
 
-    private fun cipher(): ProfileCipher {
-        cipherOverride?.let { return it }
-        val key = loadOrCreateKey()
-        return createProfileCipher(key)
-    }
-
-    private fun loadOrCreateKey(): ByteArray {
-        val store = secureStore
-        if (store == null) {
-            // Deterministic test/desktop fallback — embeddings still AES-GCM-wrapped with a
-            // local file key under models/voices/.key when SecureStore is absent.
-            val keyFile = root.resolve("voices").resolve(".profile_key")
-            if (keyFile.exists() && keyFile.length() == 32L) return keyFile.readBytes()
-            root.resolve("voices").createDirectories()
-            val generated = ByteArray(32) { (it * 17 + 41).toByte() }
-            keyFile.writeBytes(generated)
-            return generated
-        }
-        // Synchronous path: key must already be primed via [ensureKey].
-        // Never fall back to a fixed key — that would encrypt profiles under a
-        // known constant until ensureKey races in, then fail to decrypt.
-        return primedKey
-            ?: throw IllegalStateException(
-                "VoiceProfileStore key not primed. Call ensureKey() before cipher use.",
-            )
-    }
+    private val keyMutex = Mutex()
 
     @Volatile
     private var primedKey: ByteArray? = null
 
+    private val _primingState =
+        MutableStateFlow<VoiceKeyPrimingState>(VoiceKeyPrimingState.Unprimed)
+    val primingState: StateFlow<VoiceKeyPrimingState> = _primingState.asStateFlow()
+
     /**
-     * Call once at app start (suspend) so Android Keystore-backed SecureStore can mint the key.
+     * Idempotent key priming. Concurrent callers share one attempt under [keyMutex].
+     * A failure does not stick: [primedKey] stays null, [primingState] becomes
+     * [VoiceKeyPrimingState.Failed], and the next call retries.
+     *
+     * Never logs key material — only the exception class name is published for UI.
+     *
+     * On first successful prime, deletes any legacy `voices/.profile_key` and drops
+     * profile blobs that cannot be decrypted under the SecureStore key. Never decrypts
+     * with the old constant key.
      */
     suspend fun ensureKey() {
-        val store = secureStore ?: return
-        val existing = store.getString(PROFILE_KEY_SECURE)
-        if (!existing.isNullOrBlank()) {
-            primedKey = Base64.decode(existing)
+        if (cipherOverride != null) {
+            _primingState.value = VoiceKeyPrimingState.Ready
             return
         }
-        val generated = ByteArray(32) { kotlin.random.Random.nextInt(0, 256).toByte() }
-        store.putString(PROFILE_KEY_SECURE, Base64.encode(generated))
-        primedKey = generated
+        if (primedKey != null) {
+            _primingState.value = VoiceKeyPrimingState.Ready
+            return
+        }
+        keyMutex.withLock {
+            if (primedKey != null) {
+                _primingState.value = VoiceKeyPrimingState.Ready
+                return
+            }
+            try {
+                val existing = secureStore.getString(PROFILE_KEY_SECURE)
+                val key = if (!existing.isNullOrBlank()) {
+                    Base64.decode(existing)
+                } else {
+                    val generated = ByteArray(32).also { Random.Default.nextBytes(it) }
+                    secureStore.putString(PROFILE_KEY_SECURE, Base64.encode(generated))
+                    generated
+                }
+                primedKey = key
+                purgeLegacyConstantKeyArtifacts(createProfileCipher(key))
+                _primingState.value = VoiceKeyPrimingState.Ready
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                primedKey = null
+                _primingState.value = VoiceKeyPrimingState.Failed(
+                    errorClassName = e::class.simpleName ?: "Exception",
+                )
+                throw e
+            }
+        }
     }
 
-    fun listProfiles(): List<VoiceProfile> {
+    private suspend fun requireCipher(): ProfileCipher {
+        cipherOverride?.let { return it }
+        ensureKey()
+        val key = primedKey
+            ?: throw IllegalStateException("VoiceProfileStore key missing after ensureKey")
+        return createProfileCipher(key)
+    }
+
+    /**
+     * Deletes the legacy constant-key file if present and removes profiles whose
+     * ciphertext cannot be opened with [cipher]. Never attempts the old constant key.
+     */
+    private fun purgeLegacyConstantKeyArtifacts(cipher: ProfileCipher) {
+        if (legacyKeyFile.exists()) {
+            legacyKeyFile.deleteRecursively()
+        }
+        if (!profilesDir.exists()) return
+        profilesDir.listChildren()
+            .filter { !it.isDirectory() && it.name.endsWith(".json") }
+            .forEach { metaFile ->
+                val id = metaFile.name.removeSuffix(".json")
+                val readable = runCatching {
+                    json.decodeFromString<VoiceProfileFile>(metaFile.readBytes().decodeToString())
+                        .toProfile(metaFile.resolveSiblingEnc(), cipher)
+                }.getOrNull() != null
+                if (!readable) {
+                    delete(id)
+                }
+            }
+    }
+
+    suspend fun listProfiles(): List<VoiceProfile> {
+        val c = requireCipher()
         if (!profilesDir.exists()) return emptyList()
         return profilesDir.listChildren()
             .filter { !it.isDirectory() && it.name.endsWith(".json") }
             .mapNotNull { file ->
                 runCatching {
                     json.decodeFromString<VoiceProfileFile>(file.readBytes().decodeToString())
-                        .toProfile(file.resolveSiblingEnc(), cipher())
+                        .toProfile(file.resolveSiblingEnc(), c)
                 }.getOrNull()
             }
             .sortedBy { it.displayName.lowercase() }
     }
 
-    fun get(id: String): VoiceProfile? = listProfiles().firstOrNull { it.id == id }
+    suspend fun get(id: String): VoiceProfile? = listProfiles().firstOrNull { it.id == id }
 
-    fun upsert(
+    suspend fun upsert(
         displayName: String,
         embedding: FloatArray,
         id: String = slug(displayName),
@@ -112,14 +171,14 @@ class VoiceProfileStore(
         return profile
     }
 
-    fun rename(id: String, displayName: String): VoiceProfile? {
+    suspend fun rename(id: String, displayName: String): VoiceProfile? {
         val existing = get(id) ?: return null
         val updated = existing.copy(displayName = displayName.trim().ifBlank { existing.displayName })
         writeProfile(updated)
         return updated
     }
 
-    fun updateMeta(
+    suspend fun updateMeta(
         id: String,
         role: String? = null,
         company: String? = null,
@@ -139,6 +198,7 @@ class VoiceProfileStore(
         return updated
     }
 
+    /** File delete only — does not touch the cipher. */
     fun delete(id: String) {
         profilesDir.resolve("$id.json").deleteRecursively()
         profilesDir.resolve("$id.enc").deleteRecursively()
@@ -146,12 +206,13 @@ class VoiceProfileStore(
         profilesDir.resolve("$id.f32").deleteRecursively()
     }
 
+    /** File delete only — does not touch the cipher. */
     fun wipeAll() {
         if (profilesDir.exists()) profilesDir.deleteRecursively()
         profilesDir.createDirectories()
     }
 
-    fun match(
+    suspend fun match(
         embedding: FloatArray,
         threshold: Float = DEFAULT_MATCH_THRESHOLD,
     ): VoiceMatch? {
@@ -167,7 +228,7 @@ class VoiceProfileStore(
     }
 
     /** Confirm a match — averages the new sample into the centroid. */
-    fun refine(id: String, embedding: FloatArray): VoiceProfile? {
+    suspend fun refine(id: String, embedding: FloatArray): VoiceProfile? {
         val existing = get(id) ?: return null
         return upsert(
             displayName = existing.displayName,
@@ -181,7 +242,7 @@ class VoiceProfileStore(
         )
     }
 
-    fun merge(intoId: String, fromId: String): VoiceProfile? {
+    suspend fun merge(intoId: String, fromId: String): VoiceProfile? {
         if (intoId == fromId) return get(intoId)
         val into = get(intoId) ?: return null
         val from = get(fromId) ?: return null
@@ -198,20 +259,20 @@ class VoiceProfileStore(
         return merged
     }
 
-    fun cacheClusterEmbedding(recordingId: String, speakerId: String, embedding: FloatArray) {
+    suspend fun cacheClusterEmbedding(recordingId: String, speakerId: String, embedding: FloatArray) {
         val dir = cacheDir.resolve(recordingId)
         dir.createDirectories()
-        val enc = cipher().encrypt(floatsToBytes(embedding))
+        val enc = requireCipher().encrypt(floatsToBytes(embedding))
         dir.resolve("${slug(speakerId)}.enc").writeBytes(enc)
         // Keep legacy plaintext cache for one release of promoteCached compatibility.
         dir.resolve("${slug(speakerId)}.f32").writeBytes(floatsToBytes(embedding))
     }
 
-    fun cachedClusterEmbedding(recordingId: String, speakerId: String): FloatArray? {
+    suspend fun cachedClusterEmbedding(recordingId: String, speakerId: String): FloatArray? {
         val encFile = cacheDir.resolve(recordingId).resolve("${slug(speakerId)}.enc")
         if (encFile.exists() && encFile.length() > 0L) {
             return runCatching {
-                bytesToFloats(cipher().decrypt(encFile.readBytes()))
+                bytesToFloats(requireCipher().decrypt(encFile.readBytes()))
             }.getOrNull()
         }
         val file = cacheDir.resolve(recordingId).resolve("${slug(speakerId)}.f32")
@@ -219,7 +280,7 @@ class VoiceProfileStore(
         return bytesToFloats(file.readBytes())
     }
 
-    fun promoteCached(
+    suspend fun promoteCached(
         recordingId: String,
         speakerId: String,
         displayName: String,
@@ -242,8 +303,8 @@ class VoiceProfileStore(
     }
 
     /** Encrypted export JSON (meta + base64 ciphertext embeddings). */
-    fun exportEncrypted(): String {
-        val c = cipher()
+    suspend fun exportEncrypted(): String {
+        val c = requireCipher()
         val payload = listProfiles().map { p ->
             ExportedProfile(
                 id = p.id,
@@ -262,9 +323,9 @@ class VoiceProfileStore(
         return json.encodeToString(ExportedBundle(version = 1, profiles = payload))
     }
 
-    fun importEncrypted(text: String): Int {
+    suspend fun importEncrypted(text: String): Int {
         val bundle = json.decodeFromString<ExportedBundle>(text)
-        val c = cipher()
+        val c = requireCipher()
         var count = 0
         bundle.profiles.forEach { e ->
             val embedding = bytesToFloats(c.decrypt(Base64.decode(e.embeddingB64)))
@@ -289,7 +350,7 @@ class VoiceProfileStore(
         return count
     }
 
-    private fun writeProfile(profile: VoiceProfile) {
+    private suspend fun writeProfile(profile: VoiceProfile) {
         profilesDir.createDirectories()
         val meta = profilesDir.resolve("${profile.id}.json")
         val enc = profilesDir.resolve("${profile.id}.enc")
@@ -310,7 +371,7 @@ class VoiceProfileStore(
             ).encodeToByteArray(),
         )
         val packed = packSamples(profile.sampleEmbeddings.ifEmpty { listOf(profile.embedding) })
-        enc.writeBytes(cipher().encrypt(packed))
+        enc.writeBytes(requireCipher().encrypt(packed))
         // Remove legacy plaintext if present.
         profilesDir.resolve("${profile.id}.f32").deleteRecursively()
     }
@@ -319,6 +380,10 @@ class VoiceProfileStore(
         const val DEFAULT_MATCH_THRESHOLD = 0.55f
         const val MAX_SAMPLES = 8
         const val PROFILE_KEY_SECURE = "voice.profile_aes_key_b64"
+
+        /** Former deterministic file-key formula — kept only so tests can seed legacy blobs. */
+        fun legacyConstantKeyBytes(): ByteArray =
+            ByteArray(32) { (it * 17 + 41).toByte() }
 
         fun cosineSimilarity(a: FloatArray, b: FloatArray): Float {
             require(a.size == b.size) { "embedding size mismatch ${a.size} vs ${b.size}" }
@@ -444,6 +509,13 @@ class VoiceProfileStore(
             sampleCount = samples.size,
         )
     }
+}
+
+/** Observed by settings UI for Retry when Keystore priming fails. */
+sealed interface VoiceKeyPrimingState {
+    data object Unprimed : VoiceKeyPrimingState
+    data object Ready : VoiceKeyPrimingState
+    data class Failed(val errorClassName: String) : VoiceKeyPrimingState
 }
 
 data class VoiceMatch(

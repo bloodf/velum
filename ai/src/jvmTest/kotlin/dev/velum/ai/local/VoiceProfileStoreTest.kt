@@ -1,11 +1,13 @@
 package dev.velum.ai.local
 
+import dev.velum.core.security.InMemorySecureStore
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.runBlocking
 
 class VoiceProfileStoreTest {
 
@@ -16,12 +18,13 @@ class VoiceProfileStoreTest {
         }
         return VoiceProfileStore(
             root = ModelStoreDir(dir.absolutePath),
+            secureStore = InMemorySecureStore(),
             cipherOverride = createProfileCipher(ByteArray(32) { 9 }),
         )
     }
 
     @Test
-    fun match_respectsThreshold() {
+    fun match_respectsThreshold() = runBlocking {
         val store = tempStore()
         store.upsert("Alice", floatArrayOf(1f, 0f, 0f))
         assertNull(store.match(floatArrayOf(0f, 1f, 0f), threshold = 0.9f))
@@ -32,7 +35,7 @@ class VoiceProfileStoreTest {
     }
 
     @Test
-    fun refine_averagesSamples() {
+    fun refine_averagesSamples() = runBlocking {
         val store = tempStore()
         store.upsert("Bob", floatArrayOf(1f, 0f, 0f))
         store.refine("bob", floatArrayOf(0f, 1f, 0f))
@@ -44,7 +47,7 @@ class VoiceProfileStoreTest {
     }
 
     @Test
-    fun delete_and_wipe() {
+    fun delete_and_wipe() = runBlocking {
         val store = tempStore()
         store.upsert("A", floatArrayOf(1f, 0f))
         store.upsert("B", floatArrayOf(0f, 1f))
@@ -55,7 +58,7 @@ class VoiceProfileStoreTest {
     }
 
     @Test
-    fun exportImport_roundTrip() {
+    fun exportImport_roundTrip() = runBlocking {
         val store = tempStore()
         store.upsert(
             displayName = "Cara",
@@ -77,7 +80,7 @@ class VoiceProfileStoreTest {
     }
 
     @Test
-    fun merge_combinesSamples() {
+    fun merge_combinesSamples() = runBlocking {
         val store = tempStore()
         store.upsert("Left", floatArrayOf(1f, 0f, 0f), id = "left")
         store.upsert("Right", floatArrayOf(0f, 1f, 0f), id = "right")
@@ -88,10 +91,11 @@ class VoiceProfileStoreTest {
     }
 
     @Test
-    fun encryption_notPlaintextOnDisk() {
+    fun encryption_notPlaintextOnDisk() = runBlocking {
         val dir = File.createTempFile("velum-vp-enc", "").also { it.delete(); it.mkdirs() }
         val store = VoiceProfileStore(
             root = ModelStoreDir(dir.absolutePath),
+            secureStore = InMemorySecureStore(),
             cipherOverride = createProfileCipher(ByteArray(32) { 3 }),
         )
         store.upsert("Secret", floatArrayOf(0.1f, 0.2f, 0.3f, 0.4f))

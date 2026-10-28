@@ -101,10 +101,16 @@ class ModelArchiveExtractorTest {
         val storeRoot = ModelStoreDir(
             File.createTempFile("velum-voices", "").also { it.delete(); it.mkdirs() }.absolutePath,
         )
-        val store = VoiceProfileStore(storeRoot)
-        store.upsert("Alice", floatArrayOf(0.1f, 0.2f, 0.3f))
-        val match = store.match(floatArrayOf(0.1f, 0.2f, 0.3f), threshold = 0.99f)
-        assertEquals("Alice", match?.profile?.displayName)
+        val store = VoiceProfileStore(
+            storeRoot,
+            secureStore = dev.velum.core.security.InMemorySecureStore(),
+            cipherOverride = createProfileCipher(ByteArray(32) { 1 }),
+        )
+        kotlinx.coroutines.runBlocking {
+            store.upsert("Alice", floatArrayOf(0.1f, 0.2f, 0.3f))
+            val match = store.match(floatArrayOf(0.1f, 0.2f, 0.3f), threshold = 0.99f)
+            assertEquals("Alice", match?.profile?.displayName)
+        }
     }
 
     private fun buildZip(vararg entries: Pair<String, String>): ByteArray {

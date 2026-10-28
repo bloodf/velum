@@ -8,6 +8,7 @@ import dev.velum.ai.local.LocalTranscriber
 import dev.velum.ai.local.ModelStoreDir
 import dev.velum.ai.local.VoiceProfileStore
 import dev.velum.ai.local.createLocalModelManager
+import dev.velum.ai.local.createProfileCipher
 import dev.velum.ai.openai.OpenAiDiarizer
 import dev.velum.ai.openai.OpenAiLlmEngine
 import dev.velum.ai.openai.OpenAiTranscriber
@@ -454,7 +455,11 @@ class AutoFlowRunnerTest {
             File.createTempFile("velum-af", "").also { it.delete(); it.mkdirs() }.absolutePath,
         )
         val modelManager = createLocalModelManager(storeRoot = modelRoot)
-        val voices = VoiceProfileStore(modelRoot)
+        val voices = VoiceProfileStore(
+            modelRoot,
+            secureStore = InMemorySecureStore(),
+            cipherOverride = createProfileCipher(ByteArray(32) { 2 }),
+        )
         val http = HttpClient(MockEngine { respond("{}", HttpStatusCode.OK) }) {
             install(ContentNegotiation) { json(OpenAiCompatibleClient.defaultJson) }
         }
