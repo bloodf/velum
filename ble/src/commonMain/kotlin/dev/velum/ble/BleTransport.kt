@@ -40,8 +40,8 @@ interface BleTransport {
      *
      * Always runs the Plaud plaintext opcode/settings guard when the target
      * resolves to the Plaud write characteristic UUID (`2BB1`). There is no
-     * public opt-out; sealed session traffic must go through
-     * [PlaudBleTransport.writeSealedAfterPlaintextGuard].
+     * public opt-out; encrypted session traffic must go through
+     * [PlaudEncryptedSession.writeEncrypted] (plaintext only; sealing is internal).
      */
     suspend fun write(
         characteristic: String,

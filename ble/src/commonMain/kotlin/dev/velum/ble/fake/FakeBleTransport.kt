@@ -52,8 +52,8 @@ class FakeBleTransport(
     private val _devices = MutableStateFlow<List<ConnectedDevice>>(emptyList())
     override val discoveredDevices: StateFlow<List<ConnectedDevice>> = _devices.asStateFlow()
 
-    override var activeProfile: GattProfile? = null
-        private set
+    private var _activeProfile: GattProfile? = null
+    override val activeProfile: GattProfile? get() = _activeProfile
 
     /** All accepted writes: characteristic name → payload copies, in order. */
     private val _writes = mutableListOf<Pair<String, ByteArray>>()
@@ -90,7 +90,7 @@ class FakeBleTransport(
             }
             _state.value = BleConnectionState.Connecting(deviceId)
             // Set profile only after the fake "link" is up.
-            activeProfile = profile
+            _activeProfile = profile
             _state.value = BleConnectionState.Connected(device)
         }
     }
@@ -98,7 +98,7 @@ class FakeBleTransport(
     override suspend fun disconnect() {
         mutex.withLock {
             peripheral?.resetUnlock()
-            activeProfile = null
+            _activeProfile = null
             notifyFlows.clear()
             _state.value = BleConnectionState.Idle
         }
