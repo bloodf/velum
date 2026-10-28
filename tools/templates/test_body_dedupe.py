@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from body_dedupe import (  # noqa: E402
     dedupe_by_exact_body,
+    safe_usage_count,
     survivor_sort_key,
 )
 
@@ -143,6 +144,41 @@ class BodyDedupeTest(unittest.TestCase):
         n = row(id="n", name="M", body="b")
         ordered = sorted([n, f, o], key=survivor_sort_key)
         self.assertEqual([r["id"] for r in ordered], ["o", "f", "n"])
+
+    def test_empty_or_whitespace_bodies_are_not_grouped(self) -> None:
+        a = row(id="a", name="A", body="")
+        b = row(id="b", name="B", body="   ")
+        c = row(id="c", name="C", body="\t\n")
+        d = row(id="d", name="D", body="real body content")
+        e = row(id="e", name="E", body="real body content")
+        # Missing / non-string body
+        f = {"id": "f", "name": "F", "category": "meeting", "body": None, "tags": ["summary"]}
+        result = dedupe_by_exact_body([a, b, c, d, e, f])
+        # Only the two real identical bodies collapse; blanks stay as distinct rows.
+        self.assertEqual(result.duplicate_body_groups, 1)
+        self.assertEqual(result.removed_rows, 1)
+        self.assertEqual(result.output_rows, 5)
+        ids = {r["id"] for r in result.survivors}
+        self.assertTrue({"a", "b", "c", "f"}.issubset(ids))
+        self.assertEqual(len(ids & {"d", "e"}), 1)
+        self.assertNotIn("a", result.remap)
+        self.assertNotIn("b", result.remap)
+        self.assertNotIn("c", result.remap)
+
+    def test_safe_usage_count_guards_missing_and_non_numeric(self) -> None:
+        self.assertEqual(safe_usage_count({}), 0)
+        self.assertEqual(safe_usage_count({"usageCount": None}), 0)
+        self.assertEqual(safe_usage_count({"usageCount": ""}), 0)
+        self.assertEqual(safe_usage_count({"usageCount": "nope"}), 0)
+        self.assertEqual(safe_usage_count({"usageCount": "12"}), 12)
+        self.assertEqual(safe_usage_count({"uses": "3"}), 3)
+        self.assertEqual(safe_usage_count({"usageCount": 7.9}), 7)
+        self.assertEqual(safe_usage_count({"usageCount": True}), 0)
+        a = row(id="a", name="Z", body="BODY", usageCount=0)
+        a["usageCount"] = "not-a-number"
+        b = row(id="b", name="A", body="BODY", usageCount=5)
+        result = dedupe_by_exact_body([a, b])
+        self.assertEqual(result.survivors[0]["usageCount"], 5)
 
 
 if __name__ == "__main__":

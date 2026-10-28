@@ -157,9 +157,14 @@ object SeedData {
         db.transaction {
             remap.forEach { (oldId, survivorId) ->
                 if (oldId == survivorId) return@forEach
-                q.updateAutoflowTemplateId(template_id = survivorId, template_id_ = oldId)
-                q.updateSummaryVersionTemplateId(template_id = survivorId, template_id_ = oldId)
                 val existing = q.selectTemplateById(oldId).executeAsOneOrNull()
+                // Only remap refs when the old id is a dropped builtin (or already gone).
+                // A custom row (builtin=0) that reuses a removed plaud.* id keeps its refs.
+                val shouldRemap = existing == null || existing.builtin != 0L
+                if (shouldRemap) {
+                    q.updateAutoflowTemplateId(template_id = survivorId, template_id_ = oldId)
+                    q.updateSummaryVersionTemplateId(template_id = survivorId, template_id_ = oldId)
+                }
                 if (existing != null && existing.builtin != 0L) {
                     q.deleteTemplateHard(oldId)
                 }

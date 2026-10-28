@@ -82,6 +82,31 @@ def _as_tag_list(value: Any) -> list[str]:
     return sorted({str(t).strip() for t in value if str(t).strip()})
 
 
+def safe_usage_count(row: dict[str, Any]) -> int:
+    """Parse usageCount/uses; missing or non-numeric values count as 0."""
+    raw = row.get("usageCount")
+    if raw is None:
+        raw = row.get("uses")
+    if raw is None or raw is False:
+        return 0
+    if isinstance(raw, bool):
+        return 0
+    if isinstance(raw, int):
+        return max(0, raw)
+    if isinstance(raw, float):
+        return max(0, int(raw))
+    text = str(raw).strip()
+    if not text:
+        return 0
+    try:
+        return max(0, int(text))
+    except ValueError:
+        try:
+            return max(0, int(float(text)))
+        except ValueError:
+            return 0
+
+
 def merge_into_survivor(survivor: dict[str, Any], group: list[dict[str, Any]]) -> dict[str, Any]:
     """Return a copy of survivor with tags/flags/usage reconciled from the group."""
     out = dict(survivor)
@@ -91,7 +116,7 @@ def merge_into_survivor(survivor: dict[str, Any], group: list[dict[str, Any]]) -
     any_featured = False
     for row in group:
         tags.update(_as_tag_list(row.get("tags")))
-        max_uses = max(max_uses, int(row.get("usageCount") or row.get("uses") or 0))
+        max_uses = max(max_uses, safe_usage_count(row))
         any_official = any_official or bool(row.get("official"))
         any_featured = any_featured or bool(row.get("featured"))
     out["tags"] = sorted(tags)
@@ -119,22 +144,22 @@ def dedupe_by_exact_body(rows: Iterable[dict[str, Any]]) -> BodyDedupeResult:
     """
     Collapse rows that share an exact ``body`` string.
 
-    Rows without a string body are kept as-is (treated as unique empty keys only
-    when body is missing — callers should not pass empty bodies from hygiene).
+    Rows whose body is missing, not a string, empty, or whitespace-only are kept
+    as-is and never enter a duplicate group (they are not collapsed together).
     """
     materialised = [dict(r) for r in rows]
     before_per = Counter(str(r.get("category") or "") for r in materialised)
 
     by_body: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    no_body: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
     for row in materialised:
         body = row.get("body")
-        if not isinstance(body, str):
-            no_body.append(row)
+        if not isinstance(body, str) or not body.strip():
+            skipped.append(row)
             continue
         by_body[body].append(row)
 
-    survivors: list[dict[str, Any]] = list(no_body)
+    survivors: list[dict[str, Any]] = list(skipped)
     remap: dict[str, str] = {}
     removed_ids: list[str] = []
     dup_groups = 0
