@@ -1,6 +1,7 @@
 package dev.velum.ai.pipeline
 
 import dev.velum.ai.OpenAiCompatibleClient
+import dev.velum.ai.audio.PcmWav
 import dev.velum.ai.engine.AiTaskRouter
 import dev.velum.ai.engine.JobProgress
 import dev.velum.ai.local.LocalDiarizer
@@ -85,8 +86,9 @@ class DeviceToSummaryE2ETest {
         val decrypted = PlaudFileCrypto.decrypt(downloaded, privatePem, fileDecryptor)
         assertTrue(decrypted.contentEquals(plaintextAudio))
 
-        val audioPath = Files.createTempFile("velum-e2e", ".bin")
-        Files.write(audioPath, decrypted)
+        // Device pulls are raw s16le PCM; wrap as WAV so RecordingProcessor can stream-decode.
+        val audioPath = Files.createTempFile("velum-e2e", ".wav")
+        Files.write(audioPath, PcmWav.encode(decrypted, sampleRateHz = 16_000))
 
         val store = InMemorySecureStore()
         val settings = SettingsRepository(store)

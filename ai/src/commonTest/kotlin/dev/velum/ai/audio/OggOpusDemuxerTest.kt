@@ -88,6 +88,43 @@ class OggOpusDemuxerTest {
         assertEquals(0, packets)
     }
 
+    @Test
+    fun demuxAtForEach_multiPage_readAtStaysBounded() {
+        val head = byteArrayOf(
+            'O'.code.toByte(), 'p'.code.toByte(), 'u'.code.toByte(), 's'.code.toByte(),
+            'H'.code.toByte(), 'e'.code.toByte(), 'a'.code.toByte(), 'd'.code.toByte(),
+            1, 1, 0, 0,
+            0x80.toByte(), 0xBB.toByte(), 0x00, 0x00,
+            0, 0, 0,
+        )
+        val audio = ByteArray(100) { 0x3C }
+        val pages = ArrayList<ByteArray>()
+        pages += buildOggPage(head)
+        repeat(50) { pages += buildOggPage(audio) }
+        val file = ByteArray(pages.sumOf { it.size })
+        var o = 0
+        for (p in pages) {
+            p.copyInto(file, o)
+            o += p.size
+        }
+        var maxRead = 0
+        var packets = 0
+        OggOpusDemuxer.demuxAtForEach(
+            size = file.size.toLong(),
+            readAt = { dest, position, length ->
+                maxRead = maxOf(maxRead, length)
+                val pos = position.toInt()
+                if (pos + length > file.size) return@demuxAtForEach -1
+                file.copyInto(dest, 0, pos, pos + length)
+                length
+            },
+            onPacket = { packets++ },
+        )
+        assertEquals(50, packets)
+        assertTrue(maxRead < file.size / 4, "maxRead=$maxRead file=${file.size}")
+        assertTrue(maxRead <= 70 * 1024)
+    }
+
     private fun buildOggPage(packet: ByteArray): ByteArray {
         require(packet.size < 255)
         return buildOggPageMulti(listOf(packet.size to packet))
