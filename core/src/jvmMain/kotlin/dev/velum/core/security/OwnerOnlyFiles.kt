@@ -12,12 +12,21 @@ import java.nio.file.attribute.PosixFilePermission
 import java.nio.file.attribute.PosixFilePermissions
 import java.util.EnumSet
 import java.util.Properties
+import java.util.concurrent.atomic.AtomicReference
 
 /** POSIX owner-read/write only (`rw-------`). */
 internal val OWNER_READ_WRITE: Set<PosixFilePermission> = setOf(
     PosixFilePermission.OWNER_READ,
     PosixFilePermission.OWNER_WRITE,
 )
+
+/**
+ * Optional probe invoked immediately after an owner-only temp file is created
+ * (before any bytes are written). Used by JVM tests to assert mode-at-creation
+ * on the same path [DesktopSecureStore] uses for key and properties writes.
+ */
+internal val ownerOnlyTempCreatedProbe: AtomicReference<((Path) -> Unit)?> =
+    AtomicReference(null)
 
 internal fun supportsPosixPermissions(): Boolean =
     FileSystems.getDefault().supportedFileAttributeViews().contains("posix")
@@ -86,7 +95,7 @@ internal fun setOwnerOnlyPermissions(path: Path) {
  */
 internal fun createOwnerOnlyTempFile(directory: Path, prefix: String, suffix: String): Path {
     Files.createDirectories(directory)
-    return if (supportsPosixPermissions()) {
+    val tmp = if (supportsPosixPermissions()) {
         try {
             Files.createTempFile(
                 directory,
@@ -100,6 +109,8 @@ internal fun createOwnerOnlyTempFile(directory: Path, prefix: String, suffix: St
     } else {
         Files.createTempFile(directory, prefix, suffix).also { applyOwnerOnlyAcl(it) }
     }
+    ownerOnlyTempCreatedProbe.get()?.invoke(tmp)
+    return tmp
 }
 
 /**

@@ -58,23 +58,27 @@ class DesktopSecureStoreConcurrencyTest {
         val dir = kotlin.io.path.createTempDirectory("velum-secure-perms")
         val props = dir.resolve("secure.properties")
         val keyFile = dir.resolve("secure.aes256")
+        val expected = setOf(
+            PosixFilePermission.OWNER_READ,
+            PosixFilePermission.OWNER_WRITE,
+        )
+        val tempModesAtCreation = mutableListOf<Set<PosixFilePermission>>()
+        val previous = ownerOnlyTempCreatedProbe.getAndSet { tmp ->
+            // Probe fires from createOwnerOnlyTempFile — the same path
+            // DesktopSecureStore uses for key (atomicWriteOwnerOnlyBytes) and
+            // properties (atomicWriteProperties) writes — before any data is written.
+            tempModesAtCreation += Files.getPosixFilePermissions(tmp)
+        }
         try {
-            val expected = setOf(
-                PosixFilePermission.OWNER_READ,
-                PosixFilePermission.OWNER_WRITE,
-            )
-            // Key file mode right after creation, before any properties data is written.
-            createOwnerOnlyFile(keyFile)
-            assertTrue(Files.exists(keyFile))
-            val keyPermsAtCreation = Files.getPosixFilePermissions(keyFile)
-            if (keyPermsAtCreation != expected) {
-                fail("key file permissions were not owner-only at creation")
-            }
-            Files.delete(keyFile)
-
             runBlocking {
                 val store = DesktopSecureStore(file = props, keyFile = keyFile)
                 store.putString("probe", "x")
+            }
+            assertTrue(tempModesAtCreation.isNotEmpty(), "expected temp-file creation probes")
+            for (mode in tempModesAtCreation) {
+                if (mode != expected) {
+                    fail("temp file permissions were not owner-only at creation")
+                }
             }
             assertTrue(Files.exists(keyFile))
             assertTrue(Files.exists(props))
@@ -87,6 +91,7 @@ class DesktopSecureStoreConcurrencyTest {
                 fail("properties file permissions were not owner-only")
             }
         } finally {
+            ownerOnlyTempCreatedProbe.set(previous)
             dir.toFile().deleteRecursively()
         }
     }
