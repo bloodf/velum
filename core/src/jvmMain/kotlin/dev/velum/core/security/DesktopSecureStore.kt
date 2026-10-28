@@ -174,7 +174,8 @@ class DesktopSecureStore private constructor(
                 )
                 generated
             } catch (_: FileAlreadyExistsException) {
-                // Under the lock another creator should be impossible; re-evaluate.
+                // Exclusive publish saw an existing target; re-read under the lock
+                // and mint only if the key is still absent or was quarantined.
                 readValidKeyBytes(path)?.let {
                     return JvmAesGcmSecureStore.keyFromBytes(it)
                 }
