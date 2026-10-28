@@ -3,7 +3,9 @@ package dev.velum.app.platform
 import android.Manifest
 import android.app.Application
 import android.app.ForegroundServiceStartNotAllowedException
+import android.content.ComponentName
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.os.Build
 import androidx.test.core.app.ApplicationProvider
@@ -169,6 +171,27 @@ class SessionDownloadServiceTest {
         assertEquals(
             ServiceInfo.FOREGROUND_SERVICE_TYPE_SHORT_SERVICE,
             SessionDownloadService.shortServiceType(),
+        )
+    }
+
+    /**
+     * Merged-manifest guard: shortService fallback must stay declared beside
+     * connectedDevice or Android 14+ promote-failure crashes return.
+     */
+    @Test
+    fun mergedManifest_sessionDownloadService_declaresConnectedDeviceAndShortService() {
+        val pm = app.packageManager
+        val component = ComponentName(app, SessionDownloadService::class.java)
+        @Suppress("DEPRECATION")
+        val info = pm.getServiceInfo(component, PackageManager.GET_META_DATA)
+        val types = info.foregroundServiceType
+        assertTrue(
+            "merged manifest missing connectedDevice (types=0x${types.toString(16)})",
+            types and ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE != 0,
+        )
+        assertTrue(
+            "merged manifest missing shortService (types=0x${types.toString(16)})",
+            types and ServiceInfo.FOREGROUND_SERVICE_TYPE_SHORT_SERVICE != 0,
         )
     }
 
