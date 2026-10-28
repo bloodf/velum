@@ -1,5 +1,6 @@
 package dev.velum.core.security
 
+import java.nio.channels.OverlappingFileLockException
 import java.nio.file.Files
 import java.nio.file.attribute.PosixFilePermission
 import java.util.Collections
@@ -287,6 +288,59 @@ class DesktopSecureStoreConcurrencyTest {
             assertEquals(0L, badCount)
         } finally {
             dir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun concurrent_load_via_symlinked_parent_stable_jvm_lock() {
+        val real = kotlin.io.path.createTempDirectory("velum-key-real")
+        val linkRoot = kotlin.io.path.createTempDirectory("velum-key-link-root")
+        val linkParent = linkRoot.resolve("alias")
+        try {
+            try {
+                Files.createSymbolicLink(linkParent, real)
+            } catch (t: Throwable) {
+                assumeTrue("symbolic links required: ${t.message}", false)
+            }
+            val keyViaLink = linkParent.resolve("secure.aes256")
+            val keys = Collections.synchronizedList(mutableListOf<ByteArray>())
+            val errors = Collections.synchronizedList(mutableListOf<Throwable>())
+            val start = CountDownLatch(1)
+            val threads = (0 until 12).map { i ->
+                Thread({
+                    try {
+                        start.await(5, TimeUnit.SECONDS)
+                        // First wave: key missing. Later joiners: key present.
+                        if (i >= 6) {
+                            Thread.sleep(30)
+                        }
+                        val key = DesktopSecureStore.loadOrCreateKey(keyViaLink)
+                        keys += key.encoded.copyOf()
+                    } catch (t: Throwable) {
+                        errors += t
+                    }
+                }, "symlink-parent-key-$i")
+            }
+            threads.forEach { it.start() }
+            start.countDown()
+            threads.forEach { it.join(20_000) }
+
+            val overlapping = errors.filterIsInstance<OverlappingFileLockException>()
+            assertTrue(
+                overlapping.isEmpty(),
+                "stable lock map key must avoid OverlappingFileLockException: $overlapping",
+            )
+            assertTrue(errors.isEmpty(), "unexpected failures: $errors")
+            assertEquals(12, keys.size)
+            val first = keys.first()
+            assertEquals(AES_256_KEY_BYTES, first.size)
+            for (k in keys) {
+                assertTrue(first.contentEquals(k), "symlinked-parent loaders must share one key")
+            }
+            assertTrue(first.contentEquals(Files.readAllBytes(keyViaLink)))
+        } finally {
+            linkRoot.toFile().deleteRecursively()
+            real.toFile().deleteRecursively()
         }
     }
 
