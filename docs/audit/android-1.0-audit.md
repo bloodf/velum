@@ -123,9 +123,10 @@ Status legend: `Open` · `Fixed` · `Deferred (owner/hardware)` · `Accepted ris
 | Item | Why | GitHub |
 |------|-----|--------|
 | Device identity keys from Plaud dump | Cannot generate locally | Existing import docs / blocked issues |
-| SoftAP Wi‑Fi on real Note Pro | JVM fake only | Open issue if missing |
-| Long multi-hour OOM / streaming decode | Needs large captures | — |
-| BLE download FGS timing | Needs background kill tests on S26 Ultra | — |
+| SoftAP Wi‑Fi on real Note Pro | JVM fake only | #8 |
+| Long multi-hour OOM / streaming decode | Needs large captures | #86 (also #6) |
+| BLE download FGS timing | Needs background kill tests on S26 Ultra | #85 |
+| Voice Profiles full i18n | Large copy pass | #87 |
 | Release upload keystore + Play / F-Droid | Secrets + consoles | Existing release docs |
 | OAuth client IDs | Out of scope | #49/#50 family |
 | Renovate PR #2 | Owner decision | #2 |
@@ -136,12 +137,15 @@ Status legend: `Open` · `Fixed` · `Deferred (owner/hardware)` · `Accepted ris
 
 | Finding | Commit | Notes |
 |---------|--------|-------|
-| Audit doc + batch of critical/high fixes | _(this push)_ | See git log on `main` after audit |
+| Audit findings doc | `cef1067` | `docs/audit/android-1.0-audit.md` |
+| C1 C2 H1 H2 H3 H10 H11 M6 M14 + tests | `0a34d9b` | AI/pipeline/seed/ProGuard prep |
+| C3 C4 H4–H9 H12 M2 M5 M7 M11 M15 M16 L7 | `b851722` | Device download, BLE perms, UI |
 
 ---
 
 ## Final status
 
 - Local verification: `:plaud-protocol:jvmTest :ble:jvmTest :core:jvmTest :ai:jvmTest`, `:composeApp:testDebugUnitTest`, `:composeApp:assembleDebug` — **green**
+- Fix commits on `main`: `cef1067`, `0a34d9b`, `b851722` (+ follow-up for issue links)
 - CI run id / head commit: filled after push to `main`
-- Owner must verify on **Samsung Galaxy S26 Ultra + Plaud Note Pro**: BLE scan/connect (runtime permissions), unlock with imported keys, session download → Files → transcription, SoftAP prefer path, mic FGS, long recording, light/dark Explore contrast, Filter/Trash restore
+- Owner must verify on **Samsung Galaxy S26 Ultra + Plaud Note Pro**: BLE scan/connect (runtime permissions), unlock with imported keys, session download → Files → transcription, SoftAP prefer path (#8), mic FGS, long recording (#6/#86), light/dark Explore contrast, Filter/Trash restore
