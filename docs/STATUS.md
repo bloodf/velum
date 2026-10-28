@@ -150,10 +150,16 @@ Phone-only / external (no Plaud required):
 - Unimplemented chrome audit: Preferences “Help improve Velum” / usage-data toggle + `prefs.help_improve`; Preferences App lock (info-only dialog); Settings hub Current workspace (noop); Integrations “More apps coming” panel; Templates Photo-to-template create option; AutoFlow “Send suggestion” inert label; Template detail “Set for later” mislabel (replaced with Close)
 - Settings redesign (local-only): sectioned hub (Devices / Recording / Transcription & AI / API / Speakers / Templates / Automation / Appearance / Storage & privacy / About); Account/profile/avatar chrome removed; library top-bar person → settings gear; theme + language prefs; Devices (Wi‑Fi prefer + auto-sync watched folders); Recording default mic; Storage usage + delete-audio-after-process; library export + wipe
 
+## Session download resume + CRC (#94 simulated vs #6 hardware)
+
+**Simulated (JVM / fake peripheral — #94):** `SessionDownloadEngine` + atomic `FileSessionDownloadProgressStore` resume from last verified offset; CRC-16/CCITT on completed, resumed, and Wi‑Fi→BLE fallback paths; fault injection (drop at offset, repeated drops, truncated final chunk, corrupted bytes, duplicate chunk); multi-hour-sized synthetic stream (`SyntheticSessionContent.TWO_HOUR_BYTES`) without holding the full payload in memory. Regression: `SessionDownloadResumeCrcTest` / `SessionDownloadProgressStoreTest` in `:ble:jvmTest`.
+
+**Still owner hardware only (#6 — not claimed done):** real Note Pro ≥2 h capture transfer time + battery drain; screen-off / Doze with `SessionDownloadService` on S26 Ultra; process-death vs force-stop on device; exact firmware CRC match confirmation. Checklist: `docs/HARDWARE_VALIDATION.md`.
+
 ## Confirm only on owner’s real Plaud Note Pro
 
 - Live BLE advertise `portVersion` / project 881, unlock with owner keys, battery notify
-- Full multi-hour download resume + CRC
+- Full multi-hour download resume + CRC (hardware; software fake path covered under #94 above)
 - On-device Parakeet/Whisper/Gemma quality + thermal throttling on physical silicon
 - Whether FE10 alone works with E2EE off (no FE11) after one-time key import
 - Wi-Fi SoftAP against real Note Pro hardware (JVM fake path is green)

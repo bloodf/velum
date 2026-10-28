@@ -24,7 +24,9 @@ Use a green CI **`velum-debug-apk`** artifact (fixed debug keystore) or a signed
 - [ ] Battery level shows and updates.
 - [ ] Confirm forbidden opcodes are never observed on the wire.
 
-## Multi-hour download (#6)
+## Multi-hour download (#6 / software #94)
+
+Software/simulated coverage lives on `dev2/94-resume-crc` (`SessionDownloadEngine`, fault-injecting `FakePlaudPeripheral`). The checks below are **owner hardware only** (Note Pro + S26 Ultra) — do not mark done from JVM fakes.
 
 - [ ] Record ≥2 h on device; BLE download completes; CRC matches.
 - [ ] Interrupt mid-transfer (BT off / kill app / range); resume from last offset.
