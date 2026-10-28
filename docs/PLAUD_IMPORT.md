@@ -54,7 +54,7 @@ Identity values (token, PEMs, signatures, serial) are secrets:
 
 - Never print, log, or put them in exception messages, `toString()`, crash reports, test failure output that echoes payloads, or commit text.
 - Parser / import failures must use field **names** and structural reasons only (e.g. wrong length), never the rejected value.
-- Android Keystore persistence is issue #92 / #4 — out of scope for the bundle format parser.
+- Android Keystore AES-256-GCM persistence (non-exportable key; ciphertext in private prefs) is issue #92; real-owner hardware check remains #4. JVM tests use an AES-GCM software-key stand-in.
 
 ## UI
 
