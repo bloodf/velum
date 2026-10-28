@@ -88,7 +88,7 @@ class VoiceProfileStoreKeyTest {
             val root = ModelStoreDir(dir.absolutePath)
             val voices = File(dir, "voices").also { it.mkdirs() }
             val profiles = File(voices, "profiles").also { it.mkdirs() }
-            val constantKey = VoiceProfileStore.legacyConstantKeyBytes()
+            val constantKey = legacyConstantKeyBytesForTests()
             File(voices, ".profile_key").writeBytes(constantKey)
 
             val legacyCipher = createProfileCipher(constantKey)

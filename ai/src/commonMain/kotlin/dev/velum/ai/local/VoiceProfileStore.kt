@@ -381,10 +381,6 @@ class VoiceProfileStore(
         const val MAX_SAMPLES = 8
         const val PROFILE_KEY_SECURE = "voice.profile_aes_key_b64"
 
-        /** Former deterministic file-key formula — kept only so tests can seed legacy blobs. */
-        fun legacyConstantKeyBytes(): ByteArray =
-            ByteArray(32) { (it * 17 + 41).toByte() }
-
         fun cosineSimilarity(a: FloatArray, b: FloatArray): Float {
             require(a.size == b.size) { "embedding size mismatch ${a.size} vs ${b.size}" }
             var dot = 0.0
