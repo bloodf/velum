@@ -4,10 +4,15 @@ import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.usePinned
 import platform.Foundation.NSData
+import platform.Foundation.NSFileHandle
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSHomeDirectory
 import platform.Foundation.NSNumber
+import platform.Foundation.closeFile
 import platform.Foundation.dataWithBytes
+import platform.Foundation.fileHandleForReadingAtPath
+import platform.Foundation.readDataOfLength
+import platform.Foundation.seekToFileOffset
 import platform.Foundation.writeToFile
 import platform.posix.memcpy
 
@@ -75,10 +80,25 @@ actual class ModelStoreDir actual constructor(absolutePath: String) {
 
     actual fun readRange(offset: Long, length: Int): ByteArray {
         require(offset >= 0 && length >= 0) { "offset=$offset length=$length" }
-        // iOS path is not the 6h Android processing target; slice from full read.
-        val all = readBytes()
-        require(offset + length <= all.size) { "range $offset+$length exceeds ${all.size}" }
-        return all.copyOfRange(offset.toInt(), (offset + length).toInt())
+        if (length == 0) return ByteArray(0)
+        val fileLen = length()
+        require(offset + length <= fileLen) { "range $offset+$length exceeds $fileLen" }
+        val handle = NSFileHandle.fileHandleForReadingAtPath(absolutePath)
+            ?: return ByteArray(0)
+        try {
+            handle.seekToFileOffset(offset.toULong())
+            val data = handle.readDataOfLength(length.toULong())
+            val outLen = data.length.toInt()
+            val out = ByteArray(outLen)
+            if (outLen > 0) {
+                out.usePinned { pinned ->
+                    memcpy(pinned.addressOf(0), data.bytes, data.length)
+                }
+            }
+            return out
+        } finally {
+            handle.closeFile()
+        }
     }
 
     actual fun deleteRecursively() {
