@@ -112,6 +112,12 @@ android {
     namespace = "dev.velum.app"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
 
+    // Default debug. Device-walk CI passes -PvelumTestBuildType=release so
+    // connectedReleaseAndroidTest exists and exercises the R8-minified APK.
+    val walkBuildType =
+        (findProperty("velumTestBuildType") as String?)?.takeIf { it.isNotBlank() } ?: "debug"
+    testBuildType = walkBuildType
+
     defaultConfig {
         applicationId = "dev.velum.app"
         minSdk = libs.versions.android.minSdk.get().toInt()

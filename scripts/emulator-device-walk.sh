@@ -10,12 +10,15 @@ mkdir -p "$ARTIFACT_DIR"
 echo "=== Device walk ($BUILD_TYPE) ==="
 adb logcat -c || true
 
+GRADLE_PROPS=()
 case "$BUILD_TYPE" in
   debug)
     TASK=":composeApp:connectedDebugAndroidTest"
     ;;
   release)
+    # Creates connectedReleaseAndroidTest via android.testBuildType=release.
     TASK=":composeApp:connectedReleaseAndroidTest"
+    GRADLE_PROPS+=(-PvelumTestBuildType=release)
     ;;
   *)
     echo "Unknown build type: $BUILD_TYPE"
@@ -25,7 +28,7 @@ esac
 
 set +e
 # Runner args (class filter + velumDeviceWalk) come from composeApp/build.gradle.kts DSL.
-./gradlew "$TASK" --stacktrace
+./gradlew "${GRADLE_PROPS[@]}" "$TASK" --stacktrace
 CODE=$?
 set -e
 
