@@ -26,10 +26,18 @@ import java.util.concurrent.atomic.AtomicBoolean
  *
  * Invariants:
  * - [start] checks [BLUETOOTH_CONNECT] before [startForegroundService].
- * - [startForeground] always runs before any [stopSelf] on the START path
- *   (including promotion failure) to avoid ForegroundServiceDidNotStartInTimeException.
+ * - On `connectedDevice` [startForeground] failure, fall back to
+ *   [ServiceInfo.FOREGROUND_SERVICE_TYPE_SHORT_SERVICE] (no BT permission), then
+ *   [stopSelf], and notify [promoteFailureHandler] — never leave the service
+ *   without having entered the foreground (Android 14+ crash).
  * - [stop] uses [Context.stopService]; [onDestroy] clears the foreground notification.
  */
+enum class SessionDownloadServiceStartResult {
+    Started,
+    DeniedBluetooth,
+    Failed,
+}
+
 class SessionDownloadService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -56,18 +64,19 @@ class SessionDownloadService : Service() {
         val promoted = try {
             promoteToForeground()
         } catch (t: Throwable) {
-            Log.w(TAG, "promoteToForeground threw; entering minimal FGS before stop", t)
+            Log.w(TAG, "promoteToForeground threw; shortService fallback then stop", t)
             false
         }
         if (!promoted) {
-            // MUST: startForeground before stopSelf so startForegroundService cannot time out.
-            enterMinimalForegroundThenStop()
+            enterShortServiceForegroundThenStop(
+                errorMessage = getString(R.string.session_download_fgs_failed),
+            )
         }
     }
 
     /**
-     * Enter foreground immediately so [startForegroundService] cannot time out.
-     * Returns false if promotion fails (caller must still [startForeground] then stop).
+     * Enter foreground with `connectedDevice` immediately so [startForegroundService]
+     * cannot time out. Returns false if promotion fails.
      */
     private fun promoteToForeground(): Boolean {
         if (forcePromoteFailureForTests) {
@@ -87,47 +96,52 @@ class SessionDownloadService : Service() {
             asForegroundService = true,
         )
         return try {
+            val type = connectedDeviceType()
             ServiceCompat.startForeground(
                 this,
                 DownloadProgressNotifier.notificationId(DownloadNotifyKind.DeviceSession),
                 notification,
-                foregroundServiceType(),
+                type,
             )
+            lastStartForegroundTypeForTests = type
             foregroundHeld.set(true)
             true
         } catch (t: Throwable) {
-            // SecurityException (POST_NOTIFICATIONS) or FGS type/policy failures.
-            Log.w(TAG, "startForeground failed; will minimal-promote then stop", t)
+            // SecurityException when BLUETOOTH_CONNECT revoked, or FGS type/policy failures.
+            Log.w(TAG, "connectedDevice startForeground failed; shortService fallback", t)
             foregroundHeld.set(false)
             false
         }
     }
 
     /**
-     * Last-resort [startForeground] so a failed promote never leaves the service
-     * without having entered the foreground, then tear down.
+     * Fall back to a type that does not require Bluetooth, satisfy the
+     * startForegroundService contract, notify the download owner, then stop.
      */
-    private fun enterMinimalForegroundThenStop() {
+    private fun enterShortServiceForegroundThenStop(errorMessage: String) {
         try {
             DownloadProgressNotifier.ensureChannel()
             val notification = minimalForegroundNotification()
+            val type = shortServiceType()
             ServiceCompat.startForeground(
                 this,
                 DownloadProgressNotifier.notificationId(DownloadNotifyKind.DeviceSession),
                 notification,
-                foregroundServiceType(),
+                type,
             )
+            lastStartForegroundTypeForTests = type
             foregroundHeld.set(true)
         } catch (t: Throwable) {
-            Log.e(TAG, "minimal startForeground failed", t)
+            Log.e(TAG, "shortService startForeground failed", t)
         }
+        runCatching { promoteFailureHandler?.invoke(errorMessage) }
         demoteAndStop()
     }
 
     private fun minimalForegroundNotification(): Notification {
         return NotificationCompat.Builder(this, DownloadProgressNotifier.CHANNEL_ID)
             .setContentTitle(getString(R.string.session_download_fgs_title))
-            .setContentText(getString(R.string.session_download_fgs_body))
+            .setContentText(getString(R.string.session_download_fgs_failed))
             .setSmallIcon(R.drawable.ic_stat_velum)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
@@ -155,8 +169,8 @@ class SessionDownloadService : Service() {
         fun isForegroundHeld(): Boolean = foregroundHeld.get()
 
         /**
-         * Test seam: when true, [promoteToForeground] throws so the failure path
-         * (minimal startForeground then stop) can be exercised under Robolectric.
+         * Test seam: when true, [promoteToForeground] throws so the shortService
+         * fallback path can be exercised under Robolectric.
          */
         @Volatile
         internal var forcePromoteFailureForTests: Boolean = false
@@ -168,6 +182,14 @@ class SessionDownloadService : Service() {
         @Volatile
         internal var startForegroundServiceHook: ((Context, Intent) -> Unit)? = null
 
+        /** Last type passed to [ServiceCompat.startForeground] (tests). */
+        @Volatile
+        internal var lastStartForegroundTypeForTests: Int = -1
+
+        /** Notifies [SessionDownloadManager] when connectedDevice promotion is abandoned. */
+        @Volatile
+        internal var promoteFailureHandler: ((message: String) -> Unit)? = null
+
         fun hasBluetoothConnectPermission(context: Context): Boolean {
             if (Build.VERSION.SDK_INT < 31) return true
             return ContextCompat.checkSelfPermission(
@@ -176,33 +198,46 @@ class SessionDownloadService : Service() {
             ) == PackageManager.PERMISSION_GRANTED
         }
 
-        fun foregroundServiceType(): Int =
+        fun connectedDeviceType(): Int =
             if (Build.VERSION.SDK_INT >= 29) {
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
             } else {
                 0
             }
 
-        fun start(context: Context) {
+        /** Fallback type that does not require BLUETOOTH_CONNECT (API 34+). */
+        fun shortServiceType(): Int =
+            if (Build.VERSION.SDK_INT >= 34) {
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_SHORT_SERVICE
+            } else {
+                0
+            }
+
+        /** @deprecated use [connectedDeviceType] */
+        fun foregroundServiceType(): Int = connectedDeviceType()
+
+        fun start(context: Context): SessionDownloadServiceStartResult {
             val appContext = context.applicationContext
             if (!hasBluetoothConnectPermission(appContext)) {
                 Log.w(TAG, "BLUETOOTH_CONNECT not granted; skipping download FGS")
-                return
+                return SessionDownloadServiceStartResult.DeniedBluetooth
             }
             DownloadProgressNotifier.ensureChannel()
             val intent = Intent(appContext, SessionDownloadService::class.java)
                 .setAction(ACTION_START)
-            try {
+            return try {
                 val hook = startForegroundServiceHook
                 if (hook != null) {
                     hook(appContext, intent)
                 } else {
                     ContextCompat.startForegroundService(appContext, intent)
                 }
+                SessionDownloadServiceStartResult.Started
             } catch (t: Throwable) {
                 // ForegroundServiceStartNotAllowedException (API 31+/14+) and
                 // IllegalStateException when the app is not allowed to start an FGS.
                 Log.w(TAG, "startForegroundService denied; download continues without FGS", t)
+                SessionDownloadServiceStartResult.Failed
             }
         }
 
@@ -220,6 +255,8 @@ class SessionDownloadService : Service() {
             foregroundHeld.set(false)
             forcePromoteFailureForTests = false
             startForegroundServiceHook = null
+            lastStartForegroundTypeForTests = -1
+            promoteFailureHandler = null
         }
     }
 }
