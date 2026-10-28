@@ -50,6 +50,15 @@
 -keep class androidx.tracing.** { *; }
 -dontwarn androidx.tracing.**
 
+# AndroidJUnitRunner → TestDirCalculator uses kotlin.lazy; R8 can drop LazyKt from
+# the release APK, then instrumentation ClassNotFoundExceptions on attach.
+-keep class kotlin.LazyKt { *; }
+-keep class kotlin.LazyKt__** { *; }
+-keep class kotlin.Lazy** { *; }
+-keep class kotlin.Metadata { *; }
+-keep class kotlin.jvm.internal.** { *; }
+-dontwarn kotlin.**
+
 # sherpa-onnx local ASR / diarization (JNI + reflection-heavy)
 -keep class com.k2fsa.sherpa.onnx.** { *; }
 -dontwarn com.k2fsa.sherpa.onnx.**
