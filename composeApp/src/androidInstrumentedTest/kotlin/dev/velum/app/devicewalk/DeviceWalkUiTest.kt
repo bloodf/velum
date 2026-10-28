@@ -120,7 +120,8 @@ class DeviceWalkUiTest {
 
     private fun applyAppearance(lang: String, theme: String) {
         openSettings()
-        clickTextPrefer(
+        // Appearance is near the bottom of the scrollable Settings hub.
+        scrollClickPrefer(
             if (lang == "en") "Appearance" else "Aparência",
             "Appearance",
             "Aparência",
@@ -547,20 +548,34 @@ class DeviceWalkUiTest {
 
     private fun openSettings() {
         pressBackToFiles("pt-BR")
-        runCatching {
-            composeRule.onNodeWithContentDescription("Settings", substring = true, useUnmergedTree = true)
+        // Files header gear uses CD "Settings"/"Configuração" — do not treat that as hub-open.
+        val clickedGear = runCatching {
+            composeRule
+                .onNodeWithContentDescription("Settings", useUnmergedTree = true)
                 .performClick()
-        }
-        runCatching {
-            composeRule.onNodeWithContentDescription("Configuração", substring = true, useUnmergedTree = true)
+            true
+        }.recoverCatching {
+            composeRule
+                .onNodeWithContentDescription("Configuração", useUnmergedTree = true)
                 .performClick()
-        }
-        runCatching {
-            clickTextPrefer("Settings", "Configuração")
-        }
-        waitUntil(15_000) {
-            composeExists("Settings") || composeExists("Configuração") ||
-                composeExists("Appearance") || composeExists("Aparência")
+            true
+        }.recoverCatching {
+            val obj = device.findObject(By.desc("Settings"))
+                ?: device.findObject(By.desc("Configuração"))
+            obj?.click() ?: error("Settings gear missing")
+            true
+        }.getOrDefault(false)
+        assertTrue(clickedGear, "Failed to tap Settings gear")
+        // Wait for a hub-only row (Appearance is below the fold — do not require it).
+        waitUntil(20_000) {
+            composeExists("Phone recording") ||
+                composeExists("Gravação no telefone") ||
+                composeExists("Storage & privacy") ||
+                composeExists("Armazenamento e privacidade") ||
+                composeExists("About Velum") ||
+                composeExists("Sobre o Velum") ||
+                composeExists("AI processing") ||
+                composeExists("Processamento de IA")
         }
     }
 
@@ -585,9 +600,37 @@ class DeviceWalkUiTest {
         }.recoverCatching {
             composeRule.onNodeWithText(label, substring = true).performClick()
         }.recoverCatching {
-            val obj = device.wait(Until.findObject(By.textContains(label)), 5_000)
+            // Swipe the settings hub until UiAutomator sees the row.
+            repeat(8) {
+                val obj = device.findObject(By.textContains(label))
+                if (obj != null) {
+                    obj.click()
+                    return@recoverCatching
+                }
+                device.swipe(
+                    device.displayWidth / 2,
+                    (device.displayHeight * 0.72).toInt(),
+                    device.displayWidth / 2,
+                    (device.displayHeight * 0.28).toInt(),
+                    25,
+                )
+                SystemClock.sleep(250)
+            }
+            val obj = device.wait(Until.findObject(By.textContains(label)), 3_000)
             obj?.click() ?: error("missing $label")
         }.getOrThrow()
+    }
+
+    private fun scrollClickPrefer(vararg labels: String) {
+        for (label in labels) {
+            if (label.isBlank()) continue
+            val ok = runCatching {
+                scrollClick(label)
+                true
+            }.getOrDefault(false)
+            if (ok) return
+        }
+        error("None of texts found (scroll): ${labels.toList()}")
     }
 
     private fun clickTextPrefer(vararg labels: String) {
@@ -595,18 +638,25 @@ class DeviceWalkUiTest {
             if (label.isBlank()) continue
             val clicked = runCatching {
                 composeRule.onNodeWithText(label, substring = true, useUnmergedTree = true)
+                    .performScrollTo()
                     .performClick()
                 true
             }.getOrElse {
                 runCatching {
-                    val obj = device.findObject(By.textContains(label))
-                    if (obj != null) {
-                        obj.click()
-                        true
-                    } else {
-                        false
-                    }
-                }.getOrDefault(false)
+                    composeRule.onNodeWithText(label, substring = true, useUnmergedTree = true)
+                        .performClick()
+                    true
+                }.getOrElse {
+                    runCatching {
+                        val obj = device.findObject(By.textContains(label))
+                        if (obj != null) {
+                            obj.click()
+                            true
+                        } else {
+                            false
+                        }
+                    }.getOrDefault(false)
+                }
             }
             if (clicked) return
         }
