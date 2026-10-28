@@ -14,9 +14,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -58,6 +60,8 @@ fun MemoryScreen(
     var draft by remember { mutableStateOf("") }
     var term by remember { mutableStateOf("") }
     var definition by remember { mutableStateOf("") }
+    var pendingDeleteMemoryId by remember { mutableStateOf<String?>(null) }
+    var pendingDeleteGlossaryId by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
     Box(Modifier.fillMaxSize().background(VelumBg)) {
@@ -80,9 +84,7 @@ fun MemoryScreen(
                         Column(
                             Modifier
                                 .fillMaxWidth()
-                                .clickable {
-                                    scope.launch { container.repository.deleteGlossaryTerm(item.id) }
-                                }
+                                .clickable { pendingDeleteGlossaryId = item.id }
                                 .padding(vertical = 10.dp),
                         ) {
                             Text(item.term, color = VelumInk, fontWeight = FontWeight.Medium, fontSize = 15.sp)
@@ -112,9 +114,7 @@ fun MemoryScreen(
                             fontSize = 15.sp,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable {
-                                    scope.launch { container.repository.deleteMemory(item.id) }
-                                }
+                                .clickable { pendingDeleteMemoryId = item.id }
                                 .padding(vertical = 14.dp),
                         )
                     }
@@ -256,5 +256,43 @@ fun MemoryScreen(
                 )
             }
         }
+    }
+
+
+    pendingDeleteMemoryId?.let { id ->
+        AlertDialog(
+            onDismissRequest = { pendingDeleteMemoryId = null },
+            title = { Text(strings.ux.confirmDeleteTitle) },
+            text = { Text(strings.ux.confirmDeleteMemoryBody) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pendingDeleteMemoryId = null
+                        scope.launch { container.repository.deleteMemory(id) }
+                    },
+                ) { Text(strings.delete) }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDeleteMemoryId = null }) { Text(strings.cancel) }
+            },
+        )
+    }
+    pendingDeleteGlossaryId?.let { id ->
+        AlertDialog(
+            onDismissRequest = { pendingDeleteGlossaryId = null },
+            title = { Text(strings.ux.confirmDeleteTitle) },
+            text = { Text(strings.ux.confirmDeleteMemoryBody) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pendingDeleteGlossaryId = null
+                        scope.launch { container.repository.deleteGlossaryTerm(id) }
+                    },
+                ) { Text(strings.delete) }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDeleteGlossaryId = null }) { Text(strings.cancel) }
+            },
+        )
     }
 }

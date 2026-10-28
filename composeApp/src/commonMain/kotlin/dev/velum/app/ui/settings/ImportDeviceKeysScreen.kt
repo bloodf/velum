@@ -10,8 +10,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -57,6 +59,7 @@ fun ImportDeviceKeysScreen(
     var jsonDraft by remember { mutableStateOf("") }
     var status by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
+    var showClearConfirm by remember { mutableStateOf(false) }
     var hasKeys by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
@@ -223,13 +226,7 @@ fun ImportDeviceKeysScreen(
         Spacer(Modifier.height(8.dp))
         OutlineButton(
             strings.importKeys.clearKeys,
-            {
-                scope.launch {
-                    container.deviceKeyImporter.clearKeys()
-                    hasKeys = false
-                    status = strings.importKeys.cleared
-                }
-            },
+            { showClearConfirm = true },
             Modifier.padding(horizontal = 20.dp),
         )
         status?.let {
@@ -239,5 +236,29 @@ fun ImportDeviceKeysScreen(
             Text(it, color = Color(0xFFFF3B30), modifier = Modifier.padding(20.dp, 8.dp))
         }
         Spacer(Modifier.height(40.dp))
+    }
+
+
+    if (showClearConfirm) {
+        AlertDialog(
+            onDismissRequest = { showClearConfirm = false },
+            title = { Text(strings.ux.confirmDeleteTitle) },
+            text = { Text(strings.ux.confirmClearKeysBody) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showClearConfirm = false
+                        scope.launch {
+                            container.deviceKeyImporter.clearKeys()
+                            hasKeys = false
+                            status = strings.importKeys.cleared
+                        }
+                    },
+                ) { Text(strings.confirm) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearConfirm = false }) { Text(strings.cancel) }
+            },
+        )
     }
 }

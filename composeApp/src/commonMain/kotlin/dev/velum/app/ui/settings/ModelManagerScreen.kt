@@ -13,12 +13,17 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
@@ -50,6 +55,7 @@ fun ModelManagerScreen(
     val strings = LocalStrings.current
     val states by container.localModelManager.states.collectAsState()
     val scope = rememberCoroutineScope()
+    var pendingDeleteId by remember { mutableStateOf<String?>(null) }
 
     Column(Modifier.fillMaxSize().background(VelumBg)) {
         ScreenTopBar(strings.modelManager, onBack = onBack)
@@ -74,11 +80,30 @@ fun ModelManagerScreen(
                             container.localModelManager.download(state.spec.id).collect()
                         }
                     },
-                    onDelete = { container.localModelManager.delete(state.spec.id) },
+                    onDelete = { pendingDeleteId = state.spec.id },
                 )
             }
             item { Spacer(Modifier.height(32.dp)) }
         }
+    }
+
+    pendingDeleteId?.let { modelId ->
+        AlertDialog(
+            onDismissRequest = { pendingDeleteId = null },
+            title = { Text(strings.ux.confirmDeleteTitle) },
+            text = { Text(strings.ux.confirmDeleteModelBody) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        container.localModelManager.delete(modelId)
+                        pendingDeleteId = null
+                    },
+                ) { Text(strings.delete) }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDeleteId = null }) { Text(strings.cancel) }
+            },
+        )
     }
 }
 
