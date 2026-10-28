@@ -67,7 +67,7 @@ Status legend: `Open` · `Fixed` · `Deferred (owner/hardware)` · `Accepted ris
 ### H11 — Demo seed left on — **Fixed** (`0a34d9b`, `SEED_DEMO_DATA = false`; templates always seed)
 ### H12 — Explore Conta / dark contrast — **Fixed** (`b851722`, `VelumOnBlack` + localized settings copy)
 ### H13 — Voice Profiles hardcoded English — **Fixed** (`1b33ae3`, EN + pt-BR via `Strings.ux`; #87 addressed in code — owner can verify on device)
-### H14 — No BLE transfer FGS — **Fixed (code)** — `SessionDownloadService` (`connectedDevice`) + `SessionDownloadKeepAlive` gate tied to download lifecycle; reuses `DownloadProgressNotifier` progress/cancel. Owner still confirms background/Doze survival on S26 Ultra + Note Pro (#85)
+### H14 — No BLE transfer FGS — **Fixed (code)** — app-scoped `SessionDownloadManager` (AppContainer `SupervisorJob`) owns the download job; `SessionDownloadService` (`connectedDevice`) + `SessionDownloadKeepAlive` gate follow that job (not `viewModelScope`); reuses `DownloadProgressNotifier` progress/cancel. Owner still confirms background/Doze on S26 Ultra + Note Pro (#85). Process-death resume + CRC tracked in #94.
 
 ---
 

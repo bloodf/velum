@@ -67,7 +67,7 @@ Phone-only / external (no Plaud required):
 - [x] Phone mic: runtime RECORD_AUDIO + rationale → PCM WAV (`MicCapture` / `WavWriter`) → process via WorkManager
 - [x] Mic foreground service (`MicRecordingService`, `FOREGROUND_SERVICE_MICROPHONE`) + Pause/Stop notification; process-death WAV recover (`WavWriter.recoverOrFinalize`); POST_NOTIFICATIONS on API 33+
 - [x] Mic first-class: pause/resume, markers, input-source picker (Mic / VoiceCommunication / Unprocessed / Camcorder for BT/USB routes)
-- [x] Session download foreground service (`SessionDownloadService`, `FOREGROUND_SERVICE_CONNECTED_DEVICE`) + `SessionDownloadKeepAlive` gate; reuses `DownloadProgressNotifier` progress + cancel; stops on success / failure / cancel. **Owner hardware:** confirm large BLE/Wi‑Fi pull survives background + screen-off + Doze on Samsung Galaxy S26 Ultra + Note Pro; distinguish process death (resume from offset) from force-stop — record results here when run (#85)
+- [x] Session download FGS (`SessionDownloadService`, `connectedDevice`) + app-scoped `SessionDownloadManager` (AppContainer scope; survives ViewModel clear) + `SessionDownloadKeepAlive` gate; reuses `DownloadProgressNotifier` progress + cancel; stops on success / failure / cancel. Process-death resume + CRC → #94. **Owner hardware:** confirm large BLE/Wi‑Fi pull survives background + screen-off + Doze on S26 Ultra + Note Pro (#85)
 - [x] External import hub + share intents + watched SAF folders + MediaCodec normalize + hash dedupe
 - [x] Phone-first onboarding: Use phone mic / Import from a recorder / Connect a Plaud
 - [x] Processing FGS via WorkManager `setForegroundAsync` (`FOREGROUND_SERVICE_DATA_SYNC`) on `RecordingProcessWorker`
