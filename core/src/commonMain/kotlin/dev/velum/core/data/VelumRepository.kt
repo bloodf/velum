@@ -37,11 +37,12 @@ class VelumRepository(
         val fts = FtsIndex.ensureSchema(driver)
         ftsAvailable = fts.available
         val seeded = SeedData.maybeSeed(db)
+        val bodyDeduped = SeedData.maybeReconcileBodyDedupes(db)
         backfillSummaryVersionsFromRecording()
         if (ftsAvailable) {
             when {
-                // Full rebuild after seed or template_fts schema upgrade.
-                fts.templateSchemaRecreated || seeded -> rebuildFtsIndex()
+                // Full rebuild after seed, template_fts schema upgrade, or body-dedupe reconcile.
+                fts.templateSchemaRecreated || seeded || bodyDeduped -> rebuildFtsIndex()
                 else -> {
                     // Empty library makes recording_fts empty — only rebuild the empty side
                     // so we do not rewrite every template on every cold start.

@@ -2,6 +2,7 @@ package dev.velum.core.data
 
 import dev.velum.core.db.VelumDatabase
 import dev.velum.core.templates.BuiltinTemplateCatalog
+import dev.velum.core.templates.TemplateBodyDedupeRemap
 import dev.velum.core.templates.TemplateTagVocabulary
 
 object DemoFlags {
@@ -134,6 +135,38 @@ object SeedData {
      */
     fun clearSeedMarker(db: VelumDatabase) {
         db.velumQueries.setMeta(META_SEEDED, "")
+    }
+
+    /**
+     * One-shot reconcile for #99 exact body dedupe: remap AutoFlow / summary-version
+     * template ids from dropped duplicates onto survivors, then hard-delete the
+     * dropped **builtin** rows. Custom (non-builtin) templates are left untouched.
+     *
+     * @return true when this pass ran (caller may want to rebuild template FTS).
+     */
+    fun maybeReconcileBodyDedupes(db: VelumDatabase): Boolean {
+        val q = db.velumQueries
+        if (q.getMeta(TemplateBodyDedupeRemap.META_KEY).executeAsOneOrNull() == "1") {
+            return false
+        }
+        val remap = TemplateBodyDedupeRemap.OldToSurvivor
+        if (remap.isEmpty()) {
+            q.setMeta(TemplateBodyDedupeRemap.META_KEY, "1")
+            return false
+        }
+        db.transaction {
+            remap.forEach { (oldId, survivorId) ->
+                if (oldId == survivorId) return@forEach
+                q.updateAutoflowTemplateId(template_id = survivorId, template_id_ = oldId)
+                q.updateSummaryVersionTemplateId(template_id = survivorId, template_id_ = oldId)
+                val existing = q.selectTemplateById(oldId).executeAsOneOrNull()
+                if (existing != null && existing.builtin != 0L) {
+                    q.deleteTemplateHard(oldId)
+                }
+            }
+            q.setMeta(TemplateBodyDedupeRemap.META_KEY, "1")
+        }
+        return true
     }
 
     data class BuiltinTemplate(

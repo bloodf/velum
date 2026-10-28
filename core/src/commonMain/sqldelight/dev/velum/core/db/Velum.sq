@@ -292,3 +292,9 @@ SELECT COUNT(*) FROM summary_version WHERE recording_id = ?;
 
 deleteVersionsForRecording:
 DELETE FROM summary_version WHERE recording_id = ?;
+
+updateAutoflowTemplateId:
+UPDATE autoflow SET template_id = ? WHERE template_id = ?;
+
+updateSummaryVersionTemplateId:
+UPDATE summary_version SET template_id = ? WHERE template_id = ?;

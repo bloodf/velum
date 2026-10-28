@@ -1,6 +1,7 @@
 package dev.velum.core.templates
 
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
@@ -41,13 +42,30 @@ class TemplateHygieneCatalogTest {
         assertTrue(full.size > featured.size, "full=${full.size} featured=${featured.size}")
 
         val fullIds = mutableSetOf<String>()
+        val exactBodies = mutableSetOf<String>()
         full.forEach { e ->
             assertTrue(e.id.isNotBlank())
             assertTrue(e.tags.isNotEmpty(), "empty tags in full ${e.id}")
             assertTrue(fullIds.add(e.id), "duplicate full id ${e.id}")
+            // Exact body equality with no whitespace/case normalization (#99).
+            assertTrue(exactBodies.add(e.body), "exact duplicate body in full ${e.id}")
         }
         featured.forEach { e ->
             assertTrue(e.id in fullIds, "Featured id missing from Full: ${e.id}")
+        }
+        val official = full.filter { it.official }
+        assertEquals(41, official.size, "expected 41 official templates, got ${official.size}")
+        assertEquals(41, official.map { it.body }.toSet().size, "official bodies must be unique")
+    }
+
+    @Test
+    fun body_dedupe_remap_targets_are_retained_survivors() {
+        val fullRaw = PlaudFullTemplateAsset.readJsonl()
+        if (fullRaw.isBlank()) return
+        val fullIds = PlaudTemplateCatalog.parseJsonl(fullRaw).map { it.id }.toSet()
+        TemplateBodyDedupeRemap.OldToSurvivor.forEach { (oldId, survivorId) ->
+            assertTrue(oldId !in fullIds, "dropped id still in full catalog: $oldId")
+            assertTrue(survivorId in fullIds, "survivor missing from full catalog: $survivorId")
         }
     }
 
