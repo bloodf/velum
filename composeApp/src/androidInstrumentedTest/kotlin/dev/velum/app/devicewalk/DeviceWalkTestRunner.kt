@@ -15,7 +15,10 @@ import androidx.test.runner.AndroidJUnitRunner
  */
 class DeviceWalkTestRunner : AndroidJUnitRunner() {
     override fun onCreate(arguments: Bundle?) {
-        val walk = arguments?.getString(ARG_DEVICE_WALK).equals("true", ignoreCase = true)
+        // Use Java equalsIgnoreCase — Kotlin's String.equals(ignoreCase=) compiles to
+        // StringsKt and NoSuchMethodErrors when the minified release APK's kotlin
+        // stdlib is on the instrumentation classpath (R8 renamed/shrunk methods).
+        val walk = arguments?.getString(ARG_DEVICE_WALK)?.equalsIgnoreCase("true") == true
         if (walk) {
             DeviceWalkMode.enabled = true
         }

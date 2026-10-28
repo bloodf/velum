@@ -50,13 +50,12 @@
 -keep class androidx.tracing.** { *; }
 -dontwarn androidx.tracing.**
 
-# AndroidJUnitRunner → TestDirCalculator uses kotlin.lazy; R8 can drop LazyKt from
-# the release APK, then instrumentation ClassNotFoundExceptions on attach.
--keep class kotlin.LazyKt { *; }
--keep class kotlin.LazyKt__** { *; }
--keep class kotlin.Lazy** { *; }
+# connectedReleaseAndroidTest loads kotlin.* from the app APK first. If R8
+# obfuscates/shrinks stdlib, AndroidX Test + androidTest code (compiled against
+# full stdlib) hit NoClassDefFoundError / NoSuchMethodError on attach.
+-keep class kotlin.** { *; }
+-keepclassmembers class kotlin.** { *; }
 -keep class kotlin.Metadata { *; }
--keep class kotlin.jvm.internal.** { *; }
 -dontwarn kotlin.**
 
 # sherpa-onnx local ASR / diarization (JNI + reflection-heavy)
