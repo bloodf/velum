@@ -3,6 +3,7 @@ package dev.velum.ai.pipeline
 import dev.velum.core.settings.ApiModelOverride
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
@@ -33,7 +34,8 @@ fun recordingWorkHasAutoFlowParams(
 
 /**
  * In-process scheduler with per-recording-id dedupe: a new enqueue cancels any still-active
- * job for the same id so AutoFlow can replace a premature null-template launch.
+ * job for the same id and waits for it to finish before starting, so AutoFlow can replace a
+ * premature null-template launch without overlapping ASR/summary work.
  */
 fun createCoroutineRecordingJobScheduler(
     processor: RecordingProcessor,
@@ -43,9 +45,10 @@ fun createCoroutineRecordingJobScheduler(
     val inFlight = mutableMapOf<String, Job>()
     return RecordingJobScheduler { recordingId, templateId, retranscribe, apiModelOverride ->
         synchronized(lock) {
-            inFlight[recordingId]?.cancel()
+            val previous = inFlight[recordingId]
             lateinit var job: Job
             job = scope.launch {
+                previous?.cancelAndJoin()
                 try {
                     processor.process(
                         recordingId = recordingId,
