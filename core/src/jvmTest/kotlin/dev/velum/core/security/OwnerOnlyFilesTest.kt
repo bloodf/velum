@@ -1,5 +1,6 @@
 package dev.velum.core.security
 
+import java.nio.file.FileSystemException
 import java.nio.file.Files
 import java.nio.file.attribute.AclEntryPermission
 import java.nio.file.attribute.AclEntryType
@@ -54,6 +55,26 @@ class OwnerOnlyFilesTest {
             )
             assertEquals(expected, Files.getPosixFilePermissions(tmp))
             Files.deleteIfExists(tmp)
+        } finally {
+            dir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun publish_falls_back_to_move_on_plain_filesystem_exception() {
+        val dir = kotlin.io.path.createTempDirectory("velum-publish-fs-ex")
+        val target = dir.resolve("secure.aes256")
+        val bytes = ByteArray(AES_256_KEY_BYTES) { i -> (i + 7).toByte() }
+        try {
+            publishOwnerOnlyBytesExclusive(
+                target = target,
+                bytes = bytes,
+                createHardLink = { _, _ ->
+                    throw FileSystemException(target.toString(), null, "hard links unsupported")
+                },
+            )
+            assertTrue(Files.exists(target))
+            assertTrue(bytes.contentEquals(Files.readAllBytes(target)))
         } finally {
             dir.toFile().deleteRecursively()
         }
