@@ -11,8 +11,11 @@ object DeviceUiCopy {
         else "Wi‑Fi fast transfer"
 
     fun wifiFastBody(localeTag: String): String =
-        if (isPt(localeTag)) "Wi‑Fi pronto — sessões grandes evitam a transferência lenta por Bluetooth."
-        else "Wi‑Fi ready — large sessions skip slow Bluetooth transfer."
+        if (isPt(localeTag)) {
+            "No 1.0 o download usa só Bluetooth. SoftAP Wi‑Fi fica para uma versão futura."
+        } else {
+            "1.0 downloads use Bluetooth only. SoftAP Wi‑Fi ships in a later release."
+        }
 
     fun sessionsOnDevice(localeTag: String): String =
         if (isPt(localeTag)) "Sessões no aparelho"
@@ -145,9 +148,9 @@ object DeviceUiCopy {
                 " · Wi‑Fi preferred (BLE download active)"
             }
             wifiCapable -> if (isPt(localeTag)) {
-                " · Transferência BLE (Wi‑Fi preferido desligado)"
+                " · Transferência BLE (SoftAP Wi‑Fi em versão futura)"
             } else {
-                " · BLE transfer (Wi‑Fi preferred off)"
+                " · BLE transfer (SoftAP Wi‑Fi in a later release)"
             }
             else -> if (isPt(localeTag)) " · Transferência BLE" else " · BLE transfer"
         }
