@@ -11,12 +11,15 @@ class SessionDownloadKeepAliveGateTest {
         var starts = 0
         var stops = 0
         val gate = SessionDownloadKeepAliveGate(
-            startPlatform = { starts++ },
+            startPlatform = {
+                starts++
+                SessionDownloadKeepAliveStart.Started
+            },
             stopPlatform = { stops++ },
         )
 
         assertFalse(gate.isActive)
-        gate.onDownloadBegin()
+        assertEquals(SessionDownloadKeepAliveStart.Started, gate.onDownloadBegin())
         assertTrue(gate.isActive)
         assertEquals(1, starts)
         assertEquals(0, stops)
@@ -32,7 +35,10 @@ class SessionDownloadKeepAliveGateTest {
         var starts = 0
         var stops = 0
         val gate = SessionDownloadKeepAliveGate(
-            startPlatform = { starts++ },
+            startPlatform = {
+                starts++
+                SessionDownloadKeepAliveStart.Started
+            },
             stopPlatform = { stops++ },
         )
 
@@ -52,7 +58,10 @@ class SessionDownloadKeepAliveGateTest {
         var starts = 0
         var stops = 0
         val gate = SessionDownloadKeepAliveGate(
-            startPlatform = { starts++ },
+            startPlatform = {
+                starts++
+                SessionDownloadKeepAliveStart.Started
+            },
             stopPlatform = { stops++ },
         )
 
@@ -68,14 +77,16 @@ class SessionDownloadKeepAliveGateTest {
         var starts = 0
         var stops = 0
         val gate = SessionDownloadKeepAliveGate(
-            startPlatform = { starts++ },
+            startPlatform = {
+                starts++
+                SessionDownloadKeepAliveStart.Started
+            },
             stopPlatform = { stops++ },
         )
 
         repeat(3) {
             gate.onDownloadBegin()
             assertTrue(gate.isActive)
-            // success / failure / cancel all end the same way
             gate.onDownloadEnd()
             assertFalse(gate.isActive)
         }
@@ -90,16 +101,61 @@ class SessionDownloadKeepAliveGateTest {
         var starts = 0
         var stops = 0
         val gate = SessionDownloadKeepAliveGate(
-            startPlatform = { starts++ },
+            startPlatform = {
+                starts++
+                SessionDownloadKeepAliveStart.Started
+            },
             stopPlatform = { stops++ },
         )
 
         gate.onDownloadBegin()
-        // Mimic cancel: end keep-alive immediately, then job finally ends again.
         gate.onDownloadEnd()
         gate.onDownloadEnd()
         assertEquals(1, starts)
         assertEquals(1, stops)
         assertFalse(gate.isActive)
+    }
+
+    @Test
+    fun deniedBluetooth_rollsBackActiveFlag() {
+        var starts = 0
+        var stops = 0
+        val gate = SessionDownloadKeepAliveGate(
+            startPlatform = {
+                starts++
+                SessionDownloadKeepAliveStart.DeniedBluetooth
+            },
+            stopPlatform = { stops++ },
+        )
+
+        assertEquals(SessionDownloadKeepAliveStart.DeniedBluetooth, gate.onDownloadBegin())
+        assertFalse(gate.isActive)
+        assertEquals(1, starts)
+        assertEquals(0, stops)
+    }
+
+    @Test
+    fun concurrentBeginEnd_isThreadSafe() {
+        var starts = 0
+        var stops = 0
+        val gate = SessionDownloadKeepAliveGate(
+            startPlatform = {
+                starts++
+                SessionDownloadKeepAliveStart.Started
+            },
+            stopPlatform = { stops++ },
+        )
+        val threads = (0 until 8).map { idx ->
+            Thread {
+                if (idx % 2 == 0) gate.onDownloadBegin() else gate.onDownloadEnd()
+            }
+        }
+        threads.forEach { it.start() }
+        threads.forEach { it.join() }
+        gate.onDownloadBegin()
+        gate.onDownloadEnd()
+        assertFalse(gate.isActive)
+        assertTrue(starts >= 1)
+        assertEquals(starts, stops)
     }
 }

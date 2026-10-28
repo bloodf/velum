@@ -2,6 +2,7 @@ package dev.velum.app.platform
 
 import java.io.File
 import kotlin.test.Test
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
@@ -28,28 +29,51 @@ class SessionDownloadServiceSourceTest {
         return file.readText()
     }
 
+    private fun managerSource(): String {
+        val candidates = listOf(
+            File("src/commonMain/kotlin/dev/velum/app/download/SessionDownloadManager.kt"),
+            File("composeApp/src/commonMain/kotlin/dev/velum/app/download/SessionDownloadManager.kt"),
+        )
+        val file = candidates.firstOrNull { it.isFile }
+            ?: error("SessionDownloadManager.kt not found from ${File(".").absolutePath}")
+        return file.readText()
+    }
+
+    private fun viewModelSource(): String {
+        val candidates = listOf(
+            File("src/commonMain/kotlin/dev/velum/app/ui/DeviceViewModel.kt"),
+            File("composeApp/src/commonMain/kotlin/dev/velum/app/ui/DeviceViewModel.kt"),
+        )
+        val file = candidates.firstOrNull { it.isFile }
+            ?: error("DeviceViewModel.kt not found from ${File(".").absolutePath}")
+        return file.readText()
+    }
+
     @Test
-    fun usesConnectedDeviceForegroundType() {
+    fun usesConnectedDeviceWithShortServiceFallback() {
         val src = serviceSource()
         assertTrue(src.contains("FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE"))
-        assertTrue(src.contains("promoteToForeground"))
-        assertTrue(src.contains("DownloadProgressNotifier.buildNotification"))
+        assertTrue(src.contains("FOREGROUND_SERVICE_TYPE_SHORT_SERVICE"))
+        assertTrue(src.contains("enterShortServiceForegroundThenStop"))
+        assertTrue(src.contains("promoteFailureHandler"))
     }
 
     @Test
-    fun startPath_handlesAndroid14RestrictionsGracefully() {
+    fun startPath_checksBluetoothConnectBeforeStartForegroundService() {
         val src = serviceSource()
-        assertTrue(src.contains("startForegroundService denied") || src.contains("ForegroundService"))
-        assertTrue(src.contains("catch (t: Throwable)"))
-        assertTrue(src.contains("download continues without FGS"))
+        assertTrue(src.contains("hasBluetoothConnectPermission"))
+        assertTrue(src.contains("DeniedBluetooth"))
+        assertTrue(src.contains("BLUETOOTH_CONNECT"))
+        assertTrue(src.contains("stopService"))
     }
 
     @Test
-    fun manifestDeclaresConnectedDeviceServiceAndPermission() {
+    fun manifestDeclaresConnectedDeviceAndShortService() {
         val manifest = manifestSource()
         assertTrue(manifest.contains("FOREGROUND_SERVICE_CONNECTED_DEVICE"))
+        assertTrue(manifest.contains("FOREGROUND_SERVICE_SHORT_SERVICE"))
         assertTrue(manifest.contains(".platform.SessionDownloadService"))
-        assertTrue(manifest.contains("foregroundServiceType=\"connectedDevice\""))
+        assertTrue(manifest.contains("connectedDevice|shortService"))
     }
 
     @Test
@@ -59,5 +83,16 @@ class SessionDownloadServiceSourceTest {
         assertTrue(manifest.contains("foregroundServiceType=\"microphone\""))
         assertTrue(manifest.contains("FOREGROUND_SERVICE_DATA_SYNC"))
         assertTrue(manifest.contains("FOREGROUND_SERVICE_MICROPHONE"))
+    }
+
+    @Test
+    fun downloadJobLivesInAppScopedManager_withCancelAndJoin() {
+        val manager = managerSource()
+        val vm = viewModelSource()
+        assertTrue(manager.contains("class SessionDownloadManager"))
+        assertTrue(manager.contains("cancelAndJoin"))
+        assertTrue(manager.contains("keepAlive.onDownloadEnd()"))
+        assertFalse(vm.contains("downloadKeepAlive"))
+        assertTrue(vm.contains("sessionDownloads.cancelAndJoin()"))
     }
 }
