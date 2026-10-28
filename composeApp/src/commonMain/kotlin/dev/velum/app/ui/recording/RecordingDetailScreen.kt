@@ -3,8 +3,10 @@ package dev.velum.app.ui.recording
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -20,6 +22,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.Redo
@@ -27,6 +30,7 @@ import androidx.compose.material.icons.automirrored.outlined.Undo
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.IosShare
 import androidx.compose.material.icons.outlined.MoreHoriz
+import androidx.compose.material.icons.outlined.Pause
 import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.AlertDialog
@@ -41,6 +45,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -53,8 +58,11 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.velum.ai.engine.AiTask
@@ -65,11 +73,16 @@ import dev.velum.ai.engine.createStreamingTranscriber
 import dev.velum.ai.local.LocalAsrRouter
 import dev.velum.ai.local.LocalModelStatus
 import dev.velum.app.di.AppContainer
+import dev.velum.app.export.RecordingExport
+import dev.velum.app.export.copyToClipboard
+import dev.velum.app.export.shareBytes
 import dev.velum.app.i18n.LocalStrings
+import dev.velum.app.platform.AudioPlayer
 import dev.velum.app.platform.MicInputSource
 import dev.velum.app.platform.MicMarkerResult
 import dev.velum.app.platform.MicStartResult
 import dev.velum.app.platform.WavWriter
+import dev.velum.app.platform.createAudioPlayer
 import dev.velum.app.platform.finalizeMicRecording
 import dev.velum.app.platform.localizedLabel
 import dev.velum.app.platform.recordingsDirectoryPath
@@ -128,6 +141,10 @@ fun RecordingDetailScreen(
     var showFindReplace by remember { mutableStateOf(false) }
     var showAskAi by remember { mutableStateOf(false) }
     var showMindMap by remember { mutableStateOf(false) }
+    var showExport by remember { mutableStateOf(false) }
+    var showRename by remember { mutableStateOf(false) }
+    var renameDraft by remember { mutableStateOf("") }
+    var exportStatus by remember { mutableStateOf<String?>(null) }
     var askDraft by remember { mutableStateOf("") }
     var askAnswer by remember { mutableStateOf<String?>(null) }
     var askBusy by remember { mutableStateOf(false) }
@@ -136,8 +153,25 @@ fun RecordingDetailScreen(
     var pendingRetranscribe by remember { mutableStateOf<Boolean?>(null) }
     var modelPrompt by remember { mutableStateOf<ModeResolution.NeedLocalModel?>(null) }
     val scope = rememberCoroutineScope()
+    val audioPlayer = remember { createAudioPlayer() }
+    DisposableEffect(recordingId) {
+        onDispose { audioPlayer.release() }
+    }
+    val localPath = recording?.local_path
+    LaunchedEffect(localPath, recordingId) {
+        val path = localPath
+        if (!path.isNullOrBlank()) {
+            val ok = audioPlayer.prepare(path)
+            if (!ok) {
+                processError = "playback:" + strings.ux.playbackUnavailable
+            } else if (seekSeconds > 0) {
+                audioPlayer.seekTo(seekSeconds * 1000L)
+            }
+        }
+    }
     val isLiveRecording = recording?.status == "recording"
     val pausedThermal = recording?.status == "paused_thermal"
+    val isFailed = recording?.status == "failed"
     val generating = !isLiveRecording && (
         recording?.status == "generating" ||
             pausedThermal ||
@@ -170,16 +204,16 @@ fun RecordingDetailScreen(
     fun launchProcessing(retranscribe: Boolean, templateId: String? = "velum.meeting") =
         enqueueAfterGate(retranscribe, templateId)
 
-    fun exportMarkdown() {
+    fun exportMarkdownShare() {
         val rec = recording ?: return
-        val md = buildString {
-            append("# ").append(rec.title).append('\n').append('\n')
-            append("## ").append(strings.transcription).append('\n').append('\n')
-            append(rec.transcript.orEmpty().ifBlank { "—" }).append('\n').append('\n')
-            append("## ").append(strings.summary).append('\n').append('\n')
-            append(rec.summary_markdown.orEmpty().ifBlank { "—" }).append('\n')
-        }
-        shareText(rec.title, md)
+        shareText(
+            rec.title,
+            RecordingExport.markdown(
+                title = rec.title,
+                transcript = rec.transcript.orEmpty(),
+                summary = rec.summary_markdown.orEmpty(),
+            ),
+        )
     }
 
     Column(
@@ -214,7 +248,7 @@ fun RecordingDetailScreen(
             Box(
                 Modifier
                     .defaultMinSize(48.dp, 48.dp)
-                    .clickable { exportMarkdown() },
+                    .clickable { showExport = true },
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
@@ -239,6 +273,11 @@ fun RecordingDetailScreen(
                     )
                 }
                 DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                    DropdownMenuItem({ Text(strings.ux.rename) }, {
+                        showMenu = false
+                        renameDraft = recording?.title.orEmpty()
+                        showRename = true
+                    })
                     DropdownMenuItem({ Text(strings.moveToFolder) }, {
                         showMenu = false
                         showMove = true
@@ -287,12 +326,72 @@ fun RecordingDetailScreen(
             )
         }
 
+        if (showRename) {
+            AlertDialog(
+                onDismissRequest = { showRename = false },
+                title = { Text(strings.ux.renameRecording) },
+                text = {
+                    BasicTextField(
+                        value = renameDraft,
+                        onValueChange = { renameDraft = it },
+                        singleLine = true,
+                        textStyle = TextStyle(color = VelumInk, fontSize = 16.sp),
+                        cursorBrush = SolidColor(VelumInk),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, VelumDivider, RoundedCornerShape(8.dp))
+                            .padding(12.dp),
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            val title = renameDraft.trim()
+                            showRename = false
+                            if (title.isNotEmpty()) {
+                                scope.launch {
+                                    container.repository.updateRecordingTitle(recordingId, title)
+                                }
+                            }
+                        },
+                    ) { Text(strings.confirm) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showRename = false }) { Text(strings.cancel) }
+                },
+            )
+        }
+
         if (pausedThermal) {
             Text(
                 strings.pausedThermal,
                 color = Color(0xFFB45309),
                 fontSize = 13.sp,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+            )
+        }
+
+        if (isFailed) {
+            Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
+                Text(
+                    strings.ux.failedProcessing,
+                    color = Color(0xFFB45309),
+                    fontSize = 14.sp,
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlineButton(
+                    text = strings.ux.retryProcessing,
+                    onClick = { launchProcessing(retranscribe = true) },
+                )
+            }
+        }
+
+        if (!exportStatus.isNullOrBlank()) {
+            Text(
+                exportStatus.orEmpty(),
+                color = VelumInkSecondary,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp),
             )
         }
 
@@ -307,15 +406,17 @@ fun RecordingDetailScreen(
             )
         } else if (tab == 0) {
             SourcesPane(
+                player = audioPlayer,
                 transcript = recording?.transcript,
                 durationSeconds = recording?.duration_seconds ?: 0,
-                positionSeconds = seekSeconds,
                 hasLocalAudio = !recording?.local_path.isNullOrBlank(),
                 generating = generating && recording?.transcript.isNullOrBlank(),
                 transportMessage = processError?.takeIf { it.startsWith("playback:") }?.removePrefix("playback:"),
                 onGenerate = { showGenerate = true },
-                onPlaybackUnavailable = {
-                    processError = "playback:" + strings.ux.playbackUnavailable
+                onAskAi = { showAskAi = true },
+                onSeekSeconds = { seconds ->
+                    seekSeconds = seconds
+                    audioPlayer.seekTo(seconds * 1000L)
                 },
             )
         } else {
@@ -349,6 +450,55 @@ fun RecordingDetailScreen(
                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
                 )
                 MindMapView(map, Modifier.weight(1f))
+            }
+        }
+    }
+
+    if (showExport) {
+        ModalBottomSheet(
+            onDismissRequest = { showExport = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = VelumSurface,
+        ) {
+            val rec = recording
+            val title = rec?.title.orEmpty().ifBlank { "Velum" }
+            val transcript = rec?.transcript.orEmpty()
+            val summary = rec?.summary_markdown.orEmpty()
+            val md = RecordingExport.markdown(title, transcript, summary)
+            Column(Modifier.padding(horizontal = 20.dp, vertical = 12.dp)) {
+                Text(
+                    strings.ux.exportAs,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 18.sp,
+                    color = VelumInk,
+                )
+                Spacer(Modifier.height(12.dp))
+                ExportOption(strings.ux.exportMarkdown) {
+                    showExport = false
+                    shareText(title, md)
+                }
+                ExportOption(strings.ux.exportPlainText) {
+                    showExport = false
+                    shareText(title, RecordingExport.plainText(md))
+                }
+                ExportOption(strings.ux.exportSrt) {
+                    showExport = false
+                    val srt = RecordingExport.srt(transcript).ifBlank {
+                        RecordingExport.srt("**Recording** · 0:00\n${transcript.ifBlank { "…" }}")
+                    }
+                    shareText("$title.srt", srt)
+                }
+                ExportOption(strings.ux.exportDocx) {
+                    showExport = false
+                    val safe = title.replace(Regex("[^a-zA-Z0-9._-]"), "_").ifBlank { "velum" }
+                    shareBytes("$safe.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", RecordingExport.docxMinimal(md))
+                }
+                ExportOption(strings.ux.copyTranscript) {
+                    showExport = false
+                    copyToClipboard(RecordingExport.plainText(transcript.ifBlank { md }))
+                    exportStatus = strings.ux.copiedToClipboard
+                }
+                Spacer(Modifier.height(24.dp))
             }
         }
     }
@@ -645,19 +795,45 @@ private fun TabLabel(text: String, selected: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
+private fun ExportOption(label: String, onClick: () -> Unit) {
+    Text(
+        label,
+        color = VelumInk,
+        fontSize = 16.sp,
+        modifier = Modifier
+            .fillMaxWidth()
+            .defaultMinSize(minHeight = 48.dp)
+            .clickable(onClick = onClick)
+            .padding(vertical = 14.dp),
+    )
+    ThinDivider(0)
+}
+
+@Composable
 private fun SourcesPane(
+    player: AudioPlayer,
     transcript: String?,
     durationSeconds: Long,
-    positionSeconds: Long = 0,
     hasLocalAudio: Boolean,
     generating: Boolean,
     transportMessage: String? = null,
     onGenerate: () -> Unit,
-    onPlaybackUnavailable: () -> Unit = {},
+    onAskAi: () -> Unit = {},
+    onSeekSeconds: (Long) -> Unit = {},
 ) {
     val strings = LocalStrings.current
-    val dur = formatHms(durationSeconds)
-    val pos = formatHms(positionSeconds.coerceIn(0, durationSeconds.coerceAtLeast(0)))
+    val playing by player.isPlaying.collectAsState()
+    val positionMs by player.positionMs.collectAsState()
+    val durationMs by player.durationMs.collectAsState()
+    val speed by player.playbackSpeed.collectAsState()
+    val skipSilence by player.skipSilence.collectAsState()
+    val effectiveDurationMs = when {
+        durationMs > 0L -> durationMs
+        durationSeconds > 0L -> durationSeconds * 1000L
+        else -> 0L
+    }
+    val dur = formatHms((effectiveDurationMs / 1000L).coerceAtLeast(0))
+    val pos = formatHms((positionMs / 1000L).coerceIn(0, (effectiveDurationMs / 1000L).coerceAtLeast(0)))
     Column(Modifier.fillMaxSize()) {
         Text(
             strings.transcription,
@@ -671,7 +847,27 @@ private fun SourcesPane(
         PlayerBar(
             durationLabel = "$pos / $dur",
             enabled = hasLocalAudio,
-            onTransportClick = onPlaybackUnavailable,
+            isPlaying = playing,
+            speedLabel = formatSpeedLabel(speed),
+            skipSilence = skipSilence,
+            progress = if (effectiveDurationMs > 0) {
+                (positionMs.toFloat() / effectiveDurationMs.toFloat()).coerceIn(0f, 1f)
+            } else {
+                0f
+            },
+            onPlayPause = {
+                if (playing) player.pause() else player.play()
+            },
+            onSeekBack = { player.seekBy(-15_000L) },
+            onSeekForward = { player.seekBy(15_000L) },
+            onCycleSpeed = { player.cycleSpeed() },
+            onToggleSkipSilence = { player.setSkipSilence(!skipSilence) },
+            onAskAi = onAskAi,
+            onSeekFraction = { fraction ->
+                if (effectiveDurationMs > 0) {
+                    player.seekTo((effectiveDurationMs * fraction).toLong())
+                }
+            },
         )
         val playbackHint = when {
             !hasLocalAudio -> strings.ux.playbackUnavailable
@@ -696,7 +892,10 @@ private fun SourcesPane(
                         .verticalScroll(rememberScrollState())
                         .padding(20.dp),
                 ) {
-                    MarkdownPreview(transcript.orEmpty())
+                    SeekableTranscript(
+                        transcript = transcript.orEmpty(),
+                        onSeekMs = { ms -> onSeekSeconds(ms / 1000L) },
+                    )
                     Spacer(Modifier.height(24.dp))
                     OutlineButton(strings.retranscribe, onGenerate)
                 }
@@ -705,6 +904,72 @@ private fun SourcesPane(
                 AiGlowFooter(Modifier.align(Alignment.BottomCenter))
             }
         }
+    }
+}
+
+@Composable
+private fun SeekableTranscript(
+    transcript: String,
+    onSeekMs: (Long) -> Unit,
+) {
+    if (transcript.isBlank()) {
+        MarkdownPreview(transcript)
+        return
+    }
+    val cueHeader = remember {
+        Regex("""^\*\*(.+?)\*\*\s*·\s*(?:(\d+):)?(\d{1,2}):(\d{2})(?:[.,](\d{1,3}))?\s*$""")
+    }
+    val lines = remember(transcript) { transcript.lines() }
+    val hasCues = remember(transcript) { lines.any { cueHeader.matches(it.trim()) } }
+    if (!hasCues) {
+        MarkdownPreview(transcript)
+        return
+    }
+    Column(Modifier.fillMaxWidth()) {
+        lines.forEach { raw ->
+            val line = raw.trimEnd()
+            val match = cueHeader.matchEntire(line.trim())
+            if (match != null) {
+                val hours = match.groupValues[2].toLongOrNull() ?: 0L
+                val minutes = match.groupValues[3].toLongOrNull() ?: 0L
+                val seconds = match.groupValues[4].toLongOrNull() ?: 0L
+                val startMs = ((hours * 60L + minutes) * 60L + seconds) * 1000L
+                Text(
+                    line.trim(),
+                    color = VelumInk,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 15.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .defaultMinSize(minHeight = 44.dp)
+                        .clickable { onSeekMs(startMs) }
+                        .padding(vertical = 8.dp),
+                )
+            } else if (line.isNotBlank()) {
+                Text(
+                    line,
+                    color = VelumInk,
+                    fontSize = 15.sp,
+                    modifier = Modifier.padding(bottom = 6.dp),
+                )
+            } else {
+                Spacer(Modifier.height(8.dp))
+            }
+        }
+    }
+}
+
+private fun formatSpeedLabel(speed: Float): String {
+    val normalized = (speed * 100f).toInt() / 100f
+    return when {
+        normalized == 1.0f -> "1x"
+        normalized == 0.75f -> "0.75x"
+        normalized == 1.25f -> "1.25x"
+        normalized == 1.5f -> "1.5x"
+        normalized == 2.0f -> "2x"
+        else -> "${normalized}x"
     }
 }
 
@@ -1101,7 +1366,17 @@ private fun NotesPane(
 private fun PlayerBar(
     durationLabel: String,
     enabled: Boolean = true,
-    onTransportClick: () -> Unit = {},
+    isPlaying: Boolean = false,
+    speedLabel: String = "1x",
+    skipSilence: Boolean = false,
+    progress: Float = 0f,
+    onPlayPause: () -> Unit = {},
+    onSeekBack: () -> Unit = {},
+    onSeekForward: () -> Unit = {},
+    onCycleSpeed: () -> Unit = {},
+    onToggleSkipSilence: () -> Unit = {},
+    onAskAi: () -> Unit = {},
+    onSeekFraction: (Float) -> Unit = {},
 ) {
     val strings = LocalStrings.current
     val tint = if (enabled) VelumInk else VelumInkSecondary
@@ -1115,14 +1390,27 @@ private fun PlayerBar(
         Spacer(Modifier.height(10.dp))
         Text(durationLabel, color = VelumInkSecondary, fontSize = 12.sp)
         Spacer(Modifier.height(8.dp))
-        Box(
+        BoxWithConstraints(
             Modifier
                 .fillMaxWidth()
                 .height(36.dp)
                 .clip(RoundedCornerShape(4.dp))
                 .background(Color(0xFFF2F2F7))
-                .clickable(enabled = enabled, onClick = onTransportClick),
+                .semantics { contentDescription = strings.ux.waveformA11y }
+                .pointerInput(enabled) {
+                    if (!enabled) return@pointerInput
+                    detectTapGestures { offset ->
+                        val widthPx = size.width.coerceAtLeast(1)
+                        onSeekFraction((offset.x / widthPx).coerceIn(0f, 1f))
+                    }
+                },
         ) {
+            Box(
+                Modifier
+                    .fillMaxWidth(progress.coerceIn(0f, 1f))
+                    .height(36.dp)
+                    .background(VelumInk.copy(alpha = 0.12f)),
+            )
             Row(
                 Modifier.fillMaxSize().padding(horizontal = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -1130,11 +1418,16 @@ private fun PlayerBar(
             ) {
                 repeat(48) { i ->
                     val h = 6 + (i % 7) * 3
+                    val filled = i / 48f <= progress
                     Box(
                         Modifier
                             .width(3.dp)
                             .height(h.dp)
-                            .background(VelumInkSecondary.copy(alpha = 0.45f), RoundedCornerShape(1.dp)),
+                            .background(
+                                if (filled) VelumInk.copy(alpha = 0.7f)
+                                else VelumInkSecondary.copy(alpha = 0.45f),
+                                RoundedCornerShape(1.dp),
+                            ),
                     )
                 }
             }
@@ -1150,12 +1443,12 @@ private fun PlayerBar(
                     .defaultMinSize(48.dp, 48.dp)
                     .clip(CircleShape)
                     .background(Color(0xFFF2F2F7))
-                    .clickable(enabled = enabled, onClick = onTransportClick),
+                    .clickable(enabled = enabled, onClick = onPlayPause),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
-                    Icons.Outlined.PlayArrow,
-                    contentDescription = strings.play,
+                    if (isPlaying) Icons.Outlined.Pause else Icons.Outlined.PlayArrow,
+                    contentDescription = if (isPlaying) strings.ux.pausePlayback else strings.play,
                     tint = tint,
                     modifier = Modifier.size(24.dp),
                 )
@@ -1163,7 +1456,7 @@ private fun PlayerBar(
             Box(
                 Modifier
                     .defaultMinSize(48.dp, 48.dp)
-                    .clickable(enabled = enabled, onClick = onTransportClick),
+                    .clickable(enabled = enabled, onClick = onSeekBack),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
@@ -1176,7 +1469,7 @@ private fun PlayerBar(
             Box(
                 Modifier
                     .defaultMinSize(48.dp, 48.dp)
-                    .clickable(enabled = enabled, onClick = onTransportClick),
+                    .clickable(enabled = enabled, onClick = onSeekForward),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
@@ -1187,18 +1480,31 @@ private fun PlayerBar(
                 )
             }
             Text(
-                "1x",
+                speedLabel,
                 color = tint,
                 fontWeight = FontWeight.Medium,
                 modifier = Modifier
                     .defaultMinSize(48.dp, 48.dp)
-                    .clickable(enabled = enabled, onClick = onTransportClick)
+                    .clickable(enabled = enabled, onClick = onCycleSpeed)
                     .padding(horizontal = 8.dp, vertical = 12.dp),
+            )
+            Text(
+                strings.ux.skipSilence,
+                color = if (skipSilence) VelumInk else tint,
+                fontWeight = if (skipSilence) FontWeight.SemiBold else FontWeight.Medium,
+                fontSize = 11.sp,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .defaultMinSize(48.dp, 48.dp)
+                    .width(56.dp)
+                    .clickable(enabled = enabled, onClick = onToggleSkipSilence)
+                    .padding(horizontal = 2.dp, vertical = 8.dp),
             )
             Box(
                 Modifier
                     .defaultMinSize(48.dp, 48.dp)
-                    .clickable(enabled = enabled, onClick = onTransportClick),
+                    .clickable(onClick = onAskAi),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
@@ -1318,7 +1624,7 @@ fun SpeakerLabelSheetContent(
                     buildString {
                         append("${strings.totalDuration}: $dur")
                         row.matchConfidence?.let {
-                            append(" · match ")
+                            append(" · ")
                             append("%.0f".format(it * 100))
                             append('%')
                         }
@@ -1329,7 +1635,7 @@ fun SpeakerLabelSheetContent(
             }
         }
         Text(
-            strings.speakersUpdateNote + " Confirmations refine the on-device voice profile.",
+            strings.speakersUpdateNote,
             color = VelumInkSecondary,
             fontSize = 12.sp,
             modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
