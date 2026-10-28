@@ -44,11 +44,11 @@ Status legend: `Open` · `Fixed` · `Deferred (owner/hardware)` · `Accepted ris
 - **Status:** Fixed (BLE path, `b851722`). SoftAP end-to-end on hardware → Needs owner/hardware (#8)
 
 ### C5 — Long recordings fully decode into one heap buffer before spill
-- **Where:** `RecordingProcessor`, `OpusDecoder`
-- **Fix:** `decodeToPcmFile` streams Opus frames to a spill `.s16le`; large WAV data chunks copy in 256 KiB slices via `locateWavPcm` / `appendRangeToFile`; `PcmAudioBuffer.fromExistingFile` wraps the result. Peak RAM no longer holds full PCM + ShortArray together.
-- **Residual:** Ogg demux still materializes the compressed packet list (≈ source size, not PCM). Multi-hour Note Pro validation remains owner/hardware (#86 / #6).
-- **Tests:** `RecordingProcessorBudgetTest.fromExistingFile_spillsWhenOverBudget`
-- **Status:** Fixed (`1b33ae3`)
+- **Where:** `RecordingProcessor`, `OpusDecoder`, `OggOpusDemuxer`
+- **Fix:** `demuxAtForEach` / `demuxForEach` walk Ogg pages without retaining the packet list; Android/JVM `decodePathToPcmFile` streams pages from `RandomAccessFile`; common/iOS default streams via `ModelStoreDir.readRange`. WAV copies PCM in 256 KiB slices; extension-less paths sniff ≤256 KiB (OggS / RIFF-WAVE) then use the same streaming routes (unknown formats fail). `PcmAudioBuffer.fromExistingFile` wraps the spill `.s16le`.
+- **Residual:** Multi-hour Note Pro validation remains owner/hardware (#86 / #6).
+- **Tests:** `RecordingProcessorBudgetTest.fromExistingFile_spillsWhenOverBudget`, streaming bound + sniff routing tests (`#86`)
+- **Status:** Fixed (`1b33ae3` + `#86` stream-decode)
 
 ---
 
