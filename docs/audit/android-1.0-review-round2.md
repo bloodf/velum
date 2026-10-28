@@ -56,12 +56,14 @@ Round 1 left real regressions and gaps (especially AppContainer hang-on-failure,
 | Local interactive emulator walk | **Failed** (adb offline; QEMU idle) — use CI smoke |
 | CI on fix tip `4321547` | **success** run `40669936045` |
 | CI on SHA-pin `3a03300` | **success** run `40670028151` |
+| CI minify-off walk `bb23533` | **success** run `40763140105` |
+| CI restore tip `6d6e1ae` | watching run `40781320208` (+ audit follow-up) |
 
 ---
 
 ## 1.0-ready?
 
-**Yes, for Android owner hardware**, once CI (including `assembleRelease` + emulator launch smoke) is green on the tip of `main` after this round-2 commit.
+**Yes, for Android owner hardware**, once CI (including `assembleRelease` + `android-device-walk`) is green on the tip of `main`. See round-3 for device-walk / R8 instrumented notes.
 
 **Would block ship if still open:** infinite splash on init failure, version ID collisions, wipe leaving audio, main-thread mic `runBlocking`, AutoFlow process-death seed, API key preflight ignoring overrides.
 
