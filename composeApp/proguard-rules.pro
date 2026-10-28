@@ -50,13 +50,17 @@
 -keep class androidx.tracing.** { *; }
 -dontwarn androidx.tracing.**
 
-# connectedReleaseAndroidTest loads kotlin.* from the app APK first. If R8
-# obfuscates/shrinks stdlib, AndroidX Test + androidTest code (compiled against
-# full stdlib) hit NoClassDefFoundError / NoSuchMethodError on attach.
+# connectedReleaseAndroidTest loads kotlin.*/kotlinx.* from the app APK first.
+# R8 must not shrink/obfuscate them or androidTest (compiled against full
+# stdlib/coroutines) hits NoClassDefFoundError / NoSuchMethodError (LazyKt,
+# StringsKt, JobKt, …).
 -keep class kotlin.** { *; }
 -keepclassmembers class kotlin.** { *; }
 -keep class kotlin.Metadata { *; }
 -dontwarn kotlin.**
+-keep class kotlinx.** { *; }
+-keepclassmembers class kotlinx.** { *; }
+-dontwarn kotlinx.**
 
 # sherpa-onnx local ASR / diarization (JNI + reflection-heavy)
 -keep class com.k2fsa.sherpa.onnx.** { *; }
