@@ -79,7 +79,12 @@ python3 tools/templates/body_dedupe.py \
   --input docs/templates/plaud_templates_full.jsonl \
   --output docs/templates/plaud_templates_full.jsonl \
   --report docs/audit/templates-body-dedupe.md \
-  --remap docs/templates/body_dedupe_remap.json
+  --remap docs/templates/body_dedupe_remap.json \
+  --kotlin-remap core/src/commonMain/kotlin/dev/velum/core/templates/TemplateBodyDedupeRemap.kt
+
+cp docs/templates/body_dedupe_remap.json \
+  core/src/commonMain/resources/template_body_dedupe_remap.json
+./tools/templates/sync_assets.sh
 
 python3 tools/templates/test_body_dedupe.py
 ```

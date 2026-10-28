@@ -192,6 +192,33 @@ def write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
             f.write("\n")
 
 
+def write_kotlin_remap(path: Path, remap: dict[str, str]) -> None:
+    entries = "\n".join(f'        "{o}" to "{n}",' for o, n in sorted(remap.items()))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        "package dev.velum.core.templates\n"
+        "\n"
+        "/**\n"
+        " * Removed exact-duplicate body ids → retained survivor ids (#99).\n"
+        " *\n"
+        " * Mirrors `docs/templates/body_dedupe_remap.json` /\n"
+        " * classpath `template_body_dedupe_remap.json` after\n"
+        " * `tools/templates/body_dedupe.py`. Used to reconcile existing installs that\n"
+        " * already imported the pre-dedupe full catalog: remap AutoFlow / summary-version\n"
+        " * references, then delete the dropped builtin rows. User-created templates\n"
+        " * (`builtin = 0`) are never deleted.\n"
+        " */\n"
+        "object TemplateBodyDedupeRemap {\n"
+        '    const val META_KEY: String = "template_body_dedupe_v1"\n'
+        "\n"
+        "    val OldToSurvivor: Map<String, String> = mapOf(\n"
+        f"{entries}\n"
+        "    )\n"
+        "}\n",
+        encoding="utf-8",
+    )
+
+
 def write_report(path: Path, result: BodyDedupeResult) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     lines = [
@@ -242,6 +269,12 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="Optional JSON map of removed id → survivor id",
     )
+    p.add_argument(
+        "--kotlin-remap",
+        type=Path,
+        default=None,
+        help="Optional Kotlin object path (TemplateBodyDedupeRemap.kt)",
+    )
     args = p.parse_args(argv)
 
     rows = load_jsonl(args.input)
@@ -254,6 +287,8 @@ def main(argv: list[str] | None = None) -> int:
             json.dumps(result.remap, indent=2, ensure_ascii=False) + "\n",
             encoding="utf-8",
         )
+    if args.kotlin_remap is not None:
+        write_kotlin_remap(args.kotlin_remap, result.remap)
 
     summary = {
         "input_rows": result.input_rows,
