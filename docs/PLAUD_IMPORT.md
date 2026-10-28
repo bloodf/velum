@@ -57,6 +57,7 @@ Identity values (token, PEMs, signatures, serial) are secrets:
 - Android Keystore AES-256-GCM persistence (non-exportable key; ciphertext in private prefs) is issue #92; real-owner hardware check remains #4. JVM tests use an AES-GCM software-key stand-in.
 - **Vault retention:** drop a single prefs entry only when its ciphertext blob is structurally malformed (bad length/format). Crypto, auth, or Keystore failures keep that entry and return null.
 - **Keystore wipe:** regenerate the Keystore key **and** clear every stored entry only on `KeyPermanentlyInvalidatedException` (the old key is gone). A transient Keystore error must never clear the vault. Classification is a pure function (`KeystoreFailureClassifier`) so JVM tests cover it without Robolectric.
+- **Keystore alias:** if the alias exists but `getEntry` fails transiently (including the API 35 emulator NPE), keep the alias and every entry — do not mint a replacement key (that would strand all ciphertext). Only create a key when the alias is absent, or after permanent invalidation clears the vault.
 
 ## UI
 
