@@ -20,27 +20,46 @@ class KopusOpusDecoder : OpusDecoder {
 
     override fun decodePathToPcmFile(path: String, dest: ModelStoreDir): SpilledPcmMeta =
         RandomAccessFile(path, "r").use { raf ->
-            val size = raf.length()
-            decodeStreaming(dest) { onHeader, onPacket ->
-                OggOpusDemuxer.demuxAtForEach(
-                    size = size,
-                    readAt = { buf, position, length ->
-                        raf.seek(position)
-                        var got = 0
-                        while (got < length) {
-                            val n = raf.read(buf, got, length - got)
-                            if (n < 0) return@demuxAtForEach if (got == 0) -1 else got
-                            got += n
-                        }
-                        got
-                    },
-                    onHeader = onHeader,
-                    onPacket = onPacket,
-                )
-            }
+            decodeStreamingFromReader(
+                size = raf.length(),
+                readAt = rafReadFully(raf),
+                dest = dest,
+            )
+        }
+
+    /**
+     * Demux + decode from an arbitrary random-access reader (tests inject a capped tracker).
+     * Does not retain the Opus packet list — each packet is decoded then discarded.
+     */
+    internal fun decodeStreamingFromReader(
+        size: Long,
+        readAt: (dest: ByteArray, position: Long, length: Int) -> Int,
+        dest: ModelStoreDir,
+    ): SpilledPcmMeta =
+        decodeStreaming(dest) { onHeader, onPacket ->
+            OggOpusDemuxer.demuxAtForEach(
+                size = size,
+                readAt = readAt,
+                onHeader = onHeader,
+                onPacket = onPacket,
+            )
         }
 
     companion object {
+        internal fun rafReadFully(raf: RandomAccessFile): (ByteArray, Long, Int) -> Int =
+            { buf, position, length ->
+                raf.seek(position)
+                var got = 0
+                while (got < length) {
+                    val n = raf.read(buf, got, length - got)
+                    if (n < 0) {
+                        got = if (got == 0) -1 else got
+                        break
+                    }
+                    got += n
+                }
+                got
+            }
         internal fun decodeInMemory(oggBytes: ByteArray): PcmAudio {
             var decoder: KopusDecoder? = null
             var rate = 48_000

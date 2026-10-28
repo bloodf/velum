@@ -55,10 +55,48 @@ interface OpusDecoder {
 
     /**
      * Decode an on-disk Ogg Opus file without loading the whole file into a ByteArray.
-     * Default reads all bytes then [decodeToPcmFile]; Android/JVM stream pages from disk.
+     *
+     * Common default streams Ogg pages via [ModelStoreDir.readRange] + [OggOpusDemuxer.demuxAtForEach]
+     * (used by iOS) so the compressed file is never fully materialized. Android/JVM override with
+     * RandomAccessFile + kopus packet decode.
      */
-    fun decodePathToPcmFile(path: String, dest: ModelStoreDir): SpilledPcmMeta =
-        decodeToPcmFile(ModelStoreDir(path).readBytes(), dest)
+    fun decodePathToPcmFile(path: String, dest: ModelStoreDir): SpilledPcmMeta {
+        val src = ModelStoreDir(path)
+        val size = src.length()
+        OggOpusDemuxer.demuxAtForEach(
+            size = size,
+            readAt = { buf, position, length ->
+                readAtModelStore(src, size, buf, position, length)
+            },
+            onPacket = {
+                // Discard — no packet list. Platforms with Opus decode override this method.
+            },
+        )
+        throw UnsupportedOperationException(
+            "Opus decode from path requires a platform override with a native decoder " +
+                "(Android/JVM). Ogg demux streamed without loading the whole file.",
+        )
+    }
+}
+
+/**
+ * Copy [length] bytes from [src] at [position] into [dest][0] for [OggOpusDemuxer.demuxAtForEach].
+ * Returns bytes copied, or -1 at EOF. Never reads more than [length] (page-sized) bytes.
+ */
+internal fun readAtModelStore(
+    src: ModelStoreDir,
+    size: Long,
+    dest: ByteArray,
+    position: Long,
+    length: Int,
+): Int {
+    if (position >= size || length <= 0) return -1
+    val n = minOf(length.toLong(), size - position).toInt()
+    if (n <= 0) return -1
+    val chunk = src.readRange(position, n)
+    if (chunk.isEmpty()) return -1
+    chunk.copyInto(destination = dest, endIndex = chunk.size)
+    return chunk.size
 }
 
 expect fun createOpusDecoder(): OpusDecoder
