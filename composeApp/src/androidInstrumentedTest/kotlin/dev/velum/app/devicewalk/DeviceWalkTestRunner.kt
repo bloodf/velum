@@ -15,10 +15,11 @@ import androidx.test.runner.AndroidJUnitRunner
  */
 class DeviceWalkTestRunner : AndroidJUnitRunner() {
     override fun onCreate(arguments: Bundle?) {
-        // Use Java equalsIgnoreCase — Kotlin's String.equals(ignoreCase=) compiles to
-        // StringsKt and NoSuchMethodErrors when the minified release APK's kotlin
-        // stdlib is on the instrumentation classpath (R8 renamed/shrunk methods).
-        val walk = arguments?.getString(ARG_DEVICE_WALK)?.equalsIgnoreCase("true") == true
+        // Prefer == over Kotlin String.equals(ignoreCase=) / equalsIgnoreCase:
+        // the former compiles to StringsKt and NoSuchMethodErrors against an
+        // R8-shrunk app kotlin stdlib on the instrumentation classpath; the
+        // latter is unresolved on this androidTest target.
+        val walk = arguments?.getString(ARG_DEVICE_WALK) == "true"
         if (walk) {
             DeviceWalkMode.enabled = true
         }
