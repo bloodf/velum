@@ -52,6 +52,12 @@ data class DownloadedSessionAudio(
     val startedAtEpochSeconds: Long,
     val sizeBytes: Long,
     val decryptedBytes: ByteArray,
+    /**
+     * Used only when [decryptedBytes] is not already Ogg/WAV and must be wrapped as PCM WAV.
+     * Defaults match Plaud capability tables + the historic RecordingProcessor raw-PCM path.
+     */
+    val sampleRateHz: Int = 16_000,
+    val channels: Int = 1,
 )
 
 class DeviceViewModel(
@@ -248,6 +254,7 @@ class DeviceViewModel(
             client.downloadSession(sessionId, sizeBytes, ::onProgress)
         }
         val decrypted = PlaudFileCrypto.decrypt(encrypted, privateKeyPem, createFileDecryptor())
+        val caps = _sessionUi.value.capabilities
         return persistDownloadedSession(
             DownloadedSessionAudio(
                 sessionId = sessionId,
@@ -255,6 +262,9 @@ class DeviceViewModel(
                 startedAtEpochSeconds = startedAtEpochSeconds,
                 sizeBytes = decrypted.size.toLong(),
                 decryptedBytes = decrypted,
+                // Capability table is authoritative when wrapping non-container plaintext.
+                sampleRateHz = caps?.sampleRatesHz?.firstOrNull() ?: 16_000,
+                channels = 1, // historic RP raw-PCM path was mono
             ),
         )
     }

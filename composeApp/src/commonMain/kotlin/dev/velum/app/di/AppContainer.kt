@@ -1,5 +1,6 @@
 package dev.velum.app.di
 
+import dev.velum.ai.audio.DownloadedSessionAudioPersist
 import dev.velum.ai.createOpenAiCompatibleClient
 import dev.velum.ai.engine.AiTaskRouter
 import dev.velum.ai.local.LocalDiarizer
@@ -219,13 +220,14 @@ class AppContainer(
 
     suspend fun persistDownloadedSession(session: DownloadedSessionAudio): String {
         val id = RecordingIds.newId()
-        val ext = when {
-            looksLikeOgg(session.decryptedBytes) -> "ogg"
-            looksLikeWav(session.decryptedBytes) -> "wav"
-            else -> "bin"
-        }
-        val path = "${recordingsDirectoryPath()}/$id.$ext"
-        writeBytesToPath(path, session.decryptedBytes)
+        // Never write opaque `.bin` — Ogg/WAV as-is; otherwise wrap as PCM WAV @ session rate.
+        val prepared = DownloadedSessionAudioPersist.prepare(
+            decryptedBytes = session.decryptedBytes,
+            sampleRateHz = session.sampleRateHz,
+            channels = session.channels,
+        )
+        val path = "${recordingsDirectoryPath()}/$id.${prepared.extension}"
+        writeBytesToPath(path, prepared.bytes)
         val started = if (session.startedAtEpochSeconds > 1_000_000_000L) {
             session.startedAtEpochSeconds
         } else {
@@ -241,7 +243,7 @@ class AppContainer(
             deviceSerial = session.deviceSerial,
             startedAt = started,
             durationSeconds = 0,
-            sizeBytes = session.sizeBytes,
+            sizeBytes = prepared.bytes.size.toLong(),
             localPath = path,
             transcript = null,
             summaryMarkdown = null,
@@ -261,21 +263,6 @@ class AppContainer(
         )
         return id
     }
-
-    private fun looksLikeOgg(bytes: ByteArray): Boolean =
-        bytes.size >= 4 &&
-            bytes[0] == 'O'.code.toByte() &&
-            bytes[1] == 'g'.code.toByte() &&
-            bytes[2] == 'g'.code.toByte() &&
-            bytes[3] == 'S'.code.toByte()
-
-    private fun looksLikeWav(bytes: ByteArray): Boolean =
-        bytes.size >= 12 &&
-            bytes[0] == 'R'.code.toByte() &&
-            bytes[1] == 'I'.code.toByte() &&
-            bytes[2] == 'F'.code.toByte() &&
-            bytes[3] == 'F'.code.toByte()
-
 
     private fun formatRecordingTitle(epochSeconds: Long): String {
         val locale = settingsRepository.preferences.value.appLanguage
