@@ -29,6 +29,7 @@ import dev.velum.ble.wifi.WifiTransferServer
 import kotlin.coroutines.coroutineContext
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
@@ -57,7 +58,17 @@ class PlaudDeviceClient(
 
     private val inbound = Channel<ByteArray>(capacity = 128)
     private val writeMutex = Mutex()
+    private val demuxMutex = Mutex()
     private var notifyJob: Job? = null
+    private var demuxJob: Job? = null
+
+    /** Raw unlock-path waiters (FE11 / FE12) — plaintext notify frames. */
+    private val rawWaiters = mutableListOf<FrameWaiter>()
+    private val rawPending = ArrayDeque<ByteArray>()
+
+    /** Decrypted link-path waiters — non-matching frames stay buffered. */
+    private val decryptedWaiters = mutableListOf<FrameWaiter>()
+    private val decryptedPending = ArrayDeque<ByteArray>()
 
     private var secret: Protocol20SessionSecret? = null
     /** Encrypted link owned by `:ble`; seals plaintext inside the module. */
@@ -75,12 +86,31 @@ class PlaudDeviceClient(
         notifyJob = scope.launch(start = CoroutineStart.UNDISPATCHED) {
             ble.notifications().collect { inbound.send(it) }
         }
+        demuxJob = scope.launch(start = CoroutineStart.UNDISPATCHED) {
+            while (true) {
+                val raw = inbound.receive()
+                dispatchInbound(raw)
+            }
+        }
     }
 
     fun close() {
         notifyJob?.cancel()
+        demuxJob?.cancel()
         notifyJob = null
+        demuxJob = null
         inbound.close()
+        failWaiters(rawWaiters, rawPending)
+        failWaiters(decryptedWaiters, decryptedPending)
+    }
+
+    private fun failWaiters(
+        waiters: MutableList<FrameWaiter>,
+        pending: ArrayDeque<ByteArray>,
+    ) {
+        waiters.toList().forEach { it.deferred.cancel() }
+        waiters.clear()
+        pending.clear()
     }
 
     /**
@@ -294,26 +324,45 @@ class PlaudDeviceClient(
         }
     }
 
-    suspend fun readBattery(): BatteryReading {
+    /**
+     * Poll battery (cmd 9). Uses [Battery.parseOrNull] so truncated / out-of-range
+     * payloads (e.g. level `0xFF` while charging) yield null instead of throwing.
+     */
+    suspend fun readBattery(): BatteryReading? {
         val packet = Battery.encodeBatteryRequest()
         val payload = transactCommand(Commands.BATTERY_LIKELY, packet)
-        return BatteryReading.parse(payload)
+        return Battery.parseOrNull(payload)
     }
 
     /**
      * Wait for the next inbound cmd-9 battery frame without sending a request.
-     * Used for unsolicited battery notifications from the device notify path.
+     * Uses [Battery.parseOrNull]; non-battery frames are buffered for other waiters.
      */
     suspend fun awaitBatteryNotification(
         timeout: Duration = responseTimeout,
-    ): BatteryReading {
+    ): BatteryReading? {
         val raw = awaitDecryptedFrame(timeout) { frame ->
             val decoded = runCatching { Framing.decodeInbound(frame) }.getOrNull()
             decoded is InboundPacket.CommandResponse &&
                 decoded.cmd == Commands.BATTERY_LIKELY
         }
         val decoded = Framing.decodeInbound(raw) as InboundPacket.CommandResponse
-        return BatteryReading.parse(decoded.payload)
+        return Battery.parseOrNull(decoded.payload)
+    }
+
+    /**
+     * Exposed for tests: wait for a decrypted command-response payload without
+     * sending. Non-matching frames remain available to other waiters.
+     */
+    suspend fun awaitCommandResponseForTest(
+        cmd: Int,
+        timeout: Duration = responseTimeout,
+    ): ByteArray {
+        val raw = awaitDecryptedFrame(timeout) { frame ->
+            val decoded = runCatching { Framing.decodeInbound(frame) }.getOrNull()
+            decoded is InboundPacket.CommandResponse && decoded.cmd == cmd
+        }
+        return (Framing.decodeInbound(raw) as InboundPacket.CommandResponse).payload
     }
 
     /**
@@ -352,13 +401,50 @@ class PlaudDeviceClient(
         writeMutex.withLock {
             // Client send-path layer: reject forbidden opcodes/settings on plaintext.
             assertOutboundAllowed(packet)
-            val session = encryptedSession
-            if (session == null) {
+            if (encryptedSession == null) {
                 // Transport layer also guards plaintext on public write().
                 ble.write(packet, withoutResponse = false)
             } else {
-                // :ble seals inside PlaudEncryptedSession after its own plaintext guard.
-                session.writeEncrypted(packet, withoutResponse = false)
+                sendEncrypted(packet)
+            }
+        }
+    }
+
+    /**
+     * Single call site for encrypted-session writes.
+     *
+     * Routes through [PlaudEncryptedSession.writeEncrypted] (plaintext only;
+     * `:ble` seals internally). Never call sealed-write sink APIs from here.
+     */
+    private suspend fun sendEncrypted(plaintext: ByteArray) {
+        val session = encryptedSession
+            ?: error("sendEncrypted requires an unlocked encrypted session")
+        session.writeEncrypted(plaintext, withoutResponse = false)
+    }
+
+    private suspend fun dispatchInbound(raw: ByteArray) {
+        val session = encryptedSession
+        if (session == null) {
+            offerFrame(raw, rawWaiters, rawPending)
+            return
+        }
+        val opened = session.openPacket(recvSeq, raw) ?: return
+        recvSeq = opened.first + 1
+        offerFrame(opened.second, decryptedWaiters, decryptedPending)
+    }
+
+    private suspend fun offerFrame(
+        frame: ByteArray,
+        waiters: MutableList<FrameWaiter>,
+        pending: ArrayDeque<ByteArray>,
+    ) {
+        demuxMutex.withLock {
+            val idx = waiters.indexOfFirst { it.predicate(frame) }
+            if (idx >= 0) {
+                val waiter = waiters.removeAt(idx)
+                waiter.deferred.complete(frame)
+            } else {
+                pending.addLast(frame.copyOf())
             }
         }
     }
@@ -366,40 +452,45 @@ class PlaudDeviceClient(
     private suspend fun awaitDecryptedFrame(
         timeout: Duration,
         predicate: (ByteArray) -> Boolean,
-    ): ByteArray {
-        val session = encryptedSession
-        return withTimeout(timeout) {
-            while (true) {
-                val raw = inbound.receive()
-                val frame = if (session != null) {
-                    val opened = session.openPacket(recvSeq, raw) ?: continue
-                    recvSeq = opened.first + 1
-                    opened.second
-                } else {
-                    raw
-                }
-                if (predicate(frame)) return@withTimeout frame
-            }
-            @Suppress("UNREACHABLE_CODE")
-            error("unreachable")
-        }
-    }
+    ): ByteArray = awaitFromDemux(timeout, predicate, decryptedWaiters, decryptedPending)
 
     private suspend fun awaitRaw(
         timeout: Duration,
         predicate: (ByteArray) -> Boolean,
+    ): ByteArray = awaitFromDemux(timeout, predicate, rawWaiters, rawPending)
+
+    private suspend fun awaitFromDemux(
+        timeout: Duration,
+        predicate: (ByteArray) -> Boolean,
+        waiters: MutableList<FrameWaiter>,
+        pending: ArrayDeque<ByteArray>,
     ): ByteArray = withTimeout(timeout) {
-        while (true) {
-            val raw = inbound.receive()
-            if (predicate(raw)) return@withTimeout raw
+        val deferred = CompletableDeferred<ByteArray>()
+        demuxMutex.withLock {
+            val idx = pending.indexOfFirst(predicate)
+            if (idx >= 0) {
+                return@withTimeout pending.removeAt(idx)
+            }
+            waiters += FrameWaiter(predicate, deferred)
         }
-        @Suppress("UNREACHABLE_CODE")
-        error("unreachable")
+        try {
+            deferred.await()
+        } catch (t: Throwable) {
+            demuxMutex.withLock {
+                waiters.removeAll { it.deferred === deferred }
+            }
+            throw t
+        }
     }
 
     private fun assertOutboundAllowed(packet: ByteArray) {
         PlaudOutboundGuard.requireAllowed(packet)
     }
+
+    private class FrameWaiter(
+        val predicate: (ByteArray) -> Boolean,
+        val deferred: CompletableDeferred<ByteArray>,
+    )
 
     companion object {
         /** Hard cap for a single session download (512 MiB). */

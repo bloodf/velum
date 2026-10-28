@@ -23,7 +23,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 /**
- * In-process [BleTransport] for CI.
+ * In-process [dev.velum.ble.BleTransport] for CI.
  *
  * When connected with [GattProfiles.Plaud] and a [FakePlaudPeripheral] is
  * provided, Plaud write/notify are forwarded to that peripheral. Writes are
@@ -32,23 +32,18 @@ import kotlinx.coroutines.sync.withLock
  * [advertisementFixtures] drive scan discovery: only payloads that parse as
  * Note Pro family discoveries are surfaced (malformed fixtures are skipped).
  *
- * Implements [BleSealedWriteSink] so [dev.velum.ble.PlaudBleTransport.writeSealedAfterPlaintextGuard]
- * can deliver sealed ciphertext without re-parsing it as an opcode.
+ * Sealed writes are exposed only via [sealedWriteSink] for
+ * [dev.velum.ble.PlaudEncryptedSession.writeEncrypted].
  */
 class FakeBleTransport(
     private val peripheral: FakePlaudPeripheral? = null,
     private val deviceId: String = "fake-note-pro",
     private val serial: String = "881FAKE1",
-<<<<<<< HEAD
-    private val name: String = "PLAUD NOTE PRO",
-) : AbstractBleTransport() {
-=======
     private val name: String = "Note Pro",
     private val advertisementFixtures: List<ByteArray> = listOf(
         AdvertisementFixtures.notePro881(portVersion = 20, serial = serial),
     ),
-) : BleTransport, BleSealedWriteSink {
->>>>>>> d228d99 (feat(ble): simulated peripheral knobs for unlock, scan, battery notify (#93))
+) : AbstractBleTransport() {
     override val isAvailable: Boolean = true
 
     private val mutex = Mutex()

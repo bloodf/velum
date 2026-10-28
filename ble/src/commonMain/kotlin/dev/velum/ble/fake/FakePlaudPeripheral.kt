@@ -13,6 +13,7 @@ import dev.velum.protocol.Unlock
 import dev.velum.protocol.UnlockChunk
 import dev.velum.protocol.UnlockSecretLayout
 import kotlin.random.Random
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -62,6 +63,16 @@ class FakePlaudPeripheral(
 
     val isUnlocked: Boolean get() = unlocked
 
+    /**
+     * Completes when a valid FE10 snSignature has been accepted (before optional
+     * FE11 / FE12). Used by mid-handshake disconnect tests.
+     */
+    private var fe10Received = CompletableDeferred<Unit>()
+
+    suspend fun awaitFe10Received() {
+        fe10Received.await()
+    }
+
     /** Clear session state so the next connection requires FE10 again. */
     fun resetUnlock() {
         snChunks.clear()
@@ -71,6 +82,9 @@ class FakePlaudPeripheral(
         deviceSendSeq = 0
         unlocked = false
         handshakeFailed = false
+        if (fe10Received.isCompleted) {
+            fe10Received = CompletableDeferred()
+        }
     }
 
     suspend fun onWrite(payload: ByteArray) = mutex.withLock {
@@ -96,6 +110,12 @@ class FakePlaudPeripheral(
         emitCommand(Commands.BATTERY_LIKELY, batPayload)
     }
 
+    /** Push an unsolicited encrypted command-response (interleaved-waiter tests). */
+    suspend fun emitUnsolicitedCommandResponse(cmd: Int, payload: ByteArray) = mutex.withLock {
+        check(unlocked) { "Cannot emit command response before unlock" }
+        emitCommand(cmd, payload)
+    }
+
     private suspend fun handleUnlock(payload: ByteArray) {
         require(payload.size >= 2)
         val opcode = Bytes.readU16Le(payload, 0)
@@ -109,6 +129,9 @@ class FakePlaudPeripheral(
                         snChunks.clear()
                         // Do not include signature bytes in the error text.
                         error("HANDSHAKE_FAIL: FE10 snSignature empty or does not match imported keys")
+                    }
+                    if (!fe10Received.isCompleted) {
+                        fe10Received.complete(Unit)
                     }
                     if (muteResponses) return
                     if (requirePublicKey) {
