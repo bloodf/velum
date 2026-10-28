@@ -101,4 +101,21 @@ class KeystoreAliasResolvePolicyTest {
             ),
         )
     }
+
+    @Test
+    fun secure_read_maps_propagate_transient_to_unreadable_not_missing() {
+        // Contract for AndroidSecureStore.read (#92 / #110): when prefs contain
+        // the key and getEntry fails transiently, return Unreadable — never Missing —
+        // and leave the prefs entry / Keystore alias untouched.
+        assertEquals(
+            KeystoreAliasResolveAction.PropagateTransient,
+            KeystoreAliasResolvePolicy.decide(
+                aliasPresent = true,
+                entryObtained = false,
+                getEntryFailureClassNames = listOf("java.lang.NullPointerException"),
+            ),
+        )
+        val read: SecureRead = SecureRead.Unreadable("java.lang.NullPointerException")
+        assertEquals(SecureRead.Unreadable::class, read::class)
+    }
 }

@@ -48,6 +48,18 @@ class JvmAesGcmSecureStore(
         }
     }
 
+    override suspend fun read(key: String): SecureRead = mutex.withLock {
+        val stored = backend[key] ?: return@withLock SecureRead.Missing
+        when (val result = AesGcmSecurePayload.decryptResult(this.key, stored)) {
+            is AesGcmDecryptResult.Ok ->
+                SecureRead.Value(result.plaintext.toString(Charsets.UTF_8))
+            AesGcmDecryptResult.StructurallyMalformed ->
+                SecureRead.Unreadable(AesGcmDecryptResult.StructurallyMalformed::class.java.name)
+            AesGcmDecryptResult.CryptographicFailure ->
+                SecureRead.Unreadable(AesGcmDecryptResult.CryptographicFailure::class.java.name)
+        }
+    }
+
     override suspend fun remove(key: String) {
         mutex.withLock {
             backend.remove(key)

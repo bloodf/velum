@@ -5,12 +5,33 @@ import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 
 /**
+ * Non-destructive outcome of [SecureStore.read].
+ *
+ * [Missing] means the key is not stored. [Unreadable] means an entry exists but
+ * cannot be opened (corrupt blob, wrong key, transient Keystore failure, …) —
+ * the entry and platform key material are left untouched. [Value] is plaintext.
+ */
+sealed class SecureRead {
+    data object Missing : SecureRead()
+    data class Unreadable(val errorClassName: String) : SecureRead()
+    data class Value(val value: String) : SecureRead()
+}
+
+/**
  * Platform secure storage (Android Keystore / iOS Keychain / AES-GCM on desktop).
  * Implementations must never write secrets to logs or plaintext prefs/files.
  */
 interface SecureStore {
     suspend fun putString(key: String, value: String)
     suspend fun getString(key: String): String?
+
+    /**
+     * Non-destructive read. Never removes or rewrites the entry or the platform
+     * key. [SecureRead.Missing] only when the key is truly absent; an existing
+     * but undecryptable entry is [SecureRead.Unreadable].
+     */
+    suspend fun read(key: String): SecureRead
+
     suspend fun remove(key: String)
     suspend fun contains(key: String): Boolean
 

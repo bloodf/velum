@@ -14,6 +14,11 @@ class InMemorySecureStore : SecureStore {
 
     override suspend fun getString(key: String): String? = mutex.withLock { map[key] }
 
+    override suspend fun read(key: String): SecureRead = mutex.withLock {
+        val value = map[key] ?: return@withLock SecureRead.Missing
+        SecureRead.Value(value)
+    }
+
     override suspend fun remove(key: String) {
         mutex.withLock { map.remove(key) }
     }
