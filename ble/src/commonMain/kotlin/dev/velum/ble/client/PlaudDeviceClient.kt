@@ -1,18 +1,18 @@
 package dev.velum.ble.client
 
 import dev.velum.ble.BleTransport
+import dev.velum.ble.PlaudBleTransport
 import dev.velum.protocol.Battery
 import dev.velum.protocol.BatteryReading
 import dev.velum.protocol.Bytes
 import dev.velum.protocol.Commands
 import dev.velum.protocol.DeviceIdentityKeys
-import dev.velum.protocol.CommonSettings
 import dev.velum.protocol.ForbiddenOpcodes
-import dev.velum.protocol.ForbiddenSettings
 import dev.velum.protocol.Framing
 import dev.velum.protocol.HandshakeResponse
 import dev.velum.protocol.HandshakeStatus
 import dev.velum.protocol.InboundPacket
+import dev.velum.protocol.PlaudOutboundGuard
 import dev.velum.protocol.Protocol20SessionSecret
 import dev.velum.protocol.RecordingDataPacket
 import dev.velum.protocol.SessionCipher
@@ -45,12 +45,15 @@ import kotlinx.coroutines.withTimeout
  * imported keys is sent on every [unlock] / connect.
  */
 class PlaudDeviceClient(
-    private val ble: BleTransport,
+    ble: BleTransport,
     private val cipher: SessionCipher,
     private val keys: DeviceIdentityKeys,
     private val responseTimeout: Duration = 10.seconds,
     private val protocolVersionHint: Int = 20,
 ) {
+    /** Plaud write/notify facade over the generic multi-GATT [BleTransport]. */
+    private val ble = PlaudBleTransport(ble)
+
     private val inbound = Channel<ByteArray>(capacity = 128)
     private val writeMutex = Mutex()
     private var notifyJob: Job? = null
@@ -371,27 +374,7 @@ class PlaudDeviceClient(
     }
 
     private fun assertOutboundAllowed(packet: ByteArray) {
-        require(packet.size >= 2) { "Outbound packet too short" }
-        val hasAppPrefix = packet[0] == Framing.APP_PREFIX && packet.size >= 3
-        val opcode = if (hasAppPrefix) {
-            Bytes.readU16Le(packet, 1)
-        } else {
-            Bytes.readU16Le(packet, 0)
-        }
-        ForbiddenOpcodes.requireAllowed(opcode)
-        if (opcode == CommonSettings.CMD) {
-            val paramsOffset = if (hasAppPrefix) 3 else 2
-            val params = if (packet.size > paramsOffset) {
-                packet.copyOfRange(paramsOffset, packet.size)
-            } else {
-                ByteArray(0)
-            }
-            // Cmd 8 read is [settingId]; write is [settingId][value…].
-            // Only writes of forbidden settings are rejected (reads stay allowed).
-            if (params.size > 1) {
-                ForbiddenSettings.requireWritable(params[0].toInt() and 0xFF)
-            }
-        }
+        PlaudOutboundGuard.requireAllowed(packet)
     }
 
     companion object {

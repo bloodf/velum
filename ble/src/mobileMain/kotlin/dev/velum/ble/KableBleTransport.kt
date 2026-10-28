@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -29,6 +30,8 @@ import kotlinx.coroutines.launch
 /**
  * Kable-backed BLE transport for Android and iOS.
  * Desktop uses [StubBleTransport] until a SimpleBLE (or similar) binding exists.
+ *
+ * Characteristic UUIDs come from the [GattProfile] passed to [connect].
  */
 @OptIn(ExperimentalUuidApi::class)
 class KableBleTransport : BleTransport {
@@ -41,23 +44,18 @@ class KableBleTransport : BleTransport {
     private val _devices = MutableStateFlow<List<ConnectedDevice>>(emptyList())
     override val discoveredDevices: StateFlow<List<ConnectedDevice>> = _devices.asStateFlow()
 
+    override var activeProfile: GattProfile? = null
+        private set
+
     private val advertisementFlow = MutableSharedFlow<ConnectedDevice>(extraBufferCapacity = 64)
-    private val notifyFlow = MutableSharedFlow<ByteArray>(extraBufferCapacity = 128)
+    private val notifyFlows =
+        mutableMapOf<String, MutableSharedFlow<ByteArray>>()
 
     private var scanJob: Job? = null
     private var peripheral: Peripheral? = null
-    private var notifyJob: Job? = null
+    private var notifyJobs: List<Job> = emptyList()
     private var disconnectWatchJob: Job? = null
     private val seen = mutableMapOf<String, Advertisement>()
-
-    private val writeCharacteristic = characteristicOf(
-        service = Uuid.parse(PlaudUuids.SERVICE),
-        characteristic = Uuid.parse(PlaudUuids.WRITE),
-    )
-    private val notifyCharacteristic = characteristicOf(
-        service = Uuid.parse(PlaudUuids.SERVICE),
-        characteristic = Uuid.parse(PlaudUuids.NOTIFY),
-    )
 
     private val scanner = Scanner {
         filters {
@@ -72,6 +70,15 @@ class KableBleTransport : BleTransport {
                         dataMask = null,
                     ),
                 )
+            }
+            match {
+                services = listOf(Uuid.parse(GattProfiles.Omi.serviceUuid))
+            }
+            match {
+                services = listOf(Uuid.parse(GattProfiles.Pocket.serviceUuid))
+            }
+            match {
+                services = listOf(Uuid.parse(GattProfiles.Limitless.serviceUuid))
             }
         }
     }
@@ -108,7 +115,7 @@ class KableBleTransport : BleTransport {
         }
     }
 
-    override suspend fun connect(deviceId: String) {
+    override suspend fun connect(deviceId: String, profile: GattProfile) {
         val adv = seen[deviceId]
             ?: run {
                 _state.value = BleConnectionState.Failed("Unknown device $deviceId — scan first")
@@ -118,13 +125,27 @@ class KableBleTransport : BleTransport {
         _state.value = BleConnectionState.Connecting(deviceId)
         try {
             peripheral?.close()
+            clearNotifyJobs()
             val p = Peripheral(adv)
             peripheral = p
+            activeProfile = profile
             p.connect()
-            notifyJob?.cancel()
-            notifyJob = scope.launch {
-                p.observe(notifyCharacteristic).collect { notifyFlow.emit(it) }
+            // preferredMtu is recorded on the profile for drivers; Kable negotiates
+            // ATT MTU via its own defaults / platform hooks.
+            notifyFlows.clear()
+            val jobs = mutableListOf<Job>()
+            for (ch in profile.notifyCharacteristics()) {
+                val flow = MutableSharedFlow<ByteArray>(extraBufferCapacity = 128)
+                notifyFlows[ch.name] = flow
+                val kableChar = characteristicOf(
+                    service = Uuid.parse(profile.resolveServiceUuid(ch)),
+                    characteristic = Uuid.parse(ch.uuid),
+                )
+                jobs += scope.launch {
+                    p.observe(kableChar).collect { flow.emit(it) }
+                }
             }
+            notifyJobs = jobs
             val device = adv.toConnectedDevice()
             _state.value = BleConnectionState.Connected(device)
             disconnectWatchJob?.cancel()
@@ -132,16 +153,18 @@ class KableBleTransport : BleTransport {
                 p.state
                     .filter { it is State.Disconnected }
                     .collect {
-                        notifyJob?.cancel()
-                        notifyJob = null
+                        clearNotifyJobs()
                         if (peripheral === p) {
                             runCatching { p.close() }
                             peripheral = null
                         }
+                        activeProfile = null
+                        notifyFlows.clear()
                         _state.value = BleConnectionState.Idle
                     }
             }
         } catch (t: Throwable) {
+            activeProfile = null
             _state.value = BleConnectionState.Failed(t.message ?: t.toString())
         }
     }
@@ -149,21 +172,43 @@ class KableBleTransport : BleTransport {
     override suspend fun disconnect() {
         disconnectWatchJob?.cancelAndJoin()
         disconnectWatchJob = null
-        notifyJob?.cancelAndJoin()
-        notifyJob = null
+        clearNotifyJobs()
         runCatching { peripheral?.disconnect() }
         peripheral?.close()
         peripheral = null
+        activeProfile = null
+        notifyFlows.clear()
         _state.value = BleConnectionState.Idle
     }
 
-    override suspend fun write(payload: ByteArray, withoutResponse: Boolean) {
+    override suspend fun write(
+        characteristic: String,
+        payload: ByteArray,
+        withoutResponse: Boolean,
+    ) {
         val p = peripheral ?: error("Not connected")
+        val profile = activeProfile ?: error("No active GATT profile")
+        val ch = profile.characteristic(characteristic)
+        require(ch.canWrite) {
+            "Characteristic '${ch.name}' on profile '${profile.id}' is not writable"
+        }
+        PlaudWriteGuard.maybeRequireAllowed(profile, characteristic, payload)
+        val kableChar = characteristicOf(
+            service = Uuid.parse(profile.resolveServiceUuid(ch)),
+            characteristic = Uuid.parse(ch.uuid),
+        )
         val type = if (withoutResponse) WriteType.WithoutResponse else WriteType.WithResponse
-        p.write(writeCharacteristic, payload, type)
+        p.write(kableChar, payload, type)
     }
 
-    override fun notifications(): Flow<ByteArray> = notifyFlow.asSharedFlow()
+    override fun notifications(characteristic: String): Flow<ByteArray> =
+        notifyFlows[characteristic]?.asSharedFlow() ?: emptyFlow()
+
+    private suspend fun clearNotifyJobs() {
+        notifyJobs.forEach { it.cancel() }
+        notifyJobs.forEach { it.join() }
+        notifyJobs = emptyList()
+    }
 
     private fun Advertisement.toConnectedDevice(): ConnectedDevice {
         val mfg = manufacturerData(PlaudUuids.MANUFACTURER_ID)
