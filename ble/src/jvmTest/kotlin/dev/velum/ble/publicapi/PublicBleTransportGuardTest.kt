@@ -1,9 +1,11 @@
 package dev.velum.ble.publicapi
 
+import dev.velum.ble.AbstractBleTransport
 import dev.velum.ble.BleTransport
 import dev.velum.ble.GattProfiles
 import dev.velum.ble.PlaudBleTransport
 import dev.velum.ble.PlaudEncryptedSession
+import dev.velum.ble.StubBleTransport
 import dev.velum.ble.crypto.createSessionCipher
 import dev.velum.ble.fake.FakeBleTransport
 import dev.velum.protocol.Bytes
@@ -53,7 +55,13 @@ class PublicBleTransportGuardTest {
         }
         assertTrue(
             BleTransport::class.java.methods.none { it.name == "writeSealedAlreadyGuarded" },
-            "internal sink must not appear on BleTransport",
+            "internal sealed write must not appear on BleTransport",
+        )
+        assertTrue(
+            AbstractBleTransport::class.java.methods.none {
+                it.name == "writeSealedAlreadyGuarded" && Modifier.isPublic(it.modifiers)
+            },
+            "AbstractBleTransport.writeSealedAlreadyGuarded must not be a public JVM method",
         )
         // writeEncrypted takes a single plaintext ByteArray (+ optional boolean), not sealed.
         val writeEncrypted = PlaudEncryptedSession::class.java.methods
@@ -67,6 +75,104 @@ class PublicBleTransportGuardTest {
                 "writeEncrypted must take exactly one ByteArray (plaintext): ${method.parameterTypes.toList()}",
             )
         }
+    }
+
+    @Test
+    fun concreteTransports_writeSealedAlreadyGuarded_notPublicOnJvm() {
+        // Kotlin mangles `internal` to writeSealedAlreadyGuarded$<module>. The
+        // unmangled name must not appear as a public JVM method.
+        val concretes = buildList {
+            add(FakeBleTransport::class.java)
+            add(StubBleTransport::class.java)
+            add(AbstractBleTransport::class.java)
+            // Kable lives in mobileMain; present on Android unit classpath, optional on JVM.
+            runCatching { Class.forName("dev.velum.ble.KableBleTransport") }
+                .getOrNull()
+                ?.let { add(it) }
+        }
+        assertTrue(concretes.size >= 3, "expected Fake + Stub + Abstract at minimum")
+        concretes.forEach { type ->
+            val unmangledPublic = type.methods.filter {
+                it.name == "writeSealedAlreadyGuarded" && Modifier.isPublic(it.modifiers)
+            }
+            assertTrue(
+                unmangledPublic.isEmpty(),
+                "${type.simpleName}: unmangled writeSealedAlreadyGuarded must not be public: " +
+                    unmangledPublic.map { it.name },
+            )
+            val unmangledDeclared = type.declaredMethods.filter { it.name == "writeSealedAlreadyGuarded" }
+            assertTrue(
+                unmangledDeclared.isEmpty(),
+                "${type.simpleName}: unmangled writeSealedAlreadyGuarded must not be declared: " +
+                    unmangledDeclared.map { it.name },
+            )
+            // Internal override still exists under the module-mangled name.
+            val mangled = (type.declaredMethods + type.methods).filter {
+                it.name.startsWith("writeSealedAlreadyGuarded\$")
+            }
+            assertTrue(
+                mangled.isNotEmpty(),
+                "${type.simpleName} should declare mangled internal writeSealedAlreadyGuarded\$…",
+            )
+        }
+    }
+
+    @Test
+    fun qaBypass_cmd9CannotPlaceClearAllFrameOn2bb1() = runTest {
+        // Former attack: pass harmless cmd-9 plaintext while writing a CLEAR_ALL
+        // sealed frame. Public API is plaintext-only, so CLEAR_ALL never reaches 2BB1.
+        val fake = FakeBleTransport()
+        fake.connect("fake-note-pro", GattProfiles.Plaud)
+        val ble: BleTransport = fake
+        val clearAll = rawAppCommand(ForbiddenOpcodes.CLEAR_ALL)
+        val cmd9 = rawAppCommand(9)
+
+        assertFailsWith<IllegalArgumentException> {
+            ble.write(GattProfiles.PLAUD_WRITE, clearAll)
+        }
+        assertTrue(fake.recordedWrites.isEmpty(), "CLEAR_ALL must not reach 2BB1 via public write")
+
+        val cipher = createSessionCipher()
+        val secret = testSecret()
+        val session = PlaudBleTransport(fake).openEncryptedSession(cipher, secret)
+        assertFailsWith<IllegalArgumentException> {
+            session.writeEncrypted(clearAll)
+        }
+        assertTrue(fake.recordedWrites.isEmpty(), "CLEAR_ALL must not reach 2BB1 via writeEncrypted")
+
+        // Allowed cmd 9 seals to ciphertext of cmd 9 — never a raw CLEAR_ALL frame.
+        val seq = session.nextSendSequence
+        session.writeEncrypted(cmd9)
+        val onWire = fake.recordedWrites.single().second
+        assertFalse(onWire.contentEquals(clearAll), "on-wire must not be raw CLEAR_ALL")
+        val opened = cipher.openPacket(secret, seq, onWire)
+        assertTrue(opened != null && opened.second.contentEquals(cmd9))
+        assertTrue(onWire.contentEquals(cipher.sealPacket(secret, seq, cmd9)))
+    }
+
+    @Test
+    fun qaBypass_rawFe20LeBytesRejectedOn2bb1() = runTest {
+        // Little-endian 0xFE20 on the wire is [0x20, 0xFE] (Bytes.u16Le / Framing).
+        val fe20Le = byteArrayOf(0x20, 0xFE.toByte())
+        assertEquals(ForbiddenOpcodes.FE20, Bytes.readU16Le(fe20Le, 0))
+
+        val fake = FakeBleTransport()
+        fake.connect("fake-note-pro", GattProfiles.Plaud)
+        val ble: BleTransport = fake
+
+        assertFailsWith<IllegalArgumentException> {
+            ble.write(GattProfiles.PLAUD_WRITE, fe20Le)
+        }
+        assertTrue(fake.recordedWrites.isEmpty(), "raw FE20 LE must not reach 2BB1 via public write")
+
+        val session = PlaudBleTransport(fake).openEncryptedSession(
+            cipher = createSessionCipher(),
+            secret = testSecret(),
+        )
+        assertFailsWith<IllegalArgumentException> {
+            session.writeEncrypted(fe20Le)
+        }
+        assertTrue(fake.recordedWrites.isEmpty(), "raw FE20 LE must not reach 2BB1 via writeEncrypted")
     }
 
     @Test
