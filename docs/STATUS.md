@@ -67,6 +67,7 @@ Phone-only / external (no Plaud required):
 - [x] Phone mic: runtime RECORD_AUDIO + rationale → PCM WAV (`MicCapture` / `WavWriter`) → process via WorkManager
 - [x] Mic foreground service (`MicRecordingService`, `FOREGROUND_SERVICE_MICROPHONE`) + Pause/Stop notification; process-death WAV recover (`WavWriter.recoverOrFinalize`); POST_NOTIFICATIONS on API 33+
 - [x] Mic first-class: pause/resume, markers, input-source picker (Mic / VoiceCommunication / Unprocessed / Camcorder for BT/USB routes)
+- [x] Session download FGS (`SessionDownloadService`, `connectedDevice`) + app-scoped `SessionDownloadManager` (AppContainer scope; survives ViewModel clear) + `SessionDownloadKeepAlive` gate; reuses `DownloadProgressNotifier` progress + cancel; stops on success / failure / cancel. Process-death resume + CRC → #94. **Owner hardware:** confirm large BLE/Wi‑Fi pull survives background + screen-off + Doze on S26 Ultra + Note Pro (#85)
 - [x] External import hub + share intents + watched SAF folders + MediaCodec normalize + hash dedupe
 - [x] Phone-first onboarding: Use phone mic / Import from a recorder / Connect a Plaud
 - [x] Processing FGS via WorkManager `setForegroundAsync` (`FOREGROUND_SERVICE_DATA_SYNC`) on `RecordingProcessWorker`
@@ -123,7 +124,7 @@ Phone-only / external (no Plaud required):
 ## In progress
 
 - [x] Chunked / windowed ASR + BLE-to-file sync (Y14/Y17); PCM above ~48 MiB spills to temp file and is window-read (no 200 MiB hard fail)
-- [x] Mic + processing foreground services (FOREGROUND_SERVICE) — mic `microphone` + processing `dataSync`
+- [x] Mic + processing + session-download foreground services (FOREGROUND_SERVICE) — mic `microphone` + processing `dataSync` + download `connectedDevice` (#85; HW confirm pending)
 - [x] SoftAP + WebSocket `:8081` per-socket bind + token preamble + BLE fallback (fixed AEAD nonce kept for Plaud SoftAP parity — see `docs/protocol/WIFI_FAST_PATH.md`)
 
 ### Release / distribution (code-ready; Play upload needs owner secrets)
