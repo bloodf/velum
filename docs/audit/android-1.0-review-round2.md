@@ -18,21 +18,21 @@ Round 1 left real regressions and gaps (especially AppContainer hang-on-failure,
 
 | Sev | Finding | Location | Fix | SHA |
 |-----|---------|----------|-----|-----|
-| **blocker** | `AppContainer` init exception left splash forever (`ready` never set / deferred never completed) | `VelumApplication`, `MainActivity` | `try/catch`, `completeExceptionally`, splash clears, fatal TextView (no raw stack) | *(this tip)* |
-| **high** | `summary_version` ids `sv-{epoch}-{1000..9999}` + `INSERT OR REPLACE` → birthday collisions drop versions | `VelumRepository.newSummaryVersionId` | Recording-scoped id + 6-digit random; tests for 80-row backfill | *(this tip)* |
-| **high** | v3→v4 backfill used `selectAllRecordings` (trashed=0) → trashed notes lost Versions | `backfillSummaryVersionsFromRecording` | Walk `selectAllRecordingIds` | *(this tip)* |
-| **high** | Privacy wipe left WAV/Ogg on disk | `wipeAllUserData`, `StoragePrivacyScreen` | `deleteLocalFile` callback + `deleteFileAtPath` | *(this tip)* |
-| **high** | Mic `runBlocking` / `Thread.sleep` on main (ANR) | `MicCapture.android`, Live pane, FAB | Suspend API; no `runBlocking`; UI uses coroutines | *(this tip)* |
-| **high** | AutoFlow seed marked **all** ids processed → process death drops in-flight rematch | `AutoFlowRunner` | Seed skips in-flight statuses; claim id after work | *(this tip)* |
-| **high** | `ensureApiKeyIfNeeded` ignored `ApiModelOverride` (wrong profile key) | `RecordingProcessor` | Pass override into resolve; merge template fields | *(this tip)* |
-| **high** | Phone WAV still `readFileBytes` entire file | `RecordingProcessor` | Path-based header probe + sliced copy to spill | *(this tip)* |
-| **medium** | Full-catalog meta=`1` before FTS rebuild → kill leaves All unsearchable | `ensureFullTemplatesImported` | Set meta **after** FTS rebuild | *(this tip)* |
-| **medium** | `rebuildFtsIndex` left orphan FTS rows; `isEmpty` required both tables empty | `FtsIndex`, repo | `clearAll` before rebuild; `isEmpty` if either empty; transactional FTS upgrade | *(this tip)* |
-| **medium** | Opus `RandomAccessFile.read` short reads; 20 ms PCM buffer; trailing continued packet dropped | `OpusDecoder.*`, demuxer | Read-fully loop; 120 ms frame buffer; EOS flush + test | *(this tip)* |
-| **medium** | Failed mic start kept `status=recording` + navigated | `App.kt` FAB | Trash row on failure; navigate only on `Started` | *(this tip)* |
-| **medium** | Detail tab not rotation-safe | `RecordingDetailScreen` | `rememberSaveable` for tab | *(this tip)* |
-| **medium** | `versionName` still `0.1.0-foundation` | `composeApp/build.gradle.kts` | `1.0.0` / `versionCode 100` | *(this tip)* |
-| **medium** | Prefer-Wi‑Fi settings hint claimed SoftAP downloads (BLE is the 1.0 path) | `Strings` preferWifi hints | Honest copy; status already said “BLE download active” | *(this tip)* |
+| **blocker** | `AppContainer` init exception left splash forever (`ready` never set / deferred never completed) | `VelumApplication`, `MainActivity` | `try/catch`, `completeExceptionally`, splash clears, fatal TextView (no raw stack) | `4321547` |
+| **high** | `summary_version` ids `sv-{epoch}-{1000..9999}` + `INSERT OR REPLACE` → birthday collisions drop versions | `VelumRepository.newSummaryVersionId` | Recording-scoped id + 6-digit random; tests for 80-row backfill | `4321547` |
+| **high** | v3→v4 backfill used `selectAllRecordings` (trashed=0) → trashed notes lost Versions | `backfillSummaryVersionsFromRecording` | Walk `selectAllRecordingIds` | `4321547` |
+| **high** | Privacy wipe left WAV/Ogg on disk | `wipeAllUserData`, `StoragePrivacyScreen` | `deleteLocalFile` callback + `deleteFileAtPath` | `4321547` |
+| **high** | Mic `runBlocking` / `Thread.sleep` on main (ANR) | `MicCapture.android`, Live pane, FAB | Suspend API; no `runBlocking`; UI uses coroutines | `4321547` |
+| **high** | AutoFlow seed marked **all** ids processed → process death drops in-flight rematch | `AutoFlowRunner` | Seed skips in-flight statuses; claim id after work | `4321547` |
+| **high** | `ensureApiKeyIfNeeded` ignored `ApiModelOverride` (wrong profile key) | `RecordingProcessor` | Pass override into resolve; merge template fields | `4321547` |
+| **high** | Phone WAV still `readFileBytes` entire file | `RecordingProcessor` | Path-based header probe + sliced copy to spill | `4321547` |
+| **medium** | Full-catalog meta=`1` before FTS rebuild → kill leaves All unsearchable | `ensureFullTemplatesImported` | Set meta **after** FTS rebuild | `4321547` |
+| **medium** | `rebuildFtsIndex` left orphan FTS rows; `isEmpty` required both tables empty | `FtsIndex`, repo | `clearAll` before rebuild; `isEmpty` if either empty; transactional FTS upgrade | `4321547` |
+| **medium** | Opus `RandomAccessFile.read` short reads; 20 ms PCM buffer; trailing continued packet dropped | `OpusDecoder.*`, demuxer | Read-fully loop; 120 ms frame buffer; EOS flush + test | `4321547` |
+| **medium** | Failed mic start kept `status=recording` + navigated | `App.kt` FAB | Trash row on failure; navigate only on `Started` | `4321547` |
+| **medium** | Detail tab not rotation-safe | `RecordingDetailScreen` | `rememberSaveable` for tab | `4321547` |
+| **medium** | `versionName` still `0.1.0-foundation` | `composeApp/build.gradle.kts` | `1.0.0` / `versionCode 100` | `4321547` |
+| **medium** | Prefer-Wi‑Fi settings hint claimed SoftAP downloads (BLE is the 1.0 path) | `Strings` preferWifi hints | Honest copy; status already said “BLE download active” | `4321547` |
 | **low** | Device download still peaks on full decrypt ByteArray (512 MiB cap) | `DeviceViewModel` / `PlaudFileCrypto` | Accepted for 1.0; SoftAP+streaming decrypt deferred | — |
 | **accepted** | `BleTransport.write` ungated | `KableBleTransport` | Production UI triple-gated via `PlaudDeviceClient` | — |
 | **accepted** | SoftAP WS not WSS | wifi transfer | Hardware SoftAP parity; BLE used for 1.0 downloads | — |
