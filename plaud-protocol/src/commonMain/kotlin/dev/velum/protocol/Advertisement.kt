@@ -56,18 +56,34 @@ data class PlaudAdvertisement(
  * (common CCITT-FALSE). Exact firmware match is still [?] in community docs.
  */
 object Crc16Ccitt {
-    fun compute(data: ByteArray, initial: Int = 0xFFFF): Int {
+    const val INITIAL: Int = 0xFFFF
+
+    fun compute(data: ByteArray, initial: Int = INITIAL): Int {
         var crc = initial and 0xFFFF
         for (b in data) {
-            crc = crc xor ((b.toInt() and 0xFF) shl 8)
-            repeat(8) {
-                crc = if ((crc and 0x8000) != 0) {
-                    ((crc shl 1) xor 0x1021) and 0xFFFF
-                } else {
-                    (crc shl 1) and 0xFFFF
-                }
-            }
+            crc = updateByte(crc, b.toInt() and 0xFF)
         }
         return crc
+    }
+
+    /** Incremental update for streamed downloads (same polynomial as [compute]). */
+    fun update(crc: Int, data: ByteArray): Int {
+        var next = crc and 0xFFFF
+        for (b in data) {
+            next = updateByte(next, b.toInt() and 0xFF)
+        }
+        return next
+    }
+
+    private fun updateByte(crc: Int, value: Int): Int {
+        var next = crc xor (value shl 8)
+        repeat(8) {
+            next = if ((next and 0x8000) != 0) {
+                ((next shl 1) xor 0x1021) and 0xFFFF
+            } else {
+                (next shl 1) and 0xFFFF
+            }
+        }
+        return next
     }
 }

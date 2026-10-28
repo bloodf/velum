@@ -1,8 +1,11 @@
 package dev.velum.ble.fake
 
+import dev.velum.ble.client.ByteArraySessionContent
+import dev.velum.ble.client.SessionContent
 import dev.velum.protocol.BatteryReading
 import dev.velum.protocol.Bytes
 import dev.velum.protocol.Commands
+import dev.velum.protocol.Crc16Ccitt
 import dev.velum.protocol.DeviceIdentityKeys
 import dev.velum.protocol.Framing
 import dev.velum.protocol.PacketType
@@ -26,17 +29,50 @@ import kotlinx.coroutines.sync.withLock
  *
  * When [requirePublicKey] is false (E2EE off), FE11 is skipped and the session
  * secret is emitted after a valid FE10.
+ *
+ * Honors sync-start offsets for resume tests and returns CRC-16/CCITT of the full
+ * session content on sync-stop. [fault] injects disconnects / corruption / etc.
  */
 class FakePlaudPeripheral(
     private val cipher: SessionCipher,
     private val clientKeys: DeviceIdentityKeys,
-    private val sessionFile: ByteArray,
+    private val sessionContent: SessionContent,
     private val sessionId: Long = 1_700_000_000L,
     private val batteryPercent: Int = 0x5d,
     private val requirePublicKey: Boolean = true,
     private val random: Random = Random.Default,
+    private val maxChunk: Int = 100,
 ) {
-    val notifications = MutableSharedFlow<ByteArray>(extraBufferCapacity = 128)
+    constructor(
+        cipher: SessionCipher,
+        clientKeys: DeviceIdentityKeys,
+        sessionFile: ByteArray,
+        sessionId: Long = 1_700_000_000L,
+        batteryPercent: Int = 0x5d,
+        requirePublicKey: Boolean = true,
+        random: Random = Random.Default,
+        maxChunk: Int = 100,
+    ) : this(
+        cipher = cipher,
+        clientKeys = clientKeys,
+        sessionContent = ByteArraySessionContent(sessionFile),
+        sessionId = sessionId,
+        batteryPercent = batteryPercent,
+        requirePublicKey = requirePublicKey,
+        random = random,
+        maxChunk = maxChunk,
+    )
+
+    val notifications = MutableSharedFlow<ByteArray>(extraBufferCapacity = 256)
+
+    /** Mutable so tests can clear a fault and resume. */
+    var fault: DownloadFault = DownloadFault.None
+
+    /**
+     * When true, sync-stop reports a wrong CRC (forces client-side mismatch without
+     * corrupting the byte stream — useful for Wi-Fi→BLE fallback CRC checks).
+     */
+    var forceWrongSyncStopCrc: Boolean = false
 
     private val mutex = Mutex()
     private val snChunks = mutableListOf<UnlockChunk>()
@@ -47,6 +83,10 @@ class FakePlaudPeripheral(
     private var deviceSendSeq: Long = 0
     private var unlocked = false
     private var handshakeFailed = false
+
+    fun sessionSize(): Long = sessionContent.size()
+
+    fun fullContentCrc(): Int = crcOfRange(0L, sessionContent.size())
 
     /** Clear session state so the next connection requires FE10 again. */
     fun resetUnlock() {
@@ -153,7 +193,7 @@ class FakePlaudPeripheral(
                 val entrySize = Sessions.entrySize(20)
                 val entry = ByteArray(entrySize)
                 Bytes.u32Le(sessionId).copyInto(entry, 0)
-                Bytes.u32Le(sessionFile.size.toLong()).copyInto(entry, 4)
+                Bytes.u32Le(sessionContent.size()).copyInto(entry, 4)
                 if (entrySize >= 9) entry[8] = 0
                 if (entrySize >= 10) entry[9] = 0
                 val listPayload = Bytes.u32Le(echoed) +
@@ -164,33 +204,21 @@ class FakePlaudPeripheral(
             }
             Commands.SYNC_FILE_START -> {
                 val sid = Bytes.readU32Le(payload, 0)
+                val startOffset = if (payload.size >= 8) Bytes.readU32Le(payload, 4) else 0L
                 emitCommand(
                     Commands.SYNC_FILE_START,
                     Bytes.u32Le(sid) + byteArrayOf(0),
                 )
-                var offset = 0
-                val maxChunk = 100
-                while (offset < sessionFile.size) {
-                    val end = minOf(offset + maxChunk, sessionFile.size)
-                    val slice = sessionFile.copyOfRange(offset, end)
-                    val frame = byteArrayOf(PacketType.RecordingData.code.toByte()) +
-                        Bytes.u32Le(sessionId) +
-                        Bytes.u32Le(offset.toLong()) +
-                        byteArrayOf(slice.size.toByte()) +
-                        slice
-                    emitEncrypted(frame)
-                    offset = end
-                }
-                val endFrame = byteArrayOf(PacketType.RecordingData.code.toByte()) +
-                    Bytes.u32Le(sessionId) +
-                    Bytes.u32Le(0xFFFF_FFFFL) +
-                    byteArrayOf(0)
-                emitEncrypted(endFrame)
+                emitSessionData(startOffset)
             }
             Commands.SYNC_FILE_STOP -> {
+                val crc = when {
+                    forceWrongSyncStopCrc -> fullContentCrc() xor 0xFFFF
+                    else -> fullContentCrc()
+                }
                 emitCommand(
                     Commands.SYNC_FILE_STOP,
-                    Bytes.u32Le(sessionId) + Bytes.u16Le(0xFFFF),
+                    Bytes.u32Le(sessionId) + Bytes.u16Le(crc),
                 )
             }
             Commands.BATTERY_LIKELY -> {
@@ -200,6 +228,84 @@ class FakePlaudPeripheral(
             }
             else -> error("Fake peripheral does not handle cmd $cmd")
         }
+    }
+
+    private suspend fun emitSessionData(startOffset: Long) {
+        val total = sessionContent.size()
+        require(startOffset in 0..total) { "startOffset=$startOffset out of range size=$total" }
+
+        val truncateCap = when (val f = fault) {
+            is DownloadFault.TruncateFinalChunk -> f.sendOnlyBytes.coerceIn(0L, total)
+            else -> total
+        }
+        val dropAt = when (val f = fault) {
+            is DownloadFault.DropAtOffset -> f.offset
+            else -> null
+        }
+        val corruptAt = when (val f = fault) {
+            is DownloadFault.CorruptAtOffset -> f.offset
+            else -> null
+        }
+        val duplicateAt = when (val f = fault) {
+            is DownloadFault.DuplicateChunkAt -> f.offset
+            else -> null
+        }
+
+        var offset = startOffset
+        var duplicated = false
+        var dropped = false
+        while (offset < truncateCap) {
+            if (dropAt != null && offset >= dropAt) {
+                // Stop mid-stream without End — client times out; chunks already
+                // buffered are drained and verified so resume can continue.
+                dropped = true
+                break
+            }
+            val end = minOf(offset + maxChunk, truncateCap)
+            val length = (end - offset).toInt()
+            val slice = sessionContent.slice(offset, length)
+            if (corruptAt != null && offset <= corruptAt && corruptAt < end) {
+                val idx = (corruptAt - offset).toInt()
+                slice[idx] = (slice[idx].toInt() xor 0xFF).toByte()
+            }
+            emitDataChunk(offset, slice)
+            if (duplicateAt != null && !duplicated && offset == duplicateAt) {
+                emitDataChunk(offset, slice.copyOf())
+                duplicated = true
+            }
+            offset = end
+        }
+
+        if (dropped) return
+
+        val endFrame = byteArrayOf(PacketType.RecordingData.code.toByte()) +
+            Bytes.u32Le(sessionId) +
+            Bytes.u32Le(0xFFFF_FFFFL) +
+            byteArrayOf(0)
+        emitEncrypted(endFrame)
+    }
+
+    private suspend fun emitDataChunk(offset: Long, slice: ByteArray) {
+        val frame = byteArrayOf(PacketType.RecordingData.code.toByte()) +
+            Bytes.u32Le(sessionId) +
+            Bytes.u32Le(offset) +
+            byteArrayOf(slice.size.toByte()) +
+            slice
+        emitEncrypted(frame)
+    }
+
+    private fun crcOfRange(start: Long, end: Long): Int {
+        var crc = Crc16Ccitt.INITIAL
+        var offset = start
+        val buf = ByteArray(4096)
+        while (offset < end) {
+            val n = minOf(buf.size.toLong(), end - offset).toInt()
+            sessionContent.copyInto(offset, n, buf, 0)
+            // update only the used prefix
+            crc = Crc16Ccitt.update(crc, if (n == buf.size) buf else buf.copyOf(n))
+            offset += n
+        }
+        return crc
     }
 
     private suspend fun emitCommand(cmd: Int, payload: ByteArray) {

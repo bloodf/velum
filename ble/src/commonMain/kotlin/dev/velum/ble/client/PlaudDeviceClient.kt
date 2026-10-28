@@ -5,8 +5,9 @@ import dev.velum.protocol.Battery
 import dev.velum.protocol.BatteryReading
 import dev.velum.protocol.Bytes
 import dev.velum.protocol.Commands
-import dev.velum.protocol.DeviceIdentityKeys
 import dev.velum.protocol.CommonSettings
+import dev.velum.protocol.Crc16Ccitt
+import dev.velum.protocol.DeviceIdentityKeys
 import dev.velum.protocol.ForbiddenOpcodes
 import dev.velum.protocol.ForbiddenSettings
 import dev.velum.protocol.Framing
@@ -167,8 +168,8 @@ class PlaudDeviceClient(
 
     /**
      * SoftAP + WebSocket :8081 fast path (Plaud parity); on any Wi-Fi failure
-     * falls back to BLE [downloadSession]. [assemble] collects sealed WS frames
-     * into the session payload (see [WifiTransferCoordinator]).
+     * falls back to BLE [downloadSession] (CRC-verified). [assemble] collects sealed
+     * WS frames into the session payload (see [WifiTransferCoordinator]).
      */
     suspend fun downloadSessionPreferWifi(
         sessionId: Long,
@@ -202,7 +203,8 @@ class PlaudDeviceClient(
     /**
      * Download a session. Large transfers stream to a temp file when available,
      * then return bytes (still capped by [MAX_SESSION_DOWNLOAD_BYTES]).
-     * Prefer [downloadSessionTo] when the caller already has a disk sink.
+     * Prefer [downloadSessionTo] / [SessionDownloadEngine] when the caller already
+     * has a disk sink or needs durable resume.
      *
      * [onProgress] reports cumulative received bytes (estimate progress as
      * received / sizeBytes when sizeBytes > 0).
@@ -219,36 +221,83 @@ class PlaudDeviceClient(
         val temp = if (useFile) createTempSessionFile() else null
         if (temp != null) {
             try {
-                downloadSessionTo(sessionId, sizeBytes, temp, onProgress)
+                val receipt = downloadSessionTo(sessionId, sizeBytes, temp, onProgress)
                 require(temp.size() <= MAX_SESSION_DOWNLOAD_BYTES) {
                     "Session download exceeded ${MAX_SESSION_DOWNLOAD_BYTES}-byte cap"
                 }
-                return temp.readAll()
+                val bytes = temp.readAll()
+                val localCrc = Crc16Ccitt.compute(bytes)
+                if (receipt.deviceCrc != localCrc) {
+                    throw SessionCrcMismatchException(
+                        sessionId = sessionId,
+                        expectedCrc = receipt.deviceCrc,
+                        actualCrc = localCrc,
+                        verifiedOffset = bytes.size.toLong(),
+                        partialPath = temp.absolutePath(),
+                    )
+                }
+                return bytes
             } finally {
                 temp.delete()
             }
         }
         val buffer = SessionDownloadBuffer(MAX_SESSION_DOWNLOAD_BYTES)
-        downloadSessionTo(sessionId, sizeBytes, SessionByteSink { buffer.write(it) }, onProgress)
-        return buffer.toByteArray()
+        val receipt = downloadSessionTo(
+            sessionId,
+            sizeBytes,
+            SessionByteSink { buffer.write(it) },
+            onProgress,
+        )
+        val bytes = buffer.toByteArray()
+        val localCrc = Crc16Ccitt.compute(bytes)
+        if (receipt.deviceCrc != localCrc) {
+            throw SessionCrcMismatchException(
+                sessionId = sessionId,
+                expectedCrc = receipt.deviceCrc,
+                actualCrc = localCrc,
+                verifiedOffset = bytes.size.toLong(),
+                partialPath = null,
+            )
+        }
+        return bytes
     }
 
-    /** Stream session bytes into [sink] without retaining the full payload in a Byte list. */
+    /**
+     * Stream session bytes into [sink] without retaining the full payload in a Byte list.
+     *
+     * When [startOffset] > 0, sync starts at that offset (resume). Chunk offsets are
+     * checked for gaps/duplicates; [onVerifiedOffset] fires after each contiguous
+     * accepted chunk with the running CRC-16/CCITT over the verified prefix.
+     *
+     * Returns the sync-stop receipt. Does **not** delete [sink] data on CRC mismatch —
+     * callers that own a durable partial must keep it recoverable.
+     */
     suspend fun downloadSessionTo(
         sessionId: Long,
         sizeBytes: Long,
         sink: SessionByteSink,
         onProgress: ((receivedBytes: Long) -> Unit)? = null,
-    ) {
+        startOffset: Long = 0L,
+        initialCrc: Int = Crc16Ccitt.INITIAL,
+        onVerifiedOffset: ((offset: Long, runningCrc: Int) -> Unit)? = null,
+        verifyDeviceCrc: Boolean = true,
+        overlapReader: ((offset: Long, length: Int) -> ByteArray)? = null,
+    ): SessionDownloadReceipt {
         require(sizeBytes in 0..MAX_SESSION_DOWNLOAD_BYTES) {
             "Session sizeBytes=$sizeBytes exceeds cap of $MAX_SESSION_DOWNLOAD_BYTES"
         }
-        val start = Sessions.encodeSyncStart(sessionId, 0, sizeBytes)
+        require(startOffset >= 0L) { "startOffset must be >= 0" }
+        require(sizeBytes == 0L || startOffset <= sizeBytes) {
+            "startOffset=$startOffset exceeds sizeBytes=$sizeBytes"
+        }
+        val endOffset = if (sizeBytes > 0L) sizeBytes else 0xFFFF_FFFFL
+        val start = Sessions.encodeSyncStart(sessionId, startOffset, endOffset)
         val startPayload = transactCommand(Commands.SYNC_FILE_START, start)
         val startRsp = Sessions.parseSyncStartResponse(startPayload)
         require(!startRsp.refused) { "Sync start refused status=${startRsp.status}" }
 
-        var written = 0L
+        var verified = startOffset
+        var runningCrc = initialCrc and 0xFFFF
         try {
             while (true) {
                 val raw = awaitDecryptedFrame(responseTimeout) { true }
@@ -256,12 +305,20 @@ class PlaudDeviceClient(
                     is InboundPacket.RecordingData -> {
                         when (val data = Sessions.parseRecordingData(raw, protocolVersion)) {
                             is RecordingDataPacket.Chunk -> {
-                                require(written + data.data.size <= MAX_SESSION_DOWNLOAD_BYTES) {
-                                    "Session download exceeded ${MAX_SESSION_DOWNLOAD_BYTES}-byte cap"
+                                verified = acceptChunk(
+                                    sessionId = sessionId,
+                                    chunk = data,
+                                    verified = verified,
+                                    sizeBytes = sizeBytes,
+                                    sink = sink,
+                                    overlapReader = overlapReader,
+                                ) { newVerified, appended ->
+                                    if (appended.isNotEmpty()) {
+                                        runningCrc = Crc16Ccitt.update(runningCrc, appended)
+                                        onVerifiedOffset?.invoke(newVerified, runningCrc)
+                                        onProgress?.invoke(newVerified)
+                                    }
                                 }
-                                sink.write(data.data)
-                                written += data.data.size
-                                onProgress?.invoke(written)
                             }
                             is RecordingDataPacket.End -> break
                         }
@@ -271,11 +328,32 @@ class PlaudDeviceClient(
                     }
                     else -> Unit
                 }
-                if (sizeBytes > 0 && written >= sizeBytes) break
+                if (sizeBytes > 0 && verified >= sizeBytes) break
             }
 
             val stopPayload = transactCommand(Commands.SYNC_FILE_STOP, Sessions.encodeSyncStop())
-            Sessions.parseSyncStopResponse(stopPayload)
+            val stop = Sessions.parseSyncStopResponse(stopPayload)
+            if (sizeBytes > 0L && verified < sizeBytes) {
+                throw SessionDownloadTruncatedException(
+                    sessionId = sessionId,
+                    expectedSizeBytes = sizeBytes,
+                    verifiedOffset = verified,
+                )
+            }
+            if (verifyDeviceCrc && stop.crc != runningCrc) {
+                throw SessionCrcMismatchException(
+                    sessionId = sessionId,
+                    expectedCrc = stop.crc,
+                    actualCrc = runningCrc,
+                    verifiedOffset = verified,
+                    partialPath = null,
+                )
+            }
+            return SessionDownloadReceipt(
+                sessionId = stop.sessionId,
+                deviceCrc = stop.crc,
+                verifiedOffset = verified,
+            )
         } catch (e: kotlinx.coroutines.CancellationException) {
             runCatching {
                 transactCommand(Commands.SYNC_FILE_STOP, Sessions.encodeSyncStop())
@@ -283,6 +361,61 @@ class PlaudDeviceClient(
             throw e
         }
     }
+
+    /**
+     * Accept one recording-data chunk. Returns the new verified offset.
+     * [onAppend] receives the new offset and the bytes that were newly written (empty
+     * when the chunk was a pure duplicate overlap).
+     */
+    private fun acceptChunk(
+        sessionId: Long,
+        chunk: RecordingDataPacket.Chunk,
+        verified: Long,
+        sizeBytes: Long,
+        sink: SessionByteSink,
+        overlapReader: ((offset: Long, length: Int) -> ByteArray)?,
+        onAppend: (newVerified: Long, appended: ByteArray) -> Unit,
+    ): Long {
+        val chunkOffset = chunk.offset
+        val data = chunk.data
+        if (data.isEmpty()) {
+            onAppend(verified, ByteArray(0))
+            return verified
+        }
+        if (chunkOffset > verified) {
+            throw SessionDownloadGapException(
+                sessionId = sessionId,
+                expectedOffset = verified,
+                chunkOffset = chunkOffset,
+            )
+        }
+        if (chunkOffset + data.size <= verified) {
+            // Fully overlapped duplicate — ignore (optionally check equality).
+            if (overlapReader != null) {
+                val existing = overlapReader(chunkOffset, data.size)
+                require(existing.contentEquals(data)) {
+                    "Duplicate chunk at $chunkOffset does not match verified bytes"
+                }
+            }
+            onAppend(verified, ByteArray(0))
+            return verified
+        }
+        val skip = (verified - chunkOffset).toInt()
+        val appended = if (skip == 0) data else data.copyOfRange(skip, data.size)
+        require(verified + appended.size <= MAX_SESSION_DOWNLOAD_BYTES) {
+            "Session download exceeded ${MAX_SESSION_DOWNLOAD_BYTES}-byte cap"
+        }
+        if (sizeBytes > 0L) {
+            require(verified + appended.size <= sizeBytes) {
+                "Chunk would exceed declared sizeBytes=$sizeBytes"
+            }
+        }
+        sink.write(appended)
+        val newVerified = verified + appended.size
+        onAppend(newVerified, appended)
+        return newVerified
+    }
+
 
     suspend fun readBattery(): BatteryReading {
         val packet = Battery.encodeBatteryRequest()
