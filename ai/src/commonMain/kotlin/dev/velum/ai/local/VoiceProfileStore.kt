@@ -5,11 +5,13 @@ import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.random.Random
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -34,6 +36,7 @@ class VoiceProfileStore(
     private val profilesDir get() = root.resolve("voices").resolve("profiles")
     private val cacheDir get() = root.resolve("voices").resolve("cluster-cache")
     private val legacyKeyFile get() = root.resolve("voices").resolve(".profile_key")
+    private val legacyPurgedMarker get() = root.resolve("voices").resolve(".profile_key.purged")
 
     private val keyMutex = Mutex()
 
@@ -58,11 +61,11 @@ class VoiceProfileStore(
      * priming fails with [VoiceProfileKeyUnreadableException] — never overwrites the
      * key and never deletes profiles.
      *
-     * Legacy purge runs only when `voices/.profile_key` exists (once): undecryptable
-     * blobs under that legacy migration are dropped, then the file is deleted. Normal
-     * undecryptable reads never delete profiles.
-     *
-     * Never logs key material — only the exception class name is published for UI.
+     * Legacy purge runs only when this prime minted a brand-new key, `voices/.profile_key`
+     * still exists, and no `.profile_key.purged` marker is present. It deletes only
+     * profiles that decrypt under the legacy file key (provably legacy-key blobs);
+     * corrupt JSON, missing `.enc`, and dimension mismatches are kept. File I/O runs
+     * on [Dispatchers.IO]. Never logs key material.
      */
     suspend fun ensureKey() {
         if (cipherOverride != null) {
@@ -74,19 +77,25 @@ class VoiceProfileStore(
             if (_primingState.value is VoiceKeyPrimingState.Ready) return
             try {
                 val existing = secureStore.getString(PROFILE_KEY_SECURE)
+                var mintedNewKey = false
                 val key = when {
                     !existing.isNullOrBlank() -> Base64.decode(existing)
                     secureStore.contains(PROFILE_KEY_SECURE) ->
                         throw VoiceProfileKeyUnreadableException()
                     else -> {
-                        val generated = ByteArray(32).also { Random.Default.nextBytes(it) }
+                        mintedNewKey = true
+                        val generated = ByteArray(PROFILE_KEY_BYTES).also {
+                            Random.Default.nextBytes(it)
+                        }
                         secureStore.putString(PROFILE_KEY_SECURE, Base64.encode(generated))
                         generated
                     }
                 }
                 // Purge before publishing the key so no reader observes mid-purge state.
-                if (legacyKeyFile.exists()) {
-                    purgeLegacyConstantKeyArtifacts(createProfileCipher(key))
+                if (mintedNewKey && legacyKeyFile.exists() && !legacyPurgedMarker.exists()) {
+                    withContext(Dispatchers.IO) {
+                        purgeLegacyConstantKeyArtifacts()
+                    }
                 }
                 primedKey = key
                 _primingState.value = VoiceKeyPrimingState.Ready
@@ -115,28 +124,54 @@ class VoiceProfileStore(
     }
 
     /**
-     * One-shot legacy migration: drop profiles that cannot be opened with [cipher],
-     * then delete `voices/.profile_key` so this never runs again. Caller must only
-     * invoke when the legacy file exists. Never decrypts with the old constant key.
+     * One-shot legacy migration when a brand-new SecureStore key was just minted.
+     * Deletes only profiles that open under the bytes in `voices/.profile_key`
+     * (provably legacy-key blobs). Always writes `.profile_key.purged` so a failed
+     * delete of the legacy file cannot cause repeated purges. Never uses the old
+     * constant key formula from production sources — only the on-disk file bytes.
      */
-    private fun purgeLegacyConstantKeyArtifacts(cipher: ProfileCipher) {
+    private fun purgeLegacyConstantKeyArtifacts() {
         if (!legacyKeyFile.exists()) return
-        if (profilesDir.exists()) {
-            profilesDir.listChildren()
-                .filter { !it.isDirectory() && it.name.endsWith(".json") }
-                .forEach { metaFile ->
-                    val id = metaFile.name.removeSuffix(".json")
-                    val readable = runCatching {
-                        json.decodeFromString<VoiceProfileFile>(
-                            metaFile.readBytes().decodeToString(),
-                        ).toProfile(metaFile.resolveSiblingEnc(), cipher)
-                    }.getOrNull() != null
-                    if (!readable) {
-                        delete(id)
+        if (legacyPurgedMarker.exists()) return
+        val legacyBytes = runCatching { legacyKeyFile.readBytes() }.getOrNull()
+        if (legacyBytes != null && legacyBytes.size == PROFILE_KEY_BYTES) {
+            val legacyCipher = createProfileCipher(legacyBytes)
+            if (profilesDir.exists()) {
+                profilesDir.listChildren()
+                    .filter { !it.isDirectory() && it.name.endsWith(".json") }
+                    .forEach { metaFile ->
+                        if (isProvablyLegacyKeyBlob(metaFile, legacyCipher)) {
+                            delete(metaFile.name.removeSuffix(".json"))
+                        }
                     }
-                }
+            }
         }
         legacyKeyFile.deleteRecursively()
+        // Record completion even when the legacy file delete fails, so remints
+        // with a leftover `.profile_key` do not purge again.
+        writeLegacyPurgedMarker()
+    }
+
+    /**
+     * True only when meta parses, `.enc` exists, and the blob decrypts + unpacks under
+     * [legacyCipher] with a matching dimension. Corrupt JSON, missing `.enc`, decrypt
+     * failure, or dim mismatch → false (keep the files).
+     */
+    private fun isProvablyLegacyKeyBlob(
+        metaFile: ModelStoreDir,
+        legacyCipher: ProfileCipher,
+    ): Boolean {
+        val meta = runCatching {
+            json.decodeFromString<VoiceProfileFile>(metaFile.readBytes().decodeToString())
+        }.getOrNull() ?: return false
+        val encFile = metaFile.resolveSiblingEnc()
+        if (!encFile.exists()) return false
+        return runCatching { meta.toProfile(encFile, legacyCipher) }.getOrNull() != null
+    }
+
+    private fun writeLegacyPurgedMarker() {
+        root.resolve("voices").createDirectories()
+        legacyPurgedMarker.writeBytes(MARKER_BYTES)
     }
 
     suspend fun listProfiles(): List<VoiceProfile> {
@@ -221,10 +256,12 @@ class VoiceProfileStore(
         profilesDir.resolve("$id.f32").deleteRecursively()
     }
 
-    /** File delete only — does not touch the cipher. */
+    /** File delete only — does not touch the cipher. Also clears legacy key artifacts. */
     fun wipeAll() {
         if (profilesDir.exists()) profilesDir.deleteRecursively()
         profilesDir.createDirectories()
+        legacyKeyFile.deleteRecursively()
+        legacyPurgedMarker.deleteRecursively()
     }
 
     suspend fun match(
@@ -429,6 +466,8 @@ class VoiceProfileStore(
         const val DEFAULT_MATCH_THRESHOLD = 0.55f
         const val MAX_SAMPLES = 8
         const val PROFILE_KEY_SECURE = "voice.profile_aes_key_b64"
+        const val PROFILE_KEY_BYTES = 32
+        private val MARKER_BYTES = byteArrayOf(1)
 
         fun cosineSimilarity(a: FloatArray, b: FloatArray): Float {
             require(a.size == b.size) { "embedding size mismatch ${a.size} vs ${b.size}" }
