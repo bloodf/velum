@@ -33,8 +33,8 @@ work = "2.10.0"
 splashscreen = "1.0.1"
 # 1.1.0 ships 16 KB-aligned libandroidx.graphics.path.so
 androidx-graphics-path = "1.1.0"
-# Same stack Plaud uses for SoftAP WS :8081 (`org.java_websocket`).
-java-websocket = "1.5.7"
+# SoftAP WS :8081 (`org.java_websocket`); 1.6.0 is the current release pin (#28).
+java-websocket = "1.6.0"
 
 [libraries]
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
