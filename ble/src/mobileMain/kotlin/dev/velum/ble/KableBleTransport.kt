@@ -26,6 +26,8 @@ import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * Kable-backed BLE transport for Android and iOS.
@@ -34,10 +36,11 @@ import kotlinx.coroutines.launch
  * Characteristic UUIDs come from the [GattProfile] passed to [connect].
  */
 @OptIn(ExperimentalUuidApi::class)
-class KableBleTransport : BleTransport {
+class KableBleTransport : BleTransport, BleSealedWriteSink {
     override val isAvailable: Boolean = true
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val mutex = Mutex()
     private val _state = MutableStateFlow<BleConnectionState>(BleConnectionState.Idle)
     override val connectionState: StateFlow<BleConnectionState> = _state.asStateFlow()
 
@@ -80,28 +83,34 @@ class KableBleTransport : BleTransport {
     override fun advertisements(): Flow<ConnectedDevice> = advertisementFlow.asSharedFlow()
 
     override suspend fun startScan() {
-        stopScan()
-        _state.value = BleConnectionState.Scanning
-        _devices.value = emptyList()
-        seen.clear()
-        scanJob = scope.launch {
-            try {
-                scanner.advertisements.collect { adv ->
-                    val device = adv.toConnectedDevice()
-                    seen[device.id] = adv
-                    _devices.update { current ->
-                        val without = current.filterNot { it.id == device.id }
-                        (without + device).sortedByDescending { it.rssi ?: Int.MIN_VALUE }
+        mutex.withLock {
+            stopScanLocked()
+            _state.value = BleConnectionState.Scanning
+            _devices.value = emptyList()
+            seen.clear()
+            scanJob = scope.launch {
+                try {
+                    scanner.advertisements.collect { adv ->
+                        val device = adv.toConnectedDevice()
+                        seen[device.id] = adv
+                        _devices.update { current ->
+                            val without = current.filterNot { it.id == device.id }
+                            (without + device).sortedByDescending { it.rssi ?: Int.MIN_VALUE }
+                        }
+                        advertisementFlow.emit(device)
                     }
-                    advertisementFlow.emit(device)
+                } catch (t: Throwable) {
+                    _state.value = BleConnectionState.Failed(t.message ?: t.toString())
                 }
-            } catch (t: Throwable) {
-                _state.value = BleConnectionState.Failed(t.message ?: t.toString())
             }
         }
     }
 
     override suspend fun stopScan() {
+        mutex.withLock { stopScanLocked() }
+    }
+
+    private suspend fun stopScanLocked() {
         scanJob?.cancelAndJoin()
         scanJob = null
         if (_state.value is BleConnectionState.Scanning) {
@@ -110,93 +119,137 @@ class KableBleTransport : BleTransport {
     }
 
     override suspend fun connect(deviceId: String, profile: GattProfile) {
-        val adv = seen[deviceId]
-            ?: run {
-                _state.value = BleConnectionState.Failed("Unknown device $deviceId — scan first")
-                return
-            }
-        stopScan()
-        _state.value = BleConnectionState.Connecting(deviceId)
-        try {
-            peripheral?.close()
-            clearNotifyJobs()
-            val p = Peripheral(adv)
-            peripheral = p
-            activeProfile = profile
-            p.connect()
-            // preferredMtu is recorded on the profile for drivers; Kable negotiates
-            // ATT MTU via its own defaults / platform hooks.
-            notifyFlows.clear()
-            val jobs = mutableListOf<Job>()
-            for (ch in profile.notifyCharacteristics()) {
-                val flow = MutableSharedFlow<ByteArray>(extraBufferCapacity = 128)
-                notifyFlows[ch.name] = flow
-                val kableChar = characteristicOf(
-                    service = Uuid.parse(profile.resolveServiceUuid(ch)),
-                    characteristic = Uuid.parse(ch.uuid),
-                )
-                jobs += scope.launch {
-                    p.observe(kableChar).collect { flow.emit(it) }
+        mutex.withLock {
+            val adv = seen[deviceId]
+                ?: run {
+                    _state.value = BleConnectionState.Failed("Unknown device $deviceId — scan first")
+                    return
                 }
-            }
-            notifyJobs = jobs
-            val device = adv.toConnectedDevice()
-            _state.value = BleConnectionState.Connected(device)
-            disconnectWatchJob?.cancel()
-            disconnectWatchJob = scope.launch {
-                p.state
-                    .filter { it is State.Disconnected }
-                    .collect {
-                        clearNotifyJobs()
-                        if (peripheral === p) {
-                            runCatching { p.close() }
-                            peripheral = null
-                        }
-                        activeProfile = null
-                        notifyFlows.clear()
-                        _state.value = BleConnectionState.Idle
+            stopScanLocked()
+            _state.value = BleConnectionState.Connecting(deviceId)
+            try {
+                peripheral?.close()
+                clearNotifyJobs()
+                val p = Peripheral(adv)
+                peripheral = p
+                p.connect()
+                // preferredMtu is on the profile for drivers. Kable exposes
+                // requestMtu only on AndroidPeripheral (not common Peripheral /
+                // iOS), so mobileMain does not call it here.
+                notifyFlows.clear()
+                val jobs = mutableListOf<Job>()
+                for (ch in profile.notifyCharacteristics()) {
+                    val flow = MutableSharedFlow<ByteArray>(extraBufferCapacity = 128)
+                    notifyFlows[ch.name] = flow
+                    val kableChar = characteristicOf(
+                        service = Uuid.parse(profile.resolveServiceUuid(ch)),
+                        characteristic = Uuid.parse(ch.uuid),
+                    )
+                    jobs += scope.launch {
+                        p.observe(kableChar).collect { flow.emit(it) }
                     }
+                }
+                notifyJobs = jobs
+                val device = adv.toConnectedDevice()
+                // Publish profile only after connect + notify setup succeed.
+                activeProfile = profile
+                _state.value = BleConnectionState.Connected(device)
+                disconnectWatchJob?.cancel()
+                disconnectWatchJob = scope.launch {
+                    p.state
+                        .filter { it is State.Disconnected }
+                        .collect {
+                            mutex.withLock {
+                                clearNotifyJobs()
+                                if (peripheral === p) {
+                                    runCatching { p.close() }
+                                    peripheral = null
+                                }
+                                activeProfile = null
+                                notifyFlows.clear()
+                                _state.value = BleConnectionState.Idle
+                            }
+                        }
+                }
+            } catch (t: Throwable) {
+                activeProfile = null
+                notifyFlows.clear()
+                peripheral = null
+                _state.value = BleConnectionState.Failed(t.message ?: t.toString())
             }
-        } catch (t: Throwable) {
-            activeProfile = null
-            _state.value = BleConnectionState.Failed(t.message ?: t.toString())
         }
     }
 
     override suspend fun disconnect() {
-        disconnectWatchJob?.cancelAndJoin()
-        disconnectWatchJob = null
-        clearNotifyJobs()
-        runCatching { peripheral?.disconnect() }
-        peripheral?.close()
-        peripheral = null
-        activeProfile = null
-        notifyFlows.clear()
-        _state.value = BleConnectionState.Idle
+        // Cancel the watch job outside the mutex so it cannot deadlock waiting
+        // to enter mutex.withLock while we hold it for cancelAndJoin.
+        val watch = mutex.withLock {
+            val job = disconnectWatchJob
+            disconnectWatchJob = null
+            job
+        }
+        watch?.cancelAndJoin()
+        mutex.withLock {
+            clearNotifyJobs()
+            runCatching { peripheral?.disconnect() }
+            peripheral?.close()
+            peripheral = null
+            activeProfile = null
+            notifyFlows.clear()
+            _state.value = BleConnectionState.Idle
+        }
     }
 
     override suspend fun write(
         characteristic: String,
         payload: ByteArray,
         withoutResponse: Boolean,
-        safety: BleWriteSafety,
     ) {
-        val p = peripheral ?: error("Not connected")
-        val profile = activeProfile ?: error("No active GATT profile")
-        val ch = profile.characteristic(characteristic)
-        require(ch.canWrite) {
-            "Characteristic '${ch.name}' on profile '${profile.id}' is not writable"
+        mutex.withLock {
+            val p = peripheral ?: error("Not connected")
+            val profile = activeProfile ?: error("No active GATT profile")
+            val ch = profile.characteristic(characteristic)
+            require(ch.canWrite) {
+                "Characteristic '${ch.name}' on profile '${profile.id}' is not writable"
+            }
+            val serviceUuid = profile.resolveServiceUuid(ch)
+            PlaudWriteGuard.requireAllowedIfPlaudWrite(
+                serviceUuid = serviceUuid,
+                characteristicUuid = ch.uuid,
+                payload = payload,
+            )
+            writeToPeripheral(p, serviceUuid, ch.uuid, payload, withoutResponse)
         }
-        val serviceUuid = profile.resolveServiceUuid(ch)
-        PlaudWriteGuard.maybeRequireAllowed(
-            serviceUuid = serviceUuid,
-            characteristicUuid = ch.uuid,
-            payload = payload,
-            safety = safety,
-        )
+    }
+
+    override suspend fun writeSealedAlreadyGuarded(
+        characteristic: String,
+        payload: ByteArray,
+        withoutResponse: Boolean,
+    ) {
+        mutex.withLock {
+            val p = peripheral ?: error("Not connected")
+            val profile = activeProfile ?: error("No active GATT profile")
+            val ch = profile.characteristic(characteristic)
+            require(ch.canWrite) {
+                "Characteristic '${ch.name}' on profile '${profile.id}' is not writable"
+            }
+            val serviceUuid = profile.resolveServiceUuid(ch)
+            // No opcode parse — plaintext already checked by PlaudBleTransport.
+            writeToPeripheral(p, serviceUuid, ch.uuid, payload, withoutResponse)
+        }
+    }
+
+    private suspend fun writeToPeripheral(
+        p: Peripheral,
+        serviceUuid: String,
+        characteristicUuid: String,
+        payload: ByteArray,
+        withoutResponse: Boolean,
+    ) {
         val kableChar = characteristicOf(
             service = Uuid.parse(serviceUuid),
-            characteristic = Uuid.parse(ch.uuid),
+            characteristic = Uuid.parse(characteristicUuid),
         )
         val type = if (withoutResponse) WriteType.WithoutResponse else WriteType.WithResponse
         p.write(kableChar, payload, type)

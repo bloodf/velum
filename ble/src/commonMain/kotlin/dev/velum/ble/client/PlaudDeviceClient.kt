@@ -331,12 +331,12 @@ class PlaudDeviceClient(
             assertOutboundAllowed(packet)
             val sec = secret
             if (sec == null) {
-                // Transport layer also guards plaintext (BleWriteSafety.GuardPlaintext).
+                // Transport layer also guards plaintext on public write().
                 ble.write(packet, withoutResponse = false)
             } else {
                 val sealed = cipher.sealPacket(sec, sendSeq, packet)
                 sendSeq += 1
-                // Transport-layer check on plaintext, then write sealed as AlreadyChecked
+                // Transport-layer check on plaintext, then internal sealed write
                 // so ciphertext is never parsed as an opcode.
                 ble.writeSealedAfterPlaintextGuard(
                     plaintext = packet,
