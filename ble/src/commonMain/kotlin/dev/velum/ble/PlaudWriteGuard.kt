@@ -9,7 +9,7 @@ import dev.velum.protocol.PlaudUuids
  *
  * Public [BleTransport.write] always runs this for Plaud write targets.
  * Skipping the opcode parse is only possible via
- * [AbstractBleTransport.writeSealedAlreadyGuarded] after
+ * [BleSealedWriteSink.writeSealedAlreadyGuarded] after
  * [PlaudEncryptedSession.writeEncrypted] has already passed
  * [requireAllowedPlaintext] and sealed inside `:ble`.
  */

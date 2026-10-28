@@ -1,23 +1,33 @@
 package dev.velum.ble
 
 /**
- * Base for platform BLE transports that support encrypted-session writes.
+ * Module-internal sink for already-sealed Plaud link frames.
  *
- * [writeSealedAlreadyGuarded] is **internal** so sealed bytes never appear on the
- * public JVM/API surface. Only [PlaudEncryptedSession.writeEncrypted] (after a
- * plaintext [PlaudWriteGuard] check) may call it from inside `:ble`.
- *
- * Concrete transports must use `internal override` for that method.
+ * [writeSealedAlreadyGuarded] lives **only** here — not on the public
+ * [BleTransport] surface. [PlaudEncryptedSession.writeEncrypted] obtains a sink
+ * via [AbstractBleTransport.sealedWriteSink] after guarding plaintext and sealing
+ * inside `:ble`.
  */
-abstract class AbstractBleTransport : BleTransport {
+internal interface BleSealedWriteSink {
     /**
      * Write already-sealed bytes without opcode parsing.
      *
-     * Internal only — not part of the public [BleTransport] contract.
+     * Callers must have already run [PlaudWriteGuard.requireAllowedPlaintext].
      */
-    internal abstract suspend fun writeSealedAlreadyGuarded(
+    suspend fun writeSealedAlreadyGuarded(
         characteristic: String,
         payload: ByteArray,
         withoutResponse: Boolean = false,
     )
+}
+
+/**
+ * Public transport base that exposes a module-internal [BleSealedWriteSink].
+ *
+ * Subclasses must not put [BleSealedWriteSink.writeSealedAlreadyGuarded] on their
+ * own public API; they return a sink via [sealedWriteSink] (`internal override`).
+ */
+abstract class AbstractBleTransport : BleTransport {
+    /** Module-internal sealed-write adapter. */
+    internal abstract fun sealedWriteSink(): BleSealedWriteSink
 }
