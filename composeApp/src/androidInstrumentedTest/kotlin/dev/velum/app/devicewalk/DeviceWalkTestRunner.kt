@@ -8,19 +8,25 @@ import androidx.test.runner.AndroidJUnitRunner
 /**
  * Enables [DeviceWalkMode] + StrictMode penaltyDeath (disk/network on main) when the
  * instrumentation arg `velumDeviceWalk=true` is set (CI device-walk job).
+ *
+ * StrictMode must be installed **after** [AndroidJUnitRunner.onCreate]: the runner
+ * touches disk (dex-maker cache) during setup, and penaltyDeath would crash the
+ * instrumentation process before any test runs.
  */
 class DeviceWalkTestRunner : AndroidJUnitRunner() {
     override fun onCreate(arguments: Bundle?) {
         val walk = arguments?.getString(ARG_DEVICE_WALK).equals("true", ignoreCase = true)
         if (walk) {
             DeviceWalkMode.enabled = true
-            installStrictMode()
         }
         super.onCreate(arguments)
+        if (walk) {
+            installStrictMode()
+        }
     }
 
     override fun callApplicationOnCreate(app: Application?) {
-        // Re-assert before Application.onCreate in case class-loader order differs.
+        // Re-assert before Application.onCreate so app main-thread disk/network dies.
         if (DeviceWalkMode.isEnabled()) {
             installStrictMode()
         }
