@@ -21,6 +21,9 @@ class StubBleTransport(
     private val _devices = MutableStateFlow<List<ConnectedDevice>>(emptyList())
     override val discoveredDevices: StateFlow<List<ConnectedDevice>> = _devices.asStateFlow()
 
+    override var activeProfile: GattProfile? = null
+        private set
+
     override fun advertisements(): Flow<ConnectedDevice> = emptyFlow()
 
     override suspend fun startScan() {
@@ -33,17 +36,24 @@ class StubBleTransport(
         }
     }
 
-    override suspend fun connect(deviceId: String) {
+    override suspend fun connect(deviceId: String, profile: GattProfile) {
+        activeProfile = null
         _state.value = BleConnectionState.Failed(unavailableReason)
     }
 
     override suspend fun disconnect() {
+        activeProfile = null
         _state.value = BleConnectionState.Idle
     }
 
-    override suspend fun write(payload: ByteArray, withoutResponse: Boolean) {
+    override suspend fun write(
+        characteristic: String,
+        payload: ByteArray,
+        withoutResponse: Boolean,
+    ) {
+        PlaudWriteGuard.maybeRequireAllowed(activeProfile, characteristic, payload)
         error(unavailableReason)
     }
 
-    override fun notifications(): Flow<ByteArray> = flowOf()
+    override fun notifications(characteristic: String): Flow<ByteArray> = flowOf()
 }

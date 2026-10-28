@@ -6,24 +6,48 @@ import kotlinx.coroutines.flow.StateFlow
 
 /**
  * Platform BLE transport. Android/iOS use Kable; desktop is stubbed for now.
+ *
+ * Connection and I/O are generic over a [GattProfile] so Plaud, Omi, Pocket,
+ * and Limitless drivers share one radio stack.
  */
 interface BleTransport {
     val isAvailable: Boolean
     val connectionState: StateFlow<BleConnectionState>
     val discoveredDevices: StateFlow<List<ConnectedDevice>>
 
+    /** Active GATT profile after a successful [connect], or null when disconnected. */
+    val activeProfile: GattProfile?
+
     fun advertisements(): Flow<ConnectedDevice>
 
     suspend fun startScan()
     suspend fun stopScan()
-    suspend fun connect(deviceId: String)
+
+    /**
+     * Connect using [profile] for characteristic resolution and MTU hints.
+     *
+     * Default overload keeps the historical Plaud UI path working without a
+     * profile argument.
+     */
+    suspend fun connect(deviceId: String) = connect(deviceId, GattProfiles.Plaud)
+
+    suspend fun connect(deviceId: String, profile: GattProfile)
+
     suspend fun disconnect()
 
-    /** Write to the Plaud write characteristic (2BB1). */
-    suspend fun write(payload: ByteArray, withoutResponse: Boolean = false)
+    /**
+     * Write [payload] to the named characteristic on the active profile.
+     * For the Plaud profile write characteristic, forbidden opcodes/settings
+     * are rejected before the radio (see [PlaudWriteGuard]).
+     */
+    suspend fun write(
+        characteristic: String,
+        payload: ByteArray,
+        withoutResponse: Boolean = false,
+    )
 
-    /** Notifications from the Plaud notify characteristic (2BB0). */
-    fun notifications(): Flow<ByteArray>
+    /** Notifications from the named characteristic on the active profile. */
+    fun notifications(characteristic: String): Flow<ByteArray>
 }
 
 sealed class BleConnectionState {
