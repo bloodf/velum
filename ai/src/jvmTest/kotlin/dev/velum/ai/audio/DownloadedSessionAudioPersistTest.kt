@@ -24,7 +24,7 @@ class DownloadedSessionAudioPersistTest {
             assertEquals("ogg", written.extension)
             assertTrue(File(written.absolutePath).exists())
             assertTrue(File(written.absolutePath).readBytes().contentEquals(ogg))
-            assertFalse(File("${written.absolutePath}.partial").exists())
+            assertFalse(File("${written.absolutePath}${DownloadedSessionAudioPersist.TEMP_SUFFIX}").exists())
             assertEquals(ogg.size.toLong(), written.sizeBytes)
         }
     }
@@ -40,7 +40,7 @@ class DownloadedSessionAudioPersistTest {
             )
             assertEquals("wav", written.extension)
             assertTrue(File(written.absolutePath).readBytes().contentEquals(wav))
-            assertFalse(File("${written.absolutePath}.partial").exists())
+            assertFalse(File("${written.absolutePath}${DownloadedSessionAudioPersist.TEMP_SUFFIX}").exists())
         }
     }
 
@@ -59,7 +59,7 @@ class DownloadedSessionAudioPersistTest {
                 logInfo = { logs += it },
             )
             assertEquals("wav", written.extension)
-            assertFalse(File("${written.absolutePath}.partial").exists())
+            assertFalse(File("${written.absolutePath}${DownloadedSessionAudioPersist.TEMP_SUFFIX}").exists())
             val out = File(written.absolutePath).readBytes()
             // #86 AC: whole file (header + body) must match PcmWav.encode byte-for-byte.
             assertTrue(
@@ -83,7 +83,7 @@ class DownloadedSessionAudioPersistTest {
     fun writeAtomically_failure_deletesTemp_andLeavesDestAbsent() {
         withTempDir { dir ->
             val dest = ModelStoreDir(dir.absolutePath).resolve("out.wav")
-            val tempPath = "${dest.absolutePath}.partial"
+            val tempPath = "${dest.absolutePath}${DownloadedSessionAudioPersist.TEMP_SUFFIX}"
             assertFailsWith<IllegalStateException> {
                 DownloadedSessionAudioPersist.writeAtomically(dest) { temp ->
                     temp.writeBytes(byteArrayOf(1, 2, 3, 4))
@@ -97,6 +97,41 @@ class DownloadedSessionAudioPersistTest {
     }
 
     @Test
+    fun writeAtomically_failedRename_deletesTemp_leavesDestUntouched() {
+        withTempDir { dir ->
+            val dest = ModelStoreDir(dir.absolutePath).resolve("out.wav")
+            val prior = byteArrayOf(9, 9, 9)
+            dest.writeBytes(prior)
+            val tempPath = "${dest.absolutePath}${DownloadedSessionAudioPersist.TEMP_SUFFIX}"
+            assertFailsWith<IllegalStateException> {
+                DownloadedSessionAudioPersist.writeAtomically(
+                    dest = dest,
+                    rename = { _, _ -> false },
+                ) { temp ->
+                    temp.writeBytes(byteArrayOf(1, 2, 3, 4))
+                }
+            }
+            assertTrue(dest.exists())
+            assertTrue(dest.readBytes().contentEquals(prior), "existing dest must stay intact")
+            assertFalse(File(tempPath).exists(), "failed rename must still delete temp")
+        }
+    }
+
+    @Test
+    fun writeAtomically_replacesExistingDestination() {
+        withTempDir { dir ->
+            val dest = ModelStoreDir(dir.absolutePath).resolve("out.ogg")
+            dest.writeBytes(byteArrayOf(1, 1, 1))
+            val payload = byteArrayOf(7, 7, 7, 7)
+            DownloadedSessionAudioPersist.writeAtomically(dest) { temp ->
+                temp.writeBytes(payload)
+            }
+            assertTrue(dest.readBytes().contentEquals(payload))
+            assertFalse(File("${dest.absolutePath}${DownloadedSessionAudioPersist.TEMP_SUFFIX}").exists())
+        }
+    }
+
+    @Test
     fun writeAtomically_success_removesTemp() {
         withTempDir { dir ->
             val dest = ModelStoreDir(dir.absolutePath).resolve("out.bin")
@@ -106,7 +141,41 @@ class DownloadedSessionAudioPersistTest {
             }
             assertTrue(dest.exists())
             assertTrue(dest.readBytes().contentEquals(payload))
-            assertFalse(File("${dest.absolutePath}.partial").exists())
+            assertFalse(File("${dest.absolutePath}${DownloadedSessionAudioPersist.TEMP_SUFFIX}").exists())
+        }
+    }
+
+    @Test
+    fun deleteStaleDownloadTemps_removesDownloadSuffix_notMicPartial() {
+        withTempDir { dir ->
+            val store = ModelStoreDir(dir.absolutePath)
+            File(dir, "rec-1.ogg${DownloadedSessionAudioPersist.TEMP_SUFFIX}").writeBytes(byteArrayOf(1))
+            File(dir, "rec-2.wav${DownloadedSessionAudioPersist.TEMP_SUFFIX}").writeBytes(byteArrayOf(2))
+            File(dir, "legacy.ogg.partial").writeBytes(byteArrayOf(3))
+            val micPartial = File(dir, "rec-mic.wav.partial").apply { writeBytes(byteArrayOf(4)) }
+            val keepWav = File(dir, "rec-mic.wav").apply { writeBytes(byteArrayOf(5)) }
+
+            val removed = DownloadedSessionAudioPersist.deleteStaleDownloadTemps(store)
+            assertEquals(3, removed)
+            assertFalse(File(dir, "rec-1.ogg${DownloadedSessionAudioPersist.TEMP_SUFFIX}").exists())
+            assertFalse(File(dir, "rec-2.wav${DownloadedSessionAudioPersist.TEMP_SUFFIX}").exists())
+            assertFalse(File(dir, "legacy.ogg.partial").exists())
+            assertTrue(micPartial.exists(), "mic .wav.partial must survive download cleanup")
+            assertTrue(keepWav.exists())
+        }
+    }
+
+    @Test
+    fun persist_rejectsNonPositiveChunkBytes() {
+        withTempDir { dir ->
+            assertFailsWith<IllegalArgumentException> {
+                DownloadedSessionAudioPersist.persistToDirectory(
+                    decryptedBytes = byteArrayOf(1, 2, 3, 4),
+                    destDirectory = ModelStoreDir(dir.absolutePath),
+                    fileBaseName = "sess",
+                    chunkBytes = 0,
+                )
+            }
         }
     }
 

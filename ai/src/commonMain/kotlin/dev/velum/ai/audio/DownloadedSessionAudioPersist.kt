@@ -13,7 +13,8 @@ import dev.velum.ai.local.ModelStoreDir
  * an opaque extension.
  *
  * All writes go to a same-directory temp file, then rename into place so the
- * destination is never half-written.
+ * destination is never half-written. Download temps use [TEMP_SUFFIX]
+ * (`.download.partial`) so mic crash recovery never treats them as mic WAVs.
  */
 object DownloadedSessionAudioPersist {
     /** Matches [DeviceCapabilities.sampleRatesHz] for Plaud 1.0 models and the old RP default. */
@@ -24,6 +25,13 @@ object DownloadedSessionAudioPersist {
 
     /** Max bytes appended per call when streaming body/header payloads to the temp file. */
     const val STREAM_CHUNK_BYTES: Int = 256 * 1024
+
+    /**
+     * Sibling temp suffix for in-flight download persists.
+     * Distinct from mic capture's `.wav.partial` so
+     * [dev.velum.app.platform.recoverPartialMicRecordings] never rewrites a crashed download.
+     */
+    const val TEMP_SUFFIX: String = ".download.partial"
 
     data class Written(
         val absolutePath: String,
@@ -39,6 +47,31 @@ object DownloadedSessionAudioPersist {
         else -> "wav"
     }
 
+    /** True when [fileName] is a download persist temp (current or legacy). */
+    fun isDownloadTempName(fileName: String): Boolean {
+        val name = fileName.lowercase()
+        if (name.endsWith(TEMP_SUFFIX)) return true
+        // Pre-#86 download temps used bare `.partial`; Ogg was never a mic capture.
+        if (name.endsWith(".ogg.partial")) return true
+        return false
+    }
+
+    /**
+     * Delete leftover download temps under [destDirectory] (crashed / killed mid-persist).
+     * Safe at process startup; does not touch mic `.wav.partial` files.
+     */
+    fun deleteStaleDownloadTemps(destDirectory: ModelStoreDir): Int {
+        if (!destDirectory.exists() || !destDirectory.isDirectory()) return 0
+        var removed = 0
+        for (child in destDirectory.listChildren()) {
+            if (child.isDirectory()) continue
+            if (!isDownloadTempName(child.name)) continue
+            runCatching { child.deleteRecursively() }
+            if (!child.exists()) removed++
+        }
+        return removed
+    }
+
     /**
      * Stream [decryptedBytes] into [destDirectory]/[fileBaseName].{ogg|wav} via a temp file
      * and atomic rename. Never builds a full WAV copy of opaque PCM on the heap.
@@ -50,33 +83,37 @@ object DownloadedSessionAudioPersist {
         sampleRateHz: Int = DEFAULT_SAMPLE_RATE_HZ,
         channels: Int = DEFAULT_CHANNELS,
         chunkBytes: Int = STREAM_CHUNK_BYTES,
-        logInfo: (String) -> Unit = { msg -> println(msg) },
+        logInfo: (String) -> Unit = { },
     ): Written {
+        require(chunkBytes > 0) { "chunkBytes must be positive" }
         val extension = detectExtension(decryptedBytes)
         destDirectory.createDirectories()
         val dest = destDirectory.resolve("$fileBaseName.$extension")
         val rate = sampleRateHz.coerceAtLeast(1)
         val ch = channels.coerceIn(1, 2)
         writeAtomically(dest) { temp ->
-            when {
-                PcmWav.looksLikeOgg(decryptedBytes) || PcmWav.looksLikeWav(decryptedBytes) -> {
-                    streamBytesToFile(temp, decryptedBytes, chunkBytes)
+            when (extension) {
+                "ogg" -> streamBytesToFile(temp, decryptedBytes, chunkBytes)
+                "wav" -> {
+                    if (PcmWav.looksLikeWav(decryptedBytes)) {
+                        streamBytesToFile(temp, decryptedBytes, chunkBytes)
+                    } else {
+                        // TODO(#95): replace PCM wrap with real decode
+                        logInfo(
+                            "audio-persist: wrapping opaque body as PCM WAV " +
+                                "(sizeBytes=${decryptedBytes.size}, sniff=none, " +
+                                "sampleRateHz=$rate, channels=$ch)",
+                        )
+                        streamOpaquePcmAsWav(
+                            temp = temp,
+                            pcm = decryptedBytes,
+                            sampleRateHz = rate,
+                            channels = ch,
+                            chunkBytes = chunkBytes,
+                        )
+                    }
                 }
-                else -> {
-                    // TODO(#95): replace PCM wrap with real decode
-                    logInfo(
-                        "audio-persist: wrapping opaque body as PCM WAV " +
-                            "(sizeBytes=${decryptedBytes.size}, sniff=none, " +
-                            "sampleRateHz=$rate, channels=$ch)",
-                    )
-                    streamOpaquePcmAsWav(
-                        temp = temp,
-                        pcm = decryptedBytes,
-                        sampleRateHz = rate,
-                        channels = ch,
-                        chunkBytes = chunkBytes,
-                    )
-                }
+                else -> error("unexpected audio extension: $extension")
             }
         }
         return Written(
@@ -87,15 +124,15 @@ object DownloadedSessionAudioPersist {
     }
 
     /**
-     * Write [writeTempContents] into a sibling `.partial` file, flush/close via ModelStoreDir,
-     * then rename onto [dest]. On any failure the temp is deleted and [dest] is left untouched
-     * (never half-written).
+     * Write [writeTempContents] into a sibling [TEMP_SUFFIX] file, then rename onto [dest].
+     * On any failure the temp is deleted and [dest] is left untouched (never half-written).
      */
     internal fun writeAtomically(
         dest: ModelStoreDir,
+        rename: (from: ModelStoreDir, to: ModelStoreDir) -> Boolean = { from, to -> from.renameTo(to) },
         writeTempContents: (temp: ModelStoreDir) -> Unit,
     ): Long {
-        val temp = ModelStoreDir("${dest.absolutePath}.partial")
+        val temp = ModelStoreDir("${dest.absolutePath}$TEMP_SUFFIX")
         try {
             if (temp.exists()) temp.deleteRecursively()
             // Parent of dest (and temp) must exist before create/rename.
@@ -105,7 +142,7 @@ object DownloadedSessionAudioPersist {
             writeTempContents(temp)
             // Publish only after the temp is fully written — rename replaces dest atomically
             // when the platform supports it (same directory).
-            check(temp.renameTo(dest)) {
+            check(rename(temp, dest)) {
                 "atomic rename failed: ${temp.absolutePath} → ${dest.absolutePath}"
             }
             return dest.length()

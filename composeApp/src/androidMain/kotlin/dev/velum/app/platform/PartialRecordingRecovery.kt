@@ -1,12 +1,16 @@
 package dev.velum.app.platform
 
 import android.util.Log
+import dev.velum.ai.audio.DownloadedSessionAudioPersist
 import dev.velum.core.data.VelumRepository
 import java.io.File
 
 /**
  * After process death, rewrite incomplete WAV headers and refresh matching
  * `status=recording` rows so the capture is not lost.
+ *
+ * Download persist temps use [DownloadedSessionAudioPersist.TEMP_SUFFIX] and are
+ * never candidates here — see [DownloadedSessionAudioPersist.deleteStaleDownloadTemps].
  */
 suspend fun recoverPartialMicRecordings(
     recordingsDirPath: String,
@@ -17,8 +21,7 @@ suspend fun recoverPartialMicRecordings(
     if (!dir.isDirectory) return
 
     val candidates = dir.listFiles().orEmpty().filter { file ->
-        val name = file.name.lowercase()
-        name.endsWith(".wav") || name.endsWith(".wav.partial")
+        isMicRecoveryCandidate(file.name)
     }
     for (file in candidates) {
         val finished = runCatching {
@@ -44,6 +47,13 @@ suspend fun recoverPartialMicRecordings(
         onRecovered(id)
         Log.i(TAG, "Recovered interrupted mic recording $id (${finished.sizeBytes} bytes)")
     }
+}
+
+/** Mic WAVs / `.wav.partial` only — never download `.download.partial` or `.ogg.partial`. */
+internal fun isMicRecoveryCandidate(fileName: String): Boolean {
+    val name = fileName.lowercase()
+    if (DownloadedSessionAudioPersist.isDownloadTempName(name)) return false
+    return name.endsWith(".wav") || name.endsWith(".wav.partial")
 }
 
 internal fun recordingIdFromWavName(fileName: String): String? {
