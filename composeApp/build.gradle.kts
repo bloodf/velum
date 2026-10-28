@@ -65,6 +65,8 @@ kotlin {
             implementation(libs.androidx.work.runtime)
             implementation("androidx.core:core-ktx:1.15.0")
             implementation("androidx.documentfile:documentfile:1.0.1")
+            // Pin so R8 keeps Trace for connectedReleaseAndroidTest (AndroidJUnitRunner).
+            implementation("androidx.tracing:tracing:1.2.0")
             // Pin 16 KB-aligned graphics-path (Compose may otherwise pull 1.0.1).
             implementation(libs.androidx.graphics.path)
         }
@@ -91,6 +93,7 @@ kotlin {
                 implementation(libs.androidx.test.uiautomator)
                 implementation(libs.androidx.compose.ui.test.junit4)
                 implementation(libs.androidx.compose.ui.test.manifest)
+                implementation("androidx.tracing:tracing:1.2.0")
             }
         }
         desktopMain.dependencies {

@@ -44,6 +44,12 @@
 # Device-walk CI flag + fake engines (flipped via instrumentation runner).
 -keep class dev.velum.app.devicewalk.** { *; }
 
+# AndroidJUnitRunner 1.6+ calls androidx.tracing.Trace in onCreate. Without a keep,
+# R8 strips it from the release APK and connectedReleaseAndroidTest crashes the
+# instrumentation process before any test runs (NoClassDefFoundError).
+-keep class androidx.tracing.** { *; }
+-dontwarn androidx.tracing.**
+
 # sherpa-onnx local ASR / diarization (JNI + reflection-heavy)
 -keep class com.k2fsa.sherpa.onnx.** { *; }
 -dontwarn com.k2fsa.sherpa.onnx.**
