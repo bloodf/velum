@@ -87,11 +87,11 @@
 
 | Sev | Finding | Location |
 |-----|---------|----------|
-| **blocker** | Mic FGS `stop`/`join(5s)` on main → ANR; `startForeground` after disk/AudioRecord init | `MicRecordingService` |
-| **blocker** | Android mic start failure falls through to demo PCM as real capture | `RecordingDetailScreen.LiveTranscriptPane` |
+| **blocker** ~~fixed~~ | Mic FGS `stop`/`join(5s)` on main → ANR; `startForeground` after disk/AudioRecord init | `MicRecordingService` → `1bff9ff` |
+| **blocker** ~~fixed~~ | Android mic start failure falls through to demo PCM as real capture | `RecordingDetailScreen` → `47a9091` (+ `74ea04a` marker timeout) |
 | **blocker** | Note Pro download decrypt + `writeBytes` on Main | `DeviceViewModel.downloadSession` |
 | **blocker** | AutoFlow template/model enqueue lost to `ExistingWorkPolicy.KEEP` after null enqueue | `RecordingProcessWorker.enqueue` |
-| **high** | Mic pause races `AudioRecord.stop` vs read loop | `MicRecordingService` |
+| **high** ~~fixed~~ | Mic pause races `AudioRecord.stop` vs read loop | `MicRecordingService` → `1bff9ff` (flag-only pause) |
 | **high** | Process-death AutoFlow rematch retranscribes finished `ready` rows | `AutoFlowRunner` |
 | **high** | AutoFlow API override key checked but ASR ignores override | `RecordingProcessor` / `OpenAiTranscriber` |
 | **high** | Voice profile cipher falls back to fixed `0x07` key until `ensureKey` | `VoiceProfileStore` |
