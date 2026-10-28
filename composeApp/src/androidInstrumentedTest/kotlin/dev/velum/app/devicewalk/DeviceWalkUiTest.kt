@@ -1,7 +1,6 @@
 package dev.velum.app.devicewalk
 
 import android.content.Context
-import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.os.Environment
 import android.os.SystemClock
@@ -103,27 +102,34 @@ class DeviceWalkUiTest {
     }
 
     private fun waitForShell(lang: String) {
-        // Splash → FirstRun or Files. Locale may still be system/previous-test prefs.
+        // Splash → FirstRun overlay (on top of NavHost FILES) or Files shell.
+        // Do NOT treat Files title text under the FirstRun overlay as ready —
+        // bottom bar CDs are hidden while showFirstRun, so require those.
         waitUntil(90_000) {
             composeExists("Skip") ||
                 composeExists("Pular") ||
-                composeExists("All files") ||
-                composeExists("Todos os arquivos") ||
-                composeExists("Velum")
+                onFilesShellReady()
         }
         if (composeExists("Skip") || composeExists("Pular")) {
             clickTextPrefer("Skip", "Pular")
             covered += "first-run-skip"
+            // onSkip is a coroutine launch — wait until overlay is gone.
+            waitUntil(30_000) {
+                !composeExists("Skip") && !composeExists("Pular")
+            }
         }
-        waitUntil(60_000) {
-            composeExists("All files") ||
-                composeExists("Todos os arquivos") ||
-                composeExists("Trash") ||
-                composeExists("Lixeira")
-        }
+        waitUntil(60_000) { onFilesShellReady() }
         restoreAllFilesFilterSoft()
         dismissSystemPermissionDialogs()
     }
+
+    /**
+     * True only when the shell bottom bar is composed (FirstRun overlay dismissed).
+     * Files title text can exist under FirstRun; bottom-bar contentDescriptions cannot.
+     */
+    private fun onFilesShellReady(): Boolean =
+        softExistsContentDesc("All files", "Todos os arquivos") ||
+            softExistsContentDesc("Explore", "Explorar")
 
     private fun applyAppearance(lang: String, theme: String) {
         openSettings()
@@ -158,18 +164,15 @@ class DeviceWalkUiTest {
         }
         // Persist prefs before leaving (setAppLanguage is a coroutine launch).
         SystemClock.sleep(750)
-        pressBackToFiles(lang)
-        waitUntil(20_000) {
-            if (lang == "pt-BR") {
-                composeExists("Todos os arquivos") ||
-                    composeExists("Lixeira") ||
-                    composeExists("Explorar")
-            } else {
-                composeExists("All files") ||
-                    composeExists("Trash") ||
-                    composeExists("Explore")
-            }
+        // Prefer the Compose top-bar Back affordance over device.pressBack —
+        // predictive back on API 35 can leave the activity without popping nav.
+        repeat(4) {
+            if (onFilesShellReady()) return
+            if (!softClickContentDesc("Back", "Voltar")) break
+            SystemClock.sleep(400)
         }
+        pressBackToFiles(lang)
+        waitUntil(20_000) { onFilesShellReady() }
     }
 
     private fun walkLibrary(lang: String) {
@@ -727,50 +730,72 @@ class DeviceWalkUiTest {
 
     private fun pressBackToFiles(lang: String) {
         repeat(12) {
-            if (onFilesChrome()) return
-            // Bottom bar Files tab is only composed on shell routes.
-            if (softClickContentDesc("All files", "Todos os arquivos") && onFilesChrome()) return
+            if (onFilesShellReady()) return
+            // Nested settings: pop via top-bar Back CD before device.pressBack.
+            softClickContentDesc("Back", "Voltar")
+            if (onFilesShellReady()) return
+            // Bottom bar Files tab is only composed on shell routes (not FirstRun).
+            if (softClickContentDesc("All files", "Todos os arquivos") && onFilesShellReady()) {
+                return
+            }
             softClickText("Files", "Arquivos")
-            if (onFilesChrome()) return
+            if (onFilesShellReady()) return
             device.pressBack()
             SystemClock.sleep(250)
             dismissSystemPermissionDialogs()
-        }
-        if (onFilesChrome()) return
-        // Soft resume — never CLEAR_TOP (orphans ActivityScenario). Prefer
-        // MAIN/LAUNCHER so intent matching stays intact for scenario close.
-        runCatching {
-            val launch = appContext.packageManager.getLaunchIntentForPackage(appContext.packageName)
-            if (launch != null) {
-                launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                appContext.startActivity(launch)
+            if (composeExists("Skip") || composeExists("Pular")) {
+                softClickText("Skip", "Pular")
             }
+        }
+        if (onFilesShellReady()) return
+        // Last resort: recreate the ActivityScenario-owned activity. Bare
+        // `am start -n` only delivers onNewIntent (nav stack unchanged) and
+        // MainActivity.setIntent poisons ActivityScenario intent matching so
+        // close() never observes DESTROYED. recreate() resets Compose nav
+        // while keeping the same launch intent ActivityScenario tracks.
+        // Must run on the main thread — off-thread recreate is a no-op /
+        // CalledFromWrongThreadException swallowed by runCatching.
+        runCatching {
+            composeRule.runOnUiThread { composeRule.activity.recreate() }
         }
         SystemClock.sleep(1_500)
-        runCatching {
-            waitUntil(30_000) {
-                onFilesChrome() ||
-                    composeExists("Skip") ||
-                    composeExists("Pular") ||
-                    composeExists("Velum")
-            }
+        waitUntil(45_000) {
+            composeExists("Skip") ||
+                composeExists("Pular") ||
+                onFilesShellReady()
         }
         if (composeExists("Skip") || composeExists("Pular")) {
             softClickText("Skip", "Pular")
+            waitUntil(30_000) {
+                !composeExists("Skip") && !composeExists("Pular")
+            }
         }
         softClickContentDesc("All files", "Todos os arquivos")
         restoreAllFilesFilterSoft()
-        // Best-effort: do not abort the matrix if chrome is briefly delayed.
-        runCatching {
-            waitUntil(15_000) { onFilesChrome() }
+        if (!onFilesShellReady()) {
+            error("Could not return to Files shell (lang=$lang)")
         }
     }
 
-    private fun onFilesChrome(): Boolean =
-        composeExists("Todos os arquivos") ||
-            composeExists("All files") ||
-            composeExists("Trash") ||
-            composeExists("Lixeira")
+    /** Files shell with bottom bar — never title text alone (visible under FirstRun). */
+    private fun onFilesChrome(): Boolean = onFilesShellReady()
+
+    private fun softExistsContentDesc(vararg labels: String): Boolean {
+        for (label in labels) {
+            if (label.isBlank()) continue
+            val viaCompose = runCatching {
+                composeRule
+                    .onAllNodesWithContentDescription(label, substring = true, useUnmergedTree = true)
+                    .fetchSemanticsNodes()
+                    .isNotEmpty()
+            }.getOrDefault(false)
+            if (viaCompose) return true
+            if (runCatching { device.findObject(By.descContains(label)) != null }.getOrDefault(false)) {
+                return true
+            }
+        }
+        return false
+    }
 
     private fun scrollClick(label: String) {
         runCatching {
