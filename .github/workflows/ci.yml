@@ -34,7 +34,7 @@ jobs:
         run: ./gradlew :core:validateAutoflowTemplates --stacktrace
 
       - name: Protocol + BLE + AI + core unit tests (JVM)
-        run: ./gradlew :plaud-protocol:jvmTest :ble:jvmTest :core:jvmTest :ai:jvmTest --stacktrace
+        run: ./gradlew :plaud-protocol:jvmTest :ble:jvmTest :core:jvmTest :ai:jvmTest :recorder:jvmTest --stacktrace
 
       - name: Assemble signed debug APK
         run: ./gradlew :composeApp:assembleDebug --stacktrace
