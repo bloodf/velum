@@ -203,11 +203,7 @@ class DeviceWalkUiTest {
                 .collect { /* drain progress */ }
         }
         covered += "import/bundled-wav"
-<<<<<<< HEAD
-        waitUntil(60_000) {
-=======
         waitUntil(120_000) {
->>>>>>> dd2c477 (fix(test): soften device-walk library filter and detail tabs)
             runBlocking {
                 val rec = container.repository.getRecording(id)
                 rec?.status == "ready" && !rec.summary_markdown.isNullOrBlank()
