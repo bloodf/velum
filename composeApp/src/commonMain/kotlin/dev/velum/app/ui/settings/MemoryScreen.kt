@@ -34,6 +34,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.velum.app.di.AppContainer
+import dev.velum.core.data.UserContentIds
 import dev.velum.app.i18n.LocalStrings
 import dev.velum.app.ui.components.BlackButton
 import dev.velum.app.ui.components.DualActionRow
@@ -176,7 +177,7 @@ fun MemoryScreen(
                     },
                     onRight = {
                         scope.launch {
-                            container.repository.addMemory("mem-${Random.nextInt(100000)}", draft.trim())
+                            container.repository.addMemory(UserContentIds.memory(), draft.trim())
                             draft = ""
                             showAddMemory = false
                         }
@@ -243,7 +244,7 @@ fun MemoryScreen(
                     onRight = {
                         scope.launch {
                             container.repository.addGlossaryTerm(
-                                "gloss-${Random.nextInt(100000)}",
+                                UserContentIds.glossary(),
                                 term.trim(),
                                 definition.trim(),
                             )

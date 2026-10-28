@@ -54,6 +54,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.velum.app.di.AppContainer
+import dev.velum.core.data.UserContentIds
 import dev.velum.app.i18n.LocalStrings
 import dev.velum.app.platform.rememberJsonFileImporter
 import dev.velum.app.ui.components.BlackButton
@@ -310,7 +311,7 @@ fun TemplatesScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 CategoryChip(
-                    label = if (languageTag.lowercase().startsWith("en")) "All" else "Todos",
+                    label = strings.templatesAll,
                     selected = selectedCategory == null,
                 ) { selectedCategory = null }
                 categoryTabs.forEach { cat ->
@@ -502,7 +503,7 @@ fun TemplatesScreen(
                     strings.save,
                     {
                         scope.launch {
-                            val id = "tpl-user-${Random.nextInt(100000)}"
+                            val id = UserContentIds.template()
                             container.repository.upsertTemplate(
                                 id = id,
                                 name = draftName.trim(),
