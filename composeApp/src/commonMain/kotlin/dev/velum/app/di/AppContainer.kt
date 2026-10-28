@@ -21,6 +21,10 @@ import dev.velum.ai.pipeline.RecordingProcessor
 import dev.velum.ai.pipeline.ThermalPolicy
 import dev.velum.ai.pipeline.createCoroutineRecordingJobScheduler
 import dev.velum.ai.integrations.WebhookDispatcher
+import dev.velum.app.devicewalk.DeviceWalkDiarizer
+import dev.velum.app.devicewalk.DeviceWalkLlm
+import dev.velum.app.devicewalk.DeviceWalkMode
+import dev.velum.app.devicewalk.DeviceWalkTranscriber
 import dev.velum.app.platform.ExportFolderStore
 import dev.velum.app.platform.MicCapture
 import dev.velum.app.platform.createMicCapture
@@ -35,6 +39,7 @@ import dev.velum.ble.createBleTransport
 import dev.velum.core.calendar.CalendarEventProvider
 import dev.velum.core.calendar.createCalendarEventProvider
 import dev.velum.core.data.DriverFactory
+import dev.velum.core.data.RecordingIds
 import dev.velum.core.data.VelumRepository
 import dev.velum.core.data.createDatabase
 import dev.velum.core.data.epochSecondsNow
@@ -103,16 +108,24 @@ class AppContainer(
 
     val localModelManager = createLocalModelManager(storeRoot = modelStoreRoot)
     val voiceProfileStore = VoiceProfileStore(modelStoreRoot, secureStore = secureStore)
-    val localTranscriber = LocalTranscriber(localModelManager)
-    val localDiarizer = LocalDiarizer(
-        localModelManager,
-        voiceProfileStore,
-        matchThreshold = { settingsRepository.settings.value.speakerMatchThreshold },
-    )
-    val localLlm = LocalLlmEngine(localModelManager)
-    val apiTranscriber = OpenAiTranscriber(aiClient, settingsRepository)
-    val apiDiarizer = OpenAiDiarizer()
-    val apiLlm = OpenAiLlmEngine(aiClient, settingsRepository)
+    private val deviceWalk = DeviceWalkMode.isEnabled()
+    val localTranscriber =
+        if (deviceWalk) DeviceWalkTranscriber else LocalTranscriber(localModelManager)
+    val localDiarizer =
+        if (deviceWalk) {
+            DeviceWalkDiarizer
+        } else {
+            LocalDiarizer(
+                localModelManager,
+                voiceProfileStore,
+                matchThreshold = { settingsRepository.settings.value.speakerMatchThreshold },
+            )
+        }
+    val localLlm = if (deviceWalk) DeviceWalkLlm else LocalLlmEngine(localModelManager)
+    val apiTranscriber =
+        if (deviceWalk) DeviceWalkTranscriber else OpenAiTranscriber(aiClient, settingsRepository)
+    val apiDiarizer = if (deviceWalk) DeviceWalkDiarizer else OpenAiDiarizer()
+    val apiLlm = if (deviceWalk) DeviceWalkLlm else OpenAiLlmEngine(aiClient, settingsRepository)
 
     val aiRouter = AiTaskRouter(
         settings = settingsRepository.settings,
@@ -183,7 +196,7 @@ class AppContainer(
         localPath: String? = null,
         status: String = "ready",
     ): String {
-        val id = "rec-${epochSecondsNow()}-${(1000..9999).random()}"
+        val id = RecordingIds.newId()
         val now = epochSecondsNow()
         repository.insertRecording(
             id = id,
@@ -204,7 +217,7 @@ class AppContainer(
     }
 
     suspend fun persistDownloadedSession(session: DownloadedSessionAudio): String {
-        val id = "rec-${epochSecondsNow()}-${(1000..9999).random()}"
+        val id = RecordingIds.newId()
         val ext = when {
             looksLikeOgg(session.decryptedBytes) -> "ogg"
             looksLikeWav(session.decryptedBytes) -> "wav"

@@ -185,6 +185,79 @@ class AutoFlowRunnerTest {
     }
 
     @Test
+    fun alreadyReady_doesNotFirePostActionUntilJobCompletes() = runBlocking {
+        val (repo, processor) = harness()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        var processCalls = 0
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val scheduler = RecordingJobScheduler { id, _, _, _ ->
+            processCalls++
+            scope.launch {
+                repo.updateStatus(id, "generating")
+                gate.await()
+                repo.updateStatus(id, "ready")
+                repo.updateSummary(id, "## after")
+            }
+        }
+        val runner = AutoFlowRunner(
+            repository = repo,
+            processor = processor,
+            scope = scope,
+            jobScheduler = scheduler,
+        )
+        runner.start()
+        delay(300) // let seed finish with empty library
+        repo.setAutoflowEnabled("flow-default", false)
+        repo.upsertAutoflow(
+            id = "flow-ready-race",
+            name = "All",
+            enabled = true,
+            wakePhrase = null,
+            durationMinSeconds = 0,
+            durationMaxSeconds = 3600,
+            sourceFilter = "all",
+            templateId = null,
+            autoLabelVoice = false,
+            language = "auto",
+            notify = true,
+            postAction = AutoFlowPostAction.Webhook.stored,
+        )
+        // Insert AFTER seed so processedIds does not swallow the row. Status ready
+        // reproduces the pre-enqueue ready race against awaitReadyStatus.
+        repo.insertRecording(
+            id = "rec-ready-race",
+            sessionId = null,
+            folderId = null,
+            title = "Already ready",
+            source = "phone",
+            deviceSerial = null,
+            startedAt = 1,
+            durationSeconds = 30,
+            sizeBytes = 1,
+            localPath = "/tmp/r.wav",
+            transcript = "old",
+            summaryMarkdown = "## old",
+            status = "ready",
+        )
+        withTimeout(10_000) { while (processCalls < 1) delay(50) }
+        delay(400)
+        val early = mutableListOf<AutoFlowUiAction>()
+        val earlyJob = scope.launch { runner.actions.collect { early += it } }
+        delay(300)
+        earlyJob.cancel()
+        assertTrue(
+            early.none { it is AutoFlowUiAction.PostWebhook },
+            "must not post-action on pre-enqueue ready",
+        )
+        assertEquals("generating", repo.getRecording("rec-ready-race")?.status)
+        val webhook = async { runner.actions.first { it is AutoFlowUiAction.PostWebhook } }
+        gate.complete(Unit)
+        val action = withTimeout(15_000) { webhook.await() }
+        assertEquals("rec-ready-race", (action as AutoFlowUiAction.PostWebhook).recordingId)
+        runner.stop()
+    }
+
+    @Test
     fun seed_skips_in_flight_so_generating_can_rematch() = runBlocking {
         val (repo, processor) = harness()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)

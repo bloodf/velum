@@ -113,13 +113,19 @@ class AutoFlowRunner(
     ): Boolean {
         val scheduler = jobScheduler
         if (scheduler != null) {
+            // Always move off terminal status before enqueue so awaitReadyStatus
+            // cannot treat a pre-existing `ready` as "this job finished" (that
+            // fired post-actions before WorkManager started). Marking queued also
+            // seeds sawInFlight for synchronous test schedulers that finish before
+            // the first poll.
+            repository.updateStatus(recordingId, "queued")
             scheduler.enqueue(
                 recordingId = recordingId,
                 templateId = templateId,
                 retranscribe = true,
                 apiModelOverride = apiModelOverride,
             )
-            return awaitReadyStatus(recordingId)
+            return awaitReadyStatus(recordingId, alreadyInFlight = true)
         }
         var succeeded = false
         processor.process(
@@ -140,15 +146,22 @@ class AutoFlowRunner(
         return ApiModelOverride(profileId = profileId, modelId = modelId)
     }
 
-    private suspend fun awaitReadyStatus(recordingId: String): Boolean {
-        var sawWork = false
+    private suspend fun awaitReadyStatus(
+        recordingId: String,
+        alreadyInFlight: Boolean = false,
+    ): Boolean {
+        var sawInFlight = alreadyInFlight
         val terminal = withTimeoutOrNull(AWAIT_TERMINAL_MS) {
             while (isActive) {
-                val status = repository.getRecording(recordingId)?.status ?: return@withTimeoutOrNull null
+                val status = repository.getRecording(recordingId)?.status
+                    ?: return@withTimeoutOrNull null
                 when (status) {
-                    "generating", "paused_thermal", "queued" -> sawWork = true
-                    "ready" -> return@withTimeoutOrNull "ready"
-                    "failed" -> if (sawWork) return@withTimeoutOrNull "failed"
+                    "generating", "paused_thermal", "queued" -> sawInFlight = true
+                    "ready" -> {
+                        // Only accept ready after in-flight (forced queued counts).
+                        if (sawInFlight) return@withTimeoutOrNull "ready"
+                    }
+                    "failed" -> if (sawInFlight) return@withTimeoutOrNull "failed"
                 }
                 delay(500)
             }

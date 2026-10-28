@@ -340,7 +340,8 @@ fun AutoFlowEditScreen(
     }
 
     suspend fun persist() {
-        val id = flow?.id ?: "flow-${epochSecondsNow()}-${(1000..9999).random()}"
+        val id = flow?.id
+            ?: "flow-${epochSecondsNow()}-${kotlin.random.Random.nextLong(1_000_000_000L, 9_999_999_999L)}"
         container.repository.upsertAutoflow(
             id = id,
             name = name,

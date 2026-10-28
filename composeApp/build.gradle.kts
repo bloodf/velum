@@ -84,7 +84,11 @@ kotlin {
         val androidInstrumentedTest by getting {
             dependencies {
                 implementation(libs.junit)
+                implementation(libs.kotlin.test)
                 implementation(libs.androidx.test.ext.junit)
+                implementation(libs.androidx.test.runner)
+                implementation(libs.androidx.test.rules)
+                implementation(libs.androidx.test.uiautomator)
                 implementation(libs.androidx.compose.ui.test.junit4)
                 implementation(libs.androidx.compose.ui.test.manifest)
             }
@@ -114,7 +118,8 @@ android {
         targetSdk = libs.versions.android.targetSdk.get().toInt()
         versionCode = 100
         versionName = "1.0.0"
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        testInstrumentationRunner = "dev.velum.app.devicewalk.DeviceWalkTestRunner"
+        testInstrumentationRunnerArguments["velumDeviceWalk"] = "true"
     }
     packaging {
         jniLibs {
@@ -157,7 +162,10 @@ android {
         getByName("release") {
             isMinifyEnabled = true
             isShrinkResources = true
-            signingConfigs.findByName("release")?.let { signingConfig = it }
+            // Prefer upload key when present; otherwise debug keystore so CI can
+            // install + run connectedReleaseAndroidTest (device walk on R8).
+            signingConfig = signingConfigs.findByName("release")
+                ?: signingConfigs.getByName("debug")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
@@ -172,6 +180,7 @@ android {
         unitTests {
             isIncludeAndroidResources = true
         }
+        animationsDisabled = true
     }
 }
 

@@ -40,3 +40,6 @@
 # LiteRT / on-device LLM (reflection-heavy)
 -keep class com.google.ai.edge.** { *; }
 -keep class org.tensorflow.lite.** { *; }
+
+# Device-walk CI flag + fake engines (flipped via instrumentation runner).
+-keep class dev.velum.app.devicewalk.** { *; }
