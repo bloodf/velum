@@ -1,5 +1,7 @@
 package dev.velum.core.model
 
+import dev.velum.core.settings.ApiEndpointProfile
+import dev.velum.core.settings.TaskModelBinding
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -80,6 +82,13 @@ data class AiProviderSettings(
     /** Embeddings model for Ask / retrieval when an API embeddings endpoint is used. */
     val embeddingModel: String? = null,
     val cachedModels: List<AiModelInfo> = emptyList(),
+    /** OpenAI-compatible endpoint profiles (OpenAI, Ollama, OpenRouter, …). Keys never stored here. */
+    val profiles: List<ApiEndpointProfile> = emptyList(),
+    /** Task name → preferred profile + model. */
+    val taskBindings: Map<String, TaskModelBinding> = emptyMap(),
+    val activeProfileId: String? = null,
+    /** Cached /models ids per profile (no secrets). */
+    val cachedModelsByProfile: Map<String, List<AiModelInfo>> = emptyMap(),
     /** Per-task Local vs OpenAI-compatible API. */
     val transcriptionMode: ComputeMode = ComputeMode.Local,
     val diarizationMode: ComputeMode = ComputeMode.Local,

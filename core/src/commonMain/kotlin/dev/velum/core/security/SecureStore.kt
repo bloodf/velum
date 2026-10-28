@@ -17,6 +17,10 @@ interface SecureStore {
 
 object SecureKeys {
     const val AI_API_KEY = "ai.api_key"
+
+    /** Per-endpoint-profile API key. Legacy [AI_API_KEY] mirrors the default profile. */
+    fun apiKey(profileId: String): String = "ai.api_key.$profileId"
+
     const val DEVICE_PRIVATE_KEY_PEM = "device.private_key_pem"
     const val DEVICE_PUBLIC_KEY_PEM = "device.public_key_pem"
     const val DEVICE_SERIAL_SIGNATURE = "device.serial_signature_b64"

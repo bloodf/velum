@@ -1,0 +1,9 @@
+CREATE TABLE summary_version (
+  id TEXT NOT NULL PRIMARY KEY,
+  recording_id TEXT NOT NULL,
+  template_id TEXT,
+  template_name TEXT NOT NULL DEFAULT '',
+  markdown TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  is_active INTEGER NOT NULL DEFAULT 0
+);

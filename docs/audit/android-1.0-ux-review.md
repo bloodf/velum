@@ -177,11 +177,26 @@ Intentionally not adding: cloud sync UI, OAuth, accounts, other-device brands as
 
 ---
 
+## Templates & AI provider (owner follow-ups)
+
+| Item | Status | Notes |
+|------|--------|-------|
+| Full hygiene before curation | Done | `tools/templates/` + report `docs/audit/templates-hygiene.md` |
+| Featured ≥100/cat + Full cleaned (~16k) | Done | Featured seeded; Full gzip lazy-imported on Discover → All |
+| Tags + FTS + category/tag/lang filters | Done | 53-slug vocabulary; chips on library + Generate picker |
+| Change template + summary versions | Done | Notes: Trocar modelo / Versões; schema v4 `summary_version` |
+| Per-task API model + multi-profile | Done | `ApiModelResolver`: override > task default > fallback; Keystore per profile |
+
+Catalog: Featured **1500** (100×15), Full **16153** exact-deduped. Assets ≈ Featured JSONL 4.2 MB + Full `.gz` 7.6 MB.
+
+---
+
 ## Implementation log
 
 | Commit | Items | Notes |
 |--------|-------|-------|
 | *(pending)* | Review doc | This file |
+| branch `cursor/templates-hygiene-full-2011` | Hygiene, Featured/All, tags, summary versions, API model profiles | See section above |
 
 ---
 

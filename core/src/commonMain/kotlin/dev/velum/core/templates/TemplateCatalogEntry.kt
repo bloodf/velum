@@ -56,10 +56,24 @@ data class TemplateCatalogEntry(
     @SerialName("usageCount")
     val uses: Long = 0,
     /**
+     * Featured catalog rows default true (classpath Featured JSONL).
+     * Full catalog marks non-featured rows false for Discover "All" import.
+     */
+    @SerialName("featured")
+    val featured: Boolean = true,
+    /** BCP-47-ish language from hygiene (`en`, `pt`, `und`, …). */
+    val lang: String = "und",
+    /** Controlled vocabulary slugs from hygiene (`tools/templates/tags.py`). */
+    val tags: List<String> = emptyList(),
+    /**
      * Optional Velum PR contributor. When set, template detail shows this credit.
      * Never set for copied Plaud templates.
      */
     val contributor: TemplateContributor? = null,
+    /** Optional preferred OpenAI-compatible model id when summarizing with this template. */
+    val preferredModel: String? = null,
+    /** Optional endpoint profile id for [preferredModel]. */
+    val preferredEndpointProfileId: String? = null,
 ) {
     fun displayName(languageTag: String): String {
         val lang = languageTag.lowercase().substringBefore("-").substringBefore("_")

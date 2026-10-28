@@ -1,5 +1,7 @@
 package dev.velum.ai.engine
 
+import dev.velum.core.settings.AiApiTask
+import dev.velum.core.settings.ApiModelOverride
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 
@@ -57,6 +59,9 @@ data class LlmRequest(
     /** Output language: "auto" (recording language) or a BCP-47 code. */
     val outputLanguage: String = "auto",
     val maxOutputTokens: Int = 1024,
+    /** Which API task binding to resolve when using an OpenAI-compatible engine. */
+    val apiTask: AiApiTask = AiApiTask.Summary,
+    val apiOverride: ApiModelOverride? = null,
 )
 
 data class LlmResult(
@@ -64,6 +69,8 @@ data class LlmResult(
     val engineId: String,
     val modelId: String,
     val usedMapReduce: Boolean = false,
+    /** Soft warning when the resolver fell back (never contains API keys). */
+    val warning: String? = null,
 )
 
 interface Transcriber {

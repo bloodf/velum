@@ -17,6 +17,8 @@ import dev.velum.ai.local.ModelStoreDir
 import dev.velum.ai.local.defaultModelStoreRoot
 import dev.velum.core.data.VelumRepository
 import dev.velum.core.model.ComputeMode
+import dev.velum.core.settings.AiApiTask
+import dev.velum.core.settings.ApiModelOverride
 import dev.velum.core.settings.SettingsRepository
 import dev.velum.core.templates.BuiltinTemplateCatalog
 import kotlinx.coroutines.CancellationException
@@ -40,6 +42,7 @@ class RecordingProcessor(
         recordingId: String,
         templateId: String? = null,
         retranscribe: Boolean = true,
+        apiModelOverride: ApiModelOverride? = null,
     ): Flow<JobProgress> = flow {
         emit(JobProgress.Running(0.05f, "Starting"))
         repository.updateStatus(recordingId, "generating")
@@ -115,11 +118,11 @@ class RecordingProcessor(
                 } else {
                     emit(JobProgress.Running(0.25f, "Transcribing"))
                     awaitThermalGate { emit(it) }
-                    ensureApiKeyIfNeeded(cfg.transcriptionMode, "transcription")
+                    ensureApiKeyIfNeeded(cfg.transcriptionMode, AiApiTask.Transcription, "transcription")
                     val asr = aiRouter.transcriber()
                     val asrModel = when (cfg.transcriptionMode) {
                         ComputeMode.Local -> requiredLocalModelId(AiTask.Transcription, cfg)
-                        ComputeMode.Api -> cfg.transcriptionModel.orEmpty()
+                        ComputeMode.Api -> ""
                     }
                     val transcription = transcribeWindowed(
                         asr = asr,
@@ -134,13 +137,14 @@ class RecordingProcessor(
 
                     emit(JobProgress.Running(0.45f, "Diarizing"))
                     awaitThermalGate { emit(it) }
-                    ensureApiKeyIfNeeded(cfg.diarizationMode, "diarization")
+                    ensureApiKeyIfNeeded(cfg.diarizationMode, AiApiTask.Diarization, "diarization")
                     val diar = aiRouter.diarizer()
                     val diarModel = when (cfg.diarizationMode) {
                         ComputeMode.Local ->
                             cfg.localDiarizationModelId?.takeIf { it.isNotBlank() }
                                 ?: DEFAULT_LOCAL_DIARIZATION_MODEL_ID
-                        ComputeMode.Api -> ""
+                        ComputeMode.Api ->
+                            settings.resolveApiModel(AiApiTask.Diarization).modelId
                     }
                     val diarization = try {
                         // Prefer in-memory buffer; for spilled PCM diarize the first 30 min window
@@ -196,15 +200,17 @@ class RecordingProcessor(
 
             emit(JobProgress.Running(0.7f, "Summarizing"))
             awaitThermalGate { emit(it) }
-            ensureApiKeyIfNeeded(cfg.summaryMode, "summaries")
+            ensureApiKeyIfNeeded(cfg.summaryMode, AiApiTask.Summary, "summaries")
             val summaryLang = SummaryLocalization.resolveLanguage(
                 outputLanguage = cfg.outputLanguage,
                 audioLanguage = cfg.audioLanguage,
             )
             val resolvedTemplateId = BuiltinTemplateCatalog.resolveId(templateId)
-            val baseTemplate = repository.getTemplate(resolvedTemplateId)?.system_prompt
-                ?: repository.getTemplate(templateId.orEmpty())?.system_prompt
-                ?: BuiltinTemplateCatalog.get(resolvedTemplateId)?.systemPrompt
+            val dbTemplate = repository.getTemplate(resolvedTemplateId)
+                ?: repository.getTemplate(templateId.orEmpty())
+            val catalogEntry = BuiltinTemplateCatalog.get(resolvedTemplateId)
+            val baseTemplate = dbTemplate?.system_prompt
+                ?: catalogEntry?.systemPrompt
                 ?: "Summarize into Overview, Key points, Action items."
             val localizedTemplate = SummaryLocalization.enhanceTemplatePrompt(
                 templateId = resolvedTemplateId,
@@ -223,19 +229,51 @@ class RecordingProcessor(
                     append("\nContent focus: ").append(prefs.contentFocus)
                 }
             }
+            val templateOverride = run {
+                val preferredModel = dbTemplate?.preferred_model
+                    ?: catalogEntry?.preferredModel
+                val preferredProfile = dbTemplate?.preferred_endpoint_profile_id
+                    ?: catalogEntry?.preferredEndpointProfileId
+                if (preferredModel.isNullOrBlank() && preferredProfile.isNullOrBlank()) {
+                    null
+                } else {
+                    ApiModelOverride(
+                        profileId = preferredProfile?.takeIf { it.isNotBlank() },
+                        modelId = preferredModel?.takeIf { it.isNotBlank() },
+                    )
+                }
+            }
+            val summaryOverride = apiModelOverride ?: templateOverride
             val llm = aiRouter.llm()
             val llmModel = when (cfg.summaryMode) {
                 ComputeMode.Local ->
                     cfg.localLlmModelId?.takeIf { it.isNotBlank() } ?: DEFAULT_LOCAL_LLM_MODEL_ID
-                ComputeMode.Api -> cfg.chatModel.orEmpty()
+                ComputeMode.Api -> ""
             }
             val summary = summarizeWithMapReduce(
-                llmComplete = { req -> llm.complete(req, llmModel) },
+                llmComplete = { req ->
+                    llm.complete(
+                        req.copy(
+                            apiTask = AiApiTask.Summary,
+                            apiOverride = summaryOverride,
+                        ),
+                        llmModel,
+                    )
+                },
                 templatePrompt = templatePrompt,
                 transcriptMarkdown = transcriptMarkdown,
                 outputLanguage = summaryLang,
             )
-            repository.updateSummary(recordingId, summary.text)
+            val templateName = dbTemplate?.name
+                ?: catalogEntry?.nameEn
+                ?: catalogEntry?.namePtBr
+                ?: resolvedTemplateId
+            repository.saveSummaryVersion(
+                recordingId = recordingId,
+                markdown = summary.text,
+                templateId = resolvedTemplateId,
+                templateName = templateName,
+            )
             repository.updateStatus(recordingId, "ready")
             if (settings.preferences.value.deleteAudioAfterProcessing &&
                 !localPath.isNullOrBlank()
@@ -244,7 +282,11 @@ class RecordingProcessor(
                 deleteFile(localPath)
                 repository.clearLocalAudioPath(recordingId)
             }
-            emit(JobProgress.Succeeded("Processed $recordingId"))
+            val successMsg = buildString {
+                append("Processed $recordingId")
+                summary.warning?.let { append(" — ").append(it) }
+            }
+            emit(JobProgress.Succeeded(successMsg))
             } finally {
                 pcmBuffer.close()
                 runCatching { spillRoot.deleteRecursively() }
@@ -300,12 +342,17 @@ class RecordingProcessor(
         return reduced.copy(usedMapReduce = true)
     }
 
-    private suspend fun ensureApiKeyIfNeeded(mode: ComputeMode, task: String) {
+    private suspend fun ensureApiKeyIfNeeded(
+        mode: ComputeMode,
+        apiTask: AiApiTask,
+        label: String,
+    ) {
         if (mode != ComputeMode.Api) return
-        val key = settings.getApiKey()
+        val resolved = settings.resolveApiModel(apiTask)
+        val key = settings.getProfileApiKey(resolved.profileId)
         if (key.isNullOrBlank()) {
             throw MissingApiKeyException(
-                "API key required for $task. Add your OpenAI-compatible key in Settings → AI provider.",
+                "API key required for $label. Add your OpenAI-compatible key in Settings → AI provider.",
             )
         }
     }

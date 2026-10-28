@@ -27,11 +27,24 @@ object BuiltinTemplateCatalog {
         val catalogDescription: String = "",
         /** Velum PR contributor — only credit shown in the app UI. */
         val contributor: TemplateContributor? = null,
+        /** Featured Discover tier; Velum originals + contribs default true. */
+        val featured: Boolean = true,
+        /** Content language for the template prompt/body. */
+        val lang: String = "und",
+        /** Controlled vocabulary slugs for discoverability. */
+        val tags: List<String> = emptyList(),
+        /** Optional preferred OpenAI-compatible model id. */
+        val preferredModel: String? = null,
+        /** Optional endpoint profile id for [preferredModel]. */
+        val preferredEndpointProfileId: String? = null,
     ) {
         fun displayName(languageTag: String): String {
             val lang = languageTag.lowercase().substringBefore("-").substringBefore("_")
             return if (lang == "en") nameEn else namePtBr
         }
+
+        fun resolvedTags(): List<String> =
+            tags.ifEmpty { TemplateTagVocabulary.defaultsForCategory(categoryKey) }
 
         fun description(languageTag: String): String {
             if (catalogDescription.isNotBlank()) return catalogDescription
@@ -74,7 +87,12 @@ object BuiltinTemplateCatalog {
             nameEn = nameEn,
             namePtBr = namePtBr,
             uses = uses,
+            featured = featured,
+            lang = lang.ifBlank { "und" },
+            tags = resolvedTags(),
             contributor = contributor,
+            preferredModel = preferredModel,
+            preferredEndpointProfileId = preferredEndpointProfileId,
         )
     }
 
@@ -225,26 +243,34 @@ object BuiltinTemplateCatalog {
 
     fun velumEntries(): List<TemplateCatalogEntry> = VelumSpecs.map { it.toCatalogEntry() }
 
-    private fun fromCatalogEntry(entry: TemplateCatalogEntry): Spec = Spec(
-        id = entry.id,
-        categoryKey = entry.category.ifBlank {
+    private fun fromCatalogEntry(entry: TemplateCatalogEntry): Spec {
+        val categoryKey = entry.category.ifBlank {
             PlaudTemplateCatalog.mapCategoryKey(entry.categoryId, entry.category)
-        }.ifBlank { "general" },
-        namePtBr = entry.namePtBr ?: entry.name,
-        nameEn = entry.nameEn ?: entry.name,
-        sectionsPtBr = emptyList(),
-        systemPrompt = entry.systemPrompt(),
-        uses = entry.uses,
-        author = entry.author,
-        source = entry.source,
-        attribution = entry.docsCreditLine(),
-        official = entry.official,
-        sourceTemplateId = entry.sourceTemplateId,
-        categoryId = entry.categoryId,
-        bodyType = entry.bodyType,
-        catalogDescription = entry.description,
-        contributor = entry.contributor,
-    )
+        }.ifBlank { "general" }
+        return Spec(
+            id = entry.id,
+            categoryKey = categoryKey,
+            namePtBr = entry.namePtBr ?: entry.name,
+            nameEn = entry.nameEn ?: entry.name,
+            sectionsPtBr = emptyList(),
+            systemPrompt = entry.systemPrompt(),
+            uses = entry.uses,
+            author = entry.author,
+            source = entry.source,
+            attribution = entry.docsCreditLine(),
+            official = entry.official,
+            sourceTemplateId = entry.sourceTemplateId,
+            categoryId = entry.categoryId,
+            bodyType = entry.bodyType,
+            catalogDescription = entry.description,
+            contributor = entry.contributor,
+            featured = entry.featured,
+            lang = entry.lang.ifBlank { "und" },
+            tags = entry.tags.ifEmpty { TemplateTagVocabulary.defaultsForCategory(categoryKey) },
+            preferredModel = entry.preferredModel,
+            preferredEndpointProfileId = entry.preferredEndpointProfileId,
+        )
+    }
 
     /** Velum originals + PR contributions + Plaud catalog (lazy; asset-backed). */
     val All: List<Spec> by lazy {

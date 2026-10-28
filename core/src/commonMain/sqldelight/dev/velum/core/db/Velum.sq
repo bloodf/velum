@@ -39,7 +39,12 @@ CREATE TABLE template (
   system_prompt TEXT NOT NULL,
   uses INTEGER NOT NULL DEFAULT 0,
   builtin INTEGER NOT NULL DEFAULT 1,
-  created_at INTEGER NOT NULL
+  created_at INTEGER NOT NULL,
+  featured INTEGER NOT NULL DEFAULT 1,
+  tags TEXT NOT NULL DEFAULT '',
+  lang TEXT NOT NULL DEFAULT 'und',
+  preferred_model TEXT,
+  preferred_endpoint_profile_id TEXT
 );
 
 CREATE TABLE autoflow (
@@ -54,7 +59,9 @@ CREATE TABLE autoflow (
   auto_label_voice INTEGER NOT NULL DEFAULT 0,
   language TEXT NOT NULL DEFAULT 'auto',
   notify INTEGER NOT NULL DEFAULT 1,
-  post_action TEXT
+  post_action TEXT,
+  model_id TEXT,
+  endpoint_profile_id TEXT
 );
 
 CREATE TABLE memory_item (
@@ -73,6 +80,16 @@ CREATE TABLE glossary_term (
 CREATE TABLE app_meta (
   key TEXT NOT NULL PRIMARY KEY,
   value TEXT NOT NULL
+);
+
+CREATE TABLE summary_version (
+  id TEXT NOT NULL PRIMARY KEY,
+  recording_id TEXT NOT NULL,
+  template_id TEXT,
+  template_name TEXT NOT NULL DEFAULT '',
+  markdown TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  is_active INTEGER NOT NULL DEFAULT 0
 );
 
 selectAllRecordings:
@@ -151,10 +168,17 @@ SELECT * FROM template ORDER BY category ASC, name ASC;
 selectTemplatesByCategory:
 SELECT * FROM template WHERE category = ? ORDER BY name ASC;
 
+selectFeaturedBuiltinTemplates:
+SELECT * FROM template WHERE builtin = 1 AND featured = 1 ORDER BY category ASC, name ASC;
+
+selectAllBuiltinTemplates:
+SELECT * FROM template WHERE builtin = 1 ORDER BY category ASC, name ASC;
+
 insertTemplate:
 INSERT OR REPLACE INTO template(
-  id, name, category, description, author, system_prompt, uses, builtin, created_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+  id, name, category, description, author, system_prompt, uses, builtin, created_at,
+  featured, tags, lang, preferred_model, preferred_endpoint_profile_id
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 deleteTemplate:
 DELETE FROM template WHERE id = ? AND builtin = 0;
@@ -186,8 +210,9 @@ SELECT * FROM autoflow ORDER BY name ASC;
 insertAutoflow:
 INSERT OR REPLACE INTO autoflow(
   id, name, enabled, wake_phrase, duration_min_seconds, duration_max_seconds,
-  source_filter, template_id, auto_label_voice, language, notify, post_action
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+  source_filter, template_id, auto_label_voice, language, notify, post_action,
+  model_id, endpoint_profile_id
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 updateAutoflowEnabled:
 UPDATE autoflow SET enabled = ? WHERE id = ?;
@@ -204,7 +229,9 @@ UPDATE autoflow SET
   auto_label_voice = ?,
   language = ?,
   notify = ?,
-  post_action = ?
+  post_action = ?,
+  model_id = ?,
+  endpoint_profile_id = ?
 WHERE id = ?;
 
 updateAutoflowNotify:
@@ -236,3 +263,32 @@ SELECT value FROM app_meta WHERE key = ?;
 
 setMeta:
 INSERT OR REPLACE INTO app_meta(key, value) VALUES (?, ?);
+
+selectVersionsForRecording:
+SELECT * FROM summary_version WHERE recording_id = ? ORDER BY created_at DESC;
+
+insertSummaryVersion:
+INSERT OR REPLACE INTO summary_version(
+  id, recording_id, template_id, template_name, markdown, created_at, is_active
+) VALUES (?, ?, ?, ?, ?, ?, ?);
+
+clearActiveVersionsForRecording:
+UPDATE summary_version SET is_active = 0 WHERE recording_id = ?;
+
+setVersionActive:
+UPDATE summary_version SET is_active = 1 WHERE id = ? AND recording_id = ?;
+
+deleteSummaryVersion:
+DELETE FROM summary_version WHERE id = ? AND recording_id = ?;
+
+getActiveVersion:
+SELECT * FROM summary_version WHERE recording_id = ? AND is_active = 1 LIMIT 1;
+
+getSummaryVersionById:
+SELECT * FROM summary_version WHERE id = ? AND recording_id = ?;
+
+countVersionsForRecording:
+SELECT COUNT(*) FROM summary_version WHERE recording_id = ?;
+
+deleteVersionsForRecording:
+DELETE FROM summary_version WHERE recording_id = ?;

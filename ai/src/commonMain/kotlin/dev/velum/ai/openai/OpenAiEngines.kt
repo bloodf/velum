@@ -13,6 +13,8 @@ import dev.velum.ai.engine.LlmResult
 import dev.velum.ai.engine.Transcriber
 import dev.velum.ai.engine.TranscriptionResult
 import dev.velum.ai.pipeline.SummaryLocalization
+import dev.velum.core.settings.AiApiTask
+import dev.velum.core.settings.ApiModelOverride
 import dev.velum.core.settings.SettingsRepository
 
 class OpenAiTranscriber(
@@ -22,18 +24,23 @@ class OpenAiTranscriber(
     override val engineId: String = "openai-asr"
 
     override suspend fun transcribe(input: AudioInput, modelId: String): TranscriptionResult {
-        val cfg = settings.settings.value
-        val key = settings.getApiKey().orEmpty()
-        if (!cfg.hasApiKey || key.isBlank()) {
+        val override = if (modelId.isNotBlank()) {
+            ApiModelOverride(modelId = modelId)
+        } else {
+            null
+        }
+        val resolved = settings.resolveApiModel(AiApiTask.Transcription, override)
+        val key = settings.getProfileApiKey(resolved.profileId).orEmpty()
+        if (key.isBlank()) {
             throw MissingApiKeyException(
                 "API key required for API transcription. Add your OpenAI-compatible key in Settings → AI provider.",
             )
         }
-        val model = modelId.ifBlank { cfg.transcriptionModel ?: "whisper-1" }
+        val model = resolved.modelId.ifBlank { "whisper-1" }
         val lang = input.languageHint?.takeIf { it != "auto" }
         val (filename, audioBytes) = prepareUpload(input)
         val result = client.transcribe(
-            baseUrl = cfg.baseUrl,
+            baseUrl = resolved.baseUrl,
             apiKey = key,
             model = model,
             filename = filename,
@@ -67,6 +74,7 @@ class OpenAiTranscriber(
 /**
  * No standard OpenAI-compatible diarization contract yet.
  * Local diarization is required — do not fake an empty success.
+ * A model binding may still be configured for a future remote contract.
  */
 class OpenAiDiarizer : Diarizer {
     override val engineId: String = "openai-diarizer"
@@ -87,14 +95,23 @@ class OpenAiLlmEngine(
     override val engineId: String = "openai-llm"
 
     override suspend fun complete(request: LlmRequest, modelId: String): LlmResult {
-        val cfg = settings.settings.value
-        val key = settings.getApiKey().orEmpty()
-        if (!cfg.hasApiKey || key.isBlank()) {
+        val override = when {
+            request.apiOverride != null && modelId.isNotBlank() ->
+                request.apiOverride.copy(
+                    modelId = request.apiOverride.modelId?.takeIf { it.isNotBlank() } ?: modelId,
+                )
+            request.apiOverride != null -> request.apiOverride
+            modelId.isNotBlank() -> ApiModelOverride(modelId = modelId)
+            else -> null
+        }
+        val resolved = settings.resolveApiModel(request.apiTask, override)
+        val key = settings.getProfileApiKey(resolved.profileId).orEmpty()
+        if (key.isBlank()) {
             throw MissingApiKeyException(
                 "API key required for API summaries. Add your OpenAI-compatible key in Settings → AI provider.",
             )
         }
-        val model = modelId.ifBlank { cfg.chatModel ?: "gpt-4o-mini" }
+        val model = resolved.modelId.ifBlank { "gpt-4o-mini" }
         val system = buildString {
             append(request.systemPrompt)
             val lang = request.outputLanguage.trim().lowercase()
@@ -104,7 +121,7 @@ class OpenAiLlmEngine(
             }
         }
         val text = client.chatCompletion(
-            baseUrl = cfg.baseUrl,
+            baseUrl = resolved.baseUrl,
             apiKey = key,
             model = model,
             messages = listOf(
@@ -116,6 +133,7 @@ class OpenAiLlmEngine(
             text = text,
             engineId = engineId,
             modelId = model,
+            warning = resolved.fallbackMessage,
         )
     }
 }

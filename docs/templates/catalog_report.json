@@ -1,0 +1,42 @@
+{
+  "featured_total": 1500,
+  "featured_per_category": {
+    "general": 100,
+    "meeting": 100,
+    "call": 100,
+    "sales": 100,
+    "interview": 100,
+    "consulting": 100,
+    "education": 100,
+    "speech": 100,
+    "medical": 100,
+    "legal": 100,
+    "financial": 100,
+    "estate": 100,
+    "construction": 100,
+    "it": 100,
+    "extractive": 100
+  },
+  "full_total": 16153,
+  "full_per_category": {
+    "general": 2344,
+    "meeting": 4103,
+    "call": 315,
+    "sales": 813,
+    "interview": 847,
+    "consulting": 915,
+    "education": 706,
+    "speech": 387,
+    "medical": 3421,
+    "legal": 489,
+    "financial": 281,
+    "estate": 268,
+    "construction": 474,
+    "it": 316,
+    "extractive": 474
+  },
+  "min_per_category": 100,
+  "featured_shortfalls": {},
+  "official_in_featured": 41,
+  "official_in_full": 41
+}

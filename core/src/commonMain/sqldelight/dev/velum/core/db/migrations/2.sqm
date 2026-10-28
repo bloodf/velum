@@ -1,0 +1,6 @@
+ALTER TABLE template ADD COLUMN tags TEXT NOT NULL DEFAULT '';
+ALTER TABLE template ADD COLUMN lang TEXT NOT NULL DEFAULT 'und';
+ALTER TABLE template ADD COLUMN preferred_model TEXT;
+ALTER TABLE template ADD COLUMN preferred_endpoint_profile_id TEXT;
+ALTER TABLE autoflow ADD COLUMN model_id TEXT;
+ALTER TABLE autoflow ADD COLUMN endpoint_profile_id TEXT;

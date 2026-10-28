@@ -1,5 +1,6 @@
 package dev.velum.ai.pipeline
 
+import dev.velum.core.settings.ApiModelOverride
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
@@ -13,18 +14,20 @@ fun interface RecordingJobScheduler {
         recordingId: String,
         templateId: String?,
         retranscribe: Boolean,
+        apiModelOverride: ApiModelOverride?,
     )
 }
 
 fun createCoroutineRecordingJobScheduler(
     processor: RecordingProcessor,
     scope: CoroutineScope,
-): RecordingJobScheduler = RecordingJobScheduler { recordingId, templateId, retranscribe ->
+): RecordingJobScheduler = RecordingJobScheduler { recordingId, templateId, retranscribe, apiModelOverride ->
     scope.launch {
         processor.process(
             recordingId = recordingId,
             templateId = templateId,
             retranscribe = retranscribe,
+            apiModelOverride = apiModelOverride,
         ).collect { }
     }
 }

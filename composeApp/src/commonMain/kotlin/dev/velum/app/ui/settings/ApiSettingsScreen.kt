@@ -54,7 +54,11 @@ import dev.velum.app.ui.theme.VelumOnBlack
 import dev.velum.app.ui.theme.VelumOnWarningContainer
 import dev.velum.app.ui.theme.VelumSurface
 import dev.velum.core.model.AiModelInfo
-import dev.velum.core.model.ComputeMode
+import dev.velum.core.settings.AiApiTask
+import dev.velum.core.settings.ApiEndpointProfile
+import dev.velum.core.settings.ApiModelResolver
+import dev.velum.core.settings.SettingsRepository
+import dev.velum.core.settings.TaskModelBinding
 
 /** OpenAI-compatible BYO API — no account / login / cloud membership. */
 @Composable
@@ -69,30 +73,49 @@ fun ApiSettingsScreen(
     val settings by viewModel.settings.collectAsState()
     val ui by viewModel.ui.collectAsState()
 
-    var baseUrl by remember(settings.baseUrl) { mutableStateOf(settings.baseUrl) }
-    var apiKey by remember { mutableStateOf("") }
+    val profiles = settings.profiles.ifEmpty {
+        listOf(
+            ApiEndpointProfile(
+                id = ApiModelResolver.DEFAULT_PROFILE_ID,
+                name = ApiModelResolver.DEFAULT_PROFILE_NAME,
+                baseUrl = settings.baseUrl,
+            ),
+        )
+    }
+    val activeId = settings.activeProfileId ?: profiles.first().id
+    var selectedProfileId by remember(activeId) { mutableStateOf(activeId) }
+    val selectedProfile = profiles.firstOrNull { it.id == selectedProfileId } ?: profiles.first()
+
+    var baseUrl by remember(selectedProfile.id, selectedProfile.baseUrl) {
+        mutableStateOf(selectedProfile.baseUrl)
+    }
+    var profileName by remember(selectedProfile.id, selectedProfile.name) {
+        mutableStateOf(selectedProfile.name)
+    }
+    var apiKey by remember(selectedProfile.id) { mutableStateOf("") }
     var showKey by remember { mutableStateOf(false) }
     var modelQuery by remember { mutableStateOf("") }
-    var manualTranscription by remember(settings.transcriptionModel) {
-        mutableStateOf(settings.transcriptionModel.orEmpty())
-    }
-    var manualDiarization by remember(settings.diarizationModel) {
-        mutableStateOf(settings.diarizationModel.orEmpty())
-    }
-    var manualChat by remember(settings.chatModel) {
-        mutableStateOf(settings.chatModel.orEmpty())
-    }
-    var manualEmbedding by remember(settings.embeddingModel) {
-        mutableStateOf(settings.embeddingModel.orEmpty())
-    }
 
+    val profileModels = settings.cachedModelsByProfile[selectedProfile.id]
+        ?.takeIf { it.isNotEmpty() }
+        ?: settings.cachedModels
     val listingFailed = ui.error != null && !ui.refreshing
-    val filtered = remember(settings.cachedModels, modelQuery) {
+    val filtered = remember(profileModels, modelQuery) {
         val q = modelQuery.trim().lowercase()
-        if (q.isEmpty()) settings.cachedModels
-        else settings.cachedModels.filter {
+        if (q.isEmpty()) profileModels
+        else profileModels.filter {
             it.id.lowercase().contains(q) || (it.ownedBy?.lowercase()?.contains(q) == true)
         }
+    }
+
+    fun taskLabel(task: AiApiTask): String = when (task) {
+        AiApiTask.Transcription -> strings.settingsUi.modelForTranscription
+        AiApiTask.Diarization -> strings.settingsUi.modelForDiarization
+        AiApiTask.Summary -> strings.settingsUi.modelForSummaries
+        AiApiTask.Ask -> strings.settingsUi.modelForAsk
+        AiApiTask.AutoTitle -> strings.settingsUi.modelForAutoTitle
+        AiApiTask.Translation -> strings.settingsUi.modelForTranslation
+        AiApiTask.AutoFlow -> strings.settingsUi.modelForAutoFlow
     }
 
     Column(
@@ -113,7 +136,59 @@ fun ApiSettingsScreen(
             lineHeight = 18.sp,
             modifier = Modifier.padding(horizontal = 20.dp),
         )
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(16.dp))
+        SectionLabel(strings.settingsUi.endpointProfiles)
+        profiles.forEach { profile ->
+            val selected = profile.id == selectedProfileId
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 4.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(if (selected) VelumSurface else VelumBg)
+                    .border(1.dp, if (selected) VelumBlack else VelumDivider, RoundedCornerShape(10.dp))
+                    .clickable {
+                        selectedProfileId = profile.id
+                        viewModel.setActiveProfile(profile.id)
+                    }
+                    .padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(profile.name, fontWeight = FontWeight.Medium, color = VelumInk, fontSize = 14.sp)
+                    Text(profile.baseUrl, color = VelumInkSecondary, fontSize = 12.sp)
+                }
+                if (selected) {
+                    Icon(Icons.Outlined.Check, contentDescription = null, tint = VelumInk, modifier = Modifier.size(18.dp))
+                }
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        BlackButton(
+            strings.settingsUi.addEndpointProfile,
+            {
+                val id = "profile-${profiles.size + 1}"
+                viewModel.upsertProfile(
+                    ApiEndpointProfile(
+                        id = id,
+                        name = id,
+                        baseUrl = SettingsRepository.DEFAULT_BASE_URL,
+                    ),
+                )
+                selectedProfileId = id
+            },
+            Modifier.padding(horizontal = 20.dp),
+        )
+        Spacer(Modifier.height(16.dp))
+        OutlinedTextField(
+            value = profileName,
+            onValueChange = { profileName = it },
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+            label = { Text(strings.settingsUi.profileName) },
+            singleLine = true,
+            shape = RoundedCornerShape(10.dp),
+        )
+        Spacer(Modifier.height(8.dp))
         OutlinedTextField(
             value = baseUrl,
             onValueChange = { baseUrl = it },
@@ -123,7 +198,26 @@ fun ApiSettingsScreen(
             shape = RoundedCornerShape(10.dp),
         )
         Spacer(Modifier.height(8.dp))
-        BlackButton(strings.save, { viewModel.setBaseUrl(baseUrl) }, Modifier.padding(horizontal = 20.dp))
+        BlackButton(
+            strings.save,
+            {
+                viewModel.upsertProfile(
+                    selectedProfile.copy(name = profileName.trim().ifBlank { selectedProfile.id }, baseUrl = baseUrl),
+                )
+            },
+            Modifier.padding(horizontal = 20.dp),
+        )
+        if (selectedProfile.id != ApiModelResolver.DEFAULT_PROFILE_ID) {
+            Spacer(Modifier.height(8.dp))
+            OutlineButton(
+                strings.settingsUi.deleteProfile,
+                {
+                    viewModel.deleteProfile(selectedProfile.id)
+                    selectedProfileId = ApiModelResolver.DEFAULT_PROFILE_ID
+                },
+                Modifier.padding(horizontal = 20.dp),
+            )
+        }
         Spacer(Modifier.height(12.dp))
         OutlinedTextField(
             value = apiKey,
@@ -131,7 +225,11 @@ fun ApiSettingsScreen(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
             label = {
                 Text(
-                    if (settings.hasApiKey) "${strings.apiKey} (${strings.enabled})" else strings.apiKey,
+                    if (settings.hasApiKey && selectedProfile.id == activeId) {
+                        "${strings.apiKey} (${strings.enabled})"
+                    } else {
+                        strings.apiKey
+                    },
                 )
             },
             singleLine = true,
@@ -153,9 +251,9 @@ fun ApiSettingsScreen(
             BlackButton(
                 strings.save,
                 {
-                    viewModel.setApiKey(apiKey)
+                    viewModel.setProfileApiKey(selectedProfile.id, apiKey)
                     apiKey = ""
-                    viewModel.refreshModels()
+                    viewModel.refreshModels(selectedProfile.id)
                 },
                 Modifier.weight(1f),
                 enabled = apiKey.isNotBlank(),
@@ -163,7 +261,7 @@ fun ApiSettingsScreen(
             OutlineButton(
                 strings.settingsUi.clear,
                 {
-                    viewModel.setApiKey("")
+                    viewModel.setProfileApiKey(selectedProfile.id, "")
                     apiKey = ""
                 },
                 Modifier.weight(1f),
@@ -181,7 +279,7 @@ fun ApiSettingsScreen(
                     .size(44.dp)
                     .clip(RoundedCornerShape(10.dp))
                     .border(1.dp, VelumDivider, RoundedCornerShape(10.dp))
-                    .clickable(enabled = !ui.refreshing) { viewModel.refreshModels() },
+                    .clickable(enabled = !ui.refreshing) { viewModel.refreshModels(selectedProfile.id) },
                 contentAlignment = Alignment.Center,
             ) {
                 if (ui.refreshing) {
@@ -216,7 +314,15 @@ fun ApiSettingsScreen(
                 )
             }
         }
-        if (settings.cachedModels.isNotEmpty()) {
+        Spacer(Modifier.height(12.dp))
+        SectionLabel(strings.settingsUi.modelsByTask)
+        Text(
+            strings.settingsUi.diarizationApiLocalOnly,
+            color = VelumInkSecondary,
+            fontSize = 12.sp,
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+        )
+        if (profileModels.isNotEmpty()) {
             Spacer(Modifier.height(8.dp))
             OutlinedTextField(
                 value = modelQuery,
@@ -226,66 +332,80 @@ fun ApiSettingsScreen(
                 singleLine = true,
                 shape = RoundedCornerShape(10.dp),
             )
-            Spacer(Modifier.height(12.dp))
-            TaskModelPicker(
-                title = strings.settingsUi.modelForTranscription,
-                selectedId = settings.transcriptionModel,
-                models = filtered,
-                onSelect = viewModel::selectTranscriptionModel,
-            )
-            if (settings.diarizationMode == ComputeMode.Api) {
-                TaskModelPicker(
-                    title = strings.settingsUi.modelForDiarization,
-                    selectedId = settings.diarizationModel,
-                    models = filtered,
-                    onSelect = viewModel::selectDiarizationModel,
-                )
-            }
-            TaskModelPicker(
-                title = strings.settingsUi.modelForSummaries,
-                selectedId = settings.chatModel,
-                models = filtered,
-                onSelect = viewModel::selectChatModel,
-            )
-            // Embedding API picker omitted until Ask ranking uses remote embeddings.
         }
-        if (listingFailed || settings.cachedModels.isEmpty()) {
-            Spacer(Modifier.height(12.dp))
-            SectionLabel(strings.settingsUi.modelManualId)
-            Text(
-                strings.settingsUi.modelManualIdHint,
-                color = VelumInkSecondary,
-                fontSize = 13.sp,
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
-            )
-            ManualModelField(
-                label = strings.settingsUi.modelForTranscription,
-                value = manualTranscription,
-                onValueChange = { manualTranscription = it },
-                onSave = { viewModel.selectTranscriptionModel(manualTranscription.trim()) },
-            )
-            if (settings.diarizationMode == ComputeMode.Api) {
-                ManualModelField(
-                    label = strings.settingsUi.modelForDiarization,
-                    value = manualDiarization,
-                    onValueChange = { manualDiarization = it },
-                    onSave = { viewModel.selectDiarizationModel(manualDiarization.trim()) },
-                )
-            }
-            ManualModelField(
-                label = strings.settingsUi.modelForSummaries,
-                value = manualChat,
-                onValueChange = { manualChat = it },
-                onSave = { viewModel.selectChatModel(manualChat.trim()) },
-            )
-            ManualModelField(
-                label = strings.settingsUi.modelForEmbeddings,
-                value = manualEmbedding,
-                onValueChange = { manualEmbedding = it },
-                onSave = { viewModel.selectEmbeddingModel(manualEmbedding.trim()) },
+        AiApiTask.entries.forEach { task ->
+            TaskBindingEditor(
+                task = task,
+                title = taskLabel(task),
+                binding = settings.taskBindings[task.name] ?: TaskModelBinding(),
+                profiles = profiles,
+                fallbackProfileId = selectedProfile.id,
+                filteredModels = filtered,
+                showManual = listingFailed || profileModels.isEmpty(),
+                onBind = viewModel::setTaskBinding,
             )
         }
         Spacer(Modifier.height(40.dp))
+    }
+}
+
+@Composable
+private fun TaskBindingEditor(
+    task: AiApiTask,
+    title: String,
+    binding: TaskModelBinding,
+    profiles: List<ApiEndpointProfile>,
+    fallbackProfileId: String,
+    filteredModels: List<AiModelInfo>,
+    showManual: Boolean,
+    onBind: (AiApiTask, TaskModelBinding) -> Unit,
+) {
+    val strings = LocalStrings.current
+    val selectedModel = binding.modelId
+    val boundProfileId = binding.profileId ?: fallbackProfileId
+    var manual by remember(task.name, selectedModel) { mutableStateOf(selectedModel.orEmpty()) }
+    Spacer(Modifier.height(12.dp))
+    Text(
+        title,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 14.sp,
+        color = VelumInk,
+        modifier = Modifier.padding(horizontal = 20.dp),
+    )
+    ChevronRow(
+        strings.settingsUi.endpointProfile,
+        {
+            val idx = profiles.indexOfFirst { it.id == boundProfileId }.coerceAtLeast(0)
+            val next = profiles[(idx + 1) % profiles.size]
+            onBind(task, binding.copy(profileId = next.id))
+        },
+        value = profiles.firstOrNull { it.id == boundProfileId }?.name
+            ?: profiles.firstOrNull()?.name.orEmpty(),
+    )
+    if (filteredModels.isNotEmpty()) {
+        TaskModelPicker(
+            title = strings.settingsUi.modelManualId,
+            selectedId = selectedModel,
+            models = filteredModels,
+            onSelect = { modelId ->
+                onBind(task, binding.copy(profileId = boundProfileId, modelId = modelId))
+            },
+        )
+    } else if (showManual) {
+        ManualModelField(
+            label = title,
+            value = manual,
+            onValueChange = { manual = it },
+            onSave = {
+                onBind(
+                    task,
+                    binding.copy(
+                        profileId = boundProfileId,
+                        modelId = manual.trim().ifBlank { null },
+                    ),
+                )
+            },
+        )
     }
 }
 

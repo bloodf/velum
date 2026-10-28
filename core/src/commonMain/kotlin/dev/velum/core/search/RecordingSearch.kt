@@ -40,7 +40,7 @@ object RecordingSearch {
             if (fromFts.isNotEmpty()) return fromFts
         }
         return ListSearch.filter(items, q) {
-            listOf(it.name, it.description, it.category, it.author, it.system_prompt)
+            listOf(it.name, it.description, it.category, it.author, it.system_prompt, it.tags)
         }
     }
 }

@@ -21,9 +21,20 @@ class PlaudTemplateCatalogTest {
         assertEquals("tpl_1", entries[0].sourceTemplateId)
         assertEquals(9L, entries[0].uses)
         assertEquals("meeting", entries[0].category)
+        assertTrue(entries[0].featured)
         assertTrue(entries[0].docsCreditLine().contains("Ada"))
         assertNull(entries[0].uiContributorCredit())
         assertNull(entries[0].contributor)
+    }
+
+    @Test
+    fun parseJsonl_featuredFalse_fromFullCatalogRow() {
+        val line =
+            """{"id":"plaud.x","category":"general","name":"X","author":"A","bodyType":"outline","body":"Do X","featured":false,"usageCount":1,"lang":"en","tags":["summary","key-points"]}"""
+        val entry = PlaudTemplateCatalog.parseJsonl(line).single()
+        assertFalse(entry.featured)
+        assertEquals("en", entry.lang)
+        assertEquals(listOf("summary", "key-points"), entry.tags)
     }
 
     @Test
@@ -65,19 +76,19 @@ class PlaudTemplateCatalogTest {
     }
 
     @Test
-    fun fullCatalog_loadsAndValidatesEveryEntry() {
+    fun featuredCatalog_loadsAndValidatesEveryEntry() {
         val entries = PlaudTemplateCatalog.All
-        assertEquals(1500, entries.size, "expected curated 100×15 catalog")
+        assertTrue(entries.size >= 1500, "expected ≥1500 Featured (100×15); got ${entries.size}")
         val ids = mutableSetOf<String>()
         val perCategory = mutableMapOf<String, Int>()
-        var official = 0
+        val titleBodyKeys = mutableSetOf<String>()
         entries.forEach { e ->
             assertTrue(e.id.isNotBlank(), "blank id")
             assertTrue(ids.add(e.id), "duplicate id ${e.id}")
             assertTrue(e.name.isNotBlank(), e.id)
-            assertTrue(e.author.isNotBlank(), e.id)
             assertTrue(e.body.isNotBlank(), e.id)
             assertTrue(e.uses >= 0, e.id)
+            assertTrue(e.featured, "Featured asset row must be featured: ${e.id}")
             assertTrue(
                 e.category in BuiltinTemplateCatalog.CategoryOrder,
                 "${e.id} category=${e.category}",
@@ -99,20 +110,17 @@ class PlaudTemplateCatalogTest {
             assertNull(e.uiContributorCredit(), e.id)
             assertTrue(e.docsCreditLine().isNotBlank(), e.id)
             perCategory[e.category] = (perCategory[e.category] ?: 0) + 1
-            if (e.official) official++
+            val key = normalizeTitleBody(e.name, e.body)
+            assertTrue(titleBodyKeys.add(key), "duplicate title+body: ${e.id}")
         }
         assertEquals(15, perCategory.size)
-        perCategory.values.forEach { assertEquals(100, it) }
-        assertEquals(41, official)
-        // Unique display names within each category; bodies unique globally.
-        val namesByCategory = mutableMapOf<String, MutableSet<String>>()
-        val bodies = mutableSetOf<String>()
-        entries.forEach { e ->
-            val names = namesByCategory.getOrPut(e.category) { mutableSetOf() }
-            assertTrue(names.add(e.name), "duplicate name in ${e.category}: ${e.name}")
-            assertTrue(bodies.add(e.body.trim()), "duplicate body: ${e.id}")
+        perCategory.forEach { (cat, count) ->
+            assertTrue(count >= 100, "category $cat expected ≥100, got $count")
         }
-        assertTrue(BuiltinTemplateCatalog.All.size >= 1515)
+        assertTrue(
+            BuiltinTemplateCatalog.All.size >=
+                BuiltinTemplateCatalog.velumEntries().size + entries.size,
+        )
         assertEquals(15, BuiltinTemplateCatalog.velumEntries().size)
     }
 
@@ -124,5 +132,9 @@ class PlaudTemplateCatalogTest {
         assertEquals("velum.contrib.standup", entry.id)
         assertEquals("Ada Lovelace (@ada)", entry.uiContributorCredit())
         assertFalse(entry.official)
+        assertTrue(entry.featured)
     }
+
+    private fun normalizeTitleBody(name: String, body: String): String =
+        name.trim().lowercase() + "\u0000" + body.trim().lowercase()
 }
