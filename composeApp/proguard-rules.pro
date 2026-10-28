@@ -1,6 +1,6 @@
-# Shipping R8 rules only — no -dontobfuscate, no blanket dev.velum.** /
-# androidx.** keeps. Instrumented minified walks add
-# proguard-rules-instrumented.pro via the minifiedWalk build type.
+# Shipping R8 rules only (#106) — no -dontobfuscate, no blanket
+# dev.velum.** / kotlin.** / kotlinx.** / androidx.** keeps.
+# Instrumented R8 walks use minifiedTest + proguard-test-rules.pro.
 
 # Keep kotlinx.serialization generated serializers
 -keepattributes *Annotation*, InnerClasses
