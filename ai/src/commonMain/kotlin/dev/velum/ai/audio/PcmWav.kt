@@ -5,24 +5,23 @@ package dev.velum.ai.audio
  * The recording pipeline decodes to raw PCM; remote ASR needs a real container, not naked samples.
  */
 object PcmWav {
-    fun encode(
-        pcmS16le: ByteArray,
+    /** 44-byte PCM WAV header only (no data payload) for streaming writes. */
+    fun header(
+        dataSize: Int,
         sampleRateHz: Int,
         channels: Int = 1,
         bitsPerSample: Int = 16,
     ): ByteArray {
+        require(dataSize >= 0) { "dataSize must be non-negative" }
         require(sampleRateHz > 0) { "sampleRateHz must be positive" }
         require(channels > 0) { "channels must be positive" }
         require(bitsPerSample % 8 == 0) { "bitsPerSample must be a multiple of 8" }
         val byteRate = sampleRateHz * channels * bitsPerSample / 8
         val blockAlign = (channels * bitsPerSample / 8).toShort()
-        val dataSize = pcmS16le.size
-        val out = ByteArray(44 + dataSize)
-        // RIFF header
+        val out = ByteArray(44)
         writeAscii(out, 0, "RIFF")
         writeIntLe(out, 4, 36 + dataSize)
         writeAscii(out, 8, "WAVE")
-        // fmt chunk
         writeAscii(out, 12, "fmt ")
         writeIntLe(out, 16, 16) // PCM fmt chunk size
         writeShortLe(out, 20, 1) // PCM format
@@ -31,9 +30,25 @@ object PcmWav {
         writeIntLe(out, 28, byteRate)
         writeShortLe(out, 32, blockAlign)
         writeShortLe(out, 34, bitsPerSample.toShort())
-        // data chunk
         writeAscii(out, 36, "data")
         writeIntLe(out, 40, dataSize)
+        return out
+    }
+
+    fun encode(
+        pcmS16le: ByteArray,
+        sampleRateHz: Int,
+        channels: Int = 1,
+        bitsPerSample: Int = 16,
+    ): ByteArray {
+        val header = header(
+            dataSize = pcmS16le.size,
+            sampleRateHz = sampleRateHz,
+            channels = channels,
+            bitsPerSample = bitsPerSample,
+        )
+        val out = ByteArray(44 + pcmS16le.size)
+        header.copyInto(out, 0)
         pcmS16le.copyInto(out, 44)
         return out
     }
