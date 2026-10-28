@@ -16,10 +16,10 @@
 
 | Sev | Finding | Location | Fix | SHA |
 |-----|---------|----------|-----|-----|
-| **high** | Recording ids `rec-{epoch}-{1000..9999}` + SQLDelight `INSERT OR REPLACE` → birthday collision silently destroys another recording | `AppContainer.createLocalRecording` / `persistDownloadedSession` | `RecordingIds.newId()` with 1e9–1e10 random; collision + overwrite regression tests | _(this push)_ |
-| **high** | AutoFlow `awaitReadyStatus` accepted pre-enqueue `ready` → post-actions fired before WorkManager job started (wrong/stale template notes) | `AutoFlowRunner.runProcessing` / `awaitReadyStatus` | Force `queued` before enqueue; require in-flight before accepting `ready`; race test | _(this push)_ |
-| **medium** | AutoFlow editor ids used the same 4-digit birthday space with `INSERT OR REPLACE` | `AutoFlowScreens.persist` | Wide 1e9–1e10 random | _(this push)_ |
-| **info** | No instrumented full-shell walk in CI (prior rounds: emulator adb offline in agent VM) | `.github/workflows/ci.yml` | New `android-device-walk` job: KVM emulator, debug + release R8, screenshots + logcat artifacts | _(this push)_ |
+| **high** | Recording ids `rec-{epoch}-{1000..9999}` + SQLDelight `INSERT OR REPLACE` → birthday collision silently destroys another recording | `AppContainer.createLocalRecording` / `persistDownloadedSession` | `RecordingIds.newId()` with 1e9–1e10 random; collision + overwrite regression tests | `0d1f5ce` |
+| **high** | AutoFlow `awaitReadyStatus` accepted pre-enqueue `ready` → post-actions fired before WorkManager job started (wrong/stale template notes) | `AutoFlowRunner.runProcessing` / `awaitReadyStatus` | Force `queued` before enqueue; require in-flight before accepting `ready`; race test | `0d1f5ce` |
+| **medium** | AutoFlow editor ids used the same 4-digit birthday space with `INSERT OR REPLACE` | `AutoFlowScreens.persist` | Wide 1e9–1e10 random | `0d1f5ce` |
+| **info** | No instrumented full-shell walk in CI (prior rounds: emulator adb offline in agent VM) | `.github/workflows/ci.yml` | New `android-device-walk` job: KVM emulator, debug + release R8, screenshots + logcat artifacts | `0d1f5ce` |
 
 ### Hard rules re-checked (pass)
 
