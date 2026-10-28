@@ -203,8 +203,15 @@ class PlaudDeviceClient(
      * Download a session. Large transfers stream to a temp file when available,
      * then return bytes (still capped by [MAX_SESSION_DOWNLOAD_BYTES]).
      * Prefer [downloadSessionTo] when the caller already has a disk sink.
+     *
+     * [onProgress] reports cumulative received bytes (estimate progress as
+     * received / sizeBytes when sizeBytes > 0).
      */
-    suspend fun downloadSession(sessionId: Long, sizeBytes: Long): ByteArray {
+    suspend fun downloadSession(
+        sessionId: Long,
+        sizeBytes: Long,
+        onProgress: ((receivedBytes: Long) -> Unit)? = null,
+    ): ByteArray {
         require(sizeBytes in 0..MAX_SESSION_DOWNLOAD_BYTES) {
             "Session sizeBytes=$sizeBytes exceeds cap of $MAX_SESSION_DOWNLOAD_BYTES"
         }
@@ -212,7 +219,7 @@ class PlaudDeviceClient(
         val temp = if (useFile) createTempSessionFile() else null
         if (temp != null) {
             try {
-                downloadSessionTo(sessionId, sizeBytes, temp)
+                downloadSessionTo(sessionId, sizeBytes, temp, onProgress)
                 require(temp.size() <= MAX_SESSION_DOWNLOAD_BYTES) {
                     "Session download exceeded ${MAX_SESSION_DOWNLOAD_BYTES}-byte cap"
                 }
@@ -222,7 +229,7 @@ class PlaudDeviceClient(
             }
         }
         val buffer = SessionDownloadBuffer(MAX_SESSION_DOWNLOAD_BYTES)
-        downloadSessionTo(sessionId, sizeBytes, SessionByteSink { buffer.write(it) })
+        downloadSessionTo(sessionId, sizeBytes, SessionByteSink { buffer.write(it) }, onProgress)
         return buffer.toByteArray()
     }
 
@@ -231,6 +238,7 @@ class PlaudDeviceClient(
         sessionId: Long,
         sizeBytes: Long,
         sink: SessionByteSink,
+        onProgress: ((receivedBytes: Long) -> Unit)? = null,
     ) {
         require(sizeBytes in 0..MAX_SESSION_DOWNLOAD_BYTES) {
             "Session sizeBytes=$sizeBytes exceeds cap of $MAX_SESSION_DOWNLOAD_BYTES"
@@ -241,31 +249,39 @@ class PlaudDeviceClient(
         require(!startRsp.refused) { "Sync start refused status=${startRsp.status}" }
 
         var written = 0L
-        while (true) {
-            val raw = awaitDecryptedFrame(responseTimeout) { true }
-            when (val inboundPacket = Framing.decodeInbound(raw)) {
-                is InboundPacket.RecordingData -> {
-                    when (val data = Sessions.parseRecordingData(raw, protocolVersion)) {
-                        is RecordingDataPacket.Chunk -> {
-                            require(written + data.data.size <= MAX_SESSION_DOWNLOAD_BYTES) {
-                                "Session download exceeded ${MAX_SESSION_DOWNLOAD_BYTES}-byte cap"
+        try {
+            while (true) {
+                val raw = awaitDecryptedFrame(responseTimeout) { true }
+                when (val inboundPacket = Framing.decodeInbound(raw)) {
+                    is InboundPacket.RecordingData -> {
+                        when (val data = Sessions.parseRecordingData(raw, protocolVersion)) {
+                            is RecordingDataPacket.Chunk -> {
+                                require(written + data.data.size <= MAX_SESSION_DOWNLOAD_BYTES) {
+                                    "Session download exceeded ${MAX_SESSION_DOWNLOAD_BYTES}-byte cap"
+                                }
+                                sink.write(data.data)
+                                written += data.data.size
+                                onProgress?.invoke(written)
                             }
-                            sink.write(data.data)
-                            written += data.data.size
+                            is RecordingDataPacket.End -> break
                         }
-                        is RecordingDataPacket.End -> break
                     }
+                    is InboundPacket.CommandResponse -> {
+                        if (inboundPacket.cmd == Commands.SYNC_FILE_STOP) break
+                    }
+                    else -> Unit
                 }
-                is InboundPacket.CommandResponse -> {
-                    if (inboundPacket.cmd == Commands.SYNC_FILE_STOP) break
-                }
-                else -> Unit
+                if (sizeBytes > 0 && written >= sizeBytes) break
             }
-            if (sizeBytes > 0 && written >= sizeBytes) break
-        }
 
-        val stopPayload = transactCommand(Commands.SYNC_FILE_STOP, Sessions.encodeSyncStop())
-        Sessions.parseSyncStopResponse(stopPayload)
+            val stopPayload = transactCommand(Commands.SYNC_FILE_STOP, Sessions.encodeSyncStop())
+            Sessions.parseSyncStopResponse(stopPayload)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            runCatching {
+                transactCommand(Commands.SYNC_FILE_STOP, Sessions.encodeSyncStop())
+            }
+            throw e
+        }
     }
 
     suspend fun readBattery(): BatteryReading {

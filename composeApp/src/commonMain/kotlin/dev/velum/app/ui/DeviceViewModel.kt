@@ -2,6 +2,10 @@ package dev.velum.app.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import dev.velum.app.i18n.DeviceUiCopy
+import dev.velum.app.platform.DownloadNotifyKind
+import dev.velum.app.platform.DownloadProgressNotifier
+import dev.velum.app.platform.systemLanguageTag
 import dev.velum.ble.BleConnectionState
 import dev.velum.ble.BleTransport
 import dev.velum.ble.client.PlaudDeviceClient
@@ -14,6 +18,8 @@ import dev.velum.protocol.DeviceCapabilityRegistry
 import dev.velum.protocol.PlaudFileCrypto
 import dev.velum.protocol.SessionEntry
 import dev.velum.recorder.RecorderDriverRegistry
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -31,6 +37,8 @@ data class DeviceSessionUi(
     val capabilities: DeviceCapabilities? = null,
     val recorderDriverId: String? = null,
     val downloadingSessionId: Long? = null,
+    /** 0f..1f while a session download is in flight; null when idle. */
+    val downloadProgress: Float? = null,
     val lastDownloadedRecordingId: String? = null,
 )
 
@@ -57,6 +65,7 @@ class DeviceViewModel(
     private val persistDownloadedSession: suspend (DownloadedSessionAudio) -> String = {
         error("persistDownloadedSession not configured")
     },
+    private val localeTag: () -> String = { systemLanguageTag() },
 ) : ViewModel() {
     val connectionState: StateFlow<BleConnectionState> =
         ble.connectionState.stateIn(viewModelScope, SharingStarted.Eagerly, BleConnectionState.Idle)
@@ -69,6 +78,7 @@ class DeviceViewModel(
 
     private var client: PlaudDeviceClient? = null
     private var connectedSerial: String? = null
+    private var downloadJob: Job? = null
 
     init {
         viewModelScope.launch {
@@ -103,46 +113,82 @@ class DeviceViewModel(
 
     fun disconnect() {
         viewModelScope.launch {
+            cancelDownload()
             closeClient()
             _sessionUi.value = DeviceSessionUi()
             ble.disconnect()
         }
     }
 
+    fun cancelDownload() {
+        val locale = localeTag()
+        downloadJob?.cancel()
+        downloadJob = null
+        DownloadProgressNotifier.dismiss(DownloadNotifyKind.DeviceSession)
+        DownloadProgressNotifier.setCancelHandler(DownloadNotifyKind.DeviceSession, null)
+        if (_sessionUi.value.downloadingSessionId != null) {
+            _sessionUi.value = _sessionUi.value.copy(
+                downloadingSessionId = null,
+                downloadProgress = null,
+                statusMessage = DeviceUiCopy.downloadCancelled(locale),
+            )
+        }
+    }
+
     fun downloadSession(sessionId: Long) {
-        viewModelScope.launch {
+        if (downloadJob?.isActive == true) return
+        downloadJob = viewModelScope.launch {
+            val locale = localeTag()
             val entry = _sessionUi.value.sessions.firstOrNull { it.sessionId == sessionId }
             if (entry == null) {
                 _sessionUi.value = _sessionUi.value.copy(
-                    statusMessage = "Session not found on device.",
+                    statusMessage = DeviceUiCopy.sessionNotFound(locale),
                 )
                 return@launch
             }
             val c = client
             if (c == null) {
                 _sessionUi.value = _sessionUi.value.copy(
-                    statusMessage = "Not connected. Connect and unlock first.",
+                    statusMessage = DeviceUiCopy.notConnected(locale),
                 )
                 return@launch
             }
-            val importer = keyImporter
-            val keys = importer?.loadKeys()
+            val keys = keyImporter?.loadKeys()
             if (keys == null) {
                 _sessionUi.value = _sessionUi.value.copy(
-                    statusMessage = "Import device identity keys to download.",
+                    statusMessage = DeviceUiCopy.importKeysToDownload(locale),
                 )
                 return@launch
             }
+            val totalBytes = entry.sizeBytes.coerceAtLeast(1L)
             _sessionUi.value = _sessionUi.value.copy(
                 downloadingSessionId = sessionId,
-                statusMessage = "Downloading session #$sessionId…",
+                downloadProgress = 0f,
+                statusMessage = DeviceUiCopy.downloadingSession(locale, sessionId),
                 lastDownloadedRecordingId = null,
+            )
+            DownloadProgressNotifier.ensureChannel()
+            DownloadProgressNotifier.setCancelHandler(DownloadNotifyKind.DeviceSession) {
+                cancelDownload()
+            }
+            DownloadProgressNotifier.show(
+                kind = DownloadNotifyKind.DeviceSession,
+                title = DeviceUiCopy.downloadNotificationTitle(locale),
+                body = DeviceUiCopy.downloadingSession(locale, sessionId),
+                progress = 0f,
+                cancelLabel = DeviceUiCopy.cancel(locale),
             )
             try {
                 // BLE path is the reliable product path for 1.0. SoftAP prefer-Wi‑Fi
                 // remains available in the protocol layer; credentials on hardware are
                 // confirmed separately (see docs/HARDWARE_VALIDATION.md).
-                val encrypted = c.downloadSession(sessionId, entry.sizeBytes)
+                val encrypted = c.downloadSession(sessionId, entry.sizeBytes) { received ->
+                    val progress = (received.toDouble() / totalBytes.toDouble())
+                        .toFloat()
+                        .coerceIn(0f, 0.99f)
+                    _sessionUi.value = _sessionUi.value.copy(downloadProgress = progress)
+                    DownloadProgressNotifier.update(DownloadNotifyKind.DeviceSession, progress)
+                }
                 val decrypted = PlaudFileCrypto.decrypt(
                     encrypted,
                     keys.privateKeyPem,
@@ -161,14 +207,26 @@ class DeviceViewModel(
                 _sessionUi.value = _sessionUi.value.copy(
                     sessions = sessions.entries,
                     downloadingSessionId = null,
+                    downloadProgress = null,
                     lastDownloadedRecordingId = recordingId,
-                    statusMessage = "Downloaded session #$sessionId",
+                    statusMessage = DeviceUiCopy.downloadedSession(localeTag(), sessionId),
                 )
-            } catch (e: Exception) {
+            } catch (_: CancellationException) {
                 _sessionUi.value = _sessionUi.value.copy(
                     downloadingSessionId = null,
-                    statusMessage = "Download failed. Check the connection and try again.",
+                    downloadProgress = null,
+                    statusMessage = DeviceUiCopy.downloadCancelled(localeTag()),
                 )
+            } catch (_: Exception) {
+                _sessionUi.value = _sessionUi.value.copy(
+                    downloadingSessionId = null,
+                    downloadProgress = null,
+                    statusMessage = DeviceUiCopy.downloadFailed(localeTag()),
+                )
+            } finally {
+                downloadJob = null
+                DownloadProgressNotifier.dismiss(DownloadNotifyKind.DeviceSession)
+                DownloadProgressNotifier.setCancelHandler(DownloadNotifyKind.DeviceSession, null)
             }
         }
     }
@@ -180,6 +238,7 @@ class DeviceViewModel(
     }
 
     private suspend fun runProtocolIfKeysPresent() {
+        val locale = localeTag()
         val connected = (connectionState.value as? BleConnectionState.Connected)?.device
         connectedSerial = connected?.serial ?: connected?.name
         val scanMatch = RecorderDriverRegistry.matchAdvertisement(
@@ -191,32 +250,35 @@ class DeviceViewModel(
             _sessionUi.value = DeviceSessionUi(
                 modelDisplayName = scanMatch.capabilities.productLabel,
                 recorderDriverId = driverId,
-                statusMessage = "This recorder model is not supported in this version.",
+                statusMessage = DeviceUiCopy.unsupportedRecorder(locale),
             )
             return
         }
         val importer = keyImporter ?: run {
             _sessionUi.value = DeviceSessionUi(
                 recorderDriverId = "plaud",
-                statusMessage = "Connected. Import device identity keys to sync.",
+                statusMessage = DeviceUiCopy.connectedImportKeys(locale),
             )
             return
         }
         if (!importer.hasKeys()) {
             _sessionUi.value = DeviceSessionUi(
                 recorderDriverId = "plaud",
-                statusMessage = "Connected. Import device identity keys to sync.",
+                statusMessage = DeviceUiCopy.connectedImportKeys(locale),
             )
             return
         }
         val keys = importer.loadKeys() ?: run {
             _sessionUi.value = DeviceSessionUi(
                 recorderDriverId = "plaud",
-                statusMessage = "Connected. Identity keys incomplete.",
+                statusMessage = DeviceUiCopy.connectedKeysIncomplete(locale),
             )
             return
         }
-        _sessionUi.value = DeviceSessionUi(statusMessage = "Unlocking…", recorderDriverId = "plaud")
+        _sessionUi.value = DeviceSessionUi(
+            statusMessage = DeviceUiCopy.unlocking(locale),
+            recorderDriverId = "plaud",
+        )
         try {
             val capsBase = DeviceCapabilityRegistry.detect(
                 productCode = connected?.modelCode,
@@ -239,20 +301,18 @@ class DeviceViewModel(
                 wifiFastPath = wifi,
                 capabilities = caps,
                 recorderDriverId = "plaud",
-                statusMessage = buildString {
-                    append("Ready · ${caps.displayName}")
-                    append(" · protocol ${hs.protocolVersion}")
-                    when {
-                        wifi -> append(" · Wi‑Fi preferred (BLE download active)")
-                        wifiCapable -> append(" · BLE transfer (Wi‑Fi preferred off)")
-                        else -> append(" · BLE transfer")
-                    }
-                },
+                statusMessage = DeviceUiCopy.readyStatus(
+                    localeTag = localeTag(),
+                    displayName = caps.displayName,
+                    protocolVersion = hs.protocolVersion,
+                    wifiPreferred = wifi,
+                    wifiCapable = wifiCapable,
+                ),
             )
         } catch (_: Exception) {
             _sessionUi.value = DeviceSessionUi(
                 recorderDriverId = "plaud",
-                statusMessage = "Could not unlock the device. Check keys and try again.",
+                statusMessage = DeviceUiCopy.unlockFailed(localeTag()),
             )
         }
     }

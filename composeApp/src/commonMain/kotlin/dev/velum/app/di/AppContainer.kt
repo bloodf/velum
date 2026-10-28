@@ -25,6 +25,7 @@ import dev.velum.app.platform.ExportFolderStore
 import dev.velum.app.platform.MicCapture
 import dev.velum.app.platform.createMicCapture
 import dev.velum.app.platform.recordingsDirectoryPath
+import dev.velum.app.platform.systemLanguageTag
 import dev.velum.app.platform.writeBytesToPath
 import dev.velum.app.ui.DeviceViewModel
 import dev.velum.app.ui.DownloadedSessionAudio
@@ -79,6 +80,13 @@ class AppContainer(
         keyImporter = deviceKeyImporter,
         preferWifiFastPath = { settingsRepository.preferences.value.preferWifiFastPath },
         persistDownloadedSession = { session -> persistDownloadedSession(session) },
+        localeTag = {
+            when (settingsRepository.preferences.value.appLanguage) {
+                "en" -> "en"
+                "pt-BR" -> "pt-BR"
+                else -> systemLanguageTag()
+            }
+        },
     )
     val integrationAuth = IntegrationAuthStore(secureStore, integrationConfig)
     val webhookSettings = WebhookSettingsStore(secureStore)

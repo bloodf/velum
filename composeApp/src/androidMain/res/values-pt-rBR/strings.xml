@@ -17,4 +17,7 @@
     <string name="processing_channel_desc">Exibida enquanto o Velum transcreve ou resume uma gravação</string>
     <string name="processing_notification_title">Processando gravação</string>
     <string name="processing_notification_body">Transcrevendo e resumindo no aparelho</string>
+    <string name="download_channel_name">Downloads</string>
+    <string name="download_channel_desc">Progresso ao baixar sessões do aparelho ou modelos locais</string>
+    <string name="download_cancel">Cancelar</string>
 </resources>

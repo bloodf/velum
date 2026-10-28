@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -30,7 +31,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.unit.dp
-import androidx.compose.material3.CircularProgressIndicator
 import dev.velum.app.i18n.DeviceUiCopy
 import dev.velum.app.i18n.LocalStrings
 import dev.velum.app.platform.AppPermission
@@ -86,6 +86,7 @@ fun DeviceScreen(
             }
         },
         onDownloadSession = { viewModel.downloadSession(it) },
+        onCancelDownload = { viewModel.cancelDownload() },
     )
 }
 
@@ -102,6 +103,7 @@ fun DeviceScreenContent(
     onConnect: (String) -> Unit,
     onBack: (() -> Unit)? = null,
     onDownloadSession: (Long) -> Unit = {},
+    onCancelDownload: () -> Unit = {},
 ) {
     Column(
         modifier = Modifier
@@ -171,6 +173,23 @@ fun DeviceScreenContent(
                 }
             }
         }
+        if (state is BleConnectionState.Connected &&
+            sessionUi.protocolVersion != null &&
+            sessionUi.sessions.isEmpty() &&
+            sessionUi.downloadingSessionId == null
+        ) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = DeviceUiCopy.sessionsOnDevice(locale),
+                style = MaterialTheme.typography.titleLarge,
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = DeviceUiCopy.noSessionsOnDevice(locale),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         if (sessionUi.sessions.isNotEmpty()) {
             Spacer(Modifier.height(8.dp))
             Text(
@@ -178,33 +197,50 @@ fun DeviceScreenContent(
                 style = MaterialTheme.typography.titleLarge,
             )
             sessionUi.sessions.take(24).forEach { entry ->
-                Row(
+                val downloading = sessionUi.downloadingSessionId == entry.sessionId
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(vertical = 6.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(
-                        text = "#${entry.sessionId} · ${formatSessionSize(entry.sizeBytes)}",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.weight(1f),
-                    )
-                    val downloading = sessionUi.downloadingSessionId == entry.sessionId
-                    if (downloading) {
-                        CircularProgressIndicator(
-                            modifier = Modifier
-                                .height(28.dp)
-                                .padding(end = 8.dp),
-                            strokeWidth = 2.dp,
-                        )
-                    }
-                    Button(
-                        onClick = { onDownloadSession(entry.sessionId) },
-                        enabled = !downloading && sessionUi.downloadingSessionId == null,
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text(strings.download)
+                        Text(
+                            text = "#${entry.sessionId} · ${formatSessionSize(entry.sizeBytes)}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.weight(1f),
+                        )
+                        if (downloading) {
+                            TextButton(onClick = onCancelDownload) {
+                                Text(strings.cancel)
+                            }
+                        } else {
+                            Button(
+                                onClick = { onDownloadSession(entry.sessionId) },
+                                enabled = sessionUi.downloadingSessionId == null,
+                            ) {
+                                Text(strings.download)
+                            }
+                        }
+                    }
+                    if (downloading) {
+                        val progress = sessionUi.downloadProgress ?: 0f
+                        val percent = (progress * 100).toInt().coerceIn(0, 99)
+                        Spacer(Modifier.height(8.dp))
+                        LinearProgressIndicator(
+                            progress = { progress },
+                            modifier = Modifier.fillMaxWidth().height(4.dp),
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = DeviceUiCopy.downloadPercent(locale, percent),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                 }
             }

@@ -18,6 +18,8 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -34,9 +36,12 @@ import dev.velum.ai.local.LocalModelKind
 import dev.velum.ai.local.LocalModelState
 import dev.velum.ai.local.LocalModelStatus
 import dev.velum.app.di.AppContainer
+import dev.velum.app.i18n.DeviceUiCopy
 import dev.velum.app.i18n.LocalStrings
 import dev.velum.app.i18n.ModelCatalogUi
 import dev.velum.app.i18n.Strings
+import dev.velum.app.platform.DownloadNotifyKind
+import dev.velum.app.platform.DownloadProgressNotifier
 import dev.velum.app.ui.components.BlackButton
 import dev.velum.app.ui.components.OutlineButton
 import dev.velum.app.ui.components.ScreenTopBar
@@ -56,6 +61,38 @@ fun ModelManagerScreen(
     val states by container.localModelManager.states.collectAsState()
     val scope = rememberCoroutineScope()
     var pendingDeleteId by remember { mutableStateOf<String?>(null) }
+
+    val downloading = states.firstOrNull { it.status == LocalModelStatus.Downloading }
+    LaunchedEffect(downloading?.spec?.id, downloading?.progress) {
+        val active = downloading
+        if (active == null) {
+            DownloadProgressNotifier.dismiss(DownloadNotifyKind.LocalModel)
+            DownloadProgressNotifier.setCancelHandler(DownloadNotifyKind.LocalModel, null)
+            return@LaunchedEffect
+        }
+        DownloadProgressNotifier.ensureChannel()
+        DownloadProgressNotifier.setCancelHandler(DownloadNotifyKind.LocalModel) {
+            container.localModelManager.cancelDownload(active.spec.id)
+        }
+        val title = DeviceUiCopy.modelDownloadNotificationTitle(
+            strings.localeTag,
+            active.spec.displayName,
+        )
+        val percent = (active.progress * 100).toInt().coerceIn(0, 99)
+        DownloadProgressNotifier.show(
+            kind = DownloadNotifyKind.LocalModel,
+            title = title,
+            body = "$percent%",
+            progress = active.progress,
+            cancelLabel = strings.cancel,
+        )
+    }
+    DisposableEffect(Unit) {
+        onDispose {
+            DownloadProgressNotifier.dismiss(DownloadNotifyKind.LocalModel)
+            DownloadProgressNotifier.setCancelHandler(DownloadNotifyKind.LocalModel, null)
+        }
+    }
 
     Column(Modifier.fillMaxSize().background(VelumBg)) {
         ScreenTopBar(strings.modelManager, onBack = onBack)
@@ -80,6 +117,7 @@ fun ModelManagerScreen(
                             container.localModelManager.download(state.spec.id).collect()
                         }
                     },
+                    onCancel = { container.localModelManager.cancelDownload(state.spec.id) },
                     onDelete = { pendingDeleteId = state.spec.id },
                 )
             }
@@ -111,6 +149,7 @@ fun ModelManagerScreen(
 private fun ModelCard(
     state: LocalModelState,
     onDownload: () -> Unit,
+    onCancel: () -> Unit,
     onDelete: () -> Unit,
 ) {
     val strings = LocalStrings.current
@@ -166,6 +205,12 @@ private fun ModelCard(
                 progress = { state.progress },
                 modifier = Modifier.fillMaxWidth().height(4.dp),
             )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "${(state.progress * 100).toInt().coerceIn(0, 99)}%",
+                color = VelumInkSecondary,
+                fontSize = 12.sp,
+            )
         }
         Spacer(Modifier.height(12.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -174,7 +219,7 @@ private fun ModelCard(
                     OutlineButton(strings.delete, onDelete, Modifier.weight(1f))
                 }
                 LocalModelStatus.Downloading -> {
-                    Spacer(Modifier.weight(1f))
+                    OutlineButton(strings.cancel, onCancel, Modifier.weight(1f))
                 }
                 LocalModelStatus.BlockedOnUrl -> {
                     Spacer(Modifier.weight(1f))

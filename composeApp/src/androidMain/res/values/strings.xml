@@ -17,4 +17,7 @@
     <string name="processing_channel_desc">Shown while Velum transcribes or summarizes a recording</string>
     <string name="processing_notification_title">Processing recording</string>
     <string name="processing_notification_body">Transcribing and summarizing on-device</string>
+    <string name="download_channel_name">Downloads</string>
+    <string name="download_channel_desc">Progress while Velum downloads device sessions or on-device models</string>
+    <string name="download_cancel">Cancel</string>
 </resources>
