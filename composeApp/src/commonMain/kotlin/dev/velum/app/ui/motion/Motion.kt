@@ -90,10 +90,14 @@ fun Modifier.pressableScale(
         animationSpec = if (reduce) SnapSpec() else tween(Motion.PressMs, easing = Motion.EaseOut),
         label = "pressScale",
     )
-    // clickable before graphicsLayer so a contentDescription applied on the
-    // same chain stays on the clickable a11y node (#106). TabIcon uses plain
-    // clickable instead — graphicsLayer after clickable still split a11y under R8.
+    // graphicsLayer BEFORE clickable — after clickable it split the a11y node
+    // under R8 so UiAutomator lost Skip/hub rows (#106). Scale the draw, keep
+    // clickable+semantics as the leaf a11y node.
     return this
+        .graphicsLayer {
+            scaleX = scale
+            scaleY = scale
+        }
         .clickable(
             interactionSource = interaction,
             indication = null,
@@ -104,8 +108,4 @@ fun Modifier.pressableScale(
                 onClick()
             },
         )
-        .graphicsLayer {
-            scaleX = scale
-            scaleY = scale
-        }
 }

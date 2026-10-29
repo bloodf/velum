@@ -2,7 +2,6 @@ package dev.velum.app.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -34,15 +33,16 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import dev.velum.app.platform.HapticKind
-import dev.velum.app.platform.LocalHaptics
+import dev.velum.app.ui.motion.pressableScale
 import dev.velum.app.ui.theme.VelumAiCyan
 import dev.velum.app.ui.theme.VelumAiPurple
 import dev.velum.app.ui.theme.VelumBlack
@@ -63,28 +63,26 @@ fun BlackButton(
 ) {
     val fill = if (enabled) VelumBlack else VelumDisabledFill
     val label = if (enabled) VelumOnBlack else VelumOnDisabled
-    val haptics = LocalHaptics.current
-    // Plain clickable + clearAndSetSemantics — pressableScale's trailing
-    // graphicsLayer splits the a11y node under R8 so Skip/hub rows vanish
-    // from UiAutomator (#106 device walk).
+    // pressableScale: graphicsLayer before clickable (R8-safe). clearAndSetSemantics
+    // owns CD + role + disabled/onClick for TalkBack / UiAutomator (#106).
     Box(
         modifier = modifier
             .fillMaxWidth()
             .height(52.dp)
             .clip(RoundedCornerShape(10.dp))
             .background(fill)
-            .clickable(
+            .pressableScale(
                 enabled = enabled,
+                haptic = true,
                 role = Role.Button,
-                onClick = {
-                    haptics.perform(HapticKind.Light)
-                    onClick()
-                },
+                onClick = onClick,
             )
             .clearAndSetSemantics {
                 contentDescription = text
                 role = Role.Button
-                if (enabled) {
+                if (!enabled) {
+                    disabled()
+                } else {
                     onClick {
                         onClick()
                         true
@@ -105,7 +103,6 @@ fun OutlineButton(
     leading: ImageVector? = null,
     enabled: Boolean = true,
 ) {
-    val haptics = LocalHaptics.current
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -113,18 +110,18 @@ fun OutlineButton(
             .clip(RoundedCornerShape(12.dp))
             .border(1.dp, VelumDivider, RoundedCornerShape(12.dp))
             .background(VelumSurface)
-            .clickable(
+            .pressableScale(
                 enabled = enabled,
+                haptic = true,
                 role = Role.Button,
-                onClick = {
-                    haptics.perform(HapticKind.Light)
-                    onClick()
-                },
+                onClick = onClick,
             )
             .clearAndSetSemantics {
                 contentDescription = text
                 role = Role.Button
-                if (enabled) {
+                if (!enabled) {
+                    disabled()
+                } else {
                     onClick {
                         onClick()
                         true
@@ -164,21 +161,18 @@ fun ChevronRow(
     titleColor: Color = VelumInk,
     showDivider: Boolean = true,
 ) {
-    val haptics = LocalHaptics.current
     Column(modifier = modifier.fillMaxWidth()) {
-        // Match HeaderIcon / TabIcon: one a11y node with CD + ACTION_CLICK.
-        // pressableScale graphicsLayer after clickable hid hub row text from
-        // UiAutomator on the device walk (#106).
+        // One a11y node: title CD + trailing value as stateDescription (#106).
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .defaultMinSize(minHeight = 48.dp)
-                .clickable(role = Role.Button, onClick = {
-                    haptics.perform(HapticKind.Light)
-                    onClick()
-                })
+                .pressableScale(haptic = true, role = Role.Button, onClick = onClick)
                 .clearAndSetSemantics {
                     contentDescription = title
+                    if (value != null) {
+                        stateDescription = value
+                    }
                     role = Role.Button
                     onClick {
                         onClick()
