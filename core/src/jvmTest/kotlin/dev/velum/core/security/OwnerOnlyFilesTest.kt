@@ -79,4 +79,69 @@ class OwnerOnlyFilesTest {
             dir.toFile().deleteRecursively()
         }
     }
+
+    @Test
+    fun filesystem_exception_fallback_is_not_cached_uoe_is() {
+        val dir = kotlin.io.path.createTempDirectory("velum-publish-cache")
+        try {
+            var fsAttempts = 0
+            val first = dir.resolve("a.aes256")
+            val second = dir.resolve("b.aes256")
+            val bytesA = ByteArray(AES_256_KEY_BYTES) { 1 }
+            val bytesB = ByteArray(AES_256_KEY_BYTES) { 2 }
+            publishOwnerOnlyBytesExclusive(
+                target = first,
+                bytes = bytesA,
+                createHardLink = { _, _ ->
+                    fsAttempts++
+                    throw FileSystemException(first.toString(), null, "ENOSPC")
+                },
+            )
+            publishOwnerOnlyBytesExclusive(
+                target = second,
+                bytes = bytesB,
+                createHardLink = { _, _ ->
+                    fsAttempts++
+                    throw FileSystemException(second.toString(), null, "EIO")
+                },
+            )
+            // Generic FileSystemException must not cache "unsupported".
+            assertEquals(2, fsAttempts)
+            assertTrue(bytesA.contentEquals(Files.readAllBytes(first)))
+            assertTrue(bytesB.contentEquals(Files.readAllBytes(second)))
+
+            val uoeDir = kotlin.io.path.createTempDirectory("velum-publish-uoe")
+            try {
+                var uoeAttempts = 0
+                val u1 = uoeDir.resolve("c.aes256")
+                val u2 = uoeDir.resolve("d.aes256")
+                val bytesC = ByteArray(AES_256_KEY_BYTES) { 3 }
+                val bytesD = ByteArray(AES_256_KEY_BYTES) { 4 }
+                publishOwnerOnlyBytesExclusive(
+                    target = u1,
+                    bytes = bytesC,
+                    createHardLink = { _, _ ->
+                        uoeAttempts++
+                        throw UnsupportedOperationException("no hard links")
+                    },
+                )
+                publishOwnerOnlyBytesExclusive(
+                    target = u2,
+                    bytes = bytesD,
+                    createHardLink = { _, _ ->
+                        uoeAttempts++
+                        throw UnsupportedOperationException("no hard links")
+                    },
+                )
+                // UnsupportedOperationException is cached per directory.
+                assertEquals(1, uoeAttempts)
+                assertTrue(bytesC.contentEquals(Files.readAllBytes(u1)))
+                assertTrue(bytesD.contentEquals(Files.readAllBytes(u2)))
+            } finally {
+                uoeDir.toFile().deleteRecursively()
+            }
+        } finally {
+            dir.toFile().deleteRecursively()
+        }
+    }
 }
