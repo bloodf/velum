@@ -13,11 +13,11 @@
 -keepnames class kotlinx.** { *; }
 -keepnames class androidx.** { *; }
 
-# Targeted keeps (not blanket kotlin.** / kotlinx.**): Compose UI Test resolves
-# these via the app classloader, but app code may not reference them, so R8
-# would shrink them (ce8d7db DelayWithTimeoutDiagnostics; 4406be9
-# AbstractLongTimeSource).
+# Compose UI Test resolves these via the app classloader; -keepnames alone
+# still lets R8 shrink unused ones (ce8d7db DelayWithTimeoutDiagnostics;
+# 4406be9 AbstractLongTimeSource). Keep coroutines + kotlin.time packages.
 -keep class kotlinx.coroutines.DelayWithTimeoutDiagnostics { *; }
+-keep class kotlinx.coroutines.** { *; }
 -keep class kotlin.time.** { *; }
 
 # --- App instrumentation seams (must not be stripped or renamed) ---

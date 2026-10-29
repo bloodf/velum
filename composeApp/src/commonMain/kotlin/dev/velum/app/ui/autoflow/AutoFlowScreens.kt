@@ -22,7 +22,6 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.AccountTree
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.AutoAwesome
@@ -62,6 +61,7 @@ import dev.velum.app.ui.components.DualActionRow
 import dev.velum.app.ui.components.EmptyState
 import dev.velum.app.ui.components.MetaRow
 import dev.velum.app.ui.components.OutlineButton
+import dev.velum.app.ui.components.ScreenTopBar
 import dev.velum.app.ui.components.SmallEditPill
 import dev.velum.app.ui.components.ThinDivider
 import dev.velum.app.ui.components.ToggleRow
@@ -91,35 +91,28 @@ fun AutoFlowListScreen(
     val prefs by container.settingsRepository.preferences.collectAsState()
     val scope = rememberCoroutineScope()
 
-    // Pin chrome outside scroll so Back CD stays reachable (#106 device walk).
+    // Pin top bar outside scroll so Back CD stays reachable for device walk.
     Column(
         Modifier
             .fillMaxSize()
             .background(VelumBg),
     ) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                Icons.AutoMirrored.Outlined.ArrowBack,
-                contentDescription = strings.ux.back,
-                tint = VelumInk,
-                modifier = Modifier.size(40.dp).clickable(onClick = onBack).padding(8.dp),
-            )
-            Spacer(Modifier.weight(1f))
-            Box(
-                Modifier
-                    .defaultMinSize(48.dp, 48.dp)
-                    .size(48.dp)
-                    .border(1.dp, VelumDivider, RoundedCornerShape(8.dp))
-                    .clickable { onEdit("new") },
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(Icons.Outlined.Add, strings.add, tint = VelumInk)
-            }
-            Spacer(Modifier.width(8.dp))
-        }
+        ScreenTopBar(
+            title = strings.autoFlow,
+            onBack = onBack,
+            trailing = {
+                Box(
+                    Modifier
+                        .defaultMinSize(48.dp, 48.dp)
+                        .size(48.dp)
+                        .border(1.dp, VelumDivider, RoundedCornerShape(8.dp))
+                        .clickable { onEdit("new") },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(Icons.Outlined.Add, strings.add, tint = VelumInk)
+                }
+            },
+        )
         Column(
             Modifier
                 .weight(1f)
@@ -394,30 +387,27 @@ fun AutoFlowEditScreen(
     Column(
         Modifier
             .fillMaxSize()
-            .background(VelumSurface)
-            .verticalScroll(rememberScrollState()),
+            .background(VelumSurface),
     ) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
+        ScreenTopBar(
+            title = if (isNew) strings.newAutoFlow else name.ifBlank { strings.autoFlow },
+            onBack = { tryBack() },
+            trailing = {
+                Text(
+                    strings.save,
+                    color = VelumInk,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 16.sp,
+                    modifier = Modifier.clickable { trySave { onBack() } },
+                )
+            },
+        )
+        Column(
+            Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState()),
         ) {
-            Icon(
-                Icons.AutoMirrored.Outlined.ArrowBack,
-                contentDescription = strings.ux.back,
-                tint = VelumInk,
-                modifier = Modifier.size(40.dp).clickable { tryBack() }.padding(8.dp),
-            )
-            Spacer(Modifier.weight(1f))
-            Text(
-                strings.save,
-                color = VelumInk,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 16.sp,
-                modifier = Modifier
-                    .padding(end = 12.dp)
-                    .clickable { trySave { onBack() } },
-            )
-        }
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 14.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -529,6 +519,7 @@ fun AutoFlowEditScreen(
             )
         }
         Spacer(Modifier.height(40.dp))
+        }
     }
 
     if (editWhen) {

@@ -54,6 +54,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -103,7 +105,11 @@ fun AutoFlowTemplateLibraryScreen(
                 Icons.AutoMirrored.Outlined.ArrowBack,
                 contentDescription = strings.ux.back,
                 tint = VelumInk,
-                modifier = Modifier.size(40.dp).clickable(onClick = onBack).padding(8.dp),
+                modifier = Modifier
+                    .size(40.dp)
+                    .semantics { contentDescription = strings.ux.back }
+                    .clickable(onClick = onBack)
+                    .padding(8.dp),
             )
             Text(
                 strings.ux.autoFlowTemplates,
