@@ -1,7 +1,6 @@
 package dev.velum.app.devicewalk
 
 import android.content.Context
-import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.os.Environment
 import android.os.SystemClock
@@ -175,17 +174,13 @@ class DeviceWalkUiTest {
             if (!pressNavBack()) break
         }
         pressBackToFiles(lang)
-        runCatching { waitUntil(20_000) { onFilesShellReady() } }
+        waitUntil(20_000) { onFilesShellReady() }
     }
 
     private fun walkLibrary(lang: String) {
         pressBackToFiles(lang)
         restoreAllFilesFilterSoft()
-        runCatching { waitUntil(20_000) { onFilesChrome() } }
-        if (!onFilesChrome()) {
-            covered += "library/chrome-soft-miss"
-            return
-        }
+        assertTrue(onFilesChrome(), "Expected Files chrome after appearance")
         covered += "library"
         // Search sheet (best-effort)
         if (softClickContentDesc("Search", "Buscar")) {
@@ -704,6 +699,8 @@ class DeviceWalkUiTest {
 
     private fun openSettings() {
         pressBackToFiles("pt-BR")
+        // Gear only exists on the Files shell — wait hard after pressBackToFiles.
+        waitUntil(45_000) { onFilesShellReady() }
         // Files header gear uses CD "Settings"/"Configuração" — do not treat that as hub-open.
         val clickedGear = runCatching {
             composeRule
@@ -768,32 +765,30 @@ class DeviceWalkUiTest {
             SystemClock.sleep(250)
         }
         if (onFilesShellReady()) return
-        // Soft resume — never hard recreate + waitUntil(60s). That aborted the
-        // matrix at walkAutoFlow on tip 4406be9 (AutoFlow Back had null CD).
-        // Prefer MAIN/LAUNCHER SINGLE_TOP so ActivityScenario stays intact.
+        // Last resort: recreate the ActivityScenario-owned activity. Bare
+        // MAIN/LAUNCHER soft-resume delivers onNewIntent and MainActivity.setIntent
+        // poisons ActivityScenario intent matching (af87f76: Settings gear miss
+        // after soft resume left us off the Files shell). recreate() resets
+        // Compose nav while keeping the launch intent ActivityScenario tracks.
         runCatching {
-            val launch = appContext.packageManager.getLaunchIntentForPackage(appContext.packageName)
-            if (launch != null) {
-                launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                appContext.startActivity(launch)
-            }
+            composeRule.runOnUiThread { composeRule.activity.recreate() }
         }
         SystemClock.sleep(1_500)
-        runCatching {
-            waitUntil(30_000) {
-                onFilesShellReady() ||
-                    composeExists("Skip") ||
-                    composeExists("Pular") ||
-                    composeExists("Velum")
-            }
+        waitUntil(60_000) {
+            composeExists("Skip") ||
+                composeExists("Pular") ||
+                onFilesShellReady()
         }
         if (composeExists("Skip") || composeExists("Pular")) {
             softClickText("Skip", "Pular")
+            waitUntil(30_000) {
+                !composeExists("Skip") && !composeExists("Pular")
+            }
         }
         softClickContentDesc("All files", "Todos os arquivos")
         restoreAllFilesFilterSoft()
-        runCatching {
-            waitUntil(15_000) { onFilesShellReady() }
+        if (!onFilesShellReady()) {
+            error("Could not return to Files shell (lang=$lang)")
         }
     }
 

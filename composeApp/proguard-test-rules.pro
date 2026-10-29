@@ -13,12 +13,15 @@
 -keepnames class kotlinx.** { *; }
 -keepnames class androidx.** { *; }
 
-# Compose UI Test resolves these via the app classloader; -keepnames alone
-# still lets R8 shrink unused ones (ce8d7db DelayWithTimeoutDiagnostics;
-# 4406be9 AbstractLongTimeSource). Keep coroutines + kotlin.time packages.
+# Targeted keeps for Compose UI Test seams the app never references, so R8
+# would otherwise shrink them out of the shared app classloader:
+# - DelayWithTimeoutDiagnostics (ce8d7db)
+# - kotlin.time.** / AbstractLongTimeSource (4406be9)
+# - InfiniteAnimationPolicy$DefaultImpls (af87f76)
 -keep class kotlinx.coroutines.DelayWithTimeoutDiagnostics { *; }
--keep class kotlinx.coroutines.** { *; }
 -keep class kotlin.time.** { *; }
+-keep class androidx.compose.ui.platform.InfiniteAnimationPolicy { *; }
+-keep class androidx.compose.ui.platform.InfiniteAnimationPolicy$* { *; }
 
 # --- App instrumentation seams (must not be stripped or renamed) ---
 -keep class dev.velum.app.devicewalk.** { *; }
