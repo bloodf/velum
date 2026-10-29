@@ -16,6 +16,13 @@
 -keepnames class kotlinx.** { *; }
 -keepnames class androidx.** { *; }
 
+# androidTest shares the app classloader. -keepnames does not prevent shrinking
+# unused library classes that Compose UI Test still resolves at runtime
+# (ce8d7db: ClassNotFoundException kotlinx.coroutines.DelayWithTimeoutDiagnostics).
+-keep class kotlinx.coroutines.DelayWithTimeoutDiagnostics { *; }
+-keep class kotlinx.coroutines.** { *; }
+-keep class kotlin.time.** { *; }
+
 # --- App instrumentation seams (must not be stripped or renamed) ---
 -keep class dev.velum.app.devicewalk.** { *; }
 -keep class dev.velum.app.VelumApplication { *; }

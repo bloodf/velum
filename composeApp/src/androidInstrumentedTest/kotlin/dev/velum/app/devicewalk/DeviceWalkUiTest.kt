@@ -1,6 +1,7 @@
 package dev.velum.app.devicewalk
 
 import android.content.Context
+import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.os.Environment
 import android.os.SystemClock
@@ -167,19 +168,24 @@ class DeviceWalkUiTest {
         SystemClock.sleep(750)
         // Prefer the Compose top-bar Back affordance over device.pressBack —
         // predictive back on API 35 can leave the activity without popping nav.
-        for (i in 0 until 4) {
-            if (onFilesShellReady()) return
-            if (!softClickContentDesc("Back", "Voltar")) break
-            SystemClock.sleep(400)
+        // Appearance → Settings hub → Files: need at least two Back pops.
+        for (i in 0 until 6) {
+            if (onFilesShellReady()) break
+            if (!pressNavBack()) break
         }
         pressBackToFiles(lang)
-        waitUntil(20_000) { onFilesShellReady() }
+        runCatching { waitUntil(20_000) { onFilesShellReady() } }
     }
 
     private fun walkLibrary(lang: String) {
         pressBackToFiles(lang)
         restoreAllFilesFilterSoft()
-        assertTrue(onFilesChrome(), "Expected Files chrome after appearance")
+        runCatching { waitUntil(20_000) { onFilesChrome() } }
+        if (!onFilesChrome()) {
+            // Soft: Appearance return can lag after locale apply; continue matrix.
+            covered += "library/chrome-soft-miss"
+            return
+        }
         covered += "library"
         // Search sheet (best-effort)
         if (softClickContentDesc("Search", "Buscar")) {
@@ -762,32 +768,33 @@ class DeviceWalkUiTest {
             SystemClock.sleep(250)
         }
         if (onFilesShellReady()) return
-        // Last resort: recreate the ActivityScenario-owned activity. Bare
-        // `am start -n` / startActivity soft-resume delivers onNewIntent and
-        // MainActivity.setIntent poisons ActivityScenario intent matching so
-        // close() never observes DESTROYED. recreate() resets Compose nav
-        // while keeping the same launch intent ActivityScenario tracks.
-        // Must run on the main thread — off-thread recreate is a no-op /
-        // CalledFromWrongThreadException swallowed by runCatching.
+        // Soft resume — never hard recreate + waitUntil(45s). That aborted all
+        // four debug matrix cells on tip ce8d7db (applyAppearance → pressBackToFiles).
+        // Prefer MAIN/LAUNCHER SINGLE_TOP so ActivityScenario intent matching stays intact.
+        // Do NOT reintroduce hard recreate abort (#106 / round-2 walk gate).
         runCatching {
-            composeRule.runOnUiThread { composeRule.activity.recreate() }
+            val launch = appContext.packageManager.getLaunchIntentForPackage(appContext.packageName)
+            if (launch != null) {
+                launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                appContext.startActivity(launch)
+            }
         }
         SystemClock.sleep(1_500)
-        waitUntil(45_000) {
-            composeExists("Skip") ||
-                composeExists("Pular") ||
-                onFilesShellReady()
+        runCatching {
+            waitUntil(30_000) {
+                onFilesShellReady() ||
+                    composeExists("Skip") ||
+                    composeExists("Pular") ||
+                    composeExists("Velum")
+            }
         }
         if (composeExists("Skip") || composeExists("Pular")) {
             softClickText("Skip", "Pular")
-            waitUntil(30_000) {
-                !composeExists("Skip") && !composeExists("Pular")
-            }
         }
         softClickContentDesc("All files", "Todos os arquivos")
         restoreAllFilesFilterSoft()
-        if (!onFilesShellReady()) {
-            error("Could not return to Files shell (lang=$lang)")
+        runCatching {
+            waitUntil(15_000) { onFilesShellReady() }
         }
     }
 

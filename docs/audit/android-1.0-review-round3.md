@@ -3,7 +3,7 @@
 **Date:** 2026-10-28  
 **Base reviewed:** `3a03300` on `main` (CI green: run `40670028151`)  
 **Last full green tip:** `bb23533` — run `40763140105` (debug + minify-off release walk)  
-**Tip under watch:** restore after `#106` (`9543c83` failed: debug 45s recreate timeout + minifiedTest `Duration` NoSuchFieldError)  
+**Tip under watch:** `ce8d7db` failed (debug `pressBackToFiles` 45s; minifiedTest `DelayWithTimeoutDiagnostics` CNFE). Soft Files return + coroutines keep (keep minifiedTest for #106).  
 **Method:** Fresh skeptical review (no trust of round 1/2 claims) + JVM unit tests + GitHub Actions **emulator device walk** (Compose UI + UI Automator, StrictMode penaltyDeath, pt-BR/EN × light/dark, debug + instrumented release).
 
 ---
