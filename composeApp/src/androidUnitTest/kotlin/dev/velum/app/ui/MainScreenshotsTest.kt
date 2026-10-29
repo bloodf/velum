@@ -589,6 +589,9 @@ class MainScreenshotsTest {
         container.settingsRepository.setSummaryMode(ComputeMode.Api)
         container.settingsRepository.setBaseUrl("https://api.openai.com/v1")
         // Demo voice profiles (tiny synthetic embeddings — UI list only).
+        // ensureKey before upsert — AppContainer primes on appScope and can race
+        // this seed under Robolectric (#106).
+        container.voiceProfileStore.ensureKey()
         val emb = FloatArray(192) { i -> (i % 17) / 17f }
         container.voiceProfileStore.upsert("Heitor", emb, role = "Product", company = "Velum")
         container.voiceProfileStore.upsert(
