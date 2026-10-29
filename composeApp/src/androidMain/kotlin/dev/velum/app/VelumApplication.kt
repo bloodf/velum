@@ -27,6 +27,7 @@ import dev.velum.core.security.AndroidSecureStore
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -96,6 +97,7 @@ class VelumApplication : Application() {
                                 Log.i(TAG, "Removed $removed stale download temp(s)")
                             }
                         }.onFailure { t ->
+                            if (t is CancellationException) throw t
                             Log.e(TAG, "Stale download temp cleanup failed", t)
                         }
                         runCatching {
@@ -111,6 +113,7 @@ class VelumApplication : Application() {
                                 },
                             )
                         }.onFailure { t ->
+                            if (t is CancellationException) throw t
                             Log.e(TAG, "Partial mic recovery failed", t)
                         }
                     },

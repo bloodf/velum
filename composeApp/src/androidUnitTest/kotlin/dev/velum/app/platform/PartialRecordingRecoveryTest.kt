@@ -15,7 +15,8 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import org.junit.Before
 import org.junit.Test
@@ -167,7 +168,6 @@ class PartialRecordingRecoveryTest {
         cleanupStaleDownloadsThenPublish(
             cleanup = {
                 order += "cleanup-start"
-                delay(25)
                 // Publish must not have run yet — otherwise a live download could race wipe.
                 publishedDuringCleanup = order.contains("publish")
                 order += "cleanup-end"
@@ -188,27 +188,52 @@ class PartialRecordingRecoveryTest {
             .writeBytes(byteArrayOf(1, 2, 3))
         File(recordings, "x.ogg.partial").writeBytes(byteArrayOf(4, 5, 6))
 
-        var published = false
-        cleanupStaleDownloadsThenPublish(
-            cleanup = {
-                cleanupStaleDownloadArtifacts(recordings.absolutePath, repository)
-            },
-            publish = { published = true },
-        )
-        assertTrue(published)
-        assertFalse(
-            File(downloadTmp, "stale.ogg${DownloadedSessionAudioPersist.TEMP_SUFFIX}").exists(),
-        )
-        assertFalse(File(recordings, "x.ogg.partial").exists())
-
-        // After publish, a live SoftAP download may create a temp — must survive (no second wipe).
+        val published = CompletableDeferred<Unit>()
+        // Released by the fake download after it writes the live temp — lets a racing cleanup
+        // (publish-then-cleanup) await and wipe it. Under cleanup-then-publish, publish is not
+        // completed yet so cleanup skips the wait entirely.
+        val liveTempWritten = CompletableDeferred<Unit>()
         val live = File(
             downloadTmp,
             "live-session.ogg${DownloadedSessionAudioPersist.TEMP_SUFFIX}",
         )
-        live.writeBytes(
-            byteArrayOf('O'.code.toByte(), 'g'.code.toByte(), 'g'.code.toByte(), 'S'.code.toByte()),
+        val liveBytes = byteArrayOf(
+            'O'.code.toByte(), 'g'.code.toByte(), 'g'.code.toByte(), 'S'.code.toByte(), 9,
         )
-        assertTrue(live.exists(), "post-publish download temp must not be deleted by startup cleanup")
+
+        // Fake SoftAP download: starts only once the container is published.
+        val download = async {
+            published.await()
+            live.parentFile?.mkdirs()
+            live.writeBytes(liveBytes)
+            liveTempWritten.complete(Unit)
+        }
+
+        cleanupStaleDownloadsThenPublish(
+            cleanup = {
+                cleanupStaleDownloadArtifacts(recordings.absolutePath, repository)
+                // Wrong order (publish already ran): wait for the concurrent download's live
+                // temp, then wipe again — that second wipe is the race we must prevent.
+                // Correct order: publish has not run yet, so skip (no fixed timeout).
+                if (published.isCompleted) {
+                    liveTempWritten.await()
+                    cleanupStaleDownloadArtifacts(recordings.absolutePath, repository)
+                }
+            },
+            publish = {
+                published.complete(Unit)
+            },
+        )
+        download.await()
+
+        assertFalse(
+            File(downloadTmp, "stale.ogg${DownloadedSessionAudioPersist.TEMP_SUFFIX}").exists(),
+        )
+        assertFalse(File(recordings, "x.ogg.partial").exists())
+        assertTrue(
+            live.exists(),
+            "live download temp written after publish must survive startup cleanup",
+        )
+        assertTrue(live.readBytes().contentEquals(liveBytes))
     }
 }
