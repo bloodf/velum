@@ -61,6 +61,10 @@
     public <init>(android.content.Context, java.lang.String, java.lang.String);
 }
 
+# Needed by AndroidSecureStoreKeystoreInstrumentedTest (#92): R8 strips SecureRead results read only by the test.
+-keep class dev.velum.core.security.SecureRead { *; }
+-keep class dev.velum.core.security.SecureRead$* { *; }
+
 # AndroidJUnitRunner 1.6+ resolves Trace in onCreate from the app APK.
 -keep class androidx.tracing.Trace { *; }
 -keep class androidx.tracing.** { *; }
