@@ -87,10 +87,20 @@ class AutoFlowRunnerTest {
             }
 
             // Disable seed default flow; use a strict duration floor.
-            awaitNextPass(runner) {
+            awaitNextPass(
+                runner,
+                until = { repo.listAutoflows().any { it.id == "flow-default" && it.enabled == 0L } },
+            ) {
                 repo.setAutoflowEnabled("flow-default", false)
             }
-            awaitNextPass(runner) {
+            awaitNextPass(
+                runner,
+                until = {
+                    repo.listAutoflows().any {
+                        it.id == "flow-1" && it.enabled == 1L && it.duration_min_seconds == 5L
+                    }
+                },
+            ) {
                 repo.upsertAutoflow(
                     id = "flow-1",
                     name = "Note Pro",
@@ -107,7 +117,14 @@ class AutoFlowRunnerTest {
                 )
             }
 
-            awaitNextPass(runner) {
+            awaitNextPass(
+                runner,
+                until = {
+                    repo.getRecording("rec-af-1")?.let {
+                        it.status == "recording" && it.duration_seconds == 0L
+                    } == true
+                },
+            ) {
                 repo.insertRecording(
                     id = "rec-af-1",
                     sessionId = 1,
@@ -128,12 +145,25 @@ class AutoFlowRunnerTest {
 
             // Import first while duration is still 0 (no match). Then set duration in one
             // write so the runner never races between path/duration and status updates.
-            awaitNextPass(runner) {
+            awaitNextPass(
+                runner,
+                until = {
+                    repo.getRecording("rec-af-1")?.let {
+                        it.status == "imported" && it.duration_seconds == 0L
+                    } == true
+                },
+            ) {
                 repo.updateStatus("rec-af-1", "imported")
             }
             assertEquals(0, processCalls.get(), "imported with duration=0 must not match")
 
-            awaitNextPass(runner) {
+            awaitNextPass(
+                runner,
+                until = {
+                    processCalls.get() >= 1 &&
+                        repo.getRecording("rec-af-1")?.status == "ready"
+                },
+            ) {
                 repo.updateLocalPath("rec-af-1", "/tmp/af.wav", durationSeconds = 12, sizeBytes = 100)
             }
             assertEquals(1, processCalls.get())
@@ -174,10 +204,16 @@ class AutoFlowRunnerTest {
                 runner.actions.collect { emitted += it }
             }
 
-            awaitNextPass(runner) {
+            awaitNextPass(
+                runner,
+                until = { repo.listAutoflows().any { it.id == "flow-default" && it.enabled == 0L } },
+            ) {
                 repo.setAutoflowEnabled("flow-default", false)
             }
-            awaitNextPass(runner) {
+            awaitNextPass(
+                runner,
+                until = { repo.listAutoflows().any { it.id == "flow-fail" && it.enabled == 1L } },
+            ) {
                 repo.upsertAutoflow(
                     id = "flow-fail",
                     name = "All",
@@ -194,7 +230,10 @@ class AutoFlowRunnerTest {
                 )
             }
             // Matching insert runs processing; passIndex advances only after the failed terminal.
-            awaitNextPass(runner) {
+            awaitNextPass(
+                runner,
+                until = { repo.getRecording("rec-fail")?.status == "failed" },
+            ) {
                 repo.insertRecording(
                     id = "rec-fail",
                     sessionId = null,
@@ -273,7 +312,12 @@ class AutoFlowRunnerTest {
             runner.start()
             awaitPass(runner, atLeast = 1)
             // Force another combine emission after seed.
-            awaitNextPass(runner) {
+            awaitNextPass(
+                runner,
+                until = {
+                    repo.getRecording("rec-ready-done")?.title == "Already ready (touched)"
+                },
+            ) {
                 repo.updateRecordingTitle("rec-ready-done", "Already ready (touched)")
             }
             assertEquals(0, processCalls.get(), "ready at seed must not rematch / re-ASR")
@@ -334,7 +378,10 @@ class AutoFlowRunnerTest {
             runner.start()
             awaitPass(runner, atLeast = 1)
             // WorkManager finished while app was dead / restarting — status becomes ready.
-            awaitNextPass(runner) {
+            awaitNextPass(
+                runner,
+                until = { repo.getRecording("rec-gen-to-ready")?.status == "ready" },
+            ) {
                 repo.updateStatus("rec-gen-to-ready", "ready")
             }
             assertEquals(0, processCalls.get(), "terminal ready after in-flight must not re-ASR")
@@ -486,11 +533,19 @@ class AutoFlowRunnerTest {
         runner.passIndex.first { it >= atLeast }
     }
 
-    /** Runs [block] then waits until [AutoFlowRunner.passIndex] advances past its pre-block value. */
-    private suspend fun awaitNextPass(runner: AutoFlowRunner, block: suspend () -> Unit) {
+    /**
+     * Runs [block] then waits until [AutoFlowRunner.passIndex] advances past its pre-block
+     * value **and** [until] holds on the DB/recording state. The predicate prevents a pass
+     * from an earlier in-flight write from satisfying the wait.
+     */
+    private suspend fun awaitNextPass(
+        runner: AutoFlowRunner,
+        until: suspend () -> Boolean,
+        block: suspend () -> Unit,
+    ) {
         val before = runner.passIndex.value
         block()
-        awaitPass(runner, atLeast = before + 1)
+        runner.passIndex.first { it > before && until() }
     }
 
     private suspend fun insert(

@@ -42,9 +42,19 @@ class AutoFlowRunner(
     private val calendar: CalendarEventProvider = createCalendarEventProvider(),
     private val nowEpochMs: () -> Long = { epochMsNow() },
     private val jobScheduler: RecordingJobScheduler? = null,
-    /** Poll interval while waiting for WorkManager terminal status. Tests inject 0–1ms. */
+    /**
+     * Poll interval while waiting for WorkManager terminal status.
+     * Must be >= 1: [delay] of 0 does not suspend, so a miss would busy-spin.
+     * Tests inject 1ms; production keeps the 500ms default.
+     */
     private val awaitStatusPollDelayMs: Long = DEFAULT_AWAIT_STATUS_POLL_MS,
 ) {
+    init {
+        require(awaitStatusPollDelayMs >= 1) {
+            "awaitStatusPollDelayMs must be >= 1 (delay(0) does not suspend)"
+        }
+    }
+
     private var job: Job? = null
     private val processedIds = mutableSetOf<String>()
     private var seeded = false
@@ -52,11 +62,13 @@ class AutoFlowRunner(
     private val _actions = MutableSharedFlow<AutoFlowUiAction>(extraBufferCapacity = 8)
     val actions: SharedFlow<AutoFlowUiAction> = _actions.asSharedFlow()
 
-    /**
-     * Increments after each combine emission is fully handled (including the seed pass).
-     * Tests await this instead of fixed delays so subscription/seed races stay deterministic.
-     */
     private val _passIndex = MutableStateFlow(0)
+
+    /**
+     * Test observation hook: increments after each combine emission is fully handled
+     * (including the seed pass). Not used by production callers; AutoFlowRunnerTest awaits
+     * this instead of wall-clock polls so subscription/seed races stay deterministic.
+     */
     internal val passIndex: StateFlow<Int> = _passIndex.asStateFlow()
 
     fun start() {
