@@ -91,7 +91,8 @@ fun Modifier.pressableScale(
         label = "pressScale",
     )
     // clickable before graphicsLayer so a contentDescription applied on the
-    // same chain stays on the clickable a11y node (TabIcon / #106 minifiedTest).
+    // same chain stays on the clickable a11y node (#106). TabIcon uses plain
+    // clickable instead — graphicsLayer after clickable still split a11y under R8.
     return this
         .clickable(
             interactionSource = interaction,

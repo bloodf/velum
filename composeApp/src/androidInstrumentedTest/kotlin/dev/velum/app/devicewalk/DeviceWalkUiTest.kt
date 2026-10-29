@@ -801,24 +801,35 @@ class DeviceWalkUiTest {
         }
         assertTrue(tappedGear, "Failed to tap Settings gear")
         // Hub-only rows / sections — never the Files gear CD alone.
-        waitUntil(20_000) {
-            composeExists("Phone recording") ||
-                composeExists("Gravação no telefone") ||
-                composeExists("Devices") ||
-                composeExists("Dispositivos") ||
-                composeExists("Storage & privacy") ||
-                composeExists("Armazenamento e privacidade") ||
-                composeExists("About Velum") ||
-                composeExists("Sobre o Velum") ||
-                composeExists("AI processing") ||
-                composeExists("Processamento de IA") ||
-                uiExists("Phone recording") ||
+        // Prefer UiAutomator (uiExists) so Compose idle cannot eat the budget (#106).
+        fun hubVisible(): Boolean =
+            uiExists("Phone recording") ||
                 uiExists("Gravação no telefone") ||
                 uiExists("Devices") ||
                 uiExists("Dispositivos") ||
+                uiExists("Storage & privacy") ||
+                uiExists("Armazenamento e privacidade") ||
                 uiExists("About Velum") ||
-                uiExists("Sobre o Velum")
+                uiExists("Sobre o Velum") ||
+                uiExists("AI processing") ||
+                uiExists("Processamento de IA") ||
+                composeExists("Phone recording") ||
+                composeExists("Gravação no telefone") ||
+                composeExists("Devices") ||
+                composeExists("Dispositivos") ||
+                composeExists("About Velum") ||
+                composeExists("Sobre o Velum")
+        // Retry the gear once if the first tap did not navigate (R8 touch path).
+        if (!runCatching { waitUntil(8_000) { hubVisible() }; true }.getOrDefault(false)) {
+            for (label in listOf("Settings", "Configuração")) {
+                val obj = device.findObject(By.descContains(label)) ?: continue
+                val bounds = obj.visibleBounds
+                device.click(bounds.centerX(), bounds.centerY())
+                break
+            }
+            SystemClock.sleep(400)
         }
+        waitUntil(20_000) { hubVisible() }
     }
 
 
@@ -889,6 +900,11 @@ class DeviceWalkUiTest {
     private fun softExistsContentDesc(vararg labels: String): Boolean {
         for (label in labels) {
             if (label.isBlank()) continue
+            // UiAutomator first — Compose fetchSemanticsNodes waits for idle and can
+            // wedge the whole waitUntil budget under R8 minifiedTest (#106).
+            if (runCatching { device.findObject(By.descContains(label)) != null }.getOrDefault(false)) {
+                return true
+            }
             val viaCompose = runCatching {
                 composeRule
                     .onAllNodesWithContentDescription(label, substring = true, useUnmergedTree = true)
@@ -896,9 +912,6 @@ class DeviceWalkUiTest {
                     .isNotEmpty()
             }.getOrDefault(false)
             if (viaCompose) return true
-            if (runCatching { device.findObject(By.descContains(label)) != null }.getOrDefault(false)) {
-                return true
-            }
         }
         return false
     }
@@ -970,9 +983,15 @@ class DeviceWalkUiTest {
     private fun softClickContentDesc(vararg labels: String): Boolean {
         for (label in labels) {
             if (label.isBlank()) continue
-            // Prefer merged tree so CD on a clickable ancestor wins over a
-            // non-clickable Icon sibling (9e0742c: Voltar clickable=false).
-            val clicked = runCatching {
+            // Coordinate tap first — Compose performClick waits for idle (R8 wedge)
+            // and UiObject2.click() logs non-clickable without ACTION_CLICK (#106).
+            val viaDevice = runCatching {
+                val obj = device.findObject(By.descContains(label)) ?: return@runCatching false
+                val bounds = obj.visibleBounds
+                device.click(bounds.centerX(), bounds.centerY())
+            }.getOrDefault(false)
+            if (viaDevice) return true
+            val viaCompose = runCatching {
                 composeRule
                     .onNodeWithContentDescription(label, substring = true, useUnmergedTree = false)
                     .performClick()
@@ -980,24 +999,10 @@ class DeviceWalkUiTest {
             }.recoverCatching {
                 composeRule
                     .onNodeWithContentDescription(label, substring = true, useUnmergedTree = true)
-                    .performScrollTo()
                     .performClick()
                 true
-            }.recoverCatching {
-                composeRule
-                    .onNodeWithContentDescription(label, substring = true, useUnmergedTree = true)
-                    .performClick()
-                true
-            }.recoverCatching {
-                val obj = device.findObject(By.descContains(label))
-                if (obj != null) {
-                    obj.click()
-                    true
-                } else {
-                    false
-                }
             }.getOrDefault(false)
-            if (clicked) return true
+            if (viaCompose) return true
         }
         return false
     }
@@ -1055,14 +1060,14 @@ class DeviceWalkUiTest {
     }
 
     private fun composeExists(text: String): Boolean {
-        val viaCompose = runCatching {
+        // UiAutomator first — same idle-wedge risk as softExistsContentDesc (#106).
+        if (runCatching { device.findObject(By.textContains(text)) != null }.getOrDefault(false)) {
+            return true
+        }
+        return runCatching {
             composeRule.onAllNodesWithText(text, substring = true, useUnmergedTree = true)
                 .fetchSemanticsNodes()
                 .isNotEmpty()
-        }.getOrDefault(false)
-        if (viaCompose) return true
-        return runCatching {
-            device.findObject(By.textContains(text)) != null
         }.getOrDefault(false)
     }
 

@@ -83,6 +83,7 @@ class VelumApplication : Application() {
                 // cannot race ahead of awaitContainer (#106 minifiedTest).
                 containerDeferred.complete(built)
                 ready.set(true)
+                Log.i(TAG, "AppContainer ready")
                 runCatching {
                     recoverPartialMicRecordings(
                         recordingsDirPath = recordingsDirectoryPath(),
@@ -104,6 +105,7 @@ class VelumApplication : Application() {
                 // Unblock splash + MainActivity; they show a fatal error UI.
                 containerDeferred.completeExceptionally(t)
                 ready.set(true)
+                Log.e(TAG, "AppContainer ready=fatal")
             }
         }
     }
