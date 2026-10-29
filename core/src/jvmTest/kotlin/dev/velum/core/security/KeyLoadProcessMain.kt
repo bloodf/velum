@@ -1,17 +1,23 @@
 package dev.velum.core.security
 
+import java.nio.file.Files
 import java.nio.file.Path
-import java.security.MessageDigest
 
 /**
  * Tiny process entry for cross-JVM key-load race tests.
- * Args: `<keyFilePath>` — prints lowercase hex SHA-256 of the loaded AES-256 key
- * (never the key bytes themselves).
+ *
+ * Args: `<keyFilePath>` — loads the AES key, checks the returned bytes equal
+ * the on-disk file, prints only the ack token `ok`. Never prints key bytes or
+ * key-derived digests.
  */
 fun main(args: Array<String>) {
     require(args.size == 1) { "usage: KeyLoadProcessMain <keyFile>" }
-    val key = DesktopSecureStore.loadOrCreateKey(Path.of(args[0]))
-    val digest = MessageDigest.getInstance("SHA-256").digest(key.encoded)
-    val hex = digest.joinToString("") { b -> "%02x".format(b) }
-    println(hex)
+    val keyFile = Path.of(args[0])
+    val key = DesktopSecureStore.loadOrCreateKey(keyFile)
+    val loaded = key.encoded
+    val onDisk = Files.readAllBytes(keyFile)
+    check(loaded != null && loaded.contentEquals(onDisk)) {
+        "child JVM loaded key bytes differ from on-disk file (sizes ${loaded?.size} vs ${onDisk.size})"
+    }
+    println("ok")
 }
