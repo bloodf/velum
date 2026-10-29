@@ -8,6 +8,7 @@ import dev.velum.ai.local.VoiceKeyPrimingState
 import dev.velum.ai.local.VoiceProfileStore
 import dev.velum.core.data.DriverFactory
 import dev.velum.core.security.AndroidSecureStore
+import dev.velum.core.security.SecureRead
 import dev.velum.core.security.SecureStore
 import java.io.File
 import kotlin.test.Test
@@ -124,8 +125,10 @@ class VoiceProfileStoreProductionWiringTest {
                     error("keystore put failed")
                 }
                 override suspend fun getString(key: String): String? = null
+                override suspend fun read(key: String): SecureRead = SecureRead.Missing
                 override suspend fun remove(key: String) = Unit
                 override suspend fun contains(key: String): Boolean = false
+                override suspend fun wipe() = Unit
             }
             val container = AppContainer(
                 secureStore = failing,

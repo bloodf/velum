@@ -1,6 +1,7 @@
 package dev.velum.ai.local
 
 import dev.velum.core.security.InMemorySecureStore
+import dev.velum.core.security.SecureRead
 import dev.velum.core.security.SecureStore
 import java.io.File
 import java.util.concurrent.atomic.AtomicInteger
@@ -221,48 +222,75 @@ class VoiceProfileStoreKeyTest {
     }
 
     @Test
-    fun unreadable_existing_key_fails_without_minting_or_deleting_profiles() {
+    fun android_like_transient_unreadable_neither_mints_nor_purges() {
         runBlocking {
-            val dir = tempDir("velum-vp-unreadable")
+            val dir = tempDir("velum-vp-android-like")
             val root = ModelStoreDir(dir.absolutePath)
-            val mem = InMemorySecureStore()
-            val store = VoiceProfileStore(root = root, secureStore = mem)
+            val secure = AndroidLikeSecureStore()
+            val store = VoiceProfileStore(root = root, secureStore = secure)
             store.ensureKey()
             store.upsert("Keep", floatArrayOf(1f, 0f, 0f))
-            val originalKey = mem.getString(VoiceProfileStore.PROFILE_KEY_SECURE)
+            val originalKey = secure.storedValue(VoiceProfileStore.PROFILE_KEY_SECURE)
             assertNotNull(originalKey)
+            val putsAfterSeed = secure.putCount.get()
 
-            val putCount = AtomicInteger(0)
-            var failReads = 1
-            val flaky = object : SecureStore {
-                override suspend fun getString(key: String): String? {
-                    if (key == VoiceProfileStore.PROFILE_KEY_SECURE && failReads > 0) {
-                        failReads--
-                        return null
-                    }
-                    return mem.getString(key)
-                }
-                override suspend fun putString(key: String, value: String) {
-                    putCount.incrementAndGet()
-                    mem.putString(key, value)
-                }
-                override suspend fun remove(key: String) = mem.remove(key)
-                override suspend fun contains(key: String): Boolean = mem.contains(key)
-            }
-            val store2 = VoiceProfileStore(root = root, secureStore = flaky)
+            // Transient decrypt failure: getString would delete (old Android), read is Unreadable.
+            secure.markUnreadable(VoiceProfileStore.PROFILE_KEY_SECURE)
+            val store2 = VoiceProfileStore(root = root, secureStore = secure)
             assertFailsWith<VoiceProfileKeyUnreadableException> { store2.ensureKey() }
             assertIs<VoiceKeyPrimingState.Failed>(store2.primingState.value)
-            assertEquals(0, putCount.get())
-            assertEquals(originalKey, mem.getString(VoiceProfileStore.PROFILE_KEY_SECURE))
+            assertEquals(putsAfterSeed, secure.putCount.get())
+            // read() left the entry intact (unlike destructive getString).
+            assertTrue(secure.contains(VoiceProfileStore.PROFILE_KEY_SECURE))
+            assertEquals(originalKey, secure.storedValue(VoiceProfileStore.PROFILE_KEY_SECURE))
             assertTrue(File(dir, "voices/profiles/keep.json").exists())
             assertTrue(File(dir, "voices/profiles/keep.enc").exists())
 
-            // Retry succeeds with the original key; profiles remain readable.
+            secure.clearUnreadable(VoiceProfileStore.PROFILE_KEY_SECURE)
+            val store3 = VoiceProfileStore(root = root, secureStore = secure)
+            store3.ensureKey()
+            assertIs<VoiceKeyPrimingState.Ready>(store3.primingState.value)
+            assertEquals(1, store3.listProfiles().size)
+            assertEquals(originalKey, secure.storedValue(VoiceProfileStore.PROFILE_KEY_SECURE))
+            assertEquals(putsAfterSeed, secure.putCount.get())
+        }
+    }
+
+    @Test
+    fun android_like_getString_deletes_on_failure_but_read_does_not() {
+        runBlocking {
+            val secure = AndroidLikeSecureStore()
+            secure.putString("k", "secret-value")
+            secure.markUnreadable("k")
+            assertIs<SecureRead.Unreadable>(secure.read("k"))
+            assertTrue(secure.contains("k"))
+            assertEquals(null, secure.getString("k"))
+            assertFalse(secure.contains("k"))
+        }
+    }
+
+    @Test
+    fun value_path_does_not_mint() {
+        runBlocking {
+            val dir = tempDir("velum-vp-value")
+            val secure = CountingSecureStore()
+            val store = VoiceProfileStore(
+                root = ModelStoreDir(dir.absolutePath),
+                secureStore = secure,
+            )
+            store.ensureKey()
+            assertEquals(1, secure.putCount.get())
+            val key = secure.memSnapshot(VoiceProfileStore.PROFILE_KEY_SECURE)
+            assertNotNull(key)
+
+            val store2 = VoiceProfileStore(
+                root = ModelStoreDir(dir.absolutePath),
+                secureStore = secure,
+            )
             store2.ensureKey()
+            assertEquals(1, secure.putCount.get())
+            assertEquals(key, secure.memSnapshot(VoiceProfileStore.PROFILE_KEY_SECURE))
             assertIs<VoiceKeyPrimingState.Ready>(store2.primingState.value)
-            assertEquals(1, store2.listProfiles().size)
-            assertEquals(originalKey, mem.getString(VoiceProfileStore.PROFILE_KEY_SECURE))
-            assertEquals(0, putCount.get())
         }
     }
 
@@ -272,9 +300,11 @@ class VoiceProfileStoreKeyTest {
             val dir = tempDir("velum-vp-degrade")
             val failing = object : SecureStore {
                 override suspend fun getString(key: String): String? = error("keystore down")
+                override suspend fun read(key: String): SecureRead = error("keystore down")
                 override suspend fun putString(key: String, value: String) = error("keystore down")
                 override suspend fun remove(key: String) = Unit
                 override suspend fun contains(key: String): Boolean = false
+                override suspend fun wipe() = Unit
             }
             val store = VoiceProfileStore(
                 root = ModelStoreDir(dir.absolutePath),
@@ -366,9 +396,14 @@ private class SlowSecureStore(private val delayMs: Long) : SecureStore {
         delay(delayMs)
         return mem.getString(key)
     }
+    override suspend fun read(key: String): SecureRead {
+        delay(delayMs)
+        return mem.read(key)
+    }
     override suspend fun putString(key: String, value: String) = mem.putString(key, value)
     override suspend fun remove(key: String) = mem.remove(key)
     override suspend fun contains(key: String): Boolean = mem.contains(key)
+    override suspend fun wipe() = mem.wipe()
 }
 
 private class FlakySecureStore(private var failuresBeforeSuccess: Int) : SecureStore {
@@ -380,9 +415,17 @@ private class FlakySecureStore(private var failuresBeforeSuccess: Int) : SecureS
         }
         return mem.getString(key)
     }
+    override suspend fun read(key: String): SecureRead {
+        if (failuresBeforeSuccess > 0) {
+            failuresBeforeSuccess--
+            error("keystore unavailable")
+        }
+        return mem.read(key)
+    }
     override suspend fun putString(key: String, value: String) = mem.putString(key, value)
     override suspend fun remove(key: String) = mem.remove(key)
     override suspend fun contains(key: String): Boolean = mem.contains(key)
+    override suspend fun wipe() = mem.wipe()
 }
 
 private class CountingSecureStore : SecureStore {
@@ -393,10 +436,73 @@ private class CountingSecureStore : SecureStore {
         blockGetUntil?.await()
         return mem.getString(key)
     }
+    override suspend fun read(key: String): SecureRead {
+        blockGetUntil?.await()
+        return mem.read(key)
+    }
     override suspend fun putString(key: String, value: String) {
         putCount.incrementAndGet()
         mem.putString(key, value)
     }
     override suspend fun remove(key: String) = mem.remove(key)
     override suspend fun contains(key: String): Boolean = mem.contains(key)
+    override suspend fun wipe() = mem.wipe()
+    suspend fun memSnapshot(key: String): String? = mem.getString(key)
+}
+
+/**
+ * Models pre-#92 Android [SecureStore.getString] (deletes the prefs entry on decrypt
+ * failure and returns null) vs #92 [SecureStore.read] (returns [SecureRead.Unreadable]
+ * without deleting). Priming must use [read] so a transient failure neither mints nor
+ * wipes profiles.
+ */
+private class AndroidLikeSecureStore : SecureStore {
+    private val map = mutableMapOf<String, String>()
+    private val unreadable = mutableSetOf<String>()
+    val putCount = AtomicInteger(0)
+
+    fun markUnreadable(key: String) {
+        unreadable += key
+    }
+
+    fun clearUnreadable(key: String) {
+        unreadable -= key
+    }
+
+    fun storedValue(key: String): String? = map[key]
+
+    fun restoreAfterDestructiveGetString(key: String, value: String) {
+        map[key] = value
+    }
+
+    override suspend fun putString(key: String, value: String) {
+        putCount.incrementAndGet()
+        map[key] = value
+    }
+
+    override suspend fun getString(key: String): String? {
+        if (key in unreadable) {
+            map.remove(key)
+            return null
+        }
+        return map[key]
+    }
+
+    override suspend fun read(key: String): SecureRead {
+        if (!map.containsKey(key)) return SecureRead.Missing
+        if (key in unreadable) {
+            return SecureRead.Unreadable("javax.crypto.AEADBadTagException")
+        }
+        return SecureRead.Value(map.getValue(key))
+    }
+
+    override suspend fun remove(key: String) {
+        map.remove(key)
+    }
+
+    override suspend fun contains(key: String): Boolean = map.containsKey(key)
+
+    override suspend fun wipe() {
+        map.clear()
+    }
 }
