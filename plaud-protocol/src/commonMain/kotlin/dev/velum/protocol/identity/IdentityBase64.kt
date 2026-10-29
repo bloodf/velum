@@ -17,7 +17,7 @@ internal object IdentityBase64 {
     fun decodeOrNull(text: String): ByteArray? =
         try {
             Base64.decode(text)
-        } catch (_: Throwable) {
+        } catch (_: IllegalArgumentException) {
             null
         }
 }

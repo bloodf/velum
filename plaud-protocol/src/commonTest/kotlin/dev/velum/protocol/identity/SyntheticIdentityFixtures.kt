@@ -1,10 +1,10 @@
 package dev.velum.protocol.identity
 
 /**
- * TEST-ONLY synthetic Note Pro identity material.
+ * TEST-ONLY synthetic Note Pro identity material (plaud-protocol commonTest).
  *
- * Generated in-process — never real device data, never owner exports.
- * Do not treat these strings as production credentials.
+ * Must not live in any main source set. Generated in-process — never real
+ * device data, never owner exports. Do not treat these as production credentials.
  */
 object SyntheticIdentityFixtures {
     const val TEST_ONLY_MARKER: String = "TEST-ONLY-SYNTHETIC-IDENTITY"
