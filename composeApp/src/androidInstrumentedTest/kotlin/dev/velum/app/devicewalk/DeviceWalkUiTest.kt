@@ -133,10 +133,7 @@ class DeviceWalkUiTest {
             softExistsContentDesc("Explore", "Explorar")
 
     private fun applyAppearance(lang: String, theme: String) {
-        if (!openSettings()) {
-            covered += "appearance/gear-soft-miss"
-            return
-        }
+        openSettings()
         // Appearance is near the bottom of the scrollable Settings hub.
         // Labels depend on the *current* UI language (prior matrix cell / system),
         // not the target lang — always offer both EN and pt-BR copy.
@@ -177,17 +174,13 @@ class DeviceWalkUiTest {
             if (!pressNavBack()) break
         }
         pressBackToFiles(lang)
-        runCatching { waitUntil(20_000) { onFilesShellReady() } }
+        waitUntil(20_000) { onFilesShellReady() }
     }
 
     private fun walkLibrary(lang: String) {
         pressBackToFiles(lang)
         restoreAllFilesFilterSoft()
-        runCatching { waitUntil(20_000) { onFilesChrome() } }
-        if (!onFilesChrome()) {
-            covered += "library/chrome-soft-miss"
-            return
-        }
+        assertTrue(onFilesChrome(), "Expected Files chrome after appearance")
         covered += "library"
         // Search sheet (best-effort)
         if (softClickContentDesc("Search", "Buscar")) {
@@ -402,10 +395,7 @@ class DeviceWalkUiTest {
     }
 
     private fun walkSettingsTree(lang: String, tag: String) {
-        if (!openSettings()) {
-            covered += "settings/gear-soft-miss"
-            return
-        }
+        openSettings()
         covered += "settings"
         val rows = if (lang == "en") {
             listOf(
@@ -707,40 +697,39 @@ class DeviceWalkUiTest {
         error("UI condition not met within ${timeoutMs}ms")
     }
 
-    /** Opens Settings hub from Files. Returns false if gear is unreachable (soft). */
-    private fun openSettings(): Boolean {
-        pressBackToFiles("en")
+    private fun openSettings() {
         pressBackToFiles("pt-BR")
-        softClickContentDesc("All files", "Todos os arquivos")
-        runCatching { waitUntil(20_000) { onFilesShellReady() } }
-        if (!onFilesShellReady()) return false
-        // Files header gear uses CD "Settings"/"Configuração" (also on clickable Box).
-        val clickedGear = softClickContentDesc("Settings", "Configuração") ||
-            runCatching {
-                val obj = device.findObject(By.descContains("Settings"))
-                    ?: device.findObject(By.descContains("Configuração"))
-                if (obj != null) {
-                    obj.click()
-                    true
-                } else {
-                    false
-                }
-            }.getOrDefault(false)
-        if (!clickedGear) return false
-        // Wait for a hub-only row (Appearance is below the fold — do not require it).
-        return runCatching {
-            waitUntil(20_000) {
-                composeExists("Phone recording") ||
-                    composeExists("Gravação no telefone") ||
-                    composeExists("Storage & privacy") ||
-                    composeExists("Armazenamento e privacidade") ||
-                    composeExists("About Velum") ||
-                    composeExists("Sobre o Velum") ||
-                    composeExists("AI processing") ||
-                    composeExists("Processamento de IA")
-            }
+        // Gear only exists on the Files shell — wait hard after pressBackToFiles.
+        waitUntil(45_000) { onFilesShellReady() }
+        // Files header gear uses CD "Settings"/"Configuração" — do not treat that as hub-open.
+        val clickedGear = runCatching {
+            composeRule
+                .onNodeWithContentDescription("Settings", useUnmergedTree = true)
+                .performClick()
+            true
+        }.recoverCatching {
+            composeRule
+                .onNodeWithContentDescription("Configuração", useUnmergedTree = true)
+                .performClick()
+            true
+        }.recoverCatching {
+            val obj = device.findObject(By.desc("Settings"))
+                ?: device.findObject(By.desc("Configuração"))
+            obj?.click() ?: error("Settings gear missing")
             true
         }.getOrDefault(false)
+        assertTrue(clickedGear, "Failed to tap Settings gear")
+        // Wait for a hub-only row (Appearance is below the fold — do not require it).
+        waitUntil(20_000) {
+            composeExists("Phone recording") ||
+                composeExists("Gravação no telefone") ||
+                composeExists("Storage & privacy") ||
+                composeExists("Armazenamento e privacidade") ||
+                composeExists("About Velum") ||
+                composeExists("Sobre o Velum") ||
+                composeExists("AI processing") ||
+                composeExists("Processamento de IA")
+        }
     }
 
     /**
@@ -776,27 +765,30 @@ class DeviceWalkUiTest {
             SystemClock.sleep(250)
         }
         if (onFilesShellReady()) return
-        // Last resort: recreate (not MAIN/LAUNCHER soft-resume — that left us
-        // off Files / Settings gear miss on af87f76). Soft-fail the wait so a
-        // stuck screen cannot abort the whole matrix.
+        // Last resort: recreate the ActivityScenario-owned activity. Bare
+        // MAIN/LAUNCHER soft-resume delivers onNewIntent and MainActivity.setIntent
+        // poisons ActivityScenario intent matching (af87f76: Settings gear miss
+        // after soft resume left us off the Files shell). recreate() resets
+        // Compose nav while keeping the launch intent ActivityScenario tracks.
         runCatching {
             composeRule.runOnUiThread { composeRule.activity.recreate() }
         }
         SystemClock.sleep(1_500)
-        runCatching {
-            waitUntil(30_000) {
-                composeExists("Skip") ||
-                    composeExists("Pular") ||
-                    onFilesShellReady()
-            }
+        waitUntil(60_000) {
+            composeExists("Skip") ||
+                composeExists("Pular") ||
+                onFilesShellReady()
         }
         if (composeExists("Skip") || composeExists("Pular")) {
             softClickText("Skip", "Pular")
+            waitUntil(30_000) {
+                !composeExists("Skip") && !composeExists("Pular")
+            }
         }
         softClickContentDesc("All files", "Todos os arquivos")
         restoreAllFilesFilterSoft()
-        runCatching {
-            waitUntil(15_000) { onFilesShellReady() }
+        if (!onFilesShellReady()) {
+            error("Could not return to Files shell (lang=$lang)")
         }
     }
 
