@@ -568,6 +568,7 @@ private fun VelumRoot(container: AppContainer) {
                             ble = container.ble,
                             viewModel = container.deviceViewModel,
                             onBack = { navController.popBackStack() },
+                            onOpenRecording = { id -> navController.navigate(Routes.recording(id)) },
                         )
                     }
                 }

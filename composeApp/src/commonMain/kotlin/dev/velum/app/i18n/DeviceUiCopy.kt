@@ -164,6 +164,15 @@ object DeviceUiCopy {
     fun cancel(localeTag: String): String =
         if (isPt(localeTag)) "Cancelar" else "Cancel"
 
+    fun openDownloaded(localeTag: String): String =
+        if (isPt(localeTag)) "Abrir" else "Open"
+
+    fun redownload(localeTag: String): String =
+        if (isPt(localeTag)) "Baixar de novo" else "Re-download"
+
+    fun inLibrary(localeTag: String): String =
+        if (isPt(localeTag)) "Na biblioteca" else "In library"
+
     private fun isPt(localeTag: String): Boolean =
         localeTag.startsWith("pt", ignoreCase = true)
 }

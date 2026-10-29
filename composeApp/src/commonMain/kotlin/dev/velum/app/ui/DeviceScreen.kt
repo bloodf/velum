@@ -47,6 +47,7 @@ fun DeviceScreen(
     ble: BleTransport,
     viewModel: DeviceViewModel,
     onBack: (() -> Unit)? = null,
+    onOpenRecording: (String) -> Unit = {},
 ) {
     val state by viewModel.connectionState.collectAsState()
     val devices by viewModel.devices.collectAsState()
@@ -87,6 +88,7 @@ fun DeviceScreen(
         },
         onDownloadSession = { viewModel.downloadSession(it) },
         onCancelDownload = { viewModel.cancelDownload() },
+        onOpenRecording = onOpenRecording,
     )
 }
 
@@ -104,6 +106,7 @@ fun DeviceScreenContent(
     onBack: (() -> Unit)? = null,
     onDownloadSession: (Long) -> Unit = {},
     onCancelDownload: () -> Unit = {},
+    onOpenRecording: (String) -> Unit = {},
 ) {
     Column(
         modifier = Modifier
@@ -198,6 +201,7 @@ fun DeviceScreenContent(
             )
             sessionUi.sessions.take(24).forEach { entry ->
                 val downloading = sessionUi.downloadingSessionId == entry.sessionId
+                val libraryId = sessionUi.libraryRecordingBySessionId[entry.sessionId]
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -208,15 +212,38 @@ fun DeviceScreenContent(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text(
-                            text = "#${entry.sessionId} · ${formatSessionSize(entry.sizeBytes)}",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.weight(1f),
-                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "#${entry.sessionId} · ${formatSessionSize(entry.sizeBytes)}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            if (libraryId != null && !downloading) {
+                                Text(
+                                    text = DeviceUiCopy.inLibrary(locale),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                            }
+                        }
                         if (downloading) {
                             TextButton(onClick = onCancelDownload) {
                                 Text(strings.cancel)
+                            }
+                        } else if (libraryId != null) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Button(
+                                    onClick = { onOpenRecording(libraryId) },
+                                    enabled = sessionUi.downloadingSessionId == null,
+                                ) {
+                                    Text(DeviceUiCopy.openDownloaded(locale))
+                                }
+                                TextButton(
+                                    onClick = { onDownloadSession(entry.sessionId) },
+                                    enabled = sessionUi.downloadingSessionId == null,
+                                ) {
+                                    Text(DeviceUiCopy.redownload(locale))
+                                }
                             }
                         } else {
                             Button(

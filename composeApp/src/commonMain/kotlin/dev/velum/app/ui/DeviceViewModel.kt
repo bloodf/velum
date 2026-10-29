@@ -22,10 +22,12 @@ import dev.velum.recorder.RecorderDriverRegistry
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -44,6 +46,8 @@ data class DeviceSessionUi(
     val downloadingSessionId: Long? = null,
     val downloadProgress: Float? = null,
     val lastDownloadedRecordingId: String? = null,
+    /** Device session identity → library recording id (already downloaded). */
+    val libraryRecordingBySessionId: Map<Long, String> = emptyMap(),
 )
 
 data class DownloadedSessionAudio(
@@ -63,6 +67,7 @@ class DeviceViewModel(
         error("persistDownloadedSession not configured")
     },
     private val localeTag: () -> String = { systemLanguageTag() },
+    observeLibraryBySessionId: () -> Flow<Map<Long, String>> = { flowOf(emptyMap()) },
 ) : ViewModel() {
     val connectionState: StateFlow<BleConnectionState> =
         ble.connectionState.stateIn(viewModelScope, SharingStarted.Eagerly, BleConnectionState.Idle)
@@ -92,6 +97,11 @@ class DeviceViewModel(
                 }
             }
         }
+        viewModelScope.launch {
+            observeLibraryBySessionId().collect { library ->
+                _sessionUi.value = _sessionUi.value.copy(libraryRecordingBySessionId = library)
+            }
+        }
     }
 
     fun startScan() {
@@ -114,7 +124,7 @@ class DeviceViewModel(
             cancelDownload()
             downloadJob?.join()
             closeClient()
-            _sessionUi.value = DeviceSessionUi()
+            _sessionUi.value = sessionChrome()
             ble.disconnect()
         }
     }
@@ -265,6 +275,34 @@ class DeviceViewModel(
         connectedSerial = null
     }
 
+    /** Fresh session chrome that keeps the library map so downloaded marks stay visible. */
+    private fun sessionChrome(
+        batteryPercent: Int? = null,
+        sessions: List<SessionEntry> = emptyList(),
+        statusMessage: String? = null,
+        protocolVersion: Int? = null,
+        modelDisplayName: String? = null,
+        wifiFastPath: Boolean = false,
+        capabilities: DeviceCapabilities? = null,
+        recorderDriverId: String? = null,
+        downloadingSessionId: Long? = null,
+        downloadProgress: Float? = null,
+        lastDownloadedRecordingId: String? = null,
+    ): DeviceSessionUi = DeviceSessionUi(
+        batteryPercent = batteryPercent,
+        sessions = sessions,
+        statusMessage = statusMessage,
+        protocolVersion = protocolVersion,
+        modelDisplayName = modelDisplayName,
+        wifiFastPath = wifiFastPath,
+        capabilities = capabilities,
+        recorderDriverId = recorderDriverId,
+        downloadingSessionId = downloadingSessionId,
+        downloadProgress = downloadProgress,
+        lastDownloadedRecordingId = lastDownloadedRecordingId,
+        libraryRecordingBySessionId = _sessionUi.value.libraryRecordingBySessionId,
+    )
+
     private suspend fun runProtocolIfKeysPresent() {
         val locale = localeTag()
         val connected = (connectionState.value as? BleConnectionState.Connected)?.device
@@ -275,7 +313,7 @@ class DeviceViewModel(
         )
         val driverId = scanMatch?.driver?.id
         if (driverId != null && driverId != "plaud") {
-            _sessionUi.value = DeviceSessionUi(
+            _sessionUi.value = sessionChrome(
                 modelDisplayName = scanMatch.capabilities.productLabel,
                 recorderDriverId = driverId,
                 statusMessage = DeviceUiCopy.unsupportedRecorder(locale),
@@ -283,27 +321,27 @@ class DeviceViewModel(
             return
         }
         val importer = keyImporter ?: run {
-            _sessionUi.value = DeviceSessionUi(
+            _sessionUi.value = sessionChrome(
                 recorderDriverId = "plaud",
                 statusMessage = DeviceUiCopy.connectedImportKeys(locale),
             )
             return
         }
         if (!importer.hasKeys()) {
-            _sessionUi.value = DeviceSessionUi(
+            _sessionUi.value = sessionChrome(
                 recorderDriverId = "plaud",
                 statusMessage = DeviceUiCopy.connectedImportKeys(locale),
             )
             return
         }
         val keys = importer.loadKeys() ?: run {
-            _sessionUi.value = DeviceSessionUi(
+            _sessionUi.value = sessionChrome(
                 recorderDriverId = "plaud",
                 statusMessage = DeviceUiCopy.connectedKeysIncomplete(locale),
             )
             return
         }
-        _sessionUi.value = DeviceSessionUi(
+        _sessionUi.value = sessionChrome(
             statusMessage = DeviceUiCopy.unlocking(locale),
             recorderDriverId = "plaud",
         )
@@ -320,7 +358,7 @@ class DeviceViewModel(
             val sessions = c.listSessions()
             val battery = c.readBattery()
             val wifiCapable = DeviceCapabilityRegistry.supportsWifiFastPath(caps)
-            _sessionUi.value = DeviceSessionUi(
+            _sessionUi.value = sessionChrome(
                 batteryPercent = battery.percent,
                 sessions = sessions.entries,
                 protocolVersion = hs.protocolVersion,
@@ -337,7 +375,7 @@ class DeviceViewModel(
                 ),
             )
         } catch (_: Exception) {
-            _sessionUi.value = DeviceSessionUi(
+            _sessionUi.value = sessionChrome(
                 recorderDriverId = "plaud",
                 statusMessage = DeviceUiCopy.unlockFailed(localeTag()),
             )
