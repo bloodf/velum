@@ -333,11 +333,49 @@ class VoiceProfileStoreKeyTest {
             assertEquals(setOf("Alpha", "Beta", "Gamma"), listed.map { it.displayName }.toSet())
             assertEquals(originalKey, secure.storedValue(VoiceProfileStore.PROFILE_KEY_SECURE))
             assertEquals(putsAfterSeed, secure.putCount.get())
-            // Value path + leftover `.profile_key` without marker does not re-purge
-            // (purge requires mintedNewKey). Profiles stay; legacy file may remain.
+            // Value path + leftover `.profile_key` without marker completes deferred purge
+            // (profiles under the stored key are not legacy blobs and are kept).
+            assertTrue(File(voices, ".profile_key.purged").exists())
+            assertFalse(legacyKey.exists())
             assertTrue(File(profiles, "alpha.json").exists())
             assertTrue(File(profiles, "beta.json").exists())
             assertTrue(File(profiles, "gamma.json").exists())
+        }
+    }
+
+    @Test
+    fun purge_runs_on_value_path_when_legacy_file_present_without_marker() {
+        runBlocking {
+            val dir = tempDir("velum-vp-value-purge")
+            val root = ModelStoreDir(dir.absolutePath)
+            val voices = File(dir, "voices").also { it.mkdirs() }
+            val profiles = File(voices, "profiles").also { it.mkdirs() }
+            val secure = InMemorySecureStore()
+
+            // Simulate putString succeeding before a crash: key already stored, no marker.
+            VoiceProfileStore(root = root, secureStore = secure).ensureKey()
+            assertFalse(File(voices, ".profile_key.purged").exists())
+
+            val constantKey = legacyConstantKeyBytesForTests()
+            File(voices, ".profile_key").writeBytes(constantKey)
+            val legacyCipher = createProfileCipher(constantKey)
+            writeLegacyProfile(profiles, "legacy", floatArrayOf(1f, 0f, 0f, 0f), legacyCipher)
+
+            // Fresh store, same SecureStore → Value path must still run purge once.
+            val store = VoiceProfileStore(root = root, secureStore = secure)
+            store.ensureKey()
+
+            assertTrue(File(voices, ".profile_key.purged").exists())
+            assertFalse(File(voices, ".profile_key").exists())
+            assertFalse(File(profiles, "legacy.json").exists())
+            assertFalse(File(profiles, "legacy.enc").exists())
+
+            // Marker prevents a second profile purge if the legacy file reappears.
+            File(voices, ".profile_key").writeBytes(constantKey)
+            writeLegacyProfile(profiles, "again", floatArrayOf(0f, 1f, 0f, 0f), legacyCipher)
+            VoiceProfileStore(root = root, secureStore = secure).ensureKey()
+            assertTrue(File(profiles, "again.json").exists())
+            assertFalse(File(voices, ".profile_key").exists())
         }
     }
 
