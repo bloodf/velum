@@ -19,9 +19,9 @@
 # - kotlin.time.** / AbstractLongTimeSource (4406be9)
 # - InfiniteAnimationPolicy$DefaultImpls (af87f76)
 # - CoroutineExceptionHandlerImplKt.ensurePlatformExceptionHandlerLoaded (9e0742c)
+# No kotlinx.coroutines.internal.** package wildcard — exact class only.
 -keep class kotlinx.coroutines.DelayWithTimeoutDiagnostics { *; }
 -keep class kotlinx.coroutines.internal.CoroutineExceptionHandlerImplKt { *; }
--keep class kotlinx.coroutines.internal.** { *; }
 -keep class kotlin.time.** { *; }
 -keep class androidx.compose.ui.platform.InfiniteAnimationPolicy { *; }
 -keep class androidx.compose.ui.platform.InfiniteAnimationPolicy$* { *; }
