@@ -32,6 +32,15 @@ kotlin {
         androidMain.dependencies {
             implementation(libs.sqldelight.android)
         }
+        val androidUnitTest by getting {
+            dependencies {
+                implementation(libs.kotlin.test)
+                implementation(libs.junit)
+                implementation(libs.androidx.test.ext.junit)
+                implementation(libs.robolectric)
+                implementation(libs.kotlinx.coroutines.test)
+            }
+        }
         jvmMain.dependencies {
             implementation(libs.sqldelight.jvm)
         }
@@ -55,6 +64,13 @@ android {
     // Pin them on the AGP main source set so classLoader.getResourceAsStream works
     // for PlaudTemplateAsset / AutoFlowTemplateAsset / PlaudFullTemplateAsset.
     sourceSets.getByName("main").resources.srcDir("src/commonMain/resources")
+    // commonTest fixtures (e.g. plaud_export_sample.json) for Android unit tests.
+    sourceSets.getByName("test").resources.srcDir("src/commonTest/resources")
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+        }
+    }
 }
 
 sqldelight {
