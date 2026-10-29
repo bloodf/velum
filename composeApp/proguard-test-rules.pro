@@ -23,16 +23,20 @@
 # - ThreadSafeHeap.addLast (f25fed7 walk: TestCoroutineScheduler)
 # - ViewRootForTest$Companion.setOnViewCreatedCallback (65a96b6 walk)
 # - WindowRecomposerPolicy.getAndSetFactory (c4bc1df walk)
+# - WindowRecomposerFactory (918aa6f: ClassCast to obfuscated platform.k)
+# - ContinuationInterceptor$DefaultImpls.releaseInterceptedContinuation (918aa6f)
 # No kotlinx.coroutines.internal.** package wildcard — exact class only.
 -keep class kotlinx.coroutines.DelayWithTimeoutDiagnostics { *; }
 -keep class kotlinx.coroutines.internal.CoroutineExceptionHandlerImplKt { *; }
 -keep class kotlinx.coroutines.JobSupport { *; }
 -keep class kotlinx.coroutines.internal.ThreadSafeHeap { *; }
 -keep class kotlin.time.** { *; }
+-keep class kotlin.coroutines.ContinuationInterceptor$DefaultImpls { *; }
 -keep class androidx.compose.ui.platform.InfiniteAnimationPolicy { *; }
 -keep class androidx.compose.ui.platform.InfiniteAnimationPolicy$* { *; }
 -keep class androidx.compose.ui.platform.ViewRootForTest$Companion { *; }
 -keep class androidx.compose.ui.platform.WindowRecomposerPolicy { *; }
+-keep class androidx.compose.ui.platform.WindowRecomposerFactory { *; }
 
 # --- App instrumentation seams (must not be stripped or renamed) ---
 -keep class dev.velum.app.devicewalk.** { *; }

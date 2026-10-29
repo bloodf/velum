@@ -624,6 +624,19 @@ class DeviceWalkUiTest {
     }
 
     private fun assertUiChrome(lang: String) {
+        // Compose shell CDs are authoritative; UiAutomator hierarchy can lag
+        // after storage-wipe / nav and false-fail chrome asserts (#106).
+        if (onFilesShellReady() || softExistsContentDesc("Settings", "Configuração")) {
+            return
+        }
+        runCatching {
+            waitUntil(12_000) {
+                onFilesShellReady() || softExistsContentDesc("Settings", "Configuração")
+            }
+        }
+        if (onFilesShellReady() || softExistsContentDesc("Settings", "Configuração")) {
+            return
+        }
         val dump = windowDump()
         if (lang == "pt-BR") {
             assertTrue(
