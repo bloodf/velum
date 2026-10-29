@@ -61,6 +61,15 @@
     public <init>(android.content.Context, java.lang.String, java.lang.String);
 }
 
+# AndroidSecureStoreKeystoreInstrumentedTest (#92): keep only members the test calls (suspend bridges via *** / (...)).
+-keepclassmembers class dev.velum.core.security.AndroidSecureStore {
+    *** putString(...);
+    *** read(...);
+    *** contains(...);
+    *** remove(...);
+    *** wipe(...);
+}
+
 # Needed by AndroidSecureStoreKeystoreInstrumentedTest (#92): R8 strips SecureRead results read only by the test.
 -keep class dev.velum.core.security.SecureRead { *; }
 -keep class dev.velum.core.security.SecureRead$* { *; }
