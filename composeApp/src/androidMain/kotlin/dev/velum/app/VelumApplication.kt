@@ -14,6 +14,7 @@ import dev.velum.app.platform.DownloadProgressNotifier
 import dev.velum.app.platform.MicRecordingService
 import dev.velum.app.platform.ShareTextHolder
 import dev.velum.app.platform.cleanupStaleDownloadArtifacts
+import dev.velum.app.platform.cleanupStaleDownloadsThenPublish
 import dev.velum.app.platform.installAppContext
 import dev.velum.app.platform.installMicCaptureContext
 import dev.velum.app.platform.installRecordingFilesDir
@@ -80,36 +81,44 @@ class VelumApplication : Application() {
                     repository = built.repository,
                     settings = built.settingsRepository,
                 )
-                ready.set(true)
-                containerDeferred.complete(built)
-                // Drop crashed SoftAP/download temps before mic recovery so leftover
-                // partials are never mistaken for mic WAVs or turned into orphans.
-                runCatching {
-                    val removed = cleanupStaleDownloadArtifacts(
-                        recordingsDirPath = recordingsDirectoryPath(),
-                        repository = built.repository,
-                    )
-                    if (removed > 0) {
-                        Log.i(TAG, "Removed $removed stale download temp(s)")
-                    }
-                }.onFailure { t ->
-                    Log.e(TAG, "Stale download temp cleanup failed", t)
-                }
-                runCatching {
-                    recoverPartialMicRecordings(
-                        recordingsDirPath = recordingsDirectoryPath(),
-                        repository = built.repository,
-                        onRecovered = { recordingId ->
-                            built.enqueueProcessing(
-                                recordingId = recordingId,
-                                templateId = null,
-                                retranscribe = true,
+                cleanupStaleDownloadsThenPublish(
+                    cleanup = {
+                        // Wipe crashed SoftAP/download temps BEFORE publishing the container so a
+                        // download that starts on awaitContainer() cannot race cleanup and lose its
+                        // .download-tmp file mid-rename. Mic recovery stays in the same pre-publish
+                        // window (no download traffic yet).
+                        runCatching {
+                            val removed = cleanupStaleDownloadArtifacts(
+                                recordingsDirPath = recordingsDirectoryPath(),
+                                repository = built.repository,
                             )
-                        },
-                    )
-                }.onFailure { t ->
-                    Log.e(TAG, "Partial mic recovery failed", t)
-                }
+                            if (removed > 0) {
+                                Log.i(TAG, "Removed $removed stale download temp(s)")
+                            }
+                        }.onFailure { t ->
+                            Log.e(TAG, "Stale download temp cleanup failed", t)
+                        }
+                        runCatching {
+                            recoverPartialMicRecordings(
+                                recordingsDirPath = recordingsDirectoryPath(),
+                                repository = built.repository,
+                                onRecovered = { recordingId ->
+                                    built.enqueueProcessing(
+                                        recordingId = recordingId,
+                                        templateId = null,
+                                        retranscribe = true,
+                                    )
+                                },
+                            )
+                        }.onFailure { t ->
+                            Log.e(TAG, "Partial mic recovery failed", t)
+                        }
+                    },
+                    publish = {
+                        ready.set(true)
+                        containerDeferred.complete(built)
+                    },
+                )
             } catch (t: Throwable) {
                 Log.e(TAG, "AppContainer init failed", t)
                 initFailure.set(t)

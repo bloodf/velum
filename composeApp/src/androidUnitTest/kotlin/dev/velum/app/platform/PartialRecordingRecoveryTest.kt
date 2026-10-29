@@ -15,6 +15,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import org.junit.Before
 import org.junit.Test
@@ -157,5 +158,57 @@ class PartialRecordingRecoveryTest {
     fun recordingIdFromWavName_parsesMicNames() {
         assertEquals("rec-x", recordingIdFromWavName("rec-x.wav"))
         assertEquals("rec-x", recordingIdFromWavName("rec-x.wav.partial"))
+    }
+
+    @Test
+    fun cleanupThenPublish_cleanupFinishesBeforeContainerPublished() = runBlocking {
+        val order = ArrayList<String>()
+        var publishedDuringCleanup = false
+        cleanupStaleDownloadsThenPublish(
+            cleanup = {
+                order += "cleanup-start"
+                delay(25)
+                // Publish must not have run yet — otherwise a live download could race wipe.
+                publishedDuringCleanup = order.contains("publish")
+                order += "cleanup-end"
+            },
+            publish = {
+                order += "publish"
+                "ready"
+            },
+        )
+        assertFalse(publishedDuringCleanup, "container must not publish while cleanup still runs")
+        assertEquals(listOf("cleanup-start", "cleanup-end", "publish"), order)
+    }
+
+    @Test
+    fun tempCreatedAfterPrePublishCleanup_isNotDeleted() = runBlocking {
+        // Stale debris from a prior crash — cleaned during pre-publish startup.
+        File(downloadTmp, "stale.ogg${DownloadedSessionAudioPersist.TEMP_SUFFIX}")
+            .writeBytes(byteArrayOf(1, 2, 3))
+        File(recordings, "x.ogg.partial").writeBytes(byteArrayOf(4, 5, 6))
+
+        var published = false
+        cleanupStaleDownloadsThenPublish(
+            cleanup = {
+                cleanupStaleDownloadArtifacts(recordings.absolutePath, repository)
+            },
+            publish = { published = true },
+        )
+        assertTrue(published)
+        assertFalse(
+            File(downloadTmp, "stale.ogg${DownloadedSessionAudioPersist.TEMP_SUFFIX}").exists(),
+        )
+        assertFalse(File(recordings, "x.ogg.partial").exists())
+
+        // After publish, a live SoftAP download may create a temp — must survive (no second wipe).
+        val live = File(
+            downloadTmp,
+            "live-session.ogg${DownloadedSessionAudioPersist.TEMP_SUFFIX}",
+        )
+        live.writeBytes(
+            byteArrayOf('O'.code.toByte(), 'g'.code.toByte(), 'g'.code.toByte(), 'S'.code.toByte()),
+        )
+        assertTrue(live.exists(), "post-publish download temp must not be deleted by startup cleanup")
     }
 }
