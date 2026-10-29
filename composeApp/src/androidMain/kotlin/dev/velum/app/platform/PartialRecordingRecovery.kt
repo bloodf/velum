@@ -52,7 +52,10 @@ suspend fun recoverPartialMicRecordings(
 }
 
 /**
- * Startup cleanup for SoftAP/download crash debris, then mic recovery.
+ * Startup cleanup for SoftAP/download crash debris.
+ *
+ * Must finish before [AppContainer] is published (`ready` / `awaitContainer`) so a live
+ * SoftAP download cannot race an unconditional wipe of `.download-tmp`.
  *
  * Deletes:
  * - everything under `.download-tmp/`
@@ -85,6 +88,18 @@ suspend fun cleanupStaleDownloadArtifacts(
         }
     }
     return removed
+}
+
+/**
+ * Run [cleanup] to completion, then [publish]. Used by [dev.velum.app.VelumApplication]
+ * so stale-download wipe cannot overlap downloads that start after the container is ready.
+ */
+internal suspend fun <T> cleanupStaleDownloadsThenPublish(
+    cleanup: suspend () -> Unit,
+    publish: () -> T,
+): T {
+    cleanup()
+    return publish()
 }
 
 /** Mic WAVs / `rec-*.wav.partial` only — never download temps. */
