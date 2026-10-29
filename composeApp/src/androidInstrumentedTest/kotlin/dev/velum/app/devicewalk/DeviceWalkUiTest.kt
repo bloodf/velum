@@ -698,13 +698,25 @@ class DeviceWalkUiTest {
     }
 
     private fun openSettings() {
-        pressBackToFiles("pt-BR")
         // Gear only exists on FilesScreen. Explore/Ask still expose bottom-bar
         // CDs so onFilesShellReady can be true without the header gear (#106).
-        waitUntil(45_000) { onFilesShellReady() }
-        softClickContentDesc("All files", "Todos os arquivos")
-        waitUntil(20_000) {
-            softExistsContentDesc("Settings", "Configuração")
+        // Drive to Files via All-files tab and wait on the gear CD itself —
+        // not a second onFilesShellReady (flaked en_dark after settings rows).
+        fun ensureFilesGearVisible() {
+            pressBackToFiles("pt-BR")
+            softClickContentDesc("All files", "Todos os arquivos")
+            SystemClock.sleep(350)
+        }
+        ensureFilesGearVisible()
+        if (!softExistsContentDesc("Settings", "Configuração")) {
+            ensureFilesGearVisible()
+        }
+        waitUntil(30_000) {
+            softExistsContentDesc("Settings", "Configuração") ||
+                run {
+                    softClickContentDesc("All files", "Todos os arquivos")
+                    softExistsContentDesc("Settings", "Configuração")
+                }
         }
         // Prefer merged-tree click (CD is on the clickable Box, not the Icon).
         val clickedGear = softClickContentDesc("Settings", "Configuração")

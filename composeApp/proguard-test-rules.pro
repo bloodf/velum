@@ -20,10 +20,12 @@
 # - InfiniteAnimationPolicy$DefaultImpls (af87f76)
 # - CoroutineExceptionHandlerImplKt.ensurePlatformExceptionHandlerLoaded (9e0742c)
 # - JobSupport.getCompletionExceptionOrNull (a75a9b1 walk: AbstractCoroutine receiver)
+# - ThreadSafeHeap.addLast (f25fed7 walk: TestCoroutineScheduler)
 # No kotlinx.coroutines.internal.** package wildcard — exact class only.
 -keep class kotlinx.coroutines.DelayWithTimeoutDiagnostics { *; }
 -keep class kotlinx.coroutines.internal.CoroutineExceptionHandlerImplKt { *; }
 -keep class kotlinx.coroutines.JobSupport { *; }
+-keep class kotlinx.coroutines.internal.ThreadSafeHeap { *; }
 -keep class kotlin.time.** { *; }
 -keep class androidx.compose.ui.platform.InfiniteAnimationPolicy { *; }
 -keep class androidx.compose.ui.platform.InfiniteAnimationPolicy$* { *; }
