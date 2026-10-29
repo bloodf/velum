@@ -111,6 +111,27 @@ class PersistDownloadedSessionDedupeTest {
         assertFalse(File(pathBefore + ".download.partial").exists())
     }
 
+    @Test
+    fun redownloadOfTrashedSession_restoresSameRowAndRefreshesAudio() = runBlocking {
+        installRecordingFilesDir(filesRoot.absolutePath)
+        val original = wavFixture(5)
+        val refreshed = wavFixture(6)
+        val id = container.persistDownloadedSession(session(original))
+        container.repository.updateTranscript(id, FIXTURE_TRANSCRIPT)
+        container.repository.trashRecording(id)
+        assertEquals(1L, container.repository.getRecording(id)?.trashed)
+
+        val id2 = container.persistDownloadedSession(session(refreshed))
+
+        assertEquals(id, id2, "trashed session must restore the same recording id")
+        val rec = container.repository.getRecording(id)
+        assertNotNull(rec)
+        assertEquals(0L, rec.trashed, "re-download must restore from trash")
+        assertEquals(FIXTURE_TRANSCRIPT, rec.transcript)
+        assertTrue(File(rec.local_path!!).readBytes().contentEquals(refreshed))
+        assertEquals(1, container.repository.getAllRecordings().count { it.session_id == FIXTURE_SESSION })
+    }
+
     private fun session(bytes: ByteArray) = DownloadedSessionAudio(
         sessionId = FIXTURE_SESSION,
         deviceSerial = "fixture-serial",

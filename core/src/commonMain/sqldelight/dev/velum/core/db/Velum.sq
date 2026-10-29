@@ -105,8 +105,13 @@ SELECT * FROM recording WHERE trashed = 1 ORDER BY started_at DESC;
 selectRecordingById:
 SELECT * FROM recording WHERE id = ?;
 
+-- Prefer a live row; fall back to a trashed row for the same session (#113).
+-- Unique index covers trashed rows too, so re-download restores instead of inserting.
 selectRecordingBySessionId:
-SELECT * FROM recording WHERE session_id = ? AND trashed = 0 LIMIT 1;
+SELECT * FROM recording
+WHERE session_id = ?
+ORDER BY trashed ASC, created_at ASC
+LIMIT 1;
 
 selectDeviceSessionRecordingIds:
 SELECT session_id, id FROM recording

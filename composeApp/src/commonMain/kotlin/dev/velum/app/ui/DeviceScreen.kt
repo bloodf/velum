@@ -200,8 +200,16 @@ fun DeviceScreenContent(
                 style = MaterialTheme.typography.titleLarge,
             )
             sessionUi.sessions.take(24).forEach { entry ->
-                val downloading = sessionUi.downloadingSessionId == entry.sessionId
-                val libraryId = sessionUi.libraryRecordingBySessionId[entry.sessionId]
+                val primary = resolveDeviceSessionRowAction(
+                    sessionId = entry.sessionId,
+                    libraryRecordingBySessionId = sessionUi.libraryRecordingBySessionId,
+                    downloadingSessionId = sessionUi.downloadingSessionId,
+                )
+                val redownload = resolveDeviceSessionRedownloadAction(
+                    sessionId = entry.sessionId,
+                    libraryRecordingBySessionId = sessionUi.libraryRecordingBySessionId,
+                )
+                val inLibrary = primary is DeviceSessionRowAction.Open
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -218,7 +226,7 @@ fun DeviceScreenContent(
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
-                            if (libraryId != null && !downloading) {
+                            if (inLibrary) {
                                 Text(
                                     text = DeviceUiCopy.inLibrary(locale),
                                     style = MaterialTheme.typography.bodySmall,
@@ -226,35 +234,46 @@ fun DeviceScreenContent(
                                 )
                             }
                         }
-                        if (downloading) {
-                            TextButton(onClick = onCancelDownload) {
-                                Text(strings.cancel)
+                        when (primary) {
+                            is DeviceSessionRowAction.CancelDownload -> {
+                                TextButton(onClick = onCancelDownload) {
+                                    Text(strings.cancel)
+                                }
                             }
-                        } else if (libraryId != null) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            is DeviceSessionRowAction.Open -> {
+                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Button(
+                                        onClick = { onOpenRecording(primary.recordingId) },
+                                        enabled = sessionUi.downloadingSessionId == null,
+                                    ) {
+                                        Text(DeviceUiCopy.openDownloaded(locale))
+                                    }
+                                    val secondary = redownload
+                                    if (secondary != null) {
+                                        TextButton(
+                                            onClick = { onDownloadSession(secondary.sessionId) },
+                                            enabled = sessionUi.downloadingSessionId == null,
+                                        ) {
+                                            Text(DeviceUiCopy.redownload(locale))
+                                        }
+                                    }
+                                }
+                            }
+                            is DeviceSessionRowAction.Download -> {
                                 Button(
-                                    onClick = { onOpenRecording(libraryId) },
+                                    onClick = { onDownloadSession(primary.sessionId) },
                                     enabled = sessionUi.downloadingSessionId == null,
                                 ) {
-                                    Text(DeviceUiCopy.openDownloaded(locale))
-                                }
-                                TextButton(
-                                    onClick = { onDownloadSession(entry.sessionId) },
-                                    enabled = sessionUi.downloadingSessionId == null,
-                                ) {
-                                    Text(DeviceUiCopy.redownload(locale))
+                                    Text(strings.download)
                                 }
                             }
-                        } else {
-                            Button(
-                                onClick = { onDownloadSession(entry.sessionId) },
-                                enabled = sessionUi.downloadingSessionId == null,
-                            ) {
-                                Text(strings.download)
+                            is DeviceSessionRowAction.Redownload -> {
+                                // Primary resolve never returns Redownload (secondary only).
+                                error("unreachable: Redownload is secondary")
                             }
                         }
                     }
-                    if (downloading) {
+                    if (primary is DeviceSessionRowAction.CancelDownload) {
                         val progress = sessionUi.downloadProgress ?: 0f
                         val percent = (progress * 100).toInt().coerceIn(0, 99)
                         Spacer(Modifier.height(8.dp))

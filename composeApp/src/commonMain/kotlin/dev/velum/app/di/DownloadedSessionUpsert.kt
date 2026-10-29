@@ -67,6 +67,10 @@ internal object DownloadedSessionUpsert {
                     exclusive = true,
                 )
             } else {
+                // Unique index covers trashed rows — restore then refresh in place.
+                if (existing.trashed != 0L) {
+                    repository.restoreRecording(id)
+                }
                 repository.updateLocalPath(
                     id = id,
                     localPath = path,

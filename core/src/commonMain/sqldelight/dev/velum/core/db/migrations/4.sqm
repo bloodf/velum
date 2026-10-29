@@ -1,4 +1,99 @@
--- #113: unique device-session identity on library rows.
--- Nothing has shipped with duplicate session_id rows; no data cleanup needed.
+-- #113: collapse duplicate device-session library rows, then unique-index.
+-- Re-downloads before this fix left multiple rows per session_id; CREATE UNIQUE
+-- INDEX alone would crash those databases. Orphan audio files for dropped rows
+-- are not deleted here (SQL cannot unlink files) — runtime wipe/delete by
+-- local_path cleans them when the kept recording is removed, and unreferenced
+-- paths under the recordings directory can be swept on a later startup pass.
+
+-- Keeper per session_id: prefer non-trashed, then rows with transcript/summary,
+-- then oldest created_at, then lowest id.
+CREATE TEMP TABLE _session_keep AS
+SELECT r.session_id AS session_id, r.id AS keep_id
+FROM recording AS r
+WHERE r.session_id IS NOT NULL
+  AND r.id = (
+    SELECT r2.id FROM recording AS r2
+    WHERE r2.session_id = r.session_id
+    ORDER BY
+      CASE WHEN r2.trashed = 0 THEN 0 ELSE 1 END,
+      CASE
+        WHEN (r2.transcript IS NOT NULL AND length(r2.transcript) > 0)
+          OR (r2.summary_markdown IS NOT NULL AND length(r2.summary_markdown) > 0)
+        THEN 0 ELSE 1
+      END,
+      r2.created_at ASC,
+      r2.id ASC
+    LIMIT 1
+  );
+
+-- Merge transcript that exists only on a duplicate onto the keeper.
+UPDATE recording
+SET transcript = (
+  SELECT d.transcript FROM recording AS d
+  WHERE d.session_id = recording.session_id
+    AND d.transcript IS NOT NULL
+    AND length(d.transcript) > 0
+  ORDER BY d.created_at ASC, d.id ASC
+  LIMIT 1
+)
+WHERE id IN (SELECT keep_id FROM _session_keep)
+  AND (transcript IS NULL OR length(transcript) = 0);
+
+UPDATE recording
+SET summary_markdown = (
+  SELECT d.summary_markdown FROM recording AS d
+  WHERE d.session_id = recording.session_id
+    AND d.summary_markdown IS NOT NULL
+    AND length(d.summary_markdown) > 0
+  ORDER BY d.created_at ASC, d.id ASC
+  LIMIT 1
+)
+WHERE id IN (SELECT keep_id FROM _session_keep)
+  AND (summary_markdown IS NULL OR length(summary_markdown) = 0);
+
+-- Prefer a folder link from any sibling if the keeper has none.
+UPDATE recording
+SET folder_id = (
+  SELECT d.folder_id FROM recording AS d
+  WHERE d.session_id = recording.session_id
+    AND d.folder_id IS NOT NULL
+    AND length(d.folder_id) > 0
+  ORDER BY d.created_at ASC, d.id ASC
+  LIMIT 1
+)
+WHERE id IN (SELECT keep_id FROM _session_keep)
+  AND (folder_id IS NULL OR length(folder_id) = 0);
+
+-- Re-point children from dropped rows onto the keeper.
+UPDATE speaker
+SET recording_id = (
+  SELECT k.keep_id FROM _session_keep AS k
+  INNER JOIN recording AS d ON d.session_id = k.session_id
+  WHERE d.id = speaker.recording_id
+)
+WHERE recording_id IN (
+  SELECT d.id FROM recording AS d
+  INNER JOIN _session_keep AS k ON k.session_id = d.session_id
+  WHERE d.id != k.keep_id
+);
+
+UPDATE summary_version
+SET recording_id = (
+  SELECT k.keep_id FROM _session_keep AS k
+  INNER JOIN recording AS d ON d.session_id = k.session_id
+  WHERE d.id = summary_version.recording_id
+)
+WHERE recording_id IN (
+  SELECT d.id FROM recording AS d
+  INNER JOIN _session_keep AS k ON k.session_id = d.session_id
+  WHERE d.id != k.keep_id
+);
+
+DELETE FROM recording
+WHERE session_id IS NOT NULL
+  AND id NOT IN (SELECT keep_id FROM _session_keep);
+
+DROP TABLE _session_keep;
+
 CREATE UNIQUE INDEX IF NOT EXISTS recording_device_session_unique ON recording(session_id)
 WHERE session_id IS NOT NULL;
