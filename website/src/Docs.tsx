@@ -4,6 +4,7 @@ import { ArrowLeft, ArrowRight, ArrowUpRight, BookOpen, Check, ChevronRight, Cli
 import { Link, Navigate, useParams } from 'react-router-dom'
 import { DocBlock, docs, docSections, getDoc } from './content'
 import { Logo, useDocumentTitle } from './Shared'
+import { transitions } from './motion'
 
 const github = 'https://github.com/bloodf/velum'
 
@@ -26,7 +27,7 @@ function SearchDialog({ open, onClose }: { open: boolean; onClose: () => void })
   return (
     <AnimatePresence>
       {open && <motion.div className="search-modal-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
-        <motion.div className="search-modal" role="dialog" aria-modal="true" aria-label="Search documentation" initial={{ opacity: 0, y: -18, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -10, scale: 0.98 }} transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}>
+        <motion.div className="search-modal" role="dialog" aria-modal="true" aria-label="Search documentation" initial={{ opacity: 0, y: -18, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -10, scale: 0.98 }} transition={transitions.base}>
           <div className="search-modal-input"><Search size={20} /><input ref={inputRef} name="documentation-search" type="search" autoComplete="off" spellCheck={false} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search guides, apps, recorders…" aria-label="Search documentation" /><button onClick={onClose}>ESC</button></div>
           <div className="search-results">
             <span className="micro-label">{query ? `${results.length} RESULT${results.length === 1 ? '' : 'S'}` : 'QUICK LINKS'}</span>
@@ -92,7 +93,7 @@ export default function Docs() {
   const [searchOpen, setSearchOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [activeHeading, setActiveHeading] = useState('')
-  useDocumentTitle(doc ? `${doc.title} — Velum Docs` : 'Velum Docs')
+  useDocumentTitle(doc ? `${doc.title}: Velum Docs` : 'Velum Docs')
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {

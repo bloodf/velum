@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion, MotionValue, useMotionValueEvent, useScroll, useTransform } from 'framer-motion'
-import { ArrowDown, ArrowRight, ArrowUpRight, ChevronDown, Circle, Github, Headphones, Mic, Monitor, Search, Smartphone, Upload, Waves } from 'lucide-react'
+import { ArrowDown, ArrowRight, ArrowUp, ArrowUpRight, ChevronDown, Circle, Github, Headphones, Mic, Monitor, Search, Smartphone, Upload, Waves } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import WaveField from './WaveField'
+import { transitions } from './motion'
 import { ArrowLink, SiteHeader, useDocumentTitle, Waveform } from './Shared'
 
 const github = 'https://github.com/bloodf/velum'
@@ -18,7 +19,7 @@ function RotatingThought() {
   return (
     <span className="rotating-thought">
       <AnimatePresence mode="wait">
-        <motion.span key={words[index]} initial={{ y: 18, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -18, opacity: 0 }} transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}>
+        <motion.span key={words[index]} initial={{ y: 18, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -18, opacity: 0 }} transition={transitions.slow}>
           {words[index]}
         </motion.span>
       </AnimatePresence>
@@ -36,7 +37,7 @@ function Hero() {
     <section className="hero" id="top" ref={ref}>
       <WaveField />
       <div className="hero-grid" aria-hidden="true" />
-      <motion.div className="hero-brand-mark" initial={{ opacity: 0, y: 25, rotate: -8 }} animate={{ opacity: 1, y: 0, rotate: 0 }} transition={{ duration: 1.1, delay: .45, ease: [0.16, 1, 0.3, 1] }}>
+      <motion.div className="hero-brand-mark" initial={{ opacity: 0, y: 25, rotate: -8 }} animate={{ opacity: 1, y: 0, rotate: 0 }} transition={{ ...transitions.hero, delay: .45 }}>
         <img src="/brand/icon-3d-light.webp" alt="Velum 3D logo" width="1024" height="1024" fetchPriority="high" />
       </motion.div>
       <div className="hero-glass-note note-left"><span>01</span> AI notetakers + recorders</div>
@@ -44,13 +45,13 @@ function Hero() {
       <motion.div className="hero-content" style={{ opacity, y, scale }}>
         <div className="hero-kicker hero-enter"><span className="live-dot" /> Open-source AI notetaker <span className="kicker-divider" /> Desktop + mobile</div>
         <h1 className="hero-title" aria-label="Every word has a place">
-          <span className="title-mask"><motion.span initial={{ y: '110%' }} animate={{ y: 0 }} transition={{ duration: 1, delay: 0.12, ease: [0.16, 1, 0.3, 1] }}>EVERY WORD</motion.span></span>
-          <span className="title-mask"><motion.span className="title-outline" initial={{ y: '110%' }} animate={{ y: 0 }} transition={{ duration: 1, delay: 0.24, ease: [0.16, 1, 0.3, 1] }}>HAS A PLACE.</motion.span></span>
+          <span className="title-mask"><motion.span initial={{ y: '110%' }} animate={{ y: 0 }} transition={{ ...transitions.hero, delay: .12 }}>EVERY WORD</motion.span></span>
+          <span className="title-mask"><motion.span className="title-outline" initial={{ y: '110%' }} animate={{ y: 0 }} transition={{ ...transitions.hero, delay: .24 }}>HAS A PLACE.</motion.span></span>
         </h1>
         <div className="hero-bottom hero-enter">
           <div className="hero-intro">
             <span className="micro-label">From passing sound to lasting clarity</span>
-            <p>One open home for recordings, transcripts, and notes—across your devices and the AI notetakers you already use.</p>
+            <p>One open home for recordings, transcripts, and notes, across your devices and the AI notetakers you already use.</p>
           </div>
           <div className="hero-cta-group">
             <a className="button button-accent" href="#workflow">See how it flows <ArrowDown size={17} /></a>
@@ -58,7 +59,7 @@ function Hero() {
           </div>
         </div>
       </motion.div>
-      <div className="hero-side-note">AUDIO <span>→</span> UNDERSTANDING</div>
+      <div className="hero-side-note">AUDIO <ArrowRight size={11} aria-hidden="true" /> UNDERSTANDING</div>
       <div className="hero-transmission">
         <span className="transmission-status"><Circle size={7} fill="currentColor" /> LIVE SIGNAL</span>
         <Waveform count={26} active />
@@ -80,7 +81,7 @@ function Manifesto() {
         <h2 className="manifesto-title reveal">Not another<br /> recorder. <span className="accent-serif">The open layer</span><br />between what was said<br />and <span className="circled-word">what happens next.<svg viewBox="0 0 400 90" preserveAspectRatio="none" aria-hidden="true"><path d="M7 50C20 4 359-2 390 36C418 75 88 102 16 66C-3 57 4 38 24 28" /></svg></span></h2>
         <div className="manifesto-aside reveal">
           <Waves size={30} strokeWidth={1.4} />
-          <p>Velum turns conversations into knowledge you can return to—without asking you to abandon the apps and recorders that already fit your life.</p>
+          <p>Velum turns conversations into knowledge you can return to, without asking you to abandon the apps and recorders that already fit your life.</p>
           <ArrowLink to="/docs/introduction">Meet Velum</ArrowLink>
         </div>
       </div>
@@ -95,7 +96,7 @@ function Manifesto() {
 
 type Scene = { label: string; title: string; description: string; kind: string }
 const scenes: Scene[] = [
-  { label: 'CAPTURE', title: 'Start with the real thing.', description: 'A meeting, a voice memo, or a recording from your AI notetaker or external recorder. Velum keeps the original conversation at the center.', kind: 'record' },
+  { label: 'CAPTURE', title: 'Start with the source.', description: 'A meeting, a voice memo, or a recording from your AI notetaker or external recorder. Velum keeps the original conversation at the center.', kind: 'record' },
   { label: 'TRANSCRIBE', title: 'Give every voice its words.', description: 'Move through timestamped speech with speaker context, while the source audio stays one tap away.', kind: 'transcript' },
   { label: 'DISTILL', title: 'See what actually matters.', description: 'Turn the conversation into a reviewable note with key points, decisions, and next steps.', kind: 'note' },
   { label: 'REDISCOVER', title: 'Pick up where you left off.', description: 'Search for the detail you remember and land back inside its full context.', kind: 'search' },
@@ -134,8 +135,8 @@ function Workflow() {
           <h2>Sound in.<br /><span>Sense out.</span></h2>
           <div className="scene-copy-window">
             <AnimatePresence mode="wait">
-              <motion.div key={active} initial={{ opacity: 0, y: 22 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -15 }} transition={{ duration: 0.35 }}>
-                <span className="scene-label">0{active + 1} — {scenes[active].label}</span>
+              <motion.div key={active} initial={{ opacity: 0, y: 22 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -15 }} transition={transitions.slow}>
+                <span className="scene-label">0{active + 1} / {scenes[active].label}</span>
                 <h3>{scenes[active].title}</h3>
                 <p>{scenes[active].description}</p>
               </motion.div>
@@ -145,7 +146,7 @@ function Workflow() {
         </div>
         <div className="conversation-window">
           {scenes.map((scene, index) => <ConversationScene key={scene.kind} scene={scene} index={index} progress={scrollYProgress} />)}
-          <div className="conversation-topbar persistent-chrome"><div className="mini-brand">v<span>·</span></div><span>Product sync / Thursday</span><span className="scene-top-meta">OCT 27 · 42 MIN</span></div>
+          <div className="conversation-topbar persistent-chrome"><div className="mini-brand">v<span>·</span></div><span>Product sync / Thursday</span><span className="scene-top-meta">OCT 27, 42 MIN</span></div>
           <div className="conversation-status persistent-chrome"><span><span className="live-dot" /> VELUM WORKSPACE</span><span>{scenes[active].label} / 0{active + 1}</span></div>
           <div className="window-corner corner-tl" /><div className="window-corner corner-br" />
         </div>
@@ -171,7 +172,7 @@ function PhoneUI({ view }: { view: MobileView }) {
   return (
     <div className="phone-ui">
       <AnimatePresence mode="wait">
-        <motion.img key={view} className="phone-screenshot" src={screenshot.src} alt={screenshot.alt} loading="lazy" width="1080" height="2400" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: .25 }} />
+        <motion.img key={view} className="phone-screenshot" src={screenshot.src} alt={screenshot.alt} loading="lazy" width="1080" height="2400" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={transitions.base} />
       </AnimatePresence>
     </div>
   )
@@ -193,9 +194,9 @@ function Everywhere() {
           <div className="device-view-switch" role="group" aria-label="Mobile screen preview">
             {(Object.keys(mobileScreenshots) as MobileView[]).map((view) => <button key={view} aria-pressed={mobileView === view} onClick={() => setMobileView(view)}>{view === 'note' ? 'AI note' : view}</button>)}
           </div>
-          <motion.div className="desktop-shell" style={{ y: desktopY }}><div className="shell-top"><span /><span /><span /><i>VELUM — DESKTOP LIBRARY</i></div><DesktopUI /></motion.div>
+          <motion.div className="desktop-shell" style={{ y: desktopY }}><div className="shell-top"><span /><span /><span /><i>VELUM / DESKTOP LIBRARY</i></div><DesktopUI /></motion.div>
           <motion.div className="phone-shell" style={{ y: phoneY }}><div className="phone-speaker" /><PhoneUI view={mobileView} /></motion.div>
-          <div className="device-caption"><span>01 — DESKTOP WORKSPACE</span><span>02 — MOBILE {mobileView.toUpperCase()}</span></div>
+          <div className="device-caption"><span>01 / DESKTOP WORKSPACE</span><span>02 / MOBILE {mobileView.toUpperCase()}</span></div>
         </div>
       </div>
     </section>
@@ -238,11 +239,11 @@ function Integrations() {
           <div className="import-grid" aria-hidden="true" />
           <AnimatePresence mode="wait">
             {source.name === 'External recorders' ? (
-              <motion.div className="import-phone-preview" key="external-import" initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.3 }}>
+              <motion.div className="import-phone-preview" key="external-import" initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={transitions.slow}>
                 <img src="/screenshots/08-plaud-import.png" alt="Velum external recorder audio import with file, USB, SD, and watched-folder options" loading="lazy" width="1080" height="2400" />
               </motion.div>
             ) : (
-              <motion.div className="import-path" key={source.name} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.25 }}>
+              <motion.div className="import-path" key={source.name} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={transitions.base}>
                 <div className="import-source"><source.icon size={32} strokeWidth={1.2} /><span>{source.name}</span><small>SUPPORTED SOURCE</small></div>
                 <div className="import-connector"><i /><span><Upload size={16} /></span><i /></div>
                 <div className="import-destination"><div className="mini-brand">v<span>·</span></div><span>One conversation</span><small>AUDIO + TRANSCRIPT + NOTE</small></div>
@@ -289,7 +290,7 @@ function FAQ() {
   return (
     <section className="faq light-section">
       <div className="section-rule reveal"><span className="micro-label">06 / THE SHORT ANSWERS</span><span className="micro-label">STILL CURIOUS?</span></div>
-      <div className="faq-layout"><h2 className="reveal">BEFORE<br />YOU ASK.</h2><div className="faq-list reveal">{faqs.map(([question, answer], i) => <div className={`faq-item ${open === i ? 'open' : ''}`} key={question}><button onClick={() => setOpen(open === i ? -1 : i)} aria-expanded={open === i}><span>0{i + 1}</span><strong>{question}</strong><ChevronDown size={20} /></button><AnimatePresence initial={false}>{open === i && <motion.div className="faq-answer" initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}><p>{answer}</p></motion.div>}</AnimatePresence></div>)}</div></div>
+      <div className="faq-layout"><h2 className="reveal">BEFORE<br />YOU ASK.</h2><div className="faq-list reveal">{faqs.map(([question, answer], i) => <div className={`faq-item ${open === i ? 'open' : ''}`} key={question}><button onClick={() => setOpen(open === i ? -1 : i)} aria-expanded={open === i}><span>0{i + 1}</span><strong>{question}</strong><ChevronDown size={20} /></button><AnimatePresence initial={false}>{open === i && <motion.div className="faq-answer" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={transitions.slow}><p>{answer}</p></motion.div>}</AnimatePresence></div>)}</div></div>
     </section>
   )
 }
@@ -301,13 +302,13 @@ function FinalCTA() {
         <WaveField />
         <div className="final-cta-inner reveal"><span className="micro-label"><span className="live-dot" /> YOUR NEXT CONVERSATION STARTS HERE</span><h2>MAKE IT<br /><span>REMEMBERABLE.</span></h2><p>Less digging. More context. A second memory you can help build.</p><div className="final-actions"><a className="button button-accent" href={github} target="_blank" rel="noreferrer">Build Velum with us <Github size={18} /></a><Link className="button button-ghost" to="/docs/quick-start">Read the quick start <ArrowUpRight size={17} /></Link></div></div>
       </section>
-      <footer className="site-footer"><div className="footer-top"><Link to="/" className="footer-wordmark">velum<span>®</span></Link><RotatingThought /></div><div className="footer-bottom"><span>OPEN-SOURCE AI NOTETAKER</span><div><Link to="/docs/introduction">Docs</Link><a href={github} target="_blank" rel="noreferrer">GitHub</a><a href="#top">Back to top ↑</a></div><span>© 2026 VELUM</span></div></footer>
+      <footer className="site-footer"><div className="footer-top"><Link to="/" className="footer-wordmark">velum<span>®</span></Link><RotatingThought /></div><div className="footer-bottom"><span>OPEN-SOURCE AI NOTETAKER</span><div><Link to="/docs/introduction">Docs</Link><a href={github} target="_blank" rel="noreferrer">GitHub</a><a href="#top">Back to top <ArrowUp size={13} aria-hidden="true" /></a></div><span>© 2026 VELUM</span></div></footer>
     </>
   )
 }
 
 export default function Marketing() {
-  useDocumentTitle('Velum — Every word has a place')
+  useDocumentTitle('Velum: Every word has a place')
   useEffect(() => {
     const observer = new IntersectionObserver((entries) => entries.forEach((entry) => { if (entry.isIntersecting) entry.target.classList.add('is-visible') }), { threshold: 0.12, rootMargin: '0px 0px -5% 0px' })
     document.querySelectorAll('.reveal').forEach((el) => observer.observe(el))

@@ -260,6 +260,7 @@ body.menu-open { overflow: hidden; }
 .rotating-thought { color: #666; }
 .footer-bottom { color: #777; }
 .footer-bottom > div { color: #333; }
+.footer-bottom a { display: inline-flex; align-items: center; gap: 4px; }
 .footer-bottom a:hover { color: #000; }
 
 /* Accessibility and small-screen corrections */

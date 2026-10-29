@@ -25,7 +25,7 @@ export const docs: DocEntry[] = [
     readTime: '3 min',
     keywords: ['overview', 'open source', 'ai notetaker', 'desktop', 'mobile'],
     blocks: [
-      { type: 'paragraph', text: 'Velum is an open-source AI notetaker being built for desktop and mobile. It gives recordings, transcripts, and generated notes one consistent place to live—whether a conversation begins in an app, on your computer, or on a dedicated AI recorder.' },
+      { type: 'paragraph', text: 'Velum is an open-source AI notetaker being built for desktop and mobile. It gives recordings, transcripts, and generated notes one consistent place to live, whether a conversation begins in an app, on your computer, or on a dedicated AI recorder.' },
       { type: 'callout', title: 'Built in the open', text: 'Velum is under active development. Interfaces and capabilities can evolve between releases; the project roadmap is the best place to follow what is landing next.' },
       { type: 'heading', text: 'Why Velum exists', id: 'why-velum-exists' },
       { type: 'paragraph', text: 'A recording should not become another forgotten file. Velum is designed around the path from capturing a conversation to returning to its meaning: the decision, the follow-up, the quote, or the small detail you need next week.' },
@@ -131,7 +131,7 @@ export const docs: DocEntry[] = [
       { type: 'heading', text: 'Improve transcript quality', id: 'improve-transcript-quality' },
       { type: 'list', items: ['Select the correct spoken language before processing.', 'Use the least-compressed source audio available.', 'Provide relevant names or vocabulary when the app supports context hints.', 'Review and correct speaker assignments in multi-person recordings.'] },
       { type: 'heading', text: 'Read a structured note', id: 'read-a-structured-note' },
-      { type: 'table', headers: ['Section', 'What to check'], rows: [['Summary', 'Does it represent the conversation’s actual focus?'], ['Key points', 'Are important qualifications or disagreements preserved?'], ['Decisions', 'Was a decision truly made, or only proposed?'], ['Action items', 'Are the owner, task, and timing supported by the audio?']] },
+      { type: 'table', headers: ['Section', 'What to check'], rows: [['Summary', 'Does it represent the conversation’s actual focus?'], ['Key points', 'Are important qualifications or disagreements preserved?'], ['Decisions', 'Was a decision made, or only proposed?'], ['Action items', 'Are the owner, task, and timing supported by the audio?']] },
       { type: 'heading', text: 'Review before sharing', id: 'review-before-sharing' },
       { type: 'paragraph', text: 'Generated text can omit context or interpret uncertain speech incorrectly. Verify names, numbers, commitments, and quotations before using a note to make decisions or sharing it with others.' },
       { type: 'callout', title: 'A note is a map, not the territory', text: 'When a passage matters, follow its transcript context and return to the original audio.' },
@@ -189,7 +189,7 @@ export const docs: DocEntry[] = [
       { type: 'list', items: ['Fork the repository and create a focused branch.', 'Follow the setup instructions for the app or package you are changing.', 'Add or update checks that demonstrate the intended behavior.', 'Run the relevant build and test commands.', 'Open a pull request with the problem, approach, and verification steps.'], ordered: true },
       { type: 'heading', text: 'A good pull request', id: 'a-good-pull-request' },
       { type: 'paragraph', text: 'Explain the user-facing problem before the implementation. Include screenshots for interface changes, note any platform-specific behavior, and call out trade-offs or follow-up work explicitly.' },
-      { type: 'callout', title: 'Do not include real conversations', text: 'Use synthetic audio and redacted examples in issues, tests, and screenshots. Never upload private recordings or credentials.' },
+      { type: 'callout', title: 'Do not include private conversations', text: 'Use synthetic audio and redacted examples in issues, tests, and screenshots. Never upload private recordings or credentials.' },
     ],
   },
   {
@@ -206,7 +206,7 @@ export const docs: DocEntry[] = [
       { type: 'heading', text: 'Follow the work', id: 'follow-the-work' },
       { type: 'paragraph', text: 'Use the GitHub repository and issue tracker for the current implementation status. Specific dates and feature commitments belong in release milestones rather than evergreen documentation.' },
       { type: 'heading', text: 'Shape what comes next', id: 'shape-what-comes-next' },
-      { type: 'paragraph', text: 'The most useful feedback describes a real workflow: what you recorded, what you needed to recover, and where the current experience created friction. Open a focused discussion or issue with that context.' },
+      { type: 'paragraph', text: 'The most useful feedback describes your workflow: what you recorded, what you needed to recover, and where the current experience created friction. Open a focused discussion or issue with that context.' },
     ],
   },
 ]
