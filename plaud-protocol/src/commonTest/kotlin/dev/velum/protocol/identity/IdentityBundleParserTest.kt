@@ -124,7 +124,7 @@ class IdentityBundleParserTest {
         for ((raw, field) in cases) {
             val fail = assertIs<IdentityBundleParseResult.Failure>(IdentityBundleParser.parse(raw))
             val missing = assertIs<IdentityBundleParseError.MissingField>(fail.error)
-            assertEquals(field, missing.path, "raw=$raw")
+            assertEquals(field, missing.path)
             assertFalse(fail.error.userMessage().contains(sig))
         }
     }
