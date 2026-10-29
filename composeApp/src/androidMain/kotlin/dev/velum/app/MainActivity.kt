@@ -31,11 +31,17 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         IncomingShare.offerFromIntent(this, intent)
-        // Install a Compose hierarchy immediately so AndroidComposeTestRule can
-        // synchronize under R8 minifiedTest. Await the container on
-        // lifecycleScope (not LaunchedEffect) — the effect path left minified
-        // walks on an empty Box for 90s while debug still composed (#106).
-        var container by mutableStateOf<AppContainer?>(null)
+        // Compose hierarchy immediately for AndroidComposeTestRule (#106).
+        // When the process-scoped container is already ready (later instrumented
+        // cells), seed App on the first frame — do not wait on a Main coroutine
+        // that Compose idle polling can starve under R8 minifiedTest.
+        val seeded =
+            if (app.isContainerReady()) {
+                runCatching { VelumApplication.container }.getOrNull()
+            } else {
+                null
+            }
+        var container by mutableStateOf(seeded)
         var fatal by mutableStateOf(false)
         setContent {
             val ready = container
@@ -51,14 +57,16 @@ class MainActivity : ComponentActivity() {
                 else -> Box(Modifier.fillMaxSize())
             }
         }
-        lifecycleScope.launch {
-            try {
-                container = app.awaitContainer()
-            } catch (t: CancellationException) {
-                throw t
-            } catch (t: Throwable) {
-                fatal = true
-                Log.e(TAG, "Fatal AppContainer init", t)
+        if (seeded == null) {
+            lifecycleScope.launch {
+                try {
+                    container = app.awaitContainer()
+                } catch (t: CancellationException) {
+                    throw t
+                } catch (t: Throwable) {
+                    fatal = true
+                    Log.e(TAG, "Fatal AppContainer init", t)
+                }
             }
         }
     }

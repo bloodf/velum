@@ -771,10 +771,35 @@ class DeviceWalkUiTest {
                     softExistsContentDesc("Settings", "Configuração")
                 }
         }
-        // Prefer merged-tree click (CD is on the clickable Box, not the Icon).
-        // Do not hold a UiObject2 across click — StaleObjectException on debug (#106).
-        val clickedGear = softClickContentDesc("Settings", "Configuração")
-        assertTrue(clickedGear, "Failed to tap Settings gear")
+        // Tap the gear via Compose merged tree, else a real coordinate tap.
+        // UiObject2.click() on the a11y node used ACTION_CLICK without navigating
+        // under R8 minifiedTest; device.click goes through the touch path (#106).
+        var tappedGear = false
+        for (label in listOf("Settings", "Configuração")) {
+            val composed = runCatching {
+                composeRule
+                    .onNodeWithContentDescription(label, substring = true, useUnmergedTree = false)
+                    .performClick()
+                true
+            }.getOrDefault(false)
+            if (composed) {
+                tappedGear = true
+                break
+            }
+        }
+        if (!tappedGear) {
+            for (label in listOf("Settings", "Configuração")) {
+                val obj = device.findObject(By.descContains(label)) ?: continue
+                val bounds = obj.visibleBounds
+                assertTrue(
+                    device.click(bounds.centerX(), bounds.centerY()),
+                    "device.click Settings gear failed",
+                )
+                tappedGear = true
+                break
+            }
+        }
+        assertTrue(tappedGear, "Failed to tap Settings gear")
         // Hub-only rows / sections — never the Files gear CD alone.
         waitUntil(20_000) {
             composeExists("Phone recording") ||
@@ -795,6 +820,7 @@ class DeviceWalkUiTest {
                 uiExists("Sobre o Velum")
         }
     }
+
 
 
     /**

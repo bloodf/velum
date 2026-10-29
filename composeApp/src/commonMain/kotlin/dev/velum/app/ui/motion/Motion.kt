@@ -90,11 +90,9 @@ fun Modifier.pressableScale(
         animationSpec = if (reduce) SnapSpec() else tween(Motion.PressMs, easing = Motion.EaseOut),
         label = "pressScale",
     )
+    // clickable before graphicsLayer so a contentDescription applied on the
+    // same chain stays on the clickable a11y node (TabIcon / #106 minifiedTest).
     return this
-        .graphicsLayer {
-            scaleX = scale
-            scaleY = scale
-        }
         .clickable(
             interactionSource = interaction,
             indication = null,
@@ -105,4 +103,8 @@ fun Modifier.pressableScale(
                 onClick()
             },
         )
+        .graphicsLayer {
+            scaleX = scale
+            scaleY = scale
+        }
 }

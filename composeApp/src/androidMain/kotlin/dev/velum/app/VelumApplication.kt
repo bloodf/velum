@@ -79,8 +79,10 @@ class VelumApplication : Application() {
                     repository = built.repository,
                     settings = built.settingsRepository,
                 )
-                ready.set(true)
+                // Complete the deferred before flipping ready so splash dismiss
+                // cannot race ahead of awaitContainer (#106 minifiedTest).
                 containerDeferred.complete(built)
+                ready.set(true)
                 runCatching {
                     recoverPartialMicRecordings(
                         recordingsDirPath = recordingsDirectoryPath(),
@@ -100,8 +102,8 @@ class VelumApplication : Application() {
                 Log.e(TAG, "AppContainer init failed", t)
                 initFailure.set(t)
                 // Unblock splash + MainActivity; they show a fatal error UI.
-                ready.set(true)
                 containerDeferred.completeExceptionally(t)
+                ready.set(true)
             }
         }
     }
