@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
-# Run Compose/UIAutomator device walk on a booted emulator (debug or minifiedTest).
+# Run Compose/UIAutomator device walk on a booted emulator (debug or release).
 # Used by .github/workflows/ci.yml — must be bash (emulator-runner wraps sh -c).
+#
+# DO NOT add minifiedWalk / minifiedTest / R8 instrumented legs here —
+# keep-whack never converged (#106 Duration NoSuchFieldError). Shipping R8
+# is covered by assembleRelease in jvm-android.
 set -euo pipefail
 
-BUILD_TYPE="${1:-debug}" # debug | release | minifiedTest | minifiedWalk | r8
+BUILD_TYPE="${1:-debug}" # debug | release
 ARTIFACT_DIR="${2:-device-walk-artifacts}"
 mkdir -p "$ARTIFACT_DIR"
 
@@ -15,15 +19,14 @@ case "$BUILD_TYPE" in
   debug)
     TASK=":composeApp:connectedDebugAndroidTest"
     ;;
-  release|minifiedTest|minifiedWalk|r8)
-    # Genuinely R8-minified + obfuscated APK via android.testBuildType=minifiedTest (#106).
-    # "release" / "minifiedWalk" / "r8" aliases kept for older CI / local invocations.
-    TASK=":composeApp:connectedMinifiedTestAndroidTest"
-    GRADLE_PROPS+=(-PvelumTestBuildType=minifiedTest)
-    BUILD_TYPE="minifiedTest"
+  release)
+    # Creates connectedReleaseAndroidTest via android.testBuildType=release.
+    # Minify is OFF for this instrumented leg (see composeApp/build.gradle.kts).
+    TASK=":composeApp:connectedReleaseAndroidTest"
+    GRADLE_PROPS+=(-PvelumTestBuildType=release)
     ;;
   *)
-    echo "Unknown build type: $BUILD_TYPE"
+    echo "Unknown build type: $BUILD_TYPE (expected debug|release)"
     exit 1
     ;;
 esac

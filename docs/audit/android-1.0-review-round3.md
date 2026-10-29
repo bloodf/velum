@@ -3,7 +3,7 @@
 **Date:** 2026-10-28  
 **Base reviewed:** `3a03300` on `main` (CI green: run `40670028151`)  
 **Last full green tip:** `bb23533` — run `40763140105` (debug + minify-off release walk)  
-**Tip under watch:** tip after `4d64e45` (concurrent agent re-enabled minifiedWalk + broke test compile; restored minify-off + fixed `break`/`onAllNodesWithContentDescription`)  
+**Tip under watch:** restore after `#106` (`9543c83` failed: debug 45s recreate timeout + minifiedTest `Duration` NoSuchFieldError)  
 **Method:** Fresh skeptical review (no trust of round 1/2 claims) + JVM unit tests + GitHub Actions **emulator device walk** (Compose UI + UI Automator, StrictMode penaltyDeath, pt-BR/EN × light/dark, debug + instrumented release).
 
 ---
@@ -86,7 +86,9 @@
 | Tip `14d31cc` minifiedWalk + hard Files return | **failed** — run `40777007811` (`pressBackToFiles`) |
 | Tip `6d6e1ae` / `bf3a774` restore walk path | superseded by concurrent minifiedWalk push |
 | Tip `4d64e45` re-enable minifiedWalk | **failed** — run `40783049107` (test compile: `break` in `repeat`, missing import) |
-| Tip after fix (minify-off + compile) | _watching_ |
+| Tip `e83b9ca` minify-off restore | superseded by `#106` merge |
+| Tip `9543c83` `#106` minifiedTest + hard recreate | **failed** — run `40788577792` (debug 45s; R8 Duration field) |
+| Tip after re-restore minify-off + soft Files | _watching_ |
 | JVM unit tests (AutoFlow race + RecordingIds + chain migration) | OK locally |
 
 ---

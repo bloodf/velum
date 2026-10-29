@@ -115,13 +115,17 @@ android {
     namespace = "dev.velum.app"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
 
-    // Default debug. Device-walk CI passes -PvelumTestBuildType=minifiedTest so
-    // connectedMinifiedTestAndroidTest exercises a genuinely R8-minified +
-    // obfuscated APK (initWith release + debug signing + proguard-test-rules.pro).
-    // Shipping assembleRelease uses proguard-rules.pro alone (#106).
+    // Default debug. Device-walk CI passes -PvelumTestBuildType=release so
+    // connectedReleaseAndroidTest exists (release signing/code paths).
+    //
+    // DO NOT reintroduce minifiedWalk / minifiedTest / instrumented R8 for
+    // androidTest (#106 tried again and failed: kotlin.time.Duration Companion
+    // NoSuchFieldError + debug pressBackToFiles 45s recreate timeouts).
+    // Shipping assembleRelease (jvm-android) still runs full R8.
     val walkBuildType =
         (findProperty("velumTestBuildType") as String?)?.takeIf { it.isNotBlank() } ?: "debug"
     testBuildType = walkBuildType
+    val instrumentedReleaseWalk = walkBuildType == "release"
 
     defaultConfig {
         applicationId = "dev.velum.app"
@@ -175,28 +179,18 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
         getByName("release") {
-            isMinifyEnabled = true
-            isShrinkResources = true
-            // Prefer upload key when present; otherwise debug keystore so local
-            // assembleRelease still installs without the upload secret (#90/#106).
+            isMinifyEnabled = !instrumentedReleaseWalk
+            isShrinkResources = !instrumentedReleaseWalk
+            // Prefer upload key when present; otherwise debug keystore so CI can
+            // install + run connectedReleaseAndroidTest.
             signingConfig = signingConfigs.findByName("release")
                 ?: signingConfigs.getByName("debug")
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro",
-            )
-        }
-        // Genuinely minified + obfuscated instrumented walk (#106): shipping R8
-        // rules plus targeted test-only keeps. Debug-signed so CI can adb install
-        // without the upload keystore. Library modules fall back to release.
-        create("minifiedTest") {
-            initWith(getByName("release"))
-            matchingFallbacks += listOf("release")
-            isMinifyEnabled = true
-            isShrinkResources = true
-            signingConfig = signingConfigs.getByName("debug")
-            // initWith(release) already attaches shipping proguard-rules.pro.
-            proguardFile("proguard-test-rules.pro")
+            if (!instrumentedReleaseWalk) {
+                proguardFiles(
+                    getDefaultProguardFile("proguard-android-optimize.txt"),
+                    "proguard-rules.pro",
+                )
+            }
         }
     }
     compileOptions {
