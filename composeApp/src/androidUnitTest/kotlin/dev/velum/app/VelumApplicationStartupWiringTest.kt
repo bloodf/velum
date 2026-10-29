@@ -80,6 +80,17 @@ class VelumApplicationStartupWiringTest {
             successPath.substring(0, helperIdx).contains("containerDeferred.complete("),
             "success path must not complete the container deferred before startup cleanup",
         )
+
+        // #122: orphan sweep must run after publish helper returns (never blocks readiness).
+        val orphanIdx = successPath.indexOf("sweepOrphanRecordingAudioAfterPublish(")
+        assertTrue(
+            orphanIdx > helperIdx,
+            "VelumApplication must call sweepOrphanRecordingAudioAfterPublish after stale cleanup",
+        )
+        assertTrue(
+            orphanIdx > completeIdx,
+            "orphan sweep must run after containerDeferred.complete (post-publish)",
+        )
     }
 
     @Test
