@@ -21,16 +21,20 @@
 # - CoroutineExceptionHandlerImplKt.ensurePlatformExceptionHandlerLoaded (9e0742c)
 # - JobSupport.getCompletionExceptionOrNull (a75a9b1 walk: AbstractCoroutine receiver)
 # - ThreadSafeHeap.addLast (f25fed7 walk: TestCoroutineScheduler)
+# - ComparisonsKt.compareValuesBy (11a4358 walk: TestDispatchEvent.compareTo)
 # - ViewRootForTest$Companion.setOnViewCreatedCallback (65a96b6 walk)
 # - ViewRootForTest.getView (37b517a walk)
 # - WindowRecomposerPolicy.getAndSetFactory (c4bc1df walk)
 # - WindowRecomposerFactory (918aa6f: ClassCast to obfuscated platform.k)
 # - ContinuationInterceptor$DefaultImpls.releaseInterceptedContinuation (918aa6f)
 # No kotlinx.coroutines.internal.** package wildcard — exact class only.
+# ComparisonsKt needs -keep (not -keepnames): coroutines-test calls
+# compareValuesBy reflectively; shrinking the method yields NoSuchMethodError.
 -keep class kotlinx.coroutines.DelayWithTimeoutDiagnostics { *; }
 -keep class kotlinx.coroutines.internal.CoroutineExceptionHandlerImplKt { *; }
 -keep class kotlinx.coroutines.JobSupport { *; }
 -keep class kotlinx.coroutines.internal.ThreadSafeHeap { *; }
+-keep class kotlin.comparisons.ComparisonsKt { *; }
 -keep class kotlin.time.** { *; }
 -keep class kotlin.coroutines.ContinuationInterceptor$DefaultImpls { *; }
 -keep class androidx.compose.ui.platform.InfiniteAnimationPolicy { *; }

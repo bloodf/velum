@@ -582,12 +582,13 @@ class DeviceWalkUiTest {
         // ActivityScenario's intent filter (otherwise DESTROYED is ignored on close).
         resumeShellActivity(singleTop = true)
         SystemClock.sleep(2_000)
+        // Never treat bare "Velum" as shell — matches About / FirstRun title (#106).
         waitUntilUi(30_000) {
-            uiExists("All files") ||
+            onFilesShellReady() ||
+                uiExists("All files") ||
                 uiExists("Todos os arquivos") ||
                 uiExists("Trash") ||
-                uiExists("Lixeira") ||
-                uiExists("Velum")
+                uiExists("Lixeira")
         }
         covered += "restore-from-background"
         shot("14-restore-$tag")
@@ -606,19 +607,42 @@ class DeviceWalkUiTest {
         device.executeShellCommand("am kill $pkg")
         SystemClock.sleep(1_500)
         resumeShellActivity(singleTop = false)
+        // Never treat bare "Velum" as ready — matches About / FirstRun title and
+        // advanced the wait while shell chrome was absent (#106 walk L620).
         waitUntilUi(60_000) {
-            uiExists("Todos os arquivos") ||
+            onFilesShellReady() ||
+                uiExists("Todos os arquivos") ||
                 uiExists("All files") ||
-                uiExists("Velum") ||
+                uiExists("Trash") ||
+                uiExists("Lixeira") ||
                 uiExists("Pular") ||
-                uiExists("Skip")
+                uiExists("Skip") ||
+                uiExists("Welcome to Velum") ||
+                uiExists("Bem-vindo ao Velum")
         }
         if (uiExists("Pular") || uiExists("Skip")) {
-            softClickUi("Pular", "Skip")
+            // Coordinate tap first — UiObject2.click can no-op under R8 (#106).
+            var skipped = false
+            for (label in listOf("Skip", "Pular")) {
+                val obj = device.findObject(By.textContains(label))
+                    ?: device.findObject(By.descContains(label))
+                    ?: continue
+                val bounds = obj.visibleBounds
+                if (device.click(bounds.centerX(), bounds.centerY())) {
+                    skipped = true
+                    break
+                }
+            }
+            if (!skipped) {
+                softClickUi("Pular", "Skip")
+            }
         }
+        // Saved nav may restore onto Settings/About — drive back to Files shell.
+        pressBackToFiles(lang)
         softClickUiDesc("All files", "Todos os arquivos")
         waitUntilUi(30_000) {
-            uiExists("All files") ||
+            onFilesShellReady() ||
+                uiExists("All files") ||
                 uiExists("Todos os arquivos") ||
                 uiExists("Trash") ||
                 uiExists("Lixeira")
@@ -844,10 +868,16 @@ class DeviceWalkUiTest {
                 composeExists("About Velum") ||
                 composeExists("Sobre o Velum")
         // Retry the gear once if the first tap did not navigate (R8 touch path).
-        if (!runCatching { waitUntil(8_000) { hubVisible() }; true }.getOrDefault(false)) {
+        // Log the wait failure so we can tell Compose-tap success vs hub miss (#106).
+        val hubWaitError =
+            runCatching {
+                waitUntil(8_000) { hubVisible() }
+            }.exceptionOrNull()
+        if (hubWaitError != null) {
             Log.w(
                 WALK_TAG,
                 "Settings hub not visible after first gear tap; retrying coordinate tap",
+                hubWaitError,
             )
             for (label in listOf("Settings", "Configuração")) {
                 val obj = device.findObject(By.descContains(label)) ?: continue
