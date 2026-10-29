@@ -92,6 +92,7 @@ import dev.velum.app.ui.templates.TemplateDetailScreen
 import dev.velum.app.ui.templates.TemplatesScreen
 import dev.velum.app.ui.theme.VelumTheme
 import dev.velum.core.model.ComputeMode
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
@@ -102,7 +103,12 @@ fun App(
     stringsOverride: Strings? = null,
     darkThemeOverride: Boolean? = null,
 ) {
-    val prefs by container.settingsRepository.preferences.collectAsState()
+    // Main.immediate: do not collect on Compose UI Test's scheduler — UiAutomator
+    // taps (Skip, locale) update the flow on the Android main thread and must
+    // recompose without waiting for Espresso/idle (#106 minifiedTest).
+    val prefs by container.settingsRepository.preferences.collectAsState(
+        context = Dispatchers.Main.immediate,
+    )
     val systemDark = isSystemInDarkTheme()
     val darkTheme = darkThemeOverride ?: when (prefs.themeMode) {
         "dark" -> true
@@ -133,8 +139,12 @@ private fun VelumRoot(container: AppContainer) {
     var fabOpen by remember { mutableStateOf(false) }
     // Container-owned StateFlow: collectAsState seeds from the current value so
     // first paint needs no LaunchedEffect, and recreate cannot re-show FirstRun
-    // after markFirstRunDone even if the DB write has not landed (#106).
-    val showFirstRun by container.firstRunPending.collectAsState()
+    // after markFirstRunDone even if the DB write has not landed. Collect on
+    // Main.immediate so Skip/dismiss via UiAutomator recomposes without the
+    // Compose UI Test scheduler / Espresso idle (#106).
+    val showFirstRun by container.firstRunPending.collectAsState(
+        context = Dispatchers.Main.immediate,
+    )
     var librarySelectedId by remember { mutableStateOf<String?>(null) }
     var librarySeekSeconds by remember { mutableStateOf(0L) }
     var libraryRail by remember { mutableStateOf(LibraryRailDestination.Library) }

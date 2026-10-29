@@ -194,18 +194,18 @@ class DeviceWalkUiTest {
         if (lang == "pt-BR") {
             clickTextPrefer("Portuguese (Brazil)", "Português (Brasil)")
             waitUntil(20_000) {
-                composeExists("Aparência") ||
-                    composeExists("Português (Brasil)") ||
-                    composeExists("Claro") ||
-                    composeExists("Escuro")
+                uiExists("Aparência") ||
+                    uiExists("Português (Brasil)") ||
+                    uiExists("Claro") ||
+                    uiExists("Escuro")
             }
         } else {
             clickTextPrefer("English")
             waitUntil(20_000) {
-                composeExists("Appearance") ||
-                    composeExists("English") ||
-                    composeExists("Light") ||
-                    composeExists("Dark")
+                uiExists("Appearance") ||
+                    uiExists("English") ||
+                    uiExists("Light") ||
+                    uiExists("Dark")
             }
         }
         // Persist prefs before leaving (setAppLanguage is a coroutine launch).
@@ -988,18 +988,11 @@ class DeviceWalkUiTest {
     private fun softExistsContentDesc(vararg labels: String): Boolean {
         for (label in labels) {
             if (label.isBlank()) continue
-            // UiAutomator first — Compose fetchSemanticsNodes waits for idle and can
-            // wedge the whole waitUntil budget under R8 minifiedTest (#106).
+            // UiAutomator only — Compose fetchSemanticsNodes waits for idle and can
+            // consume the entire waitUntil budget under R8 minifiedTest (#106).
             if (runCatching { device.findObject(By.descContains(label)) != null }.getOrDefault(false)) {
                 return true
             }
-            val viaCompose = runCatching {
-                composeRule
-                    .onAllNodesWithContentDescription(label, substring = true, useUnmergedTree = true)
-                    .fetchSemanticsNodes()
-                    .isNotEmpty()
-            }.getOrDefault(false)
-            if (viaCompose) return true
         }
         return false
     }
@@ -1148,15 +1141,10 @@ class DeviceWalkUiTest {
     }
 
     private fun composeExists(text: String): Boolean {
-        // UiAutomator first — same idle-wedge risk as softExistsContentDesc (#106).
-        if (runCatching { device.findObject(By.textContains(text)) != null }.getOrDefault(false)) {
-            return true
-        }
-        return runCatching {
-            composeRule.onAllNodesWithText(text, substring = true, useUnmergedTree = true)
-                .fetchSemanticsNodes()
-                .isNotEmpty()
-        }.getOrDefault(false)
+        // UiAutomator only — Compose fetchSemanticsNodes idle-waits and wedges
+        // waitForShell / assertUiChrome under R8 minifiedTest (#106).
+        return runCatching { device.findObject(By.textContains(text)) != null }.getOrDefault(false) ||
+            runCatching { device.findObject(By.descContains(text)) != null }.getOrDefault(false)
     }
 
     private fun waitUntil(timeoutMs: Long, condition: () -> Boolean) {
