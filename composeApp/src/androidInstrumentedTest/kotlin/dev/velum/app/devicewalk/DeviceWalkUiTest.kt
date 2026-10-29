@@ -106,17 +106,44 @@ class DeviceWalkUiTest {
         // Splash → FirstRun overlay (on top of NavHost FILES) or Files shell.
         // Do NOT treat Files title text under the FirstRun overlay as ready —
         // bottom bar CDs are hidden while showFirstRun, so require those.
+        // FirstRun Skip sits below the fold — scroll while welcome chrome is up.
         waitUntil(90_000) {
-            composeExists("Skip") ||
+            val shellReady = onFilesShellReady()
+            val skipVisible =
+                composeExists("Skip") ||
+                    composeExists("Pular") ||
+                    uiExists("Skip") ||
+                    uiExists("Pular")
+            val firstRunVisible =
+                composeExists("Welcome to Velum") ||
+                    composeExists("Bem-vindo ao Velum") ||
+                    composeExists("How to start") ||
+                    composeExists("Como começar") ||
+                    uiExists("Welcome to Velum") ||
+                    uiExists("Bem-vindo ao Velum") ||
+                    uiExists("How to start") ||
+                    uiExists("Como começar")
+            if (!shellReady && !skipVisible && firstRunVisible) {
+                val w = device.displayWidth
+                val h = device.displayHeight
+                device.swipe(w / 2, (h * 0.75).toInt(), w / 2, (h * 0.25).toInt(), 30)
+            }
+            shellReady ||
+                skipVisible ||
+                composeExists("Skip") ||
                 composeExists("Pular") ||
-                onFilesShellReady()
+                uiExists("Skip") ||
+                uiExists("Pular")
         }
-        if (composeExists("Skip") || composeExists("Pular")) {
+        if (composeExists("Skip") || composeExists("Pular") ||
+            uiExists("Skip") || uiExists("Pular")
+        ) {
             clickTextPrefer("Skip", "Pular")
             covered += "first-run-skip"
             // onSkip is a coroutine launch — wait until overlay is gone.
             waitUntil(30_000) {
-                !composeExists("Skip") && !composeExists("Pular")
+                !composeExists("Skip") && !composeExists("Pular") &&
+                    !uiExists("Skip") && !uiExists("Pular")
             }
         }
         waitUntil(60_000) { onFilesShellReady() }
@@ -744,19 +771,39 @@ class DeviceWalkUiTest {
                     softExistsContentDesc("Settings", "Configuração")
                 }
         }
-        // Prefer merged-tree click (CD is on the clickable Box, not the Icon).
-        val clickedGear = softClickContentDesc("Settings", "Configuração")
+        // Prefer clickable a11y node (CD on the clickable Box). Hard-fail if
+        // neither UiAutomator nor Compose can tap the gear (#106 / #115).
+        var clickedGear = false
+        for (label in listOf("Settings", "Configuração")) {
+            val clickable = device.findObject(By.descContains(label).clickable(true))
+            if (clickable != null) {
+                clickable.click()
+                clickedGear = true
+                break
+            }
+        }
+        if (!clickedGear) {
+            clickedGear = softClickContentDesc("Settings", "Configuração")
+        }
         assertTrue(clickedGear, "Failed to tap Settings gear")
-        // Wait for a hub-only row (Appearance is below the fold — do not require it).
+        // Hub-only rows / sections — never the Files gear CD alone.
         waitUntil(20_000) {
             composeExists("Phone recording") ||
                 composeExists("Gravação no telefone") ||
+                composeExists("Devices") ||
+                composeExists("Dispositivos") ||
                 composeExists("Storage & privacy") ||
                 composeExists("Armazenamento e privacidade") ||
                 composeExists("About Velum") ||
                 composeExists("Sobre o Velum") ||
                 composeExists("AI processing") ||
-                composeExists("Processamento de IA")
+                composeExists("Processamento de IA") ||
+                uiExists("Phone recording") ||
+                uiExists("Gravação no telefone") ||
+                uiExists("Devices") ||
+                uiExists("Dispositivos") ||
+                uiExists("About Velum") ||
+                uiExists("Sobre o Velum")
         }
     }
 
