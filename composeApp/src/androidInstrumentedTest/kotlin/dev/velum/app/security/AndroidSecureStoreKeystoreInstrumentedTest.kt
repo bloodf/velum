@@ -22,6 +22,11 @@ import org.junit.runner.RunWith
  * Selected by composeApp `testInstrumentationRunnerArguments.class` alongside
  * [dev.velum.app.devicewalk.DeviceWalkUiTest], so CI `Emulator device walk` runs
  * it for both debug and minifiedTest (R8) builds.
+ *
+ * JUnit4 requires @Test/@After methods to return void: use block-body
+ * `runBlocking { ... }` (not expression-body `= runBlocking`), or the last
+ * expression's type becomes the method return type and AndroidJUnit4ClassRunner
+ * fails with InvalidTestClassError / NoClassDefFoundError on that type.
  */
 @RunWith(AndroidJUnit4::class)
 class AndroidSecureStoreKeystoreInstrumentedTest {
@@ -47,25 +52,29 @@ class AndroidSecureStoreKeystoreInstrumentedTest {
     }
 
     @After
-    fun tearDown() = runBlocking {
-        runCatching { store.wipe() }
+    fun tearDown() {
+        runBlocking {
+            runCatching { store.wipe() }
+        }
     }
 
     @Test
-    fun putString_read_overwrite_and_delete_on_real_keystore() = runBlocking {
-        store.putString(entryKey, "SYNTH-KEYSTORE-ROUNDTRIP")
-        val first = store.read(entryKey)
-        assertIs<SecureRead.Value>(first)
-        assertEquals("SYNTH-KEYSTORE-ROUNDTRIP", first.value)
-        assertTrue(store.contains(entryKey))
+    fun putString_read_overwrite_and_delete_on_real_keystore() {
+        runBlocking {
+            store.putString(entryKey, "SYNTH-KEYSTORE-ROUNDTRIP")
+            val first = store.read(entryKey)
+            assertIs<SecureRead.Value>(first)
+            assertEquals("SYNTH-KEYSTORE-ROUNDTRIP", first.value)
+            assertTrue(store.contains(entryKey))
 
-        store.putString(entryKey, "SYNTH-KEYSTORE-OVERWRITE")
-        val overwritten = store.read(entryKey)
-        assertIs<SecureRead.Value>(overwritten)
-        assertEquals("SYNTH-KEYSTORE-OVERWRITE", overwritten.value)
+            store.putString(entryKey, "SYNTH-KEYSTORE-OVERWRITE")
+            val overwritten = store.read(entryKey)
+            assertIs<SecureRead.Value>(overwritten)
+            assertEquals("SYNTH-KEYSTORE-OVERWRITE", overwritten.value)
 
-        store.remove(entryKey)
-        assertFalse(store.contains(entryKey))
-        assertIs<SecureRead.Missing>(store.read(entryKey))
+            store.remove(entryKey)
+            assertFalse(store.contains(entryKey))
+            assertIs<SecureRead.Missing>(store.read(entryKey))
+        }
     }
 }
