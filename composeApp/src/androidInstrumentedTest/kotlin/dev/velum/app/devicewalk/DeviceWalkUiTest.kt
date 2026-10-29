@@ -112,62 +112,58 @@ class DeviceWalkUiTest {
         // Do NOT treat Files title text under the FirstRun overlay as ready —
         // bottom bar CDs are hidden while showFirstRun, so require those.
         // FirstRun Skip sits below the fold — scroll while welcome chrome is up.
+        // Never markFirstRunDone / recreate here — a missed Skip must fail (#115).
         waitUntil(90_000) {
             val shellReady = onFilesShellReady()
-            val skipVisible =
-                composeExists("Skip") ||
-                    composeExists("Pular") ||
-                    uiExists("Skip") ||
-                    uiExists("Pular")
-            val firstRunVisible =
-                composeExists("Welcome to Velum") ||
-                    composeExists("Bem-vindo ao Velum") ||
-                    composeExists("How to start") ||
-                    composeExists("Como começar") ||
-                    uiExists("Welcome to Velum") ||
-                    uiExists("Bem-vindo ao Velum") ||
-                    uiExists("How to start") ||
-                    uiExists("Como começar")
+            val skipVisible = firstRunSkipVisible()
+            val firstRunVisible = firstRunChromeVisible()
             if (!shellReady && !skipVisible && firstRunVisible) {
                 val w = device.displayWidth
                 val h = device.displayHeight
                 device.swipe(w / 2, (h * 0.75).toInt(), w / 2, (h * 0.25).toInt(), 30)
             }
-            shellReady ||
-                skipVisible ||
-                composeExists("Skip") ||
-                composeExists("Pular") ||
-                uiExists("Skip") ||
-                uiExists("Pular")
+            shellReady || skipVisible
         }
-        if (composeExists("Skip") || composeExists("Pular") ||
-            uiExists("Skip") || uiExists("Pular")
-        ) {
-            // Coordinate tap first — UiObject2.click / Compose performClick can
-            // report success without dismissing under R8 minifiedTest (#106).
-            var skipped = false
-            for (label in listOf("Skip", "Pular")) {
-                val obj = device.findObject(By.textContains(label))
-                    ?: device.findObject(By.descContains(label))
-                    ?: continue
-                val bounds = obj.visibleBounds
-                if (device.click(bounds.centerX(), bounds.centerY())) {
-                    skipped = true
-                    break
+        if (firstRunSkipVisible() || firstRunChromeVisible()) {
+            // Real Skip tap only — OutlineButton CD + role Button (#106 a11y).
+            // Coordinate fallback OK; never bypass via markFirstRunDone (#115).
+            if (!firstRunSkipVisible()) {
+                val w = device.displayWidth
+                val h = device.displayHeight
+                device.swipe(w / 2, (h * 0.75).toInt(), w / 2, (h * 0.25).toInt(), 30)
+                SystemClock.sleep(400)
+            }
+            waitUntil(20_000) { firstRunSkipVisible() || onFilesShellReady() }
+            if (!onFilesShellReady()) {
+                var skipped = false
+                for (label in listOf("Skip", "Pular")) {
+                    val obj = device.findObject(By.descContains(label))
+                        ?: device.findObject(By.textContains(label))
+                        ?: continue
+                    val bounds = obj.visibleBounds
+                    if (device.click(bounds.centerX(), bounds.centerY())) {
+                        skipped = true
+                        break
+                    }
                 }
+                assertTrue(skipped, "Failed to tap FirstRun Skip/Pular")
+                covered += "first-run-skip"
+                waitUntil(45_000) { onFilesShellReady() }
             }
-            if (!skipped) {
-                clickTextPrefer("Skip", "Pular")
-            }
-            covered += "first-run-skip"
-            // Assert shell chrome up — not merely Skip absence (Compose idle can
-            // wedge composeExists and substring matches are brittle).
-            waitUntil(45_000) { onFilesShellReady() }
         }
         waitUntil(60_000) { onFilesShellReady() }
         restoreAllFilesFilterSoft()
         dismissSystemPermissionDialogs()
     }
+
+    private fun firstRunSkipVisible(): Boolean =
+        uiExists("Skip") || uiExists("Pular")
+
+    private fun firstRunChromeVisible(): Boolean =
+        uiExists("Welcome to Velum") ||
+            uiExists("Bem-vindo ao Velum") ||
+            uiExists("How to start") ||
+            uiExists("Como começar")
 
     /**
      * True only when the shell bottom bar is composed (FirstRun overlay dismissed).
@@ -838,62 +834,50 @@ class DeviceWalkUiTest {
                     softExistsContentDesc("Settings", "Configuração")
                 }
         }
-        // Tap the gear via Compose merged tree, else a real coordinate tap.
-        // UiObject2.click() on the a11y node used ACTION_CLICK without navigating
-        // under R8 minifiedTest; device.click goes through the touch path (#106).
+        // Real gear tap by semantics CD — coordinate fallback OK (#106).
+        // Never soft-miss: hard wait for hub after tap (#115).
         var tappedGear = false
-        var composeTapError: Throwable? = null
         for (label in listOf("Settings", "Configuração")) {
-            val composed = runCatching {
-                composeRule
-                    .onNodeWithContentDescription(label, substring = true, useUnmergedTree = false)
-                    .performClick()
-                true
-            }.onFailure { composeTapError = it }.getOrDefault(false)
-            if (composed) {
-                tappedGear = true
-                break
-            }
-        }
-        if (!tappedGear) {
-            Log.w(
-                WALK_TAG,
-                "Compose Settings gear tap failed; falling back to coordinate tap",
-                composeTapError,
-            )
-            for (label in listOf("Settings", "Configuração")) {
-                val obj = device.findObject(By.descContains(label)) ?: continue
-                val bounds = obj.visibleBounds
-                assertTrue(
-                    device.click(bounds.centerX(), bounds.centerY()),
-                    "device.click Settings gear failed",
-                )
+            val obj = device.findObject(By.descContains(label)) ?: continue
+            val bounds = obj.visibleBounds
+            if (device.click(bounds.centerX(), bounds.centerY())) {
                 tappedGear = true
                 break
             }
         }
         assertTrue(tappedGear, "Failed to tap Settings gear")
-        // Hub-only rows / sections — never the Files gear CD alone.
-        // Prefer UiAutomator (uiExists) so Compose idle cannot eat the budget (#106).
+        // Hub-only rows / sections — never the Files gear CD alone ("Settings").
+        // ChevronRow exposes title as contentDescription + Button role (#106).
         fun hubVisible(): Boolean =
-            uiExists("Phone recording") ||
+            softExistsContentDesc(
+                "Phone recording",
+                "Gravação no telefone",
+                "Devices",
+                "Dispositivos",
+                "Storage & privacy",
+                "Armazenamento e privacidade",
+                "About Velum",
+                "Sobre o Velum",
+                "AI processing",
+                "Processamento de IA",
+                "Appearance",
+                "Aparência",
+            ) ||
+                uiExists("Phone recording") ||
                 uiExists("Gravação no telefone") ||
-                uiExists("Devices") ||
-                uiExists("Dispositivos") ||
                 uiExists("Storage & privacy") ||
                 uiExists("Armazenamento e privacidade") ||
                 uiExists("About Velum") ||
                 uiExists("Sobre o Velum") ||
                 uiExists("AI processing") ||
                 uiExists("Processamento de IA") ||
-                composeExists("Phone recording") ||
-                composeExists("Gravação no telefone") ||
-                composeExists("Devices") ||
-                composeExists("Dispositivos") ||
-                composeExists("About Velum") ||
-                composeExists("Sobre o Velum")
-        // Retry the gear once if the first tap did not navigate (R8 touch path).
-        // Log the wait failure so we can tell Compose-tap success vs hub miss (#106).
+                // SectionLabel renders uppercase.
+                uiExists("RECORDING") ||
+                uiExists("GRAVAÇÃO") ||
+                uiExists("APPEARANCE") ||
+                uiExists("APARÊNCIA") ||
+                uiExists("DEVICES") ||
+                uiExists("DISPOSITIVOS")
         val hubWaitError =
             runCatching {
                 waitUntil(8_000) { hubVisible() }
@@ -907,7 +891,10 @@ class DeviceWalkUiTest {
             for (label in listOf("Settings", "Configuração")) {
                 val obj = device.findObject(By.descContains(label)) ?: continue
                 val bounds = obj.visibleBounds
-                device.click(bounds.centerX(), bounds.centerY())
+                assertTrue(
+                    device.click(bounds.centerX(), bounds.centerY()),
+                    "retry device.click Settings gear failed",
+                )
                 break
             }
             SystemClock.sleep(400)
