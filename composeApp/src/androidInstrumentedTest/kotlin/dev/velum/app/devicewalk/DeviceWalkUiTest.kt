@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.pm.ActivityInfo
 import android.os.Environment
 import android.os.SystemClock
+import android.util.Log
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
@@ -44,6 +45,10 @@ class DeviceWalkUiTest {
     private lateinit var appContext: Context
     private lateinit var shotDir: File
     private val covered = linkedSetOf<String>()
+
+    companion object {
+        private const val WALK_TAG = "VelumDeviceWalk"
+    }
 
     @Before
     fun setUp() {
@@ -138,13 +143,26 @@ class DeviceWalkUiTest {
         if (composeExists("Skip") || composeExists("Pular") ||
             uiExists("Skip") || uiExists("Pular")
         ) {
-            clickTextPrefer("Skip", "Pular")
-            covered += "first-run-skip"
-            // onSkip is a coroutine launch — wait until overlay is gone.
-            waitUntil(30_000) {
-                !composeExists("Skip") && !composeExists("Pular") &&
-                    !uiExists("Skip") && !uiExists("Pular")
+            // Coordinate tap first — UiObject2.click / Compose performClick can
+            // report success without dismissing under R8 minifiedTest (#106).
+            var skipped = false
+            for (label in listOf("Skip", "Pular")) {
+                val obj = device.findObject(By.textContains(label))
+                    ?: device.findObject(By.descContains(label))
+                    ?: continue
+                val bounds = obj.visibleBounds
+                if (device.click(bounds.centerX(), bounds.centerY())) {
+                    skipped = true
+                    break
+                }
             }
+            if (!skipped) {
+                clickTextPrefer("Skip", "Pular")
+            }
+            covered += "first-run-skip"
+            // Assert shell chrome up — not merely Skip absence (Compose idle can
+            // wedge composeExists and substring matches are brittle).
+            waitUntil(45_000) { onFilesShellReady() }
         }
         waitUntil(60_000) { onFilesShellReady() }
         restoreAllFilesFilterSoft()
@@ -775,19 +793,25 @@ class DeviceWalkUiTest {
         // UiObject2.click() on the a11y node used ACTION_CLICK without navigating
         // under R8 minifiedTest; device.click goes through the touch path (#106).
         var tappedGear = false
+        var composeTapError: Throwable? = null
         for (label in listOf("Settings", "Configuração")) {
             val composed = runCatching {
                 composeRule
                     .onNodeWithContentDescription(label, substring = true, useUnmergedTree = false)
                     .performClick()
                 true
-            }.getOrDefault(false)
+            }.onFailure { composeTapError = it }.getOrDefault(false)
             if (composed) {
                 tappedGear = true
                 break
             }
         }
         if (!tappedGear) {
+            Log.w(
+                WALK_TAG,
+                "Compose Settings gear tap failed; falling back to coordinate tap",
+                composeTapError,
+            )
             for (label in listOf("Settings", "Configuração")) {
                 val obj = device.findObject(By.descContains(label)) ?: continue
                 val bounds = obj.visibleBounds
@@ -821,6 +845,10 @@ class DeviceWalkUiTest {
                 composeExists("Sobre o Velum")
         // Retry the gear once if the first tap did not navigate (R8 touch path).
         if (!runCatching { waitUntil(8_000) { hubVisible() }; true }.getOrDefault(false)) {
+            Log.w(
+                WALK_TAG,
+                "Settings hub not visible after first gear tap; retrying coordinate tap",
+            )
             for (label in listOf("Settings", "Configuração")) {
                 val obj = device.findObject(By.descContains(label)) ?: continue
                 val bounds = obj.visibleBounds

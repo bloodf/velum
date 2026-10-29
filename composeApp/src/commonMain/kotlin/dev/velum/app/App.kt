@@ -131,11 +131,11 @@ private fun VelumRoot(container: AppContainer) {
     val backStack by navController.currentBackStackEntryAsState()
     val route = backStack?.destination?.route.orEmpty()
     var fabOpen by remember { mutableStateOf(false) }
-    // Hold shell chrome until first-run meta is read — otherwise the bottom bar
-    // flashes for one frame and device-walk treats the shell as ready while the
-    // FirstRun overlay is about to cover it (#106 minifiedTest).
-    var firstRunReady by remember { mutableStateOf(false) }
-    var showFirstRun by remember { mutableStateOf(false) }
+    // Seeded from AppContainer (IO init) — do not gate first paint on LaunchedEffect
+    // + Dispatchers.Default; device-walk Compose idle polling can starve that path
+    // under R8 minifiedTest and leave FirstRun + bottom bar uncomposed for the full
+    // waitForShell budget (#106).
+    var showFirstRun by remember { mutableStateOf(container.showFirstRunAtLaunch) }
     var librarySelectedId by remember { mutableStateOf<String?>(null) }
     var librarySeekSeconds by remember { mutableStateOf(0L) }
     var libraryRail by remember { mutableStateOf(LibraryRailDestination.Library) }
@@ -162,11 +162,6 @@ private fun VelumRoot(container: AppContainer) {
         rationaleTitle = strings.calendarPermissionTitle,
         rationaleBody = strings.calendarPermissionRationale,
     )
-
-    LaunchedEffect(container) {
-        showFirstRun = !container.repository.isFirstRunDone()
-        firstRunReady = true
-    }
 
     val importPipeline = remember(container) { AudioImportPipeline(container) }
     LaunchedEffect(container, importPipeline) {
@@ -282,7 +277,7 @@ private fun VelumRoot(container: AppContainer) {
         Scaffold(
             snackbarHost = { SnackbarHost(snackbar) },
             bottomBar = {
-                if (onShell && firstRunReady && !showFirstRun) {
+                if (onShell && !showFirstRun) {
                     VelumBottomBar(
                         selected = selectedTab,
                         fabOpen = fabOpen,
@@ -571,7 +566,7 @@ private fun VelumRoot(container: AppContainer) {
                 }
             }
 
-        if (onShell && firstRunReady && !showFirstRun) {
+        if (onShell && !showFirstRun) {
             FabOverlay(
                 visible = fabOpen,
                 isCapturing = container.micCapture.isCapturing ||
@@ -659,7 +654,7 @@ private fun VelumRoot(container: AppContainer) {
             )
         }
 
-        if (firstRunReady && showFirstRun) {
+        if (showFirstRun) {
             FirstRunScreen(
                 onPhoneMic = {
                     scope.launch {

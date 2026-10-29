@@ -58,6 +58,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 
 class AppContainer(
     val secureStore: SecureStore,
@@ -78,6 +79,13 @@ class AppContainer(
     val databaseHandle = createDatabase(driverFactory)
     val database = databaseHandle.database
     val repository = VelumRepository(databaseHandle)
+    /**
+     * Resolved on the IO construction path (see [dev.velum.app.VelumApplication]) so
+     * [dev.velum.app.App] can paint FirstRun / shell chrome on the first frame without
+     * waiting on a Compose [LaunchedEffect] that device-walk idle polling can starve
+     * under R8 minifiedTest (#106).
+     */
+    val showFirstRunAtLaunch: Boolean = runBlocking { !repository.isFirstRunDone() }
     val settingsRepository = SettingsRepository(secureStore)
     val deviceKeyImporter: DeviceKeyImporter = SecureDeviceKeyImporter(secureStore)
     val aiClient = createOpenAiCompatibleClient()

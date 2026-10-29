@@ -12,9 +12,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -29,11 +26,16 @@ import kotlinx.coroutines.runBlocking
 class MainActivity : ComponentActivity() {
     private val mainHandler = Handler(Looper.getMainLooper())
     private val handoffStarted = AtomicBoolean(false)
+    private val composeReady = AtomicBoolean(false)
+    private val fatalUi = AtomicBoolean(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         val splash = installSplashScreen()
         val app = application as VelumApplication
-        splash.setKeepOnScreenCondition { !app.isContainerReady() }
+        // Keep splash until Compose actually hosts App / fatal — not merely until
+        // the process-scoped container flag flips (that can dismiss splash onto an
+        // empty Box if the handoff post has not replaced setContent yet) (#106).
+        splash.setKeepOnScreenCondition { !composeReady.get() && !fatalUi.get() }
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         IncomingShare.offerFromIntent(this, intent)
@@ -47,48 +49,45 @@ class MainActivity : ComponentActivity() {
             } else {
                 null
             }
-        var container by mutableStateOf(seeded)
-        var fatal by mutableStateOf(false)
-        setContent {
-            val ready = container
-            when {
-                ready != null -> App(ready)
-                fatal -> {
-                    Text(
-                        text = FATAL_COPY,
-                        fontSize = 16.sp,
-                        modifier = Modifier.padding(48.dp),
-                    )
-                }
-                else -> Box(Modifier.fillMaxSize())
+        if (seeded != null) {
+            showApp(seeded)
+        } else {
+            setContent {
+                Box(Modifier.fillMaxSize())
             }
+            startContainerHandoff(app)
         }
-        if (seeded == null) {
-            startContainerHandoff(app) { result ->
-                result.fold(
-                    onSuccess = { container = it },
-                    onFailure = { t ->
-                        fatal = true
-                        Log.e(TAG, "Fatal AppContainer init", t)
-                    },
-                )
-            }
+    }
+
+    private fun showApp(container: AppContainer) {
+        composeReady.set(true)
+        setContent { App(container) }
+        Log.i(TAG, "Compose App set")
+    }
+
+    private fun showFatal(t: Throwable) {
+        fatalUi.set(true)
+        Log.e(TAG, "Fatal AppContainer init", t)
+        setContent {
+            Text(
+                text = FATAL_COPY,
+                fontSize = 16.sp,
+                modifier = Modifier.padding(48.dp),
+            )
         }
     }
 
     /**
-     * Await the process-scoped container off the main looper, then publish on Main.
-     * lifecycleScope + Dispatchers.Main can sit unresumed under Compose UI Test idle
-     * polling on R8 minifiedTest, leaving an empty Box for the full waitForShell budget.
+     * Await the process-scoped container off the main looper, then replace
+     * setContent on Main. lifecycleScope + Dispatchers.Main can sit unresumed
+     * under Compose UI Test idle polling on R8 minifiedTest; a Handler post +
+     * full setContent replace avoids leaving an empty Box for waitForShell (#106).
      *
      * CancellationException is not swallowed into fatal — the handoff executor is not
      * a structured coroutine Job, so a cancelled Deferred surfaces as failure only when
      * init itself failed (see [VelumApplication.containerInitError]).
      */
-    private fun startContainerHandoff(
-        app: VelumApplication,
-        onResult: (Result<AppContainer>) -> Unit,
-    ) {
+    private fun startContainerHandoff(app: VelumApplication) {
         if (!handoffStarted.compareAndSet(false, true)) return
         HANDOFF_EXECUTOR.execute {
             val result =
@@ -96,6 +95,7 @@ class MainActivity : ComponentActivity() {
                     Result.success(runBlocking { app.awaitContainer() })
                 } catch (_: CancellationException) {
                     // Must not become fatal — never map cancel into the fatal UI (#106 CTO).
+                    Log.w(TAG, "Container handoff cancelled; not marking fatal")
                     return@execute
                 } catch (t: Throwable) {
                     val err = app.containerInitError()
@@ -110,7 +110,11 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             mainHandler.post {
-                if (!isDestroyed) onResult(result)
+                if (isDestroyed) return@post
+                result.fold(
+                    onSuccess = { showApp(it) },
+                    onFailure = { showFatal(it) },
+                )
             }
         }
     }
