@@ -44,7 +44,8 @@ import kotlinx.coroutines.test.runTest
  * Deterministic AutoFlow runner tests: no wall-clock poll loops.
  * Runner scope uses [Dispatchers.Default] (same as production) so SQLDelight
  * `mapToList(Dispatchers.Default)` emissions and SharedFlow posts stay coherent;
- * readiness is signaled via [AutoFlowRunner.passIndex] and [CompletableDeferred].
+ * readiness is signaled via [AutoFlowRunner.passIndex],
+ * [AutoFlowRunner.lastObservedWriteVersion], and [CompletableDeferred].
  */
 class AutoFlowRunnerTest {
     @Test
@@ -87,20 +88,10 @@ class AutoFlowRunnerTest {
             }
 
             // Disable seed default flow; use a strict duration floor.
-            awaitNextPass(
-                runner,
-                until = { repo.listAutoflows().any { it.id == "flow-default" && it.enabled == 0L } },
-            ) {
+            awaitNextPass(runner, repo) {
                 repo.setAutoflowEnabled("flow-default", false)
             }
-            awaitNextPass(
-                runner,
-                until = {
-                    repo.listAutoflows().any {
-                        it.id == "flow-1" && it.enabled == 1L && it.duration_min_seconds == 5L
-                    }
-                },
-            ) {
+            awaitNextPass(runner, repo) {
                 repo.upsertAutoflow(
                     id = "flow-1",
                     name = "Note Pro",
@@ -117,14 +108,7 @@ class AutoFlowRunnerTest {
                 )
             }
 
-            awaitNextPass(
-                runner,
-                until = {
-                    repo.getRecording("rec-af-1")?.let {
-                        it.status == "recording" && it.duration_seconds == 0L
-                    } == true
-                },
-            ) {
+            awaitNextPass(runner, repo) {
                 repo.insertRecording(
                     id = "rec-af-1",
                     sessionId = 1,
@@ -141,24 +125,30 @@ class AutoFlowRunnerTest {
                     status = "recording",
                 )
             }
-            assertEquals(0, processCalls.get(), "duration=0 must not match durationMin=5")
+            awaitNoMatchConfirmed(
+                runner,
+                repo,
+                processCalls,
+                recordingId = "rec-af-1",
+                message = "duration=0 must not match durationMin=5",
+            )
 
             // Import first while duration is still 0 (no match). Then set duration in one
             // write so the runner never races between path/duration and status updates.
-            awaitNextPass(
-                runner,
-                until = {
-                    repo.getRecording("rec-af-1")?.let {
-                        it.status == "imported" && it.duration_seconds == 0L
-                    } == true
-                },
-            ) {
+            awaitNextPass(runner, repo) {
                 repo.updateStatus("rec-af-1", "imported")
             }
-            assertEquals(0, processCalls.get(), "imported with duration=0 must not match")
+            awaitNoMatchConfirmed(
+                runner,
+                repo,
+                processCalls,
+                recordingId = "rec-af-1",
+                message = "imported with duration=0 must not match",
+            )
 
             awaitNextPass(
                 runner,
+                repo,
                 until = {
                     processCalls.get() >= 1 &&
                         repo.getRecording("rec-af-1")?.status == "ready"
@@ -204,16 +194,10 @@ class AutoFlowRunnerTest {
                 runner.actions.collect { emitted += it }
             }
 
-            awaitNextPass(
-                runner,
-                until = { repo.listAutoflows().any { it.id == "flow-default" && it.enabled == 0L } },
-            ) {
+            awaitNextPass(runner, repo) {
                 repo.setAutoflowEnabled("flow-default", false)
             }
-            awaitNextPass(
-                runner,
-                until = { repo.listAutoflows().any { it.id == "flow-fail" && it.enabled == 1L } },
-            ) {
+            awaitNextPass(runner, repo) {
                 repo.upsertAutoflow(
                     id = "flow-fail",
                     name = "All",
@@ -232,6 +216,7 @@ class AutoFlowRunnerTest {
             // Matching insert runs processing; passIndex advances only after the failed terminal.
             awaitNextPass(
                 runner,
+                repo,
                 until = { repo.getRecording("rec-fail")?.status == "failed" },
             ) {
                 repo.insertRecording(
@@ -311,16 +296,17 @@ class AutoFlowRunnerTest {
         try {
             runner.start()
             awaitPass(runner, atLeast = 1)
-            // Force another combine emission after seed.
-            awaitNextPass(
-                runner,
-                until = {
-                    repo.getRecording("rec-ready-done")?.title == "Already ready (touched)"
-                },
-            ) {
+            // Force another combine emission after seed, then one more before the negative.
+            awaitNextPass(runner, repo) {
                 repo.updateRecordingTitle("rec-ready-done", "Already ready (touched)")
             }
-            assertEquals(0, processCalls.get(), "ready at seed must not rematch / re-ASR")
+            awaitNoMatchConfirmed(
+                runner,
+                repo,
+                processCalls,
+                recordingId = "rec-ready-done",
+                message = "ready at seed must not rematch / re-ASR",
+            )
             assertEquals("ready", repo.getRecording("rec-ready-done")?.status)
         } finally {
             runner.stop()
@@ -378,13 +364,16 @@ class AutoFlowRunnerTest {
             runner.start()
             awaitPass(runner, atLeast = 1)
             // WorkManager finished while app was dead / restarting — status becomes ready.
-            awaitNextPass(
-                runner,
-                until = { repo.getRecording("rec-gen-to-ready")?.status == "ready" },
-            ) {
+            awaitNextPass(runner, repo) {
                 repo.updateStatus("rec-gen-to-ready", "ready")
             }
-            assertEquals(0, processCalls.get(), "terminal ready after in-flight must not re-ASR")
+            awaitNoMatchConfirmed(
+                runner,
+                repo,
+                processCalls,
+                recordingId = "rec-gen-to-ready",
+                message = "terminal ready after in-flight must not re-ASR",
+            )
         } finally {
             runner.stop()
             scope.cancel()
@@ -534,18 +523,40 @@ class AutoFlowRunnerTest {
     }
 
     /**
-     * Runs [block] then waits until [AutoFlowRunner.passIndex] advances past its pre-block
-     * value **and** [until] holds on the DB/recording state. The predicate prevents a pass
-     * from an earlier in-flight write from satisfying the wait.
+     * Runs [block], captures [VelumRepository.writeVersion] after the write, then waits until
+     * a completed runner pass observed a version at least that high (and [until] holds).
+     * A stale pass that started before [block] cannot satisfy this wait.
      */
     private suspend fun awaitNextPass(
         runner: AutoFlowRunner,
-        until: suspend () -> Boolean,
+        repo: VelumRepository,
+        until: suspend () -> Boolean = { true },
         block: suspend () -> Unit,
     ) {
-        val before = runner.passIndex.value
         block()
-        runner.passIndex.first { it > before && until() }
+        val minWriteVersion = repo.writeVersion.value
+        runner.passIndex.first {
+            runner.lastObservedWriteVersion.value >= minWriteVersion && until()
+        }
+    }
+
+    /**
+     * After a must-not-match write has already been observed, force one more combine
+     * emission and wait for a pass that observed it before asserting [processCalls] == 0.
+     */
+    private suspend fun awaitNoMatchConfirmed(
+        runner: AutoFlowRunner,
+        repo: VelumRepository,
+        processCalls: AtomicInteger,
+        recordingId: String,
+        message: String,
+    ) {
+        val current = repo.getRecording(recordingId)?.title ?: recordingId
+        val probe = "$current (no-match-probe)"
+        awaitNextPass(runner, repo) {
+            repo.updateRecordingTitle(recordingId, probe)
+        }
+        assertEquals(0, processCalls.get(), message)
     }
 
     private suspend fun insert(

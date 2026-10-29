@@ -71,6 +71,16 @@ class AutoFlowRunner(
      */
     internal val passIndex: StateFlow<Int> = _passIndex.asStateFlow()
 
+    private val _lastObservedWriteVersion = MutableStateFlow(0L)
+
+    /**
+     * Test observation hook: [VelumRepository.writeVersion] sampled for the snapshot handled
+     * by the latest completed pass. Read-only observation — never consulted by matching or
+     * claim logic. AutoFlowRunnerTest waits for a pass whose observed version is at least
+     * the write version captured after its mutating [block].
+     */
+    internal val lastObservedWriteVersion: StateFlow<Long> = _lastObservedWriteVersion.asStateFlow()
+
     fun start() {
         if (job != null) return
         job = scope.launch {
@@ -82,6 +92,9 @@ class AutoFlowRunner(
             }
                 .distinctUntilChanged()
                 .collect { (recordings, flows) ->
+                    // Sample before matching so the recorded version describes this snapshot
+                    // only; matching / claim behavior below is unchanged.
+                    val observedWriteVersion = repository.writeVersion.value
                     if (!seeded) {
                         // Claim only terminal ready/failed. Do NOT claim matchable waiting
                         // statuses (imported) or in-flight orphans (generating/queued) — those
@@ -92,7 +105,7 @@ class AutoFlowRunner(
                                 .map { it.id },
                         )
                         seeded = true
-                        _passIndex.update { it + 1 }
+                        publishPassObservation(observedWriteVersion)
                         return@collect
                     }
                     val enabledFlows = flows.filter { it.enabled == 1L }
@@ -129,9 +142,14 @@ class AutoFlowRunner(
                             firePostAction(match, recording.id)
                         }
                     }
-                    _passIndex.update { it + 1 }
+                    publishPassObservation(observedWriteVersion)
                 }
         }
+    }
+
+    private fun publishPassObservation(observedWriteVersion: Long) {
+        _lastObservedWriteVersion.value = observedWriteVersion
+        _passIndex.update { it + 1 }
     }
 
     fun stop() {
