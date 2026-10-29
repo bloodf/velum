@@ -1,12 +1,19 @@
 package dev.velum.core.security
 
+import java.security.InvalidAlgorithmParameterException
 import java.security.SecureRandom
+import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 
 /**
  * Test-only software AES key backend for [AndroidSecureStore] Robolectric tests.
  * Lives in androidUnitTest — never referenced from production sources.
+ *
+ * Mirrors AndroidKeyStore randomized-encryption: encrypt must go through
+ * [initEncrypt] (no caller IV). [encryptWithCallerProvidedIv] throws the same
+ * [InvalidAlgorithmParameterException] Keystore would raise, so a regression that
+ * bypasses [initEncrypt] is caught when [encryptInitCount] stays at 0.
  */
 internal class FakeAndroidSecureKeyBackend : AndroidSecureKeyBackend {
     private val lock = Any()
@@ -15,6 +22,10 @@ internal class FakeAndroidSecureKeyBackend : AndroidSecureKeyBackend {
 
     /** Counts how many times a new key is minted. */
     var mintCount: Int = 0
+        private set
+
+    /** Counts [initEncrypt] calls — encrypt must use the provider IV path. */
+    var encryptInitCount: Int = 0
         private set
 
     /**
@@ -56,6 +67,28 @@ internal class FakeAndroidSecureKeyBackend : AndroidSecureKeyBackend {
         key = null
     }
 
+    override fun initEncrypt(cipher: Cipher, key: SecretKey): ByteArray {
+        // Same contract as AndroidKeystoreBackend: no caller IV.
+        cipher.init(Cipher.ENCRYPT_MODE, key)
+        val iv = cipher.iv
+        require(iv != null && iv.size == IV_BYTES) {
+            "Encrypt IV must be $IV_BYTES bytes"
+        }
+        encryptInitCount++
+        return iv
+    }
+
+    /**
+     * Probe that mirrors AndroidKeyStore rejecting a caller-provided IV on
+     * encrypt when randomized encryption is required. Software AES would accept
+     * [GCMParameterSpec]; this fake throws like Keystore instead.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    fun encryptWithCallerProvidedIv(key: SecretKey, iv: ByteArray) {
+        require(iv.size == IV_BYTES)
+        throw InvalidAlgorithmParameterException("Caller-provided IV not permitted")
+    }
+
     private fun mintNewKey(): SecretKey {
         val generator = KeyGenerator.getInstance("AES")
         generator.init(256, SecureRandom())
@@ -64,6 +97,10 @@ internal class FakeAndroidSecureKeyBackend : AndroidSecureKeyBackend {
         aliasPresent = true
         mintCount++
         return minted
+    }
+
+    private companion object {
+        private const val IV_BYTES = 12
     }
 }
 

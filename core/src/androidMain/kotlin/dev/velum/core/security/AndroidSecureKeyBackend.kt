@@ -4,6 +4,7 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Log
 import java.security.KeyStore
+import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 
@@ -30,6 +31,13 @@ internal interface AndroidSecureKeyBackend {
     fun containsAlias(): Boolean
 
     fun deleteAlias()
+
+    /**
+     * Init [cipher] for AES-GCM encrypt with [key] under the AndroidKeyStore
+     * randomized-encryption contract: **no caller-provided IV**. Returns the
+     * provider-chosen IV (must be 12 bytes).
+     */
+    fun initEncrypt(cipher: Cipher, key: SecretKey): ByteArray
 }
 
 /**
@@ -126,6 +134,16 @@ internal class AndroidKeystoreBackend(
         }
     }
 
+    override fun initEncrypt(cipher: Cipher, key: SecretKey): ByteArray {
+        // setRandomizedEncryptionRequired(true): caller IV is rejected by Keystore.
+        cipher.init(Cipher.ENCRYPT_MODE, key)
+        val iv = cipher.iv
+        require(iv != null && iv.size == IV_BYTES) {
+            "AndroidKeyStore encrypt IV must be $IV_BYTES bytes"
+        }
+        return iv
+    }
+
     private fun createKey(): SecretKey {
         val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
         generator.init(
@@ -146,5 +164,6 @@ internal class AndroidKeystoreBackend(
     private companion object {
         private const val TAG = "VelumSecureStore"
         private const val ANDROID_KEYSTORE = "AndroidKeyStore"
+        private const val IV_BYTES = 12
     }
 }

@@ -6,7 +6,6 @@ import android.util.Base64
 import android.util.Log
 import java.nio.BufferUnderflowException
 import java.nio.ByteBuffer
-import java.security.SecureRandom
 import javax.crypto.AEADBadTagException
 import javax.crypto.BadPaddingException
 import javax.crypto.Cipher
@@ -76,7 +75,6 @@ class AndroidSecureStore private constructor(
     private val prefs: SharedPreferences by lazy {
         appContext.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
     }
-    private val random = SecureRandom()
 
     override suspend fun putString(key: String, value: String) {
         withContext(Dispatchers.IO) {
@@ -202,9 +200,10 @@ class AndroidSecureStore private constructor(
     }
 
     private fun encryptWith(key: SecretKey, plaintext: ByteArray): String {
-        val iv = ByteArray(IV_BYTES).also { random.nextBytes(it) }
         val cipher = Cipher.getInstance(TRANSFORMATION)
-        cipher.init(Cipher.ENCRYPT_MODE, key, GCMParameterSpec(GCM_TAG_BITS, iv))
+        // AndroidKeyStore AES keys require randomized encryption: never pass a
+        // caller IV. The provider chooses one; read it back from the cipher.
+        val iv = keyBackend.initEncrypt(cipher, key)
         val ciphertext = cipher.doFinal(plaintext)
         val payload = ByteBuffer.allocate(2 + iv.size + ciphertext.size)
             .put(FORMAT_VERSION)
@@ -286,7 +285,6 @@ class AndroidSecureStore private constructor(
         private const val TRANSFORMATION = "AES/GCM/NoPadding"
         private const val GCM_TAG_BITS = 128
         private const val GCM_TAG_BYTES = 16
-        private const val IV_BYTES = 12
         private const val FORMAT_VERSION: Byte = 1
     }
 }
