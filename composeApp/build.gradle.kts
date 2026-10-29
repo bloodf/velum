@@ -136,7 +136,11 @@ android {
         // Prefer DSL over -Pandroid.testInstrumentationRunnerArguments.* (breaks config cache).
         testInstrumentationRunnerArguments += mapOf(
             "velumDeviceWalk" to "true",
-            "class" to "dev.velum.app.devicewalk.DeviceWalkUiTest",
+            // Device walk + AndroidKeyStore SecureStore round-trip (#92). Comma-separated
+            // exact class list only — no package filter.
+            "class" to
+                "dev.velum.app.devicewalk.DeviceWalkUiTest," +
+                    "dev.velum.app.security.AndroidSecureStoreKeystoreInstrumentedTest",
         )
     }
     packaging {
