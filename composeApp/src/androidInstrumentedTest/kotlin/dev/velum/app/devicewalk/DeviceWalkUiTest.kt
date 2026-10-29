@@ -699,25 +699,15 @@ class DeviceWalkUiTest {
 
     private fun openSettings() {
         pressBackToFiles("pt-BR")
-        // Gear only exists on the Files shell — wait hard after pressBackToFiles.
+        // Gear only exists on FilesScreen. Explore/Ask still expose bottom-bar
+        // CDs so onFilesShellReady can be true without the header gear (#106).
         waitUntil(45_000) { onFilesShellReady() }
-        // Files header gear uses CD "Settings"/"Configuração" — do not treat that as hub-open.
-        val clickedGear = runCatching {
-            composeRule
-                .onNodeWithContentDescription("Settings", useUnmergedTree = true)
-                .performClick()
-            true
-        }.recoverCatching {
-            composeRule
-                .onNodeWithContentDescription("Configuração", useUnmergedTree = true)
-                .performClick()
-            true
-        }.recoverCatching {
-            val obj = device.findObject(By.desc("Settings"))
-                ?: device.findObject(By.desc("Configuração"))
-            obj?.click() ?: error("Settings gear missing")
-            true
-        }.getOrDefault(false)
+        softClickContentDesc("All files", "Todos os arquivos")
+        waitUntil(20_000) {
+            softExistsContentDesc("Settings", "Configuração")
+        }
+        // Prefer merged-tree click (CD is on the clickable Box, not the Icon).
+        val clickedGear = softClickContentDesc("Settings", "Configuração")
         assertTrue(clickedGear, "Failed to tap Settings gear")
         // Wait for a hub-only row (Appearance is below the fold — do not require it).
         waitUntil(20_000) {
