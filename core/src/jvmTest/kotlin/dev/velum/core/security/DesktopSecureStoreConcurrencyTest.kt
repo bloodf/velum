@@ -303,7 +303,14 @@ class DesktopSecureStoreConcurrencyTest {
             } catch (t: Throwable) {
                 assumeTrue("symbolic links required: ${t.message}", false)
             }
+            // Half open via the symlink path, half via the real directory — both
+            // see a missing key at start. On 5007e4c this flips the JVM lock map
+            // key once the file appears (toRealPath vs absolute) and throws
+            // OverlappingFileLockException; the stable parent.toRealPath() key
+            // keeps both paths on one monitor.
             val keyViaLink = linkParent.resolve("secure.aes256")
+            val keyViaReal = real.resolve("secure.aes256")
+            assertTrue(!Files.exists(keyViaLink) && !Files.exists(keyViaReal))
             val keys = Collections.synchronizedList(mutableListOf<ByteArray>())
             val errors = Collections.synchronizedList(mutableListOf<Throwable>())
             val start = CountDownLatch(1)
@@ -311,11 +318,8 @@ class DesktopSecureStoreConcurrencyTest {
                 Thread({
                     try {
                         start.await(5, TimeUnit.SECONDS)
-                        // First wave: key missing. Later joiners: key present.
-                        if (i >= 6) {
-                            Thread.sleep(30)
-                        }
-                        val key = DesktopSecureStore.loadOrCreateKey(keyViaLink)
+                        val path = if (i % 2 == 0) keyViaLink else keyViaReal
+                        val key = DesktopSecureStore.loadOrCreateKey(path)
                         keys += key.encoded.copyOf()
                     } catch (t: Throwable) {
                         errors += t
@@ -338,6 +342,7 @@ class DesktopSecureStoreConcurrencyTest {
             for (k in keys) {
                 assertTrue(first.contentEquals(k), "symlinked-parent loaders must share one key")
             }
+            assertTrue(first.contentEquals(Files.readAllBytes(keyViaReal)))
             assertTrue(first.contentEquals(Files.readAllBytes(keyViaLink)))
         } finally {
             linkRoot.toFile().deleteRecursively()
