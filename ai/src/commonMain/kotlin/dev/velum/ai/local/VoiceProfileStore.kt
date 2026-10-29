@@ -32,6 +32,14 @@ class VoiceProfileStore(
     private val root: ModelStoreDir,
     private val secureStore: SecureStore,
     private val cipherOverride: ProfileCipher? = null,
+    /**
+     * Test seam for legacy `voices/.profile_key` deletion. Returns true when the file
+     * is gone. Production default calls [ModelStoreDir.deleteRecursively].
+     */
+    private val legacyKeyFileDeleter: (ModelStoreDir) -> Boolean = { file ->
+        file.deleteRecursively()
+        !file.exists()
+    },
 ) {
     private val json = Json { ignoreUnknownKeys = true; prettyPrint = true }
     private val profilesDir get() = root.resolve("voices").resolve("profiles")
@@ -62,11 +70,13 @@ class VoiceProfileStore(
      * (no mint, no purge, no profile deletion); [SecureRead.Value] uses the stored key.
      * Never call destructive [SecureStore.getString] for priming.
      *
-     * Legacy purge runs only when this prime minted a brand-new key, `voices/.profile_key`
-     * still exists, and no `.profile_key.purged` marker is present. It deletes only
-     * profiles that decrypt under the legacy file key (provably legacy-key blobs);
-     * corrupt JSON, missing `.enc`, and dimension mismatches are kept. File I/O runs
-     * on [Dispatchers.IO]. Never logs key material.
+     * Legacy purge (profile scan) runs only when this prime minted a brand-new key,
+     * `voices/.profile_key` still exists, and no `.profile_key.purged` marker is present.
+     * It deletes only profiles that decrypt under the legacy file key (provably
+     * legacy-key blobs); corrupt JSON, missing `.enc`, and dimension mismatches are
+     * kept. When the marker already exists and `.profile_key` remains, only the legacy
+     * key file delete is retried — no profile scanning. File I/O runs on
+     * [Dispatchers.IO]. Never logs key material.
      */
     suspend fun ensureKey() {
         if (cipherOverride != null) {
@@ -93,10 +103,18 @@ class VoiceProfileStore(
                         generated
                     }
                 }
-                // Purge before publishing the key so no reader observes mid-purge state.
-                if (mintedNewKey && legacyKeyFile.exists() && !legacyPurgedMarker.exists()) {
-                    withContext(Dispatchers.IO) {
-                        purgeLegacyConstantKeyArtifacts()
+                // Purge / leftover-key cleanup before publishing so no reader observes
+                // mid-purge state.
+                when {
+                    mintedNewKey && legacyKeyFile.exists() && !legacyPurgedMarker.exists() -> {
+                        withContext(Dispatchers.IO) {
+                            purgeLegacyConstantKeyArtifacts()
+                        }
+                    }
+                    legacyKeyFile.exists() && legacyPurgedMarker.exists() -> {
+                        withContext(Dispatchers.IO) {
+                            retryDeleteLegacyKeyFile()
+                        }
                     }
                 }
                 primedKey = key
@@ -129,8 +147,8 @@ class VoiceProfileStore(
      * One-shot legacy migration when a brand-new SecureStore key was just minted.
      * Deletes only profiles that open under the bytes in `voices/.profile_key`
      * (provably legacy-key blobs). Always writes `.profile_key.purged` so a failed
-     * delete of the legacy file cannot cause repeated purges. Never uses the old
-     * constant key formula from production sources — only the on-disk file bytes.
+     * delete of the legacy file cannot cause repeated profile purges. Never uses the
+     * old constant key formula from production sources — only the on-disk file bytes.
      */
     private fun purgeLegacyConstantKeyArtifacts() {
         if (!legacyKeyFile.exists()) return
@@ -148,10 +166,21 @@ class VoiceProfileStore(
                     }
             }
         }
-        legacyKeyFile.deleteRecursively()
         // Record completion even when the legacy file delete fails, so remints
-        // with a leftover `.profile_key` do not purge again.
+        // with a leftover `.profile_key` do not scan/purge profiles again.
+        legacyKeyFileDeleter(legacyKeyFile)
         writeLegacyPurgedMarker()
+    }
+
+    /**
+     * Marker already proves the one-shot profile purge ran. If `.profile_key` is still
+     * on disk (delete failed earlier), retry only that file delete — never rescan or
+     * delete profiles.
+     */
+    private fun retryDeleteLegacyKeyFile() {
+        if (!legacyKeyFile.exists()) return
+        if (!legacyPurgedMarker.exists()) return
+        legacyKeyFileDeleter(legacyKeyFile)
     }
 
     /**
