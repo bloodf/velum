@@ -70,13 +70,16 @@ class VoiceProfileStore(
      * (no mint, no purge, no profile deletion); [SecureRead.Value] uses the stored key.
      * Never call destructive [SecureStore.getString] for priming.
      *
-     * Legacy purge (profile scan) runs only when this prime minted a brand-new key,
-     * `voices/.profile_key` still exists, and no `.profile_key.purged` marker is present.
-     * It deletes only profiles that decrypt under the legacy file key (provably
-     * legacy-key blobs); corrupt JSON, missing `.enc`, and dimension mismatches are
-     * kept. When the marker already exists and `.profile_key` remains, only the legacy
-     * key file delete is retried — no profile scanning. File I/O runs on
-     * [Dispatchers.IO]. Never logs key material.
+     * Legacy purge (profile scan) runs after a successful [SecureRead.Value] or
+     * [SecureRead.Missing] outcome when `voices/.profile_key` is present and no
+     * `.profile_key.purged` marker exists — independent of whether this prime minted —
+     * so a crash between [SecureStore.putString] and purge still finishes on the next
+     * prime. Never runs on [SecureRead.Unreadable]. It deletes only profiles that
+     * decrypt under the legacy file key (provably legacy-key blobs); corrupt JSON,
+     * missing `.enc`, and dimension mismatches are kept. When the marker already
+     * exists and `.profile_key` remains, only the legacy key file delete is retried
+     * (best-effort) — no profile scanning. File I/O runs on [Dispatchers.IO]. Never
+     * logs key material.
      */
     suspend fun ensureKey() {
         if (cipherOverride != null) {
@@ -87,7 +90,6 @@ class VoiceProfileStore(
         keyMutex.withLock {
             if (_primingState.value is VoiceKeyPrimingState.Ready) return
             try {
-                var mintedNewKey = false
                 val key = when (val outcome = secureStore.read(PROFILE_KEY_SECURE)) {
                     is SecureRead.Value -> {
                         if (outcome.value.isBlank()) throw VoiceProfileKeyUnreadableException()
@@ -95,7 +97,6 @@ class VoiceProfileStore(
                     }
                     is SecureRead.Unreadable -> throw VoiceProfileKeyUnreadableException()
                     is SecureRead.Missing -> {
-                        mintedNewKey = true
                         val generated = ByteArray(PROFILE_KEY_BYTES).also {
                             Random.Default.nextBytes(it)
                         }
@@ -104,9 +105,10 @@ class VoiceProfileStore(
                     }
                 }
                 // Purge / leftover-key cleanup before publishing so no reader observes
-                // mid-purge state.
+                // mid-purge state. Gate is marker-absent + legacy file present (not
+                // mint-only) so an interrupted first mint still completes purge later.
                 when {
-                    mintedNewKey && legacyKeyFile.exists() && !legacyPurgedMarker.exists() -> {
+                    legacyKeyFile.exists() && !legacyPurgedMarker.exists() -> {
                         withContext(Dispatchers.IO) {
                             purgeLegacyConstantKeyArtifacts()
                         }
@@ -144,11 +146,13 @@ class VoiceProfileStore(
     }
 
     /**
-     * One-shot legacy migration when a brand-new SecureStore key was just minted.
-     * Deletes only profiles that open under the bytes in `voices/.profile_key`
-     * (provably legacy-key blobs). Always writes `.profile_key.purged` so a failed
-     * delete of the legacy file cannot cause repeated profile purges. Never uses the
-     * old constant key formula from production sources — only the on-disk file bytes.
+     * One-shot legacy migration when `voices/.profile_key` is present and the purge
+     * marker is absent (Value or Missing prime — including a later prime after a crash
+     * between putString and purge). Deletes only profiles that open under the bytes in
+     * `voices/.profile_key` (provably legacy-key blobs). Always writes
+     * `.profile_key.purged` so a failed delete of the legacy file cannot cause repeated
+     * profile purges. Never uses the old constant key formula from production sources —
+     * only the on-disk file bytes.
      */
     private fun purgeLegacyConstantKeyArtifacts() {
         if (!legacyKeyFile.exists()) return
@@ -634,8 +638,8 @@ sealed interface VoiceKeyPrimingState {
 }
 
 /**
- * SecureStore reports the voice-profile key slot as present ([SecureStore.contains]) but
- * [SecureStore.getString] could not return it. Priming must fail closed — never mint a
+ * Non-destructive [SecureStore.read] returned [SecureRead.Unreadable] for the
+ * voice-profile key (entry left in place). Priming must fail closed — never mint a
  * replacement key or purge profiles.
  */
 class VoiceProfileKeyUnreadableException :
