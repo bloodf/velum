@@ -11,9 +11,11 @@ import dev.velum.core.data.VelumRepository
 import dev.velum.core.db.Autoflow
 import dev.velum.core.db.Recording
 import dev.velum.core.settings.ApiModelOverride
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -48,6 +50,24 @@ class AutoFlowRunner(
      * Tests inject 1ms; production keeps the 500ms default.
      */
     private val awaitStatusPollDelayMs: Long = DEFAULT_AWAIT_STATUS_POLL_MS,
+    /**
+     * Status writer used by the runner hot path. Production delegates to [repository];
+     * tests inject a throwing writer to prove one repo failure cannot kill AutoFlow.
+     */
+    private val writeStatus: suspend (recordingId: String, status: String) -> Unit =
+        { recordingId, status -> repository.updateStatus(recordingId, status) },
+    /**
+     * Direct-process path (when [jobScheduler] is null). Production delegates to [processor];
+     * tests inject a throwing flow to prove one processor failure cannot kill AutoFlow.
+     */
+    private val processFlow: (
+        recordingId: String,
+        templateId: String?,
+        retranscribe: Boolean,
+        apiModelOverride: ApiModelOverride?,
+    ) -> Flow<JobProgress> = { recordingId, templateId, retranscribe, apiModelOverride ->
+        processor.process(recordingId, templateId, retranscribe, apiModelOverride)
+    },
 ) {
     init {
         require(awaitStatusPollDelayMs >= 1) {
@@ -82,6 +102,10 @@ class AutoFlowRunner(
     internal val lastObservedSnapshotVersion: StateFlow<Long> =
         _lastObservedSnapshotVersion.asStateFlow()
 
+    /** True while the combine/collect job is active. Used by isolation tests. */
+    internal val isJobActive: Boolean
+        get() = job?.isActive == true
+
     fun start() {
         if (job != null) return
         job = scope.launch {
@@ -96,55 +120,85 @@ class AutoFlowRunner(
                     // Fingerprint the emission before matching so the recorded version
                     // describes this snapshot only; matching / claim behavior is unchanged.
                     val observedSnapshotVersion = snapshotVersion(recordings, flows)
-                    if (!seeded) {
-                        // Claim only terminal ready/failed. Do NOT claim matchable waiting
-                        // statuses (imported) or in-flight orphans (generating/queued) — those
-                        // remain eligible for rematch. Terminal rows must not re-ASR.
-                        processedIds.addAll(
-                            recordings
-                                .filter { isStableNonMatch(it) }
-                                .map { it.id },
-                        )
-                        seeded = true
-                        publishPassObservation(observedSnapshotVersion)
-                        return@collect
-                    }
-                    val enabledFlows = flows.filter { it.enabled == 1L }
-                    for (recording in recordings) {
-                        if (recording.id in processedIds) continue
-                        maybeApplyCalendarTitle(recording)
-                        val match = enabledFlows.firstOrNull { flow ->
-                            matches(flow, recording)
+                    try {
+                        if (!seeded) {
+                            // Claim only terminal ready/failed. Do NOT claim matchable waiting
+                            // statuses (imported) or in-flight orphans (generating/queued) — those
+                            // remain eligible for rematch. Terminal rows must not re-ASR.
+                            processedIds.addAll(
+                                recordings
+                                    .filter { isStableNonMatch(it) }
+                                    .map { it.id },
+                            )
+                            seeded = true
+                            return@collect
                         }
-                        if (match == null) {
-                            // Do not permanently skip incomplete rows (duration 0 / mid-capture).
-                            // Only mark stable terminal recordings that never matched.
-                            if (isStableNonMatch(recording)) {
-                                processedIds.add(recording.id)
+                        val enabledFlows = flows.filter { it.enabled == 1L }
+                        for (recording in recordings) {
+                            if (recording.id in processedIds) continue
+                            try {
+                                processMatchedRecording(recording, enabledFlows)
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (_: Exception) {
+                                // One recording's failure must not cancel AutoFlow for others.
+                                // Surface via existing failed status; never log identity values.
+                                markRecordingFailed(recording.id)
                             }
-                            continue
                         }
-                        // WorkManager already finished (e.g. after process death) — claim
-                        // without re-enqueue / re-ASR. True orphans keep non-terminal status.
-                        if (isStableNonMatch(recording)) {
-                            processedIds.add(recording.id)
-                            continue
-                        }
-                        val override = AutoFlowResolve.modelOverride(match)
-                        val ready = runProcessing(recording.id, match.template_id, override)
-                        // Claim only on observed terminal ready/failed. Timeout must leave
-                        // the id unclaimed so a late WorkManager finish can still rematch
-                        // and fire post-actions.
-                        val terminal = repository.getRecording(recording.id)?.status
-                        if (terminal == "ready" || terminal == "failed") {
-                            processedIds.add(recording.id)
-                        }
-                        if (ready) {
-                            firePostAction(match, recording.id)
-                        }
+                    } finally {
+                        // Always advance so tests (and rematch) observe a completed pass
+                        // even when a recording threw mid-pass.
+                        publishPassObservation(observedSnapshotVersion)
                     }
-                    publishPassObservation(observedSnapshotVersion)
                 }
+        }
+    }
+
+    private suspend fun processMatchedRecording(
+        recording: Recording,
+        enabledFlows: List<Autoflow>,
+    ) {
+        maybeApplyCalendarTitle(recording)
+        val match = enabledFlows.firstOrNull { flow ->
+            matches(flow, recording)
+        }
+        if (match == null) {
+            // Do not permanently skip incomplete rows (duration 0 / mid-capture).
+            // Only mark stable terminal recordings that never matched.
+            if (isStableNonMatch(recording)) {
+                processedIds.add(recording.id)
+            }
+            return
+        }
+        // WorkManager already finished (e.g. after process death) — claim
+        // without re-enqueue / re-ASR. True orphans keep non-terminal status.
+        if (isStableNonMatch(recording)) {
+            processedIds.add(recording.id)
+            return
+        }
+        val override = AutoFlowResolve.modelOverride(match)
+        val ready = runProcessing(recording.id, match.template_id, override)
+        // Claim only on observed terminal ready/failed. Timeout must leave
+        // the id unclaimed so a late WorkManager finish can still rematch
+        // and fire post-actions.
+        val terminal = repository.getRecording(recording.id)?.status
+        if (terminal == "ready" || terminal == "failed") {
+            processedIds.add(recording.id)
+        }
+        if (ready) {
+            firePostAction(match, recording.id)
+        }
+    }
+
+    private suspend fun markRecordingFailed(recordingId: String) {
+        processedIds.add(recordingId)
+        try {
+            writeStatus(recordingId, "failed")
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            // Secondary failure while recording the error — runner must still continue.
         }
     }
 
@@ -152,7 +206,6 @@ class AutoFlowRunner(
         _lastObservedSnapshotVersion.value = observedSnapshotVersion
         _passIndex.update { it + 1 }
     }
-
 
     fun stop() {
         job?.cancel()
@@ -177,7 +230,7 @@ class AutoFlowRunner(
             // fired post-actions before WorkManager started). Marking queued also
             // seeds sawInFlight for synchronous test schedulers that finish before
             // the first poll.
-            repository.updateStatus(recordingId, "queued")
+            writeStatus(recordingId, "queued")
             scheduler.enqueue(
                 recordingId = recordingId,
                 templateId = templateId,
@@ -187,11 +240,11 @@ class AutoFlowRunner(
             return awaitReadyStatus(recordingId, alreadyInFlight = true)
         }
         var succeeded = false
-        processor.process(
-            recordingId = recordingId,
-            templateId = templateId,
-            retranscribe = true,
-            apiModelOverride = apiModelOverride,
+        processFlow(
+            recordingId,
+            templateId,
+            true,
+            apiModelOverride,
         ).collect { progress ->
             if (progress is JobProgress.Succeeded) succeeded = true
         }

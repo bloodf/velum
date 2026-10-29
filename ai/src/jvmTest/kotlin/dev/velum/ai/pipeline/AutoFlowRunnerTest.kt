@@ -11,11 +11,15 @@ import dev.velum.ai.local.createLocalModelManager
 import dev.velum.ai.openai.OpenAiDiarizer
 import dev.velum.ai.openai.OpenAiLlmEngine
 import dev.velum.ai.openai.OpenAiTranscriber
+import dev.velum.ai.engine.JobProgress
 import dev.velum.core.autoflow.AutoFlowPostAction
+import dev.velum.core.calendar.CalendarEventProvider
+import dev.velum.core.calendar.CalendarLookupResult
 import dev.velum.core.data.DriverFactory
 import dev.velum.core.data.VelumRepository
 import dev.velum.core.data.createDatabase
 import dev.velum.core.security.InMemorySecureStore
+import dev.velum.core.settings.ApiModelOverride
 import dev.velum.core.settings.SettingsRepository
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
@@ -35,10 +39,14 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 
 /**
  * Deterministic AutoFlow runner tests: no wall-clock poll loops.
@@ -508,6 +516,249 @@ class AutoFlowRunnerTest {
             runner.stop()
             scope.cancel()
         }
+    }
+
+    @Test
+    fun schedulerEnqueue_throws_marksFailed_andProcessesNext() = runTest {
+        val (repo, processor) = harness()
+        val scope = runnerScope()
+        val okCalls = AtomicInteger(0)
+        val scheduler = RecordingJobScheduler { id, _, _, _ ->
+            if (id == "rec-bad") error("enqueue failed")
+            okCalls.incrementAndGet()
+            runBlocking {
+                repo.updateStatus(id, "generating")
+                repo.updateStatus(id, "ready")
+                repo.updateSummary(id, "## ok")
+            }
+        }
+        val runner = AutoFlowRunner(
+            repository = repo,
+            processor = processor,
+            scope = scope,
+            jobScheduler = scheduler,
+            awaitStatusPollDelayMs = 1L,
+        )
+        try {
+            assertIsolationKeepsRunnerAlive(
+                runner = runner,
+                repo = repo,
+                untilOk = { okCalls.get() >= 1 && repo.getRecording("rec-ok")?.status == "ready" },
+            )
+            assertEquals("failed", repo.getRecording("rec-bad")?.status)
+            assertEquals("ready", repo.getRecording("rec-ok")?.status)
+            assertEquals(1, okCalls.get())
+            assertTrue(runner.isJobActive)
+        } finally {
+            runner.stop()
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun processorProcess_throws_marksFailed_andProcessesNext() = runTest {
+        val (repo, processor) = harness()
+        val scope = runnerScope()
+        val okCalls = AtomicInteger(0)
+        val processFlow:
+            (String, String?, Boolean, ApiModelOverride?) -> Flow<JobProgress> =
+            { id, _, _, _ ->
+                flow {
+                    if (id == "rec-bad") error("process failed")
+                    okCalls.incrementAndGet()
+                    repo.updateStatus(id, "generating")
+                    repo.updateStatus(id, "ready")
+                    repo.updateSummary(id, "## ok")
+                    emit(JobProgress.Succeeded("ok"))
+                }
+            }
+        val runner = AutoFlowRunner(
+            repository = repo,
+            processor = processor,
+            scope = scope,
+            jobScheduler = null,
+            awaitStatusPollDelayMs = 1L,
+            processFlow = processFlow,
+        )
+        try {
+            assertIsolationKeepsRunnerAlive(
+                runner = runner,
+                repo = repo,
+                untilOk = { okCalls.get() >= 1 && repo.getRecording("rec-ok")?.status == "ready" },
+            )
+            assertEquals("failed", repo.getRecording("rec-bad")?.status)
+            assertEquals("ready", repo.getRecording("rec-ok")?.status)
+            assertEquals(1, okCalls.get())
+            assertTrue(runner.isJobActive)
+        } finally {
+            runner.stop()
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun calendarLookup_throws_marksFailed_andProcessesNext() = runTest {
+        val (repo, processor) = harness()
+        val scope = runnerScope()
+        val okCalls = AtomicInteger(0)
+        val calendarCalls = AtomicInteger(0)
+        val calendar = object : CalendarEventProvider {
+            override suspend fun currentOrNextEvent(aroundEpochMs: Long): CalendarLookupResult {
+                calendarCalls.incrementAndGet()
+                // First recording in the pass hits calendar before enqueue; fail that lookup once.
+                if (calendarCalls.get() == 1) error("calendar failed")
+                return CalendarLookupResult.Unavailable("test")
+            }
+        }
+        val scheduler = RecordingJobScheduler { id, _, _, _ ->
+            okCalls.incrementAndGet()
+            runBlocking {
+                repo.updateStatus(id, "generating")
+                repo.updateStatus(id, "ready")
+                repo.updateSummary(id, "## ok")
+            }
+        }
+        val runner = AutoFlowRunner(
+            repository = repo,
+            processor = processor,
+            scope = scope,
+            calendar = calendar,
+            jobScheduler = scheduler,
+            awaitStatusPollDelayMs = 1L,
+        )
+        try {
+            assertIsolationKeepsRunnerAlive(
+                runner = runner,
+                repo = repo,
+                untilOk = { okCalls.get() >= 1 && repo.getRecording("rec-ok")?.status == "ready" },
+            )
+            assertEquals("failed", repo.getRecording("rec-bad")?.status)
+            assertEquals("ready", repo.getRecording("rec-ok")?.status)
+            assertEquals(1, okCalls.get())
+            assertTrue(runner.isJobActive)
+        } finally {
+            runner.stop()
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun repositoryStatusWrite_throws_marksFailed_andProcessesNext() = runTest {
+        val (repo, processor) = harness()
+        val scope = runnerScope()
+        val okCalls = AtomicInteger(0)
+        val queuedWrites = AtomicInteger(0)
+        val scheduler = RecordingJobScheduler { id, _, _, _ ->
+            okCalls.incrementAndGet()
+            runBlocking {
+                repo.updateStatus(id, "generating")
+                repo.updateStatus(id, "ready")
+                repo.updateSummary(id, "## ok")
+            }
+        }
+        val writeStatus: suspend (String, String) -> Unit = { id, status ->
+            if (id == "rec-bad" && status == "queued") {
+                queuedWrites.incrementAndGet()
+                error("repo status write failed")
+            }
+            repo.updateStatus(id, status)
+        }
+        val runner = AutoFlowRunner(
+            repository = repo,
+            processor = processor,
+            scope = scope,
+            jobScheduler = scheduler,
+            awaitStatusPollDelayMs = 1L,
+            writeStatus = writeStatus,
+        )
+        try {
+            assertIsolationKeepsRunnerAlive(
+                runner = runner,
+                repo = repo,
+                untilOk = { okCalls.get() >= 1 && repo.getRecording("rec-ok")?.status == "ready" },
+            )
+            assertEquals("failed", repo.getRecording("rec-bad")?.status)
+            assertEquals("ready", repo.getRecording("rec-ok")?.status)
+            assertEquals(1, okCalls.get())
+            assertEquals(1, queuedWrites.get())
+            assertTrue(runner.isJobActive)
+        } finally {
+            runner.stop()
+            scope.cancel()
+        }
+    }
+
+    /**
+     * Shared #109 setup: enable a matching flow, insert a bad then ok recording in one
+     * snapshot, and wait until the ok recording is processed while the runner stays alive.
+     */
+    private suspend fun assertIsolationKeepsRunnerAlive(
+        runner: AutoFlowRunner,
+        repo: VelumRepository,
+        untilOk: suspend () -> Boolean,
+    ) {
+        runner.start()
+        awaitPass(runner, atLeast = 1)
+        awaitNextPass(runner, repo) {
+            repo.setAutoflowEnabled("flow-default", false)
+        }
+        awaitNextPass(runner, repo) {
+            repo.upsertAutoflow(
+                id = "flow-iso",
+                name = "All",
+                enabled = true,
+                wakePhrase = null,
+                durationMinSeconds = 0,
+                durationMaxSeconds = 3600,
+                sourceFilter = "all",
+                templateId = null,
+                autoLabelVoice = false,
+                language = "auto",
+                notify = true,
+                postAction = AutoFlowPostAction.None.stored,
+            )
+        }
+        // Real-time timeout: runTest's withTimeout is virtual and would fire while the
+        // runner works on Dispatchers.Default (same pattern as production / #108 helpers).
+        withContext(Dispatchers.Default) {
+            withTimeout(15_000) {
+                awaitNextPass(
+                    runner,
+                    repo,
+                    until = {
+                        repo.getRecording("rec-bad")?.status == "failed" && untilOk()
+                    },
+                ) {
+                    // started_at DESC: bad is first so calendar/scheduler see it before ok.
+                    insertImported(repo, id = "rec-bad", title = "Bad", startedAt = 200)
+                    insertImported(repo, id = "rec-ok", title = "Ok", startedAt = 100)
+                }
+            }
+        }
+        assertTrue(runner.isJobActive, "runner job must stay alive after one recording failure")
+    }
+
+    private suspend fun insertImported(
+        repo: VelumRepository,
+        id: String,
+        title: String,
+        startedAt: Long,
+    ) {
+        repo.insertRecording(
+            id = id,
+            sessionId = null,
+            folderId = null,
+            title = title,
+            source = "phone",
+            deviceSerial = null,
+            startedAt = startedAt,
+            durationSeconds = 10,
+            sizeBytes = 1,
+            localPath = "/tmp/$id.wav",
+            transcript = null,
+            summaryMarkdown = null,
+            status = "imported",
+        )
     }
 
     private fun runnerScope(): CoroutineScope =
