@@ -18,6 +18,7 @@ import dev.velum.app.platform.installMicCaptureContext
 import dev.velum.app.platform.installRecordingFilesDir
 import dev.velum.app.platform.publishContainerAfterStaleDownloadCleanup
 import dev.velum.app.platform.recordingsDirectoryPath
+import dev.velum.app.platform.sweepOrphanRecordingAudioAfterPublish
 import dev.velum.core.calendar.installCalendarContext
 import dev.velum.core.data.DriverFactory
 import dev.velum.core.integrations.IntegrationConfig
@@ -83,8 +84,9 @@ class VelumApplication : Application() {
                 // download that starts on awaitContainer() cannot race cleanup and lose its
                 // .download-tmp file mid-rename. Mic recovery stays in the same pre-publish
                 // window (no download traffic yet).
+                val recordingsDir = recordingsDirectoryPath()
                 publishContainerAfterStaleDownloadCleanup(
-                    recordingsDirPath = recordingsDirectoryPath(),
+                    recordingsDirPath = recordingsDir,
                     repository = built.repository,
                     onMicRecovered = { recordingId ->
                         built.enqueueProcessing(
@@ -97,6 +99,12 @@ class VelumApplication : Application() {
                         ready.set(true)
                         containerDeferred.complete(built)
                     },
+                )
+                // #122: after DB is open and readiness is published — never block/fail startup.
+                // Deletes audio left behind by #113 row dedupe; skips #86 partial/temp files.
+                sweepOrphanRecordingAudioAfterPublish(
+                    recordingsDirPath = recordingsDir,
+                    repository = built.repository,
                 )
             } catch (t: Throwable) {
                 Log.e(TAG, "AppContainer init failed", t)

@@ -110,6 +110,14 @@ class VelumRepository(
         q.selectRecordingById(id).executeAsOneOrNull()
     }
 
+    /**
+     * Every non-blank `local_path`, including trashed rows.
+     * Used by the #122 orphan-audio startup sweep so trash restore keeps its file.
+     */
+    suspend fun listRecordingLocalPaths(): List<String> = withContext(Dispatchers.Default) {
+        q.selectAllRecordingLocalPaths().executeAsList().filter { it.isNotBlank() }
+    }
+
     suspend fun getAllRecordings(): List<Recording> = withContext(Dispatchers.Default) {
         q.selectAllRecordings().executeAsList()
     }

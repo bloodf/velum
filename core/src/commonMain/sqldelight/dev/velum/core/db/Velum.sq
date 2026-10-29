@@ -204,6 +204,11 @@ DELETE FROM glossary_term;
 selectAllRecordingIds:
 SELECT id FROM recording;
 
+-- All on-disk audio paths, including trashed rows (#122 orphan sweep).
+selectAllRecordingLocalPaths:
+SELECT local_path FROM recording
+WHERE local_path IS NOT NULL AND length(local_path) > 0;
+
 selectAutoflows:
 SELECT * FROM autoflow ORDER BY name ASC;
 
