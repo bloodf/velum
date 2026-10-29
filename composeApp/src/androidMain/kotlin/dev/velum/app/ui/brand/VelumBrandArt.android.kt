@@ -17,11 +17,13 @@ actual fun VelumHero(
     contentDescription: String?,
 ) {
     val resId = if (dark) R.drawable.ic_velum_hero_dark else R.drawable.ic_velum_hero_light
+    // Crop (not FillWidth): FirstRun caps hero height so Skip stays on-screen;
+    // FillWidth would ignore heightIn and push the fold (#106).
     Image(
         painter = painterResource(resId),
         contentDescription = contentDescription,
         modifier = modifier.fillMaxWidth(),
-        contentScale = ContentScale.FillWidth,
+        contentScale = ContentScale.Crop,
     )
 }
 

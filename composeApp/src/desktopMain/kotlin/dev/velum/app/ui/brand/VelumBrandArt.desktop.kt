@@ -20,7 +20,7 @@ actual fun VelumHero(
         painter = painterResource(path),
         contentDescription = contentDescription,
         modifier = modifier.fillMaxWidth(),
-        contentScale = ContentScale.FillWidth,
+        contentScale = ContentScale.Crop,
     )
 }
 
