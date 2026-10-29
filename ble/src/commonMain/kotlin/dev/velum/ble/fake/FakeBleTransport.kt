@@ -100,6 +100,7 @@ class FakeBleTransport(
 
     override suspend fun disconnect() {
         mutex.withLock {
+            bumpLinkGeneration()
             peripheral?.resetUnlock()
             _activeProfile = null
             notifyFlows.clear()

@@ -13,6 +13,10 @@ import kotlinx.coroutines.sync.withLock
  * sealed ciphertext never crosses a public method boundary.
  *
  * Public entry point for Velum Dev #93: [writeEncrypted].
+ *
+ * A disconnect on the underlying [AbstractBleTransport] bumps the link
+ * generation; this session then rejects further writes until a new session is
+ * opened after reconnect.
  */
 class PlaudEncryptedSession internal constructor(
     private val transport: BleTransport,
@@ -20,13 +24,22 @@ class PlaudEncryptedSession internal constructor(
     private val secret: Protocol20SessionSecret,
     initialSendSeq: Long = 2,
 ) {
+    init {
+        require(initialSendSeq >= 2) {
+            "initialSendSeq must be >= 2 (got $initialSendSeq)"
+        }
+    }
+
     private val mutex = Mutex()
     private var sendSeq: Long = initialSendSeq
+    private val linkGenerationAtOpen: Long =
+        (transport as? AbstractBleTransport)?.currentLinkGeneration
+            ?: error("BLE transport does not support sealed session writes")
 
-    val sessionSecret: Protocol20SessionSecret get() = secret
+    internal val sessionSecret: Protocol20SessionSecret get() = secret
 
     /** Sequence number that will be used for the next [writeEncrypted] (tests). */
-    val nextSendSequence: Long get() = sendSeq
+    internal val nextSendSequence: Long get() = sendSeq
 
     /**
      * Guard [plaintext] for forbidden opcodes/settings, seal with the session
@@ -40,12 +53,15 @@ class PlaudEncryptedSession internal constructor(
         withoutResponse: Boolean = false,
     ) {
         mutex.withLock {
+            val host = transport as? AbstractBleTransport
+                ?: error("BLE transport does not support sealed session writes")
+            check(host.currentLinkGeneration == linkGenerationAtOpen) {
+                "Encrypted session invalidated by disconnect — open a new session after reconnect"
+            }
             PlaudWriteGuard.requireAllowedPlaintext(plaintext)
             val seq = sendSeq
             val sealed = cipher.sealPacket(secret, seq, plaintext)
             sendSeq = seq + 1
-            val host = transport as? AbstractBleTransport
-                ?: error("BLE transport does not support sealed session writes")
             host.writeSealedAlreadyGuarded(
                 characteristic = GattProfiles.PLAUD_WRITE,
                 payload = sealed,

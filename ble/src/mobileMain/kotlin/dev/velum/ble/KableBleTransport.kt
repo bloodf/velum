@@ -161,6 +161,7 @@ internal class KableBleTransport : AbstractBleTransport() {
                         .filter { it is State.Disconnected }
                         .collect {
                             mutex.withLock {
+                                bumpLinkGeneration()
                                 clearNotifyJobs()
                                 if (peripheral === p) {
                                     runCatching { p.close() }
@@ -191,6 +192,7 @@ internal class KableBleTransport : AbstractBleTransport() {
         }
         watch?.cancelAndJoin()
         mutex.withLock {
+            bumpLinkGeneration()
             clearNotifyJobs()
             runCatching { peripheral?.disconnect() }
             peripheral?.close()

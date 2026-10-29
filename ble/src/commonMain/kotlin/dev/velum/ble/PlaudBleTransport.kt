@@ -1,5 +1,6 @@
 package dev.velum.ble
 
+import dev.velum.ble.crypto.createSessionCipher
 import dev.velum.protocol.Protocol20SessionSecret
 import dev.velum.protocol.SessionCipher
 import kotlinx.coroutines.flow.Flow
@@ -36,24 +37,48 @@ class PlaudBleTransport(
     /**
      * Start an encrypted link session after unlock.
      *
-     * **Internal** to `:ble` — passing a [SessionCipher] into the session from
-     * outside this module must not compile. [PlaudDeviceClient] opens sessions
-     * after unlock; app code never calls this directly.
+     * Public signature takes only the session [secret] — the [SessionCipher] is
+     * built inside `:ble` via [createSessionCipher] so callers outside the module
+     * cannot inject a cipher whose [SessionCipher.sealPacket] returns arbitrary
+     * on-wire bytes.
      *
      * The returned [PlaudEncryptedSession] owns sealing; callers pass plaintext
      * to [PlaudEncryptedSession.writeEncrypted] only.
+     */
+    fun openEncryptedSession(
+        secret: Protocol20SessionSecret,
+        initialSendSeq: Long = 2,
+    ): PlaudEncryptedSession {
+        require(initialSendSeq >= 2) {
+            "initialSendSeq must be >= 2 (got $initialSendSeq)"
+        }
+        return openEncryptedSession(
+            cipher = createSessionCipher(),
+            secret = secret,
+            initialSendSeq = initialSendSeq,
+        )
+    }
+
+    /**
+     * Test / in-module overload that accepts an explicit [SessionCipher].
+     *
+     * **Internal** — outside `:ble` this must not compile (custom-cipher bypass).
      */
     internal fun openEncryptedSession(
         cipher: SessionCipher,
         secret: Protocol20SessionSecret,
         initialSendSeq: Long = 2,
-    ): PlaudEncryptedSession =
-        PlaudEncryptedSession(
+    ): PlaudEncryptedSession {
+        require(initialSendSeq >= 2) {
+            "initialSendSeq must be >= 2 (got $initialSendSeq)"
+        }
+        return PlaudEncryptedSession(
             transport = transport,
             cipher = cipher,
             secret = secret,
             initialSendSeq = initialSendSeq,
         )
+    }
 
     fun notifications(): Flow<ByteArray> =
         transport.notifications(GattProfiles.PLAUD_NOTIFY)
