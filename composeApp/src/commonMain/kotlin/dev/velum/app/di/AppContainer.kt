@@ -57,6 +57,9 @@ import dev.velum.core.time.VelumDateTime
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 
@@ -80,15 +83,24 @@ class AppContainer(
     val database = databaseHandle.database
     val repository = VelumRepository(databaseHandle)
     /**
-     * Sync read for the FirstRun gate on first frame and on activity recreate
-     * (rotate / config change). A one-shot constructor `val` went stale after
-     * [VelumRepository.markFirstRunDone] — recreate re-seeded FirstRun and hid
-     * the shell bottom bar for rotateAndBackground (#106).
-     *
-     * Must stay synchronous: a Compose [LaunchedEffect] can starve under R8
-     * minifiedTest device-walk idle polling and leave FirstRun/shell unpainted.
+     * In-memory FirstRun gate. Initial value is read once on the container
+     * construction path (Android: [Dispatchers.IO] in VelumApplication) — never
+     * from composition. [markFirstRunDone] clears the flow synchronously so
+     * activity recreate cannot re-show FirstRun before the DB write lands (#106).
      */
-    fun shouldShowFirstRun(): Boolean = runBlocking { !repository.isFirstRunDone() }
+    private val _firstRunPending = MutableStateFlow(
+        runBlocking { !repository.isFirstRunDone() },
+    )
+    val firstRunPending: StateFlow<Boolean> = _firstRunPending.asStateFlow()
+
+    /** Dismiss FirstRun in memory immediately; persist on [appScope]. */
+    fun markFirstRunDone() {
+        _firstRunPending.value = false
+        appScope.launch {
+            repository.markFirstRunDone()
+        }
+    }
+
     val settingsRepository = SettingsRepository(secureStore)
     val deviceKeyImporter: DeviceKeyImporter = SecureDeviceKeyImporter(secureStore)
     val aiClient = createOpenAiCompatibleClient()
