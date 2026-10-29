@@ -83,9 +83,10 @@ class MainActivity : ComponentActivity() {
      * under Compose UI Test idle polling on R8 minifiedTest; a Handler post +
      * full setContent replace avoids leaving an empty Box for waitForShell (#106).
      *
-     * CancellationException is not swallowed into fatal — the handoff executor is not
-     * a structured coroutine Job, so a cancelled Deferred surfaces as failure only when
-     * init itself failed (see [VelumApplication.containerInitError]).
+     * [CancellationException]: if the activity is already destroyed, ignore (do
+     * not show fatal). If still alive, startup itself was cancelled — show fatal
+     * so splash always ends (28fcef0 / #106). Never leave both ready and fatal
+     * false while the activity is on screen.
      */
     private fun startContainerHandoff(app: VelumApplication) {
         if (!handoffStarted.compareAndSet(false, true)) return
@@ -93,9 +94,14 @@ class MainActivity : ComponentActivity() {
             val result =
                 try {
                     Result.success(runBlocking { app.awaitContainer() })
-                } catch (_: CancellationException) {
-                    // Must not become fatal — never map cancel into the fatal UI (#106 CTO).
-                    Log.w(TAG, "Container handoff cancelled; not marking fatal")
+                } catch (ce: CancellationException) {
+                    Log.w(TAG, "Container handoff cancelled", ce)
+                    mainHandler.post {
+                        when (dispositionForHandoffCancellation(isDestroyed)) {
+                            HandoffCancelDisposition.Ignore -> Unit
+                            HandoffCancelDisposition.ShowFatal -> showFatal(ce)
+                        }
+                    }
                     return@execute
                 } catch (t: Throwable) {
                     val err = app.containerInitError()

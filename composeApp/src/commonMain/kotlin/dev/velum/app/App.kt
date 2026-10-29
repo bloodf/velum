@@ -139,6 +139,10 @@ private fun VelumRoot(container: AppContainer) {
     val firstRunPending by container.firstRunPending.collectAsState()
     var firstRunDismissed by remember { mutableStateOf(false) }
     val showFirstRun = firstRunPending && !firstRunDismissed
+    fun dismissFirstRun() {
+        firstRunDismissed = true
+        container.markFirstRunDone()
+    }
     var librarySelectedId by remember { mutableStateOf<String?>(null) }
     var librarySeekSeconds by remember { mutableStateOf(0L) }
     var libraryRail by remember { mutableStateOf(LibraryRailDestination.Library) }
@@ -660,28 +664,23 @@ private fun VelumRoot(container: AppContainer) {
         if (showFirstRun) {
             FirstRunScreen(
                 onPhoneMic = {
-                    firstRunDismissed = true
-                    container.markFirstRunDone()
+                    dismissFirstRun()
                     fabOpen = true
                 },
                 onImportRecorder = {
-                    firstRunDismissed = true
-                    container.markFirstRunDone()
+                    dismissFirstRun()
                     navController.navigate(Routes.IMPORT_AUDIO)
                 },
                 onConnectPlaud = {
-                    firstRunDismissed = true
-                    container.markFirstRunDone()
+                    dismissFirstRun()
                     navController.navigate(Routes.DEVICE)
                 },
                 onDownloadModels = {
-                    firstRunDismissed = true
-                    container.markFirstRunDone()
+                    dismissFirstRun()
                     navController.navigate(Routes.MODEL_MANAGER)
                 },
                 onDownloadRecommended = {
-                    firstRunDismissed = true
-                    container.markFirstRunDone()
+                    dismissFirstRun()
                     scope.launch {
                         val ids = ModelCatalogUi.recommendedModelIds(
                             languageHint = strings.localeTag,
@@ -695,8 +694,7 @@ private fun VelumRoot(container: AppContainer) {
                     }
                 },
                 onUseApi = {
-                    firstRunDismissed = true
-                    container.markFirstRunDone()
+                    dismissFirstRun()
                     scope.launch {
                         container.settingsRepository.setTranscriptionMode(ComputeMode.Api)
                         // Diarization stays Local (no remote contract).
@@ -705,8 +703,7 @@ private fun VelumRoot(container: AppContainer) {
                     }
                 },
                 onSkip = {
-                    firstRunDismissed = true
-                    container.markFirstRunDone()
+                    dismissFirstRun()
                 },
             )
         }

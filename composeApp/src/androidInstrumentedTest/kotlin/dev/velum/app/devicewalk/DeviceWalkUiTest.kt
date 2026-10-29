@@ -572,6 +572,9 @@ class DeviceWalkUiTest {
             }
         SystemClock.sleep(1_000)
         covered += "rotate/portrait"
+        // Hard fail — never Skip-dismiss here; that masked the recreate regression
+        // fixed by container firstRunPending (#106 / #115).
+        assertFirstRunNotVisible("rotation")
         device.pressHome()
         SystemClock.sleep(1_500)
         covered += "background"
@@ -583,34 +586,13 @@ class DeviceWalkUiTest {
         resumeShellActivity(singleTop = true)
         SystemClock.sleep(2_000)
         // Never treat bare "Velum" as shell — matches About / FirstRun title (#106).
-        // Config recreate can briefly re-show FirstRun if prefs lag; dismiss + drive
-        // back to Files before asserting shell chrome.
-        waitUntilUi(60_000) {
+        assertFirstRunNotVisible("returning from background")
+        waitUntilUi(30_000) {
             onFilesShellReady() ||
                 uiExists("All files") ||
                 uiExists("Todos os arquivos") ||
                 uiExists("Trash") ||
-                uiExists("Lixeira") ||
-                uiExists("Pular") ||
-                uiExists("Skip") ||
-                uiExists("Welcome to Velum") ||
-                uiExists("Bem-vindo ao Velum")
-        }
-        if (uiExists("Pular") || uiExists("Skip")) {
-            var skipped = false
-            for (label in listOf("Skip", "Pular")) {
-                val obj = device.findObject(By.textContains(label))
-                    ?: device.findObject(By.descContains(label))
-                    ?: continue
-                val bounds = obj.visibleBounds
-                if (device.click(bounds.centerX(), bounds.centerY())) {
-                    skipped = true
-                    break
-                }
-            }
-            if (!skipped) {
-                softClickUi("Pular", "Skip")
-            }
+                uiExists("Lixeira")
         }
         pressBackToFiles(lang)
         waitUntilUi(30_000) {
@@ -622,6 +604,19 @@ class DeviceWalkUiTest {
         }
         covered += "restore-from-background"
         shot("14-restore-$tag")
+    }
+
+    /** FirstRun after rotate/background means firstRunPending recreate regress (#106). */
+    private fun assertFirstRunNotVisible(phase: String) {
+        assertFalse(
+            uiExists("Skip") ||
+                uiExists("Pular") ||
+                uiExists("Welcome to Velum") ||
+                uiExists("Bem-vindo ao Velum") ||
+                uiExists("How to start") ||
+                uiExists("Como começar"),
+            "FirstRun must not reappear after $phase (recreate regression #106)",
+        )
     }
 
     /**
