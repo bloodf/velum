@@ -241,8 +241,9 @@ internal fun fsyncDirectoryBestEffort(directory: Path) {
  * when [target] is absent (caller must hold [AesKeyFileLock]).
  *
  * Never falls back on [AccessDeniedException] or [FileAlreadyExistsException]
- * (decided by exception type, never message text). Hard-link support is probed
- * lazily and cached once per directory.
+ * (decided by exception type, never message text).
+ * [UnsupportedOperationException] caches "hard links unsupported" per directory;
+ * a plain [FileSystemException] (e.g. ENOSPC/EIO) falls back for that call only.
  *
  * [afterTempReady] is a test-only hook invoked after the temp is durable and
  * before the publish step (stall a writer while another loader waits on the lock).
@@ -333,6 +334,7 @@ private fun tryPublishViaHardLink(
         hardLinkSupportedByDir.putIfAbsent(cacheKey, true)
         true
     } catch (_: UnsupportedOperationException) {
+        // Provider/FS permanently lacks hard links — cache and skip next time.
         hardLinkSupportedByDir[cacheKey] = false
         false
     } catch (e: AccessDeniedException) {
@@ -340,9 +342,8 @@ private fun tryPublishViaHardLink(
     } catch (e: FileAlreadyExistsException) {
         throw e
     } catch (_: FileSystemException) {
-        // FAT/exFAT/network shares often raise a plain FileSystemException when
-        // hard links are unavailable — fall back under the lock.
-        hardLinkSupportedByDir[cacheKey] = false
+        // Transient or environment-specific (ENOSPC/EIO, some network shares).
+        // Fall back for this call only — do not cache as "unsupported".
         false
     }
 }
