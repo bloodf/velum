@@ -589,8 +589,13 @@ class MainScreenshotsTest {
         container.settingsRepository.setSummaryMode(ComputeMode.Api)
         container.settingsRepository.setBaseUrl("https://api.openai.com/v1")
         // Demo voice profiles (tiny synthetic embeddings — UI list only).
+<<<<<<< HEAD
         // ensureKey before upsert — AppContainer primes on appScope and can race
         // this seed under Robolectric (#106).
+=======
+        // AppContainer only primes the voice-profile key asynchronously in init;
+        // upsert/cipher require [VoiceProfileStore.ensureKey] first (sync path).
+>>>>>>> 4b9beec (fix(test): await VoiceProfileStore.ensureKey before screenshot seed (#92))
         container.voiceProfileStore.ensureKey()
         val emb = FloatArray(192) { i -> (i % 17) / 17f }
         container.voiceProfileStore.upsert("Heitor", emb, role = "Product", company = "Velum")
