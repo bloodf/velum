@@ -22,6 +22,7 @@
 # - JobSupport.getCompletionExceptionOrNull (a75a9b1 walk: AbstractCoroutine receiver)
 # - ThreadSafeHeap.addLast (f25fed7 walk: TestCoroutineScheduler)
 # - ViewRootForTest$Companion.setOnViewCreatedCallback (65a96b6 walk)
+# - ViewRootForTest.getView (37b517a walk)
 # - WindowRecomposerPolicy.getAndSetFactory (c4bc1df walk)
 # - WindowRecomposerFactory (918aa6f: ClassCast to obfuscated platform.k)
 # - ContinuationInterceptor$DefaultImpls.releaseInterceptedContinuation (918aa6f)
@@ -34,7 +35,8 @@
 -keep class kotlin.coroutines.ContinuationInterceptor$DefaultImpls { *; }
 -keep class androidx.compose.ui.platform.InfiniteAnimationPolicy { *; }
 -keep class androidx.compose.ui.platform.InfiniteAnimationPolicy$* { *; }
--keep class androidx.compose.ui.platform.ViewRootForTest$Companion { *; }
+-keep class androidx.compose.ui.platform.ViewRootForTest { *; }
+-keep class androidx.compose.ui.platform.ViewRootForTest$* { *; }
 -keep class androidx.compose.ui.platform.WindowRecomposerPolicy { *; }
 -keep class androidx.compose.ui.platform.WindowRecomposerFactory { *; }
 
