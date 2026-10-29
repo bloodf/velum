@@ -71,6 +71,8 @@ class BleSealedWriteCompileGuardTest {
 
     @Test
     fun openEncryptedSession_withSessionCipher_unresolvedOutsideBle() {
+        // Public signature is openEncryptedSession(secret, initialSendSeq=2).
+        // Passing a SessionCipher must not resolve (custom-cipher bypass closed).
         assertProbeFailsToCompile(
             fileName = "OpenEncryptedSessionProbe.kt",
             source = """
@@ -79,6 +81,7 @@ class BleSealedWriteCompileGuardTest {
                 import dev.velum.ble.createBleTransport
                 import dev.velum.ble.crypto.createSessionCipher
                 import dev.velum.protocol.Protocol20SessionSecret
+                import dev.velum.protocol.SessionCipher
 
                 fun main() {
                     val secret = Protocol20SessionSecret(
@@ -86,13 +89,15 @@ class BleSealedWriteCompileGuardTest {
                         nonce = ByteArray(12),
                         aad = ByteArray(12),
                     )
+                    val cipher: SessionCipher = createSessionCipher()
+                    // Named-arg form that only the internal overload accepts.
                     PlaudBleTransport(createBleTransport()).openEncryptedSession(
-                        createSessionCipher(),
-                        secret,
+                        cipher = cipher,
+                        secret = secret,
                     )
                 }
             """.trimIndent(),
-            mustMention = "openEncryptedSession",
+            mustMentionAny = listOf("openEncryptedSession", "cipher", "SessionCipher", "cannot"),
         )
     }
 

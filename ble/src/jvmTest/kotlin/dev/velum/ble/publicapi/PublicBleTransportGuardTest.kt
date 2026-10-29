@@ -13,6 +13,7 @@ import dev.velum.protocol.ForbiddenOpcodes
 import dev.velum.protocol.ForbiddenSettings
 import dev.velum.protocol.Framing
 import dev.velum.protocol.Protocol20SessionSecret
+import dev.velum.protocol.SessionCipher
 import java.lang.reflect.Modifier
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -57,12 +58,6 @@ class PublicBleTransportGuardTest {
             BleTransport::class.java.methods.none { it.name == "writeSealedAlreadyGuarded" },
             "internal sealed write must not appear on BleTransport",
         )
-        assertTrue(
-            PlaudBleTransport::class.java.methods.none {
-                it.name == "openEncryptedSession" && Modifier.isPublic(it.modifiers)
-            },
-            "openEncryptedSession must not be a public JVM method",
-        )
         // writeEncrypted takes a single plaintext ByteArray (+ optional boolean), not sealed.
         val writeEncrypted = PlaudEncryptedSession::class.java.methods
             .filter { it.name == "writeEncrypted" && Modifier.isPublic(it.modifiers) }
@@ -73,6 +68,39 @@ class PublicBleTransportGuardTest {
                 1,
                 byteArrays,
                 "writeEncrypted must take exactly one ByteArray (plaintext): ${method.parameterTypes.toList()}",
+            )
+        }
+    }
+
+    @Test
+    fun publicOpenEncryptedSession_acceptsSecretOnly_notSessionCipher() {
+        val publicOpens = PlaudBleTransport::class.java.methods.filter {
+            it.name == "openEncryptedSession" && Modifier.isPublic(it.modifiers)
+        }
+        assertTrue(publicOpens.isNotEmpty(), "public openEncryptedSession(secret) must exist")
+        publicOpens.forEach { method ->
+            assertTrue(
+                method.parameterTypes.none { SessionCipher::class.java.isAssignableFrom(it) },
+                "public openEncryptedSession must not take SessionCipher: ${method.parameterTypes.toList()}",
+            )
+            assertTrue(
+                method.parameterTypes.any { it == Protocol20SessionSecret::class.java },
+                "public openEncryptedSession must take Protocol20SessionSecret",
+            )
+        }
+        // sessionSecret / nextSendSequence are internal — not public JVM methods (unmangled).
+        listOf(PlaudEncryptedSession::class.java).forEach { type ->
+            assertTrue(
+                type.methods.none {
+                    it.name == "getSessionSecret" && Modifier.isPublic(it.modifiers)
+                },
+                "${type.simpleName}.sessionSecret must not be public",
+            )
+            assertTrue(
+                type.methods.none {
+                    it.name == "getNextSendSequence" && Modifier.isPublic(it.modifiers)
+                },
+                "${type.simpleName}.nextSendSequence must not be public",
             )
         }
     }
@@ -123,9 +151,8 @@ class PublicBleTransportGuardTest {
         }
         assertTrue(fake.recordedWrites.isEmpty(), "CLEAR_ALL must not reach 2BB1 via public write")
 
-        val cipher = createSessionCipher()
         val secret = testSecret()
-        val session = PlaudBleTransport(fake).openEncryptedSession(cipher, secret)
+        val session = PlaudBleTransport(fake).openEncryptedSession(secret)
         assertFailsWith<IllegalArgumentException> {
             session.writeEncrypted(clearAll)
         }
@@ -136,6 +163,7 @@ class PublicBleTransportGuardTest {
         session.writeEncrypted(cmd9)
         val onWire = fake.recordedWrites.single().second
         assertFalse(onWire.contentEquals(clearAll), "on-wire must not be raw CLEAR_ALL")
+        val cipher = createSessionCipher()
         val opened = cipher.openPacket(secret, seq, onWire)
         assertTrue(opened != null && opened.second.contentEquals(cmd9))
         assertTrue(onWire.contentEquals(cipher.sealPacket(secret, seq, cmd9)))
@@ -156,14 +184,123 @@ class PublicBleTransportGuardTest {
         }
         assertTrue(fake.recordedWrites.isEmpty(), "raw FE20 LE must not reach 2BB1 via public write")
 
-        val session = PlaudBleTransport(fake).openEncryptedSession(
-            cipher = createSessionCipher(),
-            secret = testSecret(),
-        )
+        val session = PlaudBleTransport(fake).openEncryptedSession(testSecret())
         assertFailsWith<IllegalArgumentException> {
             session.writeEncrypted(fe20Le)
         }
         assertTrue(fake.recordedWrites.isEmpty(), "raw FE20 LE must not reach 2BB1 via writeEncrypted")
+    }
+
+    @Test
+    fun customCipherBypass_publicApiCannotInjectSealPacket() = runTest {
+        // Document the attack the public API must block: a SessionCipher whose
+        // sealPacket returns attacker-chosen bytes for allowed plaintext (cmd 9).
+        val attackerBytes = byteArrayOf(0x01, 0x20, 0xFE.toByte())
+        val malicious = object : SessionCipher {
+            override fun sealPacket(
+                secret: Protocol20SessionSecret,
+                sequence: Long,
+                packet: ByteArray,
+            ): ByteArray = attackerBytes.copyOf()
+
+            override fun openPacket(
+                secret: Protocol20SessionSecret,
+                sequence: Long,
+                ciphertextAndTag: ByteArray,
+            ): Pair<Long, ByteArray>? = null
+
+            override fun rsaDecryptPkcs1(privateKeyPem: String, ciphertext: ByteArray): ByteArray =
+                error("unused")
+
+            override fun rsaEncryptPkcs1(publicKeyPem: String, plaintext: ByteArray): ByteArray =
+                error("unused")
+
+            override fun chacha20Poly1305Open(
+                key: ByteArray,
+                nonce: ByteArray,
+                aad: ByteArray,
+                ciphertextAndTag: ByteArray,
+            ): ByteArray? = null
+
+            override fun chacha20Poly1305Seal(
+                key: ByteArray,
+                nonce: ByteArray,
+                aad: ByteArray,
+                plaintext: ByteArray,
+            ): ByteArray = error("unused")
+        }
+
+        val fake = FakeBleTransport()
+        fake.connect("fake-note-pro", GattProfiles.Plaud)
+        val secret = testSecret()
+        val cmd9 = rawAppCommand(9)
+
+        // Internal overload still exists for :ble tests — proves the bypass shape.
+        val internalSession = PlaudBleTransport(fake).openEncryptedSession(
+            cipher = malicious,
+            secret = secret,
+        )
+        internalSession.writeEncrypted(cmd9)
+        assertTrue(
+            fake.recordedWrites.single().second.contentEquals(attackerBytes),
+            "internal cipher overload can place attacker bytes (why it must stay internal)",
+        )
+        fake.clearRecordedWrites()
+
+        // Public API builds createSessionCipher() inside :ble — on-wire equals real seal.
+        val publicSession = PlaudBleTransport(fake).openEncryptedSession(secret)
+        val seq = publicSession.nextSendSequence
+        publicSession.writeEncrypted(cmd9)
+        val onWire = fake.recordedWrites.single().second
+        assertFalse(onWire.contentEquals(attackerBytes), "public path must not use injected cipher")
+        val real = createSessionCipher().sealPacket(secret, seq, cmd9)
+        assertTrue(onWire.contentEquals(real), "public path must seal with createSessionCipher()")
+    }
+
+    @Test
+    fun writeEncrypted_failsAfterDisconnectUntilNewSession() = runTest {
+        val fake = FakeBleTransport()
+        fake.connect("fake-note-pro", GattProfiles.Plaud)
+        val secret = testSecret()
+        val oldSession = PlaudBleTransport(fake).openEncryptedSession(secret)
+        val cmd9 = rawAppCommand(9)
+
+        oldSession.writeEncrypted(cmd9)
+        assertEquals(1, fake.recordedWrites.size)
+        fake.clearRecordedWrites()
+
+        fake.disconnect()
+        fake.connect("fake-note-pro", GattProfiles.Plaud)
+
+        assertFailsWith<IllegalStateException> {
+            oldSession.writeEncrypted(cmd9)
+        }
+        assertTrue(fake.recordedWrites.isEmpty(), "invalidated session must not write")
+
+        val newSession = PlaudBleTransport(fake).openEncryptedSession(secret)
+        newSession.writeEncrypted(cmd9)
+        assertEquals(1, fake.recordedWrites.size)
+    }
+
+    @Test
+    fun openEncryptedSession_requiresInitialSendSeqAtLeast2() {
+        val fake = FakeBleTransport()
+        val secret = testSecret()
+        assertFailsWith<IllegalArgumentException> {
+            PlaudBleTransport(fake).openEncryptedSession(secret, initialSendSeq = 1)
+        }
+        assertFailsWith<IllegalArgumentException> {
+            PlaudBleTransport(fake).openEncryptedSession(secret, initialSendSeq = 0)
+        }
+        assertFailsWith<IllegalArgumentException> {
+            PlaudBleTransport(fake).openEncryptedSession(
+                cipher = createSessionCipher(),
+                secret = secret,
+                initialSendSeq = 1,
+            )
+        }
+        // Boundary: 2 is allowed.
+        PlaudBleTransport(fake).openEncryptedSession(secret, initialSendSeq = 2)
     }
 
     @Test
@@ -202,10 +339,7 @@ class PublicBleTransportGuardTest {
         val fake = FakeBleTransport()
         fake.connect("fake-note-pro", GattProfiles.Plaud)
         val plaud = PlaudBleTransport(fake)
-        val session = plaud.openEncryptedSession(
-            cipher = createSessionCipher(),
-            secret = testSecret(),
-        )
+        val session = plaud.openEncryptedSession(testSecret())
 
         ForbiddenOpcodes.ALL.forEach { op ->
             assertFailsWith<IllegalArgumentException>("writeEncrypted opcode $op") {
@@ -226,8 +360,8 @@ class PublicBleTransportGuardTest {
         fake.connect("fake-note-pro", GattProfiles.Plaud)
         val cipher = createSessionCipher()
         val secret = testSecret()
+        // Public path: cipher built inside :ble. Use matching createSessionCipher for verify.
         val session = PlaudBleTransport(fake).openEncryptedSession(
-            cipher = cipher,
             secret = secret,
             initialSendSeq = 2,
         )
@@ -240,15 +374,13 @@ class PublicBleTransportGuardTest {
         assertEquals(GattProfiles.PLAUD_WRITE, fake.recordedWrites.single().first)
         val onWire = fake.recordedWrites.single().second
 
-        // Decrypt with the same session key and compare to the checked plaintext.
         val opened = cipher.openPacket(secret, expectedSeq, onWire)
-        assertTrue(opened != null, "on-wire bytes must open with the session cipher")
+        assertTrue(opened != null, "on-wire bytes must open with createSessionCipher()")
         assertEquals(expectedSeq, opened!!.first)
         assertTrue(
             opened.second.contentEquals(plaintext),
             "on-wire seal must decrypt to the guarded plaintext",
         )
-        // Independent check: re-seal locally and compare ciphertext bytes exactly.
         val expectedSeal = cipher.sealPacket(secret, expectedSeq, plaintext)
         assertTrue(
             onWire.contentEquals(expectedSeal),
