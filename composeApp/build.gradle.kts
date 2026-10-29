@@ -218,6 +218,18 @@ android {
     }
 }
 
+// Full exception text in CI JVM / Roborazzi logs (#92): UnsatisfiedLinkError
+// summaries were truncated to the type + source line; causes/stack traces name
+// the missing native library or symbol.
+tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
+    testLogging {
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+        showExceptions = true
+        showCauses = true
+        showStackTraces = true
+    }
+}
+
 roborazzi {
     outputDir.set(file("build/outputs/roborazzi"))
 }
