@@ -22,6 +22,7 @@
 # - JobSupport.getCompletionExceptionOrNull (a75a9b1 walk: AbstractCoroutine receiver)
 # - ThreadSafeHeap.addLast (f25fed7 walk: TestCoroutineScheduler)
 # - ComparisonsKt.compareValuesBy (11a4358 walk: TestDispatchEvent.compareTo)
+# - Snapshot.hasPendingChanges (31328ac walk: ComposeIdlingResource / Espresso onIdle)
 # - ViewRootForTest$Companion.setOnViewCreatedCallback (65a96b6 walk)
 # - ViewRootForTest.getView (37b517a walk)
 # - WindowRecomposerPolicy.getAndSetFactory (c4bc1df walk)
@@ -30,6 +31,9 @@
 # No kotlinx.coroutines.internal.** package wildcard — exact class only.
 # ComparisonsKt needs -keep (not -keepnames): coroutines-test calls
 # compareValuesBy reflectively; shrinking the method yields NoSuchMethodError.
+# Snapshot.hasPendingChanges is only referenced from Compose UI Test idle —
+# R8 strips it from the shared app classloader and wedges collectAsState /
+# performClick under minifiedTest (FirstRun never dismisses after Skip).
 -keep class kotlinx.coroutines.DelayWithTimeoutDiagnostics { *; }
 -keep class kotlinx.coroutines.internal.CoroutineExceptionHandlerImplKt { *; }
 -keep class kotlinx.coroutines.JobSupport { *; }
@@ -37,6 +41,7 @@
 -keep class kotlin.comparisons.ComparisonsKt { *; }
 -keep class kotlin.time.** { *; }
 -keep class kotlin.coroutines.ContinuationInterceptor$DefaultImpls { *; }
+-keep class androidx.compose.runtime.snapshots.Snapshot { *; }
 -keep class androidx.compose.ui.platform.InfiniteAnimationPolicy { *; }
 -keep class androidx.compose.ui.platform.InfiniteAnimationPolicy$* { *; }
 -keep class androidx.compose.ui.platform.ViewRootForTest { *; }
