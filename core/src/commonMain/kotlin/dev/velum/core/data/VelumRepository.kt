@@ -20,10 +20,6 @@ import dev.velum.core.templates.TemplateTagVocabulary
 import kotlin.random.Random
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
 
 class VelumRepository(
@@ -31,21 +27,6 @@ class VelumRepository(
     private val driver: SqlDriver,
 ) {
     private val q get() = db.velumQueries
-
-    private val _writeVersion = MutableStateFlow(0L)
-
-    /**
-     * Test observation hook: monotonic counter bumped after each mutating write that can
-     * change [observeRecordings] / [observeAutoflows] snapshots. Not used by production
-     * callers; AutoFlowRunner records the value it sampled for each pass so tests can wait
-     * for a pass that observed their write. Public only because the ai module reads it
-     * across the core/ai boundary (Kotlin `internal` is per-module).
-     */
-    val writeVersion: StateFlow<Long> = _writeVersion.asStateFlow()
-
-    private fun noteWrite() {
-        _writeVersion.update { it + 1 }
-    }
 
     /** False on hosts without SQLite FTS5 (e.g. Robolectric). Search falls back to ListSearch. */
     val ftsAvailable: Boolean
@@ -149,12 +130,10 @@ class VelumRepository(
 
     suspend fun setAutoflowEnabled(id: String, enabled: Boolean) = withContext(Dispatchers.Default) {
         q.updateAutoflowEnabled(if (enabled) 1 else 0, id)
-        noteWrite()
     }
 
     suspend fun setAutoflowNotify(id: String, notify: Boolean) = withContext(Dispatchers.Default) {
         q.updateAutoflowNotify(if (notify) 1 else 0, id)
-        noteWrite()
     }
 
     suspend fun updateAutoflow(
@@ -189,7 +168,6 @@ class VelumRepository(
             endpoint_profile_id = endpointProfileId?.takeIf { it.isNotBlank() },
             id = id,
         )
-        noteWrite()
     }
 
     suspend fun upsertAutoflow(
@@ -224,33 +202,27 @@ class VelumRepository(
             model_id = modelId?.takeIf { it.isNotBlank() },
             endpoint_profile_id = endpointProfileId?.takeIf { it.isNotBlank() },
         )
-        noteWrite()
     }
 
     suspend fun deleteAutoflow(id: String) = withContext(Dispatchers.Default) {
         q.deleteAutoflow(id)
-        noteWrite()
     }
 
     suspend fun trashRecording(id: String) = withContext(Dispatchers.Default) {
         q.trashRecording(id)
-        noteWrite()
     }
 
     suspend fun restoreRecording(id: String) = withContext(Dispatchers.Default) {
         q.restoreRecording(id)
-        noteWrite()
     }
 
     suspend fun moveRecordingToFolder(id: String, folderId: String?) = withContext(Dispatchers.Default) {
         q.updateRecordingFolder(folderId, id)
-        noteWrite()
     }
 
     suspend fun updateRecordingTitle(id: String, title: String) = withContext(Dispatchers.Default) {
         q.updateRecordingTitle(title, id)
         reindexRecording(id)
-        noteWrite()
     }
 
     suspend fun addMemory(id: String, content: String) = withContext(Dispatchers.Default) {
@@ -312,18 +284,15 @@ class VelumRepository(
     suspend fun updateTranscript(id: String, transcript: String) = withContext(Dispatchers.Default) {
         q.updateTranscript(transcript, id)
         reindexRecording(id)
-        noteWrite()
     }
 
     suspend fun updateSummary(id: String, summaryMarkdown: String) = withContext(Dispatchers.Default) {
         q.updateSummary(summaryMarkdown, id)
         reindexRecording(id)
-        noteWrite()
     }
 
     suspend fun updateStatus(id: String, status: String) = withContext(Dispatchers.Default) {
         q.updateStatus(status, id)
-        noteWrite()
     }
 
     suspend fun updateLocalPath(
@@ -333,7 +302,6 @@ class VelumRepository(
         sizeBytes: Long,
     ) = withContext(Dispatchers.Default) {
         q.updateLocalPath(localPath, durationSeconds, sizeBytes, id)
-        noteWrite()
     }
 
     /**
@@ -353,7 +321,6 @@ class VelumRepository(
             q.updateProcessingCheckpoint(status, nextTranscript, nextSummary, id)
             reindexRecording(id)
         }
-        noteWrite()
     }
 
     suspend fun getMeta(key: String): String? = withContext(Dispatchers.Default) {
@@ -478,7 +445,6 @@ class VelumRepository(
         q.deleteSpeakersForRecording(id)
         q.deleteRecordingHard(id)
         if (ftsAvailable) FtsIndex.deleteRecording(driver, id)
-        noteWrite()
     }
 
     /**
@@ -533,7 +499,6 @@ class VelumRepository(
     suspend fun clearLocalAudioPath(id: String) = withContext(Dispatchers.Default) {
         val rec = q.selectRecordingById(id).executeAsOneOrNull() ?: return@withContext
         q.updateLocalPath(null, rec.duration_seconds, 0, id)
-        noteWrite()
     }
 
     /** Plain-text backup of local library metadata + notes (no audio blobs). */
@@ -599,7 +564,6 @@ class VelumRepository(
             created_at = createdAt,
         )
         indexRecording(id, title, transcript, summaryMarkdown)
-        noteWrite()
     }
 
     /**

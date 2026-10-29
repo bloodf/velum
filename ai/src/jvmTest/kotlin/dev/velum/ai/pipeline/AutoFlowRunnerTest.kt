@@ -45,7 +45,7 @@ import kotlinx.coroutines.test.runTest
  * Runner scope uses [Dispatchers.Default] (same as production) so SQLDelight
  * `mapToList(Dispatchers.Default)` emissions and SharedFlow posts stay coherent;
  * readiness is signaled via [AutoFlowRunner.passIndex],
- * [AutoFlowRunner.lastObservedWriteVersion], and [CompletableDeferred].
+ * [AutoFlowRunner.lastObservedSnapshotVersion], and [CompletableDeferred].
  */
 class AutoFlowRunnerTest {
     @Test
@@ -296,17 +296,11 @@ class AutoFlowRunnerTest {
         try {
             runner.start()
             awaitPass(runner, atLeast = 1)
-            // Force another combine emission after seed, then one more before the negative.
+            // Force a post-seed combine emission, then assert no rematch.
             awaitNextPass(runner, repo) {
                 repo.updateRecordingTitle("rec-ready-done", "Already ready (touched)")
             }
-            awaitNoMatchConfirmed(
-                runner,
-                repo,
-                processCalls,
-                recordingId = "rec-ready-done",
-                message = "ready at seed must not rematch / re-ASR",
-            )
+            assertEquals(0, processCalls.get(), "ready at seed must not rematch / re-ASR")
             assertEquals("ready", repo.getRecording("rec-ready-done")?.status)
         } finally {
             runner.stop()
@@ -367,13 +361,14 @@ class AutoFlowRunnerTest {
             awaitNextPass(runner, repo) {
                 repo.updateStatus("rec-gen-to-ready", "ready")
             }
-            awaitNoMatchConfirmed(
-                runner,
-                repo,
-                processCalls,
-                recordingId = "rec-gen-to-ready",
-                message = "terminal ready after in-flight must not re-ASR",
-            )
+            // Force one more emission before the negative assert.
+            awaitNextPass(runner, repo) {
+                repo.updateRecordingTitle(
+                    "rec-gen-to-ready",
+                    "In flight then done (no-match-probe)",
+                )
+            }
+            assertEquals(0, processCalls.get(), "terminal ready after in-flight must not re-ASR")
         } finally {
             runner.stop()
             scope.cancel()
@@ -523,9 +518,10 @@ class AutoFlowRunnerTest {
     }
 
     /**
-     * Runs [block], captures [VelumRepository.writeVersion] after the write, then waits until
-     * a completed runner pass observed a version at least that high (and [until] holds).
-     * A stale pass that started before [block] cannot satisfy this wait.
+     * Runs [block] then waits until a completed runner pass advanced [passIndex] with a
+     * **different** [AutoFlowRunner.lastObservedSnapshotVersion] than before [block] (and
+     * [until] holds). A stale pass that started before [block] still publishes its old
+     * snapshot fingerprint, so it cannot satisfy the wait.
      */
     private suspend fun awaitNextPass(
         runner: AutoFlowRunner,
@@ -533,10 +529,13 @@ class AutoFlowRunnerTest {
         until: suspend () -> Boolean = { true },
         block: suspend () -> Unit,
     ) {
+        val beforeIndex = runner.passIndex.value
+        val beforeSnapshot = runner.lastObservedSnapshotVersion.value
         block()
-        val minWriteVersion = repo.writeVersion.value
         runner.passIndex.first {
-            runner.lastObservedWriteVersion.value >= minWriteVersion && until()
+            it > beforeIndex &&
+                runner.lastObservedSnapshotVersion.value != beforeSnapshot &&
+                until()
         }
     }
 

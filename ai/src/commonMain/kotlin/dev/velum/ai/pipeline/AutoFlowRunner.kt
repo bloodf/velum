@@ -71,15 +71,16 @@ class AutoFlowRunner(
      */
     internal val passIndex: StateFlow<Int> = _passIndex.asStateFlow()
 
-    private val _lastObservedWriteVersion = MutableStateFlow(0L)
+    private val _lastObservedSnapshotVersion = MutableStateFlow(0L)
 
     /**
-     * Test observation hook: [VelumRepository.writeVersion] sampled for the snapshot handled
-     * by the latest completed pass. Read-only observation — never consulted by matching or
-     * claim logic. AutoFlowRunnerTest waits for a pass whose observed version is at least
-     * the write version captured after its mutating [block].
+     * Test observation hook: fingerprint of the recordings+autoflows snapshot handled by the
+     * latest completed pass (published together with [passIndex]). Read-only observation —
+     * never consulted by matching or claim logic. AutoFlowRunnerTest waits for a pass whose
+     * observed fingerprint matches the repo fingerprint captured after its mutating [block].
      */
-    internal val lastObservedWriteVersion: StateFlow<Long> = _lastObservedWriteVersion.asStateFlow()
+    internal val lastObservedSnapshotVersion: StateFlow<Long> =
+        _lastObservedSnapshotVersion.asStateFlow()
 
     fun start() {
         if (job != null) return
@@ -92,9 +93,9 @@ class AutoFlowRunner(
             }
                 .distinctUntilChanged()
                 .collect { (recordings, flows) ->
-                    // Sample before matching so the recorded version describes this snapshot
-                    // only; matching / claim behavior below is unchanged.
-                    val observedWriteVersion = repository.writeVersion.value
+                    // Fingerprint the emission before matching so the recorded version
+                    // describes this snapshot only; matching / claim behavior is unchanged.
+                    val observedSnapshotVersion = snapshotVersion(recordings, flows)
                     if (!seeded) {
                         // Claim only terminal ready/failed. Do NOT claim matchable waiting
                         // statuses (imported) or in-flight orphans (generating/queued) — those
@@ -105,7 +106,7 @@ class AutoFlowRunner(
                                 .map { it.id },
                         )
                         seeded = true
-                        publishPassObservation(observedWriteVersion)
+                        publishPassObservation(observedSnapshotVersion)
                         return@collect
                     }
                     val enabledFlows = flows.filter { it.enabled == 1L }
@@ -142,15 +143,16 @@ class AutoFlowRunner(
                             firePostAction(match, recording.id)
                         }
                     }
-                    publishPassObservation(observedWriteVersion)
+                    publishPassObservation(observedSnapshotVersion)
                 }
         }
     }
 
-    private fun publishPassObservation(observedWriteVersion: Long) {
-        _lastObservedWriteVersion.value = observedWriteVersion
+    private fun publishPassObservation(observedSnapshotVersion: Long) {
+        _lastObservedSnapshotVersion.value = observedSnapshotVersion
         _passIndex.update { it + 1 }
     }
+
 
     fun stop() {
         job?.cancel()
@@ -311,6 +313,32 @@ class AutoFlowRunner(
         /** Terminal statuses — seed-claim / skip rematch; never retranscribe these. */
         internal fun isStableNonMatch(recording: Recording): Boolean =
             recording.status == "ready" || recording.status == "failed"
+
+        /**
+         * Test helper: fingerprint of a recordings+autoflows snapshot. Stable for equal
+         * observable fields; used only by [lastObservedSnapshotVersion] and tests.
+         */
+        internal fun snapshotVersion(
+            recordings: List<Recording>,
+            flows: List<Autoflow>,
+        ): Long {
+            var h = 1L
+            for (r in recordings.sortedBy { it.id }) {
+                h = h * 31 + r.id.hashCode()
+                h = h * 31 + r.status.hashCode()
+                h = h * 31 + r.duration_seconds
+                h = h * 31 + r.title.hashCode()
+                h = h * 31 + (r.local_path?.hashCode() ?: 0)
+            }
+            for (f in flows.sortedBy { it.id }) {
+                h = h * 31 + f.id.hashCode()
+                h = h * 31 + f.enabled
+                h = h * 31 + f.duration_min_seconds
+                h = h * 31 + f.duration_max_seconds
+                h = h * 31 + f.source_filter.hashCode()
+            }
+            return h
+        }
     }
 }
 
