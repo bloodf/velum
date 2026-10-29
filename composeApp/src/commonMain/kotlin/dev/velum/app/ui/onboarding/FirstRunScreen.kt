@@ -15,8 +15,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -89,25 +87,19 @@ fun FirstRunScreen(
             BlackButton(
                 fr.usePhoneMic,
                 onPhoneMic,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .semantics { contentDescription = fr.usePhoneMic },
+                modifier = Modifier.fillMaxWidth(),
             )
             Spacer(Modifier.height(10.dp))
             OutlineButton(
                 fr.importFromRecorder,
                 onImportRecorder,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .semantics { contentDescription = fr.importFromRecorder },
+                modifier = Modifier.fillMaxWidth(),
             )
             Spacer(Modifier.height(10.dp))
             OutlineButton(
                 fr.connectPlaud,
                 onConnectPlaud,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .semantics { contentDescription = fr.connectPlaud },
+                modifier = Modifier.fillMaxWidth(),
             )
 
             Spacer(Modifier.height(28.dp))
@@ -139,33 +131,25 @@ fun FirstRunScreen(
             BlackButton(
                 fr.downloadRecommended,
                 onDownloadRecommended,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .semantics { contentDescription = fr.downloadRecommended },
+                modifier = Modifier.fillMaxWidth(),
             )
             Spacer(Modifier.height(10.dp))
             OutlineButton(
                 fr.download,
                 onDownloadModels,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .semantics { contentDescription = fr.download },
+                modifier = Modifier.fillMaxWidth(),
             )
             Spacer(Modifier.height(10.dp))
             OutlineButton(
                 fr.useApi,
                 onUseApi,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .semantics { contentDescription = fr.useApi },
+                modifier = Modifier.fillMaxWidth(),
             )
             Spacer(Modifier.height(10.dp))
             OutlineButton(
                 fr.skip,
                 onSkip,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .semantics { contentDescription = fr.skip },
+                modifier = Modifier.fillMaxWidth(),
             )
             Spacer(Modifier.height(8.dp))
             Text(
