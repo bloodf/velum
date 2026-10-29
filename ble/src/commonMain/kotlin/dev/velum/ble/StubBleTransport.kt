@@ -46,6 +46,7 @@ internal class StubBleTransport(
     }
 
     override suspend fun disconnect() {
+        bumpLinkGeneration()
         _activeProfile = null
         _state.value = BleConnectionState.Idle
     }

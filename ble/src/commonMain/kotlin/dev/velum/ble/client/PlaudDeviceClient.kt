@@ -65,7 +65,7 @@ class PlaudDeviceClient(
     private var recvSeq: Long = 0
     private var protocolVersion: Int = 20
 
-    val sessionSecret: Protocol20SessionSecret? get() = secret
+    internal val sessionSecret: Protocol20SessionSecret? get() = secret
     val linkProtocolVersion: Int get() = protocolVersion
 
     suspend fun start() {

@@ -26,8 +26,21 @@ internal interface BleSealedWriteSink {
  *
  * (Kotlin forbids `internal override` of a public interface member on a public
  * class; the abstract member here is itself `internal`, which allows it.)
+ *
+ * [bumpLinkGeneration] runs on disconnect so [PlaudEncryptedSession] instances
+ * opened against a prior link refuse [PlaudEncryptedSession.writeEncrypted].
  */
 abstract class AbstractBleTransport : BleTransport {
+    private var linkGeneration: Long = 0
+
+    /** Monotonic link id; sessions capture this at open and check on write. */
+    internal val currentLinkGeneration: Long get() = linkGeneration
+
+    /** Call from [disconnect] (and any hard link teardown) before clearing state. */
+    protected fun bumpLinkGeneration() {
+        linkGeneration += 1
+    }
+
     /**
      * Sealed write — visible only inside the `:ble` module.
      *
