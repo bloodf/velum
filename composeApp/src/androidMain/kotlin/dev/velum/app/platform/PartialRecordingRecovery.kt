@@ -1,10 +1,12 @@
 package dev.velum.app.platform
 
 import android.util.Log
+import androidx.annotation.VisibleForTesting
 import dev.velum.ai.audio.DownloadedSessionAudioPersist
 import dev.velum.ai.local.ModelStoreDir
 import dev.velum.core.data.VelumRepository
 import java.io.File
+import kotlinx.coroutines.CancellationException
 
 /**
  * After process death, rewrite incomplete WAV headers and refresh matching
@@ -100,6 +102,48 @@ internal suspend fun <T> cleanupStaleDownloadsThenPublish(
 ): T {
     cleanup()
     return publish()
+}
+
+/**
+ * VelumApplication success-path gate after the app container is built (#86 / #119).
+ *
+ * Wipes stale SoftAP/download temps and recovers mic partials, then invokes [publish].
+ * Callers must put `ready.set(true)` / `containerDeferred.complete(...)` only inside [publish].
+ */
+@VisibleForTesting
+internal suspend fun publishContainerAfterStaleDownloadCleanup(
+    recordingsDirPath: String,
+    repository: VelumRepository,
+    onMicRecovered: (recordingId: String) -> Unit,
+    publish: () -> Unit,
+) {
+    cleanupStaleDownloadsThenPublish(
+        cleanup = {
+            runCatching {
+                val removed = cleanupStaleDownloadArtifacts(
+                    recordingsDirPath = recordingsDirPath,
+                    repository = repository,
+                )
+                if (removed > 0) {
+                    Log.i(TAG, "Removed $removed stale download temp(s)")
+                }
+            }.onFailure { t ->
+                if (t is CancellationException) throw t
+                Log.e(TAG, "Stale download temp cleanup failed", t)
+            }
+            runCatching {
+                recoverPartialMicRecordings(
+                    recordingsDirPath = recordingsDirPath,
+                    repository = repository,
+                    onRecovered = onMicRecovered,
+                )
+            }.onFailure { t ->
+                if (t is CancellationException) throw t
+                Log.e(TAG, "Partial mic recovery failed", t)
+            }
+        },
+        publish = publish,
+    )
 }
 
 /** Mic WAVs / `rec-*.wav.partial` only — never download temps. */

@@ -13,12 +13,10 @@ import dev.velum.app.di.AppContainer
 import dev.velum.app.platform.DownloadProgressNotifier
 import dev.velum.app.platform.MicRecordingService
 import dev.velum.app.platform.ShareTextHolder
-import dev.velum.app.platform.cleanupStaleDownloadArtifacts
-import dev.velum.app.platform.cleanupStaleDownloadsThenPublish
 import dev.velum.app.platform.installAppContext
 import dev.velum.app.platform.installMicCaptureContext
 import dev.velum.app.platform.installRecordingFilesDir
-import dev.velum.app.platform.recoverPartialMicRecordings
+import dev.velum.app.platform.publishContainerAfterStaleDownloadCleanup
 import dev.velum.app.platform.recordingsDirectoryPath
 import dev.velum.core.calendar.installCalendarContext
 import dev.velum.core.data.DriverFactory
@@ -27,7 +25,6 @@ import dev.velum.core.security.AndroidSecureStore
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -82,40 +79,19 @@ class VelumApplication : Application() {
                     repository = built.repository,
                     settings = built.settingsRepository,
                 )
-                cleanupStaleDownloadsThenPublish(
-                    cleanup = {
-                        // Wipe crashed SoftAP/download temps BEFORE publishing the container so a
-                        // download that starts on awaitContainer() cannot race cleanup and lose its
-                        // .download-tmp file mid-rename. Mic recovery stays in the same pre-publish
-                        // window (no download traffic yet).
-                        runCatching {
-                            val removed = cleanupStaleDownloadArtifacts(
-                                recordingsDirPath = recordingsDirectoryPath(),
-                                repository = built.repository,
-                            )
-                            if (removed > 0) {
-                                Log.i(TAG, "Removed $removed stale download temp(s)")
-                            }
-                        }.onFailure { t ->
-                            if (t is CancellationException) throw t
-                            Log.e(TAG, "Stale download temp cleanup failed", t)
-                        }
-                        runCatching {
-                            recoverPartialMicRecordings(
-                                recordingsDirPath = recordingsDirectoryPath(),
-                                repository = built.repository,
-                                onRecovered = { recordingId ->
-                                    built.enqueueProcessing(
-                                        recordingId = recordingId,
-                                        templateId = null,
-                                        retranscribe = true,
-                                    )
-                                },
-                            )
-                        }.onFailure { t ->
-                            if (t is CancellationException) throw t
-                            Log.e(TAG, "Partial mic recovery failed", t)
-                        }
+                // Wipe crashed SoftAP/download temps BEFORE publishing the container so a
+                // download that starts on awaitContainer() cannot race cleanup and lose its
+                // .download-tmp file mid-rename. Mic recovery stays in the same pre-publish
+                // window (no download traffic yet).
+                publishContainerAfterStaleDownloadCleanup(
+                    recordingsDirPath = recordingsDirectoryPath(),
+                    repository = built.repository,
+                    onMicRecovered = { recordingId ->
+                        built.enqueueProcessing(
+                            recordingId = recordingId,
+                            templateId = null,
+                            retranscribe = true,
+                        )
                     },
                     publish = {
                         ready.set(true)
