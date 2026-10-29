@@ -184,7 +184,7 @@ class DeviceWalkUiTest {
         // Search sheet (best-effort)
         if (softClickContentDesc("Search", "Buscar")) {
             covered += "library/search"
-            device.pressBack()
+            pressNavBack()
             SystemClock.sleep(300)
         }
         // Peek trash filter then restore All — never leave Trash selected.
@@ -286,19 +286,19 @@ class DeviceWalkUiTest {
             runCatching {
                 clickTextPrefer("Change template", "Trocar modelo")
                 covered += "recording/change-template"
-                device.pressBack()
+                pressNavBack()
             }
             runCatching {
                 clickTextPrefer("Versions", "Versões")
                 covered += "recording/versions"
-                device.pressBack()
+                pressNavBack()
             }
             runCatching {
                 clickTextPrefer("Sources", "Fontes")
                 covered += "recording/sources"
             }
         }
-        device.pressBack()
+        pressNavBack()
         pressBackToFiles(lang)
     }
 
@@ -334,10 +334,10 @@ class DeviceWalkUiTest {
                 "Buscar",
             )
             covered += "templates/search"
-            device.pressBack()
+            pressNavBack()
         }
         shot("07-templates-$tag")
-        device.pressBack()
+        pressNavBack()
         pressBackToFiles(lang)
     }
 
@@ -360,7 +360,7 @@ class DeviceWalkUiTest {
             runCatching {
                 composeRule.onAllNodesWithText("→", substring = true)
             }
-            device.pressBack()
+            pressNavBack()
         }
         runCatching {
             // Prefill editor via "New" / create if visible
@@ -372,9 +372,9 @@ class DeviceWalkUiTest {
                 "Criar",
             )
             covered += "autoflow/editor"
-            device.pressBack()
+            pressNavBack()
         }
-        device.pressBack()
+        pressNavBack()
         pressBackToFiles(lang)
     }
 
@@ -387,7 +387,7 @@ class DeviceWalkUiTest {
             )
             covered += "ask"
             shot("09-ask-$tag")
-            device.pressBack()
+            pressNavBack()
         }
         // Also from settings/explore if FAB path differed
         pressBackToFiles(lang)
@@ -447,7 +447,7 @@ class DeviceWalkUiTest {
                 if (cov == "settings/integrations") {
                     covered += "settings/integrations-sheet"
                 }
-                device.pressBack()
+                pressNavBack()
             }
         }
         pressBackToFiles(lang)
@@ -478,8 +478,8 @@ class DeviceWalkUiTest {
                 covered += "device/permission-or-scan"
                 dismissSystemPermissionDialogs()
             }
-            device.pressBack()
-            device.pressBack()
+            pressNavBack()
+            pressNavBack()
         }
         pressBackToFiles(lang)
     }
@@ -504,7 +504,7 @@ class DeviceWalkUiTest {
                 "Cancel",
                 "Cancelar",
             )
-            device.pressBack()
+            pressNavBack()
         }
         pressBackToFiles(lang)
     }
@@ -729,11 +729,25 @@ class DeviceWalkUiTest {
         }
     }
 
+    /**
+     * Pop one Compose destination via the top-bar Back affordance.
+     * Never use [UiDevice.pressBack] here — on API 35 predictive back can
+     * finish [MainActivity] and orphan ActivityScenario (DESTROYED outside
+     * scenario close), after which recreate/wait can never recover the shell.
+     */
+    private fun pressNavBack(): Boolean {
+        if (softClickContentDesc("Back", "Voltar")) {
+            SystemClock.sleep(400)
+            return true
+        }
+        return false
+    }
+
     private fun pressBackToFiles(lang: String) {
         repeat(12) {
             if (onFilesShellReady()) return
-            // Nested settings: pop via top-bar Back CD before device.pressBack.
-            softClickContentDesc("Back", "Voltar")
+            // Nested settings / detail: pop via top-bar Back CD only.
+            pressNavBack()
             if (onFilesShellReady()) return
             // Bottom bar Files tab is only composed on shell routes (not FirstRun).
             if (softClickContentDesc("All files", "Todos os arquivos") && onFilesShellReady()) {
@@ -741,12 +755,11 @@ class DeviceWalkUiTest {
             }
             softClickText("Files", "Arquivos")
             if (onFilesShellReady()) return
-            device.pressBack()
-            SystemClock.sleep(250)
             dismissSystemPermissionDialogs()
             if (composeExists("Skip") || composeExists("Pular")) {
                 softClickText("Skip", "Pular")
             }
+            SystemClock.sleep(250)
         }
         if (onFilesShellReady()) return
         // Last resort: recreate the ActivityScenario-owned activity. Bare
