@@ -91,11 +91,11 @@ fun AutoFlowListScreen(
     val prefs by container.settingsRepository.preferences.collectAsState()
     val scope = rememberCoroutineScope()
 
+    // Pin chrome outside scroll so Back CD stays reachable (#106 device walk).
     Column(
         Modifier
             .fillMaxSize()
-            .background(VelumBg)
-            .verticalScroll(rememberScrollState()),
+            .background(VelumBg),
     ) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
@@ -103,7 +103,7 @@ fun AutoFlowListScreen(
         ) {
             Icon(
                 Icons.AutoMirrored.Outlined.ArrowBack,
-                null,
+                contentDescription = strings.ux.back,
                 tint = VelumInk,
                 modifier = Modifier.size(40.dp).clickable(onClick = onBack).padding(8.dp),
             )
@@ -120,6 +120,12 @@ fun AutoFlowListScreen(
             }
             Spacer(Modifier.width(8.dp))
         }
+        Column(
+            Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState()),
+        ) {
         Spacer(Modifier.height(12.dp))
         Box(
             Modifier
@@ -208,6 +214,7 @@ fun AutoFlowListScreen(
             }
         }
         Spacer(Modifier.height(40.dp))
+        }
     }
 }
 
@@ -396,7 +403,7 @@ fun AutoFlowEditScreen(
         ) {
             Icon(
                 Icons.AutoMirrored.Outlined.ArrowBack,
-                null,
+                contentDescription = strings.ux.back,
                 tint = VelumInk,
                 modifier = Modifier.size(40.dp).clickable { tryBack() }.padding(8.dp),
             )

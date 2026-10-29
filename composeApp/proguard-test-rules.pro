@@ -13,10 +13,12 @@
 -keepnames class kotlinx.** { *; }
 -keepnames class androidx.** { *; }
 
-# Targeted keep (not blanket kotlinx.**): Compose UI Test resolves this
-# interface via the app classloader, but app code never references it, so R8
-# would shrink it (ce8d7db: ClassNotFoundException DelayWithTimeoutDiagnostics).
+# Targeted keeps (not blanket kotlin.** / kotlinx.**): Compose UI Test resolves
+# these via the app classloader, but app code may not reference them, so R8
+# would shrink them (ce8d7db DelayWithTimeoutDiagnostics; 4406be9
+# AbstractLongTimeSource).
 -keep class kotlinx.coroutines.DelayWithTimeoutDiagnostics { *; }
+-keep class kotlin.time.** { *; }
 
 # --- App instrumentation seams (must not be stripped or renamed) ---
 -keep class dev.velum.app.devicewalk.** { *; }

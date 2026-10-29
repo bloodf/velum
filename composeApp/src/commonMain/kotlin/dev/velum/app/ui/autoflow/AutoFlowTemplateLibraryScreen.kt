@@ -101,7 +101,7 @@ fun AutoFlowTemplateLibraryScreen(
         ) {
             Icon(
                 Icons.AutoMirrored.Outlined.ArrowBack,
-                null,
+                contentDescription = strings.ux.back,
                 tint = VelumInk,
                 modifier = Modifier.size(40.dp).clickable(onClick = onBack).padding(8.dp),
             )
