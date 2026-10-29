@@ -89,68 +89,75 @@ fun StoragePrivacyScreen(
         )
     }
 
+    // Pin ScreenTopBar outside the scroll so Back stays reachable (#118).
     Column(
         Modifier
             .fillMaxSize()
-            .background(VelumSurface)
-            .verticalScroll(rememberScrollState()),
+            .background(VelumSurface),
     ) {
         ScreenTopBar(strings.settingsUi.storagePrivacy, onBack = onBack)
-        Text(
-            strings.settingsUi.privacyOnDeviceStatement,
-            color = VelumInk,
-            fontSize = 15.sp,
-            lineHeight = 22.sp,
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
-        )
-        Text(
-            strings.settingsUi.privacyNoTelemetry,
-            color = VelumInkSecondary,
-            fontSize = 13.sp,
-            lineHeight = 18.sp,
-            modifier = Modifier.padding(horizontal = 20.dp),
-        )
-        Spacer(Modifier.height(16.dp))
-        SectionLabel(strings.settingsUi.storageUsage)
-        Text(
-            usageLabel,
-            color = VelumInk,
-            fontSize = 15.sp,
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-        )
-        Spacer(Modifier.height(8.dp))
-        ToggleRow(
-            strings.settingsUi.deleteAudioAfterProcessing,
-            prefs.deleteAudioAfterProcessing,
-            { enabled ->
-                scope.launch { container.settingsRepository.setDeleteAudioAfterProcessing(enabled) }
-            },
-            strings.settingsUi.deleteAudioAfterProcessingHint,
-            showDivider = false,
-        )
-        Spacer(Modifier.height(24.dp))
-        BlackButton(
-            strings.settingsUi.exportLibraryBackup,
-            {
-                scope.launch {
-                    val body = container.repository.exportLibraryBackupText()
-                    shareText("Velum backup", body)
-                    status = strings.settingsUi.exportLibraryBackupDone
-                }
-            },
-            Modifier.fillMaxWidth().padding(horizontal = 20.dp),
-        )
-        Spacer(Modifier.height(12.dp))
-        OutlineButton(
-            strings.settingsUi.wipeAllData,
-            { confirmWipe = true },
-            Modifier.fillMaxWidth().padding(horizontal = 20.dp),
-        )
-        status?.let {
+        Column(
+            Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState()),
+        ) {
+            Text(
+                strings.settingsUi.privacyOnDeviceStatement,
+                color = VelumInk,
+                fontSize = 15.sp,
+                lineHeight = 22.sp,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+            )
+            Text(
+                strings.settingsUi.privacyNoTelemetry,
+                color = VelumInkSecondary,
+                fontSize = 13.sp,
+                lineHeight = 18.sp,
+                modifier = Modifier.padding(horizontal = 20.dp),
+            )
             Spacer(Modifier.height(16.dp))
-            Text(it, color = VelumInkSecondary, modifier = Modifier.padding(horizontal = 20.dp))
+            SectionLabel(strings.settingsUi.storageUsage)
+            Text(
+                usageLabel,
+                color = VelumInk,
+                fontSize = 15.sp,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+            )
+            Spacer(Modifier.height(8.dp))
+            ToggleRow(
+                strings.settingsUi.deleteAudioAfterProcessing,
+                prefs.deleteAudioAfterProcessing,
+                { enabled ->
+                    scope.launch { container.settingsRepository.setDeleteAudioAfterProcessing(enabled) }
+                },
+                strings.settingsUi.deleteAudioAfterProcessingHint,
+                showDivider = false,
+            )
+            Spacer(Modifier.height(24.dp))
+            BlackButton(
+                strings.settingsUi.exportLibraryBackup,
+                {
+                    scope.launch {
+                        val body = container.repository.exportLibraryBackupText()
+                        shareText("Velum backup", body)
+                        status = strings.settingsUi.exportLibraryBackupDone
+                    }
+                },
+                Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+            )
+            Spacer(Modifier.height(12.dp))
+            OutlineButton(
+                strings.settingsUi.wipeAllData,
+                { confirmWipe = true },
+                Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+            )
+            status?.let {
+                Spacer(Modifier.height(16.dp))
+                Text(it, color = VelumInkSecondary, modifier = Modifier.padding(horizontal = 20.dp))
+            }
+            Spacer(Modifier.height(40.dp))
         }
-        Spacer(Modifier.height(40.dp))
     }
 }
 

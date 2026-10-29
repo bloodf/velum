@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -34,60 +35,67 @@ fun PreferencesScreen(
     val settings by container.settingsRepository.settings.collectAsState()
     val scope = rememberCoroutineScope()
 
+    // Pin ScreenTopBar outside the scroll so Back stays reachable (#118).
     Column(
         Modifier
             .fillMaxSize()
-            .background(VelumSurface)
-            .verticalScroll(rememberScrollState()),
+            .background(VelumSurface),
     ) {
         ScreenTopBar(strings.preferences, onBack = onBack)
-        SectionLabel(strings.aiProcessing)
-        ChevronRow(
-            strings.aiProcessing,
-            onAiProcessing,
-            value = if (settings.transcriptionMode.name == "Local") strings.computeLocal else strings.computeApi,
-        )
-        Spacer(Modifier.height(8.dp))
-        SectionLabel(strings.transcriptionSummary)
-        ChevronRow(
-            strings.transcriptionLanguage,
-            onAiProcessing,
-            value = when (settings.audioLanguage) {
-                "auto" -> strings.languageAuto
-                "pt-BR" -> strings.languagePtBr
-                "en" -> strings.languageEn
-                else -> settings.audioLanguage
-            },
-        )
-        ToggleRow(
-            strings.cleanTranscript,
-            prefs.cleanTranscript,
-            { enabled -> scope.launch { container.settingsRepository.setCleanTranscript(enabled) } },
-            strings.cleanTranscriptHint,
-        )
-        ChevronRow(
-            strings.autoSpeakerLabel,
-            {
-                scope.launch {
-                    container.settingsRepository.setAutoSpeakerLabel(!prefs.autoSpeakerLabel)
-                }
-            },
-            value = if (prefs.autoSpeakerLabel) strings.on else strings.off,
-        )
-        ChevronRow(
-            strings.customVocabulary,
-            onCustomVocabulary,
-            value = strings.glossary,
-        )
-        Spacer(Modifier.height(8.dp))
-        SectionLabel(strings.notification)
-        ToggleRow(
-            strings.messageNotification,
-            prefs.autoflowNotify,
-            { enabled -> scope.launch { container.settingsRepository.setAutoflowNotify(enabled) } },
-            strings.doTranscribeSummarizeHint,
-            showDivider = false,
-        )
-        Spacer(Modifier.height(40.dp))
+        Column(
+            Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState()),
+        ) {
+            SectionLabel(strings.aiProcessing)
+            ChevronRow(
+                strings.aiProcessing,
+                onAiProcessing,
+                value = if (settings.transcriptionMode.name == "Local") strings.computeLocal else strings.computeApi,
+            )
+            Spacer(Modifier.height(8.dp))
+            SectionLabel(strings.transcriptionSummary)
+            ChevronRow(
+                strings.transcriptionLanguage,
+                onAiProcessing,
+                value = when (settings.audioLanguage) {
+                    "auto" -> strings.languageAuto
+                    "pt-BR" -> strings.languagePtBr
+                    "en" -> strings.languageEn
+                    else -> settings.audioLanguage
+                },
+            )
+            ToggleRow(
+                strings.cleanTranscript,
+                prefs.cleanTranscript,
+                { enabled -> scope.launch { container.settingsRepository.setCleanTranscript(enabled) } },
+                strings.cleanTranscriptHint,
+            )
+            ChevronRow(
+                strings.autoSpeakerLabel,
+                {
+                    scope.launch {
+                        container.settingsRepository.setAutoSpeakerLabel(!prefs.autoSpeakerLabel)
+                    }
+                },
+                value = if (prefs.autoSpeakerLabel) strings.on else strings.off,
+            )
+            ChevronRow(
+                strings.customVocabulary,
+                onCustomVocabulary,
+                value = strings.glossary,
+            )
+            Spacer(Modifier.height(8.dp))
+            SectionLabel(strings.notification)
+            ToggleRow(
+                strings.messageNotification,
+                prefs.autoflowNotify,
+                { enabled -> scope.launch { container.settingsRepository.setAutoflowNotify(enabled) } },
+                strings.doTranscribeSummarizeHint,
+                showDivider = false,
+            )
+            Spacer(Modifier.height(40.dp))
+        }
     }
 }

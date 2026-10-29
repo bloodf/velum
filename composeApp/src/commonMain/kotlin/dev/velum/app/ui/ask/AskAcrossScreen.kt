@@ -71,142 +71,149 @@ fun AskAcrossScreen(
         busy = false
     }
 
+    // Pin ScreenTopBar outside the scroll so Back stays reachable (#118).
     Column(
         Modifier
             .fillMaxSize()
-            .background(VelumBg)
-            .verticalScroll(rememberScrollState()),
+            .background(VelumBg),
     ) {
         ScreenTopBar(strings.ux.askAcrossTitle, onBack = onBack)
-        Column(Modifier.padding(20.dp)) {
-            if (recordings.isEmpty() && previewAnswer == null) {
-                Text(
-                    strings.ux.askAcrossLibraryEmpty,
-                    color = VelumInkSecondary,
-                    fontSize = 14.sp,
-                    lineHeight = 20.sp,
-                )
-                Spacer(Modifier.height(40.dp))
-                return@Column
-            }
-
-            Text(strings.ux.askAcrossHint, color = VelumInkSecondary, fontSize = 14.sp, lineHeight = 20.sp)
-            Spacer(Modifier.height(16.dp))
-            BasicTextField(
-                value = question,
-                onValueChange = { question = it },
-                enabled = !busy,
-                textStyle = TextStyle(color = VelumInk, fontSize = 16.sp, lineHeight = 22.sp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(96.dp)
-                    .border(1.dp, VelumDivider, RoundedCornerShape(12.dp))
-                    .padding(14.dp),
-                decorationBox = { inner ->
-                    if (question.isEmpty()) {
-                        Text(strings.ux.askAcrossPlaceholder, color = VelumInkSecondary, fontSize = 16.sp)
-                    }
-                    inner()
-                },
-            )
-            Spacer(Modifier.height(12.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                BlackButton(
-                    if (busy) strings.generating else strings.askAiSend,
-                    {
-                        if (busy || question.isBlank()) return@BlackButton
-                        busy = true
-                        error = null
-                        askJob = scope.launch {
-                            try {
-                                runCatching { container.askAcross.ask(question) }
-                                    .onSuccess { answer = it }
-                                    .onFailure { error = strings.ux.genericError }
-                            } finally {
-                                busy = false
-                                askJob = null
-                            }
-                        }
-                    },
-                    enabled = question.isNotBlank() && !busy,
-                    modifier = Modifier.weight(1f),
-                )
-                if (busy) {
-                    OutlineButton(
-                        text = strings.cancel,
-                        onClick = { cancelAsk() },
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-            }
-            if (busy) {
-                Spacer(Modifier.height(16.dp))
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(22.dp),
-                        strokeWidth = 2.dp,
-                        color = VelumInk,
-                    )
+        Column(
+            Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState()),
+        ) {
+            Column(Modifier.padding(20.dp)) {
+                if (recordings.isEmpty() && previewAnswer == null) {
                     Text(
-                        strings.generating,
+                        strings.ux.askAcrossLibraryEmpty,
                         color = VelumInkSecondary,
                         fontSize = 14.sp,
+                        lineHeight = 20.sp,
                     )
+                    Spacer(Modifier.height(40.dp))
+                    return@Column
                 }
-            }
-            error?.let {
-                Spacer(Modifier.height(12.dp))
-                Text(it, color = VelumInk, fontSize = 14.sp)
-            }
-            val current = answer
-            if (current == null && !busy) {
-                Spacer(Modifier.height(24.dp))
-                Text(strings.ux.askAcrossEmpty, color = VelumInkSecondary, fontSize = 14.sp)
-            } else if (current != null) {
-                Spacer(Modifier.height(24.dp))
-                Text(strings.ux.askAcrossAnswer, fontWeight = FontWeight.SemiBold, fontSize = 16.sp, color = VelumInk)
-                Spacer(Modifier.height(8.dp))
-                MarkdownPreview(current.markdown)
-                if (current.citations.isNotEmpty()) {
-                    Spacer(Modifier.height(20.dp))
-                    Text(strings.ux.askAcrossSources, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
-                    Spacer(Modifier.height(8.dp))
-                    current.citations.forEachIndexed { index, citation ->
-                        Column(
-                            Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(VelumSurface)
-                                .clickable { onOpenCitation(citation.recordingId, citation.offsetSeconds) }
-                                .padding(14.dp),
-                        ) {
-                            Text(
-                                "[${index + 1}] ${citation.title} · ${citation.timestampLabel}",
-                                fontWeight = FontWeight.Medium,
-                                color = VelumInk,
-                                fontSize = 14.sp,
-                            )
-                            Spacer(Modifier.height(6.dp))
-                            Text(
-                                citation.snippet,
-                                color = VelumInkSecondary,
-                                fontSize = 13.sp,
-                                lineHeight = 18.sp,
-                                maxLines = 4,
-                            )
+
+                Text(strings.ux.askAcrossHint, color = VelumInkSecondary, fontSize = 14.sp, lineHeight = 20.sp)
+                Spacer(Modifier.height(16.dp))
+                BasicTextField(
+                    value = question,
+                    onValueChange = { question = it },
+                    enabled = !busy,
+                    textStyle = TextStyle(color = VelumInk, fontSize = 16.sp, lineHeight = 22.sp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(96.dp)
+                        .border(1.dp, VelumDivider, RoundedCornerShape(12.dp))
+                        .padding(14.dp),
+                    decorationBox = { inner ->
+                        if (question.isEmpty()) {
+                            Text(strings.ux.askAcrossPlaceholder, color = VelumInkSecondary, fontSize = 16.sp)
                         }
-                        Spacer(Modifier.height(8.dp))
+                        inner()
+                    },
+                )
+                Spacer(Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    BlackButton(
+                        if (busy) strings.generating else strings.askAiSend,
+                        {
+                            if (busy || question.isBlank()) return@BlackButton
+                            busy = true
+                            error = null
+                            askJob = scope.launch {
+                                try {
+                                    runCatching { container.askAcross.ask(question) }
+                                        .onSuccess { answer = it }
+                                        .onFailure { error = strings.ux.genericError }
+                                } finally {
+                                    busy = false
+                                    askJob = null
+                                }
+                            }
+                        },
+                        enabled = question.isNotBlank() && !busy,
+                        modifier = Modifier.weight(1f),
+                    )
+                    if (busy) {
+                        OutlineButton(
+                            text = strings.cancel,
+                            onClick = { cancelAsk() },
+                            modifier = Modifier.weight(1f),
+                        )
                     }
                 }
+                if (busy) {
+                    Spacer(Modifier.height(16.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(22.dp),
+                            strokeWidth = 2.dp,
+                            color = VelumInk,
+                        )
+                        Text(
+                            strings.generating,
+                            color = VelumInkSecondary,
+                            fontSize = 14.sp,
+                        )
+                    }
+                }
+                error?.let {
+                    Spacer(Modifier.height(12.dp))
+                    Text(it, color = VelumInk, fontSize = 14.sp)
+                }
+                val current = answer
+                if (current == null && !busy) {
+                    Spacer(Modifier.height(24.dp))
+                    Text(strings.ux.askAcrossEmpty, color = VelumInkSecondary, fontSize = 14.sp)
+                } else if (current != null) {
+                    Spacer(Modifier.height(24.dp))
+                    Text(strings.ux.askAcrossAnswer, fontWeight = FontWeight.SemiBold, fontSize = 16.sp, color = VelumInk)
+                    Spacer(Modifier.height(8.dp))
+                    MarkdownPreview(current.markdown)
+                    if (current.citations.isNotEmpty()) {
+                        Spacer(Modifier.height(20.dp))
+                        Text(strings.ux.askAcrossSources, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+                        Spacer(Modifier.height(8.dp))
+                        current.citations.forEachIndexed { index, citation ->
+                            Column(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(VelumSurface)
+                                    .clickable { onOpenCitation(citation.recordingId, citation.offsetSeconds) }
+                                    .padding(14.dp),
+                            ) {
+                                Text(
+                                    "[${index + 1}] ${citation.title} · ${citation.timestampLabel}",
+                                    fontWeight = FontWeight.Medium,
+                                    color = VelumInk,
+                                    fontSize = 14.sp,
+                                )
+                                Spacer(Modifier.height(6.dp))
+                                Text(
+                                    citation.snippet,
+                                    color = VelumInkSecondary,
+                                    fontSize = 13.sp,
+                                    lineHeight = 18.sp,
+                                    maxLines = 4,
+                                )
+                            }
+                            Spacer(Modifier.height(8.dp))
+                        }
+                    }
+                }
+                Spacer(Modifier.height(40.dp))
             }
-            Spacer(Modifier.height(40.dp))
         }
     }
 }

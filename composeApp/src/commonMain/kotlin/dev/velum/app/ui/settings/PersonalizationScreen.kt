@@ -74,76 +74,83 @@ fun PersonalizationScreen(
             }
     }
 
+    // Pin ScreenTopBar outside the scroll so Back stays reachable (#118).
     Column(
         Modifier
             .fillMaxSize()
-            .background(VelumSurface)
-            .verticalScroll(rememberScrollState()),
+            .background(VelumSurface),
     ) {
         ScreenTopBar(strings.personalization, onBack = onBack)
-        // Profile fields live on this screen (display name / focus / instructions).
-        Spacer(Modifier.height(8.dp))
-        SectionTitle(strings.displayName)
-        HintField(displayName, strings.displayName) { displayName = it }
-        Spacer(Modifier.height(16.dp))
-        SectionTitle(strings.contentFocus)
-        HintField(focus, strings.contentFocusHint) { focus = it }
-        Spacer(Modifier.height(10.dp))
-        androidx.compose.foundation.layout.Row(
-            modifier = Modifier.padding(horizontal = 20.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        Column(
+            Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState()),
         ) {
-            SuggestionChip(strings.chipKeyPoints) { focus = strings.chipKeyPoints }
+            // Profile fields live on this screen (display name / focus / instructions).
+            Spacer(Modifier.height(8.dp))
+            SectionTitle(strings.displayName)
+            HintField(displayName, strings.displayName) { displayName = it }
+            Spacer(Modifier.height(16.dp))
+            SectionTitle(strings.contentFocus)
+            HintField(focus, strings.contentFocusHint) { focus = it }
+            Spacer(Modifier.height(10.dp))
+            androidx.compose.foundation.layout.Row(
+                modifier = Modifier.padding(horizontal = 20.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                SuggestionChip(strings.chipKeyPoints) { focus = strings.chipKeyPoints }
+            }
+            Spacer(Modifier.height(8.dp))
+            androidx.compose.foundation.layout.Row(
+                modifier = Modifier.padding(horizontal = 20.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                SuggestionChip(strings.chipRisks) { focus = strings.chipRisks }
+                SuggestionChip(strings.chipActions) { focus = strings.chipActions }
+            }
+            Spacer(Modifier.height(20.dp))
+            SectionTitle(strings.customInstructions)
+            HintField(instructions, strings.customInstructionsHint) { instructions = it }
+            Spacer(Modifier.height(10.dp))
+            androidx.compose.foundation.layout.Row(
+                modifier = Modifier.padding(horizontal = 20.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                SuggestionChip(strings.chipDirect) { instructions = strings.chipDirect }
+            }
+            Spacer(Modifier.height(8.dp))
+            androidx.compose.foundation.layout.Row(
+                modifier = Modifier.padding(horizontal = 20.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                SuggestionChip(strings.chipFormal) { instructions = strings.chipFormal }
+                SuggestionChip(strings.chipStructured) { instructions = strings.chipStructured }
+            }
+            Spacer(Modifier.height(24.dp))
+            Text(
+                strings.memory,
+                color = VelumInkSecondary,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 15.sp,
+                modifier = Modifier.padding(horizontal = 20.dp),
+            )
+            Spacer(Modifier.height(4.dp))
+            ToggleRow(
+                strings.useSavedMemory,
+                prefs.useSavedMemory,
+                { enabled -> scope.launch { container.settingsRepository.setUseSavedMemory(enabled) } },
+                strings.useMemoryHint,
+            )
+            ChevronRow(strings.manageMemory, onMemory, showDivider = false)
+            Text(
+                strings.manageMemoryHint,
+                color = VelumInkSecondary,
+                fontSize = 13.sp,
+                modifier = Modifier.padding(horizontal = 20.dp),
+            )
+            Spacer(Modifier.height(40.dp))
         }
-        Spacer(Modifier.height(8.dp))
-        androidx.compose.foundation.layout.Row(
-            modifier = Modifier.padding(horizontal = 20.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            SuggestionChip(strings.chipRisks) { focus = strings.chipRisks }
-            SuggestionChip(strings.chipActions) { focus = strings.chipActions }
-        }
-        Spacer(Modifier.height(20.dp))
-        SectionTitle(strings.customInstructions)
-        HintField(instructions, strings.customInstructionsHint) { instructions = it }
-        Spacer(Modifier.height(10.dp))
-        androidx.compose.foundation.layout.Row(
-            modifier = Modifier.padding(horizontal = 20.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            SuggestionChip(strings.chipDirect) { instructions = strings.chipDirect }
-        }
-        Spacer(Modifier.height(8.dp))
-        androidx.compose.foundation.layout.Row(
-            modifier = Modifier.padding(horizontal = 20.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            SuggestionChip(strings.chipFormal) { instructions = strings.chipFormal }
-            SuggestionChip(strings.chipStructured) { instructions = strings.chipStructured }
-        }
-        Spacer(Modifier.height(24.dp))
-        Text(
-            strings.memory,
-            color = VelumInkSecondary,
-            fontWeight = FontWeight.SemiBold,
-            fontSize = 15.sp,
-            modifier = Modifier.padding(horizontal = 20.dp),
-        )
-        Spacer(Modifier.height(4.dp))
-        ToggleRow(
-            strings.useSavedMemory,
-            prefs.useSavedMemory,
-            { enabled -> scope.launch { container.settingsRepository.setUseSavedMemory(enabled) } },
-            strings.useMemoryHint,
-        )
-        ChevronRow(strings.manageMemory, onMemory, showDivider = false)
-        Text(
-            strings.manageMemoryHint,
-            color = VelumInkSecondary,
-            fontSize = 13.sp,
-            modifier = Modifier.padding(horizontal = 20.dp),
-        )
-        Spacer(Modifier.height(40.dp))
     }
 }
 

@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -31,48 +32,55 @@ private const val APP_VERSION = "0.1.0-foundation"
 @Composable
 fun AboutScreen(onBack: () -> Unit) {
     val strings = LocalStrings.current
+    // Pin ScreenTopBar outside the scroll so Back stays reachable (#118).
     Column(
         Modifier
             .fillMaxSize()
-            .background(VelumSurface)
-            .verticalScroll(rememberScrollState()),
+            .background(VelumSurface),
     ) {
         ScreenTopBar(strings.aboutVelum, onBack = onBack)
-        Spacer(Modifier.height(12.dp))
-        VelumLogo(size = 72.dp, modifier = Modifier.padding(horizontal = 20.dp))
-        Spacer(Modifier.height(12.dp))
-        Text(
-            "Velum",
-            fontWeight = FontWeight.SemiBold,
-            fontSize = 22.sp,
-            color = VelumInk,
-            modifier = Modifier.padding(horizontal = 20.dp),
-        )
-        Text(
-            APP_VERSION,
-            color = VelumInkSecondary,
-            fontSize = 14.sp,
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
-        )
-        Text(
-            strings.settingsUi.aboutBody,
-            color = VelumInkSecondary,
-            fontSize = 14.sp,
-            lineHeight = 20.sp,
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-        )
-        Spacer(Modifier.height(16.dp))
-        ChevronRow(strings.settingsUi.openSourceLicenses, {
-            openUrl("$GITHUB_REPO/blob/main/THIRD_PARTY.md")
-        })
-        ChevronRow(strings.settingsUi.privacyPolicy, { openUrl(PRIVACY_POLICY) })
-        ChevronRow(strings.settingsUi.githubRepo, { openUrl(GITHUB_REPO) })
-        ChevronRow(strings.settingsUi.reportIssue, { openUrl(GITHUB_ISSUES) })
-        ChevronRow(
-            strings.settingsUi.contributeTemplates,
-            { openUrl("$GITHUB_REPO/blob/main/CONTRIBUTING.md") },
-            showDivider = false,
-        )
-        Spacer(Modifier.height(40.dp))
+        Column(
+            Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState()),
+        ) {
+            Spacer(Modifier.height(12.dp))
+            VelumLogo(size = 72.dp, modifier = Modifier.padding(horizontal = 20.dp))
+            Spacer(Modifier.height(12.dp))
+            Text(
+                "Velum",
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 22.sp,
+                color = VelumInk,
+                modifier = Modifier.padding(horizontal = 20.dp),
+            )
+            Text(
+                APP_VERSION,
+                color = VelumInkSecondary,
+                fontSize = 14.sp,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+            )
+            Text(
+                strings.settingsUi.aboutBody,
+                color = VelumInkSecondary,
+                fontSize = 14.sp,
+                lineHeight = 20.sp,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+            )
+            Spacer(Modifier.height(16.dp))
+            ChevronRow(strings.settingsUi.openSourceLicenses, {
+                openUrl("$GITHUB_REPO/blob/main/THIRD_PARTY.md")
+            })
+            ChevronRow(strings.settingsUi.privacyPolicy, { openUrl(PRIVACY_POLICY) })
+            ChevronRow(strings.settingsUi.githubRepo, { openUrl(GITHUB_REPO) })
+            ChevronRow(strings.settingsUi.reportIssue, { openUrl(GITHUB_ISSUES) })
+            ChevronRow(
+                strings.settingsUi.contributeTemplates,
+                { openUrl("$GITHUB_REPO/blob/main/CONTRIBUTING.md") },
+                showDivider = false,
+            )
+            Spacer(Modifier.height(40.dp))
+        }
     }
 }

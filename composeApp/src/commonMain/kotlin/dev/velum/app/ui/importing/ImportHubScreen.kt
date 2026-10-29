@@ -100,82 +100,89 @@ fun ImportHubScreen(
         )
     }
 
+    // Pin ScreenTopBar outside the scroll so Back stays reachable (#118).
     Column(
         Modifier
             .fillMaxSize()
-            .background(VelumBg)
-            .verticalScroll(rememberScrollState()),
+            .background(VelumBg),
     ) {
         ScreenTopBar(strings.importAudio, onBack = onBack)
-        Column(Modifier.padding(20.dp)) {
-            Text(
-                strings.ux.importHubTitle,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 18.sp,
-                color = VelumInk,
-            )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                strings.ux.importHubBody,
-                color = VelumInkSecondary,
-                fontSize = 14.sp,
-                lineHeight = 20.sp,
-            )
-            Spacer(Modifier.height(20.dp))
-            BlackButton(
-                strings.ux.chooseAudioFile,
-                pickFile,
-                modifier = Modifier.fillMaxWidth(),
-                enabled = !importing,
-            )
-            Spacer(Modifier.height(12.dp))
-            if (onPickWatchedFolder != null) {
-                OutlineButton(
-                    strings.ux.pickWatchedFolder,
-                    onPickWatchedFolder,
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = !importing,
+        Column(
+            Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState()),
+        ) {
+            Column(Modifier.padding(20.dp)) {
+                Text(
+                    strings.ux.importHubTitle,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 18.sp,
+                    color = VelumInk,
                 )
-                Spacer(Modifier.height(12.dp))
-            }
-            if (onSyncWatchedFolder != null) {
-                OutlineButton(
-                    strings.ux.syncWatchedFolders,
-                    {
-                        scope.launch {
-                            importing = true
-                            status = strings.ux.scanning
-                            val results = onSyncWatchedFolder()
-                            val created = results.count { it is ImportResult.Created }
-                            val dupes = results.count { it is ImportResult.Duplicate }
-                            val failed = results.count { it is ImportResult.Failed }
-                            status = strings.ux.syncDoneFormat.format(created, dupes, failed)
-                            results.filterIsInstance<ImportResult.Created>().lastOrNull()
-                                ?.let { onOpenRecording(it.recordingId) }
-                            importing = false
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = !importing,
-                )
-                Spacer(Modifier.height(12.dp))
-            }
-            if (folderCount > 0) {
-                OutlineButton(
-                    strings.ux.clearWatchedFolders,
-                    { confirmClearFolders = true },
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = !importing,
-                )
-                Spacer(Modifier.height(12.dp))
-            }
-            if (importing) {
-                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                 Spacer(Modifier.height(8.dp))
-            }
-            status?.let {
-                Spacer(Modifier.height(8.dp))
-                Text(it, color = VelumInkSecondary, fontSize = 13.sp)
+                Text(
+                    strings.ux.importHubBody,
+                    color = VelumInkSecondary,
+                    fontSize = 14.sp,
+                    lineHeight = 20.sp,
+                )
+                Spacer(Modifier.height(20.dp))
+                BlackButton(
+                    strings.ux.chooseAudioFile,
+                    pickFile,
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !importing,
+                )
+                Spacer(Modifier.height(12.dp))
+                if (onPickWatchedFolder != null) {
+                    OutlineButton(
+                        strings.ux.pickWatchedFolder,
+                        onPickWatchedFolder,
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !importing,
+                    )
+                    Spacer(Modifier.height(12.dp))
+                }
+                if (onSyncWatchedFolder != null) {
+                    OutlineButton(
+                        strings.ux.syncWatchedFolders,
+                        {
+                            scope.launch {
+                                importing = true
+                                status = strings.ux.scanning
+                                val results = onSyncWatchedFolder()
+                                val created = results.count { it is ImportResult.Created }
+                                val dupes = results.count { it is ImportResult.Duplicate }
+                                val failed = results.count { it is ImportResult.Failed }
+                                status = strings.ux.syncDoneFormat.format(created, dupes, failed)
+                                results.filterIsInstance<ImportResult.Created>().lastOrNull()
+                                    ?.let { onOpenRecording(it.recordingId) }
+                                importing = false
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !importing,
+                    )
+                    Spacer(Modifier.height(12.dp))
+                }
+                if (folderCount > 0) {
+                    OutlineButton(
+                        strings.ux.clearWatchedFolders,
+                        { confirmClearFolders = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !importing,
+                    )
+                    Spacer(Modifier.height(12.dp))
+                }
+                if (importing) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    Spacer(Modifier.height(8.dp))
+                }
+                status?.let {
+                    Spacer(Modifier.height(8.dp))
+                    Text(it, color = VelumInkSecondary, fontSize = 13.sp)
+                }
             }
         }
     }

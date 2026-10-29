@@ -90,123 +90,107 @@ fun AiProcessingScreen(
         }
     }
 
+    // Pin ScreenTopBar outside the scroll so Back stays reachable (#118).
     Column(
         Modifier
             .fillMaxSize()
-            .background(VelumBg)
-            .verticalScroll(rememberScrollState()),
+            .background(VelumBg),
     ) {
         ScreenTopBar(strings.aiProcessing, onBack = onBack)
-        Text(
-            strings.aiProcessingHint,
-            color = VelumInkSecondary,
-            fontSize = 14.sp,
-            lineHeight = 20.sp,
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
-        )
-        if (missingLocal.isNotEmpty()) {
-            val first = missingLocal.first()
-            Column(
-                Modifier
-                    .padding(horizontal = 20.dp, vertical = 8.dp)
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(VelumWarningContainer)
-                    .padding(12.dp),
-            ) {
-                Text(
-                    strings.localModelMissingTitle,
-                    fontWeight = FontWeight.SemiBold,
-                    color = VelumOnWarningContainer,
-                    fontSize = 14.sp,
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    strings.localModelMissingBody.replace("%s", first.displayName),
-                    color = VelumOnWarningContainer,
-                    fontSize = 13.sp,
-                    lineHeight = 18.sp,
-                )
-                Spacer(Modifier.height(10.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    BlackButton(
-                        strings.downloadModel,
-                        onModelManager,
-                        Modifier.weight(1f),
-                    )
-                    OutlineButton(
-                        strings.switchToApi,
-                        {
-                            scope.launch {
-                                container.settingsRepository.setTranscriptionMode(ComputeMode.Api)
-                                // Diarization has no remote contract — stay Local.
-                                container.settingsRepository.setSummaryMode(ComputeMode.Api)
-                            }
-                        },
-                        Modifier.weight(1f),
-                    )
-                }
-            }
-        }
-        Spacer(Modifier.height(12.dp))
-        SectionLabel(strings.taskTranscription)
-        ModePicker(
-            selected = settings.transcriptionMode,
-            onSelect = { mode ->
-                if (mode == ComputeMode.Local) {
-                    when (
-                        val r = container.aiRouter.resolveModeOrPrompt(
-                            AiTask.Transcription,
-                            container.localModelManager,
-                        )
-                    ) {
-                        is ModeResolution.NeedLocalModel -> {
-                            modelPrompt = r
-                            return@ModePicker
-                        }
-                        is ModeResolution.Proceed -> Unit
-                    }
-                }
-                scope.launch { container.settingsRepository.setTranscriptionMode(mode) }
-            },
-        )
-        Spacer(Modifier.height(16.dp))
-        SectionLabel(strings.taskDiarization)
-        // API diarization has no remote contract — Local only.
-        LaunchedEffect(settings.diarizationMode) {
-            if (settings.diarizationMode == ComputeMode.Api) {
-                container.settingsRepository.setDiarizationMode(ComputeMode.Local)
-            }
-        }
-        ModePicker(
-            selected = ComputeMode.Local,
-            onSelect = { mode ->
-                if (mode != ComputeMode.Local) return@ModePicker
-                when (
-                    val r = container.aiRouter.resolveModeOrPrompt(
-                        AiTask.Diarization,
-                        container.localModelManager,
-                    )
+        Column(
+            Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState()),
+        ) {
+            Text(
+                strings.aiProcessingHint,
+                color = VelumInkSecondary,
+                fontSize = 14.sp,
+                lineHeight = 20.sp,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+            )
+            if (missingLocal.isNotEmpty()) {
+                val first = missingLocal.first()
+                Column(
+                    Modifier
+                        .padding(horizontal = 20.dp, vertical = 8.dp)
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(VelumWarningContainer)
+                        .padding(12.dp),
                 ) {
-                    is ModeResolution.NeedLocalModel -> {
-                        modelPrompt = r
-                        return@ModePicker
+                    Text(
+                        strings.localModelMissingTitle,
+                        fontWeight = FontWeight.SemiBold,
+                        color = VelumOnWarningContainer,
+                        fontSize = 14.sp,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        strings.localModelMissingBody.replace("%s", first.displayName),
+                        color = VelumOnWarningContainer,
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp,
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        BlackButton(
+                            strings.downloadModel,
+                            onModelManager,
+                            Modifier.weight(1f),
+                        )
+                        OutlineButton(
+                            strings.switchToApi,
+                            {
+                                scope.launch {
+                                    container.settingsRepository.setTranscriptionMode(ComputeMode.Api)
+                                    // Diarization has no remote contract — stay Local.
+                                    container.settingsRepository.setSummaryMode(ComputeMode.Api)
+                                }
+                            },
+                            Modifier.weight(1f),
+                        )
                     }
-                    is ModeResolution.Proceed -> Unit
                 }
-                scope.launch { container.settingsRepository.setDiarizationMode(ComputeMode.Local) }
-            },
-            allowApi = false,
-        )
-        Spacer(Modifier.height(16.dp))
-        SectionLabel(strings.taskSummaries)
-        ModePicker(
-            selected = settings.summaryMode,
-            onSelect = { mode ->
-                if (mode == ComputeMode.Local) {
+            }
+            Spacer(Modifier.height(12.dp))
+            SectionLabel(strings.taskTranscription)
+            ModePicker(
+                selected = settings.transcriptionMode,
+                onSelect = { mode ->
+                    if (mode == ComputeMode.Local) {
+                        when (
+                            val r = container.aiRouter.resolveModeOrPrompt(
+                                AiTask.Transcription,
+                                container.localModelManager,
+                            )
+                        ) {
+                            is ModeResolution.NeedLocalModel -> {
+                                modelPrompt = r
+                                return@ModePicker
+                            }
+                            is ModeResolution.Proceed -> Unit
+                        }
+                    }
+                    scope.launch { container.settingsRepository.setTranscriptionMode(mode) }
+                },
+            )
+            Spacer(Modifier.height(16.dp))
+            SectionLabel(strings.taskDiarization)
+            // API diarization has no remote contract — Local only.
+            LaunchedEffect(settings.diarizationMode) {
+                if (settings.diarizationMode == ComputeMode.Api) {
+                    container.settingsRepository.setDiarizationMode(ComputeMode.Local)
+                }
+            }
+            ModePicker(
+                selected = ComputeMode.Local,
+                onSelect = { mode ->
+                    if (mode != ComputeMode.Local) return@ModePicker
                     when (
                         val r = container.aiRouter.resolveModeOrPrompt(
-                            AiTask.Summary,
+                            AiTask.Diarization,
                             container.localModelManager,
                         )
                     ) {
@@ -216,51 +200,74 @@ fun AiProcessingScreen(
                         }
                         is ModeResolution.Proceed -> Unit
                     }
-                }
-                scope.launch { container.settingsRepository.setSummaryMode(mode) }
-            },
-        )
-        Spacer(Modifier.height(20.dp))
-        SectionLabel(strings.ux.asrSizeSection)
-        Text(
-            strings.ux.asrSizeHint,
-            color = VelumInkSecondary,
-            fontSize = 13.sp,
-            lineHeight = 18.sp,
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
-        )
-        AsrTierPicker(
-            selected = settings.asrSizeTier,
-            onSelect = { tier ->
-                scope.launch { container.settingsRepository.setAsrSizeTier(tier) }
-            },
-        )
-        Spacer(Modifier.height(16.dp))
-        ChevronRow(
-            strings.audioLanguage,
-            { pickAudio = true },
-            value = labelFor(settings.audioLanguage),
-        )
-        ChevronRow(
-            strings.outputLanguage,
-            { pickOutput = true },
-            value = labelFor(settings.outputLanguage),
-            showDivider = false,
-        )
-        Spacer(Modifier.height(12.dp))
-        ChevronRow(
-            strings.modelManager,
-            onModelManager,
-            value = null,
-            showDivider = false,
-        )
-        Text(
-            strings.modelManagerHint,
-            color = VelumInkSecondary,
-            fontSize = 13.sp,
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
-        )
-        Spacer(Modifier.height(40.dp))
+                    scope.launch { container.settingsRepository.setDiarizationMode(ComputeMode.Local) }
+                },
+                allowApi = false,
+            )
+            Spacer(Modifier.height(16.dp))
+            SectionLabel(strings.taskSummaries)
+            ModePicker(
+                selected = settings.summaryMode,
+                onSelect = { mode ->
+                    if (mode == ComputeMode.Local) {
+                        when (
+                            val r = container.aiRouter.resolveModeOrPrompt(
+                                AiTask.Summary,
+                                container.localModelManager,
+                            )
+                        ) {
+                            is ModeResolution.NeedLocalModel -> {
+                                modelPrompt = r
+                                return@ModePicker
+                            }
+                            is ModeResolution.Proceed -> Unit
+                        }
+                    }
+                    scope.launch { container.settingsRepository.setSummaryMode(mode) }
+                },
+            )
+            Spacer(Modifier.height(20.dp))
+            SectionLabel(strings.ux.asrSizeSection)
+            Text(
+                strings.ux.asrSizeHint,
+                color = VelumInkSecondary,
+                fontSize = 13.sp,
+                lineHeight = 18.sp,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+            )
+            AsrTierPicker(
+                selected = settings.asrSizeTier,
+                onSelect = { tier ->
+                    scope.launch { container.settingsRepository.setAsrSizeTier(tier) }
+                },
+            )
+            Spacer(Modifier.height(16.dp))
+            ChevronRow(
+                strings.audioLanguage,
+                { pickAudio = true },
+                value = labelFor(settings.audioLanguage),
+            )
+            ChevronRow(
+                strings.outputLanguage,
+                { pickOutput = true },
+                value = labelFor(settings.outputLanguage),
+                showDivider = false,
+            )
+            Spacer(Modifier.height(12.dp))
+            ChevronRow(
+                strings.modelManager,
+                onModelManager,
+                value = null,
+                showDivider = false,
+            )
+            Text(
+                strings.modelManagerHint,
+                color = VelumInkSecondary,
+                fontSize = 13.sp,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+            )
+            Spacer(Modifier.height(40.dp))
+        }
     }
 
     if (pickAudio) {

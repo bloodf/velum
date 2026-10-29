@@ -109,133 +109,140 @@ fun ImportDeviceKeysScreen(
 
     val pickJsonFile = rememberJsonFileImporter { text -> applyJson(text) }
 
+    // Pin ScreenTopBar outside the scroll so Back stays reachable (#118).
     Column(
         Modifier
             .fillMaxSize()
-            .background(VelumBg)
-            .verticalScroll(rememberScrollState()),
+            .background(VelumBg),
     ) {
         ScreenTopBar(strings.importKeys.title, onBack = onBack)
-        Text(
-            strings.importKeys.hint,
-            color = VelumInkSecondary,
-            fontSize = 13.sp,
-            lineHeight = 18.sp,
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-        )
-        Text(
-            strings.importKeys.fromPlaudJsonHint,
-            color = VelumInkSecondary,
-            fontSize = 12.sp,
-            lineHeight = 17.sp,
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
-        )
-        OutlineButton(
-            strings.importKeys.fromPlaudJson,
-            { pickJsonFile() },
-            Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
-        )
-        OutlinedTextField(
-            value = jsonDraft,
-            onValueChange = { jsonDraft = it },
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
-            label = { Text(strings.importKeys.fromPlaudJsonPaste) },
-            shape = RoundedCornerShape(10.dp),
-            minLines = 4,
-        )
-        OutlineButton(
-            strings.importKeys.fromPlaudJsonApply,
-            { if (jsonDraft.isNotBlank()) applyJson(jsonDraft) },
-            Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
-            enabled = jsonDraft.isNotBlank(),
-        )
-        if (hasKeys) {
+        Column(
+            Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState()),
+        ) {
             Text(
-                strings.importKeys.present,
-                color = VelumInk,
-                fontWeight = FontWeight.Medium,
-                fontSize = 14.sp,
+                strings.importKeys.hint,
+                color = VelumInkSecondary,
+                fontSize = 13.sp,
+                lineHeight = 18.sp,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+            )
+            Text(
+                strings.importKeys.fromPlaudJsonHint,
+                color = VelumInkSecondary,
+                fontSize = 12.sp,
+                lineHeight = 17.sp,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
             )
-        }
-        OutlinedTextField(
-            value = serial,
-            onValueChange = { serial = it },
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
-            label = { Text(strings.importKeys.serial) },
-            singleLine = true,
-            shape = RoundedCornerShape(10.dp),
-        )
-        OutlinedTextField(
-            value = snSignature,
-            onValueChange = { snSignature = it },
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
-            label = { Text(strings.importKeys.snSignatureB64) },
-            shape = RoundedCornerShape(10.dp),
-            minLines = 2,
-        )
-        OutlinedTextField(
-            value = bindToken,
-            onValueChange = { bindToken = it },
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
-            label = { Text(strings.importKeys.bindToken) },
-            singleLine = true,
-            shape = RoundedCornerShape(10.dp),
-        )
-        OutlinedTextField(
-            value = publicPem,
-            onValueChange = { publicPem = it },
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
-            label = { Text(strings.importKeys.rsaPublicPemOptional) },
-            shape = RoundedCornerShape(10.dp),
-            minLines = 3,
-        )
-        OutlinedTextField(
-            value = privatePem,
-            onValueChange = { privatePem = it },
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
-            label = { Text(strings.importKeys.rsaPrivatePemOptional) },
-            shape = RoundedCornerShape(10.dp),
-            minLines = 3,
-        )
-        Spacer(Modifier.height(12.dp))
-        BlackButton(
-            strings.save,
-            {
-                scope.launch {
-                    error = null
-                    status = null
-                    try {
-                        container.deviceKeyImporter.importKeys(
-                            serialNumber = serial,
-                            serialSignatureBase64 = snSignature,
-                            bindToken = bindToken,
-                            publicKeyPem = publicPem,
-                            privateKeyPem = privatePem,
-                        )
-                        hasKeys = true
-                        status = strings.importKeys.saved
-                    } catch (t: Throwable) {
-                        error = t.message ?: t.toString()
+            OutlineButton(
+                strings.importKeys.fromPlaudJson,
+                { pickJsonFile() },
+                Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+            )
+            OutlinedTextField(
+                value = jsonDraft,
+                onValueChange = { jsonDraft = it },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
+                label = { Text(strings.importKeys.fromPlaudJsonPaste) },
+                shape = RoundedCornerShape(10.dp),
+                minLines = 4,
+            )
+            OutlineButton(
+                strings.importKeys.fromPlaudJsonApply,
+                { if (jsonDraft.isNotBlank()) applyJson(jsonDraft) },
+                Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+                enabled = jsonDraft.isNotBlank(),
+            )
+            if (hasKeys) {
+                Text(
+                    strings.importKeys.present,
+                    color = VelumInk,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 14.sp,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+                )
+            }
+            OutlinedTextField(
+                value = serial,
+                onValueChange = { serial = it },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
+                label = { Text(strings.importKeys.serial) },
+                singleLine = true,
+                shape = RoundedCornerShape(10.dp),
+            )
+            OutlinedTextField(
+                value = snSignature,
+                onValueChange = { snSignature = it },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
+                label = { Text(strings.importKeys.snSignatureB64) },
+                shape = RoundedCornerShape(10.dp),
+                minLines = 2,
+            )
+            OutlinedTextField(
+                value = bindToken,
+                onValueChange = { bindToken = it },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
+                label = { Text(strings.importKeys.bindToken) },
+                singleLine = true,
+                shape = RoundedCornerShape(10.dp),
+            )
+            OutlinedTextField(
+                value = publicPem,
+                onValueChange = { publicPem = it },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
+                label = { Text(strings.importKeys.rsaPublicPemOptional) },
+                shape = RoundedCornerShape(10.dp),
+                minLines = 3,
+            )
+            OutlinedTextField(
+                value = privatePem,
+                onValueChange = { privatePem = it },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
+                label = { Text(strings.importKeys.rsaPrivatePemOptional) },
+                shape = RoundedCornerShape(10.dp),
+                minLines = 3,
+            )
+            Spacer(Modifier.height(12.dp))
+            BlackButton(
+                strings.save,
+                {
+                    scope.launch {
+                        error = null
+                        status = null
+                        try {
+                            container.deviceKeyImporter.importKeys(
+                                serialNumber = serial,
+                                serialSignatureBase64 = snSignature,
+                                bindToken = bindToken,
+                                publicKeyPem = publicPem,
+                                privateKeyPem = privatePem,
+                            )
+                            hasKeys = true
+                            status = strings.importKeys.saved
+                        } catch (t: Throwable) {
+                            error = t.message ?: t.toString()
+                        }
                     }
-                }
-            },
-            Modifier.padding(horizontal = 20.dp),
-            enabled = serial.isNotBlank() && snSignature.isNotBlank() && bindToken.isNotBlank(),
-        )
-        Spacer(Modifier.height(8.dp))
-        OutlineButton(
-            strings.importKeys.clearKeys,
-            { showClearConfirm = true },
-            Modifier.padding(horizontal = 20.dp),
-        )
-        status?.let {
-            Text(it, color = VelumInk, modifier = Modifier.padding(20.dp, 8.dp))
+                },
+                Modifier.padding(horizontal = 20.dp),
+                enabled = serial.isNotBlank() && snSignature.isNotBlank() && bindToken.isNotBlank(),
+            )
+            Spacer(Modifier.height(8.dp))
+            OutlineButton(
+                strings.importKeys.clearKeys,
+                { showClearConfirm = true },
+                Modifier.padding(horizontal = 20.dp),
+            )
+            status?.let {
+                Text(it, color = VelumInk, modifier = Modifier.padding(20.dp, 8.dp))
+            }
+            error?.let {
+                Text(it, color = Color(0xFFFF3B30), modifier = Modifier.padding(20.dp, 8.dp))
+            }
+            Spacer(Modifier.height(40.dp))
         }
-        error?.let {
-            Text(it, color = Color(0xFFFF3B30), modifier = Modifier.padding(20.dp, 8.dp))
-        }
-        Spacer(Modifier.height(40.dp))
     }
 
 
