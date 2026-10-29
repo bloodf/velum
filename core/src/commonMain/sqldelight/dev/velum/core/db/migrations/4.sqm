@@ -1,9 +1,9 @@
 -- #113: collapse duplicate device-session library rows, then unique-index.
 -- Re-downloads before this fix left multiple rows per session_id; CREATE UNIQUE
--- INDEX alone would crash those databases. Orphan audio files for dropped rows
--- are not deleted here (SQL cannot unlink files) — runtime wipe/delete by
--- local_path cleans them when the kept recording is removed, and unreferenced
--- paths under the recordings directory can be swept on a later startup pass.
+-- INDEX alone would crash those databases.
+-- Orphan audio files for dropped rows are not deleted here (SQL cannot unlink
+-- files). Tracked as a follow-up — do not claim a startup sweep from this
+-- migration (would overlap #86 PartialRecordingRecovery / VelumApplication).
 
 -- Keeper per session_id: prefer non-trashed, then rows with transcript/summary,
 -- then oldest created_at, then lowest id.
@@ -25,6 +25,34 @@ WHERE r.session_id IS NOT NULL
       r2.id ASC
     LIMIT 1
   );
+
+-- Row whose transcript the keeper will end up with (keeper if it already has
+-- one; otherwise the oldest sibling that has a transcript).
+CREATE TEMP TABLE _transcript_source AS
+SELECT
+  k.session_id AS session_id,
+  k.keep_id AS keep_id,
+  CASE
+    WHEN (keeper.transcript IS NOT NULL AND length(keeper.transcript) > 0)
+      THEN k.keep_id
+    ELSE (
+      SELECT d.id FROM recording AS d
+      WHERE d.session_id = k.session_id
+        AND d.transcript IS NOT NULL
+        AND length(d.transcript) > 0
+      ORDER BY d.created_at ASC, d.id ASC
+      LIMIT 1
+    )
+  END AS source_id
+FROM _session_keep AS k
+INNER JOIN recording AS keeper ON keeper.id = k.keep_id;
+
+-- Keeper's own active summary_version before re-point (preferred survivor).
+CREATE TEMP TABLE _keeper_had_active AS
+SELECT k.keep_id AS keep_id, v.id AS ver_id
+FROM _session_keep AS k
+INNER JOIN summary_version AS v
+  ON v.recording_id = k.keep_id AND v.is_active = 1;
 
 -- Merge transcript that exists only on a duplicate onto the keeper.
 UPDATE recording
@@ -64,19 +92,27 @@ SET folder_id = (
 WHERE id IN (SELECT keep_id FROM _session_keep)
   AND (folder_id IS NULL OR length(folder_id) = 0);
 
--- Re-point children from dropped rows onto the keeper.
-UPDATE speaker
-SET recording_id = (
-  SELECT k.keep_id FROM _session_keep AS k
-  INNER JOIN recording AS d ON d.session_id = k.session_id
-  WHERE d.id = speaker.recording_id
-)
+-- Speakers: keep only those from the transcript source row; drop the rest of
+-- the session group's speakers (including the keeper's if it was not the source).
+DELETE FROM speaker
 WHERE recording_id IN (
   SELECT d.id FROM recording AS d
   INNER JOIN _session_keep AS k ON k.session_id = d.session_id
-  WHERE d.id != k.keep_id
+  LEFT JOIN _transcript_source AS t ON t.session_id = d.session_id
+  WHERE d.id != COALESCE(t.source_id, k.keep_id)
 );
 
+UPDATE speaker
+SET recording_id = (
+  SELECT t.keep_id FROM _transcript_source AS t
+  WHERE t.source_id = speaker.recording_id
+)
+WHERE recording_id IN (
+  SELECT t.source_id FROM _transcript_source AS t
+  WHERE t.source_id IS NOT NULL AND t.source_id != t.keep_id
+);
+
+-- Re-point summary versions from dropped rows onto the keeper.
 UPDATE summary_version
 SET recording_id = (
   SELECT k.keep_id FROM _session_keep AS k
@@ -89,10 +125,38 @@ WHERE recording_id IN (
   WHERE d.id != k.keep_id
 );
 
+-- Exactly one active summary_version per keeper.
+UPDATE summary_version
+SET is_active = 0
+WHERE recording_id IN (SELECT keep_id FROM _session_keep);
+
+UPDATE summary_version
+SET is_active = 1
+WHERE id IN (SELECT ver_id FROM _keeper_had_active);
+
+UPDATE summary_version
+SET is_active = 1
+WHERE id IN (
+  SELECT v.id FROM summary_version AS v
+  WHERE v.recording_id IN (SELECT keep_id FROM _session_keep)
+    AND NOT EXISTS (
+      SELECT 1 FROM summary_version AS a
+      WHERE a.recording_id = v.recording_id AND a.is_active = 1
+    )
+    AND v.id = (
+      SELECT v2.id FROM summary_version AS v2
+      WHERE v2.recording_id = v.recording_id
+      ORDER BY v2.created_at DESC, v2.id DESC
+      LIMIT 1
+    )
+);
+
 DELETE FROM recording
 WHERE session_id IS NOT NULL
   AND id NOT IN (SELECT keep_id FROM _session_keep);
 
+DROP TABLE _keeper_had_active;
+DROP TABLE _transcript_source;
 DROP TABLE _session_keep;
 
 CREATE UNIQUE INDEX IF NOT EXISTS recording_device_session_unique ON recording(session_id)
