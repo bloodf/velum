@@ -111,18 +111,25 @@ class DeviceWalkUiTest {
         // Splash → FirstRun overlay (on top of NavHost FILES) or Files shell.
         // Do NOT treat Files title text under the FirstRun overlay as ready —
         // bottom bar CDs are hidden while showFirstRun, so require those.
-        // FirstRun Skip sits below the fold — scroll while welcome chrome is up.
-        // Never markFirstRunDone / recreate here — a missed Skip must fail (#115).
-        waitUntil(90_000) {
-            val shellReady = onFilesShellReady()
-            val skipVisible = firstRunSkipVisible()
-            val firstRunVisible = firstRunChromeVisible()
-            if (!shellReady && !skipVisible && firstRunVisible) {
-                val w = device.displayWidth
-                val h = device.displayHeight
-                device.swipe(w / 2, (h * 0.75).toInt(), w / 2, (h * 0.25).toInt(), 30)
+        // VelumHero FillWidth can push Welcome + Skip below the fold on tall
+        // emulators — never gate the swipe on Welcome being visible (that was
+        // a chicken-and-egg: no Welcome ⇒ no swipe ⇒ Skip never appears) (#106).
+        // Never markFirstRunDone / recreate — a missed Skip must fail (#115).
+        runCatching {
+            waitUntil(90_000) {
+                val shellReady = onFilesShellReady()
+                val skipVisible = firstRunSkipVisible()
+                if (!shellReady && !skipVisible) {
+                    val w = device.displayWidth
+                    val h = device.displayHeight
+                    device.swipe(w / 2, (h * 0.75).toInt(), w / 2, (h * 0.25).toInt(), 30)
+                }
+                shellReady || skipVisible || firstRunChromeVisible()
             }
-            shellReady || skipVisible
+        }.getOrElse {
+            error(
+                "waitForShell: no shell/Skip/FirstRun within 90s; hierarchy=\n${windowDump()}",
+            )
         }
         if (firstRunSkipVisible() || firstRunChromeVisible()) {
             // Real Skip tap only — OutlineButton CD + role Button (#106 a11y).
@@ -135,8 +142,13 @@ class DeviceWalkUiTest {
             }
             waitUntil(20_000) { firstRunSkipVisible() || onFilesShellReady() }
             if (!onFilesShellReady()) {
+                assertTrue(
+                    firstRunSkipVisible(),
+                    "FirstRun Skip/Pular not visible after scroll; hierarchy=\n${windowDump()}",
+                )
                 var skipped = false
                 for (label in listOf("Skip", "Pular")) {
+                    // Prefer semantics CD (OutlineButton clearAndSetSemantics).
                     val obj = device.findObject(By.descContains(label))
                         ?: device.findObject(By.textContains(label))
                         ?: continue
@@ -146,7 +158,10 @@ class DeviceWalkUiTest {
                         break
                     }
                 }
-                assertTrue(skipped, "Failed to tap FirstRun Skip/Pular")
+                assertTrue(
+                    skipped,
+                    "Failed to tap FirstRun Skip/Pular; hierarchy=\n${windowDump()}",
+                )
                 covered += "first-run-skip"
                 waitUntil(45_000) { onFilesShellReady() }
             }
@@ -163,7 +178,10 @@ class DeviceWalkUiTest {
         uiExists("Welcome to Velum") ||
             uiExists("Bem-vindo ao Velum") ||
             uiExists("How to start") ||
-            uiExists("Como começar")
+            uiExists("Como começar") ||
+            // Brand title sits above Welcome — still below a tall hero, but a
+            // useful signal once the first swipe reveals the copy block.
+            (uiExists("Velum") && !onFilesShellReady())
 
     /**
      * True only when the shell bottom bar is composed (FirstRun overlay dismissed).
