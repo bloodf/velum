@@ -28,9 +28,8 @@ import dev.velum.app.devicewalk.DeviceWalkTranscriber
 import dev.velum.app.platform.ExportFolderStore
 import dev.velum.app.platform.MicCapture
 import dev.velum.app.platform.createMicCapture
-import dev.velum.app.platform.recordingsDirectoryPath
 import dev.velum.app.platform.systemLanguageTag
-import dev.velum.app.platform.writeBytesToPath
+import dev.velum.app.platform.writeBytesAtomically
 import dev.velum.app.ui.DeviceViewModel
 import dev.velum.app.ui.DownloadedSessionAudio
 import dev.velum.app.ui.SettingsViewModel
@@ -117,6 +116,7 @@ class AppContainer(
                 else -> systemLanguageTag()
             }
         },
+        observeLibraryBySessionId = { repository.observeDeviceSessionRecordingIds() },
     )
     val integrationAuth = IntegrationAuthStore(secureStore, integrationConfig)
     val webhookSettings = WebhookSettingsStore(secureStore)
@@ -240,65 +240,40 @@ class AppContainer(
         return id
     }
 
-    suspend fun persistDownloadedSession(session: DownloadedSessionAudio): String {
-        val id = RecordingIds.newId()
-        val ext = when {
-            looksLikeOgg(session.decryptedBytes) -> "ogg"
-            looksLikeWav(session.decryptedBytes) -> "wav"
-            else -> "bin"
+    /**
+     * Persist decrypted device-session audio into the library (#113).
+     *
+     * Idempotent on device session identity: a re-download reuses the existing
+     * recording id and replaces audio only (transcript / summary / template kept).
+     * Optional [writeAudio] / [beforeRename] hooks exist for unit tests.
+     */
+    suspend fun persistDownloadedSession(
+        session: DownloadedSessionAudio,
+        writeAudio: ((absolutePath: String, bytes: ByteArray) -> Unit)? = null,
+    ): String {
+        val result = DownloadedSessionUpsert.persist(
+            repository = repository,
+            session = session,
+            formatTitle = { formatRecordingTitle(it) },
+            writeAudio = writeAudio ?: { path, bytes -> writeBytesAtomically(path, bytes) },
+        )
+        if (result.created) {
+            val title = repository.getRecording(result.recordingId)?.title.orEmpty()
+            // Resolve AutoFlow before first enqueue so KEEP cannot drop template/model.
+            val match = repository.findMatchingAutoflow(
+                source = "note_pro",
+                durationSeconds = 0,
+                title = title,
+            )
+            enqueueProcessing(
+                recordingId = result.recordingId,
+                templateId = match?.template_id,
+                retranscribe = true,
+                apiModelOverride = match?.let { AutoFlowResolve.modelOverride(it) },
+            )
         }
-        val path = "${recordingsDirectoryPath()}/$id.$ext"
-        writeBytesToPath(path, session.decryptedBytes)
-        val started = if (session.startedAtEpochSeconds > 1_000_000_000L) {
-            session.startedAtEpochSeconds
-        } else {
-            epochSecondsNow()
-        }
-        val title = formatRecordingTitle(started)
-        repository.insertRecording(
-            id = id,
-            sessionId = session.sessionId,
-            folderId = null,
-            title = title,
-            source = "note_pro",
-            deviceSerial = session.deviceSerial,
-            startedAt = started,
-            durationSeconds = 0,
-            sizeBytes = session.sizeBytes,
-            localPath = path,
-            transcript = null,
-            summaryMarkdown = null,
-            status = "queued",
-        )
-        // Resolve AutoFlow before first enqueue so KEEP cannot drop template/model.
-        val match = repository.findMatchingAutoflow(
-            source = "note_pro",
-            durationSeconds = 0,
-            title = title,
-        )
-        enqueueProcessing(
-            recordingId = id,
-            templateId = match?.template_id,
-            retranscribe = true,
-            apiModelOverride = match?.let { AutoFlowResolve.modelOverride(it) },
-        )
-        return id
+        return result.recordingId
     }
-
-    private fun looksLikeOgg(bytes: ByteArray): Boolean =
-        bytes.size >= 4 &&
-            bytes[0] == 'O'.code.toByte() &&
-            bytes[1] == 'g'.code.toByte() &&
-            bytes[2] == 'g'.code.toByte() &&
-            bytes[3] == 'S'.code.toByte()
-
-    private fun looksLikeWav(bytes: ByteArray): Boolean =
-        bytes.size >= 12 &&
-            bytes[0] == 'R'.code.toByte() &&
-            bytes[1] == 'I'.code.toByte() &&
-            bytes[2] == 'F'.code.toByte() &&
-            bytes[3] == 'F'.code.toByte()
-
 
     private fun formatRecordingTitle(epochSeconds: Long): String {
         val locale = settingsRepository.preferences.value.appLanguage

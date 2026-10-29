@@ -7,4 +7,12 @@ actual fun writeBytesToPath(absolutePath: String, bytes: ByteArray) {
     error("writeBytesToPath is Android-first; iOS file IO lands with M3")
 }
 
+actual fun writeBytesAtomically(
+    absolutePath: String,
+    bytes: ByteArray,
+    beforeRename: () -> Unit,
+) {
+    error("writeBytesAtomically is Android-first; iOS file IO lands with M3")
+}
+
 actual fun deleteFileAtPath(absolutePath: String): Boolean = false
