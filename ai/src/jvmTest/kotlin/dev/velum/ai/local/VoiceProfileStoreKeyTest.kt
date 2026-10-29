@@ -183,10 +183,67 @@ class VoiceProfileStoreKeyTest {
             File(voices, ".profile_key").writeBytes(constantKey)
             writeLegacyProfile(profiles, "second", floatArrayOf(0f, 1f, 0f, 0f), legacyCipher)
 
-            // Fresh SecureStore → mint again, but marker must block a second purge.
+            // Fresh SecureStore → mint again, but marker must block a second profile purge.
+            // Leftover `.profile_key` delete is retried (file-only; no scan).
             VoiceProfileStore(root = root, secureStore = InMemorySecureStore()).ensureKey()
             assertTrue(File(profiles, "second.json").exists())
             assertTrue(File(profiles, "second.enc").exists())
+            assertFalse(File(voices, ".profile_key").exists())
+            assertTrue(File(voices, ".profile_key.purged").exists())
+        }
+    }
+
+    @Test
+    fun failed_legacy_key_delete_writes_marker_then_retry_deletes_file_only() {
+        runBlocking {
+            val dir = tempDir("velum-vp-delete-retry")
+            val root = ModelStoreDir(dir.absolutePath)
+            val voices = File(dir, "voices").also { it.mkdirs() }
+            val profiles = File(voices, "profiles").also { it.mkdirs() }
+            val constantKey = legacyConstantKeyBytesForTests()
+            File(voices, ".profile_key").writeBytes(constantKey)
+            val legacyCipher = createProfileCipher(constantKey)
+            writeLegacyProfile(profiles, "legacy", floatArrayOf(1f, 0f, 0f, 0f), legacyCipher)
+
+            var failDelete = true
+            val deleter: (ModelStoreDir) -> Boolean = { file ->
+                if (failDelete) {
+                    false
+                } else {
+                    file.deleteRecursively()
+                    !file.exists()
+                }
+            }
+            val secure = InMemorySecureStore()
+            val first = VoiceProfileStore(
+                root = root,
+                secureStore = secure,
+                legacyKeyFileDeleter = deleter,
+            )
+            first.ensureKey()
+
+            assertTrue(File(voices, ".profile_key.purged").exists())
+            assertTrue(File(voices, ".profile_key").exists())
+            assertFalse(File(profiles, "legacy.json").exists())
+
+            // Profile under the stored key — second prime must not delete it.
+            first.upsert("Keep", floatArrayOf(0f, 1f, 0f))
+            assertTrue(File(profiles, "keep.json").exists())
+
+            failDelete = false
+            val retryStore = VoiceProfileStore(
+                root = root,
+                secureStore = secure,
+                legacyKeyFileDeleter = deleter,
+            )
+            retryStore.ensureKey()
+
+            assertFalse(File(voices, ".profile_key").exists())
+            assertTrue(File(voices, ".profile_key.purged").exists())
+            assertTrue(File(profiles, "keep.json").exists())
+            assertTrue(File(profiles, "keep.enc").exists())
+            assertEquals(1, retryStore.listProfiles().size)
+            assertEquals("Keep", retryStore.listProfiles().single().displayName)
         }
     }
 
@@ -226,33 +283,61 @@ class VoiceProfileStoreKeyTest {
         runBlocking {
             val dir = tempDir("velum-vp-android-like")
             val root = ModelStoreDir(dir.absolutePath)
+            val voices = File(dir, "voices").also { it.mkdirs() }
+            val profiles = File(voices, "profiles").also { it.mkdirs() }
+
             val secure = AndroidLikeSecureStore()
             val store = VoiceProfileStore(root = root, secureStore = secure)
+            // Mint with no legacy file so purge/marker do not run; then plant `.profile_key`
+            // and 3 profiles encrypted under the stored key.
             store.ensureKey()
-            store.upsert("Keep", floatArrayOf(1f, 0f, 0f))
+            store.upsert("Alpha", floatArrayOf(1f, 0f, 0f))
+            store.upsert("Beta", floatArrayOf(0f, 1f, 0f))
+            store.upsert("Gamma", floatArrayOf(0f, 0f, 1f))
             val originalKey = secure.storedValue(VoiceProfileStore.PROFILE_KEY_SECURE)
             assertNotNull(originalKey)
             val putsAfterSeed = secure.putCount.get()
 
+            val legacyKeySnapshot = legacyConstantKeyBytesForTests()
+            val legacyKey = File(voices, ".profile_key").also { it.writeBytes(legacyKeySnapshot) }
+            assertFalse(File(voices, ".profile_key.purged").exists())
+            assertTrue(File(profiles, "alpha.json").exists())
+            assertTrue(File(profiles, "beta.json").exists())
+            assertTrue(File(profiles, "gamma.json").exists())
+
             // Transient decrypt failure: getString would delete (old Android), read is Unreadable.
+            // Fail-closed: no mint, no purge marker, legacy file + all profiles untouched.
             secure.markUnreadable(VoiceProfileStore.PROFILE_KEY_SECURE)
             val store2 = VoiceProfileStore(root = root, secureStore = secure)
             assertFailsWith<VoiceProfileKeyUnreadableException> { store2.ensureKey() }
             assertIs<VoiceKeyPrimingState.Failed>(store2.primingState.value)
             assertEquals(putsAfterSeed, secure.putCount.get())
-            // read() left the entry intact (unlike destructive getString).
             assertTrue(secure.contains(VoiceProfileStore.PROFILE_KEY_SECURE))
             assertEquals(originalKey, secure.storedValue(VoiceProfileStore.PROFILE_KEY_SECURE))
-            assertTrue(File(dir, "voices/profiles/keep.json").exists())
-            assertTrue(File(dir, "voices/profiles/keep.enc").exists())
+            assertFalse(File(voices, ".profile_key.purged").exists())
+            assertTrue(legacyKey.exists())
+            assertTrue(legacyKey.readBytes().contentEquals(legacyKeySnapshot))
+            assertTrue(File(profiles, "alpha.json").exists())
+            assertTrue(File(profiles, "alpha.enc").exists())
+            assertTrue(File(profiles, "beta.json").exists())
+            assertTrue(File(profiles, "beta.enc").exists())
+            assertTrue(File(profiles, "gamma.json").exists())
+            assertTrue(File(profiles, "gamma.enc").exists())
 
             secure.clearUnreadable(VoiceProfileStore.PROFILE_KEY_SECURE)
             val store3 = VoiceProfileStore(root = root, secureStore = secure)
             store3.ensureKey()
             assertIs<VoiceKeyPrimingState.Ready>(store3.primingState.value)
-            assertEquals(1, store3.listProfiles().size)
+            val listed = store3.listProfiles()
+            assertEquals(3, listed.size)
+            assertEquals(setOf("Alpha", "Beta", "Gamma"), listed.map { it.displayName }.toSet())
             assertEquals(originalKey, secure.storedValue(VoiceProfileStore.PROFILE_KEY_SECURE))
             assertEquals(putsAfterSeed, secure.putCount.get())
+            // Value path + leftover `.profile_key` without marker does not re-purge
+            // (purge requires mintedNewKey). Profiles stay; legacy file may remain.
+            assertTrue(File(profiles, "alpha.json").exists())
+            assertTrue(File(profiles, "beta.json").exists())
+            assertTrue(File(profiles, "gamma.json").exists())
         }
     }
 
