@@ -55,6 +55,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -463,15 +465,18 @@ private fun HeaderIcon(
     contentDescription: String,
     onClick: () -> Unit,
 ) {
+    // CD on the clickable Box only — Icon CD is a non-clickable unmerged node
+    // that device-walk openSettings preferred over the real gear (#106).
     Box(
         Modifier
             .defaultMinSize(48.dp, 48.dp)
+            .semantics { this.contentDescription = contentDescription }
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
             imageVector,
-            contentDescription = contentDescription,
+            contentDescription = null,
             tint = VelumInk,
             modifier = Modifier.size(22.dp),
         )

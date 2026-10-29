@@ -879,7 +879,14 @@ class DeviceWalkUiTest {
     private fun softClickContentDesc(vararg labels: String): Boolean {
         for (label in labels) {
             if (label.isBlank()) continue
+            // Prefer merged tree so CD on a clickable ancestor wins over a
+            // non-clickable Icon sibling (9e0742c: Voltar clickable=false).
             val clicked = runCatching {
+                composeRule
+                    .onNodeWithContentDescription(label, substring = true, useUnmergedTree = false)
+                    .performClick()
+                true
+            }.recoverCatching {
                 composeRule
                     .onNodeWithContentDescription(label, substring = true, useUnmergedTree = true)
                     .performScrollTo()

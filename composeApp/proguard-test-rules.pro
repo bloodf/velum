@@ -13,12 +13,15 @@
 -keepnames class kotlinx.** { *; }
 -keepnames class androidx.** { *; }
 
-# Targeted keeps for Compose UI Test seams the app never references, so R8
-# would otherwise shrink them out of the shared app classloader:
+# Targeted keeps for Compose UI Test / coroutines-test seams the app never
+# references (would otherwise be shrunk from the shared app classloader):
 # - DelayWithTimeoutDiagnostics (ce8d7db)
 # - kotlin.time.** / AbstractLongTimeSource (4406be9)
 # - InfiniteAnimationPolicy$DefaultImpls (af87f76)
+# - CoroutineExceptionHandlerImplKt.ensurePlatformExceptionHandlerLoaded (9e0742c)
 -keep class kotlinx.coroutines.DelayWithTimeoutDiagnostics { *; }
+-keep class kotlinx.coroutines.internal.CoroutineExceptionHandlerImplKt { *; }
+-keep class kotlinx.coroutines.internal.** { *; }
 -keep class kotlin.time.** { *; }
 -keep class androidx.compose.ui.platform.InfiniteAnimationPolicy { *; }
 -keep class androidx.compose.ui.platform.InfiniteAnimationPolicy$* { *; }

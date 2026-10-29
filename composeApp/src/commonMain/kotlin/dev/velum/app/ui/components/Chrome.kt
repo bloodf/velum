@@ -62,6 +62,8 @@ fun ScreenTopBar(
         when {
             onBack != null -> {
                 val backCd = strings.ux.back
+                // CD on the clickable Box only — Icon CD creates a non-clickable
+                // sibling that useUnmergedTree / UiAutomator prefer (#106).
                 Box(
                     Modifier
                         .defaultMinSize(48.dp, 48.dp)
@@ -71,7 +73,7 @@ fun ScreenTopBar(
                 ) {
                     Icon(
                         Icons.AutoMirrored.Outlined.ArrowBack,
-                        contentDescription = backCd,
+                        contentDescription = null,
                         tint = VelumInk,
                         modifier = Modifier.size(24.dp),
                     )
@@ -88,7 +90,7 @@ fun ScreenTopBar(
                 ) {
                     Icon(
                         Icons.Outlined.Close,
-                        contentDescription = closeCd,
+                        contentDescription = null,
                         tint = VelumInk,
                         modifier = Modifier.size(24.dp),
                     )
