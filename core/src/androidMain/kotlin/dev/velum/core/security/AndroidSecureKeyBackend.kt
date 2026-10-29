@@ -3,6 +3,7 @@ package dev.velum.core.security
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Log
+import java.security.InvalidAlgorithmParameterException
 import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
@@ -34,10 +35,18 @@ internal interface AndroidSecureKeyBackend {
 
     /**
      * Init [cipher] for AES-GCM encrypt with [key] under the AndroidKeyStore
-     * randomized-encryption contract: **no caller-provided IV**. Returns the
-     * provider-chosen IV (must be 12 bytes).
+     * randomized-encryption contract: **no caller-provided IV**.
+     *
+     * [callerIv] must be null — a non-null value must throw
+     * [java.security.InvalidAlgorithmParameterException] like Keystore when
+     * randomized encryption is required. Returns the provider-chosen IV
+     * (must be 12 bytes).
      */
-    fun initEncrypt(cipher: Cipher, key: SecretKey): ByteArray
+    fun initEncrypt(
+        cipher: Cipher,
+        key: SecretKey,
+        callerIv: ByteArray? = null,
+    ): ByteArray
 }
 
 /**
@@ -134,8 +143,15 @@ internal class AndroidKeystoreBackend(
         }
     }
 
-    override fun initEncrypt(cipher: Cipher, key: SecretKey): ByteArray {
+    override fun initEncrypt(
+        cipher: Cipher,
+        key: SecretKey,
+        callerIv: ByteArray?,
+    ): ByteArray {
         // setRandomizedEncryptionRequired(true): caller IV is rejected by Keystore.
+        if (callerIv != null) {
+            throw InvalidAlgorithmParameterException("Caller-provided IV not permitted")
+        }
         cipher.init(Cipher.ENCRYPT_MODE, key)
         val iv = cipher.iv
         require(iv != null && iv.size == IV_BYTES) {

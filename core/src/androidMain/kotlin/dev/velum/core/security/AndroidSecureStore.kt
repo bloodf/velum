@@ -199,11 +199,23 @@ class AndroidSecureStore private constructor(
         }
     }
 
-    private fun encryptWith(key: SecretKey, plaintext: ByteArray): String {
+    /**
+     * AES-GCM encrypt via [AndroidSecureKeyBackend.initEncrypt].
+     *
+     * Production always passes [callerIv] = null (Keystore randomized
+     * encryption). A non-null [callerIv] is rejected by the backend — exposed
+     * as [encryptWithCallerIvForTest] so Robolectric can assert the store
+     * encrypt path itself fails like Keystore would.
+     */
+    private fun encryptWith(
+        key: SecretKey,
+        plaintext: ByteArray,
+        callerIv: ByteArray? = null,
+    ): String {
         val cipher = Cipher.getInstance(TRANSFORMATION)
         // AndroidKeyStore AES keys require randomized encryption: never pass a
         // caller IV. The provider chooses one; read it back from the cipher.
-        val iv = keyBackend.initEncrypt(cipher, key)
+        val iv = keyBackend.initEncrypt(cipher, key, callerIv)
         val ciphertext = cipher.doFinal(plaintext)
         val payload = ByteBuffer.allocate(2 + iv.size + ciphertext.size)
             .put(FORMAT_VERSION)
@@ -213,6 +225,17 @@ class AndroidSecureStore private constructor(
             .array()
         return Base64.encodeToString(payload, Base64.NO_WRAP)
     }
+
+    /**
+     * Test-only: drive [encryptWith] with a caller-provided IV so the store
+     * encrypt path exercises the backend's Keystore-shaped rejection.
+     */
+    internal fun encryptWithCallerIvForTest(plaintext: ByteArray, callerIv: ByteArray): String =
+        encryptWith(
+            keyBackend.getOrCreateKey(onClearVault = { clearVaultAndKey() }),
+            plaintext,
+            callerIv = callerIv,
+        )
 
     private fun decryptResult(key: SecretKey, encoded: String): VaultDecrypt {
         val payload = try {

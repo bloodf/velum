@@ -3,7 +3,6 @@ package dev.velum.core.security
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import java.security.InvalidAlgorithmParameterException
-import javax.crypto.Cipher
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
@@ -17,8 +16,9 @@ import org.robolectric.annotation.Config
 
 /**
  * Robolectric coverage for AndroidKeyStore randomized-encryption contract:
- * encrypt must not supply a caller IV; the fake rejects that path and counts
- * [FakeAndroidSecureKeyBackend.initEncrypt] so a regression is caught on JVM.
+ * [AndroidSecureStore] encrypt must not supply a caller IV; the fake backend
+ * rejects that on [AndroidSecureKeyBackend.initEncrypt] (the path the store
+ * calls), so a regression is caught on JVM without a standalone probe.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [28])
@@ -52,14 +52,15 @@ class AndroidSecureStoreEncryptTest {
     }
 
     @Test
-    fun fake_rejects_caller_provided_iv_like_keystore() = runTest {
-        val key = backend.getOrCreateKey(onClearVault = {})
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+    fun store_encrypt_path_rejects_caller_provided_iv() = runTest {
         val ex = assertFailsWith<InvalidAlgorithmParameterException> {
-            backend.encryptWith(cipher, key, callerIv = ByteArray(12))
+            store.encryptWithCallerIvForTest(
+                plaintext = "SYNTH-CALLER-IV".toByteArray(Charsets.UTF_8),
+                callerIv = ByteArray(12),
+            )
         }
         assertTrue(ex.message!!.contains("Caller-provided IV not permitted"))
-        assertEquals(0, backend.encryptInitCount, "caller IV must not reach initEncrypt body")
+        assertEquals(0, backend.encryptInitCount, "rejected caller IV must not count as encrypt")
     }
 
     @Test

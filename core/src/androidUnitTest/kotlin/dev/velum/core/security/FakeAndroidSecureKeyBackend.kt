@@ -10,9 +10,10 @@ import javax.crypto.SecretKey
  * Test-only software AES key backend for [AndroidSecureStore] Robolectric tests.
  * Lives in androidUnitTest — never referenced from production sources.
  *
- * Mirrors AndroidKeyStore randomized-encryption: encrypt must go through
- * [initEncrypt] / [encryptWith] with no caller IV. Passing a caller IV to
- * [encryptWith] throws [InvalidAlgorithmParameterException] like Keystore.
+ * Mirrors AndroidKeyStore randomized-encryption: [initEncrypt] rejects a
+ * caller-provided IV with [InvalidAlgorithmParameterException]. The store's
+ * encrypt path calls [initEncrypt] directly, so that rejection is on the
+ * production code path (not a standalone probe).
  */
 internal class FakeAndroidSecureKeyBackend : AndroidSecureKeyBackend {
     private val lock = Any()
@@ -23,7 +24,7 @@ internal class FakeAndroidSecureKeyBackend : AndroidSecureKeyBackend {
     var mintCount: Int = 0
         private set
 
-    /** Counts [initEncrypt] calls — encrypt must use the provider IV path. */
+    /** Counts successful [initEncrypt] calls (provider-IV path only). */
     var encryptInitCount: Int = 0
         private set
 
@@ -66,16 +67,11 @@ internal class FakeAndroidSecureKeyBackend : AndroidSecureKeyBackend {
         key = null
     }
 
-    override fun initEncrypt(cipher: Cipher, key: SecretKey): ByteArray =
-        encryptWith(cipher, key, callerIv = null)
-
-    /**
-     * Encrypt-path entry that rejects a caller-provided IV (AndroidKeyStore
-     * randomized-encryption contract). [initEncrypt] routes through here with
-     * a null IV; tests pass a non-null [callerIv] to assert Keystore-shaped
-     * rejection without a standalone probe method.
-     */
-    fun encryptWith(cipher: Cipher, key: SecretKey, callerIv: ByteArray?): ByteArray {
+    override fun initEncrypt(
+        cipher: Cipher,
+        key: SecretKey,
+        callerIv: ByteArray?,
+    ): ByteArray {
         if (callerIv != null) {
             require(callerIv.size == IV_BYTES)
             throw InvalidAlgorithmParameterException("Caller-provided IV not permitted")
