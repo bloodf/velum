@@ -2,19 +2,15 @@ package dev.velum.core.security
 
 import android.content.Context
 import android.content.SharedPreferences
-import android.security.keystore.KeyGenParameterSpec
-import android.security.keystore.KeyProperties
 import android.util.Base64
 import android.util.Log
 import java.nio.BufferUnderflowException
 import java.nio.ByteBuffer
-import java.security.KeyStore
 import java.security.SecureRandom
 import javax.crypto.AEADBadTagException
 import javax.crypto.BadPaddingException
 import javax.crypto.Cipher
 import javax.crypto.IllegalBlockSizeException
-import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 import kotlinx.coroutines.Dispatchers
@@ -46,12 +42,36 @@ import kotlinx.coroutines.withContext
  * Decrypt policy matches the JVM store: drop an entry only when its blob is
  * structurally malformed; crypto / auth / Keystore failures keep the ciphertext
  * and return null.
+ *
+ * [keyBackend] is the Keystore seam: production uses [AndroidKeystoreBackend];
+ * androidUnitTest may inject a fake. The public constructor always uses the
+ * real backend.
  */
-class AndroidSecureStore(
+class AndroidSecureStore private constructor(
     context: Context,
-    private val prefsName: String = PREFS_NAME,
-    private val keyAlias: String = KEY_ALIAS,
+    private val prefsName: String,
+    private val keyAlias: String,
+    private val keyBackend: AndroidSecureKeyBackend,
 ) : SecureStore {
+    /**
+     * Production constructor — real Android Keystore backend, no test hooks.
+     */
+    constructor(
+        context: Context,
+        prefsName: String = PREFS_NAME,
+        keyAlias: String = KEY_ALIAS,
+    ) : this(context, prefsName, keyAlias, AndroidKeystoreBackend(keyAlias))
+
+    /**
+     * Test-only: inject a fake [AndroidSecureKeyBackend] (androidUnitTest).
+     */
+    internal constructor(
+        context: Context,
+        keyBackend: AndroidSecureKeyBackend,
+        prefsName: String = PREFS_NAME,
+        keyAlias: String = KEY_ALIAS,
+    ) : this(context, prefsName, keyAlias, keyBackend)
+
     private val appContext = context.applicationContext
     private val prefs: SharedPreferences by lazy {
         appContext.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
@@ -68,7 +88,7 @@ class AndroidSecureStore(
     override suspend fun getString(key: String): String? = withContext(Dispatchers.IO) {
         val stored = prefs.getString(key, null) ?: return@withContext null
         val secretKey = try {
-            getOrCreateKey()
+            keyBackend.getOrCreateKey(onClearVault = { clearVaultAndKey() })
         } catch (t: Throwable) {
             Log.w(TAG, "Keystore unavailable during getString: ${t::class.java.name}")
             if (KeystoreFailureClassifier.actionFor(t) == KeystoreVaultAction.ClearAndRegenerate) {
@@ -110,7 +130,7 @@ class AndroidSecureStore(
         val stored = prefs.getString(key, null)
             ?: return@withContext SecureRead.Missing
         val secretKey = try {
-            peekExistingKeyForRead()
+            keyBackend.peekExistingKeyForRead()
         } catch (t: Throwable) {
             Log.w(TAG, "Keystore unavailable during read: ${t::class.java.name}")
             // Transient or permanent Keystore failure — Unreadable, never Missing;
@@ -148,133 +168,30 @@ class AndroidSecureStore(
         }
     }
 
-    private fun getOrCreateKey(): SecretKey {
-        val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
-        val aliasPresent = keyStore.containsAlias(keyAlias)
-        if (!aliasPresent) {
-            return createKey()
-        }
-        // Alias exists — never mint a replacement unless permanently invalidated.
-        // API 35 emulator NPE ("invalid null input") is transient: keep the alias.
-        val entryResult = runCatching {
-            keyStore.getEntry(keyAlias, null) as? KeyStore.SecretKeyEntry
-        }
-        val entry = entryResult.getOrNull()
-        val failure = entryResult.exceptionOrNull()
-        return when (
-            KeystoreAliasResolvePolicy.decide(
-                aliasPresent = true,
-                entryObtained = entry != null,
-                getEntryFailure = failure,
-            )
-        ) {
-            KeystoreAliasResolveAction.UseExisting ->
-                entry!!.secretKey
-            KeystoreAliasResolveAction.CreateMissing ->
-                createKey()
-            KeystoreAliasResolveAction.ClearAndRegenerate -> {
-                val name = failure?.let { it::class.java.name } ?: "unknown"
-                Log.w(TAG, "Key permanently invalidated on getEntry; clearing vault: $name")
-                clearVaultAndKey()
-                createKey()
-            }
-            KeystoreAliasResolveAction.PropagateTransient -> {
-                val t = failure
-                    ?: IllegalStateException("Keystore alias present but SecretKeyEntry missing")
-                Log.w(TAG, "Keystore getEntry failed; retaining alias: ${t::class.java.name}")
-                throw t
-            }
-        }
-    }
-
-    /**
-     * Resolve the existing Keystore key for [read] without creating, deleting,
-     * or regenerating anything. [KeystoreAliasResolveAction.PropagateTransient]
-     * and [KeystoreAliasResolveAction.ClearAndRegenerate] both throw so the
-     * caller can return [SecureRead.Unreadable] while leaving prefs intact.
-     */
-    private fun peekExistingKeyForRead(): SecretKey {
-        val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
-        val aliasPresent = keyStore.containsAlias(keyAlias)
-        val entryResult = runCatching {
-            if (!aliasPresent) null
-            else keyStore.getEntry(keyAlias, null) as? KeyStore.SecretKeyEntry
-        }
-        val entry = entryResult.getOrNull()
-        val failure = entryResult.exceptionOrNull()
-        return when (
-            KeystoreAliasResolvePolicy.decide(
-                aliasPresent = aliasPresent,
-                entryObtained = entry != null,
-                getEntryFailure = failure,
-            )
-        ) {
-            KeystoreAliasResolveAction.UseExisting ->
-                entry!!.secretKey
-            KeystoreAliasResolveAction.CreateMissing ->
-                throw IllegalStateException("Keystore alias missing during SecureStore.read")
-            KeystoreAliasResolveAction.ClearAndRegenerate -> {
-                val t = failure
-                    ?: IllegalStateException("Key permanently invalidated during SecureStore.read")
-                Log.w(TAG, "Keystore permanently invalidated on read; leaving vault: ${t::class.java.name}")
-                throw t
-            }
-            KeystoreAliasResolveAction.PropagateTransient -> {
-                val t = failure
-                    ?: IllegalStateException("Keystore alias present but SecretKeyEntry missing")
-                Log.w(TAG, "Keystore getEntry failed on read; retaining alias: ${t::class.java.name}")
-                throw t
-            }
-        }
-    }
-
-    private fun createKey(): SecretKey {
-        val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
-        // Keys minted in AndroidKeyStore are non-exportable by design (no raw key bytes).
-        generator.init(
-            KeyGenParameterSpec.Builder(
-                keyAlias,
-                KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
-            )
-                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-                .setKeySize(256)
-                .setRandomizedEncryptionRequired(true)
-                .setUserAuthenticationRequired(false)
-                .build(),
-        )
-        return generator.generateKey()
-    }
+    /** Exposed for androidUnitTest assertions (alias still present after failures). */
+    internal fun keyAliasPresent(): Boolean = keyBackend.containsAlias()
 
     /**
      * Permanent invalidation / explicit wipe: the Keystore key is gone, so
      * ciphertext sealed with it is unreadable — clear the vault and the alias.
      */
     private fun clearVaultAndKey() {
-        deleteKeyAliasOnly()
+        keyBackend.deleteAlias()
         prefs.edit().clear().commit()
-    }
-
-    private fun deleteKeyAliasOnly() {
-        runCatching {
-            val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
-            if (keyStore.containsAlias(keyAlias)) {
-                keyStore.deleteEntry(keyAlias)
-            }
-        }.onFailure { t ->
-            Log.w(TAG, "Failed to delete Keystore alias: ${t::class.java.name}")
-        }
     }
 
     private fun encrypt(plaintext: ByteArray): String {
         return try {
-            encryptWith(getOrCreateKey(), plaintext)
+            encryptWith(keyBackend.getOrCreateKey(onClearVault = { clearVaultAndKey() }), plaintext)
         } catch (t: Throwable) {
             when (KeystoreFailureClassifier.actionFor(t)) {
                 KeystoreVaultAction.ClearAndRegenerate -> {
                     Log.w(TAG, "Key permanently invalidated; clearing vault: ${t::class.java.name}")
                     clearVaultAndKey()
-                    encryptWith(createKey(), plaintext)
+                    encryptWith(
+                        keyBackend.getOrCreateKey(onClearVault = { clearVaultAndKey() }),
+                        plaintext,
+                    )
                 }
                 KeystoreVaultAction.KeepEntries -> {
                     // Transient Keystore error — never wipe stored ciphertext.
@@ -365,7 +282,6 @@ class AndroidSecureStore(
 
     companion object {
         private const val TAG = "VelumSecureStore"
-        private const val ANDROID_KEYSTORE = "AndroidKeyStore"
         private const val KEY_ALIAS = "dev.velum.secure_store_aes"
         private const val PREFS_NAME = "velum_secure_encrypted"
         private const val TRANSFORMATION = "AES/GCM/NoPadding"
