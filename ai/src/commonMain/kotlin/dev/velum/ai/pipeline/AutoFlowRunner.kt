@@ -42,6 +42,8 @@ class AutoFlowRunner(
     private val calendar: CalendarEventProvider = createCalendarEventProvider(),
     private val nowEpochMs: () -> Long = { epochMsNow() },
     private val jobScheduler: RecordingJobScheduler? = null,
+    /** Poll interval while waiting for WorkManager terminal status. Tests inject 0–1ms. */
+    private val awaitStatusPollDelayMs: Long = DEFAULT_AWAIT_STATUS_POLL_MS,
 ) {
     private var job: Job? = null
     private val processedIds = mutableSetOf<String>()
@@ -181,7 +183,7 @@ class AutoFlowRunner(
                     }
                     "failed" -> if (sawInFlight) return@withTimeoutOrNull "failed"
                 }
-                delay(500)
+                delay(awaitStatusPollDelayMs)
             }
             null
         }
@@ -274,6 +276,7 @@ class AutoFlowRunner(
 
     companion object {
         private const val AWAIT_TERMINAL_MS = 30L * 60L * 1000L
+        private const val DEFAULT_AWAIT_STATUS_POLL_MS = 500L
 
         /** Terminal statuses — seed-claim / skip rematch; never retranscribe these. */
         internal fun isStableNonMatch(recording: Recording): Boolean =

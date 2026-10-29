@@ -29,21 +29,26 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.test.runTest
 
+/**
+ * Deterministic AutoFlow runner tests: no wall-clock poll loops.
+ * Runner scope uses [Dispatchers.Default] (same as production) so SQLDelight
+ * `mapToList(Dispatchers.Default)` emissions and SharedFlow posts stay coherent;
+ * readiness is signaled via [AutoFlowRunner.passIndex] and [CompletableDeferred].
+ */
 class AutoFlowRunnerTest {
     @Test
-    fun isStableNonMatch_onlyTerminalStatuses() = runBlocking {
+    fun isStableNonMatch_onlyTerminalStatuses() = runTest {
         val repo = VelumRepository(createDatabase(DriverFactory()))
         assertTrue(AutoFlowRunner.isStableNonMatch(insert(repo, "ready", 10)))
         assertTrue(AutoFlowRunner.isStableNonMatch(insert(repo, "failed", 10)))
@@ -52,13 +57,13 @@ class AutoFlowRunnerTest {
     }
 
     @Test
-    fun incompleteDuration_thenMatch_runsOnceAndPostsOnReady() = runBlocking {
+    fun incompleteDuration_thenMatch_runsOnceAndPostsOnReady() = runTest {
         val (repo, processor) = harness()
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val scope = runnerScope()
         val processCalls = AtomicInteger(0)
         val scheduler = RecordingJobScheduler { id, _, _, _ ->
             processCalls.incrementAndGet()
-            kotlinx.coroutines.runBlocking {
+            runBlocking {
                 repo.updateStatus(id, "generating")
                 repo.updateStatus(id, "ready")
                 repo.updateSummary(id, "## Note\nok")
@@ -69,14 +74,16 @@ class AutoFlowRunnerTest {
             processor = processor,
             scope = scope,
             jobScheduler = scheduler,
+            awaitStatusPollDelayMs = 1L,
         )
         try {
             runner.start()
             awaitPass(runner, atLeast = 1)
 
-            // Attach before any match so a no-replay emit cannot be missed under load.
-            val webhook = async(start = CoroutineStart.UNDISPATCHED) {
-                runner.actions.first { it is AutoFlowUiAction.PostWebhook }
+            // Subscribe before any match so a no-replay emit cannot be missed.
+            val webhook = CompletableDeferred<AutoFlowUiAction>()
+            val webhookJob = scope.launch(start = CoroutineStart.UNDISPATCHED) {
+                webhook.complete(runner.actions.first { it is AutoFlowUiAction.PostWebhook })
             }
 
             // Disable seed default flow; use a strict duration floor.
@@ -119,18 +126,21 @@ class AutoFlowRunnerTest {
             }
             assertEquals(0, processCalls.get(), "duration=0 must not match durationMin=5")
 
-            repo.updateLocalPath("rec-af-1", "/tmp/af.wav", durationSeconds = 12, sizeBytes = 100)
-            repo.updateStatus("rec-af-1", "imported")
+            // Import first while duration is still 0 (no match). Then set duration in one
+            // write so the runner never races between path/duration and status updates.
+            awaitNextPass(runner) {
+                repo.updateStatus("rec-af-1", "imported")
+            }
+            assertEquals(0, processCalls.get(), "imported with duration=0 must not match")
 
-            withTimeout(15_000) {
-                while (processCalls.get() < 1 || repo.getRecording("rec-af-1")?.status != "ready") {
-                    delay(50)
-                }
+            awaitNextPass(runner) {
+                repo.updateLocalPath("rec-af-1", "/tmp/af.wav", durationSeconds = 12, sizeBytes = 100)
             }
             assertEquals(1, processCalls.get())
             assertEquals("ready", repo.getRecording("rec-af-1")?.status)
 
-            val action = withTimeout(15_000) { webhook.await() }
+            val action = webhook.await()
+            webhookJob.cancel()
             assertEquals("rec-af-1", (action as AutoFlowUiAction.PostWebhook).recordingId)
         } finally {
             runner.stop()
@@ -139,11 +149,11 @@ class AutoFlowRunnerTest {
     }
 
     @Test
-    fun failedProcessing_doesNotFirePostAction() = runBlocking {
+    fun failedProcessing_doesNotFirePostAction() = runTest {
         val (repo, processor) = harness()
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val scope = runnerScope()
         val scheduler = RecordingJobScheduler { id, _, _, _ ->
-            kotlinx.coroutines.runBlocking {
+            runBlocking {
                 repo.updateStatus(id, "generating")
                 repo.updateStatus(id, "failed")
             }
@@ -153,6 +163,7 @@ class AutoFlowRunnerTest {
             processor = processor,
             scope = scope,
             jobScheduler = scheduler,
+            awaitStatusPollDelayMs = 1L,
         )
         try {
             runner.start()
@@ -210,9 +221,9 @@ class AutoFlowRunnerTest {
     }
 
     @Test
-    fun terminalReady_afterSeed_isNotRetranscribed() = runBlocking {
+    fun terminalReady_afterSeed_isNotRetranscribed() = runTest {
         val (repo, processor) = harness()
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val scope = runnerScope()
         val processCalls = AtomicInteger(0)
         val scheduler = RecordingJobScheduler { _, _, retranscribe, _ ->
             processCalls.incrementAndGet()
@@ -256,6 +267,7 @@ class AutoFlowRunnerTest {
             processor = processor,
             scope = scope,
             jobScheduler = scheduler,
+            awaitStatusPollDelayMs = 1L,
         )
         try {
             runner.start()
@@ -273,9 +285,9 @@ class AutoFlowRunnerTest {
     }
 
     @Test
-    fun generatingBecomesReady_withoutRematchRetranscribe() = runBlocking {
+    fun generatingBecomesReady_withoutRematchRetranscribe() = runTest {
         val (repo, processor) = harness()
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val scope = runnerScope()
         val processCalls = AtomicInteger(0)
         val scheduler = RecordingJobScheduler { id, _, retranscribe, _ ->
             processCalls.incrementAndGet()
@@ -316,6 +328,7 @@ class AutoFlowRunnerTest {
             processor = processor,
             scope = scope,
             jobScheduler = scheduler,
+            awaitStatusPollDelayMs = 1L,
         )
         try {
             runner.start()
@@ -332,18 +345,20 @@ class AutoFlowRunnerTest {
     }
 
     @Test
-    fun seed_doesNotClaimImported_soRematchCanRun() = runBlocking {
+    fun seed_doesNotClaimImported_soRematchCanRun() = runTest {
         val (repo, processor) = harness()
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val scope = runnerScope()
         val processCalls = AtomicInteger(0)
+        val enqueued = CompletableDeferred<Unit>()
         val scheduler = RecordingJobScheduler { id, templateId, _, _ ->
             processCalls.incrementAndGet()
-            kotlinx.coroutines.runBlocking {
+            runBlocking {
                 assertEquals("velum.meeting", templateId)
                 repo.updateStatus(id, "generating")
                 repo.updateStatus(id, "ready")
                 repo.updateSummary(id, "## ok")
             }
+            enqueued.complete(Unit)
         }
         repo.insertRecording(
             id = "rec-imported-seed",
@@ -380,6 +395,7 @@ class AutoFlowRunnerTest {
             processor = processor,
             scope = scope,
             jobScheduler = scheduler,
+            awaitStatusPollDelayMs = 1L,
         )
         try {
             runner.start()
@@ -387,9 +403,7 @@ class AutoFlowRunnerTest {
             assertEquals(0, processCalls.get(), "seed pass must not enqueue")
             // Trigger a post-seed combine emission; imported must still be matchable.
             repo.updateRecordingTitle("rec-imported-seed", "Waiting import (touched)")
-            withTimeout(15_000) {
-                while (processCalls.get() < 1) delay(50)
-            }
+            enqueued.await()
             assertEquals(1, processCalls.get(), "imported at seed must remain matchable")
         } finally {
             runner.stop()
@@ -398,17 +412,19 @@ class AutoFlowRunnerTest {
     }
 
     @Test
-    fun seed_skips_in_flight_so_generating_can_rematch() = runBlocking {
+    fun seed_skips_in_flight_so_generating_can_rematch() = runTest {
         val (repo, processor) = harness()
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val scope = runnerScope()
         val processCalls = AtomicInteger(0)
+        val enqueued = CompletableDeferred<Unit>()
         val scheduler = RecordingJobScheduler { id, _, _, _ ->
             processCalls.incrementAndGet()
-            kotlinx.coroutines.runBlocking {
+            runBlocking {
                 repo.updateStatus(id, "generating")
                 repo.updateStatus(id, "ready")
                 repo.updateSummary(id, "## ok")
             }
+            enqueued.complete(Unit)
         }
         // Pre-existing generating row simulates process death mid-job before runner start.
         repo.insertRecording(
@@ -447,6 +463,7 @@ class AutoFlowRunnerTest {
             processor = processor,
             scope = scope,
             jobScheduler = scheduler,
+            awaitStatusPollDelayMs = 1L,
         )
         try {
             runner.start()
@@ -454,9 +471,7 @@ class AutoFlowRunnerTest {
             awaitPass(runner, atLeast = 1)
             assertEquals(0, processCalls.get(), "generating seed must not enqueue yet")
             repo.updateStatus("rec-inflight", "imported")
-            withTimeout(15_000) {
-                while (processCalls.get() < 1) delay(50)
-            }
+            enqueued.await()
             assertEquals(1, processCalls.get(), "in-flight seed skip must allow rematch after restart")
         } finally {
             runner.stop()
@@ -464,10 +479,11 @@ class AutoFlowRunnerTest {
         }
     }
 
+    private fun runnerScope(): CoroutineScope =
+        CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
     private suspend fun awaitPass(runner: AutoFlowRunner, atLeast: Int) {
-        withTimeout(15_000) {
-            runner.passIndex.first { it >= atLeast }
-        }
+        runner.passIndex.first { it >= atLeast }
     }
 
     /** Runs [block] then waits until [AutoFlowRunner.passIndex] advances past its pre-block value. */
@@ -501,11 +517,9 @@ class AutoFlowRunnerTest {
         repo.getRecording(id)!!
     }
 
-    private fun harness(): Pair<VelumRepository, RecordingProcessor> {
+    private suspend fun harness(): Pair<VelumRepository, RecordingProcessor> {
         val repo = VelumRepository(createDatabase(DriverFactory()))
-        val settings = SettingsRepository(InMemorySecureStore()).also {
-            runBlocking { it.load() }
-        }
+        val settings = SettingsRepository(InMemorySecureStore()).also { it.load() }
         val modelRoot = ModelStoreDir(
             File.createTempFile("velum-af", "").also { it.delete(); it.mkdirs() }.absolutePath,
         )
