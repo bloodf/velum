@@ -31,6 +31,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import dev.velum.app.i18n.LocalStrings
 import dev.velum.app.platform.HapticKind
@@ -139,15 +141,18 @@ private fun TabIcon(
         animationSpec = Motion.tweenOut(Motion.ToggleMs),
         label = "tabScale",
     )
+    // CD on the clickable Box only — Icon CD is a non-clickable a11y node that
+    // device-walk UiAutomator clicked without navigating (#106 minifiedTest).
     Box(
         Modifier
             .defaultMinSize(48.dp, 48.dp)
+            .semantics { this.contentDescription = contentDescription }
             .pressableScale(haptic = false, role = Role.Tab, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
             if (selected) filled else outlined,
-            contentDescription = contentDescription,
+            contentDescription = null,
             tint = tint,
             modifier = Modifier
                 .size(26.dp)

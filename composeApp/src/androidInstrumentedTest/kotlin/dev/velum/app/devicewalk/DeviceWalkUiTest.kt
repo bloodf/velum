@@ -106,22 +106,54 @@ class DeviceWalkUiTest {
         // Splash → FirstRun overlay (on top of NavHost FILES) or Files shell.
         // Do NOT treat Files title text under the FirstRun overlay as ready —
         // bottom bar CDs are hidden while showFirstRun, so require those.
+        // FirstRun Skip sits below the fold — scroll when welcome chrome is up.
         waitUntil(90_000) {
-            composeExists("Skip") ||
-                composeExists("Pular") ||
-                onFilesShellReady()
+            if (onFilesShellReady()) return@waitUntil true
+            if (composeExists("Skip") || composeExists("Pular") || uiExists("Skip") || uiExists("Pular")) {
+                return@waitUntil true
+            }
+            if (firstRunAboveFold()) {
+                scrollTowardFirstRunSkip()
+                composeExists("Skip") || composeExists("Pular") || uiExists("Skip") || uiExists("Pular")
+            } else {
+                false
+            }
         }
-        if (composeExists("Skip") || composeExists("Pular")) {
-            clickTextPrefer("Skip", "Pular")
+        if (composeExists("Skip") || composeExists("Pular") || uiExists("Skip") || uiExists("Pular")) {
+            if (!softClickText("Skip", "Pular")) {
+                softClickUi("Skip", "Pular")
+            }
             covered += "first-run-skip"
             // onSkip is a coroutine launch — wait until overlay is gone.
             waitUntil(30_000) {
-                !composeExists("Skip") && !composeExists("Pular")
+                !composeExists("Skip") && !composeExists("Pular") &&
+                    !uiExists("Skip") && !uiExists("Pular")
             }
         }
         waitUntil(60_000) { onFilesShellReady() }
         restoreAllFilesFilterSoft()
         dismissSystemPermissionDialogs()
+    }
+
+    /** Welcome / how-to-start copy visible while Skip may still be below the fold. */
+    private fun firstRunAboveFold(): Boolean =
+        (composeExists("Welcome to Velum") || composeExists("Bem-vindo ao Velum") ||
+            uiExists("Welcome to Velum") || uiExists("Bem-vindo ao Velum")) ||
+            (composeExists("How to start") || composeExists("Como começar") ||
+                uiExists("How to start") || uiExists("Como começar"))
+
+    private fun scrollTowardFirstRunSkip() {
+        val w = device.displayWidth
+        val h = device.displayHeight
+        repeat(4) {
+            if (uiExists("Skip") || uiExists("Pular") ||
+                composeExists("Skip") || composeExists("Pular")
+            ) {
+                return
+            }
+            device.swipe(w / 2, (h * 0.75).toInt(), w / 2, (h * 0.25).toInt(), 30)
+            SystemClock.sleep(250)
+        }
     }
 
     /**
@@ -744,21 +776,52 @@ class DeviceWalkUiTest {
                     softExistsContentDesc("Settings", "Configuração")
                 }
         }
-        // Prefer merged-tree click (CD is on the clickable Box, not the Icon).
-        val clickedGear = softClickContentDesc("Settings", "Configuração")
-        assertTrue(clickedGear, "Failed to tap Settings gear")
-        // Wait for a hub-only row (Appearance is below the fold — do not require it).
-        waitUntil(20_000) {
-            composeExists("Phone recording") ||
-                composeExists("Gravação no telefone") ||
-                composeExists("Storage & privacy") ||
-                composeExists("Armazenamento e privacidade") ||
-                composeExists("About Velum") ||
-                composeExists("Sobre o Velum") ||
-                composeExists("AI processing") ||
-                composeExists("Processamento de IA")
+        // Prefer clickable a11y node (CD lives on the clickable Box). Compose
+        // performClick often times out on idle under R8; UiAutomator then has
+        // to own the click (#106 minifiedTest openSettings hub miss).
+        fun clickGear(): Boolean {
+            for (label in listOf("Settings", "Configuração")) {
+                val clickable = runCatching {
+                    device.findObject(By.descContains(label).clickable(true))
+                }.getOrNull()
+                if (clickable != null) {
+                    runCatching { clickable.click() }
+                    return true
+                }
+            }
+            return softClickContentDesc("Settings", "Configuração")
         }
+        var hubUp = false
+        repeat(3) {
+            assertTrue(clickGear(), "Failed to tap Settings gear")
+            hubUp = runCatching {
+                waitUntil(8_000) { settingsHubVisible() }
+                true
+            }.getOrDefault(false)
+            if (hubUp) return
+            ensureFilesGearVisible()
+        }
+        waitUntil(20_000) { settingsHubVisible() }
     }
+
+    /** Hub-only rows / sections — never the Files gear CD alone. */
+    private fun settingsHubVisible(): Boolean =
+        composeExists("Phone recording") ||
+            composeExists("Gravação no telefone") ||
+            composeExists("Devices") ||
+            composeExists("Dispositivos") ||
+            composeExists("Storage & privacy") ||
+            composeExists("Armazenamento e privacidade") ||
+            composeExists("About Velum") ||
+            composeExists("Sobre o Velum") ||
+            composeExists("AI processing") ||
+            composeExists("Processamento de IA") ||
+            uiExists("Phone recording") ||
+            uiExists("Gravação no telefone") ||
+            uiExists("Devices") ||
+            uiExists("Dispositivos") ||
+            uiExists("About Velum") ||
+            uiExists("Sobre o Velum")
 
     /**
      * Pop one Compose destination via the top-bar Back affordance.
