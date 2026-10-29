@@ -624,21 +624,23 @@ class DeviceWalkUiTest {
     }
 
     private fun assertUiChrome(lang: String) {
-        // Compose shell CDs are authoritative; UiAutomator hierarchy can lag
-        // after storage-wipe / nav and false-fail chrome asserts (#106).
-        if (onFilesShellReady() || softExistsContentDesc("Settings", "Configuração")) {
-            return
+        // Precondition: Compose shell (or Files Settings gear) must be up.
+        // Then always assert language chrome via UiAutomator — never skip (#106 / #115).
+        waitUntil(20_000) {
+            onFilesShellReady() || softExistsContentDesc("Settings", "Configuração")
         }
-        runCatching {
-            waitUntil(12_000) {
-                onFilesShellReady() || softExistsContentDesc("Settings", "Configuração")
-            }
-        }
-        if (onFilesShellReady() || softExistsContentDesc("Settings", "Configuração")) {
-            return
-        }
-        val dump = windowDump()
         if (lang == "pt-BR") {
+            waitUntil(
+                20_000,
+                "Expected pt-BR chrome after locale apply (UiAutomator hierarchy lagged or wrong locale)",
+            ) {
+                uiExists("Todos os arquivos") ||
+                    uiExists("Lixeira") ||
+                    uiExists("Explorar") ||
+                    uiExists("Configuração") ||
+                    windowDump().contains("Arquivos", ignoreCase = true)
+            }
+            val dump = windowDump()
             assertTrue(
                 uiExists("Todos os arquivos") ||
                     uiExists("Lixeira") ||
@@ -648,6 +650,17 @@ class DeviceWalkUiTest {
                 "Expected pt-BR chrome after locale apply",
             )
         } else {
+            waitUntil(
+                20_000,
+                "Expected EN chrome after locale apply (UiAutomator hierarchy lagged or wrong locale)",
+            ) {
+                uiExists("All files") ||
+                    uiExists("Trash") ||
+                    uiExists("Explore") ||
+                    uiExists("Settings") ||
+                    windowDump().contains("All files", ignoreCase = true)
+            }
+            val dump = windowDump()
             assertTrue(
                 uiExists("All files") ||
                     uiExists("Trash") ||
@@ -991,6 +1004,10 @@ class DeviceWalkUiTest {
     }
 
     private fun waitUntil(timeoutMs: Long, condition: () -> Boolean) {
+        waitUntil(timeoutMs, "Condition not met within ${timeoutMs}ms", condition)
+    }
+
+    private fun waitUntil(timeoutMs: Long, message: String, condition: () -> Boolean) {
         val start = SystemClock.uptimeMillis()
         while (SystemClock.uptimeMillis() - start < timeoutMs) {
             if (runCatching { condition() }.getOrDefault(false)) return
@@ -998,7 +1015,7 @@ class DeviceWalkUiTest {
             // "performMeasureAndLayout called during measure layout" mid-draw.
             SystemClock.sleep(300)
         }
-        error("Condition not met within ${timeoutMs}ms")
+        error(message)
     }
 
     private fun shot(name: String) {

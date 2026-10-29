@@ -45,6 +45,11 @@
 -keep class dev.velum.app.di.AppContainer { *; }
 -keepclassmembers class dev.velum.app.di.AppContainer { *; }
 
+# Keystore instrumented test (#92) constructs AndroidSecureStore via this ctor.
+-keep class dev.velum.core.security.AndroidSecureStore {
+    public <init>(android.content.Context, java.lang.String, java.lang.String);
+}
+
 # AndroidJUnitRunner 1.6+ resolves Trace in onCreate from the app APK.
 -keep class androidx.tracing.Trace { *; }
 -keep class androidx.tracing.** { *; }
