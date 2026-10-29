@@ -1,5 +1,6 @@
 package dev.velum.ai.local
 
+import dev.velum.core.security.SecureRead
 import dev.velum.core.security.SecureStore
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
@@ -56,10 +57,10 @@ class VoiceProfileStore(
      * so readers never observe a key mid-purge. [primedKey] is published only after any
      * legacy purge finishes; cancellation mid-purge leaves the store Unprimed/retryable.
      *
-     * A new key is minted only when SecureStore confirms the slot was never written
-     * (`getString` null and `contains` false). If the key exists but cannot be read,
-     * priming fails with [VoiceProfileKeyUnreadableException] — never overwrites the
-     * key and never deletes profiles.
+     * Uses non-destructive [SecureStore.read]: mint only on [SecureRead.Missing];
+     * [SecureRead.Unreadable] fails closed with [VoiceProfileKeyUnreadableException]
+     * (no mint, no purge, no profile deletion); [SecureRead.Value] uses the stored key.
+     * Never call destructive [SecureStore.getString] for priming.
      *
      * Legacy purge runs only when this prime minted a brand-new key, `voices/.profile_key`
      * still exists, and no `.profile_key.purged` marker is present. It deletes only
@@ -76,13 +77,14 @@ class VoiceProfileStore(
         keyMutex.withLock {
             if (_primingState.value is VoiceKeyPrimingState.Ready) return
             try {
-                val existing = secureStore.getString(PROFILE_KEY_SECURE)
                 var mintedNewKey = false
-                val key = when {
-                    !existing.isNullOrBlank() -> Base64.decode(existing)
-                    secureStore.contains(PROFILE_KEY_SECURE) ->
-                        throw VoiceProfileKeyUnreadableException()
-                    else -> {
+                val key = when (val outcome = secureStore.read(PROFILE_KEY_SECURE)) {
+                    is SecureRead.Value -> {
+                        if (outcome.value.isBlank()) throw VoiceProfileKeyUnreadableException()
+                        Base64.decode(outcome.value)
+                    }
+                    is SecureRead.Unreadable -> throw VoiceProfileKeyUnreadableException()
+                    is SecureRead.Missing -> {
                         mintedNewKey = true
                         val generated = ByteArray(PROFILE_KEY_BYTES).also {
                             Random.Default.nextBytes(it)
