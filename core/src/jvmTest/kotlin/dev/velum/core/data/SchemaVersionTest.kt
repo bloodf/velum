@@ -6,7 +6,7 @@ import kotlin.test.assertEquals
 
 class SchemaVersionTest {
     @Test
-    fun schema_version_is_four_after_summary_version_migration() {
-        assertEquals(4L, VelumDatabase.Schema.version)
+    fun schema_version_is_five_after_device_session_unique_index() {
+        assertEquals(5L, VelumDatabase.Schema.version)
     }
 }

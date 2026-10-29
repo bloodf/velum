@@ -1,0 +1,4 @@
+-- #113: unique device-session identity on library rows.
+-- Nothing has shipped with duplicate session_id rows; no data cleanup needed.
+CREATE UNIQUE INDEX IF NOT EXISTS recording_device_session_unique ON recording(session_id)
+WHERE session_id IS NOT NULL;

@@ -22,6 +22,10 @@ CREATE TABLE recording (
   created_at INTEGER NOT NULL
 );
 
+-- One library row per device session (#113). NULLs (phone mic) stay non-unique.
+CREATE UNIQUE INDEX recording_device_session_unique ON recording(session_id)
+WHERE session_id IS NOT NULL;
+
 CREATE TABLE speaker (
   id TEXT NOT NULL PRIMARY KEY,
   recording_id TEXT NOT NULL,
@@ -101,8 +105,23 @@ SELECT * FROM recording WHERE trashed = 1 ORDER BY started_at DESC;
 selectRecordingById:
 SELECT * FROM recording WHERE id = ?;
 
+selectRecordingBySessionId:
+SELECT * FROM recording WHERE session_id = ? AND trashed = 0 LIMIT 1;
+
+selectDeviceSessionRecordingIds:
+SELECT session_id, id FROM recording
+WHERE session_id IS NOT NULL AND trashed = 0;
+
 insertRecording:
 INSERT OR REPLACE INTO recording(
+  id, session_id, folder_id, title, source, device_serial, started_at,
+  duration_seconds, size_bytes, local_path, transcript, summary_markdown, status, trashed, created_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+-- Plain INSERT so a duplicate device session_id hits the unique index (#113)
+-- instead of INSERT OR REPLACE silently deleting the prior library row.
+insertRecordingExclusive:
+INSERT INTO recording(
   id, session_id, folder_id, title, source, device_serial, started_at,
   duration_seconds, size_bytes, local_path, transcript, summary_markdown, status, trashed, created_at
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);

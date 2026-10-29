@@ -20,6 +20,7 @@ import dev.velum.core.templates.TemplateTagVocabulary
 import kotlin.random.Random
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 
 class VelumRepository(
@@ -109,6 +110,26 @@ class VelumRepository(
     suspend fun getRecording(id: String): Recording? = withContext(Dispatchers.Default) {
         q.selectRecordingById(id).executeAsOneOrNull()
     }
+
+    /**
+     * Library row for a device session identity (#113). Null when never downloaded
+     * (or trashed). Does not log or return the raw session id beyond the query key.
+     */
+    suspend fun findRecordingByDeviceSessionId(sessionId: Long): Recording? =
+        withContext(Dispatchers.Default) {
+            q.selectRecordingBySessionId(sessionId).executeAsOneOrNull()
+        }
+
+    /** session_id → recording id for non-trashed device downloads (UI “already in library”). */
+    suspend fun deviceSessionRecordingIds(): Map<Long, String> = withContext(Dispatchers.Default) {
+        q.selectDeviceSessionRecordingIds().executeAsList()
+            .associate { row -> row.session_id to row.id }
+    }
+
+    fun observeDeviceSessionRecordingIds(): Flow<Map<Long, String>> =
+        q.selectDeviceSessionRecordingIds().asFlow().mapToList(Dispatchers.Default).map { rows ->
+            rows.associate { row -> row.session_id to row.id }
+        }
 
     suspend fun getAllRecordings(): List<Recording> = withContext(Dispatchers.Default) {
         q.selectAllRecordings().executeAsList()
@@ -545,24 +566,49 @@ class VelumRepository(
         status: String,
         trashed: Long = 0,
         createdAt: Long = epochSeconds(),
+        /**
+         * When true, uses plain INSERT so a duplicate [sessionId] fails the unique
+         * index (#113) instead of INSERT OR REPLACE deleting the existing row.
+         */
+        exclusive: Boolean = false,
     ) = withContext(Dispatchers.Default) {
-        q.insertRecording(
-            id = id,
-            session_id = sessionId,
-            folder_id = folderId,
-            title = title,
-            source = source,
-            device_serial = deviceSerial,
-            started_at = startedAt,
-            duration_seconds = durationSeconds,
-            size_bytes = sizeBytes,
-            local_path = localPath,
-            transcript = transcript,
-            summary_markdown = summaryMarkdown,
-            status = status,
-            trashed = trashed,
-            created_at = createdAt,
-        )
+        if (exclusive) {
+            q.insertRecordingExclusive(
+                id = id,
+                session_id = sessionId,
+                folder_id = folderId,
+                title = title,
+                source = source,
+                device_serial = deviceSerial,
+                started_at = startedAt,
+                duration_seconds = durationSeconds,
+                size_bytes = sizeBytes,
+                local_path = localPath,
+                transcript = transcript,
+                summary_markdown = summaryMarkdown,
+                status = status,
+                trashed = trashed,
+                created_at = createdAt,
+            )
+        } else {
+            q.insertRecording(
+                id = id,
+                session_id = sessionId,
+                folder_id = folderId,
+                title = title,
+                source = source,
+                device_serial = deviceSerial,
+                started_at = startedAt,
+                duration_seconds = durationSeconds,
+                size_bytes = sizeBytes,
+                local_path = localPath,
+                transcript = transcript,
+                summary_markdown = summaryMarkdown,
+                status = status,
+                trashed = trashed,
+                created_at = createdAt,
+            )
+        }
         indexRecording(id, title, transcript, summaryMarkdown)
     }
 

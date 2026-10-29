@@ -88,7 +88,7 @@ Bob: ok', '## Sprint planning
             0,
         )
 
-        VelumDatabase.Schema.migrate(driver, oldVersion = 1, newVersion = 4)
+        VelumDatabase.Schema.migrate(driver, oldVersion = 1, newVersion = 5)
         // Mark seed current so maybeSeed does not wipe/replace library rows under test.
         driver.execute(
             null,
@@ -107,7 +107,7 @@ Bob: ok', '## Sprint planning
         assertEquals("/data/rec-v1.opus", recording.local_path)
 
         val versions = repo.getSummaryVersions("rec-v1")
-        assertEquals(1, versions.size, "v1→v4 must backfill active summary_version")
+        assertEquals(1, versions.size, "v1→v5 must backfill active summary_version")
         assertEquals(1L, versions.single().is_active)
 
         val template = db.velumQueries.selectTemplateById("tpl-meeting").executeAsOne()
@@ -129,7 +129,7 @@ Bob: ok', '## Sprint planning
         val glossary = db.velumQueries.selectGlossary().executeAsList()
         assertTrue(glossary.any { it.term == "Velum" })
 
-        assertEquals(4, VelumDatabase.Schema.version)
+        assertEquals(5, VelumDatabase.Schema.version)
     }
 
     companion object {
