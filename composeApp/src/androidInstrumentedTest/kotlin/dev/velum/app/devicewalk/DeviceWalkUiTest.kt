@@ -124,13 +124,18 @@ class DeviceWalkUiTest {
             )
         }
         if (firstRunSkipVisible()) {
-            // Real Skip tap — OutlineButton CD + role Button (#106 a11y).
-            // Coordinate fallback OK; never bypass via markFirstRunDone (#115).
+            // Real Skip tap — prefer a11y ACTION_CLICK (clearAndSetSemantics onClick)
+            // so the dismiss latch runs; coordinate fallback if ACTION_CLICK fails (#106).
+            // Never bypass via markFirstRunDone (#115).
             var skipped = false
             for (label in listOf("Skip", "Pular")) {
                 val obj = device.findObject(By.descContains(label))
                     ?: device.findObject(By.textContains(label))
                     ?: continue
+                if (runCatching { obj.click() }.isSuccess) {
+                    skipped = true
+                    break
+                }
                 val bounds = obj.visibleBounds
                 if (device.click(bounds.centerX(), bounds.centerY())) {
                     skipped = true
@@ -142,6 +147,10 @@ class DeviceWalkUiTest {
                 "Failed to tap FirstRun Skip/Pular; hierarchy=\n${windowDump()}",
             )
             covered += "first-run-skip"
+            // Let Compose apply the FirstRun dismiss latch before polling shell CDs.
+            runCatching {
+                InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+            }
             waitUntil(45_000) { onFilesShellReady() }
         }
         waitUntil(60_000) { onFilesShellReady() }
@@ -821,11 +830,15 @@ class DeviceWalkUiTest {
                     softExistsContentDesc("Settings", "Configuração")
                 }
         }
-        // Real gear tap by semantics CD — coordinate fallback OK (#106).
-        // Never soft-miss: hard wait for hub after tap (#115).
+        // Real gear tap — prefer a11y ACTION_CLICK (HeaderIcon clearAndSetSemantics),
+        // then coordinate fallback (#106). Hard wait for hub after tap (#115).
         var tappedGear = false
         for (label in listOf("Settings", "Configuração")) {
             val obj = device.findObject(By.descContains(label)) ?: continue
+            if (runCatching { obj.click() }.isSuccess) {
+                tappedGear = true
+                break
+            }
             val bounds = obj.visibleBounds
             if (device.click(bounds.centerX(), bounds.centerY())) {
                 tappedGear = true
@@ -833,6 +846,9 @@ class DeviceWalkUiTest {
             }
         }
         assertTrue(tappedGear, "Failed to tap Settings gear")
+        runCatching {
+            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+        }
         // Hub-only rows / sections — never the Files gear CD alone ("Settings").
         // ChevronRow exposes title as contentDescription + Button role (#106).
         fun hubVisible(): Boolean =
@@ -872,17 +888,21 @@ class DeviceWalkUiTest {
         if (hubWaitError != null) {
             Log.w(
                 WALK_TAG,
-                "Settings hub not visible after first gear tap; retrying coordinate tap",
+                "Settings hub not visible after first gear tap; retrying a11y/coordinate tap",
                 hubWaitError,
             )
             for (label in listOf("Settings", "Configuração")) {
                 val obj = device.findObject(By.descContains(label)) ?: continue
+                if (runCatching { obj.click() }.isSuccess) break
                 val bounds = obj.visibleBounds
                 assertTrue(
                     device.click(bounds.centerX(), bounds.centerY()),
                     "retry device.click Settings gear failed",
                 )
                 break
+            }
+            runCatching {
+                InstrumentationRegistry.getInstrumentation().waitForIdleSync()
             }
             SystemClock.sleep(400)
         }

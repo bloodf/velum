@@ -15,7 +15,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
@@ -37,8 +36,9 @@ import dev.velum.app.ui.theme.VelumSurface
  * Phone-first onboarding: Velum works with no Plaud at all.
  * Paths: phone mic · import from any recorder · connect Plaud · recommended models / API.
  *
- * Skip is pinned to the bottom of the first viewport — the 9:16 hero must not
- * push it below the fold (#106 / #115). Models + secondary paths scroll under it.
+ * Skip is a real layout sibling under the scroll (not a Box overlay) so it stays
+ * on-screen and receives pointer/a11y clicks without competing with the scroll
+ * hit target (#106 / #115).
  */
 @Composable
 fun FirstRunScreen(
@@ -74,116 +74,116 @@ fun FirstRunScreen(
     ) {
         // Cap hero so brand + primary CTAs share the first viewport with Skip.
         val heroMax = maxHeight * 0.36f
-        val skipFooter = 96.dp
-        Column(
-            Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(bottom = skipFooter),
-        ) {
-            VelumHero(
-                modifier = Modifier
+        Column(Modifier.fillMaxSize()) {
+            Column(
+                Modifier
+                    .weight(1f)
                     .fillMaxWidth()
-                    .heightIn(max = heroMax)
-                    .clip(RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp)),
-            )
-            Column(Modifier.padding(horizontal = 24.dp, vertical = 20.dp)) {
-                Text("Velum", fontWeight = FontWeight.Bold, fontSize = 32.sp, color = VelumInk)
-                Spacer(Modifier.height(10.dp))
-                Text(fr.title, fontWeight = FontWeight.SemiBold, fontSize = 22.sp, color = VelumInk)
-                Spacer(Modifier.height(8.dp))
-                Text(fr.body, color = VelumInkSecondary, fontSize = 15.sp, lineHeight = 22.sp)
-                Spacer(Modifier.height(8.dp))
-                Text(fr.phoneFirstHint, color = VelumInkSecondary, fontSize = 14.sp, lineHeight = 20.sp)
-                Spacer(Modifier.height(20.dp))
-
-                Text(fr.howToStart, fontWeight = FontWeight.SemiBold, fontSize = 16.sp, color = VelumInk)
-                Spacer(Modifier.height(12.dp))
-                BlackButton(
-                    fr.usePhoneMic,
-                    onPhoneMic,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Spacer(Modifier.height(10.dp))
-                OutlineButton(
-                    fr.importFromRecorder,
-                    onImportRecorder,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Spacer(Modifier.height(10.dp))
-                OutlineButton(
-                    fr.connectPlaud,
-                    onConnectPlaud,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-
-                Spacer(Modifier.height(28.dp))
-                Text(fr.modelsHeading, fontWeight = FontWeight.SemiBold, fontSize = 16.sp, color = VelumInk)
-                Spacer(Modifier.height(8.dp))
-                Text(fr.localVsApi, color = VelumInkSecondary, fontSize = 14.sp, lineHeight = 20.sp)
-                Spacer(Modifier.height(14.dp))
-                Column(
-                    Modifier
+                    .verticalScroll(rememberScrollState()),
+            ) {
+                VelumHero(
+                    modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(VelumSurface)
-                        .padding(16.dp),
-                ) {
-                    Text(fr.recommendedModelLabel, color = VelumInkSecondary, fontSize = 12.sp)
-                    Spacer(Modifier.height(4.dp))
-                    Text(asrName, fontWeight = FontWeight.SemiBold, fontSize = 16.sp, color = VelumInk)
-                    Spacer(Modifier.height(6.dp))
-                    Text(asrCopy.blurb, color = VelumInk, fontSize = 14.sp, lineHeight = 20.sp)
+                        .heightIn(max = heroMax)
+                        .clip(RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp)),
+                )
+                Column(Modifier.padding(horizontal = 24.dp, vertical = 20.dp)) {
+                    Text("Velum", fontWeight = FontWeight.Bold, fontSize = 32.sp, color = VelumInk)
+                    Spacer(Modifier.height(10.dp))
+                    Text(fr.title, fontWeight = FontWeight.SemiBold, fontSize = 22.sp, color = VelumInk)
                     Spacer(Modifier.height(8.dp))
-                    Text(fr.recommendedPackHint, color = VelumInkSecondary, fontSize = 13.sp, lineHeight = 18.sp)
-                    Spacer(Modifier.height(6.dp))
-                    recommendedIds.drop(1).forEach { id ->
-                        val name = DefaultLocalCatalog.firstOrNull { it.id == id }?.displayName ?: id
-                        Text("• $name", color = VelumInkSecondary, fontSize = 13.sp)
-                    }
-                }
-                Spacer(Modifier.height(16.dp))
-                BlackButton(
-                    fr.downloadRecommended,
-                    onDownloadRecommended,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Spacer(Modifier.height(10.dp))
-                OutlineButton(
-                    fr.download,
-                    onDownloadModels,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Spacer(Modifier.height(10.dp))
-                OutlineButton(
-                    fr.useApi,
-                    onUseApi,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Spacer(Modifier.height(24.dp))
-            }
-        }
+                    Text(fr.body, color = VelumInkSecondary, fontSize = 15.sp, lineHeight = 22.sp)
+                    Spacer(Modifier.height(8.dp))
+                    Text(fr.phoneFirstHint, color = VelumInkSecondary, fontSize = 14.sp, lineHeight = 20.sp)
+                    Spacer(Modifier.height(20.dp))
 
-        // Pinned — must stay on-screen without scrolling (#106 product).
-        Column(
-            Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .background(VelumBg)
-                .padding(horizontal = 24.dp, vertical = 12.dp),
-        ) {
-            OutlineButton(
-                fr.skip,
-                onSkip,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Spacer(Modifier.height(6.dp))
-            Text(
-                fr.skipHint,
-                color = VelumInkSecondary,
-                fontSize = 13.sp,
-                lineHeight = 18.sp,
-            )
+                    Text(fr.howToStart, fontWeight = FontWeight.SemiBold, fontSize = 16.sp, color = VelumInk)
+                    Spacer(Modifier.height(12.dp))
+                    BlackButton(
+                        fr.usePhoneMic,
+                        onPhoneMic,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    OutlineButton(
+                        fr.importFromRecorder,
+                        onImportRecorder,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    OutlineButton(
+                        fr.connectPlaud,
+                        onConnectPlaud,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+
+                    Spacer(Modifier.height(28.dp))
+                    Text(fr.modelsHeading, fontWeight = FontWeight.SemiBold, fontSize = 16.sp, color = VelumInk)
+                    Spacer(Modifier.height(8.dp))
+                    Text(fr.localVsApi, color = VelumInkSecondary, fontSize = 14.sp, lineHeight = 20.sp)
+                    Spacer(Modifier.height(14.dp))
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(VelumSurface)
+                            .padding(16.dp),
+                    ) {
+                        Text(fr.recommendedModelLabel, color = VelumInkSecondary, fontSize = 12.sp)
+                        Spacer(Modifier.height(4.dp))
+                        Text(asrName, fontWeight = FontWeight.SemiBold, fontSize = 16.sp, color = VelumInk)
+                        Spacer(Modifier.height(6.dp))
+                        Text(asrCopy.blurb, color = VelumInk, fontSize = 14.sp, lineHeight = 20.sp)
+                        Spacer(Modifier.height(8.dp))
+                        Text(fr.recommendedPackHint, color = VelumInkSecondary, fontSize = 13.sp, lineHeight = 18.sp)
+                        Spacer(Modifier.height(6.dp))
+                        recommendedIds.drop(1).forEach { id ->
+                            val name = DefaultLocalCatalog.firstOrNull { it.id == id }?.displayName ?: id
+                            Text("• $name", color = VelumInkSecondary, fontSize = 13.sp)
+                        }
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    BlackButton(
+                        fr.downloadRecommended,
+                        onDownloadRecommended,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    OutlineButton(
+                        fr.download,
+                        onDownloadModels,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    OutlineButton(
+                        fr.useApi,
+                        onUseApi,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(Modifier.height(24.dp))
+                }
+            }
+
+            // Pinned sibling — must stay on-screen without scrolling (#106 product).
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .background(VelumBg)
+                    .padding(horizontal = 24.dp, vertical = 12.dp),
+            ) {
+                OutlineButton(
+                    fr.skip,
+                    onSkip,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    fr.skipHint,
+                    color = VelumInkSecondary,
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp,
+                )
+            }
         }
     }
 }

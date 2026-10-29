@@ -12,6 +12,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -29,20 +32,22 @@ class MainActivity : ComponentActivity() {
     private val composeReady = AtomicBoolean(false)
     private val fatalUi = AtomicBoolean(false)
 
+    /** Single setContent host — swapping setContent left an empty ComposeView a11y tree (#106). */
+    private var hostedContainer by mutableStateOf<AppContainer?>(null)
+    private var hostedFatal by mutableStateOf<Throwable?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         val splash = installSplashScreen()
         val app = application as VelumApplication
         // Keep splash until Compose actually hosts App / fatal — not merely until
-        // the process-scoped container flag flips (that can dismiss splash onto an
-        // empty Box if the handoff post has not replaced setContent yet) (#106).
+        // the process-scoped container flag flips (#106).
         splash.setKeepOnScreenCondition { !composeReady.get() && !fatalUi.get() }
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         IncomingShare.offerFromIntent(this, intent)
-        // Compose hierarchy immediately for AndroidComposeTestRule (#106).
-        // When the process-scoped container is already ready (later instrumented
-        // cells), seed App on the first frame — do not wait on a Main coroutine
-        // that Compose idle polling can starve under R8 minifiedTest.
+        // One setContent for the activity lifetime. Seed App when the
+        // process-scoped container is already ready (later instrumented cells);
+        // otherwise show an empty host and hand off off-main (#106).
         val seeded =
             if (app.isContainerReady()) {
                 runCatching { VelumApplication.container }.getOrNull()
@@ -50,38 +55,49 @@ class MainActivity : ComponentActivity() {
                 null
             }
         if (seeded != null) {
-            showApp(seeded)
+            hostedContainer = seeded
+            composeReady.set(true)
         } else {
-            setContent {
-                Box(Modifier.fillMaxSize())
-            }
             startContainerHandoff(app)
+        }
+        setContent {
+            val fatal = hostedFatal
+            val container = hostedContainer
+            when {
+                fatal != null -> {
+                    Text(
+                        text = FATAL_COPY,
+                        fontSize = 16.sp,
+                        modifier = Modifier.padding(48.dp),
+                    )
+                }
+                container != null -> App(container)
+                else -> Box(Modifier.fillMaxSize())
+            }
+        }
+        if (seeded != null) {
+            Log.i(TAG, "Compose App set")
         }
     }
 
     private fun showApp(container: AppContainer) {
+        hostedFatal = null
+        hostedContainer = container
         composeReady.set(true)
-        setContent { App(container) }
         Log.i(TAG, "Compose App set")
     }
 
     private fun showFatal(t: Throwable) {
         fatalUi.set(true)
         Log.e(TAG, "Fatal AppContainer init", t)
-        setContent {
-            Text(
-                text = FATAL_COPY,
-                fontSize = 16.sp,
-                modifier = Modifier.padding(48.dp),
-            )
-        }
+        hostedContainer = null
+        hostedFatal = t
     }
 
     /**
-     * Await the process-scoped container off the main looper, then replace
-     * setContent on Main. lifecycleScope + Dispatchers.Main can sit unresumed
-     * under Compose UI Test idle polling on R8 minifiedTest; a Handler post +
-     * full setContent replace avoids leaving an empty Box for waitForShell (#106).
+     * Await the process-scoped container off the main looper, then update the
+     * single setContent host on Main. lifecycleScope + Dispatchers.Main can sit
+     * unresumed under Compose UI Test idle polling on R8 minifiedTest (#106).
      *
      * [CancellationException]: if the activity is already destroyed, ignore (do
      * not show fatal). If still alive, startup itself was cancelled — show fatal
