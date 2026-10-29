@@ -64,8 +64,10 @@ import kotlin.math.abs
     sdk = [34],
     // Short enough that every listed screen's bottom anchor starts off-screen.
     qualifiers = "w360dp-h200dp-xxhdpi",
-    // Avoid VelumApplication → AndroidKeyStore (unavailable under Robolectric).
-    application = android.app.Application::class,
+    // Registers ComponentActivity for createComposeRule without a debug APK manifest
+    // entry (keeps device-walk debug APK aligned with main). Avoids VelumApplication
+    // → AndroidKeyStore under Robolectric.
+    application = RobolectricComposeTestApp::class,
 )
 class ScreenTopBarPinnedTest(
     private val screen: ScreenCase,
