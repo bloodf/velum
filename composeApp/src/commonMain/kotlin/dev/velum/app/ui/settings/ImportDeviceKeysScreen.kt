@@ -252,9 +252,14 @@ fun ImportDeviceKeysScreen(
                     onClick = {
                         showClearConfirm = false
                         scope.launch {
-                            container.deviceKeyImporter.clearKeys()
-                            hasKeys = false
-                            status = strings.importKeys.cleared
+                            try {
+                                container.deviceKeyImporter.clearKeys()
+                                hasKeys = false
+                                status = strings.importKeys.cleared
+                            } catch (_: Throwable) {
+                                // Never echo exception text (may include identity material).
+                                error = strings.importKeys.fromPlaudJsonFailed
+                            }
                         }
                     },
                 ) { Text(strings.confirm) }

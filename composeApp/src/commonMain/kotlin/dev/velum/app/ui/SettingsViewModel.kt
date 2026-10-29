@@ -11,12 +11,15 @@ import dev.velum.core.settings.ApiEndpointProfile
 import dev.velum.core.settings.ApiModelResolver
 import dev.velum.core.settings.SettingsRepository
 import dev.velum.core.settings.TaskModelBinding
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.plus
 
 data class SettingsUiState(
     val refreshing: Boolean = false,
@@ -30,6 +33,21 @@ class SettingsViewModel(
     private val settingsRepository: SettingsRepository,
     private val aiClient: OpenAiCompatibleClient,
 ) : ViewModel() {
+    private val _ui = MutableStateFlow(SettingsUiState())
+    val ui: StateFlow<SettingsUiState> = _ui.asStateFlow()
+
+    /**
+     * Last-resort handler so a failed SecureStore write never becomes an
+     * uncaught StandaloneCoroutine crash on Main (see #92 launch smoke).
+     * Fixed error token only — never [Throwable.message] (may echo secrets).
+     */
+    private val secureWriteHandler = CoroutineExceptionHandler { _, t ->
+        if (t is CancellationException) return@CoroutineExceptionHandler
+        _ui.value = SettingsUiState(error = ERR_SECURE_STORE)
+    }
+
+    private val safeScope = viewModelScope + secureWriteHandler
+
     val settings: StateFlow<AiProviderSettings> =
         settingsRepository.settings.stateIn(
             viewModelScope,
@@ -37,77 +55,145 @@ class SettingsViewModel(
             AiProviderSettings(),
         )
 
-    private val _ui = MutableStateFlow(SettingsUiState())
-    val ui: StateFlow<SettingsUiState> = _ui.asStateFlow()
-
     init {
-        viewModelScope.launch { settingsRepository.load() }
+        // First-run load persists default endpoint profiles via putString.
+        // Must not crash the process when Keystore encrypt fails.
+        safeScope.launch {
+            try {
+                settingsRepository.load()
+            } catch (t: Throwable) {
+                if (t is CancellationException) throw t
+                _ui.value = SettingsUiState(error = ERR_SECURE_STORE)
+            }
+        }
     }
 
     fun setBaseUrl(url: String) {
-        viewModelScope.launch {
+        safeScope.launch {
             try {
                 settingsRepository.setBaseUrl(url)
                 clearMessage()
             } catch (t: Throwable) {
-                _ui.value = SettingsUiState(
-                    error = t.message ?: t.toString(),
-                    errorStatus = null,
-                )
+                if (t is CancellationException) throw t
+                _ui.value = SettingsUiState(error = ERR_SECURE_STORE)
             }
         }
     }
 
     fun setApiKey(key: String) {
         // Never log the key — only store via Keystore-backed SecureStore.
-        viewModelScope.launch { settingsRepository.setApiKey(key) }
+        safeScope.launch {
+            try {
+                settingsRepository.setApiKey(key)
+            } catch (t: Throwable) {
+                if (t is CancellationException) throw t
+                _ui.value = SettingsUiState(error = ERR_SECURE_STORE)
+            }
+        }
     }
 
     fun setProfileApiKey(profileId: String, key: String) {
-        viewModelScope.launch { settingsRepository.setProfileApiKey(profileId, key) }
+        safeScope.launch {
+            try {
+                settingsRepository.setProfileApiKey(profileId, key)
+            } catch (t: Throwable) {
+                if (t is CancellationException) throw t
+                _ui.value = SettingsUiState(error = ERR_SECURE_STORE)
+            }
+        }
     }
 
     fun upsertProfile(profile: ApiEndpointProfile) {
-        viewModelScope.launch {
+        safeScope.launch {
             try {
                 settingsRepository.upsertProfile(profile)
                 clearMessage()
             } catch (t: Throwable) {
-                _ui.value = SettingsUiState(error = t.message ?: t.toString())
+                if (t is CancellationException) throw t
+                _ui.value = SettingsUiState(error = ERR_SECURE_STORE)
             }
         }
     }
 
     fun deleteProfile(profileId: String) {
-        viewModelScope.launch { settingsRepository.deleteProfile(profileId) }
+        safeScope.launch {
+            try {
+                settingsRepository.deleteProfile(profileId)
+            } catch (t: Throwable) {
+                if (t is CancellationException) throw t
+                _ui.value = SettingsUiState(error = ERR_SECURE_STORE)
+            }
+        }
     }
 
     fun setActiveProfile(profileId: String) {
-        viewModelScope.launch { settingsRepository.setActiveProfile(profileId) }
+        safeScope.launch {
+            try {
+                settingsRepository.setActiveProfile(profileId)
+            } catch (t: Throwable) {
+                if (t is CancellationException) throw t
+                _ui.value = SettingsUiState(error = ERR_SECURE_STORE)
+            }
+        }
     }
 
     fun setTaskBinding(task: AiApiTask, binding: TaskModelBinding) {
-        viewModelScope.launch { settingsRepository.setTaskBinding(task, binding) }
+        safeScope.launch {
+            try {
+                settingsRepository.setTaskBinding(task, binding)
+            } catch (t: Throwable) {
+                if (t is CancellationException) throw t
+                _ui.value = SettingsUiState(error = ERR_SECURE_STORE)
+            }
+        }
     }
 
     fun selectTranscriptionModel(id: String) {
-        viewModelScope.launch { settingsRepository.setTranscriptionModel(id) }
+        safeScope.launch {
+            try {
+                settingsRepository.setTranscriptionModel(id)
+            } catch (t: Throwable) {
+                if (t is CancellationException) throw t
+                _ui.value = SettingsUiState(error = ERR_SECURE_STORE)
+            }
+        }
     }
 
     fun selectDiarizationModel(id: String) {
-        viewModelScope.launch { settingsRepository.setDiarizationModel(id) }
+        safeScope.launch {
+            try {
+                settingsRepository.setDiarizationModel(id)
+            } catch (t: Throwable) {
+                if (t is CancellationException) throw t
+                _ui.value = SettingsUiState(error = ERR_SECURE_STORE)
+            }
+        }
     }
 
     fun selectChatModel(id: String) {
-        viewModelScope.launch { settingsRepository.setChatModel(id) }
+        safeScope.launch {
+            try {
+                settingsRepository.setChatModel(id)
+            } catch (t: Throwable) {
+                if (t is CancellationException) throw t
+                _ui.value = SettingsUiState(error = ERR_SECURE_STORE)
+            }
+        }
     }
 
     fun selectEmbeddingModel(id: String) {
-        viewModelScope.launch { settingsRepository.setEmbeddingModel(id) }
+        safeScope.launch {
+            try {
+                settingsRepository.setEmbeddingModel(id)
+            } catch (t: Throwable) {
+                if (t is CancellationException) throw t
+                _ui.value = SettingsUiState(error = ERR_SECURE_STORE)
+            }
+        }
     }
 
     fun refreshModels(profileId: String? = null) {
-        viewModelScope.launch {
+        safeScope.launch {
             _ui.value = SettingsUiState(refreshing = true)
             try {
                 val cfg = settings.value
@@ -142,13 +228,14 @@ class SettingsViewModel(
                     error = t.message,
                     errorStatus = t.status,
                 )
-            } catch (t: IllegalArgumentException) {
+            } catch (_: IllegalArgumentException) {
                 _ui.value = SettingsUiState(
                     refreshing = false,
                     error = "bad_url",
                     errorStatus = -1,
                 )
-            } catch (_: Throwable) {
+            } catch (t: Throwable) {
+                if (t is CancellationException) throw t
                 _ui.value = SettingsUiState(
                     refreshing = false,
                     error = "generic",
@@ -159,5 +246,10 @@ class SettingsViewModel(
 
     fun clearMessage() {
         _ui.value = _ui.value.copy(message = null, error = null, errorStatus = null)
+    }
+
+    companion object {
+        /** Fixed UI token — never surface raw Keystore / SecureStore exception text. */
+        const val ERR_SECURE_STORE = "secure_store_unavailable"
     }
 }
