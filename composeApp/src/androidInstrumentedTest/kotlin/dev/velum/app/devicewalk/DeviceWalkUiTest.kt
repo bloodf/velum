@@ -771,20 +771,9 @@ class DeviceWalkUiTest {
                     softExistsContentDesc("Settings", "Configuração")
                 }
         }
-        // Prefer clickable a11y node (CD on the clickable Box). Hard-fail if
-        // neither UiAutomator nor Compose can tap the gear (#106 / #115).
-        var clickedGear = false
-        for (label in listOf("Settings", "Configuração")) {
-            val clickable = device.findObject(By.descContains(label).clickable(true))
-            if (clickable != null) {
-                clickable.click()
-                clickedGear = true
-                break
-            }
-        }
-        if (!clickedGear) {
-            clickedGear = softClickContentDesc("Settings", "Configuração")
-        }
+        // Prefer merged-tree click (CD is on the clickable Box, not the Icon).
+        // Do not hold a UiObject2 across click — StaleObjectException on debug (#106).
+        val clickedGear = softClickContentDesc("Settings", "Configuração")
         assertTrue(clickedGear, "Failed to tap Settings gear")
         // Hub-only rows / sections — never the Files gear CD alone.
         waitUntil(20_000) {
@@ -806,6 +795,7 @@ class DeviceWalkUiTest {
                 uiExists("Sobre o Velum")
         }
     }
+
 
     /**
      * Pop one Compose destination via the top-bar Back affordance.

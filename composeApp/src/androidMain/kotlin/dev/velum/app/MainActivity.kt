@@ -10,18 +10,18 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.lifecycle.lifecycleScope
 import dev.velum.app.di.AppContainer
 import dev.velum.app.platform.IncomingShare
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -32,21 +32,12 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         IncomingShare.offerFromIntent(this, intent)
         // Install a Compose hierarchy immediately so AndroidComposeTestRule can
-        // synchronize under R8 minifiedTest. Delayed setContent-after-await left
-        // device-walk waitForShell with no semantics/a11y nodes for 90s (#106).
+        // synchronize under R8 minifiedTest. Await the container on
+        // lifecycleScope (not LaunchedEffect) — the effect path left minified
+        // walks on an empty Box for 90s while debug still composed (#106).
+        var container by mutableStateOf<AppContainer?>(null)
+        var fatal by mutableStateOf(false)
         setContent {
-            var container by remember { mutableStateOf<AppContainer?>(null) }
-            var fatal by remember { mutableStateOf(false) }
-            LaunchedEffect(app) {
-                try {
-                    container = app.awaitContainer()
-                } catch (t: CancellationException) {
-                    throw t
-                } catch (t: Throwable) {
-                    fatal = true
-                    Log.e(TAG, "Fatal AppContainer init", t)
-                }
-            }
             val ready = container
             when {
                 ready != null -> App(ready)
@@ -58,6 +49,16 @@ class MainActivity : ComponentActivity() {
                     )
                 }
                 else -> Box(Modifier.fillMaxSize())
+            }
+        }
+        lifecycleScope.launch {
+            try {
+                container = app.awaitContainer()
+            } catch (t: CancellationException) {
+                throw t
+            } catch (t: Throwable) {
+                fatal = true
+                Log.e(TAG, "Fatal AppContainer init", t)
             }
         }
     }
