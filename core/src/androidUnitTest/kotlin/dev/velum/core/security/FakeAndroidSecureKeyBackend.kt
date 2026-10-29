@@ -24,13 +24,9 @@ internal class FakeAndroidSecureKeyBackend : AndroidSecureKeyBackend {
     @Volatile
     var peekFailure: Throwable? = null
 
-    /** When true, [getOrCreateKey] also honors [peekFailure] after alias exists. */
-    @Volatile
-    var getOrCreateHonorsPeekFailure: Boolean = true
-
     override fun getOrCreateKey(onClearVault: () -> Unit): SecretKey = synchronized(lock) {
         val failure = peekFailure
-        if (aliasPresent && failure != null && getOrCreateHonorsPeekFailure) {
+        if (aliasPresent && failure != null) {
             when (KeystoreFailureClassifier.actionFor(failure)) {
                 KeystoreVaultAction.ClearAndRegenerate -> {
                     onClearVault()

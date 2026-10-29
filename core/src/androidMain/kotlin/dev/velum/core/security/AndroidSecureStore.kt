@@ -168,9 +168,6 @@ class AndroidSecureStore private constructor(
         }
     }
 
-    /** Exposed for androidUnitTest assertions (alias still present after failures). */
-    internal fun keyAliasPresent(): Boolean = keyBackend.containsAlias()
-
     /**
      * Permanent invalidation / explicit wipe: the Keystore key is gone, so
      * ciphertext sealed with it is unreadable — clear the vault and the alias.
@@ -188,6 +185,8 @@ class AndroidSecureStore private constructor(
                 KeystoreVaultAction.ClearAndRegenerate -> {
                     Log.w(TAG, "Key permanently invalidated; clearing vault: ${t::class.java.name}")
                     clearVaultAndKey()
+                    // Prefer getOrCreateKey over createKey: if deleteAlias failed silently,
+                    // a broken leftover alias must throw instead of being overwritten.
                     encryptWith(
                         keyBackend.getOrCreateKey(onClearVault = { clearVaultAndKey() }),
                         plaintext,
