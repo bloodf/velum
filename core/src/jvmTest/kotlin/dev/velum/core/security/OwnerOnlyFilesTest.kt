@@ -75,6 +75,12 @@ class OwnerOnlyFilesTest {
             )
             assertTrue(Files.exists(target))
             assertTrue(bytes.contentEquals(Files.readAllBytes(target)))
+            assumeTrue("POSIX permissions required", supportsPosixPermissions())
+            assertEquals(
+                OWNER_READ_WRITE,
+                Files.getPosixFilePermissions(target),
+                "move-fallback key file must be owner-only rw-------",
+            )
         } finally {
             dir.toFile().deleteRecursively()
         }
