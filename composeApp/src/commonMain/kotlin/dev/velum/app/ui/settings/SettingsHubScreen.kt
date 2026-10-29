@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -57,70 +58,77 @@ fun SettingsHubScreen(
     onAbout: () -> Unit,
 ) {
     val strings = LocalStrings.current
+    // Pin ScreenTopBar outside the scroll so Back stays reachable after
+    // scrolling to Appearance / Storage rows (device-walk #106).
     Column(
         Modifier
             .fillMaxSize()
-            .background(VelumSurface)
-            .verticalScroll(rememberScrollState()),
+            .background(VelumSurface),
     ) {
         ScreenTopBar(strings.settings, onBack = onBack)
+        Column(
+            Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState()),
+        ) {
+            SectionLabel(strings.settingsUi.sectionDevices)
+            ChevronRow(
+                strings.settingsUi.sectionDevices,
+                onDevices,
+                icon = Icons.Outlined.Devices,
+                showDivider = false,
+            )
 
-        SectionLabel(strings.settingsUi.sectionDevices)
-        ChevronRow(
-            strings.settingsUi.sectionDevices,
-            onDevices,
-            icon = Icons.Outlined.Devices,
-            showDivider = false,
-        )
+            SectionLabel(strings.settingsUi.sectionRecording)
+            ChevronRow(strings.settingsUi.recording, onRecording, icon = Icons.Outlined.Mic, showDivider = false)
 
-        SectionLabel(strings.settingsUi.sectionRecording)
-        ChevronRow(strings.settingsUi.recording, onRecording, icon = Icons.Outlined.Mic, showDivider = false)
+            SectionLabel(strings.settingsUi.sectionTranscriptionAi)
+            ChevronRow(strings.aiProcessing, onAiProcessing, icon = Icons.Outlined.Tune)
+            ChevronRow(strings.modelManager, onModelManager, icon = Icons.Outlined.Cloud)
+            ChevronRow(strings.customVocabulary, onMemory, icon = Icons.Outlined.Memory)
+            ChevronRow(strings.personalization, onPersonalization, icon = Icons.Outlined.AutoAwesome)
+            ChevronRow(strings.preferences, onPreferences, icon = Icons.Outlined.Tune, showDivider = false)
 
-        SectionLabel(strings.settingsUi.sectionTranscriptionAi)
-        ChevronRow(strings.aiProcessing, onAiProcessing, icon = Icons.Outlined.Tune)
-        ChevronRow(strings.modelManager, onModelManager, icon = Icons.Outlined.Cloud)
-        ChevronRow(strings.customVocabulary, onMemory, icon = Icons.Outlined.Memory)
-        ChevronRow(strings.personalization, onPersonalization, icon = Icons.Outlined.AutoAwesome)
-        ChevronRow(strings.preferences, onPreferences, icon = Icons.Outlined.Tune, showDivider = false)
+            SectionLabel(strings.settingsUi.sectionApi)
+            ChevronRow(strings.aiProvider, onApi, icon = Icons.Outlined.Key, showDivider = false)
 
-        SectionLabel(strings.settingsUi.sectionApi)
-        ChevronRow(strings.aiProvider, onApi, icon = Icons.Outlined.Key, showDivider = false)
+            SectionLabel(strings.settingsUi.sectionSpeakers)
+            ChevronRow(strings.voiceProfiles, onVoiceProfiles, icon = Icons.Outlined.RecordVoiceOver, showDivider = false)
 
-        SectionLabel(strings.settingsUi.sectionSpeakers)
-        ChevronRow(strings.voiceProfiles, onVoiceProfiles, icon = Icons.Outlined.RecordVoiceOver, showDivider = false)
+            SectionLabel(strings.settingsUi.sectionTemplates)
+            ChevronRow(
+                strings.templatesCommunity,
+                onTemplates,
+                icon = Icons.AutoMirrored.Outlined.LibraryBooks,
+                showDivider = false,
+            )
 
-        SectionLabel(strings.settingsUi.sectionTemplates)
-        ChevronRow(
-            strings.templatesCommunity,
-            onTemplates,
-            icon = Icons.AutoMirrored.Outlined.LibraryBooks,
-            showDivider = false,
-        )
+            SectionLabel(strings.settingsUi.sectionAutomation)
+            ChevronRow(strings.autoFlow, onAutoFlow, icon = Icons.Outlined.AccountTree)
+            ChevronRow(strings.integrations, onIntegrations, icon = Icons.Outlined.Extension)
+            ChevronRow(
+                strings.settingsUi.watchedFolders,
+                onWatchedFolders,
+                icon = Icons.Outlined.FolderOpen,
+                showDivider = false,
+            )
 
-        SectionLabel(strings.settingsUi.sectionAutomation)
-        ChevronRow(strings.autoFlow, onAutoFlow, icon = Icons.Outlined.AccountTree)
-        ChevronRow(strings.integrations, onIntegrations, icon = Icons.Outlined.Extension)
-        ChevronRow(
-            strings.settingsUi.watchedFolders,
-            onWatchedFolders,
-            icon = Icons.Outlined.FolderOpen,
-            showDivider = false,
-        )
+            SectionLabel(strings.settingsUi.sectionAppearance)
+            ChevronRow(strings.settingsUi.appearance, onAppearance, icon = Icons.Outlined.Palette, showDivider = false)
 
-        SectionLabel(strings.settingsUi.sectionAppearance)
-        ChevronRow(strings.settingsUi.appearance, onAppearance, icon = Icons.Outlined.Palette, showDivider = false)
+            SectionLabel(strings.settingsUi.sectionStorage)
+            ChevronRow(
+                strings.settingsUi.storagePrivacy,
+                onStoragePrivacy,
+                icon = Icons.Outlined.Security,
+                showDivider = false,
+            )
 
-        SectionLabel(strings.settingsUi.sectionStorage)
-        ChevronRow(
-            strings.settingsUi.storagePrivacy,
-            onStoragePrivacy,
-            icon = Icons.Outlined.Security,
-            showDivider = false,
-        )
+            SectionLabel(strings.settingsUi.sectionAbout)
+            ChevronRow(strings.aboutVelum, onAbout, icon = Icons.Outlined.Info, showDivider = false)
 
-        SectionLabel(strings.settingsUi.sectionAbout)
-        ChevronRow(strings.aboutVelum, onAbout, icon = Icons.Outlined.Info, showDivider = false)
-
-        Spacer(Modifier.height(40.dp))
+            Spacer(Modifier.height(40.dp))
+        }
     }
 }

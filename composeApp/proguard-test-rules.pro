@@ -2,26 +2,21 @@
 # Never merge into shipping proguard-rules.pro.
 #
 # Minify + obfuscation stay ON for app code (dev.velum.** except seams below).
-# No -dontobfuscate. No -keep class kotlin.** / kotlinx.** / androidx.**
-# (those full keeps also block shrinking).
-#
-# Root cause of instrumented R8 failures: androidTest shares the app
-# classloader and does not ship its own kotlin/androidx copies. Renaming
-# library classes (e.g. kotlin.time.Duration → k5.a) yields NoSuchFieldError /
-# NoSuchMethodError inside AndroidComposeTestRule / AndroidJUnitRunner.
-# -keepnames preserves library names for classes that remain after shrink;
-# unused library code still shrinks away; Velum app code still obfuscates.
+# No -dontobfuscate. No blanket -keep class kotlin.** / kotlinx.** / androidx.**.
+
+# Shared classloader: androidTest does not ship its own kotlin/androidx copies.
+# Renaming library classes (e.g. kotlin.time.Duration → k5.a) yields
+# NoSuchFieldError inside AndroidComposeTestRule. -keepnames preserves names
+# for classes that remain after shrink; unused code still shrinks away.
 
 -keepnames class kotlin.** { *; }
 -keepnames class kotlinx.** { *; }
 -keepnames class androidx.** { *; }
 
-# androidTest shares the app classloader. -keepnames does not prevent shrinking
-# unused library classes that Compose UI Test still resolves at runtime
-# (ce8d7db: ClassNotFoundException kotlinx.coroutines.DelayWithTimeoutDiagnostics).
+# Targeted keep (not blanket kotlinx.**): Compose UI Test resolves this
+# interface via the app classloader, but app code never references it, so R8
+# would shrink it (ce8d7db: ClassNotFoundException DelayWithTimeoutDiagnostics).
 -keep class kotlinx.coroutines.DelayWithTimeoutDiagnostics { *; }
--keep class kotlinx.coroutines.** { *; }
--keep class kotlin.time.** { *; }
 
 # --- App instrumentation seams (must not be stripped or renamed) ---
 -keep class dev.velum.app.devicewalk.** { *; }

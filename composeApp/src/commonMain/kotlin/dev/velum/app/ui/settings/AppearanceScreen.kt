@@ -36,35 +36,43 @@ fun AppearanceScreen(
     val prefs by container.settingsRepository.preferences.collectAsState()
     val scope = rememberCoroutineScope()
 
+    // Pin ScreenTopBar outside the scroll so Back stays reachable after
+    // performScrollTo on language/theme rows (device-walk #106 root cause).
     Column(
         Modifier
             .fillMaxSize()
-            .background(VelumSurface)
-            .verticalScroll(rememberScrollState()),
+            .background(VelumSurface),
     ) {
         ScreenTopBar(strings.settingsUi.appearance, onBack = onBack)
-        SectionLabel(strings.settingsUi.theme)
-        ThemeOption(strings.settingsUi.themeSystem, prefs.themeMode == "system") {
-            scope.launch { container.settingsRepository.setThemeMode("system") }
+        Column(
+            Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState()),
+        ) {
+            SectionLabel(strings.settingsUi.theme)
+            ThemeOption(strings.settingsUi.themeSystem, prefs.themeMode == "system") {
+                scope.launch { container.settingsRepository.setThemeMode("system") }
+            }
+            ThemeOption(strings.settingsUi.themeLight, prefs.themeMode == "light") {
+                scope.launch { container.settingsRepository.setThemeMode("light") }
+            }
+            ThemeOption(strings.settingsUi.themeDark, prefs.themeMode == "dark") {
+                scope.launch { container.settingsRepository.setThemeMode("dark") }
+            }
+            Spacer(Modifier.height(12.dp))
+            SectionLabel(strings.settingsUi.language)
+            ThemeOption(strings.settingsUi.languageSystem, prefs.appLanguage == "system") {
+                scope.launch { container.settingsRepository.setAppLanguage("system") }
+            }
+            ThemeOption(strings.languageEn, prefs.appLanguage == "en") {
+                scope.launch { container.settingsRepository.setAppLanguage("en") }
+            }
+            ThemeOption(strings.languagePtBr, prefs.appLanguage == "pt-BR") {
+                scope.launch { container.settingsRepository.setAppLanguage("pt-BR") }
+            }
+            Spacer(Modifier.height(40.dp))
         }
-        ThemeOption(strings.settingsUi.themeLight, prefs.themeMode == "light") {
-            scope.launch { container.settingsRepository.setThemeMode("light") }
-        }
-        ThemeOption(strings.settingsUi.themeDark, prefs.themeMode == "dark") {
-            scope.launch { container.settingsRepository.setThemeMode("dark") }
-        }
-        Spacer(Modifier.height(12.dp))
-        SectionLabel(strings.settingsUi.language)
-        ThemeOption(strings.settingsUi.languageSystem, prefs.appLanguage == "system") {
-            scope.launch { container.settingsRepository.setAppLanguage("system") }
-        }
-        ThemeOption(strings.languageEn, prefs.appLanguage == "en") {
-            scope.launch { container.settingsRepository.setAppLanguage("en") }
-        }
-        ThemeOption(strings.languagePtBr, prefs.appLanguage == "pt-BR") {
-            scope.launch { container.settingsRepository.setAppLanguage("pt-BR") }
-        }
-        Spacer(Modifier.height(40.dp))
     }
 }
 

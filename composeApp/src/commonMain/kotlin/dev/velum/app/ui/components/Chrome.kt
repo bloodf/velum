@@ -30,6 +30,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -59,30 +61,34 @@ fun ScreenTopBar(
     ) {
         when {
             onBack != null -> {
+                val backCd = strings.ux.back
                 Box(
                     Modifier
                         .defaultMinSize(48.dp, 48.dp)
+                        .semantics { contentDescription = backCd }
                         .clickable(onClick = onBack),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
                         Icons.AutoMirrored.Outlined.ArrowBack,
-                        contentDescription = strings.ux.back,
+                        contentDescription = backCd,
                         tint = VelumInk,
                         modifier = Modifier.size(24.dp),
                     )
                 }
             }
             onClose != null -> {
+                val closeCd = strings.close
                 Box(
                     Modifier
                         .defaultMinSize(48.dp, 48.dp)
+                        .semantics { contentDescription = closeCd }
                         .clickable(onClick = onClose),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
                         Icons.Outlined.Close,
-                        contentDescription = strings.close,
+                        contentDescription = closeCd,
                         tint = VelumInk,
                         modifier = Modifier.size(24.dp),
                     )
