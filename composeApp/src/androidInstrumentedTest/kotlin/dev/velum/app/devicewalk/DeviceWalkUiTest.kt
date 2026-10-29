@@ -99,7 +99,7 @@ class DeviceWalkUiTest {
         walkStorageWipe(lang, tag)
         // Locale/raw-string assert while ActivityScenario still owns MainActivity.
         assertNoRawOrUnlocalized(lang)
-        rotateAndBackground(tag)
+        rotateAndBackground(lang, tag)
         // Process death orphans ActivityScenario — UiAutomator only after this.
         killAndRestore(lang, tag)
         assertUiChrome(lang)
@@ -555,7 +555,7 @@ class DeviceWalkUiTest {
         pressBackToFiles(lang)
     }
 
-    private fun rotateAndBackground(tag: String) {
+    private fun rotateAndBackground(lang: String, tag: String) {
         // Prefer UiDevice rotation — keeps ActivityScenario's activity instance.
         runCatching { device.setOrientationLeft() }
             .recoverCatching {
@@ -583,6 +583,36 @@ class DeviceWalkUiTest {
         resumeShellActivity(singleTop = true)
         SystemClock.sleep(2_000)
         // Never treat bare "Velum" as shell — matches About / FirstRun title (#106).
+        // Config recreate can briefly re-show FirstRun if prefs lag; dismiss + drive
+        // back to Files before asserting shell chrome.
+        waitUntilUi(60_000) {
+            onFilesShellReady() ||
+                uiExists("All files") ||
+                uiExists("Todos os arquivos") ||
+                uiExists("Trash") ||
+                uiExists("Lixeira") ||
+                uiExists("Pular") ||
+                uiExists("Skip") ||
+                uiExists("Welcome to Velum") ||
+                uiExists("Bem-vindo ao Velum")
+        }
+        if (uiExists("Pular") || uiExists("Skip")) {
+            var skipped = false
+            for (label in listOf("Skip", "Pular")) {
+                val obj = device.findObject(By.textContains(label))
+                    ?: device.findObject(By.descContains(label))
+                    ?: continue
+                val bounds = obj.visibleBounds
+                if (device.click(bounds.centerX(), bounds.centerY())) {
+                    skipped = true
+                    break
+                }
+            }
+            if (!skipped) {
+                softClickUi("Pular", "Skip")
+            }
+        }
+        pressBackToFiles(lang)
         waitUntilUi(30_000) {
             onFilesShellReady() ||
                 uiExists("All files") ||

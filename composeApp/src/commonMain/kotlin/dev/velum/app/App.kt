@@ -131,11 +131,11 @@ private fun VelumRoot(container: AppContainer) {
     val backStack by navController.currentBackStackEntryAsState()
     val route = backStack?.destination?.route.orEmpty()
     var fabOpen by remember { mutableStateOf(false) }
-    // Seeded from AppContainer (IO init) — do not gate first paint on LaunchedEffect
-    // + Dispatchers.Default; device-walk Compose idle polling can starve that path
-    // under R8 minifiedTest and leave FirstRun + bottom bar uncomposed for the full
-    // waitForShell budget (#106).
-    var showFirstRun by remember { mutableStateOf(container.showFirstRunAtLaunch) }
+    // Re-read on every remember reset (activity recreate after rotate). A cached
+    // constructor flag re-showed FirstRun after markFirstRunDone and hid shell
+    // chrome for rotateAndBackground (#106). Keep this synchronous — LaunchedEffect
+    // can starve under R8 minifiedTest idle polling.
+    var showFirstRun by remember { mutableStateOf(container.shouldShowFirstRun()) }
     var librarySelectedId by remember { mutableStateOf<String?>(null) }
     var librarySeekSeconds by remember { mutableStateOf(0L) }
     var libraryRail by remember { mutableStateOf(LibraryRailDestination.Library) }
@@ -657,34 +657,37 @@ private fun VelumRoot(container: AppContainer) {
         if (showFirstRun) {
             FirstRunScreen(
                 onPhoneMic = {
+                    // Dismiss FirstRun synchronously — scope.launch can sit unresumed
+                    // under Compose UI Test's scheduler (R8 minifiedTest walk) (#106).
+                    showFirstRun = false
                     scope.launch {
                         container.repository.markFirstRunDone()
-                        showFirstRun = false
                         fabOpen = true
                     }
                 },
                 onImportRecorder = {
+                    showFirstRun = false
                     scope.launch {
                         container.repository.markFirstRunDone()
-                        showFirstRun = false
                         navController.navigate(Routes.IMPORT_AUDIO)
                     }
                 },
                 onConnectPlaud = {
+                    showFirstRun = false
                     scope.launch {
                         container.repository.markFirstRunDone()
-                        showFirstRun = false
                         navController.navigate(Routes.DEVICE)
                     }
                 },
                 onDownloadModels = {
+                    showFirstRun = false
                     scope.launch {
                         container.repository.markFirstRunDone()
-                        showFirstRun = false
                         navController.navigate(Routes.MODEL_MANAGER)
                     }
                 },
                 onDownloadRecommended = {
+                    showFirstRun = false
                     scope.launch {
                         val ids = ModelCatalogUi.recommendedModelIds(
                             languageHint = strings.localeTag,
@@ -695,24 +698,23 @@ private fun VelumRoot(container: AppContainer) {
                             }
                         }
                         container.repository.markFirstRunDone()
-                        showFirstRun = false
                         navController.navigate(Routes.MODEL_MANAGER)
                     }
                 },
                 onUseApi = {
+                    showFirstRun = false
                     scope.launch {
                         container.settingsRepository.setTranscriptionMode(ComputeMode.Api)
                         // Diarization stays Local (no remote contract).
                         container.settingsRepository.setSummaryMode(ComputeMode.Api)
                         container.repository.markFirstRunDone()
-                        showFirstRun = false
                         navController.navigate(Routes.API)
                     }
                 },
                 onSkip = {
+                    showFirstRun = false
                     scope.launch {
                         container.repository.markFirstRunDone()
-                        showFirstRun = false
                     }
                 },
             )

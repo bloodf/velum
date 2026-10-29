@@ -80,12 +80,15 @@ class AppContainer(
     val database = databaseHandle.database
     val repository = VelumRepository(databaseHandle)
     /**
-     * Resolved on the IO construction path (see [dev.velum.app.VelumApplication]) so
-     * [dev.velum.app.App] can paint FirstRun / shell chrome on the first frame without
-     * waiting on a Compose [LaunchedEffect] that device-walk idle polling can starve
-     * under R8 minifiedTest (#106).
+     * Sync read for the FirstRun gate on first frame and on activity recreate
+     * (rotate / config change). A one-shot constructor `val` went stale after
+     * [VelumRepository.markFirstRunDone] — recreate re-seeded FirstRun and hid
+     * the shell bottom bar for rotateAndBackground (#106).
+     *
+     * Must stay synchronous: a Compose [LaunchedEffect] can starve under R8
+     * minifiedTest device-walk idle polling and leave FirstRun/shell unpainted.
      */
-    val showFirstRunAtLaunch: Boolean = runBlocking { !repository.isFirstRunDone() }
+    fun shouldShowFirstRun(): Boolean = runBlocking { !repository.isFirstRunDone() }
     val settingsRepository = SettingsRepository(secureStore)
     val deviceKeyImporter: DeviceKeyImporter = SecureDeviceKeyImporter(secureStore)
     val aiClient = createOpenAiCompatibleClient()
