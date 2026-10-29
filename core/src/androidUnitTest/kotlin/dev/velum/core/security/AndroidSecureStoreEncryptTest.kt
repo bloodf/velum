@@ -3,6 +3,7 @@ package dev.velum.core.security
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import java.security.InvalidAlgorithmParameterException
+import javax.crypto.Cipher
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
@@ -53,10 +54,12 @@ class AndroidSecureStoreEncryptTest {
     @Test
     fun fake_rejects_caller_provided_iv_like_keystore() = runTest {
         val key = backend.getOrCreateKey(onClearVault = {})
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         val ex = assertFailsWith<InvalidAlgorithmParameterException> {
-            backend.encryptWithCallerProvidedIv(key, ByteArray(12))
+            backend.encryptWith(cipher, key, callerIv = ByteArray(12))
         }
         assertTrue(ex.message!!.contains("Caller-provided IV not permitted"))
+        assertEquals(0, backend.encryptInitCount, "caller IV must not reach initEncrypt body")
     }
 
     @Test

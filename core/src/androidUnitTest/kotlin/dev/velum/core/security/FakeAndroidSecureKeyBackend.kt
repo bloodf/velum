@@ -11,9 +11,8 @@ import javax.crypto.SecretKey
  * Lives in androidUnitTest — never referenced from production sources.
  *
  * Mirrors AndroidKeyStore randomized-encryption: encrypt must go through
- * [initEncrypt] (no caller IV). [encryptWithCallerProvidedIv] throws the same
- * [InvalidAlgorithmParameterException] Keystore would raise, so a regression that
- * bypasses [initEncrypt] is caught when [encryptInitCount] stays at 0.
+ * [initEncrypt] / [encryptWith] with no caller IV. Passing a caller IV to
+ * [encryptWith] throws [InvalidAlgorithmParameterException] like Keystore.
  */
 internal class FakeAndroidSecureKeyBackend : AndroidSecureKeyBackend {
     private val lock = Any()
@@ -67,7 +66,20 @@ internal class FakeAndroidSecureKeyBackend : AndroidSecureKeyBackend {
         key = null
     }
 
-    override fun initEncrypt(cipher: Cipher, key: SecretKey): ByteArray {
+    override fun initEncrypt(cipher: Cipher, key: SecretKey): ByteArray =
+        encryptWith(cipher, key, callerIv = null)
+
+    /**
+     * Encrypt-path entry that rejects a caller-provided IV (AndroidKeyStore
+     * randomized-encryption contract). [initEncrypt] routes through here with
+     * a null IV; tests pass a non-null [callerIv] to assert Keystore-shaped
+     * rejection without a standalone probe method.
+     */
+    fun encryptWith(cipher: Cipher, key: SecretKey, callerIv: ByteArray?): ByteArray {
+        if (callerIv != null) {
+            require(callerIv.size == IV_BYTES)
+            throw InvalidAlgorithmParameterException("Caller-provided IV not permitted")
+        }
         // Same contract as AndroidKeystoreBackend: no caller IV.
         cipher.init(Cipher.ENCRYPT_MODE, key)
         val iv = cipher.iv
@@ -76,17 +88,6 @@ internal class FakeAndroidSecureKeyBackend : AndroidSecureKeyBackend {
         }
         encryptInitCount++
         return iv
-    }
-
-    /**
-     * Probe that mirrors AndroidKeyStore rejecting a caller-provided IV on
-     * encrypt when randomized encryption is required. Software AES would accept
-     * [GCMParameterSpec]; this fake throws like Keystore instead.
-     */
-    @Suppress("UNUSED_PARAMETER")
-    fun encryptWithCallerProvidedIv(key: SecretKey, iv: ByteArray) {
-        require(iv.size == IV_BYTES)
-        throw InvalidAlgorithmParameterException("Caller-provided IV not permitted")
     }
 
     private fun mintNewKey(): SecretKey {
