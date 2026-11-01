@@ -36,6 +36,11 @@
 # performClick under minifiedTest (FirstRun never dismisses after Skip).
 -keep class kotlinx.coroutines.DelayWithTimeoutDiagnostics { *; }
 -keep class kotlinx.coroutines.internal.CoroutineExceptionHandlerImplKt { *; }
+# coroutines-test handles uncaught exceptions with this singleton from core.
+# Preserve the exact error-path ABI so an original failure is never masked by CNFE.
+-keep class kotlinx.coroutines.internal.ExceptionSuccessfullyProcessed {
+    public static final kotlinx.coroutines.internal.ExceptionSuccessfullyProcessed INSTANCE;
+}
 -keep class kotlinx.coroutines.JobSupport { *; }
 -keep class kotlinx.coroutines.internal.ThreadSafeHeap { *; }
 -keep class kotlin.comparisons.ComparisonsKt { *; }
