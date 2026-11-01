@@ -25,6 +25,19 @@
 - Android: `AndroidWifiSoftApJoiner`, `AndroidWifiTransferServer`
 - JVM fake: `FakeWifiSoftApJoiner`, `FakeWifiDeviceClient`, `JavaWebsocketTransferServer`
 - Sync entry: `PlaudDeviceClient.downloadSessionPreferWifi`
-- Tests: `WifiFastPathE2ETest`
+- Tests: `WifiFastPathE2ETest`, `WifiSoftApMockServerTest`
+
+## Test instructions (#96)
+
+Run `./gradlew :ble:jvmTest --rerun`. `WifiSoftApMockServerTest` starts `JavaWebsocketTransferServer` on an
+ephemeral loopback port (`ServerSocket(0)`, connect-retry, no fixed ports) with `FakeWifiDeviceClient` as the device.
+
+- **Simulated (JVM):** preamble accept/reject, sealed frames for both ciphers, seq ordering/replay, AEAD failure,
+  full-file transfer with CRC (loopback MB/s is printed, not a hardware claim), mid-transfer disconnect and device
+  never joining -> timeout -> BLE fallback with exact bytes, and port release after stop.
+- **Not covered (stays in #8):** real SoftAP join, `Network.bindSocket` on a real `Network`, normal-network
+  restoration, hardware throughput.
+- **Nonce (#28):** `fixedNonce_keystreamReuse_isDocumented` records the known fixed-nonce keystream reuse; it flips red
+  when #28 changes the protocol.
 
 No Plaud servers are contacted.
