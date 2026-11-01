@@ -9,7 +9,7 @@ Thanks for helping build a local-first, subscription-free recorder companion.
 3. **Interoperability only.** Reverse-engineering notes exist so Velum can talk to hardware the user owns. Prefer read-only BLE commands until download/decrypt is proven safe.
 4. **Apache-2.0.** By contributing, you license your work under the Apache License 2.0.
 5. **No unimplemented UI.** Any menu item, button, tab, row, sheet entry, or toggle whose feature is not actually implemented and working must be removed from the UI. No “coming soon”, disabled placeholders, or dead links — app-wide (library, FAB, Explore, Integrations, AutoFlow, Device, Templates, recording menus, share sheet, onboarding, desktop layout, Settings). Velum has **no telemetry / analytics / crash-reporting opt-in**; do not add usage-data toggles or similar.
-6. **Push to `main`.** Owner workflow: land on `main` directly (no PRs) and keep CI green.
+6. **Use focused PRs with local verification.** The owner authorized PRs, merges and evidence-based issue closure on 2026-11-01, replacing the earlier direct-to-main rule for maintenance. Review each diff, validate the exact code locally, respect branch protections and verify the merged tree. See [engineering standards](docs/ENGINEERING_STANDARDS.md) for the current workflow and the historical Product rules.
 
 ## Dev setup
 
@@ -46,9 +46,12 @@ packaging and resource shrinking; never distribute those test artifacts.
 |--------|------|
 | `plaud-protocol` | Pure Kotlin codec + unit tests (no Android/BLE deps) |
 | `core` | Domain + settings + secure store interfaces |
-| `ai` | OpenAI-compatible HTTP client |
+| `ai` | Audio decoding, local/API engines, model management and processing jobs |
+| `recorder` | Recorder driver interfaces and Plaud session/handshake logic |
 | `ble` | Transport interface; Kable on mobile; stub on desktop |
 | `composeApp` | Shared Compose UI + platform entry points |
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the verified module/dependency map and input-to-storage/UI flow.
 
 ## Pull requests
 
