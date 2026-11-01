@@ -47,13 +47,16 @@ There are three input paths:
    through `PlaudFileCrypto` before `AppContainer.persistDownloadedSession`
    writes a local file, inserts a recording and queues processing. The production
    persistence boundary still accepts a full `ByteArray`; this is not proof of
-   bounded-memory multi-hour imports (#86). Session deduplication remains #113.
+   bounded-memory multi-hour imports (#86). Rows are unique on device session id
+   plus device serial; a re-download atomically replaces the existing row's audio and
+   keeps its title, transcript and summary (#113).
 2. File import starts in
    [AudioImportPipeline](composeApp/src/commonMain/kotlin/dev/velum/app/importing/AudioImportPipeline.kt).
    It hashes the source, normalizes audio using the platform `AudioNormalizer`,
    checks normalized content hashes, creates a local recording, resolves AutoFlow
-   parameters and enqueues the same processor. General interrupted-import and
-   orphan reconciliation remains #122.
+   parameters and enqueues the same processor. Before the container is published,
+   a startup sweep quarantines unreferenced final audio files older than 24 hours in
+   the recordings directory and purges quarantine after 7 days (#122).
 3. Android phone capture uses
    [MicCapture](composeApp/src/androidMain/kotlin/dev/velum/app/platform/MicCapture.android.kt),
    [MicRecordingService](composeApp/src/androidMain/kotlin/dev/velum/app/platform/MicRecordingService.kt)
