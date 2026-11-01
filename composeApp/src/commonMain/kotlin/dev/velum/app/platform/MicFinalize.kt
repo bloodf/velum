@@ -1,44 +1,72 @@
 package dev.velum.app.platform
 
 import dev.velum.app.di.AppContainer
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.collect
 
-/**
- * Idempotent mic stop + local path update for a phone recording.
- *
- * Safe to call when capture already stopped (notification Stop, prior finalize):
- * recovers WAV header from disk when needed and clears [AppContainer.activeMicRecordingId].
- */
+/** Stop/finalize the owned capture and queue only real audio; failures never become successful recovery. */
 suspend fun finalizeMicRecording(
     container: AppContainer,
     recordingId: String,
     wavPath: String = "${recordingsDirectoryPath()}/$recordingId.wav",
-) {
-    val ownsSession = container.activeMicRecordingId == recordingId
-    if (!ownsSession && !container.micCapture.isCapturing) {
-        return
-    }
-    when (val stopped = container.micCapture.stop()) {
-        is MicStopResult.Stopped -> {
-            container.repository.updateLocalPath(
-                id = recordingId,
-                localPath = stopped.absolutePath,
-                durationSeconds = stopped.durationSeconds,
-                sizeBytes = stopped.sizeBytes,
-            )
-        }
-        else -> {
-            // Notification Stop may have already finalized; fix header from disk.
-            WavWriter.recoverOrFinalize(wavPath)?.let { recovered ->
-                container.repository.updateLocalPath(
-                    id = recordingId,
-                    localPath = recovered.absolutePath,
-                    durationSeconds = recovered.durationSeconds,
-                    sizeBytes = recovered.sizeBytes,
-                )
+    expectedSession: MicSessionIdentity? = container.micRecordings.owner.value?.takeIf { it.recordingId == recordingId }?.session,
+    transcript: String? = null,
+): MicStopResult {
+    if (expectedSession == null) return MicStopResult.NotCapturing
+    return container.micRecordings.withOwner(recordingId, wavPath) { owned ->
+        if (owned.session != expectedSession || !container.micRecordings.isCurrent(owned)) return@withOwner MicStopResult.NotCapturing
+        val stopped = try {
+            container.micCapture.stop(owned.session)
+        } catch (cancelled: CancellationException) {
+            throw cancelled // Terminal state is retained by the platform for a later retry.
+        } catch (_: Exception) { MicStopResult.Failed("") }
+        if (owned.session != expectedSession || !container.micRecordings.isCurrent(owned)) return@withOwner MicStopResult.NotCapturing
+        val result = when (stopped) {
+            is MicStopResult.Stopped -> {
+                if (stopped.session != owned.session || stopped.absolutePath != wavPath) return@withOwner MicStopResult.NotCapturing
+                if (stopped.sizeBytes > 44) stopped else MicStopResult.Failed("")
             }
+            else -> stopped
         }
+        when (result) {
+            is MicStopResult.Stopped -> {
+                transcript?.let { container.repository.updateTranscript(recordingId, it) }
+                container.repository.updateLocalPath(recordingId, result.absolutePath, result.durationSeconds, result.sizeBytes)
+                container.repository.updateStatus(recordingId, "queued")
+                container.enqueueProcessing(recordingId, templateId = "velum.meeting", retranscribe = true)
+                container.micRecordings.release(owned)
+            }
+            is MicStopResult.Failed -> {
+                transcript?.let { container.repository.updateTranscript(recordingId, it) }
+                container.repository.updateStatus(recordingId, "failed")
+                container.micRecordings.release(owned)
+            }
+            else -> Unit
+        }
+        result
     }
-    if (container.activeMicRecordingId == recordingId || !container.micCapture.isCapturing) {
-        container.activeMicRecordingId = null
+}
+
+/** Owned by the UI effect: no independent scope, and late start-result delivery is also observed. */
+suspend fun observeMicFailures(container: AppContainer, onFailure: suspend (String) -> Unit) {
+    combine(container.micRecordings.owner, container.micCapture.sessions) { owner, state -> owner to state }
+        .collect { (owned, state) ->
+            val failure = state as? MicSessionState.Failed ?: return@collect
+            if (owned != null && failOwnedMicRecording(container, owned, failure)) onFailure(failure.message)
+        }
+}
+
+internal suspend fun failOwnedMicRecording(container: AppContainer, owned: OwnedMicRecording, failure: MicSessionState.Failed): Boolean {
+    if (failure.session != owned.session) return false
+    var handled = false
+    container.micRecordings.withOwner(owned.recordingId, owned.session.absolutePath) { current ->
+        if (current == owned && container.micRecordings.isCurrent(owned) && container.micCapture.sessions.value == failure) {
+            container.repository.updateStatus(owned.recordingId, "failed")
+            container.micRecordings.release(owned)
+            handled = true
+        }
+        MicStopResult.NotCapturing
     }
+    return handled
 }

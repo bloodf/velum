@@ -88,6 +88,7 @@ class VelumApplication : Application() {
                     recoverPartialMicRecordings(
                         recordingsDirPath = recordingsDirectoryPath(),
                         repository = built.repository,
+                        protectedRecording = built.micRecordings::protects,
                         onRecovered = { recordingId ->
                             built.enqueueProcessing(
                                 recordingId = recordingId,
@@ -96,6 +97,7 @@ class VelumApplication : Application() {
                             )
                         },
                     )
+                    dev.velum.app.platform.reconcileInterruptedMicDrafts(built, recordingsDirectoryPath())
                 }.onFailure { t ->
                     Log.e(TAG, "Partial mic recovery failed", t)
                 }

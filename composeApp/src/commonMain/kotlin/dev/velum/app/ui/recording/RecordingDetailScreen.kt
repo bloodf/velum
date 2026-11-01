@@ -87,6 +87,7 @@ import dev.velum.app.platform.MicMarkerResult
 import dev.velum.app.platform.MicStartResult
 import dev.velum.app.platform.WavWriter
 import dev.velum.app.platform.createAudioPlayer
+import dev.velum.app.platform.MicStopResult
 import dev.velum.app.platform.finalizeMicRecording
 import dev.velum.app.platform.localizedLabel
 import dev.velum.app.platform.shouldUseDemoPcm
@@ -1100,6 +1101,8 @@ private fun LiveTranscriptPane(
         mutableStateOf(seededTranscript ?: "**partial** · 0:00\n")
     }
     var usingMic by remember { mutableStateOf(false) }
+    var ownedSession by remember(recordingId) { mutableStateOf<dev.velum.app.platform.MicSessionIdentity?>(null) }
+    var pcmSubscription by remember(recordingId) { mutableStateOf<dev.velum.app.platform.MicPcmSubscription?>(null) }
     var stopping by remember { mutableStateOf(false) }
     var micError by remember { mutableStateOf<String?>(null) }
     var inputSource by remember {
@@ -1152,38 +1155,25 @@ private fun LiveTranscriptPane(
             }
         }
 
-        val alreadyCapturing = container.micCapture.isCapturing
         var useDemo = false
         micError = null
-        if (alreadyCapturing) {
-            container.micCapture.onPcmChunk = push
-            usingMic = true
-            markerCount = container.micCapture.markers.size
-            pausedUi = container.micCapture.isPaused
-        } else if (!preserveSeeded) {
-            when (val started = container.micCapture.start(wavPath, inputSource)) {
-                MicStartResult.Started -> {
-                    container.activeMicRecordingId = recordingId
-                    container.micCapture.onPcmChunk = push
-                    usingMic = true
+        if (!preserveSeeded || container.activeMicRecordingId == recordingId) {
+            when (val started = container.micRecordings.startOrAttach(recordingId, wavPath, inputSource)) {
+                is MicStartResult.Started -> {
+                    ownedSession = started.session
+                    pcmSubscription = container.micRecordings.attach(recordingId, started.session, push)
+                    usingMic = pcmSubscription != null
+                    if (!usingMic) micError = strings.micStartFailed
+                    markerCount = container.micCapture.markers.size
+                    pausedUi = container.micCapture.isPaused
                 }
-                MicStartResult.Unsupported -> {
-                    // Desktop/iOS (and similar): synthetic PCM demo only.
-                    usingMic = false
-                    useDemo = shouldUseDemoPcm(started)
-                }
-                MicStartResult.PermissionRequired -> {
-                    usingMic = false
-                    micError = strings.micPermissionRationale
-                }
-                is MicStartResult.Failed -> {
-                    usingMic = false
-                    // Android (and any supported platform): show error — never demo PCM.
-                    micError = started.message.ifBlank { strings.micUnsupported }
-                }
+                MicStartResult.Unsupported -> { usingMic = false; useDemo = shouldUseDemoPcm(started) }
+                MicStartResult.PermissionRequired -> { usingMic = false; micError = strings.micPermissionRationale }
+                is MicStartResult.Failed -> { usingMic = false; micError = started.message.ifBlank { strings.micStartFailed } }
             }
         } else {
             usingMic = false
+            if (container.micCapture.isCapturing) micError = strings.micStartFailed
         }
 
         if (useDemo) {
@@ -1201,7 +1191,8 @@ private fun LiveTranscriptPane(
     }
     DisposableEffect(recordingId) {
         onDispose {
-            container.micCapture.onPcmChunk = null
+            pcmSubscription?.close()
+            pcmSubscription = null
             finishOnce()
         }
     }
@@ -1234,7 +1225,7 @@ private fun LiveTranscriptPane(
             active = !stopping && !finished.value && !pausedUi,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
         )
-        if (preserveSeeded && !usingMic) {
+        if (preserveSeeded && !usingMic && micError == null) {
             Text(
                 strings.ux.livePhoneMicFormat.replace("%d", markerCount.toString()),
                 color = VelumInkSecondary,
@@ -1289,10 +1280,10 @@ private fun LiveTranscriptPane(
                     {
                         scope.launch {
                             if (pausedUi) {
-                                container.micCapture.resume()
+                                ownedSession?.let { container.micCapture.resume(it) }
                                 pausedUi = false
                             } else {
-                                container.micCapture.pause()
+                                ownedSession?.let { container.micCapture.pause(it) }
                                 pausedUi = true
                             }
                         }
@@ -1303,7 +1294,7 @@ private fun LiveTranscriptPane(
                     strings.ux.liveMark,
                     {
                         scope.launch {
-                            when (container.micCapture.addMarker()) {
+                            when (ownedSession?.let { container.micCapture.addMarker(it) }) {
                                 is MicMarkerResult.Ok ->
                                     markerCount = container.micCapture.markers.size
                                 else -> Unit
@@ -1346,6 +1337,12 @@ private fun LiveTranscriptPane(
             if (stopping) strings.generating else strings.stopRecording,
             {
                 if (stopping) return@BlackButton
+                val requested = ownedSession
+                val owner = container.micRecordings.owner.value
+                if (container.micCapture.isSupported && (requested == null || owner?.recordingId != recordingId || owner.session != requested)) {
+                    micError = strings.micStartFailed
+                    return@BlackButton
+                }
                 stopping = true
                 scope.launch {
                     val marks = container.micCapture.markers
@@ -1372,19 +1369,21 @@ private fun LiveTranscriptPane(
                             }
                         }
                     }
-                    container.repository.updateTranscript(recordingId, finalMd)
                     when {
-                        container.activeMicRecordingId == recordingId ||
-                            container.micCapture.isCapturing -> {
-                            finalizeMicRecording(container, recordingId, wavPath)
-                            container.repository.updateStatus(recordingId, "queued")
-                            container.enqueueProcessing(
-                                recordingId = recordingId,
-                                templateId = "velum.meeting",
-                                retranscribe = true,
-                            )
+                        // The asynchronous transcript finish may outlive ownership. The finalizer
+                        // rechecks the captured identity under its lock before any database write.
+                        container.micCapture.isSupported -> {
+                            when (val stopped = finalizeMicRecording(container, recordingId, wavPath, requested, transcript = finalMd)) {
+                                is MicStopResult.Stopped -> Unit // Finalizer queued the verified audio.
+                                is MicStopResult.Failed -> {
+                                    usingMic = false
+                                    micError = stopped.message.ifBlank { strings.micStartFailed }
+                                }
+                                else -> Unit
+                            }
                         }
                         demoWavWriter.value != null -> {
+                            container.repository.updateTranscript(recordingId, finalMd)
                             // Unsupported-platform demo only (never Android mic failure).
                             val finishedWav = withContext(Dispatchers.IO) {
                                 demoWavWriter.value!!.finish()

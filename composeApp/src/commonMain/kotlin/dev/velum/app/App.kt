@@ -48,6 +48,8 @@ import dev.velum.app.platform.LocalHaptics
 import dev.velum.app.platform.MicStartResult
 import dev.velum.app.platform.PermissionOutcome
 import dev.velum.app.platform.consumeIncomingSharePath
+import dev.velum.app.platform.observeMicFailures
+import dev.velum.app.platform.MicStopResult
 import dev.velum.app.platform.finalizeMicRecording
 import dev.velum.app.platform.openCalendarInsert
 import dev.velum.app.platform.recordingsDirectoryPath
@@ -182,6 +184,11 @@ private fun VelumRoot(container: AppContainer) {
         ) {
             runCatching { syncWatchedFolders(importPipeline) }
         }
+    }
+    val activeMicOwner by container.micRecordings.owner.collectAsState()
+    val activeMicId = activeMicOwner?.recordingId
+    LaunchedEffect(container) {
+        observeMicFailures(container) { message -> snackbar.showSnackbar(message.ifBlank { strings.micStartFailed }) }
     }
     val storageState by container.settingsRepository.loadState.collectAsState()
     LaunchedEffect(container, storageState) {
@@ -595,61 +602,45 @@ private fun VelumRoot(container: AppContainer) {
         if (onShell && !showFirstRun) {
             FabOverlay(
                 visible = fabOpen,
-                isCapturing = container.micCapture.isCapturing ||
-                    container.activeMicRecordingId != null,
+                isCapturing = container.micCapture.isCapturing || activeMicId != null,
                 onStartRecording = {
-                    val activeId = container.activeMicRecordingId
+                    val owned = container.micRecordings.owner.value
+                    val activeId = owned?.recordingId
                     val capturing = container.micCapture.isCapturing || activeId != null
                     if (capturing) {
                         fabOpen = false
                         scope.launch {
                             if (activeId != null) {
-                                finalizeMicRecording(container, activeId)
-                                container.repository.updateStatus(activeId, "queued")
-                                container.enqueueProcessing(
-                                    recordingId = activeId,
-                                    templateId = "velum.meeting",
-                                    retranscribe = true,
-                                )
+                                when (val stopped = finalizeMicRecording(container, activeId, owned.session.absolutePath, owned.session)) {
+                                    is MicStopResult.Stopped -> Unit // Finalizer queued the verified audio.
+                                    is MicStopResult.Failed -> snackbar.showSnackbar(stopped.message.ifBlank { strings.micStartFailed })
+                                    else -> Unit
+                                }
                                 navController.navigate(Routes.recording(activeId))
                             } else {
-                                container.micCapture.stop()
+                                snackbar.showSnackbar(strings.micStartFailed)
                             }
                         }
                     } else {
                         fun startPhoneRecording() {
                             scope.launch {
-                                val id = container.createLocalRecording(
-                                    source = "phone",
-                                    status = "recording",
-                                )
-                                val wavPath = "${recordingsDirectoryPath()}/$id.wav"
-                                when (val started = container.micCapture.start(wavPath)) {
-                                    MicStartResult.Started -> {
-                                        container.activeMicRecordingId = id
-                                        container.repository.updateLocalPath(
-                                            id = id,
-                                            localPath = wavPath,
-                                            durationSeconds = 0,
-                                            sizeBytes = 0,
-                                        )
+                                val draft = dev.velum.app.platform.startPhoneMicDraft(container)
+                                val id = draft.recordingId
+                                when (val started = draft.result) {
+                                    is MicStartResult.Started -> {
                                         fabOpen = false
                                         navController.navigate(Routes.recording(id))
                                     }
                                     MicStartResult.PermissionRequired -> {
                                         snackbar.showSnackbar(strings.micPermissionRationale)
-                                        // Do not keep a stuck "recording" row without capture.
-                                        container.repository.trashRecording(id)
                                         fabOpen = false
                                     }
                                     MicStartResult.Unsupported -> {
                                         snackbar.showSnackbar(strings.micUnsupported)
-                                        container.repository.trashRecording(id)
                                         fabOpen = false
                                     }
                                     is MicStartResult.Failed -> {
                                         snackbar.showSnackbar(strings.micStartFailed)
-                                        container.repository.trashRecording(id)
                                         fabOpen = false
                                     }
                                 }
