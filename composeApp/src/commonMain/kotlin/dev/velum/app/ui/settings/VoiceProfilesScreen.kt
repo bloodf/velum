@@ -39,6 +39,7 @@ import dev.velum.core.security.SecureStoreUnavailableException
 import dev.velum.ai.local.VoiceProfile
 import dev.velum.app.di.AppContainer
 import dev.velum.app.i18n.LocalStrings
+import dev.velum.app.i18n.Strings
 import dev.velum.app.ui.components.BlackButton
 import dev.velum.app.ui.components.OutlineButton
 import dev.velum.app.ui.components.ScreenTopBar
@@ -290,12 +291,7 @@ fun VoiceProfilesScreen(
                 color = VelumInk,
             )
             Row(Modifier.fillMaxWidth()) {
-                listOf(
-                    0.45f to strings.ux.voiceProfilesSensitivityFlexible,
-                    0.55f to strings.ux.voiceProfilesSensitivityBalanced,
-                    0.65f to strings.ux.voiceProfilesSensitivityStrict,
-                    0.75f to strings.ux.voiceProfilesSensitivityVeryStrict,
-                ).forEach { (t, label) ->
+                thresholdOptions(strings).forEach { (t, label) ->
                     OutlineButton(
                         label,
                         {
@@ -392,6 +388,13 @@ fun VoiceProfilesScreen(
         )
     }
 }
+
+internal fun thresholdOptions(strings: Strings): List<Pair<Float, String>> = listOf(
+    0.45f to strings.ux.voiceProfilesSensitivityFlexible,
+    0.55f to strings.ux.voiceProfilesSensitivityBalanced,
+    0.65f to strings.ux.voiceProfilesSensitivityStrict,
+    0.75f to strings.ux.voiceProfilesSensitivityVeryStrict,
+)
 
 @Composable
 private fun ProfileEditor(

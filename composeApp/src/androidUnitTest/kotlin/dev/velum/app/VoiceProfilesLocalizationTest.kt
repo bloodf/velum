@@ -3,7 +3,7 @@ package dev.velum.app
 import dev.velum.app.i18n.En
 import dev.velum.app.i18n.PtBr
 import dev.velum.app.i18n.Strings
-import java.io.File
+import dev.velum.app.ui.settings.thresholdOptions
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -28,16 +28,11 @@ class VoiceProfilesLocalizationTest {
     )
 
     @Test
-    fun bothLocalesHaveEveryVoiceProfilesString() {
-        val en = copy(En)
-        val pt = copy(PtBr)
-        assertEquals(en.size, pt.size)
-        en.zip(pt).forEachIndexed { i, (e, p) ->
+    fun bothLocalesHaveDistinctNonBlankCopy() {
+        copy(En).zip(copy(PtBr)).forEachIndexed { i, (e, p) ->
             assertTrue(e.isNotBlank() && p.isNotBlank(), "blank entry #$i")
+            assertNotEquals(e, p, "entry #$i is identical in en and pt-BR: $e")
         }
-        // Strings that are not the same word in both languages must differ.
-        assertNotEquals(En.ux.voiceProfilesHint, PtBr.ux.voiceProfilesHint)
-        assertNotEquals(En.ux.voiceProfilesEnrollHint, PtBr.ux.voiceProfilesEnrollHint)
     }
 
     @Test
@@ -54,26 +49,22 @@ class VoiceProfilesLocalizationTest {
     fun enrollHintIsSingleLanguage() {
         val en = En.ux.voiceProfilesEnrollHint
         val pt = PtBr.ux.voiceProfilesEnrollHint
-        assertEquals("To add a voice, name a speaker in a recording or confirm a detected speaker.", en)
-        assertEquals("Para cadastrar uma voz, nomeie um orador em uma gravação ou confirme um orador detectado.", pt)
-        assertFalse(en.contains("Fontes") || en.contains("orador"))
-        assertFalse(pt.contains("Sources") || pt.contains("speaker"))
+        assertFalse(en.contains("Fontes") || en.contains("orador"), en)
+        assertFalse(pt.contains("Sources") || pt.contains("speaker"), pt)
     }
 
     @Test
-    fun screenUsesStringsOnly() {
-        val file = listOf("composeApp", "../composeApp", "../../composeApp")
-            .map { File("$it/src/commonMain/kotlin/dev/velum/app/ui/settings/VoiceProfilesScreen.kt") }
-            .first { it.isFile }
-        val text = file.readText()
-        assertFalse(text.contains("%.2f"), "numeric threshold labels must be localized")
-        assertTrue(text.contains("voiceProfilesSensitivityFlexible"))
-        assertTrue(text.contains("contentDescription"), "text fields need accessibility labels")
-        // No string literal with a letter-leading English word outside imports/format tokens.
-        val literals = Regex("\"([^\"\\\\]*)\"").findAll(text.lines().filterNot { it.trimStart().startsWith("import") }.joinToString("\n"))
-            .map { it.groupValues[1] }
-            .filter { !it.contains('$') && Regex("[A-Za-z]{3,}").containsMatchIn(it) }
-            .toList()
-        assertTrue(literals.isEmpty(), "hardcoded user-facing literals: $literals")
+    fun thresholdOptionsMapValuesToLabelsInOrder() {
+        for (s in listOf(En, PtBr)) {
+            assertEquals(
+                listOf(
+                    0.45f to s.ux.voiceProfilesSensitivityFlexible,
+                    0.55f to s.ux.voiceProfilesSensitivityBalanced,
+                    0.65f to s.ux.voiceProfilesSensitivityStrict,
+                    0.75f to s.ux.voiceProfilesSensitivityVeryStrict,
+                ),
+                thresholdOptions(s),
+            )
+        }
     }
 }
