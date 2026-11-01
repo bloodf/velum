@@ -192,9 +192,10 @@ class AppContainer(
         jobScheduler = recordingJobs,
     )
 
-    /** Active phone mic session recording id, if any. */
-    @Volatile
-    var activeMicRecordingId: String? = null
+    val micRecordings = dev.velum.app.platform.MicRecordingController(micCapture) { id ->
+        repository.getRecording(id)?.let { it.source == "phone" && it.status == "recording" } == true
+    }
+    val activeMicRecordingId: String? get() = micRecordings.owner.value?.recordingId
 
     init {
         appScope.launch {
@@ -222,8 +223,8 @@ class AppContainer(
         source: String = "phone",
         localPath: String? = null,
         status: String = "ready",
+        id: String = RecordingIds.newId(),
     ): String {
-        val id = RecordingIds.newId()
         val now = epochSecondsNow()
         repository.insertRecording(
             id = id,

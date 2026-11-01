@@ -20,4 +20,8 @@
     <string name="download_channel_name">Downloads</string>
     <string name="download_channel_desc">Progresso ao baixar sessões do aparelho ou modelos locais</string>
     <string name="download_cancel">Cancelar</string>
+    <string name="mic_recording_permission_required">A permissão do microfone é necessária para gravar.</string>
+    <string name="mic_recording_start_failed">Não foi possível iniciar a gravação. Tente de novo com o Velum aberto.</string>
+    <string name="mic_recording_capture_failed">A gravação pelo microfone foi interrompida. Tente de novo.</string>
+    <string name="mic_recording_cancelled">A gravação pelo microfone foi cancelada.</string>
 </resources>

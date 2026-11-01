@@ -248,3 +248,18 @@
 -keepclassmembers class kotlinx.coroutines.selects.OnTimeoutKt {
     void onTimeout*(kotlinx.coroutines.selects.SelectBuilder,long,kotlin.jvm.functions.Function1);
 }
+
+# Synthetic filesystem instrumentation calls only this exact WAV writer boundary.
+# Test-only; shipping recovery stays fully optimized/obfuscated.
+-keep class dev.velum.app.platform.WavWriter {
+    public <init>(java.lang.String,int);
+    public static final dev.velum.app.platform.WavWriter$Companion Companion;
+    public void writePcm(byte[]);
+    public dev.velum.app.platform.WavFinish finish();
+}
+-keep class dev.velum.app.platform.WavWriter$Companion {
+    public dev.velum.app.platform.WavFinish recoverOrFinalize(java.lang.String,int);
+}
+-keep class dev.velum.app.platform.WavFinish {
+    public java.lang.String getAbsolutePath();
+}

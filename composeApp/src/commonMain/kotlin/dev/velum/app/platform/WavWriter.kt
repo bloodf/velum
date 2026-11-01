@@ -51,9 +51,13 @@ class WavWriter(
         fun durationSeconds(dataBytes: Long, sampleRateHz: Int): Long =
             if (sampleRateHz <= 0) 0L else dataBytes / (2L * sampleRateHz)
 
+        /** Detailed non-destructive outcome, including conflicts and transient I/O failures. */
+        fun recoverWithReport(absolutePath: String, sampleRateHz: Int = 16_000): WavRecoveryResult =
+            recoverDetailedWav(absolutePath, sampleRateHz)
+
         /**
          * Fix an incomplete / crashed WAV (or `.wav.partial`) from on-disk length.
-         * Returns null when the path is missing or has no recoverable PCM.
+         * Returns null when recovery is unavailable, invalid or conflicted. Original partials are retained.
          */
         fun recoverOrFinalize(
             absolutePath: String,

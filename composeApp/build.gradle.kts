@@ -71,6 +71,10 @@ kotlin {
 
     sourceSets {
         val desktopMain by getting
+        val androidMain by getting
+        // Identical JVM filesystem policy, without changing the Kotlin target hierarchy.
+        androidMain.kotlin.srcDir("src/jvmSharedMain/kotlin")
+        desktopMain.kotlin.srcDir("src/jvmSharedMain/kotlin")
 
         commonMain.dependencies {
             implementation(project(":core"))
@@ -110,6 +114,7 @@ kotlin {
             implementation(libs.androidx.graphics.path)
         }
         val androidUnitTest by getting {
+            kotlin.srcDir("src/jvmSharedTest/kotlin")
             dependencies {
                 implementation(libs.kotlin.test)
                 implementation(libs.junit)
@@ -140,6 +145,7 @@ kotlin {
             implementation(libs.kotlinx.coroutines.swing)
         }
         val desktopTest by getting {
+            kotlin.srcDir("src/jvmSharedTest/kotlin")
             dependencies {
                 implementation(kotlin("test"))
                 implementation(compose.desktop.currentOs)

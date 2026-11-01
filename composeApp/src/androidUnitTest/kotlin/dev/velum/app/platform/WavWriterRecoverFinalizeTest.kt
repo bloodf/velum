@@ -41,7 +41,7 @@ class WavWriterRecoverFinalizeTest {
     }
 
     @Test
-    fun recoverOrFinalize_renamesPartialAndFixesHeader() {
+    fun recoverOrFinalize_publishesPartialAndPreservesOriginal() {
         val dir = createTempDir(prefix = "velum-wav-partial-")
         try {
             val partial = File(dir, "rec.wav.partial")
@@ -51,8 +51,10 @@ class WavWriterRecoverFinalizeTest {
                 raf.write(ByteArray(1600) { 2 })
             }
 
+            val originalBytes = partial.readBytes()
             val finished = WavWriter.recoverOrFinalize(partial.absolutePath, sampleRateHz = 16_000)
             assertNotNull(finished)
+            kotlin.test.assertContentEquals(originalBytes, partial.readBytes())
             assertTrue(finished.absolutePath.endsWith("rec.wav"))
             assertTrue(File(finished.absolutePath).isFile)
             assertNull(WavWriter.recoverOrFinalize(File(dir, "missing.wav").absolutePath))
