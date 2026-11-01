@@ -1,0 +1,17 @@
+-- #113: keep the oldest row per device session; detach later duplicates (session_id = NULL) so no row,
+-- edit or audio is deleted. Detached rows remain ordinary library recordings.
+UPDATE recording SET session_id = NULL
+WHERE session_id IS NOT NULL
+  AND id NOT IN (
+    SELECT (
+      SELECT r2.id FROM recording r2
+      WHERE r2.session_id = r1.session_id
+        AND COALESCE(r2.device_serial, '') = COALESCE(r1.device_serial, '')
+      ORDER BY r2.created_at ASC, r2.id ASC
+      LIMIT 1
+    )
+    FROM recording r1
+    WHERE r1.session_id IS NOT NULL
+  );
+
+CREATE UNIQUE INDEX recording_device_session ON recording(session_id, COALESCE(device_serial, '')) WHERE session_id IS NOT NULL;

@@ -22,6 +22,9 @@ CREATE TABLE recording (
   created_at INTEGER NOT NULL
 );
 
+-- #113: one library row per device session. NULL serials compare equal; local rows (no session) are unconstrained.
+CREATE UNIQUE INDEX recording_device_session ON recording(session_id, COALESCE(device_serial, '')) WHERE session_id IS NOT NULL;
+
 CREATE TABLE speaker (
   id TEXT NOT NULL PRIMARY KEY,
   recording_id TEXT NOT NULL,
@@ -130,6 +133,19 @@ UPDATE recording SET trashed = 1 WHERE id = ?;
 
 restoreRecording:
 UPDATE recording SET trashed = 0 WHERE id = ?;
+
+selectRecordingByDeviceSession:
+SELECT * FROM recording WHERE session_id = :sessionId AND COALESCE(device_serial, '') = :serial LIMIT 1;
+
+-- Plain INSERT: a unique-index conflict must fail, never REPLACE (delete) the existing row.
+insertDeviceSessionRecording:
+INSERT INTO recording VALUES ?;
+
+replaceDeviceSessionAudio:
+UPDATE recording SET local_path = ?, size_bytes = ?, trashed = 0 WHERE id = ?;
+
+selectAllRecordingFileRefs:
+SELECT id, local_path FROM recording;
 
 deleteRecordingHard:
 DELETE FROM recording WHERE id = ?;

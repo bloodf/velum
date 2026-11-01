@@ -45,6 +45,8 @@ data class DeviceSessionUi(
     val downloadingSessionId: Long? = null,
     val downloadProgress: Float? = null,
     val lastDownloadedRecordingId: String? = null,
+    /** Device sessions already in the library (#113); their action re-downloads into the same row. */
+    val librarySessionIds: Set<Long> = emptySet(),
 )
 
 data class DownloadedSessionAudio(
@@ -64,6 +66,7 @@ class DeviceViewModel(
         error("persistDownloadedSession not configured")
     },
     private val localeTag: () -> String = { systemLanguageTag() },
+    private val librarySessionIds: suspend (sessionIds: List<Long>, deviceSerial: String?) -> Set<Long> = { _, _ -> emptySet() },
 ) : ViewModel() {
     val connectionState: StateFlow<BleConnectionState> =
         ble.connectionState.stateIn(viewModelScope, SharingStarted.Eagerly, BleConnectionState.Idle)
@@ -212,8 +215,10 @@ class DeviceViewModel(
                 )
             }
             val sessions = c.listSessions()
+            val inLibrary = librarySessionIds(sessions.entries.map { it.sessionId }, keys.serialNumber.ifBlank { connectedSerial })
             _sessionUi.value = _sessionUi.value.copy(
                 sessions = sessions.entries,
+                librarySessionIds = inLibrary,
                 downloadingSessionId = null,
                 downloadProgress = null,
                 lastDownloadedRecordingId = recordingId,
@@ -333,9 +338,11 @@ class DeviceViewModel(
             val sessions = c.listSessions()
             val battery = c.readBattery()
             val wifiCapable = DeviceCapabilityRegistry.supportsWifiFastPath(caps)
+            val inLibrary = librarySessionIds(sessions.entries.map { it.sessionId }, keys.serialNumber.ifBlank { connectedSerial })
             _sessionUi.value = DeviceSessionUi(
                 batteryPercent = battery.percent,
                 sessions = sessions.entries,
+                librarySessionIds = inLibrary,
                 protocolVersion = hs.protocolVersion,
                 modelDisplayName = caps.displayName,
                 wifiFastPath = false,

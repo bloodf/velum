@@ -223,7 +223,10 @@ fun DeviceScreenContent(
                                 onClick = { onDownloadSession(entry.sessionId) },
                                 enabled = sessionUi.downloadingSessionId == null,
                             ) {
-                                Text(strings.download)
+                                Text(
+                                    if (entry.sessionId in sessionUi.librarySessionIds) DeviceUiCopy.redownload(locale)
+                                    else strings.download,
+                                )
                             }
                         }
                     }

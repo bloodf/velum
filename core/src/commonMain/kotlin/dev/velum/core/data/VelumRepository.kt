@@ -125,6 +125,27 @@ class VelumRepository(
         q.selectAllRecordings().executeAsList()
     }
 
+    /** #113 dedup key: device session id + device serial (null == ""). Includes trashed rows. */
+    suspend fun findDeviceSessionRecording(sessionId: Long, deviceSerial: String?): Recording? =
+        withContext(Dispatchers.Default) {
+            q.selectRecordingByDeviceSession(sessionId, deviceSerial.orEmpty()).executeAsOneOrNull()
+        }
+
+    /** Fails (never replaces) when the device session already has a row. */
+    suspend fun insertDeviceSessionRecording(row: Recording) = withContext(Dispatchers.Default) {
+        q.insertDeviceSessionRecording(row)
+        indexRecording(row.id, row.title, row.transcript, row.summary_markdown)
+    }
+
+    /** Point an existing device-session row at re-downloaded audio; title/transcript/summary are kept. */
+    suspend fun replaceDeviceSessionAudio(id: String, localPath: String, sizeBytes: Long) =
+        withContext(Dispatchers.Default) { q.replaceDeviceSessionAudio(localPath, sizeBytes, id) }
+
+    /** Every row (trashed included) as (id, local_path) for orphan-file reconciliation. */
+    suspend fun getAllRecordingFileRefs(): List<Pair<String, String?>> = withContext(Dispatchers.Default) {
+        q.selectAllRecordingFileRefs().executeAsList().map { it.id to it.local_path }
+    }
+
     suspend fun getTemplate(id: String): Template? = withContext(Dispatchers.Default) {
         q.selectTemplateById(id).executeAsOneOrNull()
     }

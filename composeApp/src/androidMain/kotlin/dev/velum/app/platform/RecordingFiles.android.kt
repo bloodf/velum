@@ -1,6 +1,8 @@
 package dev.velum.app.platform
 
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 
 private var filesDirPath: String? = null
 
@@ -16,10 +18,17 @@ actual fun recordingsDirectoryPath(): String {
     return dir.absolutePath
 }
 
+/** Temp file + atomic rename: a failed write never truncates or replaces an existing file. */
 actual fun writeBytesToPath(absolutePath: String, bytes: ByteArray) {
     val file = File(absolutePath)
     file.parentFile?.mkdirs()
-    file.writeBytes(bytes)
+    val temp = File("$absolutePath.download-tmp")
+    try {
+        temp.writeBytes(bytes)
+        Files.move(temp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+    } finally {
+        temp.delete()
+    }
 }
 
 actual fun deleteFileAtPath(absolutePath: String): Boolean =

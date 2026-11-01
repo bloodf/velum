@@ -96,6 +96,10 @@ object DeviceUiCopy {
         if (isPt(localeTag)) "Sessão #$sessionId baixada"
         else "Downloaded session #$sessionId"
 
+    /** Session already in the library: replaces that recording's audio, keeps its notes. */
+    fun redownload(localeTag: String): String =
+        if (isPt(localeTag)) "Baixar de novo" else "Re-download"
+
     fun downloadFailed(localeTag: String): String =
         if (isPt(localeTag)) "Falha no download. Verifique a conexão e tente de novo."
         else "Download failed. Check the connection and try again."
