@@ -13,6 +13,7 @@ import dev.velum.app.ui.theme.LightVelumColors
 import dev.velum.app.ui.theme.VelumBg
 import dev.velum.app.ui.theme.VelumTheme
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -29,13 +30,15 @@ class ThemeTokenObservableTest {
     @Test fun velum_bg_recomposes_with_new_palette_in_same_frame() {
         var dark by mutableStateOf(false)
         var seen = Color.Unspecified
+        var count = 0
         Robolectric.buildActivity(ComponentActivity::class.java).setup().get().setContent {
-            VelumTheme(darkTheme = dark) { seen = VelumBg }
+            VelumTheme(darkTheme = dark) { seen = VelumBg; count++ }
         }
         compose.waitForIdle()
         assertEquals(LightVelumColors.bg, seen)
         dark = true
         compose.waitForIdle()
         assertEquals(DarkVelumColors.bg, seen)
+        assertTrue(count <= 2, "recomposed $count times") // initial + one flip; no loop
     }
 }
