@@ -24,6 +24,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -253,6 +255,7 @@ fun VoiceProfilesScreen(
                 onValueChange = { importDraft = it },
                 textStyle = TextStyle(color = VelumInk, fontSize = 13.sp),
                 modifier = Modifier
+                    .semantics { contentDescription = strings.ux.voiceProfilesImportTitle }
                     .fillMaxWidth()
                     .height(100.dp)
                     .background(VelumBg)
@@ -287,9 +290,14 @@ fun VoiceProfilesScreen(
                 color = VelumInk,
             )
             Row(Modifier.fillMaxWidth()) {
-                listOf(0.45f, 0.55f, 0.65f, 0.75f).forEach { t ->
+                listOf(
+                    0.45f to strings.ux.voiceProfilesSensitivityFlexible,
+                    0.55f to strings.ux.voiceProfilesSensitivityBalanced,
+                    0.65f to strings.ux.voiceProfilesSensitivityStrict,
+                    0.75f to strings.ux.voiceProfilesSensitivityVeryStrict,
+                ).forEach { (t, label) ->
                     OutlineButton(
-                        "%.2f".format(t),
+                        label,
                         {
                             container.settingsViewModel.runStorageAction {
                                 container.settingsRepository.setSpeakerMatchThreshold(t)
@@ -418,6 +426,7 @@ private fun Field(label: String, value: String, onChange: (String) -> Unit) {
         onValueChange = onChange,
         textStyle = TextStyle(color = VelumInk, fontSize = 15.sp),
         modifier = Modifier
+            .semantics { contentDescription = label }
             .fillMaxWidth()
             .padding(vertical = 6.dp),
     )
