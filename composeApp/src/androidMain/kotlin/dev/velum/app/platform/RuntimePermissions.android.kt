@@ -14,8 +14,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
-import dev.velum.app.i18n.LocalStrings
 import androidx.core.content.ContextCompat
+import dev.velum.app.i18n.LocalStrings
+
+private class PendingPermissionRequest {
+    var callback: ((PermissionOutcome) -> Unit)? = null
+}
 
 @Composable
 actual fun rememberPermissionRequester(
@@ -48,14 +52,15 @@ actual fun rememberPermissionRequester(
                 null
             }
     }
-    var pendingCallback by remember { mutableStateOf<((PermissionOutcome) -> Unit)?>(null) }
+    // The callback is consumed by event handlers; only showRationale is UI state.
+    val pendingRequest = remember { PendingPermissionRequest() }
     var showRationale by remember { mutableStateOf(false) }
 
     val launcher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
-        val cb = pendingCallback
-        pendingCallback = null
+        val cb = pendingRequest.callback
+        pendingRequest.callback = null
         cb?.invoke(if (granted) PermissionOutcome.Granted else PermissionOutcome.Denied)
     }
 
@@ -63,8 +68,8 @@ actual fun rememberPermissionRequester(
         AlertDialog(
             onDismissRequest = {
                 showRationale = false
-                val cb = pendingCallback
-                pendingCallback = null
+                val cb = pendingRequest.callback
+                pendingRequest.callback = null
                 cb?.invoke(PermissionOutcome.Denied)
             },
             title = { Text(rationaleTitle) },
@@ -81,8 +86,8 @@ actual fun rememberPermissionRequester(
                 TextButton(
                     onClick = {
                         showRationale = false
-                        val cb = pendingCallback
-                        pendingCallback = null
+                        val cb = pendingRequest.callback
+                        pendingRequest.callback = null
                         cb?.invoke(PermissionOutcome.Denied)
                     },
                 ) { Text(strings.cancel) }
@@ -91,17 +96,17 @@ actual fun rememberPermissionRequester(
     }
 
     return remember(manifestPermission, rationaleTitle, rationaleBody) {
-        { onResult ->
+        request@ { onResult ->
             if (manifestPermission == null) {
                 onResult(PermissionOutcome.NotRequired)
-                return@remember
+                return@request
             }
             val granted = ContextCompat.checkSelfPermission(context, manifestPermission) ==
                 PackageManager.PERMISSION_GRANTED
             if (granted) {
                 onResult(PermissionOutcome.Granted)
             } else {
-                pendingCallback = onResult
+                pendingRequest.callback = onResult
                 showRationale = true
             }
         }

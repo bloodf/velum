@@ -4,7 +4,6 @@ import android.content.Context
 import android.content.pm.ActivityInfo
 import android.os.Environment
 import android.os.SystemClock
-import android.util.Log
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
@@ -12,11 +11,21 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasScrollToIndexAction
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.printToString
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
+import androidx.test.uiautomator.StaleObjectException
 import dev.velum.app.MainActivity
 import dev.velum.app.VelumApplication
 import java.io.ByteArrayOutputStream
@@ -47,7 +56,11 @@ class DeviceWalkUiTest {
     private val covered = linkedSetOf<String>()
 
     companion object {
-        private const val WALK_TAG = "VelumDeviceWalk"
+        private val REQUIRED_COVERAGE = setOf(
+            "settings/appearance", "library", "library/search", "import/bundled-wav",
+            "transcription/device-walk-engine", "recording/open", "recording/change-template",
+            "explore", "templates", "autoflow",
+        )
     }
 
     @Before
@@ -105,6 +118,12 @@ class DeviceWalkUiTest {
         assertUiChrome(lang)
         assertFalse(device.hasObject(By.textContains("FATAL EXCEPTION")))
         File(shotDir, "coverage-$tag.txt").writeText(covered.sorted().joinToString("\n"))
+        val missing = (REQUIRED_COVERAGE + "onboarding:$tag") - covered
+        val softMisses = covered.filter { "soft-miss" in it }
+        assertTrue(
+            missing.isEmpty() && softMisses.isEmpty(),
+            "Missing required coverage: $missing; soft misses: $softMisses",
+        )
     }
 
     private fun waitForShell(lang: String) {
@@ -135,18 +154,11 @@ class DeviceWalkUiTest {
             }
             waitUntil(20_000) { firstRunSkipVisible() || onFilesShellReady() }
             if (!onFilesShellReady()) {
-                var skipped = false
-                for (label in listOf("Skip", "Pular")) {
-                    val obj = device.findObject(By.descContains(label))
-                        ?: device.findObject(By.textContains(label))
-                        ?: continue
-                    val bounds = obj.visibleBounds
-                    if (device.click(bounds.centerX(), bounds.centerY())) {
-                        skipped = true
-                        break
-                    }
-                }
-                assertTrue(skipped, "Failed to tap FirstRun Skip/Pular")
+                // Click the real button through Compose's synchronized input
+                // dispatcher. UiDevice injection can return before Compose
+                // consumes the gesture under its test clock.
+                val label = if (uiExists("Skip")) "Skip" else "Pular"
+                composeRule.onNodeWithContentDescription(label, useUnmergedTree = true).performClick()
                 covered += "first-run-skip"
                 waitUntil(45_000) { onFilesShellReady() }
             }
@@ -170,8 +182,10 @@ class DeviceWalkUiTest {
      * Files title text can exist under FirstRun; bottom-bar contentDescriptions cannot.
      */
     private fun onFilesShellReady(): Boolean =
-        softExistsContentDesc("All files", "Todos os arquivos") ||
-            softExistsContentDesc("Explore", "Explorar")
+        listOf("All files", "Todos os arquivos", "Explore", "Explorar").any { label ->
+            composeRule.onAllNodesWithContentDescription(label, useUnmergedTree = true)
+                .fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty()
+        }
 
     private fun applyAppearance(lang: String, theme: String) {
         openSettings()
@@ -223,11 +237,18 @@ class DeviceWalkUiTest {
         restoreAllFilesFilterSoft()
         assertTrue(onFilesChrome(), "Expected Files chrome after appearance")
         covered += "library"
-        // Search sheet (best-effort)
-        if (softClickContentDesc("Search", "Buscar")) {
-            covered += "library/search"
-            pressNavBack()
-            SystemClock.sleep(300)
+        clickContentDescPrefer(if (lang == "en") "Search" else "Pesquisar")
+        waitUntil(10_000, "Search button did not open an editable search field") {
+            composeRule.onAllNodes(hasSetTextAction()).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNode(hasSetTextAction()).assertExists()
+        covered += "library/search"
+        // Dismiss the actual sheet via its accessibility action. A generic
+        // Back tap can dismiss only the IME, leaving the modal over the library.
+        composeRule.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsActions.Dismiss))[0]
+            .performSemanticsAction(SemanticsActions.Dismiss) { it() }
+        waitUntil(10_000, "Search sheet did not close") {
+            composeRule.onAllNodes(hasSetTextAction()).fetchSemanticsNodes().isEmpty()
         }
         // Peek trash filter then restore All — never leave Trash selected.
         runCatching {
@@ -255,7 +276,7 @@ class DeviceWalkUiTest {
         val wavBytes = InstrumentationRegistry.getInstrumentation()
             .context.assets.open("device_walk_tone.wav").readBytes()
         val recordingsDir = File(appContext.filesDir, "recordings").also { it.mkdirs() }
-        val title = "Device walk $tag"
+        val title = "Device walk $tag ${SystemClock.uptimeMillis()}"
         val wavFile = File(recordingsDir, "device-walk-$tag.wav")
         wavFile.writeBytes(wavBytes)
         val id = runBlocking {
@@ -270,7 +291,7 @@ class DeviceWalkUiTest {
         assertTrue(DeviceWalkMode.isEnabled(), "DeviceWalkMode required for fake ASR/LLM")
         runBlocking {
             container.recordingProcessor
-                .process(recordingId = id, templateId = null, retranscribe = true)
+                .process(recordingId = id, templateId = null, retranscribe = true, apiModelOverride = null)
                 .collect { /* drain progress */ }
         }
         covered += "import/bundled-wav"
@@ -283,14 +304,18 @@ class DeviceWalkUiTest {
         covered += "transcription/device-walk-engine"
         softClickContentDesc("Refresh library", "Atualizar biblioteca")
         restoreAllFilesFilterSoft()
-        runCatching {
-            waitUntil(45_000) {
-                composeExists(title) || composeExists("Device walk")
-            }
+        // LazyColumn preserves its visible anchor when a new row is inserted.
+        // Find the exact fixture through the list's real scroll action; a row
+        // outside the composed viewport cannot satisfy a text-node query.
+        composeRule.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(title))
+        waitUntil(45_000, "Processed recording '$title' did not appear in the library") {
+            composeExists(title)
         }
         shot("04-imported-$tag")
-        if (!softClickText(title, "Device walk", tag)) {
-            runCatching { scrollClickPrefer(title, "Device walk", tag) }
+        clickTextPrefer(title)
+        waitUntil(45_000, "Recording row did not open recording detail") {
+            composeExists("Notes") || composeExists("Notas") ||
+                composeExists("Sources") || composeExists("Fontes")
         }
         covered += "recording/open"
     }
@@ -327,6 +352,10 @@ class DeviceWalkUiTest {
             }
             runCatching {
                 clickTextPrefer("Change template", "Trocar modelo")
+                waitUntil(10_000, "Change template did not open its sheet") {
+                    composeRule.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsActions.Dismiss))
+                        .fetchSemanticsNodes().isNotEmpty()
+                }
                 covered += "recording/change-template"
                 pressNavBack()
             }
@@ -346,16 +375,23 @@ class DeviceWalkUiTest {
 
     private fun walkExploreAndTemplates(lang: String, tag: String) {
         pressBackToFiles(lang)
-        softClickContentDesc("Explore", "Explorar")
+        clickContentDescPrefer("Explore", "Explorar")
+        waitUntil(10_000, "Explore did not open") {
+            composeExists(if (lang == "en") "Help & support" else "Ajuda e suporte")
+        }
         covered += "explore"
         shot("06-explore-$tag")
-        softClickText(
+        clickTextPrefer(
             if (lang == "en") "Templates" else "Modelos",
             "Templates",
             "Modelos",
             "Community templates",
             "Modelos da comunidade",
         )
+        waitUntil(10_000, "Templates did not open") {
+            composeExists(if (lang == "en") "My space" else "Meu espaço") &&
+                composeExists(if (lang == "en") "Discover" else "Descobrir")
+        }
         covered += "templates"
         softClickText(
             if (lang == "en") "Featured" else "Destaques",
@@ -371,9 +407,9 @@ class DeviceWalkUiTest {
         covered += "templates/all"
         runCatching {
             softClickText(
-                if (lang == "en") "Search" else "Buscar",
+                if (lang == "en") "Search" else "Pesquisar",
                 "Search",
-                "Buscar",
+                "Pesquisar",
             )
             covered += "templates/search"
             pressNavBack()
@@ -385,8 +421,11 @@ class DeviceWalkUiTest {
 
     private fun walkAutoFlow(lang: String, tag: String) {
         pressBackToFiles(lang)
-        softClickContentDesc("Explore", "Explorar")
-        softClickText("AutoFlow", "AutoFlow")
+        clickContentDescPrefer("Explore", "Explorar")
+        clickTextPrefer("AutoFlow")
+        waitUntil(10_000, "AutoFlow did not open") {
+            composeExists(if (lang == "en") "Receive notifications" else "Receber notificações")
+        }
         covered += "autoflow"
         shot("08-autoflow-$tag")
         runCatching {
@@ -777,12 +816,8 @@ class DeviceWalkUiTest {
     }
 
     private fun uiExists(text: String): Boolean =
-        runCatching {
-            device.findObject(By.textContains(text)) != null
-        }.getOrDefault(false) ||
-            runCatching {
-                device.findObject(By.descContains(text)) != null
-            }.getOrDefault(false)
+        device.findObject(By.textContains(text)) != null ||
+            device.findObject(By.descContains(text)) != null
 
     private fun softClickUi(vararg labels: String): Boolean {
         for (label in labels) {
@@ -807,99 +842,43 @@ class DeviceWalkUiTest {
     private fun waitUntilUi(timeoutMs: Long, condition: () -> Boolean) {
         val start = SystemClock.uptimeMillis()
         while (SystemClock.uptimeMillis() - start < timeoutMs) {
-            if (runCatching { condition() }.getOrDefault(false)) return
+            val ready = try { condition() } catch (_: StaleObjectException) { false }
+            if (ready) return
             SystemClock.sleep(300)
         }
         error("UI condition not met within ${timeoutMs}ms")
     }
 
     private fun openSettings() {
-        // Gear only exists on FilesScreen. Explore/Ask still expose bottom-bar
-        // CDs so onFilesShellReady can be true without the header gear (#106).
-        // Drive to Files via All-files tab and wait on the gear CD itself —
-        // not a second onFilesShellReady (flaked en_dark after settings rows).
-        fun ensureFilesGearVisible() {
-            pressBackToFiles("pt-BR")
-            softClickContentDesc("All files", "Todos os arquivos")
-            SystemClock.sleep(350)
+        pressBackToFiles("pt-BR")
+        // Synchronize against Compose's actual semantics before activating the
+        // real buttons. UiAutomator can expose the bottom bar while NavHost is
+        // still awaiting a test frame, and its cached gear node can disappear
+        // between a visibility probe and coordinate injection (#106).
+        clickComposeContentDescription("All files", "Todos os arquivos")
+        clickComposeContentDescription("Settings", "Configuração")
+        // Require an actual hub-only row. UiAutomator's accessibility snapshot
+        // can remain stale even while the Compose tree already shows Settings;
+        // the header gear alone must never satisfy this navigation assertion.
+        val hubRows = listOf(
+            "Phone recording", "Gravação no telefone", "AI processing", "Processamento de IA",
+        )
+        waitUntil(20_000, "Settings button did not open the Settings hub") {
+            hubRows.any { composeExists(it) }
         }
-        ensureFilesGearVisible()
-        if (!softExistsContentDesc("Settings", "Configuração")) {
-            ensureFilesGearVisible()
-        }
-        waitUntil(30_000) {
-            softExistsContentDesc("Settings", "Configuração") ||
-                run {
-                    softClickContentDesc("All files", "Todos os arquivos")
-                    softExistsContentDesc("Settings", "Configuração")
-                }
-        }
-        // Real gear tap by semantics CD — coordinate fallback OK (#106).
-        // Never soft-miss: hard wait for hub after tap (#115).
-        var tappedGear = false
-        for (label in listOf("Settings", "Configuração")) {
-            val obj = device.findObject(By.descContains(label)) ?: continue
-            val bounds = obj.visibleBounds
-            if (device.click(bounds.centerX(), bounds.centerY())) {
-                tappedGear = true
-                break
+    }
+
+    private fun clickComposeContentDescription(vararg labels: String) {
+        var label: String? = null
+        waitUntil(10_000, "No button found with contentDescription in ${labels.toList()}") {
+            label = labels.firstOrNull {
+                composeRule.onAllNodesWithContentDescription(it, substring = true, useUnmergedTree = true)
+                    .fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty()
             }
+            label != null
         }
-        assertTrue(tappedGear, "Failed to tap Settings gear")
-        // Hub-only rows / sections — never the Files gear CD alone ("Settings").
-        // ChevronRow exposes title as contentDescription + Button role (#106).
-        fun hubVisible(): Boolean =
-            softExistsContentDesc(
-                "Phone recording",
-                "Gravação no telefone",
-                "Devices",
-                "Dispositivos",
-                "Storage & privacy",
-                "Armazenamento e privacidade",
-                "About Velum",
-                "Sobre o Velum",
-                "AI processing",
-                "Processamento de IA",
-                "Appearance",
-                "Aparência",
-            ) ||
-                uiExists("Phone recording") ||
-                uiExists("Gravação no telefone") ||
-                uiExists("Storage & privacy") ||
-                uiExists("Armazenamento e privacidade") ||
-                uiExists("About Velum") ||
-                uiExists("Sobre o Velum") ||
-                uiExists("AI processing") ||
-                uiExists("Processamento de IA") ||
-                // SectionLabel renders uppercase.
-                uiExists("RECORDING") ||
-                uiExists("GRAVAÇÃO") ||
-                uiExists("APPEARANCE") ||
-                uiExists("APARÊNCIA") ||
-                uiExists("DEVICES") ||
-                uiExists("DISPOSITIVOS")
-        val hubWaitError =
-            runCatching {
-                waitUntil(8_000) { hubVisible() }
-            }.exceptionOrNull()
-        if (hubWaitError != null) {
-            Log.w(
-                WALK_TAG,
-                "Settings hub not visible after first gear tap; retrying coordinate tap",
-                hubWaitError,
-            )
-            for (label in listOf("Settings", "Configuração")) {
-                val obj = device.findObject(By.descContains(label)) ?: continue
-                val bounds = obj.visibleBounds
-                assertTrue(
-                    device.click(bounds.centerX(), bounds.centerY()),
-                    "retry device.click Settings gear failed",
-                )
-                break
-            }
-            SystemClock.sleep(400)
-        }
-        waitUntil(20_000) { hubVisible() }
+        composeRule.onNodeWithContentDescription(checkNotNull(label), substring = true, useUnmergedTree = true)
+            .performClick()
     }
 
 
@@ -972,7 +951,7 @@ class DeviceWalkUiTest {
             if (label.isBlank()) continue
             // UiAutomator only — Compose fetchSemanticsNodes waits for idle and can
             // consume the entire waitUntil budget under R8 minifiedTest (#106).
-            if (runCatching { device.findObject(By.descContains(label)) != null }.getOrDefault(false)) {
+            if (device.findObject(By.descContains(label)) != null) {
                 return true
             }
         }
@@ -1020,114 +999,48 @@ class DeviceWalkUiTest {
         error("None of texts found (scroll): ${labels.toList()}")
     }
 
-    /** Soft click by text — returns false instead of throwing. */
+    /** Optional text target; absent nodes return false, action failures stay visible. */
     private fun softClickText(vararg labels: String): Boolean {
-        for (label in labels) {
-            if (label.isBlank()) continue
-            val clicked = runCatching {
-                composeRule.onNodeWithText(label, substring = true, useUnmergedTree = true)
-                    .performClick()
-                true
-            }.recoverCatching {
-                val obj = device.findObject(By.textContains(label))
-                if (obj != null) {
-                    obj.click()
-                    true
-                } else {
-                    false
-                }
-            }.getOrDefault(false)
-            if (clicked) return true
+        for (label in labels.filter { it.isNotBlank() }) {
+            val texts = composeRule.onAllNodesWithText(label, substring = true)
+            if (texts.fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty()) {
+                texts[0].performClick()
+                return true
+            }
+            val descriptions = composeRule.onAllNodesWithContentDescription(label, substring = true)
+            if (descriptions.fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty()) {
+                descriptions[0].performClick()
+                return true
+            }
         }
         return false
     }
 
-    /** Soft click by contentDescription — returns false instead of throwing. */
+    /** Optional app button; system UI/process-death helpers use UiAutomator separately. */
     private fun softClickContentDesc(vararg labels: String): Boolean {
-        for (label in labels) {
-            if (label.isBlank()) continue
-            // Coordinate tap first — Compose performClick waits for idle (R8 wedge)
-            // and UiObject2.click() logs non-clickable without ACTION_CLICK (#106).
-            val viaDevice = runCatching {
-                val obj = device.findObject(By.descContains(label)) ?: return@runCatching false
-                val bounds = obj.visibleBounds
-                device.click(bounds.centerX(), bounds.centerY())
-            }.getOrDefault(false)
-            if (viaDevice) return true
-            val viaCompose = runCatching {
-                composeRule
-                    .onNodeWithContentDescription(label, substring = true, useUnmergedTree = false)
-                    .performClick()
-                true
-            }.recoverCatching {
-                composeRule
-                    .onNodeWithContentDescription(label, substring = true, useUnmergedTree = true)
-                    .performClick()
-                true
-            }.getOrDefault(false)
-            if (viaCompose) return true
+        for (label in labels.filter { it.isNotBlank() }) {
+            val nodes = composeRule.onAllNodesWithContentDescription(label, substring = true)
+            if (nodes.fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty()) {
+                nodes[0].performClick()
+                return true
+            }
         }
         return false
     }
 
     private fun clickTextPrefer(vararg labels: String) {
-        for (label in labels) {
-            if (label.isBlank()) continue
-            val clicked = runCatching {
-                composeRule.onNodeWithText(label, substring = true, useUnmergedTree = true)
-                    .performScrollTo()
-                    .performClick()
-                true
-            }.getOrElse {
-                runCatching {
-                    composeRule.onNodeWithText(label, substring = true, useUnmergedTree = true)
-                        .performClick()
-                    true
-                }.getOrElse {
-                    runCatching {
-                        val obj = device.findObject(By.textContains(label))
-                        if (obj != null) {
-                            obj.click()
-                            true
-                        } else {
-                            false
-                        }
-                    }.getOrDefault(false)
-                }
-            }
-            if (clicked) return
-        }
-        error("None of texts found: ${labels.toList()}")
+        check(softClickText(*labels)) { "None of texts found: ${labels.toList()}" }
     }
 
     private fun clickContentDescPrefer(vararg labels: String) {
-        for (label in labels) {
-            val clicked = runCatching {
-                composeRule.onNodeWithContentDescription(label, substring = true, useUnmergedTree = true)
-                    .performClick()
-                true
-            }.getOrElse {
-                runCatching {
-                    val obj = device.findObject(By.descContains(label))
-                    if (obj != null) {
-                        obj.click()
-                        true
-                    } else {
-                        false
-                    }
-                }.getOrDefault(false)
-            }
-            if (clicked) return
-        }
-        error("None of contentDescriptions found: ${labels.toList()}")
+        check(softClickContentDesc(*labels)) { "None of contentDescriptions found: ${labels.toList()}" }
     }
 
-    private fun composeExists(text: String): Boolean {
-        // UiAutomator only — Compose fetchSemanticsNodes idle-waits and wedges
-        // waitForShell / assertUiChrome under R8 minifiedTest (#106).
-        return runCatching { device.findObject(By.textContains(text)) != null }.getOrDefault(false) ||
-            runCatching { device.findObject(By.descContains(text)) != null }.getOrDefault(false)
-    }
+    private fun composeExists(text: String): Boolean =
+        composeRule.onAllNodesWithText(text, substring = true)
+            .fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty() ||
+            composeRule.onAllNodesWithContentDescription(text, substring = true)
+                .fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty()
 
     private fun waitUntil(timeoutMs: Long, condition: () -> Boolean) {
         waitUntil(timeoutMs, "Condition not met within ${timeoutMs}ms", condition)
@@ -1136,12 +1049,26 @@ class DeviceWalkUiTest {
     private fun waitUntil(timeoutMs: Long, message: String, condition: () -> Boolean) {
         val start = SystemClock.uptimeMillis()
         while (SystemClock.uptimeMillis() - start < timeoutMs) {
-            if (runCatching { condition() }.getOrDefault(false)) return
+            // UiAutomator does not drive Compose's test clock. Startup and real
+            // device taps can leave recomposition awaiting a frame indefinitely
+            // while this loop sleeps, even after MainActivity installs App.
+            // Advance a frame without an Espresso/Compose idle wait (#106).
+            if (composeRule.mainClock.autoAdvance) composeRule.mainClock.advanceTimeByFrame()
+            val ready = try { condition() } catch (_: StaleObjectException) { false }
+            if (ready) return
             // Avoid composeRule.waitForIdle — it can throw
             // "performMeasureAndLayout called during measure layout" mid-draw.
             SystemClock.sleep(300)
         }
-        error(message)
+        val failureTag = "timeout-${SystemClock.uptimeMillis()}"
+        shot(failureTag)
+        // Preserve evidence without replacing the original failed assertion if
+        // the diagnostic itself encounters another shared-APK ABI problem.
+        val tree = runCatching {
+            composeRule.onRoot(useUnmergedTree = true).printToString()
+        }.getOrElse { "Unable to dump Compose tree: $it" }
+        File(shotDir, "$failureTag.txt").writeText("$message\n$tree")
+        error("$message; diagnostic: $failureTag")
     }
 
     private fun shot(name: String) {

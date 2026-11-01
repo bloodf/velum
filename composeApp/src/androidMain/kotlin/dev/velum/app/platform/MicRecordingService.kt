@@ -1,5 +1,6 @@
 package dev.velum.app.platform
 
+import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -7,6 +8,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.media.AudioFormat
 import android.media.AudioRecord
@@ -114,7 +116,7 @@ class MicRecordingService : Service() {
             this,
             NOTIFICATION_ID,
             notification,
-            if (Build.VERSION.SDK_INT >= 29) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
             } else {
                 0
@@ -127,6 +129,12 @@ class MicRecordingService : Service() {
         absolutePath: String,
         inputSource: MicInputSource = MicInputSource.Mic,
     ) {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            failAndStop("Microphone permission is required")
+            return
+        }
         synchronized(markersLock) { sessionMarkers.clear() }
         val file = File(absolutePath)
         file.parentFile?.mkdirs()

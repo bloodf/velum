@@ -9,6 +9,45 @@ plugins {
     alias(libs.plugins.roborazzi)
 }
 
+val releaseSigningVariables = listOf(
+    "VELUM_UPLOAD_STORE_FILE",
+    "VELUM_UPLOAD_STORE_PASSWORD",
+    "VELUM_UPLOAD_KEY_ALIAS",
+    "VELUM_UPLOAD_KEY_PASSWORD",
+)
+val releaseSigningValues = releaseSigningVariables.associateWith {
+    providers.environmentVariable(it).orNull?.takeIf(String::isNotBlank)
+}
+val missingReleaseSigningVariables = releaseSigningVariables.filter { releaseSigningValues[it] == null }
+val validateReleaseSigning by tasks.registering {
+    group = "verification"
+    description = "Require explicit upload-key configuration for shipping release builds."
+    val missingVariables = missingReleaseSigningVariables
+    doLast {
+        check(missingVariables.isEmpty()) {
+            "Release signing is not configured. Set ${missingVariables.joinToString()} " +
+                "to build a shipping release. For local/CI R8 checks without release secrets, " +
+                "use :composeApp:assembleMinifiedTest (never distribute that test APK)."
+        }
+    }
+}
+
+// Require signing for every shipping packaging path, including direct AGP task
+// invocations. Pure release compilation/R8/lint can still run without secrets.
+tasks.matching {
+    it.name in setOf(
+        "assembleRelease", "bundleRelease", "packageRelease", "packageReleaseBundle",
+        "signReleaseBundle", "validateSigningRelease",
+    )
+}.configureEach {
+    dependsOn(validateReleaseSigning)
+}
+// When packaging is requested, fail before compiling release sources. This
+// ordering alone does not schedule the guard for compile/lint-only requests.
+tasks.matching { it.name == "preReleaseBuild" }.configureEach {
+    mustRunAfter(validateReleaseSigning)
+}
+
 kotlin {
     androidTarget {
         compilerOptions {
@@ -160,16 +199,12 @@ android {
         // Upload key via CI / local secrets — never commit the keystore.
         // VELUM_UPLOAD_STORE_FILE, VELUM_UPLOAD_STORE_PASSWORD, VELUM_UPLOAD_KEY_ALIAS,
         // VELUM_UPLOAD_KEY_PASSWORD
-        val uploadStorePath = System.getenv("VELUM_UPLOAD_STORE_FILE")
-        if (!uploadStorePath.isNullOrBlank()) {
+        if (missingReleaseSigningVariables.isEmpty()) {
             create("release") {
-                storeFile = file(uploadStorePath)
-                storePassword = System.getenv("VELUM_UPLOAD_STORE_PASSWORD")
-                    ?: error("VELUM_UPLOAD_STORE_PASSWORD required when store file is set")
-                keyAlias = System.getenv("VELUM_UPLOAD_KEY_ALIAS")
-                    ?: error("VELUM_UPLOAD_KEY_ALIAS required when store file is set")
-                keyPassword = System.getenv("VELUM_UPLOAD_KEY_PASSWORD")
-                    ?: error("VELUM_UPLOAD_KEY_PASSWORD required when store file is set")
+                storeFile = file(releaseSigningValues.getValue("VELUM_UPLOAD_STORE_FILE")!!)
+                storePassword = releaseSigningValues.getValue("VELUM_UPLOAD_STORE_PASSWORD")
+                keyAlias = releaseSigningValues.getValue("VELUM_UPLOAD_KEY_ALIAS")
+                keyPassword = releaseSigningValues.getValue("VELUM_UPLOAD_KEY_PASSWORD")
             }
         }
     }
@@ -180,10 +215,9 @@ android {
         getByName("release") {
             isMinifyEnabled = true
             isShrinkResources = true
-            // Prefer upload key when present; otherwise debug keystore so local
-            // assembleRelease still installs without the upload secret (#90/#106).
+            // Never sign a shipping release with the public debug key (#90).
+            // validateReleaseSigning fails release builds if configuration is incomplete.
             signingConfig = signingConfigs.findByName("release")
-                ?: signingConfigs.getByName("debug")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
