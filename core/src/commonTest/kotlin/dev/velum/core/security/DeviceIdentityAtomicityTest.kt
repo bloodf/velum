@@ -56,6 +56,17 @@ class DeviceIdentityAtomicityTest {
         importer.importFixture(next)
         assertTrue(importer.hasKeys()); assertTrue(importer.loadKeys() == next)
         assertEquals(setOf(SecureKeys.DEVICE_IDENTITY_BUNDLE), store.values.keys)
+        assertEquals(1, store.writes, "Identity import must commit exactly one entry")
+    }
+
+    @Test fun pinned_stored_format_decodes_from_literal() = runTest {
+        val sig = Base64.encode(next.serialSignature)
+        val literal = "{\"version\":1,\"serial\":\"SYNTHETIC-NEXT\",\"signatureBase64\":\"$sig\"," +
+            "\"bindToken\":\"SYNTHETIC-NEXT-TOKEN\",\"publicKeyPem\":\"SYNTHETIC-NEXT-PUBLIC\",\"privateKeyPem\":\"SYNTHETIC-NEXT-PRIVATE\"}"
+        val store = Store().apply { values[SecureKeys.DEVICE_IDENTITY_BUNDLE] = literal }
+        assertTrue(SecureDeviceKeyImporter(store).loadKeys() == next)
+        val written = Store().also { SecureDeviceKeyImporter(it).importFixture(next) }.values.getValue(SecureKeys.DEVICE_IDENTITY_BUNDLE)
+        assertEquals(literal, written)
     }
 
     @Test fun unreadable_or_future_active_bundle_never_falls_back_to_legacy_or_mutates_it() = runTest {

@@ -5,6 +5,7 @@ import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
@@ -93,7 +94,7 @@ class SecureDeviceKeyImporter(
             "snSignature must decode to 256 bytes (got ${signature.size})"
         }
         val bundle = StoredDeviceIdentity(
-            version = 1,
+            version = IDENTITY_BUNDLE_VERSION,
             serial = serialNumber.trim(),
             signatureBase64 = serialSignatureBase64.trim(),
             bindToken = bindToken.trim(),
@@ -159,7 +160,7 @@ class SecureDeviceKeyImporter(
         } catch (_: IllegalArgumentException) {
             return null
         }
-        if (bundle.version != 1 || bundle.serial.isBlank() || bundle.bindToken.isBlank()) return null
+        if (bundle.version != IDENTITY_BUNDLE_VERSION || bundle.serial.isBlank() || bundle.bindToken.isBlank()) return null
         val signature = try {
             Base64.decode(bundle.signatureBase64)
         } catch (_: IllegalArgumentException) {
@@ -170,19 +171,28 @@ class SecureDeviceKeyImporter(
     }
 
     private companion object {
-        val identityJson = Json { ignoreUnknownKeys = true }
+        const val IDENTITY_BUNDLE_VERSION = 1
+
+        // Explicit defaults keep the stored form independent of Kotlin default values.
+        val identityJson = Json {
+            ignoreUnknownKeys = true
+            encodeDefaults = true
+        }
     }
 }
 
-/** Internal storage format, independent of the public import/export schema. */
+/**
+ * Internal storage format, independent of the public import/export schema.
+ * Serial names are pinned: renaming them makes every stored identity unreadable.
+ */
 @Serializable
 private data class StoredDeviceIdentity(
-    val version: Int,
-    val serial: String,
-    val signatureBase64: String,
-    val bindToken: String,
-    val publicKeyPem: String = "",
-    val privateKeyPem: String = "",
+    @SerialName("version") val version: Int,
+    @SerialName("serial") val serial: String,
+    @SerialName("signatureBase64") val signatureBase64: String,
+    @SerialName("bindToken") val bindToken: String,
+    @SerialName("publicKeyPem") val publicKeyPem: String = "",
+    @SerialName("privateKeyPem") val privateKeyPem: String = "",
 ) {
     override fun toString(): String = "StoredDeviceIdentity([redacted])"
 }
