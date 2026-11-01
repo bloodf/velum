@@ -186,6 +186,12 @@ DELETE FROM template WHERE id = ? AND builtin = 0;
 deleteTemplateHard:
 DELETE FROM template WHERE id = ?;
 
+deleteBuiltinTemplate:
+DELETE FROM template WHERE id = ? AND builtin = 1;
+
+repointAutoflowTemplate:
+UPDATE autoflow SET template_id = ? WHERE template_id = ?;
+
 deleteAllBuiltinTemplates:
 DELETE FROM template WHERE builtin = 1;
 

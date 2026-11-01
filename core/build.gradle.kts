@@ -80,10 +80,21 @@ val validateAutoflowTemplates = tasks.register<Exec>("validateAutoflowTemplates"
     description = "Validate AutoFlow automation templates and sync classpath JSONL"
     workingDir = rootProject.projectDir
     commandLine("bash", "scripts/sync-autoflow-templates.sh")
-    inputs.dir(rootProject.file("templates/autoflow"))
-    inputs.file(rootProject.file("scripts/sync-autoflow-templates.sh"))
     outputs.file(layout.projectDirectory.file("src/commonMain/resources/autoflow_templates.jsonl"))
 }
+
+/**
+ * Exact-body dedupe + Featured/official gate for the shipped Plaud catalogs (#99, #101):
+ * Python unit tests plus `assert_hygiene.py` on the bundled assets. Runs before JVM tests.
+ */
+val verifyTemplateCatalog = tasks.register<Exec>("verifyTemplateCatalog") {
+    group = "verification"
+    description = "Test template dedupe tooling and gate the shipped Plaud catalogs"
+    workingDir = rootProject.projectDir
+    commandLine("python3", "-m", "unittest", "discover", "-s", "tools/templates", "-p", "test_*.py")
+}
+
+tasks.named("jvmTest") { dependsOn(verifyTemplateCatalog) }
 
 // Pack JSONL before resources are copied for any target that ships the catalog.
 // AGP uses process*JavaRes; KMP/JVM uses *ProcessResources.

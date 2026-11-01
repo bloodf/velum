@@ -15,6 +15,7 @@ import dev.velum.core.db.Template
 import dev.velum.core.db.VelumDatabase
 import dev.velum.core.search.FtsIndex
 import dev.velum.core.templates.PlaudFullTemplateAsset
+import dev.velum.core.templates.PlaudTemplateAliases
 import dev.velum.core.templates.PlaudTemplateCatalog
 import dev.velum.core.templates.TemplateTagVocabulary
 import kotlin.random.Random
@@ -37,6 +38,7 @@ class VelumRepository(
         val fts = FtsIndex.ensureSchema(driver)
         ftsAvailable = fts.available
         val seeded = SeedData.maybeSeed(db)
+        reconcileRemovedTemplateDuplicates()
         backfillSummaryVersionsFromRecording()
         if (ftsAvailable) {
             when {
@@ -55,6 +57,28 @@ class VelumRepository(
                 }
             }
         }
+    }
+
+    /**
+     * #99: drop builtin rows removed as exact-body duplicates (left by a pre-dedupe "All"
+     * import) and repoint AutoFlows to the survivor. User templates (builtin = 0) are never
+     * touched; summary versions keep their historical id and resolve via
+     * [dev.velum.core.templates.BuiltinTemplateCatalog.resolveId].
+     */
+    private fun reconcileRemovedTemplateDuplicates() {
+        val dropped = mutableListOf<String>()
+        db.transaction {
+            PlaudTemplateAliases.RemovedDuplicates.forEach { (removed, survivor) ->
+                val row = q.selectTemplateById(removed).executeAsOneOrNull()
+                if (row != null && row.builtin == 0L) return@forEach
+                q.repointAutoflowTemplate(survivor, removed)
+                if (row != null) {
+                    q.deleteBuiltinTemplate(removed)
+                    dropped += removed
+                }
+            }
+        }
+        if (ftsAvailable) dropped.forEach { FtsIndex.deleteTemplate(driver, it) }
     }
 
     fun observeRecordings(): Flow<List<Recording>> =
