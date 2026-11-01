@@ -165,13 +165,15 @@ actual class LocalAsrRuntime actual constructor() {
             )
             val named = mutableMapOf<String, String>()
             if (voiceProfiles != null) {
-                for ((speakerId, embedding) in embeddingsBySpeaker) {
-                    if (recordingId != null) {
-                        voiceProfiles.cacheClusterEmbedding(recordingId, speakerId, embedding)
-                    }
-                    val match = voiceProfiles.match(embedding, threshold = matchThreshold)
-                    if (match != null) {
-                        named[speakerId] = match.profile.displayName
+                voiceProfiles.withReady {
+                    for ((speakerId, embedding) in embeddingsBySpeaker) {
+                        if (recordingId != null) {
+                            voiceProfiles.cacheClusterEmbedding(recordingId, speakerId, embedding)
+                        }
+                        val match = voiceProfiles.match(embedding, threshold = matchThreshold)
+                        if (match != null) {
+                            named[speakerId] = match.profile.displayName
+                        }
                     }
                 }
             }

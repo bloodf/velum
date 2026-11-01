@@ -81,6 +81,8 @@ actual class ModelStoreDir actual constructor(absolutePath: String) {
         return all.copyOfRange(offset.toInt(), (offset + length).toInt())
     }
 
+    actual fun deleteFile(): Boolean = platform.posix.unlink(absolutePath) == 0
+
     actual fun deleteRecursively() {
         NSFileManager.defaultManager.removeItemAtPath(absolutePath, error = null)
     }

@@ -5,6 +5,9 @@ import dev.velum.core.model.AiProviderSettings
 import dev.velum.core.model.ComputeMode
 import dev.velum.core.security.SecureKeys
 import dev.velum.core.security.SecureStore
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -37,6 +40,8 @@ data class AppPreferences(
     val deleteAudioAfterProcessing: Boolean = false,
 )
 
+enum class SettingsLoadState { NotLoaded, Loading, Ready, Unavailable }
+
 class SettingsRepository(
     private val store: SecureStore,
     private val json: Json = Json { ignoreUnknownKeys = true },
@@ -47,7 +52,28 @@ class SettingsRepository(
     private val _preferences = MutableStateFlow(AppPreferences())
     val preferences: StateFlow<AppPreferences> = _preferences.asStateFlow()
 
-    suspend fun load() {
+    private val loadMutex = Mutex()
+    private val _loadState = MutableStateFlow(SettingsLoadState.NotLoaded)
+    val loadState: StateFlow<SettingsLoadState> = _loadState.asStateFlow()
+
+    fun reportStorageUnavailable() { _loadState.value = SettingsLoadState.Unavailable }
+
+    suspend fun load() = loadMutex.withLock {
+        val previous = _loadState.value
+        _loadState.value = SettingsLoadState.Loading
+        try {
+            loadSnapshot()
+            _loadState.value = SettingsLoadState.Ready
+        } catch (cancelled: CancellationException) {
+            _loadState.value = previous
+            throw cancelled
+        } catch (failure: Exception) {
+            _loadState.value = SettingsLoadState.Unavailable
+            throw failure
+        }
+    }
+
+    private suspend fun loadSnapshot() {
         val profiles = loadOrMigrateProfiles()
         val activeProfileId = store.getString(KEY_ACTIVE_PROFILE)
             ?.takeIf { id -> profiles.any { it.id == id } }
@@ -75,7 +101,7 @@ class SettingsRepository(
             (activeProfile.id == ApiModelResolver.DEFAULT_PROFILE_ID &&
                 store.contains(SecureKeys.AI_API_KEY))
 
-        _settings.value = AiProviderSettings(
+        val loadedSettings = AiProviderSettings(
             baseUrl = activeProfile.baseUrl,
             hasApiKey = hasKey,
             transcriptionModel = transcription,
@@ -101,7 +127,7 @@ class SettingsRepository(
                 ?.coerceIn(0.3f, 0.95f)
                 ?: 0.55f,
         )
-        _preferences.value = AppPreferences(
+        val loadedPreferences = AppPreferences(
             cleanTranscript = store.getString(KEY_CLEAN_TRANSCRIPT)?.toBooleanStrictOrNull() ?: true,
             autoSpeakerLabel = store.getString(KEY_AUTO_SPEAKER)?.toBooleanStrictOrNull() ?: false,
             displayName = store.getString(KEY_DISPLAY_NAME).orEmpty(),
@@ -118,6 +144,9 @@ class SettingsRepository(
             deleteAudioAfterProcessing =
                 store.getString(KEY_DELETE_AUDIO_AFTER)?.toBooleanStrictOrNull() ?: false,
         )
+        // Publish only a completely read snapshot; failed refreshes retain known settings.
+        _settings.value = loadedSettings
+        _preferences.value = loadedPreferences
     }
 
     suspend fun setBaseUrl(url: String) {

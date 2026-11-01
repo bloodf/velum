@@ -14,6 +14,7 @@ import dev.velum.ble.crypto.createFileDecryptor
 import dev.velum.ble.crypto.createSessionCipher
 import dev.velum.core.model.ConnectedDevice
 import dev.velum.core.security.DeviceKeyImporter
+import dev.velum.core.security.SecureStoreUnavailableException
 import dev.velum.protocol.DeviceCapabilities
 import dev.velum.protocol.DeviceCapabilityRegistry
 import dev.velum.protocol.PlaudFileCrypto
@@ -104,8 +105,14 @@ class DeviceViewModel(
 
     fun connect(deviceId: String) {
         viewModelScope.launch {
-            ble.connect(deviceId)
-            runProtocolIfKeysPresent()
+            try {
+                ble.connect(deviceId)
+                runProtocolIfKeysPresent()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: SecureStoreUnavailableException) {
+                _sessionUi.value = DeviceSessionUi(statusMessage = DeviceUiCopy.secureStorageUnavailable(localeTag()))
+            }
         }
     }
 
@@ -142,6 +149,12 @@ class DeviceViewModel(
                 downloadMutex.withLock {
                     runDownloadSession(sessionId)
                 }
+            } catch (_: SecureStoreUnavailableException) {
+                _sessionUi.value = _sessionUi.value.copy(
+                    downloadingSessionId = null,
+                    downloadProgress = null,
+                    statusMessage = DeviceUiCopy.secureStorageUnavailable(localeTag()),
+                )
             } finally {
                 DownloadProgressNotifier.dismiss(DownloadNotifyKind.DeviceSession)
                 DownloadProgressNotifier.setCancelHandler(DownloadNotifyKind.DeviceSession, null)
@@ -336,6 +349,8 @@ class DeviceViewModel(
                     wifiCapable = wifiCapable,
                 ),
             )
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (_: Exception) {
             _sessionUi.value = DeviceSessionUi(
                 recorderDriverId = "plaud",

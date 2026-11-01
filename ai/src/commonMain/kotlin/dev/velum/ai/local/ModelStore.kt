@@ -15,6 +15,8 @@ expect class ModelStoreDir(absolutePath: String) {
     fun readBytes(): ByteArray
     /** Random-access read of [length] bytes starting at [offset] (for spilled PCM windows). */
     fun readRange(offset: Long, length: Int): ByteArray
+    /** Remove a single file. Never traverse directories, including a concurrently replaced path. */
+    fun deleteFile(): Boolean
     fun deleteRecursively()
     fun listChildren(): List<ModelStoreDir>
     fun length(): Long

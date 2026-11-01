@@ -198,10 +198,13 @@ class AppContainer(
 
     init {
         appScope.launch {
-            runCatching { settingsRepository.load() }
-            // Keystore may be unavailable in Robolectric; never crash process start.
-            runCatching { voiceProfileStore.ensureKey() }
-            autoFlowRunner.start()
+            settingsRepository.loadState.collect { state ->
+                when (state) {
+                    dev.velum.core.settings.SettingsLoadState.Ready -> autoFlowRunner.start()
+                    dev.velum.core.settings.SettingsLoadState.Unavailable -> autoFlowRunner.stop()
+                    else -> Unit
+                }
+            }
         }
     }
 

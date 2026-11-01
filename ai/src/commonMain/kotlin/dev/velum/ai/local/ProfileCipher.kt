@@ -16,3 +16,16 @@ object PassthroughProfileCipher : ProfileCipher {
 }
 
 expect fun createProfileCipher(keyMaterial: ByteArray): ProfileCipher
+
+/** Cryptographically random material for a newly created profile store. */
+expect fun generateProfileKey(): ByteArray
+
+/** Cipher/provider/key access failure; never evidence that an individual file is corrupt. */
+class ProfileCipherUnavailableException(cause: Throwable) : IllegalStateException(
+    "Voice profile encryption is unavailable. Stored files were preserved.", cause,
+)
+
+/** Authentication/wire failure; may mean different key material, not necessarily damaged data. */
+class ProfileCiphertextUnreadableException(cause: Throwable? = null) : IllegalArgumentException(
+    "Encrypted voice data could not be authenticated.", cause,
+)

@@ -20,7 +20,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
@@ -41,7 +40,6 @@ import dev.velum.app.ui.theme.VelumSurface
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.launch
 
 @OptIn(FlowPreview::class)
 @Composable
@@ -52,7 +50,6 @@ fun PersonalizationScreen(
 ) {
     val strings = LocalStrings.current
     val prefs by container.settingsRepository.preferences.collectAsState()
-    val scope = rememberCoroutineScope()
     var displayName by remember { mutableStateOf(prefs.displayName) }
     var focus by remember { mutableStateOf(prefs.contentFocus) }
     var instructions by remember { mutableStateOf(prefs.customInstructions) }
@@ -68,9 +65,11 @@ fun PersonalizationScreen(
             .debounce(400)
             .distinctUntilChanged()
             .collect { (name, contentFocus, custom) ->
-                container.settingsRepository.setDisplayName(name)
-                container.settingsRepository.setContentFocus(contentFocus)
-                container.settingsRepository.setCustomInstructions(custom)
+                container.settingsViewModel.handleStorageFailure {
+                    container.settingsRepository.setDisplayName(name)
+                    container.settingsRepository.setContentFocus(contentFocus)
+                    container.settingsRepository.setCustomInstructions(custom)
+                }
             }
     }
 
@@ -133,7 +132,7 @@ fun PersonalizationScreen(
         ToggleRow(
             strings.useSavedMemory,
             prefs.useSavedMemory,
-            { enabled -> scope.launch { container.settingsRepository.setUseSavedMemory(enabled) } },
+            { enabled -> container.settingsViewModel.runStorageAction { container.settingsRepository.setUseSavedMemory(enabled) } },
             strings.useMemoryHint,
         )
         ChevronRow(strings.manageMemory, onMemory, showDivider = false)

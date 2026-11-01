@@ -1,6 +1,14 @@
 package dev.velum.app.ui
 
 import android.content.Context
+import androidx.activity.compose.setContent
+import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.onNodeWithText
+import androidx.activity.ComponentActivity
+import org.robolectric.Robolectric
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -60,6 +68,7 @@ import dev.velum.core.security.InMemorySecureStore
 import dev.velum.protocol.DeviceModel
 import dev.velum.protocol.SessionEntry
 import kotlinx.coroutines.runBlocking
+import org.junit.After
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -75,23 +84,36 @@ import org.robolectric.annotation.GraphicsMode
  */
 @RunWith(AndroidJUnit4::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(sdk = [34], qualifiers = "w360dp-h800dp-xxhdpi")
+@Config(application = android.app.Application::class, sdk = [34], qualifiers = "w360dp-h800dp-xxhdpi")
 class MainScreenshotsTest {
 
     @get:Rule
     val roborazziRule = RoborazziRule()
 
+    @get:Rule
+    val composeRule = createEmptyComposeRule()
+
     private lateinit var container: AppContainer
+    private lateinit var modelRoot: dev.velum.ai.local.ModelStoreDir
 
     @Before
     fun setUp() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         context.deleteDatabase("velum.db")
+        modelRoot = dev.velum.ai.local.ModelStoreDir(
+            java.nio.file.Files.createTempDirectory("velum-screenshot-voices").toString(),
+        )
         container = AppContainer(
             secureStore = InMemorySecureStore(),
             driverFactory = DriverFactory(context),
+            modelStoreRoot = modelRoot,
         )
         runBlocking { seedScreenshotFixtures(container) }
+    }
+
+    @After
+    fun cleanSyntheticVoiceFixtures() {
+        modelRoot.deleteRecursively()
     }
 
     @Test
@@ -199,8 +221,31 @@ class MainScreenshotsTest {
     }
 
     @Test
-    fun voiceProfiles() = capture("12-voice-profiles") {
-        VoiceProfilesScreen(container = container, onBack = {})
+    fun voiceProfiles() = captureVoiceProfiles("12-voice-profiles", dark = false)
+
+    private fun captureVoiceProfiles(name: String, dark: Boolean) {
+        val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup()
+        try {
+            activity.get().setContent {
+                CompositionLocalProvider(
+                    LocalStrings provides PtBr,
+                    LocalDensity provides Density(density = 3f, fontScale = 1f),
+                ) {
+                    VelumTheme(darkTheme = dark) {
+                        VoiceProfilesScreen(container = container, onBack = {})
+                    }
+                }
+            }
+            composeRule.waitUntil(10_000) {
+                composeRule.onAllNodesWithText("Heitor").fetchSemanticsNodes().isNotEmpty() &&
+                    composeRule.onAllNodesWithText("Marina").fetchSemanticsNodes().isNotEmpty()
+            }
+            composeRule.onNodeWithText("Heitor").assertIsDisplayed()
+            composeRule.onNodeWithText("Marina").assertIsDisplayed()
+            composeRule.onRoot().captureRoboImage("velum-$name.png")
+        } finally {
+            activity.pause().stop().destroy()
+        }
     }
 
     @Test
@@ -446,9 +491,7 @@ class MainScreenshotsTest {
     }
 
     @Test
-    fun darkVoiceProfiles() = capture("dark-12-voice-profiles", dark = true) {
-        VoiceProfilesScreen(container, onBack = {})
-    }
+    fun darkVoiceProfiles() = captureVoiceProfiles("dark-12-voice-profiles", dark = true)
 
     @Test
     fun darkAiProcessing() = capture("dark-13-ai-processing", dark = true) {
@@ -589,8 +632,7 @@ class MainScreenshotsTest {
         container.settingsRepository.setSummaryMode(ComputeMode.Api)
         container.settingsRepository.setBaseUrl("https://api.openai.com/v1")
         // Demo voice profiles (tiny synthetic embeddings — UI list only).
-        // ensureKey before upsert — AppContainer primes on appScope and can race
-        // this seed under Robolectric (#106).
+        // Explicitly await the same cold-start readiness barrier as production (#110).
         container.voiceProfileStore.ensureKey()
         val emb = FloatArray(192) { i -> (i % 17) / 17f }
         container.voiceProfileStore.upsert("Heitor", emb, role = "Product", company = "Velum")

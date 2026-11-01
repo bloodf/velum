@@ -1,8 +1,18 @@
 package dev.velum.ai.local
 
+import dev.velum.core.security.SecureKeys
 import dev.velum.core.security.SecureStore
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -10,12 +20,15 @@ import kotlinx.serialization.json.Json
 /**
  * Named voice profiles with encrypted embeddings, multi-sample centroids, and metadata.
  * Profiles never leave the device unless the user exports; [delete] / [wipeAll] remove blobs.
+ * Production reads and writes use [withReady]. Synchronous operations require an already
+ * primed secure key (or a local file key / explicit test cipher); they never block waiting for a key.
  */
 @OptIn(ExperimentalEncodingApi::class)
 class VoiceProfileStore(
     private val root: ModelStoreDir,
     private val secureStore: SecureStore? = null,
     private val cipherOverride: ProfileCipher? = null,
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
     private val json = Json { ignoreUnknownKeys = true; prettyPrint = true }
     private val profilesDir get() = root.resolve("voices").resolve("profiles")
@@ -28,58 +41,239 @@ class VoiceProfileStore(
     }
 
     private fun loadOrCreateKey(): ByteArray {
-        val store = secureStore
-        if (store == null) {
-            // Deterministic test/desktop fallback — embeddings still AES-GCM-wrapped with a
-            // local file key under models/voices/.key when SecureStore is absent.
-            val keyFile = root.resolve("voices").resolve(".profile_key")
-            if (keyFile.exists() && keyFile.length() == 32L) return keyFile.readBytes()
-            root.resolve("voices").createDirectories()
-            val generated = ByteArray(32) { (it * 17 + 41).toByte() }
-            keyFile.writeBytes(generated)
-            return generated
+        primedKey?.let { return it }
+        // Legacy synchronous file-store callers remain supported. Production callers use
+        // withReady, which also serializes file-key creation and moves disk I/O off the UI.
+        if (secureStore == null) {
+            check(keyInitializationMutex.tryLock()) { "Voice profiles are initializing. Use withReady." }
+            try {
+                return loadFileKey().also { publishKey(it) }
+            } finally {
+                keyInitializationMutex.unlock()
+            }
         }
-        // Synchronous path: key must already be primed via [ensureKey].
-        // Never fall back to a fixed key — that would encrypt profiles under a
-        // known constant until ensureKey races in, then fail to decrypt.
-        return primedKey
-            ?: throw IllegalStateException(
-                "VoiceProfileStore key not primed. Call ensureKey() before cipher use.",
-            )
+        error("Voice profiles are not ready. Use withReady before accessing profiles.")
     }
 
     @Volatile
     private var primedKey: ByteArray? = null
+    private val accessMutex = Mutex()
+    private val cipherIdentity = Any()
+    private var keyRevision = Any()
 
-    /**
-     * Call once at app start (suspend) so Android Keystore-backed SecureStore can mint the key.
-     */
-    suspend fun ensureKey() {
-        val store = secureStore ?: return
-        val existing = store.getString(PROFILE_KEY_SECURE)
-        if (!existing.isNullOrBlank()) {
-            primedKey = Base64.decode(existing)
-            return
-        }
-        val generated = ByteArray(32) { kotlin.random.Random.nextInt(0, 256).toByte() }
-        store.putString(PROFILE_KEY_SECURE, Base64.encode(generated))
-        primedKey = generated
+    private fun publishKey(key: ByteArray) {
+        if (primedKey?.contentEquals(key) != true) keyRevision = Any()
+        primedKey = key
     }
 
-    fun listProfiles(): List<VoiceProfile> {
-        if (!profilesDir.exists()) return emptyList()
-        return profilesDir.listChildren()
-            .filter { !it.isDirectory() && it.name.endsWith(".json") }
-            .mapNotNull { file ->
-                runCatching {
-                    json.decodeFromString<VoiceProfileFile>(file.readBytes().decodeToString())
-                        .toProfile(file.resolveSiblingEnc(), cipher())
-                }.getOrNull()
+    /** Await key readiness and perform profile I/O away from the UI thread. Failures propagate. */
+    suspend fun <T> withReady(block: VoiceProfileStore.() -> T): T = withContext(ioDispatcher) {
+        ensureKey()
+        accessMutex.withLock { block() }
+    }
+
+    /** Idempotent across concurrent callers and stores sharing the same backing key. */
+    suspend fun ensureKey() = primeKey(refreshExisting = false)
+
+    /** Explicit retry rereads existing key material; it never replaces a missing previously primed key. */
+    suspend fun reloadKey() = withContext(ioDispatcher) {
+        accessMutex.withLock { primeKey(refreshExisting = true) }
+    }
+
+    private suspend fun primeKey(refreshExisting: Boolean) = withContext(ioDispatcher) {
+        if (cipherOverride != null || (primedKey != null && !refreshExisting)) return@withContext
+        keyInitializationMutex.withLock {
+            if (primedKey != null && !refreshExisting) return@withLock
+            val previouslyPrimed = primedKey != null
+            val store = secureStore
+            val key = if (store == null) {
+                if (refreshExisting && previouslyPrimed && !root.resolve("voices/.profile_key").exists()) {
+                    throw VoiceProfileKeyUnavailableException()
+                }
+                loadFileKey()
+            } else {
+                val encoded = store.getString(PROFILE_KEY_SECURE)
+                if (encoded != null) {
+                    val decoded = try {
+                        Base64.decode(encoded)
+                    } catch (_: IllegalArgumentException) {
+                        throw VoiceProfileKeyUnavailableException()
+                    }
+                    if (decoded.size != 32) throw VoiceProfileKeyUnavailableException()
+                    decoded
+                } else {
+                    if (refreshExisting && previouslyPrimed) throw VoiceProfileKeyUnavailableException()
+                    checkNoEncryptedData()
+                    generateProfileKey().also {
+                        val encodedKey = Base64.encode(it)
+                        store.putString(PROFILE_KEY_SECURE, encodedKey)
+                        check(store.getString(PROFILE_KEY_SECURE) == encodedKey) {
+                            "Voice profile key could not be saved; no profile data was written."
+                        }
+                    }
+                }
             }
-            .sortedBy { it.displayName.lowercase() }
+            // Publish only after the backing store has acknowledged the write. On failure or
+            // cancellation the next caller retries the read, never substitutes another key.
+            publishKey(key)
+        }
     }
 
-    fun get(id: String): VoiceProfile? = listProfiles().firstOrNull { it.id == id }
+    private fun loadFileKey(): ByteArray {
+        val keyFile = root.resolve("voices").resolve(".profile_key")
+        if (keyFile.exists()) {
+            return keyFile.readBytes().also {
+                if (it.size != 32) throw VoiceProfileKeyUnavailableException()
+            }
+        }
+        checkNoEncryptedData()
+        root.resolve("voices").createDirectories()
+        return generateProfileKey().also { keyFile.writeBytes(it) }
+    }
+
+    private fun checkNoEncryptedData() {
+        fun hasEncryptedData(dir: ModelStoreDir): Boolean = dir.exists() && dir.listChildren().any {
+            if (it.isDirectory()) hasEncryptedData(it) else it.name.endsWith(".enc")
+        }
+        if (hasEncryptedData(root.resolve("voices"))) throw VoiceProfileKeyUnavailableException()
+    }
+
+    /** Read-only inspection. Provider/key failures propagate rather than become file issues. */
+    fun inspectProfiles(): VoiceProfileInventory {
+        if (!profilesDir.exists()) return VoiceProfileInventory(emptyList(), emptyList())
+        val profileCipher = cipher()
+        val groups = profilesDir.listChildren()
+            .filter { file -> PROFILE_SUFFIXES.any { file.name.endsWith(it) } }
+            .groupBy { it.name.substringBeforeLast('.') }
+        val readable = mutableListOf<VoiceProfile>()
+        val unreadable = mutableListOf<UnreadableVoiceProfile>()
+        var authenticated = 0
+        var authenticationFailures = 0
+        for ((id, files) in groups) {
+            val byName = files.associateBy { it.name }
+            // Diagnose exactly the bytes represented by a future removal confirmation.
+            val snapshot = captureFiles(files)
+            var label = id
+            fun issue(reason: VoiceProfileReadProblem) {
+                unreadable += UnreadableVoiceProfile(
+                    id, label, reason, profilesDir.absolutePath, if (safeProfileId(id)) snapshot else null,
+                    if (reason == VoiceProfileReadProblem.CannotDecrypt) cipherIdentity else null,
+                    if (reason == VoiceProfileReadProblem.CannotDecrypt) keyRevision else null,
+                )
+            }
+            val metaFile = byName["$id.json"]
+            if (metaFile == null) { issue(VoiceProfileReadProblem.MissingMetadata); continue }
+            val metadataBytes = snapshot?.get(metaFile.name)
+            if (metadataBytes == null) { issue(VoiceProfileReadProblem.FileUnavailable); continue }
+            val metadata = try {
+                json.decodeFromString<VoiceProfileFile>(metadataBytes.decodeToString())
+            } catch (_: SerializationException) {
+                issue(VoiceProfileReadProblem.InvalidMetadata); continue
+            }
+            label = metadata.displayName.trim().ifEmpty { id }
+            if (!safeProfileId(id) || metadata.id != id || metadata.dim <= 0) {
+                issue(VoiceProfileReadProblem.InvalidMetadata); continue
+            }
+            val encrypted = byName["$id.enc"]
+            val embeddingFile = encrypted ?: byName["$id.f32"]
+            if (embeddingFile == null) { issue(VoiceProfileReadProblem.MissingEmbedding); continue }
+            val bytes = snapshot?.get(embeddingFile.name)
+            if (bytes == null) { issue(VoiceProfileReadProblem.FileUnavailable); continue }
+            // Only an explicit wire/authentication exception is a per-file candidate.
+            // Unknown/provider errors and cancellation abort the entire inspection.
+            val plain = if (encrypted != null) {
+                try {
+                    profileCipher.decrypt(bytes).also { authenticated++ }
+                } catch (_: ProfileCiphertextUnreadableException) {
+                    authenticationFailures++
+                    issue(VoiceProfileReadProblem.CannotDecrypt); continue
+                }
+            } else bytes
+            val samples = try {
+                if (encrypted != null) unpackSamples(plain) else listOf(bytesToFloats(plain))
+            } catch (_: IllegalArgumentException) {
+                issue(VoiceProfileReadProblem.InvalidEmbedding); continue
+            } catch (_: IndexOutOfBoundsException) {
+                issue(VoiceProfileReadProblem.InvalidEmbedding); continue
+            }
+            if (samples.isEmpty() || samples.any { it.size != metadata.dim || it.any { value -> !value.isFinite() } }) {
+                issue(VoiceProfileReadProblem.InvalidEmbedding); continue
+            }
+            readable += VoiceProfile(
+                id = metadata.id, displayName = metadata.displayName,
+                embedding = averageEmbeddings(samples), sampleEmbeddings = samples,
+                role = metadata.role, company = metadata.company, email = metadata.email,
+                notes = metadata.notes, contactUri = metadata.contactUri, sampleCount = samples.size,
+            )
+        }
+        // A wrong but well-formed key and a damaged blob are indistinguishable when
+        // nothing authenticates. Never label all existing encrypted profiles corrupt.
+        if (authenticationFailures > 0 && authenticated == 0) throw VoiceProfileKeyUnavailableException()
+        return VoiceProfileInventory(
+            readable.sortedBy { it.displayName.lowercase() },
+            unreadable.sortedBy { it.displayName.lowercase() },
+        )
+    }
+
+    /** Strict compatibility API: exports/old callers must not silently omit unreadable data. */
+    fun listProfiles(): List<VoiceProfile> = inspectProfiles().let {
+        if (it.unreadable.isNotEmpty()) throw UnreadableVoiceProfileException()
+        it.profiles
+    }
+
+    fun get(id: String): VoiceProfile? {
+        require(safeProfileId(id)) { "Invalid voice profile identifier." }
+        val inventory = inspectProfiles()
+        if (inventory.unreadable.any { it.id == id }) throw UnreadableVoiceProfileException()
+        return inventory.profiles.firstOrNull { it.id == id }
+    }
+
+    /** Explicit UI-confirmed removal; false means the files/readability changed since inspection. */
+    suspend fun removeUnreadableProfile(profile: UnreadableVoiceProfile): Boolean = withContext(ioDispatcher) {
+        if (profile.problem == VoiceProfileReadProblem.CannotDecrypt) ensureKey()
+        accessMutex.withLock {
+            require(safeProfileId(profile.id)) { "Invalid voice profile identifier." }
+            if (profile.owner != profilesDir.absolutePath || profile.files == null) return@withLock false
+            val current = profileFiles(profile.id)
+            val bytes = captureFiles(current) ?: return@withLock false
+            if (!sameFiles(profile.files, bytes)) return@withLock false
+            if (profile.problem == VoiceProfileReadProblem.CannotDecrypt) {
+                if (profile.cipherIdentity !== cipherIdentity || profile.keyRevision !== keyRevision) return@withLock false
+                primeKey(refreshExisting = true)
+                if (profile.keyRevision !== keyRevision) return@withLock false
+                val stillUnreadable = inspectProfiles().unreadable.any {
+                    it.id == profile.id && it.problem == VoiceProfileReadProblem.CannotDecrypt
+                }
+                if (!stillUnreadable) return@withLock false
+            }
+            currentCoroutineContext().ensureActive()
+            current.forEach { check(it.deleteFile()) { "Unable to remove requested voice profile file." } }
+            check(current.none { it.exists() }) { "Unable to remove all requested voice profile files." }
+            true
+        }
+    }
+
+    private fun readProfileFile(file: ModelStoreDir): ByteArray? = try {
+        if (file.isDirectory()) null else file.readBytes()
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Exception) {
+        null
+    }
+
+    private fun captureFiles(files: List<ModelStoreDir>): Map<String, ByteArray>? {
+        val result = mutableMapOf<String, ByteArray>()
+        for (file in files) result[file.name] = readProfileFile(file) ?: return null
+        return result
+    }
+
+    private fun profileFiles(id: String): List<ModelStoreDir> = PROFILE_SUFFIXES.map {
+        profilesDir.resolve(id + it)
+    }.filter { it.exists() }
+
+    private fun sameFiles(a: Map<String, ByteArray>, b: Map<String, ByteArray>): Boolean =
+        a.keys == b.keys && a.all { (name, bytes) -> bytes.contentEquals(b.getValue(name)) }
+
 
     fun upsert(
         displayName: String,
@@ -140,6 +334,7 @@ class VoiceProfileStore(
     }
 
     fun delete(id: String) {
+        require(safeProfileId(id)) { "Invalid voice profile identifier." }
         profilesDir.resolve("$id.json").deleteRecursively()
         profilesDir.resolve("$id.enc").deleteRecursively()
         // Legacy plaintext
@@ -156,7 +351,8 @@ class VoiceProfileStore(
         threshold: Float = DEFAULT_MATCH_THRESHOLD,
     ): VoiceMatch? {
         var best: VoiceMatch? = null
-        for (profile in listProfiles()) {
+        // Matching remains useful with a damaged sibling; inspection exposes every omitted item.
+        for (profile in inspectProfiles().profiles) {
             if (profile.embedding.size != embedding.size) continue
             val score = cosineSimilarity(embedding, profile.embedding)
             if (score >= threshold && (best == null || score > best.confidence)) {
@@ -199,9 +395,9 @@ class VoiceProfileStore(
     }
 
     fun cacheClusterEmbedding(recordingId: String, speakerId: String, embedding: FloatArray) {
+        val enc = cipher().encrypt(floatsToBytes(embedding))
         val dir = cacheDir.resolve(recordingId)
         dir.createDirectories()
-        val enc = cipher().encrypt(floatsToBytes(embedding))
         dir.resolve("${slug(speakerId)}.enc").writeBytes(enc)
         // Keep legacy plaintext cache for one release of promoteCached compatibility.
         dir.resolve("${slug(speakerId)}.f32").writeBytes(floatsToBytes(embedding))
@@ -209,10 +405,8 @@ class VoiceProfileStore(
 
     fun cachedClusterEmbedding(recordingId: String, speakerId: String): FloatArray? {
         val encFile = cacheDir.resolve(recordingId).resolve("${slug(speakerId)}.enc")
-        if (encFile.exists() && encFile.length() > 0L) {
-            return runCatching {
-                bytesToFloats(cipher().decrypt(encFile.readBytes()))
-            }.getOrNull()
+        if (encFile.exists()) {
+            return bytesToFloats(cipher().decrypt(encFile.readBytes()))
         }
         val file = cacheDir.resolve(recordingId).resolve("${slug(speakerId)}.f32")
         if (!file.exists() || file.length() == 0L) return null
@@ -270,9 +464,11 @@ class VoiceProfileStore(
             val embedding = bytesToFloats(c.decrypt(Base64.decode(e.embeddingB64)))
             val samples = e.samplesB64.map { bytesToFloats(c.decrypt(Base64.decode(it))) }
                 .ifEmpty { listOf(embedding) }
+            val id = e.id.ifBlank { slug(e.displayName) }
+            get(id) // Refuse to overwrite unreadable files; recovery requires an explicit removal.
             writeProfile(
                 VoiceProfile(
-                    id = e.id.ifBlank { slug(e.displayName) },
+                    id = id,
                     displayName = e.displayName,
                     embedding = embedding,
                     sampleEmbeddings = samples,
@@ -290,6 +486,9 @@ class VoiceProfileStore(
     }
 
     private fun writeProfile(profile: VoiceProfile) {
+        require(safeProfileId(profile.id)) { "Invalid voice profile identifier." }
+        val packed = packSamples(profile.sampleEmbeddings.ifEmpty { listOf(profile.embedding) })
+        val encrypted = cipher().encrypt(packed)
         profilesDir.createDirectories()
         val meta = profilesDir.resolve("${profile.id}.json")
         val enc = profilesDir.resolve("${profile.id}.enc")
@@ -309,16 +508,20 @@ class VoiceProfileStore(
                 ),
             ).encodeToByteArray(),
         )
-        val packed = packSamples(profile.sampleEmbeddings.ifEmpty { listOf(profile.embedding) })
-        enc.writeBytes(cipher().encrypt(packed))
+        enc.writeBytes(encrypted)
         // Remove legacy plaintext if present.
         profilesDir.resolve("${profile.id}.f32").deleteRecursively()
     }
 
     companion object {
+        // Shared across instances: two cold-start containers must not overwrite one another's key.
+        private val keyInitializationMutex = Mutex()
+        private val PROFILE_SUFFIXES = listOf(".json", ".enc", ".f32")
+        private fun safeProfileId(id: String): Boolean =
+            id.isNotBlank() && id != "." && id != ".." && '/' !in id && '\\' !in id
         const val DEFAULT_MATCH_THRESHOLD = 0.55f
         const val MAX_SAMPLES = 8
-        const val PROFILE_KEY_SECURE = "voice.profile_aes_key_b64"
+        const val PROFILE_KEY_SECURE = SecureKeys.VOICE_PROFILE_AES_KEY
 
         fun cosineSimilarity(a: FloatArray, b: FloatArray): Float {
             require(a.size == b.size) { "embedding size mismatch ${a.size} vs ${b.size}" }
@@ -404,8 +607,8 @@ class VoiceProfileStore(
                 ((bytes[4].toInt() and 0xFF) shl 16) or
                 ((bytes[5].toInt() and 0xFF) shl 24)
             if (count <= 0 || dim <= 0) return listOf(bytesToFloats(bytes))
-            val expected = 8 + count * dim * 4
-            if (bytes.size < expected) return listOf(bytesToFloats(bytes))
+            val expected = 8L + count.toLong() * dim * 4L
+            if (bytes.size.toLong() < expected) return listOf(bytesToFloats(bytes))
             return (0 until count).map { i ->
                 val start = 8 + i * dim * 4
                 bytesToFloats(bytes.copyOfRange(start, start + dim * 4))
@@ -413,37 +616,7 @@ class VoiceProfileStore(
         }
     }
 
-    private fun VoiceProfileFile.toProfile(encFile: ModelStoreDir, cipher: ProfileCipher): VoiceProfile? {
-        val samples: List<FloatArray> = when {
-            encFile.exists() -> {
-                val plain = cipher.decrypt(encFile.readBytes())
-                unpackSamples(plain)
-            }
-            else -> {
-                // Migrate legacy plaintext .f32
-                val legacy = ModelStoreDir(
-                    encFile.absolutePath.removeSuffix(".enc") + ".f32",
-                )
-                if (!legacy.exists()) return null
-                listOf(bytesToFloats(legacy.readBytes()))
-            }
-        }
-        if (samples.isEmpty()) return null
-        val centroid = averageEmbeddings(samples)
-        if (centroid.size != dim) return null
-        return VoiceProfile(
-            id = id,
-            displayName = displayName,
-            embedding = centroid,
-            sampleEmbeddings = samples,
-            role = role,
-            company = company,
-            email = email,
-            notes = notes,
-            contactUri = contactUri,
-            sampleCount = samples.size,
-        )
-    }
+
 }
 
 data class VoiceMatch(
@@ -512,9 +685,32 @@ private data class ExportedProfile(
     val samplesB64: List<String> = emptyList(),
 )
 
-private fun ModelStoreDir.resolveSiblingEnc(): ModelStoreDir {
-    val base = name.removeSuffix(".json")
-    val parent = absolutePath.substringBeforeLast('/', missingDelimiterValue = "")
-    return if (parent.isEmpty()) ModelStoreDir("$base.enc")
-    else ModelStoreDir("$parent/$base.enc")
+
+data class VoiceProfileInventory(
+    val profiles: List<VoiceProfile>,
+    val unreadable: List<UnreadableVoiceProfile>,
+)
+
+enum class VoiceProfileReadProblem {
+    MissingMetadata, MissingEmbedding, InvalidMetadata, InvalidEmbedding, CannotDecrypt, FileUnavailable,
 }
+
+class UnreadableVoiceProfile internal constructor(
+    val id: String,
+    val displayName: String,
+    val problem: VoiceProfileReadProblem,
+    internal val owner: String,
+    internal val files: Map<String, ByteArray>?,
+    internal val cipherIdentity: Any?,
+    internal val keyRevision: Any?,
+) {
+    val canRemove: Boolean get() = files != null
+}
+
+class UnreadableVoiceProfileException : IllegalStateException(
+    "Some voice profile files are unreadable. Inspect them before changing or exporting these profiles.",
+)
+
+class VoiceProfileKeyUnavailableException : IllegalStateException(
+    "The voice profile key is unavailable or cannot authenticate the stored profiles. Files were preserved.",
+)

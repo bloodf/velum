@@ -619,29 +619,37 @@ fun RecordingDetailScreen(
                 onClose = { showSpeakers = false },
                 onConfirm = { renames ->
                     scope.launch {
-                        renames.forEach { (speakerId, name) ->
-                            val trimmed = name.trim()
-                            if (trimmed.isEmpty()) return@forEach
-                            val row = speakers.firstOrNull { it.id == speakerId } ?: return@forEach
-                            val emb = container.voiceProfileStore.cachedClusterEmbedding(
-                                recordingId,
-                                row.label,
-                            )
-                            val existing = container.voiceProfileStore.listProfiles()
-                                .firstOrNull { it.displayName.equals(trimmed, ignoreCase = true) }
-                            when {
-                                existing != null && emb != null ->
-                                    container.voiceProfileStore.refine(existing.id, emb)
-                                else ->
-                                    container.voiceProfileStore.promoteCached(
-                                        recordingId = recordingId,
-                                        speakerId = row.label,
-                                        displayName = trimmed,
+                        try {
+                            for ((speakerId, name) in renames) {
+                                val trimmed = name.trim()
+                                if (trimmed.isEmpty()) continue
+                                val row = speakers.firstOrNull { it.id == speakerId } ?: continue
+                                container.voiceProfileStore.withReady {
+                                    val emb = cachedClusterEmbedding(
+                                        recordingId,
+                                        row.label,
                                     )
+                                    val existing = inspectProfiles().profiles
+                                        .firstOrNull { it.displayName.equals(trimmed, ignoreCase = true) }
+                                    when {
+                                        existing != null && emb != null ->
+                                            refine(existing.id, emb)
+                                        else ->
+                                            promoteCached(
+                                                recordingId = recordingId,
+                                                speakerId = row.label,
+                                                displayName = trimmed,
+                                            )
+                                    }
+                                }
+                                container.repository.renameSpeaker(recordingId, speakerId, trimmed)
                             }
-                            container.repository.renameSpeaker(recordingId, speakerId, trimmed)
+                            showSpeakers = false
+                        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                            throw cancelled
+                        } catch (_: Exception) {
+                            processError = strings.ux.genericError
                         }
-                        showSpeakers = false
                     }
                 },
             )

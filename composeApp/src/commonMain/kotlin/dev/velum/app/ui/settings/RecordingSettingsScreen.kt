@@ -14,7 +14,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -27,7 +26,6 @@ import dev.velum.app.ui.components.SectionLabel
 import dev.velum.app.ui.theme.VelumInk
 import dev.velum.app.ui.theme.VelumInkSecondary
 import dev.velum.app.ui.theme.VelumSurface
-import kotlinx.coroutines.launch
 
 @Composable
 fun RecordingSettingsScreen(
@@ -36,7 +34,6 @@ fun RecordingSettingsScreen(
 ) {
     val strings = LocalStrings.current
     val prefs by container.settingsRepository.preferences.collectAsState()
-    val scope = rememberCoroutineScope()
     val current = prefs.defaultMicInput
 
     Column(
@@ -59,7 +56,7 @@ fun RecordingSettingsScreen(
                 Modifier
                     .fillMaxWidth()
                     .clickable {
-                        scope.launch { container.settingsRepository.setDefaultMicInput(src.name) }
+                        container.settingsViewModel.runStorageAction { container.settingsRepository.setDefaultMicInput(src.name) }
                     }
                     .padding(horizontal = 20.dp, vertical = 14.dp),
             ) {

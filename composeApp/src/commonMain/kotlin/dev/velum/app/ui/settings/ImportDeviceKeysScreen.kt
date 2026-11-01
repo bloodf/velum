@@ -14,12 +14,12 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -37,7 +37,6 @@ import dev.velum.app.ui.theme.VelumInk
 import dev.velum.app.ui.theme.VelumInkSecondary
 import dev.velum.core.security.PlaudExportImporter
 import dev.velum.core.security.PlaudExportParseResult
-import kotlinx.coroutines.launch
 
 /**
  * Import from Plaud: paste identity fields and/or paste/import a version-1 JSON export
@@ -50,7 +49,7 @@ fun ImportDeviceKeysScreen(
     onBack: () -> Unit,
 ) {
     val strings = LocalStrings.current
-    val scope = rememberCoroutineScope()
+    val storageState by container.settingsRepository.loadState.collectAsState()
     var serial by remember { mutableStateOf("") }
     var snSignature by remember { mutableStateOf("") }
     var bindToken by remember { mutableStateOf("") }
@@ -63,11 +62,11 @@ fun ImportDeviceKeysScreen(
     var hasKeys by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
-        hasKeys = container.deviceKeyImporter.hasKeys()
+        container.settingsViewModel.handleStorageFailure { hasKeys = container.deviceKeyImporter.hasKeys() }
     }
 
     fun applyJson(raw: String) {
-        scope.launch {
+        container.settingsViewModel.runStorageAction {
             error = null
             status = null
             try {
@@ -101,7 +100,11 @@ fun ImportDeviceKeysScreen(
                         error = parsed.message
                     }
                 }
-            } catch (t: Throwable) {
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (storage: dev.velum.core.security.SecureStoreUnavailableException) {
+                throw storage
+            } catch (t: Exception) {
                 error = t.message ?: t.toString()
             }
         }
@@ -116,6 +119,10 @@ fun ImportDeviceKeysScreen(
             .verticalScroll(rememberScrollState()),
     ) {
         ScreenTopBar(strings.importKeys.title, onBack = onBack)
+        if (storageState == dev.velum.core.settings.SettingsLoadState.Unavailable) {
+            Text(strings.ux.secureStorageUnavailable, color = VelumInk, modifier = Modifier.padding(20.dp, 8.dp))
+            OutlineButton(strings.ux.retryProcessing, { container.settingsViewModel.reloadSettings() }, Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
+        }
         Text(
             strings.importKeys.hint,
             color = VelumInkSecondary,
@@ -202,7 +209,7 @@ fun ImportDeviceKeysScreen(
         BlackButton(
             strings.save,
             {
-                scope.launch {
+                container.settingsViewModel.runStorageAction {
                     error = null
                     status = null
                     try {
@@ -215,7 +222,11 @@ fun ImportDeviceKeysScreen(
                         )
                         hasKeys = true
                         status = strings.importKeys.saved
-                    } catch (t: Throwable) {
+                    } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                        throw cancelled
+                    } catch (storage: dev.velum.core.security.SecureStoreUnavailableException) {
+                        throw storage
+                    } catch (t: Exception) {
                         error = t.message ?: t.toString()
                     }
                 }
@@ -248,7 +259,7 @@ fun ImportDeviceKeysScreen(
                 TextButton(
                     onClick = {
                         showClearConfirm = false
-                        scope.launch {
+                        container.settingsViewModel.runStorageAction {
                             container.deviceKeyImporter.clearKeys()
                             hasKeys = false
                             status = strings.importKeys.cleared

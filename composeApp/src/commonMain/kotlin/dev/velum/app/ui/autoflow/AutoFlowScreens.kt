@@ -162,7 +162,7 @@ fun AutoFlowListScreen(
             strings.receiveNotifications,
             prefs.autoflowNotify,
             { enabled ->
-                scope.launch {
+                container.settingsViewModel.runStorageAction {
                     container.settingsRepository.setAutoflowNotify(enabled)
                     flows.forEach { flow ->
                         container.repository.setAutoflowNotify(flow.id, enabled)

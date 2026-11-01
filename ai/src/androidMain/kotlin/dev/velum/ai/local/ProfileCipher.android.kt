@@ -1,30 +1,49 @@
 package dev.velum.ai.local
 
+import java.security.SecureRandom
+import javax.crypto.BadPaddingException
 import javax.crypto.Cipher
+import javax.crypto.IllegalBlockSizeException
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
-import kotlin.random.Random
+import kotlinx.coroutines.CancellationException
 
-actual fun createProfileCipher(keyMaterial: ByteArray): ProfileCipher =
-    AesGcmProfileCipher(keyMaterial)
+actual fun createProfileCipher(keyMaterial: ByteArray): ProfileCipher = AesGcmProfileCipher(keyMaterial)
 
 private class AesGcmProfileCipher(keyMaterial: ByteArray) : ProfileCipher {
     private val key = SecretKeySpec(keyMaterial.copyOf(32), "AES")
 
-    override fun encrypt(plain: ByteArray): ByteArray {
-        val iv = ByteArray(12).also { Random.Default.nextBytes(it) }
+    override fun encrypt(plain: ByteArray): ByteArray = cipherAccess {
+        val iv = ByteArray(12).also { SecureRandom().nextBytes(it) }
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, key, GCMParameterSpec(128, iv))
-        val out = cipher.doFinal(plain)
-        return iv + out
+        iv + cipher.doFinal(plain)
     }
 
     override fun decrypt(cipher: ByteArray): ByteArray {
-        require(cipher.size > 12) { "cipher too short" }
-        val iv = cipher.copyOfRange(0, 12)
-        val body = cipher.copyOfRange(12, cipher.size)
-        val c = Cipher.getInstance("AES/GCM/NoPadding")
-        c.init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(128, iv))
-        return c.doFinal(body)
+        if (cipher.size <= 12) throw ProfileCiphertextUnreadableException()
+        return cipherAccess {
+            val c = Cipher.getInstance("AES/GCM/NoPadding")
+            c.init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(128, cipher.copyOfRange(0, 12)))
+            try {
+                c.doFinal(cipher.copyOfRange(12, cipher.size))
+            } catch (failure: BadPaddingException) {
+                throw ProfileCiphertextUnreadableException(failure)
+            } catch (failure: IllegalBlockSizeException) {
+                throw ProfileCiphertextUnreadableException(failure)
+            }
+        }
     }
 }
+
+private inline fun <T> cipherAccess(block: () -> T): T = try {
+    block()
+} catch (cancelled: CancellationException) {
+    throw cancelled
+} catch (unreadable: ProfileCiphertextUnreadableException) {
+    throw unreadable
+} catch (failure: Exception) {
+    throw ProfileCipherUnavailableException(failure)
+}
+
+actual fun generateProfileKey(): ByteArray = ByteArray(32).also { SecureRandom().nextBytes(it) }

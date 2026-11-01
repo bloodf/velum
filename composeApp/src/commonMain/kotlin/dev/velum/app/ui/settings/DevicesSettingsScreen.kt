@@ -69,7 +69,7 @@ fun DevicesSettingsScreen(
         ToggleRow(
             strings.settingsUi.autoSyncWatchedFolders,
             prefs.autoSyncWatchedFolders,
-            { enabled -> scope.launch { container.settingsRepository.setAutoSyncWatchedFolders(enabled) } },
+            { enabled -> container.settingsViewModel.runStorageAction { container.settingsRepository.setAutoSyncWatchedFolders(enabled) } },
             strings.settingsUi.autoSyncWatchedFoldersHint,
             showDivider = false,
         )
