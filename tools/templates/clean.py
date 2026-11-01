@@ -499,7 +499,7 @@ def canonical_row(row: dict) -> str:
 
 def survivor_rank(row: dict, featured_ids: frozenset[str] = frozenset()) -> tuple:
     """Lower wins: official, then existing Featured, then name (codepoint order), then canonical row."""
-    featured = bool(row.get("featured")) or row.get("id") in featured_ids
+    featured = parse_bool(row.get("featured")) or row.get("id") in featured_ids
     return (
         0 if parse_bool(row.get("official")) else 1,
         0 if featured else 1,
@@ -527,7 +527,7 @@ def dedupe_exact_bodies(rows: list[dict], featured_ids: frozenset[str] = frozens
             duplicate_groups += 1
             if any(parse_bool(m.get("official")) for m in members):
                 best["official"] = True
-            if "featured" in best and any(m.get("featured") for m in members):
+            if "featured" in best and any(parse_bool(m.get("featured")) for m in members):
                 best["featured"] = True
             for m in members[1:]:
                 if m.get("id") and m["id"] != best.get("id"):

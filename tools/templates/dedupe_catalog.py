@@ -17,7 +17,7 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-from clean import dedupe_exact_bodies
+from clean import dedupe_exact_bodies, parse_bool
 from curate import CATEGORY_ORDER, quality_score
 
 ROOT = Path(__file__).resolve().parent.parent.parent
@@ -66,30 +66,42 @@ def write_aliases(path: Path, aliases: dict[str, str]) -> None:
     )
 
 
+def resolve_aliases(aliases: dict[str, str], retained: set[str]) -> dict[str, str]:
+    """Follow chains to a retained id; raise on a cycle or a target that is not retained."""
+    out: dict[str, str] = {}
+    for k, v in aliases.items():
+        seen = {k}
+        while v not in retained:
+            if v in seen:
+                raise ValueError(f"cyclic template alias at {k!r} -> {v!r}")
+            if v not in aliases:
+                raise ValueError(f"dangling template alias {k!r} -> {v!r} (not in Full)")
+            seen.add(v)
+            v = aliases[v]
+        if k in retained:
+            raise ValueError(f"alias source {k!r} is still a retained template")
+        out[k] = v
+    return out
+
+
 def run(*, full: Path, featured: list[Path], aliases_kt: Path, report: Path | None) -> dict:
     rows = read_jsonl(full)
     featured_ids = frozenset(r["id"] for p in featured for r in read_jsonl(p))
     res = dedupe_exact_bodies(rows, featured_ids)
     full_out = sorted(
-        (dict(r, featured=r.get("featured") or r["id"] in featured_ids) for r in res.survivors),
+        (dict(r, featured=parse_bool(r.get("featured")) or r["id"] in featured_ids) for r in res.survivors),
         key=sort_key,
     )
     featured_out = [r for r in full_out if r["featured"]]
+
+    # Keep old aliases; repoint any whose survivor was itself removed this run. Validate
+    # before writing anything so a bad map never ships.
+    aliases = resolve_aliases({**read_aliases(aliases_kt), **res.aliases}, {r["id"] for r in full_out})
 
     with full.open("wb") as raw, gzip.GzipFile(fileobj=raw, mode="wb", compresslevel=9, mtime=0, filename="") as gz:
         gz.write(dump(full_out).encode("utf-8"))
     for p in featured:
         p.write_text(dump(featured_out), encoding="utf-8")
-
-    # Keep old aliases; repoint any whose survivor was itself removed this run.
-    retained = {r["id"] for r in full_out}
-    aliases = {**read_aliases(aliases_kt), **res.aliases}
-    for k, v in list(aliases.items()):
-        seen = {k}
-        while v not in retained and v in aliases and v not in seen:
-            seen.add(v)
-            v = aliases[v]
-        aliases[k] = v
     write_aliases(aliases_kt, aliases)
 
     summary = {

@@ -44,6 +44,8 @@ class TemplateDuplicateReconcileTest {
             id = flow.id,
         )
 
+        // Rows above simulate a pre-#99 install, which never recorded the reconcile marker.
+        q.setMeta(VelumRepository.META_TEMPLATE_ALIASES_RECONCILED, "")
         val restarted = VelumRepository(handle)
 
         assertNull(restarted.getTemplate(removed), "removed duplicate must be gone")
@@ -63,10 +65,27 @@ class TemplateDuplicateReconcileTest {
         val (removed, _) = alias
         val handle = createDatabase(DriverFactory())
         VelumRepository(handle).upsertTemplate(removed, "Custom", "mine", "", "user prompt")
+        handle.database.velumQueries.setMeta(VelumRepository.META_TEMPLATE_ALIASES_RECONCILED, "")
 
         val restarted = VelumRepository(handle)
 
         assertEquals("Custom", restarted.getTemplate(removed)?.name)
+    }
+
+    @Test
+    fun reconcile_runsOncePerAliasMap() = runBlocking<Unit> {
+        val (removed, _) = alias
+        val handle = createDatabase(DriverFactory())
+        val repo = VelumRepository(handle)
+        assertEquals(
+            PlaudTemplateAliases.RemovedDuplicates.size.toString(),
+            handle.database.velumQueries.getMeta(VelumRepository.META_TEMPLATE_ALIASES_RECONCILED).executeAsOneOrNull(),
+        )
+        repo.upsertTemplate(removed, "Later builtin", "meeting", "", "p", builtin = true)
+
+        VelumRepository(handle)
+
+        assertNotNull(repo.getTemplate(removed), "marker set: no rescan on every cold start")
     }
 
     @Test

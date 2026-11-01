@@ -3,6 +3,7 @@ package dev.velum.core.templates
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /**
@@ -81,6 +82,24 @@ class TemplateHygieneCatalogTest {
         val officials = PlaudTemplateCatalog.parseJsonl(PlaudFullTemplateAsset.readJsonl()).filter { it.official }
         assertTrue(officials.size >= 41, "official rows dropped: ${officials.size} < 41")
         officials.forEach { assertTrue(it.id in featuredIds, "official ${it.id} not Featured") }
+    }
+
+    @Test
+    fun official_baseline_stays_official_and_featured() {
+        val file = assertNotNull(
+            generateSequence(java.io.File(System.getProperty("user.dir")).absoluteFile) { it.parentFile }
+                .map { it.resolve("docs/templates/official_baseline.txt") }
+                .firstOrNull { it.isFile },
+            "docs/templates/official_baseline.txt not found from ${System.getProperty("user.dir")}",
+        )
+        val baseline = file.readLines().map { it.trim() }.filter { it.isNotEmpty() && !it.startsWith("#") }
+        assertTrue(baseline.size >= 41, "baseline has ${baseline.size} ids")
+        val full = PlaudTemplateCatalog.parseJsonl(PlaudFullTemplateAsset.readJsonl()).associateBy { it.id }
+        val featuredIds = PlaudTemplateCatalog.All.mapTo(HashSet()) { it.id }
+        baseline.forEach { id ->
+            assertTrue(full[id]?.official == true, "official $id missing or not official in Full")
+            assertTrue(id in featuredIds, "official $id not Featured")
+        }
     }
 
     private fun assertNoHygieneLeak(text: String, id: String) {

@@ -79,7 +79,8 @@ python3 tools/templates/assert_hygiene.py \
   differing only in whitespace or case are distinct.
 - Survivor (first wins): `official` → existing Featured → `name` (plain codepoint order, so
   `"B…"` sorts before `"a…"`) → canonical row JSON (`sort_keys`, compact separators).
-- Survivor inherits `official` / `featured` if any collapsed row had it. Output order does
+- Survivor inherits `official` / `featured` if any collapsed row had it. The generator fails
+  (writing nothing) on a dangling or cyclic alias. Output order does
   not depend on input order; a second run removes nothing.
 - `dedupe_catalog.py` rewrites the shipped gzip / Featured JSONL and appends removed → survivor
   ids to the generated `core/.../templates/PlaudTemplateAliases.kt` (never pruned).
@@ -95,7 +96,9 @@ from Full, or a template in `docs/templates/official_baseline.txt` is missing / 
 official / not Featured. That baseline is the 41 rows flagged official at `1f30a0f`; it is
 **not** an authoritative upstream inventory. Without `--official-inventory` the script prints
 an explicit `BLOCKER` line — official completeness stays unverified until such an inventory
-is cited. Tests: `python3 -m unittest discover -s tools/templates -p "test_*.py"` (runs before
-`:core:jvmTest` via `verifyTemplateCatalog`).
+is cited. Tests: `python3 -m unittest discover -s tools/templates -p "test_*.py"` (run by
+`run_all.sh`). The Gradle build needs no Python: `TemplateHygieneCatalogTest` (`:core:jvmTest`)
+re-checks the shipped assets — no duplicate bodies, Featured ⊆ Full, ≥100 distinct bodies per
+category, and every `official_baseline.txt` id official + Featured.
 
 Display rules in the app (unchanged): no official badge, no author credit (except Velum PR `contributor`).

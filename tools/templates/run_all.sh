@@ -33,4 +33,7 @@ python3 "$ROOT/tools/templates/assert_hygiene.py" \
   --min-per-category 100 \
   --official-baseline "$ROOT/docs/templates/official_baseline.txt"
 
+# Dedupe / Featured gate regression tests (#99, #101).
+python3 -m unittest discover -s "$ROOT/tools/templates" -p "test_*.py"
+
 echo "Pipeline complete."

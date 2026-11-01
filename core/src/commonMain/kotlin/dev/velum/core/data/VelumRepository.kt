@@ -66,7 +66,9 @@ class VelumRepository(
      * [dev.velum.core.templates.BuiltinTemplateCatalog.resolveId].
      */
     private fun reconcileRemovedTemplateDuplicates() {
-        val dropped = mutableListOf<String>()
+        // Alias map only grows, so its size identifies what has been reconciled already.
+        val version = PlaudTemplateAliases.RemovedDuplicates.size.toString()
+        if (q.getMeta(META_TEMPLATE_ALIASES_RECONCILED).executeAsOneOrNull() == version) return
         db.transaction {
             PlaudTemplateAliases.RemovedDuplicates.forEach { (removed, survivor) ->
                 val row = q.selectTemplateById(removed).executeAsOneOrNull()
@@ -74,11 +76,11 @@ class VelumRepository(
                 q.repointAutoflowTemplate(survivor, removed)
                 if (row != null) {
                     q.deleteBuiltinTemplate(removed)
-                    dropped += removed
+                    if (ftsAvailable) FtsIndex.deleteTemplate(driver, removed)
                 }
             }
+            q.setMeta(META_TEMPLATE_ALIASES_RECONCILED, version)
         }
-        if (ftsAvailable) dropped.forEach { FtsIndex.deleteTemplate(driver, it) }
     }
 
     fun observeRecordings(): Flow<List<Recording>> =
@@ -840,6 +842,7 @@ class VelumRepository(
 
     companion object {
         const val META_FIRST_RUN_DONE = "first_run_done"
+        const val META_TEMPLATE_ALIASES_RECONCILED = "template_aliases_reconciled"
     }
 }
 

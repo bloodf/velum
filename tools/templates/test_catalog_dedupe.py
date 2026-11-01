@@ -2,7 +2,7 @@
 """Regression tests for exact-body dedupe (#99) and the Featured/official gate (#101).
 
 Run: python3 -m unittest discover -s tools/templates -p "test_*.py"
-(also wired into `:core:jvmTest` via the `verifyTemplateCatalog` Gradle task).
+(also run by tools/templates/run_all.sh; Kotlin TemplateHygieneCatalogTest mirrors the gate).
 """
 from __future__ import annotations
 
@@ -110,6 +110,23 @@ class DedupeExactBodiesTest(unittest.TestCase):
         twice = dedupe_exact_bodies(once.survivors)
         self.assertEqual(once.survivors, twice.survivors)
         self.assertEqual(0, twice.removed_rows)
+
+
+class ResolveAliasesTest(unittest.TestCase):
+    def test_follows_chain_to_retained_id(self):
+        self.assertEqual({"a": "c", "b": "c"}, dedupe_catalog.resolve_aliases({"a": "b", "b": "c"}, {"c"}))
+
+    def test_dangling_target_fails(self):
+        with self.assertRaisesRegex(ValueError, "dangling"):
+            dedupe_catalog.resolve_aliases({"a": "gone"}, {"c"})
+
+    def test_cycle_fails(self):
+        with self.assertRaisesRegex(ValueError, "cyclic"):
+            dedupe_catalog.resolve_aliases({"a": "b", "b": "a"}, {"c"})
+
+    def test_retained_source_fails(self):
+        with self.assertRaisesRegex(ValueError, "still a retained"):
+            dedupe_catalog.resolve_aliases({"c": "d"}, {"c", "d"})
 
 
 class DedupeCatalogTest(unittest.TestCase):
