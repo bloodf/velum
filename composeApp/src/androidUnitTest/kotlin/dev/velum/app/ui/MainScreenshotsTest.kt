@@ -221,7 +221,9 @@ class MainScreenshotsTest {
     }
 
     @Test
-    fun voiceProfiles() {
+    fun voiceProfiles() = captureVoiceProfiles("12-voice-profiles", dark = false)
+
+    private fun captureVoiceProfiles(name: String, dark: Boolean) {
         val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup()
         try {
             activity.get().setContent {
@@ -229,17 +231,18 @@ class MainScreenshotsTest {
                     LocalStrings provides PtBr,
                     LocalDensity provides Density(density = 3f, fontScale = 1f),
                 ) {
-                    VelumTheme(darkTheme = false) {
+                    VelumTheme(darkTheme = dark) {
                         VoiceProfilesScreen(container = container, onBack = {})
                     }
                 }
             }
             composeRule.waitUntil(10_000) {
-                composeRule.onAllNodesWithText("Heitor").fetchSemanticsNodes().isNotEmpty()
+                composeRule.onAllNodesWithText("Heitor").fetchSemanticsNodes().isNotEmpty() &&
+                    composeRule.onAllNodesWithText("Marina").fetchSemanticsNodes().isNotEmpty()
             }
             composeRule.onNodeWithText("Heitor").assertIsDisplayed()
             composeRule.onNodeWithText("Marina").assertIsDisplayed()
-            composeRule.onRoot().captureRoboImage("velum-12-voice-profiles.png")
+            composeRule.onRoot().captureRoboImage("velum-$name.png")
         } finally {
             activity.pause().stop().destroy()
         }
@@ -488,9 +491,7 @@ class MainScreenshotsTest {
     }
 
     @Test
-    fun darkVoiceProfiles() = capture("dark-12-voice-profiles", dark = true) {
-        VoiceProfilesScreen(container, onBack = {})
-    }
+    fun darkVoiceProfiles() = captureVoiceProfiles("dark-12-voice-profiles", dark = true)
 
     @Test
     fun darkAiProcessing() = capture("dark-13-ai-processing", dark = true) {
