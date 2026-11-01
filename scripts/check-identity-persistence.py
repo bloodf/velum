@@ -111,7 +111,7 @@ def main():
                     raise AssertionError("Fixture phase failed; see local redacted instrumentation evidence")
                 metadata = json.loads(adb("exec-out", "run-as", PACKAGE, "cat", metadata_path))
                 expected = {"prepare": "prepared", "verify": "verified", "cleanup": "cleaned"}[phase]
-                if metadata.get("run") != run or metadata.get("phase") != expected:
+                if metadata.get("run") != run or metadata.get("phase") != expected or metadata.get("namespace_reserved") is not True:
                     raise AssertionError("Fixture metadata did not confirm phase completion")
                 (dest / (phase + "-metadata.json")).write_text(json.dumps(metadata, indent=2) + "\n")
                 if phase in ("prepare", "verify"):

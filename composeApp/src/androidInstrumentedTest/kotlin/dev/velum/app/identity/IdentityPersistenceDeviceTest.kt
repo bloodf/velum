@@ -47,12 +47,19 @@ class IdentityPersistenceDeviceTest {
             "prepare" -> {
                 assertTrue("Fixture UUID was already used", !metadata.exists())
                 assertTrue("Fixture directory unavailable", directory.isDirectory || directory.mkdirs())
-                val info = JSONObject().put("run", run).put("first_pid", pid).put("first_start_elapsed", start).put("phase", "preparing")
-                writeMetadata(metadata, info)
+                // Reserve both namespaces before creating either vault. A pre-existing
+                // alias/file collision must never become eligible for diagnostic cleanup.
                 for (kind in KINDS) {
                     val fixture = Fixture(context, run, kind)
                     assertTrue("Synthetic alias collision", !fixture.keyStore().containsAlias(fixture.alias))
+                    assertTrue("Synthetic preference file collision", !fixture.preferenceFile().exists())
                     assertTrue("Synthetic preferences collision", fixture.preferences().all.isEmpty())
+                }
+                val info = JSONObject().put("run", run).put("first_pid", pid).put("first_start_elapsed", start)
+                    .put("phase", "preparing").put("namespace_reserved", true)
+                writeMetadata(metadata, info)
+                for (kind in KINDS) {
+                    val fixture = Fixture(context, run, kind)
                     if (kind == "json") {
                         val result = PlaudExportImporter.importInto(fixture.json(), fixture.importer(), null)
                         assertTrue("Synthetic JSON import failed", result is PlaudExportParseResult.Success)
@@ -69,6 +76,7 @@ class IdentityPersistenceDeviceTest {
                 val info = JSONObject(readText(metadata))
                 assertEquals(run, info.getString("run"))
                 assertEquals("prepared", info.getString("phase"))
+                assertTrue("Fixture namespace was not reserved", info.getBoolean("namespace_reserved"))
                 assertTrue("No new process was observed", info.getInt("first_pid") != pid)
                 assertTrue("Process start did not change", info.getLong("first_start_elapsed") != start)
                 for (kind in KINDS) {
@@ -82,6 +90,7 @@ class IdentityPersistenceDeviceTest {
             "cleanup" -> {
                 val info = JSONObject(readText(metadata))
                 assertEquals(run, info.getString("run"))
+                assertTrue("Fixture namespace was not reserved", info.getBoolean("namespace_reserved"))
                 val priorPhase = info.getString("phase")
                 val verified = priorPhase == "verified"
                 if (!verified) {
@@ -136,7 +145,7 @@ class IdentityPersistenceDeviceTest {
             assertTrue("Synthetic Keystore entry missing", keyStore().getEntry(alias, null) is KeyStore.SecretKeyEntry)
             val file = preferenceFile()
             val stat = Os.stat(file.absolutePath)
-            // Android14 ContextImpl.setFilePermissionsFromMode deliberately uses0660
+            // Android14 ContextImpl.setFilePermissionsFromMode deliberately uses 0660
             // for MODE_PRIVATE. The group must be this app's own GID, never a shared group.
             assertTrue("Preferences have other-user permissions", stat.st_mode and 0b111 == 0)
             assertEquals(Process.myUid(), stat.st_uid)
