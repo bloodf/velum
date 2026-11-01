@@ -39,3 +39,21 @@ Settings → **Import from Plaud**: paste fields and/or choose a JSON file (Andr
 Identity fields and the JSON draft are masked in the editor. Validation errors use controlled messages; decoder diagnostics, raw input and unexpected exception messages are never displayed. Identity objects also have redacted diagnostic representations. Do not paste real bundles into issues, chat, logs or test artifacts; fixtures must be synthetic.
 
 Malformed or partial bundles are rejected before writing identity or templates. Secure-storage failures remain explicit and retryable; cancellation propagates. A successful multi-field import is not an atomic transaction across identity entries and templates: a later storage failure can follow an earlier successful write. Real-device unlock and persistence checks remain owner-dependent (#3 / #4).
+
+## Synthetic Android persistence verification
+
+Build the isolated test APKs, then choose an explicit emulator and a new empty evidence directory:
+
+```sh
+./gradlew :composeApp:assembleDebug :composeApp:assembleDebugAndroidTest -PvelumIdentityPersistenceTest=true --max-workers=2
+./gradlew :composeApp:assembleMinifiedTest :composeApp:assembleMinifiedTestAndroidTest -PvelumIdentityPersistenceTest=true -PvelumTestBuildType=minifiedTest --max-workers=2
+python3 scripts/check-identity-persistence.py --serial emulator-5554 --output /tmp/velum-identity-check-001
+```
+
+Use the JDK/SDK setup in [ENGINEERING_STANDARDS.md](ENGINEERING_STANDARDS.md). The script rejects physical targets and dirty verification trees. Its test-only runner creates a plain `Application`, avoiding `VelumApplication`/`AppContainer` startup. Both JSON and pasted-field APIs use fresh UUID-namespaced preferences and Android Keystore aliases; production vault names are never used. The prepare and verify phases run in different PIDs with different process start times. Verification checks reloaded identity, encrypted preference contents, app UID/GID ownership, private-directory isolation, malformed-input preservation and process-scoped log redaction. Android `MODE_PRIVATE` may use `0660` for the app's own UID/GID; it must not grant other-user access.
+
+The permission assertion follows Android's [ContextImpl implementation](https://github.com/aosp-mirror/platform_frameworks_base/blob/android-14.0.0_r1/core/java/android/app/ContextImpl.java#L3279), rather than assuming that private preferences must have mode `0600`.
+
+Only the two verified synthetic vaults are cleaned up. Failed runs retain their UUID and last confirmed phase for diagnosis; explicit failed-fixture cleanup is distinct from an acceptance pass. Evidence stays local and must not contain owner identity. The test does not validate real-device unlock, owner secrets, hardware-backed key attestation or atomic multi-entry imports.
+
+`velumIdentityPersistenceTest` selects only the test APK's runner and defaults to false. Rebuild Android test APKs without that property before running the normal device-walk runner. Production APKs do not include the synthetic runner or fixtures.

@@ -31,6 +31,8 @@ def main():
     if not adb_binary:
         parser.error("Set ANDROID_HOME or put adb on PATH")
     adb_command = [adb_binary, "-s", args.serial]
+    if args.output.exists() and any(args.output.iterdir()):
+        parser.error("Use a new empty output directory to preserve previous evidence")
     args.output.mkdir(parents=True, exist_ok=True)
     report = dict(started_utc=utc(), status="running", serial=args.serial, variants=[])
     signature = base64.b64encode(bytes((i * 7) % 251 for i in range(256))).decode()

@@ -92,6 +92,29 @@
 -keep class dev.velum.core.security.AndroidSecureStore {
     public <init>(android.content.Context, java.lang.String, java.lang.String);
 }
+# Exact cross-APK calls from IdentityPersistenceDeviceTest (verified with javap).
+# Test-only interfaces/types stay identifiable; unused members may still shrink.
+-keep interface dev.velum.core.security.SecureStore {}
+-keep interface dev.velum.core.security.DeviceKeyImporter {}
+-keep class dev.velum.core.security.SecureDeviceKeyImporter {
+    public <init>(dev.velum.core.security.SecureStore);
+    public java.lang.Object importKeys(java.lang.String,java.lang.String,java.lang.String,java.lang.String,java.lang.String,kotlin.coroutines.Continuation);
+    public java.lang.Object loadKeys(kotlin.coroutines.Continuation);
+}
+-keep class dev.velum.core.security.PlaudExportImporter {
+    public static final dev.velum.core.security.PlaudExportImporter INSTANCE;
+    public java.lang.Object importInto(java.lang.String,dev.velum.core.security.DeviceKeyImporter,kotlin.jvm.functions.Function2,kotlin.coroutines.Continuation);
+}
+-keep class dev.velum.core.security.PlaudExportParseResult {}
+-keep class dev.velum.core.security.PlaudExportParseResult$Success {}
+-keep class dev.velum.core.security.PlaudExportParseResult$Failure {}
+-keep class dev.velum.protocol.DeviceIdentityKeys {
+    public java.lang.String getSerialNumber();
+    public byte[] getSerialSignature();
+    public java.lang.String getPublicKeyPem();
+    public java.lang.String getPrivateKeyPem();
+    public java.lang.String getBindToken();
+}
 
 # AndroidJUnitRunner 1.6+ resolves Trace in onCreate from the app APK.
 -keep class androidx.tracing.Trace { *; }
