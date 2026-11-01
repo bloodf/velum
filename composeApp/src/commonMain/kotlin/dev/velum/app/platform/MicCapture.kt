@@ -1,6 +1,12 @@
 package dev.velum.app.platform
 
 import dev.velum.app.i18n.Strings
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+
+private val noMicSessions: StateFlow<MicSessionState> = MutableStateFlow<MicSessionState>(MicSessionState.Idle).asStateFlow()
+private val noMicFailures: StateFlow<String?> = MutableStateFlow<String?>(null).asStateFlow()
 
 /**
  * Capture input for phone / headset / USB audio routes.
@@ -38,6 +44,20 @@ data class MicMarker(
  * with `runBlocking` while waiting for the FGS (ANR risk).
  */
 interface MicCapture {
+    val sessions: StateFlow<MicSessionState> get() = noMicSessions
+    suspend fun stop(session: MicSessionIdentity): MicStopResult = if (sessions.value.session == session) stop() else MicStopResult.NotCapturing
+    suspend fun pause(session: MicSessionIdentity): MicPauseResult = if (sessions.value.session == session) pause() else MicPauseResult.NotCapturing
+    suspend fun resume(session: MicSessionIdentity): MicPauseResult = if (sessions.value.session == session) resume() else MicPauseResult.NotCapturing
+    suspend fun addMarker(session: MicSessionIdentity, label: String = ""): MicMarkerResult = if (sessions.value.session == session) addMarker(label) else MicMarkerResult.NotCapturing
+    fun attachPcm(session: MicSessionIdentity, listener: (ByteArray) -> Unit): Boolean {
+        if (sessions.value.session != session) return false
+        onPcmChunk = listener; return true
+    }
+    fun detachPcm(session: MicSessionIdentity, listener: (ByteArray) -> Unit) {
+        if (sessions.value.session == session && onPcmChunk === listener) onPcmChunk = null
+    }
+    /** Latest terminal capture failure; platforms without capture keep this empty. */
+    val failures: StateFlow<String?> get() = noMicFailures
     val isSupported: Boolean
     /** True while the capture session is active (recording or paused). */
     val isCapturing: Boolean
@@ -87,7 +107,7 @@ sealed class MicMarkerResult {
 }
 
 sealed class MicStartResult {
-    data object Started : MicStartResult()
+    data class Started(val session: MicSessionIdentity) : MicStartResult()
     data class Failed(val message: String) : MicStartResult()
     data object Unsupported : MicStartResult()
     data object PermissionRequired : MicStartResult()
@@ -105,6 +125,7 @@ sealed class MicStopResult {
         val absolutePath: String,
         val durationSeconds: Long,
         val sizeBytes: Long,
+        val session: MicSessionIdentity? = null,
     ) : MicStopResult()
     data class Failed(val message: String) : MicStopResult()
     data object NotCapturing : MicStopResult()
@@ -120,7 +141,7 @@ expect fun createMicCapture(): MicCapture
  */
 fun shouldUseDemoPcm(result: MicStartResult): Boolean = when (result) {
     MicStartResult.Unsupported -> true
-    MicStartResult.Started,
+    is MicStartResult.Started,
     MicStartResult.PermissionRequired,
     is MicStartResult.Failed,
     -> false

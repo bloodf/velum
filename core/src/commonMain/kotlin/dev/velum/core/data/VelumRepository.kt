@@ -110,6 +110,17 @@ class VelumRepository(
         q.selectRecordingById(id).executeAsOneOrNull()
     }
 
+    /** Compare the complete snapshot in one transaction; never overwrite an advanced job/import. */
+    suspend fun failInterruptedPhoneDraft(expected: Recording): Boolean = withContext(Dispatchers.Default) {
+        db.transactionWithResult {
+            val current = q.selectRecordingById(expected.id).executeAsOneOrNull()
+            if (current == null || current != expected || current.source != "phone" || current.status != "recording" ||
+                current.duration_seconds != 0L || current.size_bytes != 0L ||
+                !current.transcript.isNullOrBlank() || !current.summary_markdown.isNullOrBlank()) false
+            else { q.updateStatus("failed", current.id); true }
+        }
+    }
+
     suspend fun getAllRecordings(): List<Recording> = withContext(Dispatchers.Default) {
         q.selectAllRecordings().executeAsList()
     }

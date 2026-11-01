@@ -29,7 +29,7 @@ class MicRecordingServiceSourceTest {
             "ACTION_STOP should spawn velum-mic-stop thread",
         )
         assertTrue(
-            src.contains("thread(name = \"velum-mic-stop\""),
+            src.contains("runtime.launch(\"velum-mic-stop\")"),
             "stop must not join on the main onStartCommand path",
         )
         // join still exists for the record thread, but only inside stopRecording

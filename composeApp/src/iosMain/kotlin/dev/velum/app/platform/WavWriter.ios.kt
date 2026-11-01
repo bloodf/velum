@@ -11,3 +11,9 @@ internal actual fun recoverOrFinalizeWav(
     absolutePath: String,
     sampleRateHz: Int,
 ): WavFinish? = null
+
+internal actual fun recoverDetailedWav(absolutePath: String, sampleRateHz: Int): WavRecoveryResult =
+    WavRecoveryResult.Unsupported(absolutePath)
+
+// Microphone capture is unsupported here; never infer that a user file is missing.
+internal actual fun inspectMicDraftAudio(absolutePath: String): MicDraftAudioEvidence = MicDraftAudioEvidence.Unavailable
