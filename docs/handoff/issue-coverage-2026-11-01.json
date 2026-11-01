@@ -1,0 +1,4228 @@
+{
+  "snapshot_utc": "2026-11-01T22:20:45.446303+00:00",
+  "repository": "bloodf/velum",
+  "remote_main": "1f30a0f18fb959a6020606f50e82d5ac0bb2601d",
+  "open_issue_pages_read": 2,
+  "closed_issue_pages_read": 1,
+  "counts": {
+    "open": 101,
+    "closed": 16,
+    "total": 117
+  },
+  "important": "Coverage inventory is complete by issue ID; many source audits are pending. Excerpts are not substitutes for canonical issue criteria. Closed-before-task items were not reaudited. Local validation does not establish hardware quality or absence of defects.",
+  "records": [
+    {
+      "issue": 3,
+      "title": "Extract Note Pro identity (snSignature, bind token, keys) via the USB route",
+      "url": "https://github.com/bloodf/velum/issues/3",
+      "state": "open",
+      "labels": [
+        "area:ble",
+        "area:import",
+        "type:task",
+        "priority:p0",
+        "status:blocked-on-owner",
+        "status:needs-hardware",
+        "platform:android"
+      ],
+      "priority": "priority:p0",
+      "scope_source": "https://github.com/bloodf/velum/issues/3",
+      "acceptance_excerpt": [
+        "Identity JSON produced locally on the owner's machine",
+        "Schema validates against `docs/PLAUD_IMPORT.md`",
+        "No identity values appear in the repo, issues, logs or CI artifacts"
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "hardware_or_owner_evidence_needed",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "## Acceptance criteria",
+        "Hardware verification item (verify on a real Note Pro). Software side, built against fixtures and simulated BLE: #89."
+      ],
+      "referenced_issues": [
+        89
+      ],
+      "PRs": [],
+      "owner_or_external_blocker": "Requires owned physical recorder/device/captures or owner measurement; synthetic tests do not satisfy hardware acceptance."
+    },
+    {
+      "issue": 4,
+      "title": "Import Note Pro identity into the app and verify Keystore storage",
+      "url": "https://github.com/bloodf/velum/issues/4",
+      "state": "open",
+      "labels": [
+        "area:import",
+        "type:task",
+        "priority:p0",
+        "status:needs-hardware",
+        "platform:android"
+      ],
+      "priority": "priority:p0",
+      "scope_source": "https://github.com/bloodf/velum/issues/4",
+      "acceptance_excerpt": [
+        "Import succeeds from JSON and from pasted fields",
+        "Values persist across restart; ciphertext only in private prefs",
+        "Clear error on malformed input",
+        "Logs never print identity values"
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "hardware_or_owner_evidence_needed",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "The key import UI (Settings → paste fields or Plaud JSON v1 → Android Keystore AES-256-GCM) is built but untested with real values. See `docs/PLAUD_IMPORT.md`, `core` `DeviceKeyImporter` / `AndroidSecureStore`.",
+        "## Acceptance criteria",
+        "Hardware verification item (verify on a real Note Pro). Software side, built against fixtures and simulated BLE: #92."
+      ],
+      "referenced_issues": [
+        92
+      ],
+      "PRs": [],
+      "owner_or_external_blocker": "Requires owned physical recorder/device/captures or owner measurement; synthetic tests do not satisfy hardware acceptance."
+    },
+    {
+      "issue": 5,
+      "title": "Validate BLE unlock, advertising and battery on a real Note Pro",
+      "url": "https://github.com/bloodf/velum/issues/5",
+      "state": "open",
+      "labels": [
+        "area:ble",
+        "type:validation",
+        "priority:p0",
+        "status:needs-hardware",
+        "platform:android"
+      ],
+      "priority": "priority:p0",
+      "scope_source": "https://github.com/bloodf/velum/issues/5",
+      "acceptance_excerpt": [
+        "Device discovered with expected advertising data",
+        "Unlock succeeds and session persists across reconnect",
+        "Battery level shown and updates",
+        "Findings recorded in `docs/STATUS.md`"
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "hardware_or_owner_evidence_needed",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "## Acceptance criteria",
+        "Hardware verification item (verify on a real Note Pro). Software side, built against fixtures and simulated BLE: #93."
+      ],
+      "referenced_issues": [
+        93
+      ],
+      "PRs": [],
+      "owner_or_external_blocker": "Requires owned physical recorder/device/captures or owner measurement; synthetic tests do not satisfy hardware acceptance."
+    },
+    {
+      "issue": 6,
+      "title": "Validate multi-hour download with resume and CRC on a real Note Pro",
+      "url": "https://github.com/bloodf/velum/issues/6",
+      "state": "open",
+      "labels": [
+        "area:ble",
+        "area:audio",
+        "type:validation",
+        "priority:p0",
+        "status:needs-hardware",
+        "platform:android"
+      ],
+      "priority": "priority:p0",
+      "scope_source": "https://github.com/bloodf/velum/issues/6",
+      "acceptance_excerpt": [
+        "Full download completes; CRC matches",
+        "Resume continues from the last offset, no duplicate or missing chunks",
+        "Foreground `dataSync` service keeps the transfer alive with screen off",
+        "Transfer time and battery drain noted in `docs/STATUS.md`"
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "hardware_or_owner_evidence_needed",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "BLE-to-file streaming and windowed ASR landed (Y14/Y17 in `docs/REVIEW_2026-10.md`), but multi-hour downloads are only tested against fakes.",
+        "## Acceptance criteria",
+        "Hardware verification item (verify on a real Note Pro). Software side, built against fixtures and simulated BLE: #94."
+      ],
+      "referenced_issues": [
+        94
+      ],
+      "PRs": [],
+      "owner_or_external_blocker": "Requires owned physical recorder/device/captures or owner measurement; synthetic tests do not satisfy hardware acceptance."
+    },
+    {
+      "issue": 7,
+      "title": "Confirm Ogg Opus rate/channels and PLAUD.AI decrypt against a real capture",
+      "url": "https://github.com/bloodf/velum/issues/7",
+      "state": "open",
+      "labels": [
+        "area:audio",
+        "type:validation",
+        "priority:p0",
+        "status:needs-hardware",
+        "platform:android"
+      ],
+      "priority": "priority:p0",
+      "scope_source": "https://github.com/bloodf/velum/issues/7",
+      "acceptance_excerpt": [
+        "Sample rate and channel count match the device's real output",
+        "PLAUD.AI encrypted files decrypt correctly",
+        "Playback sounds right; ASR output is sensible",
+        "Regression test covers the confirmed parameters"
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "hardware_or_owner_evidence_needed",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "- Add a non-sensitive fixture or a header-only test if possible (no owner audio committed).",
+        "## Acceptance criteria",
+        "- [ ] Regression test covers the confirmed parameters",
+        "Hardware verification item (verify on a real Note Pro). Software side, built against fixtures and simulated BLE: #95."
+      ],
+      "referenced_issues": [
+        95
+      ],
+      "PRs": [],
+      "owner_or_external_blocker": "Requires owned physical recorder/device/captures or owner measurement; synthetic tests do not satisfy hardware acceptance."
+    },
+    {
+      "issue": 8,
+      "title": "Validate Wi-Fi SoftAP fast transfer (:8081) on a real Note Pro",
+      "url": "https://github.com/bloodf/velum/issues/8",
+      "state": "open",
+      "labels": [
+        "area:wifi",
+        "type:validation",
+        "priority:p1",
+        "status:needs-hardware",
+        "platform:android"
+      ],
+      "priority": "priority:p1",
+      "scope_source": "https://github.com/bloodf/velum/issues/8",
+      "acceptance_excerpt": [
+        "Phone joins SoftAP and binds the socket to that network",
+        "Transfer completes with matching CRC; throughput recorded",
+        "Automatic BLE fallback works mid-transfer",
+        "Phone returns to its normal network afterwards"
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "hardware_or_owner_evidence_needed",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "- Test fallback to BLE when Wi-Fi drops.",
+        "## Acceptance criteria",
+        "Hardware verification item (verify on a real Note Pro). Software side, built against fixtures and simulated BLE: #96."
+      ],
+      "referenced_issues": [
+        96
+      ],
+      "PRs": [],
+      "owner_or_external_blocker": "Requires owned physical recorder/device/captures or owner measurement; synthetic tests do not satisfy hardware acceptance."
+    },
+    {
+      "issue": 9,
+      "title": "Check whether FE10 alone works with E2EE off (no FE11)",
+      "url": "https://github.com/bloodf/velum/issues/9",
+      "state": "open",
+      "labels": [
+        "area:ble",
+        "type:validation",
+        "priority:p1",
+        "status:needs-hardware",
+        "platform:android"
+      ],
+      "priority": "priority:p1",
+      "scope_source": "https://github.com/bloodf/velum/issues/9",
+      "acceptance_excerpt": [
+        "Result documented in `docs/STATUS.md` and the protocol docs",
+        "If FE10-only works, client skips FE11 in that mode (with test)",
+        "If not, error message explains what is needed"
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "hardware_or_owner_evidence_needed",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "## Acceptance criteria",
+        "- [ ] If FE10-only works, client skips FE11 in that mode (with test)",
+        "Hardware verification item (verify on a real Note Pro). Software side, built against fixtures and simulated BLE: #97."
+      ],
+      "referenced_issues": [
+        97
+      ],
+      "PRs": [],
+      "owner_or_external_blocker": "Requires owned physical recorder/device/captures or owner measurement; synthetic tests do not satisfy hardware acceptance."
+    },
+    {
+      "issue": 10,
+      "title": "Remove the 200 MiB decoded-audio hard fail for very long recordings",
+      "url": "https://github.com/bloodf/velum/issues/10",
+      "state": "closed",
+      "labels": [
+        "area:audio",
+        "area:asr",
+        "type:task",
+        "priority:p1",
+        "platform:android"
+      ],
+      "priority": "priority:p1",
+      "scope_source": "https://github.com/bloodf/velum/issues/10",
+      "acceptance_excerpt": [
+        "A 6h+ recording processes without OOM on a 4 GB RAM phone",
+        "Peak memory stays bounded (measured)",
+        "Unit/instrumented test with a synthetic long file",
+        "REVIEW/STATUS docs updated"
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "closed_before_task_not_reaudited",
+      "implementation_evidence": [
+        "GitHub state only; no claim of fresh source audit"
+      ],
+      "known_gaps": [],
+      "required_validation_notes": [],
+      "referenced_issues": [],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 11,
+      "title": "Share a test APK with the owner after hardware validation passes",
+      "url": "https://github.com/bloodf/velum/issues/11",
+      "state": "open",
+      "labels": [
+        "area:release",
+        "type:task",
+        "priority:p0",
+        "platform:android",
+        "status:parked"
+      ],
+      "priority": "priority:p0",
+      "scope_source": "https://github.com/bloodf/velum/issues/11",
+      "acceptance_excerpt": [
+        "All p0 validation tasks in the Android hardware epic closed",
+        "APK built from a tagged commit with CI green",
+        "Owner confirms install + first sync on his phone"
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "external_or_owner_requirements_to_resolve",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "- After the hardware validation tasks in this epic pass, build a signed APK from `main` and send it to the owner with a short test checklist.",
+        "## Acceptance criteria"
+      ],
+      "referenced_issues": [],
+      "PRs": [],
+      "owner_or_external_blocker": "Inspect criteria for signing/service accounts/store access/product choice; do not create credentials or publish releases without specific scope."
+    },
+    {
+      "issue": 12,
+      "title": "Measure on-device performance and thermals of Parakeet, Whisper and Gemma",
+      "url": "https://github.com/bloodf/velum/issues/12",
+      "state": "open",
+      "labels": [
+        "area:asr",
+        "area:llm",
+        "type:validation",
+        "priority:p1",
+        "status:needs-hardware",
+        "platform:android"
+      ],
+      "priority": "priority:p1",
+      "scope_source": "https://github.com/bloodf/velum/issues/12",
+      "acceptance_excerpt": [
+        "Results table committed to `docs/` (per model x phone)",
+        "`DeviceComputeClass` / `LocalAsrRouter` tier defaults adjusted if needed",
+        "No crash or ANR during a 1h job with screen off"
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "hardware_or_owner_evidence_needed",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "## Acceptance criteria",
+        "Hardware verification item (verify on a real Note Pro). Software side, built against fixtures and simulated BLE: #98."
+      ],
+      "referenced_issues": [
+        98
+      ],
+      "PRs": [],
+      "owner_or_external_blocker": "Requires owned physical recorder/device/captures or owner measurement; synthetic tests do not satisfy hardware acceptance."
+    },
+    {
+      "issue": 13,
+      "title": "Verify Whistle end-to-end on an arm64 emulator with low-RAM limits",
+      "url": "https://github.com/bloodf/velum/issues/13",
+      "state": "open",
+      "labels": [
+        "area:asr",
+        "type:task",
+        "priority:p1",
+        "platform:android",
+        "owner:dev-1",
+        "status:ready"
+      ],
+      "priority": "priority:p1",
+      "scope_source": "https://github.com/bloodf/velum/issues/13",
+      "acceptance_excerpt": [
+        "Run Whistle (Cactus) end to end on an arm64 Android emulator or CI device configured with 3–4 GB RAM and throttled CPU; record actual RAM allocation and CPU-throttling configuration.",
+        "Run same model and audio input on owner's Samsung Galaxy S26 Ultra; record model identity, input duration, app revision, and Android version for both environments.",
+        "Both runs load model, complete transcription, and display resulting transcript without crash or OOM.",
+        "Record model load time, real-time factor, and peak memory for both runs, including measurement method and definition of real-time factor.",
+        "Commit reproducible steps and results to `docs/`, distinguishing emulator findings from physical-device measurements.",
+        "Documentation states that constrained emulator results do not establish real low-end phone performance; physical low-end feedback remains community validation, not an owner hardware-purchase requirement."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "## Acceptance criteria",
+        "- [ ] Record model load time, real-time factor, and peak memory for both runs, including measurement method and definition of real-time factor.",
+        "- [ ] Commit reproducible steps and results to `docs/`, distinguishing emulator findings from physical-device measurements."
+      ],
+      "referenced_issues": [],
+      "PRs": [],
+      "owner_or_external_blocker": "Owner S26 Ultra run is required in addition to feasible constrained emulator run; model assets/inference availability need inspection."
+    },
+    {
+      "issue": 14,
+      "title": "Validate diarization and voice-profile recognition on real meetings",
+      "url": "https://github.com/bloodf/velum/issues/14",
+      "state": "open",
+      "labels": [
+        "area:diarization",
+        "type:validation",
+        "priority:p2",
+        "platform:android"
+      ],
+      "priority": "priority:p2",
+      "scope_source": "https://github.com/bloodf/velum/issues/14",
+      "acceptance_excerpt": [
+        "Speaker count and turns are reasonable on real audio",
+        "Enrolled speakers are recognized across recordings; threshold tuned",
+        "False-match rate documented; unknown speakers stay unlabeled"
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "hardware_or_owner_evidence_needed",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "Speaker separation and 3D-Speaker voice profiles with automatic recognition are implemented and unit-tested.",
+        "## Acceptance criteria"
+      ],
+      "referenced_issues": [],
+      "PRs": [],
+      "owner_or_external_blocker": "Requires owned physical recorder/device/captures or owner measurement; synthetic tests do not satisfy hardware acceptance."
+    },
+    {
+      "issue": 15,
+      "title": "Omi / Friend driver from the open-source Omi project",
+      "url": "https://github.com/bloodf/velum/issues/15",
+      "state": "open",
+      "labels": [
+        "area:devices",
+        "type:task",
+        "priority:p1",
+        "platform:android",
+        "owner:dev-2",
+        "status:ready",
+        "community-tested"
+      ],
+      "priority": "priority:p1",
+      "scope_source": "https://github.com/bloodf/velum/issues/15",
+      "acceptance_excerpt": [],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "Acceptance:",
+        "- Unit tests against protocol fixtures taken from the Omi project, plus a fake BLE peripheral test (multi-characteristic fake transport).",
+        "- UI shows the device as community-tested; no element without a working function."
+      ],
+      "referenced_issues": [
+        19
+      ],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 16,
+      "title": "DIY ESP32 / XIAO devices running Friend firmware (from open-source firmware)",
+      "url": "https://github.com/bloodf/velum/issues/16",
+      "state": "open",
+      "labels": [
+        "area:devices",
+        "type:task",
+        "priority:p2",
+        "platform:android",
+        "community-tested"
+      ],
+      "priority": "priority:p2",
+      "scope_source": "https://github.com/bloodf/velum/issues/16",
+      "acceptance_excerpt": [],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "Acceptance: fixture and fake-peripheral tests for each supported firmware variant; documented supported firmware versions."
+      ],
+      "referenced_issues": [],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 17,
+      "title": "Pocket / OpenPocket driver from open-source sources",
+      "url": "https://github.com/bloodf/velum/issues/17",
+      "state": "open",
+      "labels": [
+        "area:devices",
+        "type:task",
+        "priority:p2",
+        "platform:android",
+        "community-tested"
+      ],
+      "priority": "priority:p2",
+      "scope_source": "https://github.com/bloodf/velum/issues/17",
+      "acceptance_excerpt": [],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "Acceptance: fixture and fake-peripheral tests; community-tested label in the UI."
+      ],
+      "referenced_issues": [],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 18,
+      "title": "Limitless Pendant driver from open-source / community protocol work",
+      "url": "https://github.com/bloodf/velum/issues/18",
+      "state": "open",
+      "labels": [
+        "area:devices",
+        "type:task",
+        "priority:p2",
+        "platform:android",
+        "community-tested"
+      ],
+      "priority": "priority:p2",
+      "scope_source": "https://github.com/bloodf/velum/issues/18",
+      "acceptance_excerpt": [],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "Acceptance: fixture and fake-peripheral tests; community-tested label in the UI."
+      ],
+      "referenced_issues": [
+        20
+      ],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 19,
+      "title": "Generic multi-GATT BLE transport for recorder drivers",
+      "url": "https://github.com/bloodf/velum/issues/19",
+      "state": "open",
+      "labels": [
+        "area:ble",
+        "area:devices",
+        "type:task",
+        "priority:p2",
+        "platform:android",
+        "owner:dev-2",
+        "status:ready",
+        "community-tested"
+      ],
+      "priority": "priority:p2",
+      "scope_source": "https://github.com/bloodf/velum/issues/19",
+      "acceptance_excerpt": [
+        "`GattProfile` transport API (`connect(id, profile)`, `write(characteristic, bytes)`, `notifications(characteristic)`) with profiles defined for Plaud, Omi, Pocket and Limitless (UUIDs from in-repo, cited open-source sources)",
+        "Plaud runs on the shared transport with unchanged behavior (Plaud regression tests pass)",
+        "Forbidden Plaud commands (5, 104, 128, 0xFE20, 143) and setting writes 4/26 are rejected at both the Plaud send path and the transport write layer, on **plaintext only** (sealed packets are never parsed as opcodes); tests cover plain and encrypted sessions",
+        "Transport guard keyed on the Plaud write characteristic UUID (2BB1), not profile id/name; 0xFE20 byte-order tests",
+        "Scan lists only devices with a working driver (Plaud for now); no device shown that can't connect",
+        "Existing E2E tests green",
+        "QA verified"
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "current_main_transport_API_gap_confirmed",
+      "implementation_evidence": [
+        "ble/src/commonMain/kotlin/dev/velum/ble/BleTransport.kt exposes connect(deviceId), raw Plaud-only write(payload), notifications(); no GattProfile API found in ble/recorder source."
+      ],
+      "known_gaps": [
+        "Compare historical closed PRs before implementing generic transport and typed plaintext/sealed writes.",
+        "Add characteristic-keyed forbidden-command enforcement and unchanged Plaud regression/compile-fail probes."
+      ],
+      "required_validation_notes": [
+        "## Acceptance criteria",
+        "- [ ] Plaud runs on the shared transport with unchanged behavior (Plaud regression tests pass)",
+        "- [ ] Forbidden Plaud commands (5, 104, 128, 0xFE20, 143) and setting writes 4/26 are rejected at both the Plaud send path and the transport write layer, on **plaintext only** (sealed packets are never parsed as opcodes); tests cover plain and encrypted sessions",
+        "- [ ] Transport guard keyed on the Plaud write characteristic UUID (2BB1), not profile id/name; 0xFE20 byte-order tests",
+        "- [ ] Existing E2E tests green",
+        "- [ ] QA verified"
+      ],
+      "referenced_issues": [
+        15
+      ],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 20,
+      "title": "Feasibility research: Bee, Soundcore Work, iFlytek and other closed note-takers",
+      "url": "https://github.com/bloodf/velum/issues/20",
+      "state": "open",
+      "labels": [
+        "area:devices",
+        "area:docs",
+        "type:task",
+        "priority:p2"
+      ],
+      "priority": "priority:p2",
+      "scope_source": "https://github.com/bloodf/velum/issues/20",
+      "acceptance_excerpt": [
+        "Each device has an updated row with sources and a go/no-go",
+        "Driver task opened for every device marked go"
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "## Acceptance criteria"
+      ],
+      "referenced_issues": [],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 21,
+      "title": "Verify the curated Plaud template catalog shipped (100 per category)",
+      "url": "https://github.com/bloodf/velum/issues/21",
+      "state": "closed",
+      "labels": [
+        "area:templates",
+        "type:validation",
+        "priority:p1",
+        "platform:android"
+      ],
+      "priority": "priority:p1",
+      "scope_source": "https://github.com/bloodf/velum/issues/21",
+      "acceptance_excerpt": [
+        "Script/test asserts per-category counts",
+        "No duplicate names or bodies",
+        "Discover tabs, FTS and popularity sort work with the full catalog",
+        "Stale STATUS item updated"
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "closed_before_task_not_reaudited",
+      "implementation_evidence": [
+        "GitHub state only; no claim of fresh source audit"
+      ],
+      "known_gaps": [],
+      "required_validation_notes": [],
+      "referenced_issues": [],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 22,
+      "title": "Hide badge/author on built-in templates; credit only PR-contributed templates",
+      "url": "https://github.com/bloodf/velum/issues/22",
+      "state": "closed",
+      "labels": [
+        "area:templates",
+        "area:ui",
+        "type:validation",
+        "priority:p1",
+        "platform:android"
+      ],
+      "priority": "priority:p1",
+      "scope_source": "https://github.com/bloodf/velum/issues/22",
+      "acceptance_excerpt": [
+        "No official badge or author on built-in templates anywhere in the UI",
+        "`contributor` credit renders for PR templates only",
+        "Screenshot/UI test covers both cases",
+        "CONTRIBUTING.md has a template submission section"
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "closed_before_task_not_reaudited",
+      "implementation_evidence": [
+        "GitHub state only; no claim of fresh source audit"
+      ],
+      "known_gaps": [],
+      "required_validation_notes": [],
+      "referenced_issues": [],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 23,
+      "title": "Polish site screenshots to marketing quality",
+      "url": "https://github.com/bloodf/velum/issues/23",
+      "state": "open",
+      "labels": [
+        "area:ui",
+        "area:website",
+        "type:task",
+        "priority:p1",
+        "status:parked"
+      ],
+      "priority": "priority:p1",
+      "scope_source": "https://github.com/bloodf/velum/issues/23",
+      "acceptance_excerpt": [
+        "No developer/technical copy visible in any shot",
+        "Desktop library shows a full, unfiltered list",
+        "All 8 site slots covered (desktop library, recording, transcript, AI note, Ask; mobile library, mobile recording/note; import flow)",
+        "Shots regenerated by a script so they stay in sync with the UI"
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "## Acceptance criteria"
+      ],
+      "referenced_issues": [],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 24,
+      "title": "Build and deploy the marketing website",
+      "url": "https://github.com/bloodf/velum/issues/24",
+      "state": "open",
+      "labels": [
+        "area:website",
+        "type:task",
+        "priority:p1",
+        "status:parked"
+      ],
+      "priority": "priority:p1",
+      "scope_source": "https://github.com/bloodf/velum/issues/24",
+      "acceptance_excerpt": [
+        "All sections use the polished screenshots",
+        "Responsive, Lighthouse ≥ 90 on performance and accessibility",
+        "EN copy (PT optional), privacy policy page linked",
+        "Deployed URL added to README and repo About"
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "## Acceptance criteria"
+      ],
+      "referenced_issues": [],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 25,
+      "title": "Upload the GitHub social preview image",
+      "url": "https://github.com/bloodf/velum/issues/25",
+      "state": "open",
+      "labels": [
+        "area:website",
+        "type:task",
+        "priority:p2",
+        "status:blocked-on-owner",
+        "status:parked"
+      ],
+      "priority": "priority:p2",
+      "scope_source": "https://github.com/bloodf/velum/issues/25",
+      "acceptance_excerpt": [
+        "Image committed under `docs/` (or website assets)",
+        "Uploaded; link previews show it"
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "## Acceptance criteria"
+      ],
+      "referenced_issues": [],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 26,
+      "title": "Release signing and Google Play listing via fastlane",
+      "url": "https://github.com/bloodf/velum/issues/26",
+      "state": "open",
+      "labels": [
+        "area:release",
+        "type:task",
+        "priority:p1",
+        "status:blocked-on-owner",
+        "platform:android",
+        "status:parked"
+      ],
+      "priority": "priority:p1",
+      "scope_source": "https://github.com/bloodf/velum/issues/26",
+      "acceptance_excerpt": [
+        "Tagged build produces a signed AAB in CI",
+        "Listing complete; privacy policy URL live",
+        "Data safety declares BLE, mic, calendar, optional user API",
+        "Internal test release installs from Play"
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "external_or_owner_requirements_to_resolve",
+      "implementation_evidence": [
+        "docs/STATUS.md claims code readiness; actual signing fallback was reproduced and fixed in pending PR123. Historical documentation is not accepted as runtime evidence."
+      ],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "- Internal testing track first.",
+        "## Acceptance criteria",
+        "- [ ] Internal test release installs from Play"
+      ],
+      "referenced_issues": [],
+      "PRs": [],
+      "owner_or_external_blocker": "Inspect criteria for signing/service accounts/store access/product choice; do not create credentials or publish releases without specific scope."
+    },
+    {
+      "issue": 27,
+      "title": "Publish on F-Droid",
+      "url": "https://github.com/bloodf/velum/issues/27",
+      "state": "open",
+      "labels": [
+        "area:release",
+        "type:task",
+        "priority:p2",
+        "platform:android",
+        "status:parked"
+      ],
+      "priority": "priority:p2",
+      "scope_source": "https://github.com/bloodf/velum/issues/27",
+      "acceptance_excerpt": [
+        "Dependency audit for F-Droid done",
+        "Merge request to fdroiddata opened",
+        "App available on F-Droid"
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "external_or_owner_requirements_to_resolve",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "## Acceptance criteria"
+      ],
+      "referenced_issues": [],
+      "PRs": [],
+      "owner_or_external_blocker": "Inspect criteria for signing/service accounts/store access/product choice; do not create credentials or publish releases without specific scope."
+    },
+    {
+      "issue": 28,
+      "title": "Close remaining review debt: SoftAP fixed AEAD nonce, dependency updates, OSV CI",
+      "url": "https://github.com/bloodf/velum/issues/28",
+      "state": "open",
+      "labels": [
+        "area:wifi",
+        "area:release",
+        "type:task",
+        "priority:p2",
+        "owner:dev-1",
+        "status:ready"
+      ],
+      "priority": "priority:p2",
+      "scope_source": "https://github.com/bloodf/velum/issues/28",
+      "acceptance_excerpt": [
+        "S13 resolved or documented as an accepted risk with reasoning",
+        "Dependency update strategy in place; OSV job in CI",
+        "REVIEW doc updated with the final status of each deferred item"
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [
+        "docs/STATUS.md claims code readiness; actual signing fallback was reproduced and fixed in pending PR123. Historical documentation is not accepted as runtime evidence."
+      ],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "- After real-hardware SoftAP tests, decide whether a per-message nonce is possible without breaking device compatibility.",
+        "## Acceptance criteria"
+      ],
+      "referenced_issues": [
+        2
+      ],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 29,
+      "title": "Desktop D0: owner sign-off that desktop starts after the Android gate",
+      "url": "https://github.com/bloodf/velum/issues/29",
+      "state": "open",
+      "labels": [
+        "area:desktop",
+        "type:task",
+        "priority:p2",
+        "status:blocked-on-owner",
+        "platform:desktop"
+      ],
+      "priority": "priority:p2",
+      "scope_source": "https://github.com/bloodf/velum/issues/29",
+      "acceptance_excerpt": [
+        "Owner confirms the order and the macOS + Windows scope",
+        "D0 checkbox ticked in DESKTOP_PLAN.md"
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "external_or_owner_requirements_to_resolve",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "## Acceptance criteria"
+      ],
+      "referenced_issues": [],
+      "PRs": [],
+      "owner_or_external_blocker": "Inspect criteria for signing/service accounts/store access/product choice; do not create credentials or publish releases without specific scope."
+    },
+    {
+      "issue": 30,
+      "title": "Desktop D1: mic + system-audio capture on macOS and Windows",
+      "url": "https://github.com/bloodf/velum/issues/30",
+      "state": "open",
+      "labels": [
+        "area:audio",
+        "area:desktop",
+        "type:task",
+        "priority:p2",
+        "platform:desktop"
+      ],
+      "priority": "priority:p2",
+      "scope_source": "https://github.com/bloodf/velum/issues/30",
+      "acceptance_excerpt": [
+        "Records mic + system audio of a video call on both OSes",
+        "Permission denial explained clearly",
+        "Secrets stored in the OS keychain, not plaintext"
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "## Acceptance criteria"
+      ],
+      "referenced_issues": [],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 31,
+      "title": "Desktop D2: local STT on desktop (chunked, then near-live)",
+      "url": "https://github.com/bloodf/velum/issues/31",
+      "state": "open",
+      "labels": [
+        "area:asr",
+        "area:desktop",
+        "type:task",
+        "priority:p2",
+        "platform:desktop"
+      ],
+      "priority": "priority:p2",
+      "scope_source": "https://github.com/bloodf/velum/issues/31",
+      "acceptance_excerpt": [
+        "1h recording transcribes locally on macOS (Apple Silicon) and Windows x64",
+        "Diarization + summary pipeline works end-to-end",
+        "Near-live captions while recording (stretch)"
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "## Acceptance criteria"
+      ],
+      "referenced_issues": [],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 32,
+      "title": "Desktop D3: meeting detection and calendar auto-start",
+      "url": "https://github.com/bloodf/velum/issues/32",
+      "state": "open",
+      "labels": [
+        "area:desktop",
+        "type:task",
+        "priority:p2",
+        "platform:desktop"
+      ],
+      "priority": "priority:p2",
+      "scope_source": "https://github.com/bloodf/velum/issues/32",
+      "acceptance_excerpt": [
+        "Detects Zoom/Meet/Teams calls and prompts (opt-in)",
+        "Recording named from the calendar event",
+        "AutoFlow runs after the meeting ends"
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "## Acceptance criteria"
+      ],
+      "referenced_issues": [],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 33,
+      "title": "Desktop D4: UX parity with the phone app + packaging",
+      "url": "https://github.com/bloodf/velum/issues/33",
+      "state": "open",
+      "labels": [
+        "area:ui",
+        "area:desktop",
+        "area:release",
+        "type:task",
+        "priority:p2",
+        "platform:desktop"
+      ],
+      "priority": "priority:p2",
+      "scope_source": "https://github.com/bloodf/velum/issues/33",
+      "acceptance_excerpt": [
+        "Feature parity checklist vs Android passes",
+        "Installers build in CI and install cleanly on fresh machines"
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "## Acceptance criteria"
+      ],
+      "referenced_issues": [],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 34,
+      "title": "Desktop D5: user-owned sync and MCP/CLI access to notes",
+      "url": "https://github.com/bloodf/velum/issues/34",
+      "state": "open",
+      "labels": [
+        "area:desktop",
+        "type:task",
+        "priority:p2",
+        "platform:desktop"
+      ],
+      "priority": "priority:p2",
+      "scope_source": "https://github.com/bloodf/velum/issues/34",
+      "acceptance_excerpt": [
+        "Phone ↔ desktop sync works without a Velum server, E2E encrypted",
+        "MCP/CLI lists and reads notes",
+        "Linux decision documented"
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "## Acceptance criteria"
+      ],
+      "referenced_issues": [],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 35,
+      "title": "iOS: Xcode project, CI, Kable BLE and Keychain SecureStore",
+      "url": "https://github.com/bloodf/velum/issues/35",
+      "state": "open",
+      "labels": [
+        "area:ble",
+        "area:ios",
+        "type:task",
+        "priority:p2",
+        "platform:ios"
+      ],
+      "priority": "priority:p2",
+      "scope_source": "https://github.com/bloodf/velum/issues/35",
+      "acceptance_excerpt": [
+        "App builds and runs on a physical iPhone",
+        "Plaud BLE unlock + download works on iOS",
+        "Identity values stored in Keychain"
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "## Acceptance criteria"
+      ],
+      "referenced_issues": [],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 36,
+      "title": "iOS: recording, import and local AI (ASR, diarization, LLM)",
+      "url": "https://github.com/bloodf/velum/issues/36",
+      "state": "open",
+      "labels": [
+        "area:audio",
+        "area:asr",
+        "area:ios",
+        "type:task",
+        "priority:p2",
+        "platform:ios"
+      ],
+      "priority": "priority:p2",
+      "scope_source": "https://github.com/bloodf/velum/issues/36",
+      "acceptance_excerpt": [
+        "Record → transcribe → summarize fully on device",
+        "Import from Files and share sheet",
+        "Perf/thermal measured on an older iPhone"
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "## Acceptance criteria",
+        "- [ ] Perf/thermal measured on an older iPhone"
+      ],
+      "referenced_issues": [],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 37,
+      "title": "iOS: TestFlight and App Store release",
+      "url": "https://github.com/bloodf/velum/issues/37",
+      "state": "open",
+      "labels": [
+        "area:ios",
+        "area:release",
+        "type:task",
+        "priority:p2",
+        "status:blocked-on-owner",
+        "platform:ios"
+      ],
+      "priority": "priority:p2",
+      "scope_source": "https://github.com/bloodf/velum/issues/37",
+      "acceptance_excerpt": [
+        "TestFlight build installable by the owner",
+        "App Store review passed"
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "external_or_owner_requirements_to_resolve",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "- Signing via fastlane match (secrets in CI store only), TestFlight beta, App Store listing + privacy labels.",
+        "## Acceptance criteria",
+        "- [ ] TestFlight build installable by the owner"
+      ],
+      "referenced_issues": [],
+      "PRs": [],
+      "owner_or_external_blocker": "Inspect criteria for signing/service accounts/store access/product choice; do not create credentials or publish releases without specific scope."
+    },
+    {
+      "issue": 38,
+      "title": "[Epic] Device identity & Note Pro",
+      "url": "https://github.com/bloodf/velum/issues/38",
+      "state": "open",
+      "labels": [
+        "area:ble",
+        "type:epic",
+        "priority:p0",
+        "status:blocked-on-owner",
+        "platform:android"
+      ],
+      "priority": "priority:p0",
+      "scope_source": "https://github.com/bloodf/velum/issues/38",
+      "acceptance_excerpt": [
+        "#3 and #4 verified on a real Note Pro; software sides #89 and #92 closed with tests against synthetic fixtures.",
+        "No identity value is ever logged, printed or committed."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "## Acceptance criteria",
+        "- [ ] #3 and #4 verified on a real Note Pro; software sides #89 and #92 closed with tests against synthetic fixtures."
+      ],
+      "referenced_issues": [
+        3,
+        4,
+        89,
+        92
+      ],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 39,
+      "title": "[Epic] Android 1.0 hardware validation",
+      "url": "https://github.com/bloodf/velum/issues/39",
+      "state": "open",
+      "labels": [
+        "area:ble",
+        "area:wifi",
+        "area:audio",
+        "type:epic",
+        "priority:p0",
+        "status:needs-hardware",
+        "platform:android"
+      ],
+      "priority": "priority:p0",
+      "scope_source": "https://github.com/bloodf/velum/issues/39",
+      "acceptance_excerpt": [
+        "Hardware validations #5 #6 #7 #8 #9 pass on a real Note Pro, with their software sides #93-#97 closed first.",
+        "Results recorded in docs/HARDWARE_VALIDATION.md."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "hardware_or_owner_evidence_needed",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "BLE unlock, battery, multi-hour download with resume/CRC, Opus decode + decryption, Wi-Fi SoftAP, large-file processing, owner test APK.",
+        "All p0 tasks pass on the owner's device; p1 tasks verified or explicitly deferred.",
+        "## Acceptance criteria"
+      ],
+      "referenced_issues": [
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        93,
+        97
+      ],
+      "PRs": [],
+      "owner_or_external_blocker": "Requires owned physical recorder/device/captures or owner measurement; synthetic tests do not satisfy hardware acceptance."
+    },
+    {
+      "issue": 40,
+      "title": "[Epic] Local AI quality & performance",
+      "url": "https://github.com/bloodf/velum/issues/40",
+      "state": "open",
+      "labels": [
+        "area:asr",
+        "area:diarization",
+        "area:llm",
+        "type:epic",
+        "priority:p1",
+        "platform:android"
+      ],
+      "priority": "priority:p1",
+      "scope_source": "https://github.com/bloodf/velum/issues/40",
+      "acceptance_excerpt": [
+        "#12 measured on hardware using the #98 harness; #13 closed.",
+        "Local ASR, diarization and LLM run within documented RAM/thermal budgets."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "Parakeet / Whisper / Gemma benchmarks, Whistle on low-end arm64, diarization + voice profiles on real meetings.",
+        "Measured results documented in `docs/`; router defaults tuned from the data.",
+        "## Acceptance criteria",
+        "- [ ] #12 measured on hardware using the #98 harness; #13 closed."
+      ],
+      "referenced_issues": [
+        12,
+        13,
+        14,
+        98
+      ],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 41,
+      "title": "[Epic] Templates",
+      "url": "https://github.com/bloodf/velum/issues/41",
+      "state": "open",
+      "labels": [
+        "area:templates",
+        "type:epic",
+        "priority:p0"
+      ],
+      "priority": "priority:p0",
+      "scope_source": "https://github.com/bloodf/velum/issues/41",
+      "acceptance_excerpt": [
+        "#99-#104 closed: All tier (~16k) browsable and searchable, no exact duplicates, >=100 distinct Featured per category incl. official, categories/tags/filters, change template + regenerate."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "Verify ~100 templates per category, dedupe, no badge/author on built-ins, contributor credit for PR templates, contribution docs.",
+        "Catalog counts asserted by a test; UI and CONTRIBUTING match the credit rules.",
+        "## Acceptance criteria"
+      ],
+      "referenced_issues": [
+        21,
+        22,
+        99,
+        100,
+        101,
+        102,
+        103,
+        104
+      ],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 42,
+      "title": "[Epic] Release & distribution",
+      "url": "https://github.com/bloodf/velum/issues/42",
+      "state": "open",
+      "labels": [
+        "area:release",
+        "type:epic",
+        "priority:p1",
+        "platform:android"
+      ],
+      "priority": "priority:p1",
+      "scope_source": "https://github.com/bloodf/velum/issues/42",
+      "acceptance_excerpt": [
+        "Signed release (#26, #90) and R8 refactor (#106) done; #91 APK size reduced; review loop #107 reaches a clean round with all CI gates green."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "## Acceptance criteria"
+      ],
+      "referenced_issues": [
+        26,
+        27,
+        28,
+        90,
+        91,
+        106,
+        107
+      ],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 43,
+      "title": "[Epic] Website & marketing",
+      "url": "https://github.com/bloodf/velum/issues/43",
+      "state": "open",
+      "labels": [
+        "area:website",
+        "type:epic",
+        "priority:p1"
+      ],
+      "priority": "priority:p1",
+      "scope_source": "https://github.com/bloodf/velum/issues/43",
+      "acceptance_excerpt": [
+        "Website (#24) deployed with marketing-quality screenshots (#23) containing no Plaud branding; social preview (#25) uploaded."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "## Acceptance criteria"
+      ],
+      "referenced_issues": [
+        23,
+        24,
+        25
+      ],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 44,
+      "title": "[Epic] Other note-taker devices",
+      "url": "https://github.com/bloodf/velum/issues/44",
+      "state": "open",
+      "labels": [
+        "area:devices",
+        "type:epic",
+        "priority:p2"
+      ],
+      "priority": "priority:p2",
+      "scope_source": "https://github.com/bloodf/velum/issues/44",
+      "acceptance_excerpt": [
+        "Each device driver (#15-#19) is closed or descoped, tested against community protocol fixtures; #20 research documented."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "Each supported device verified on real hardware and marked Verified in DEVICES_ROADMAP.",
+        "## Acceptance criteria",
+        "- [ ] Each device driver (#15-#19) is closed or descoped, tested against community protocol fixtures; #20 research documented."
+      ],
+      "referenced_issues": [
+        15,
+        16,
+        17,
+        18,
+        19,
+        20
+      ],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 45,
+      "title": "[Epic] Desktop app (macOS & Windows)",
+      "url": "https://github.com/bloodf/velum/issues/45",
+      "state": "open",
+      "labels": [
+        "area:desktop",
+        "type:epic",
+        "priority:p2",
+        "platform:desktop"
+      ],
+      "priority": "priority:p2",
+      "scope_source": "https://github.com/bloodf/velum/issues/45",
+      "acceptance_excerpt": [
+        "#29 owner sign-off obtained, then #30-#34 closed with tests; desktop builds in CI."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "## Acceptance criteria",
+        "- [ ] #29 owner sign-off obtained, then #30-#34 closed with tests; desktop builds in CI."
+      ],
+      "referenced_issues": [
+        29,
+        30,
+        31,
+        32,
+        33,
+        34
+      ],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 46,
+      "title": "[Epic] iOS app",
+      "url": "https://github.com/bloodf/velum/issues/46",
+      "state": "open",
+      "labels": [
+        "area:ios",
+        "type:epic",
+        "priority:p2",
+        "platform:ios"
+      ],
+      "priority": "priority:p2",
+      "scope_source": "https://github.com/bloodf/velum/issues/46",
+      "acceptance_excerpt": [
+        "#35-#37 closed: iOS app builds in CI, records/imports with local AI, and ships via TestFlight/App Store."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "Xcode project + CI, Kable BLE, Keychain SecureStore, recording/import, local AI, TestFlight/App Store.",
+        "## Acceptance criteria",
+        "- [ ] #35-#37 closed: iOS app builds in CI, records/imports with local AI, and ships via TestFlight/App Store."
+      ],
+      "referenced_issues": [
+        35,
+        36,
+        37
+      ],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 47,
+      "title": "[Roadmap] Velum roadmap",
+      "url": "https://github.com/bloodf/velum/issues/47",
+      "state": "open",
+      "labels": [
+        "area:docs",
+        "type:epic",
+        "priority:p0"
+      ],
+      "priority": "priority:p0",
+      "scope_source": "https://github.com/bloodf/velum/issues/47",
+      "acceptance_excerpt": [
+        "#38 Device identity & Note Pro (2 tasks)",
+        "#39 Android 1.0 hardware validation (7 tasks)",
+        "#40 Local AI quality & performance (3 tasks)",
+        "#41 Templates (2 tasks)",
+        "#42 Release & distribution (3 tasks)",
+        "#43 Website & marketing (3 tasks)",
+        "#44 Other note-taker devices (6 tasks)",
+        "#45 Desktop app: macOS & Windows, phases D0-D5 (6 tasks)",
+        "#46 iOS app (3 tasks)",
+        "#64 Third-party integrations: Google Workspace, Microsoft 365, others (16 tasks)",
+        "#73 Serverless P2P sync between mobile and desktop (8 tasks)",
+        "#84 Velum Cloud: optional paid subscription, post-1.0 (10 tasks)"
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "- Close a task when its acceptance criteria are met. Close an epic when all of its sub-issues are closed.",
+        "- Note Pro software P0s (fixtures + simulated BLE): #89 #92 #93 #94 #95 #96 #97 #98; hardware verifies stay in #3-#9, #12"
+      ],
+      "referenced_issues": [
+        3,
+        9,
+        12,
+        35,
+        36,
+        37,
+        38,
+        39,
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        64,
+        73,
+        84,
+        89,
+        90,
+        91,
+        92,
+        93,
+        94,
+        95,
+        96,
+        97,
+        98,
+        99,
+        100,
+        101,
+        102,
+        103,
+        104,
+        105,
+        106,
+        107
+      ],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 48,
+      "title": "Integrations framework: on-device OAuth, Keystore token store, registry, Settings > Integrations",
+      "url": "https://github.com/bloodf/velum/issues/48",
+      "state": "closed",
+      "labels": [
+        "type:task",
+        "priority:p2",
+        "platform:android",
+        "area:integrations"
+      ],
+      "priority": "priority:p2",
+      "scope_source": "https://github.com/bloodf/velum/issues/48",
+      "acceptance_excerpt": [
+        "Connect/disconnect flow works for at least one provider",
+        "Tokens never logged or exported; revoked on disconnect",
+        "Unit tests for token store and registry",
+        "No UI entry appears until this works end to end."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "closed_before_task_not_reaudited",
+      "implementation_evidence": [
+        "GitHub state only; no claim of fresh source audit"
+      ],
+      "known_gaps": [],
+      "required_validation_notes": [],
+      "referenced_issues": [],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 49,
+      "title": "Google Cloud OAuth client, consent screen and scope verification",
+      "url": "https://github.com/bloodf/velum/issues/49",
+      "state": "open",
+      "labels": [
+        "type:task",
+        "priority:p2",
+        "status:blocked-on-owner",
+        "platform:android",
+        "area:integrations"
+      ],
+      "priority": "priority:p2",
+      "scope_source": "https://github.com/bloodf/velum/issues/49",
+      "acceptance_excerpt": [
+        "Client IDs documented; build config supports user-supplied client ID override",
+        "Verification submitted and status tracked here",
+        "No UI entry appears until this works end to end."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "external_or_owner_requirements_to_resolve",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "- Submit verification for sensitive/restricted scopes",
+        "## Acceptance criteria",
+        "- [ ] Verification submitted and status tracked here",
+        "Restricted scopes (Gmail, full Drive) need verification that may take weeks and possibly a security assessment; prefer drive.file. Owner action needed."
+      ],
+      "referenced_issues": [],
+      "PRs": [],
+      "owner_or_external_blocker": "Inspect criteria for signing/service accounts/store access/product choice; do not create credentials or publish releases without specific scope."
+    },
+    {
+      "issue": 50,
+      "title": "Azure (Entra) app registration for Microsoft Graph",
+      "url": "https://github.com/bloodf/velum/issues/50",
+      "state": "open",
+      "labels": [
+        "type:task",
+        "priority:p2",
+        "status:blocked-on-owner",
+        "platform:android",
+        "area:integrations"
+      ],
+      "priority": "priority:p2",
+      "scope_source": "https://github.com/bloodf/velum/issues/50",
+      "acceptance_excerpt": [
+        "Sign-in works on a personal and a work account",
+        "Client ID override documented",
+        "No UI entry appears until this works end to end."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "external_or_owner_requirements_to_resolve",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "## Acceptance criteria"
+      ],
+      "referenced_issues": [],
+      "PRs": [],
+      "owner_or_external_blocker": "Inspect criteria for signing/service accounts/store access/product choice; do not create credentials or publish releases without specific scope."
+    },
+    {
+      "issue": 51,
+      "title": "Google Calendar API: attendees and meeting-link enrichment",
+      "url": "https://github.com/bloodf/velum/issues/51",
+      "state": "open",
+      "labels": [
+        "type:task",
+        "priority:p2",
+        "platform:android",
+        "area:integrations"
+      ],
+      "priority": "priority:p2",
+      "scope_source": "https://github.com/bloodf/velum/issues/51",
+      "acceptance_excerpt": [
+        "Recording during a Google event shows attendees and link",
+        "Works offline-tolerant: falls back to CalendarProvider",
+        "No UI entry appears until this works end to end."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "## Acceptance criteria"
+      ],
+      "referenced_issues": [],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 52,
+      "title": "Google Docs export of AI note",
+      "url": "https://github.com/bloodf/velum/issues/52",
+      "state": "open",
+      "labels": [
+        "type:task",
+        "priority:p2",
+        "platform:android",
+        "area:integrations"
+      ],
+      "priority": "priority:p2",
+      "scope_source": "https://github.com/bloodf/velum/issues/52",
+      "acceptance_excerpt": [
+        "Exported doc preserves formatting of all template sections",
+        "Re-export updates or creates new doc per user choice",
+        "No UI entry appears until this works end to end."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "## Acceptance criteria"
+      ],
+      "referenced_issues": [],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 53,
+      "title": "Google Drive export: audio, transcript and note Markdown",
+      "url": "https://github.com/bloodf/velum/issues/53",
+      "state": "open",
+      "labels": [
+        "type:task",
+        "priority:p2",
+        "platform:android",
+        "area:integrations"
+      ],
+      "priority": "priority:p2",
+      "scope_source": "https://github.com/bloodf/velum/issues/53",
+      "acceptance_excerpt": [
+        "Large (1h+) audio upload resumes after network loss",
+        "Folder choice persisted",
+        "No UI entry appears until this works end to end."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "## Acceptance criteria",
+        "Prefer drive.file to avoid restricted-scope verification."
+      ],
+      "referenced_issues": [],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 54,
+      "title": "Gmail: send note or summary via draft",
+      "url": "https://github.com/bloodf/velum/issues/54",
+      "state": "open",
+      "labels": [
+        "type:task",
+        "priority:p2",
+        "platform:android",
+        "area:integrations"
+      ],
+      "priority": "priority:p2",
+      "scope_source": "https://github.com/bloodf/velum/issues/54",
+      "acceptance_excerpt": [
+        "Draft appears in Gmail with correct content",
+        "No message sent without explicit user action",
+        "No UI entry appears until this works end to end."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "## Acceptance criteria",
+        "gmail.compose is restricted: verification required."
+      ],
+      "referenced_issues": [],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 55,
+      "title": "Microsoft Outlook calendar via Graph: enrichment and create event",
+      "url": "https://github.com/bloodf/velum/issues/55",
+      "state": "open",
+      "labels": [
+        "type:task",
+        "priority:p2",
+        "platform:android",
+        "area:integrations"
+      ],
+      "priority": "priority:p2",
+      "scope_source": "https://github.com/bloodf/velum/issues/55",
+      "acceptance_excerpt": [
+        "Enrichment and event creation verified on M365 and Outlook.com",
+        "No UI entry appears until this works end to end."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "## Acceptance criteria",
+        "- [ ] Enrichment and event creation verified on M365 and Outlook.com"
+      ],
+      "referenced_issues": [],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 56,
+      "title": "OneDrive export",
+      "url": "https://github.com/bloodf/velum/issues/56",
+      "state": "open",
+      "labels": [
+        "type:task",
+        "priority:p2",
+        "platform:android",
+        "area:integrations"
+      ],
+      "priority": "priority:p2",
+      "scope_source": "https://github.com/bloodf/velum/issues/56",
+      "acceptance_excerpt": [
+        "1h+ audio upload completes and resumes",
+        "No UI entry appears until this works end to end."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "## Acceptance criteria"
+      ],
+      "referenced_issues": [],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 57,
+      "title": "OneNote export",
+      "url": "https://github.com/bloodf/velum/issues/57",
+      "state": "open",
+      "labels": [
+        "type:task",
+        "priority:p2",
+        "platform:android",
+        "area:integrations"
+      ],
+      "priority": "priority:p2",
+      "scope_source": "https://github.com/bloodf/velum/issues/57",
+      "acceptance_excerpt": [
+        "Page created with formatting preserved",
+        "No UI entry appears until this works end to end."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "## Acceptance criteria"
+      ],
+      "referenced_issues": [],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 58,
+      "title": "Microsoft Teams: post summary to a chat or channel",
+      "url": "https://github.com/bloodf/velum/issues/58",
+      "state": "open",
+      "labels": [
+        "type:task",
+        "priority:p2",
+        "platform:android",
+        "area:integrations"
+      ],
+      "priority": "priority:p2",
+      "scope_source": "https://github.com/bloodf/velum/issues/58",
+      "acceptance_excerpt": [
+        "Message posted in chosen destination",
+        "No UI entry appears until this works end to end."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "## Acceptance criteria"
+      ],
+      "referenced_issues": [],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 59,
+      "title": "Notion export: page in a chosen database",
+      "url": "https://github.com/bloodf/velum/issues/59",
+      "state": "open",
+      "labels": [
+        "type:task",
+        "priority:p2",
+        "platform:android",
+        "area:integrations"
+      ],
+      "priority": "priority:p2",
+      "scope_source": "https://github.com/bloodf/velum/issues/59",
+      "acceptance_excerpt": [
+        "Note exported with headings, lists and to-dos intact",
+        "No UI entry appears until this works end to end."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "## Acceptance criteria"
+      ],
+      "referenced_issues": [],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 60,
+      "title": "Obsidian / local folder export via Storage Access Framework",
+      "url": "https://github.com/bloodf/velum/issues/60",
+      "state": "closed",
+      "labels": [
+        "good first issue",
+        "type:task",
+        "priority:p2",
+        "platform:android",
+        "area:integrations"
+      ],
+      "priority": "priority:p2",
+      "scope_source": "https://github.com/bloodf/velum/issues/60",
+      "acceptance_excerpt": [
+        "Notes appear in Obsidian vault with valid frontmatter",
+        "Auto-export option respects AutoFlow",
+        "No UI entry appears until this works end to end."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "closed_before_task_not_reaudited",
+      "implementation_evidence": [
+        "GitHub state only; no claim of fresh source audit"
+      ],
+      "known_gaps": [],
+      "required_validation_notes": [],
+      "referenced_issues": [],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 61,
+      "title": "Slack: post summary to a channel",
+      "url": "https://github.com/bloodf/velum/issues/61",
+      "state": "open",
+      "labels": [
+        "type:task",
+        "priority:p2",
+        "platform:android",
+        "area:integrations"
+      ],
+      "priority": "priority:p2",
+      "scope_source": "https://github.com/bloodf/velum/issues/61",
+      "acceptance_excerpt": [
+        "Summary posted in chosen channel",
+        "No UI entry appears until this works end to end."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "## Acceptance criteria",
+        "Slack PKCE support for mobile apps must be verified; otherwise document limitation."
+      ],
+      "referenced_issues": [],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 62,
+      "title": "Generic webhook (Zapier / n8n / Make) with JSON schema and HMAC signing",
+      "url": "https://github.com/bloodf/velum/issues/62",
+      "state": "closed",
+      "labels": [
+        "type:task",
+        "priority:p2",
+        "platform:android",
+        "area:integrations"
+      ],
+      "priority": "priority:p2",
+      "scope_source": "https://github.com/bloodf/velum/issues/62",
+      "acceptance_excerpt": [
+        "Schema documented in docs/; sample n8n and Zapier flows",
+        "Signature verifiable with documented algorithm",
+        "No UI entry appears until this works end to end."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "closed_before_task_not_reaudited",
+      "implementation_evidence": [
+        "GitHub state only; no claim of fresh source audit"
+      ],
+      "known_gaps": [],
+      "required_validation_notes": [],
+      "referenced_issues": [],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 63,
+      "title": "AutoFlow 'action after processing' for each integration",
+      "url": "https://github.com/bloodf/velum/issues/63",
+      "state": "closed",
+      "labels": [
+        "type:task",
+        "priority:p2",
+        "platform:android",
+        "area:integrations"
+      ],
+      "priority": "priority:p2",
+      "scope_source": "https://github.com/bloodf/velum/issues/63",
+      "acceptance_excerpt": [
+        "Auto actions run after processing for each shipped integration",
+        "No UI entry appears until this works end to end."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "closed_before_task_not_reaudited",
+      "implementation_evidence": [
+        "GitHub state only; no claim of fresh source audit"
+      ],
+      "known_gaps": [],
+      "required_validation_notes": [],
+      "referenced_issues": [],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 64,
+      "title": "Epic: Third-party integrations (Google Workspace, Microsoft 365, others)",
+      "url": "https://github.com/bloodf/velum/issues/64",
+      "state": "open",
+      "labels": [
+        "type:epic",
+        "priority:p2",
+        "platform:android",
+        "area:integrations"
+      ],
+      "priority": "priority:p2",
+      "scope_source": "https://github.com/bloodf/velum/issues/64",
+      "acceptance_excerpt": [
+        "Each child integration (#49-#61) is closed or explicitly descoped.",
+        "Every shipped integration uses on-device OAuth with Keystore token storage, has tests, and has no UI entry unless fully working.",
+        "No telemetry and no server-side component in the open-source build."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "- Google OAuth verification for restricted scopes (Drive, Gmail) may take weeks; prefer least-privilege scopes such as drive.file",
+        "- [ ] #49 Google Cloud OAuth client, consent screen and scope verification",
+        "## Acceptance criteria",
+        "- [ ] Every shipped integration uses on-device OAuth with Keystore token storage, has tests, and has no UI entry unless fully working."
+      ],
+      "referenced_issues": [
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        58,
+        59,
+        60,
+        61,
+        62,
+        63
+      ],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 65,
+      "title": "Device pairing via QR code (desktop shows, mobile scans)",
+      "url": "https://github.com/bloodf/velum/issues/65",
+      "state": "open",
+      "labels": [
+        "type:task",
+        "priority:p2",
+        "platform:android",
+        "platform:desktop",
+        "area:sync"
+      ],
+      "priority": "priority:p2",
+      "scope_source": "https://github.com/bloodf/velum/issues/65",
+      "acceptance_excerpt": [
+        "Pairing works in under 30 s on the same LAN",
+        "Revoked device can no longer sync",
+        "No UI entry appears until this works end to end."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "## Acceptance criteria"
+      ],
+      "referenced_issues": [],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 66,
+      "title": "LAN discovery and direct transport",
+      "url": "https://github.com/bloodf/velum/issues/66",
+      "state": "open",
+      "labels": [
+        "type:task",
+        "priority:p2",
+        "platform:android",
+        "platform:desktop",
+        "area:sync"
+      ],
+      "priority": "priority:p2",
+      "scope_source": "https://github.com/bloodf/velum/issues/66",
+      "acceptance_excerpt": [
+        "Devices discover each other and sync without user action on same Wi-Fi",
+        "No UI entry appears until this works end to end."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "## Acceptance criteria"
+      ],
+      "referenced_issues": [],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 67,
+      "title": "WebRTC data channel transport across networks",
+      "url": "https://github.com/bloodf/velum/issues/67",
+      "state": "open",
+      "labels": [
+        "type:task",
+        "priority:p2",
+        "platform:android",
+        "platform:desktop",
+        "area:sync"
+      ],
+      "priority": "priority:p2",
+      "scope_source": "https://github.com/bloodf/velum/issues/67",
+      "acceptance_excerpt": [
+        "Sync succeeds across two typical home networks",
+        "Clear error when NAT traversal fails",
+        "No UI entry appears until this works end to end."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "## Acceptance criteria"
+      ],
+      "referenced_issues": [],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 68,
+      "title": "End-to-end encryption and authentication with paired keys",
+      "url": "https://github.com/bloodf/velum/issues/68",
+      "state": "open",
+      "labels": [
+        "type:task",
+        "priority:p2",
+        "platform:android",
+        "platform:desktop",
+        "area:sync"
+      ],
+      "priority": "priority:p2",
+      "scope_source": "https://github.com/bloodf/velum/issues/68",
+      "acceptance_excerpt": [
+        "Security review of handshake; tests reject unpaired/tampered peers",
+        "No UI entry appears until this works end to end."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "## Acceptance criteria",
+        "- [ ] Security review of handshake; tests reject unpaired/tampered peers"
+      ],
+      "referenced_issues": [],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 69,
+      "title": "Sync data model and conflict-free merge",
+      "url": "https://github.com/bloodf/velum/issues/69",
+      "state": "open",
+      "labels": [
+        "type:task",
+        "priority:p2",
+        "platform:android",
+        "platform:desktop",
+        "area:sync"
+      ],
+      "priority": "priority:p2",
+      "scope_source": "https://github.com/bloodf/velum/issues/69",
+      "acceptance_excerpt": [
+        "Concurrent edits on both devices merge deterministically",
+        "Interrupted audio transfer resumes",
+        "No UI entry appears until this works end to end."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "## Acceptance criteria"
+      ],
+      "referenced_issues": [],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 70,
+      "title": "Background and opportunistic sync (Android WorkManager, desktop daemon)",
+      "url": "https://github.com/bloodf/velum/issues/70",
+      "state": "open",
+      "labels": [
+        "type:task",
+        "priority:p2",
+        "platform:android",
+        "platform:desktop",
+        "area:sync"
+      ],
+      "priority": "priority:p2",
+      "scope_source": "https://github.com/bloodf/velum/issues/70",
+      "acceptance_excerpt": [
+        "Sync runs in background on Android 14+ within platform limits",
+        "No measurable battery regression when idle",
+        "No UI entry appears until this works end to end."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "## Acceptance criteria"
+      ],
+      "referenced_issues": [],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 71,
+      "title": "Offline fallbacks: Bluetooth transfer and encrypted bundle export/import",
+      "url": "https://github.com/bloodf/velum/issues/71",
+      "state": "open",
+      "labels": [
+        "type:task",
+        "priority:p2",
+        "platform:android",
+        "platform:desktop",
+        "area:sync"
+      ],
+      "priority": "priority:p2",
+      "scope_source": "https://github.com/bloodf/velum/issues/71",
+      "acceptance_excerpt": [
+        "Bundle round-trips all synced data types",
+        "Bundle unreadable without paired keys/passphrase",
+        "No UI entry appears until this works end to end."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "## Acceptance criteria"
+      ],
+      "referenced_issues": [],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 72,
+      "title": "Sync status UI",
+      "url": "https://github.com/bloodf/velum/issues/72",
+      "state": "open",
+      "labels": [
+        "area:ui",
+        "type:task",
+        "priority:p2",
+        "platform:android",
+        "platform:desktop",
+        "area:sync"
+      ],
+      "priority": "priority:p2",
+      "scope_source": "https://github.com/bloodf/velum/issues/72",
+      "acceptance_excerpt": [
+        "UI reflects real state; added only after transport works",
+        "No UI entry appears until this works end to end."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "## Acceptance criteria"
+      ],
+      "referenced_issues": [],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 73,
+      "title": "Epic: Serverless P2P sync between mobile and desktop",
+      "url": "https://github.com/bloodf/velum/issues/73",
+      "state": "open",
+      "labels": [
+        "type:epic",
+        "priority:p2",
+        "platform:android",
+        "platform:desktop",
+        "area:sync"
+      ],
+      "priority": "priority:p2",
+      "scope_source": "https://github.com/bloodf/velum/issues/73",
+      "acceptance_excerpt": [
+        "All child tasks #65-#72 are closed.",
+        "Phone and desktop pair via QR and sync end-to-end encrypted with no account or server, over LAN and across networks, with tests for each transport.",
+        "Conflict-free merge is covered by automated tests."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "## Acceptance criteria",
+        "- [ ] Phone and desktop pair via QR and sync end-to-end encrypted with no account or server, over LAN and across networks, with tests for each transport.",
+        "- [ ] Conflict-free merge is covered by automated tests."
+      ],
+      "referenced_issues": [
+        65,
+        66,
+        67,
+        68,
+        69,
+        70,
+        71,
+        72
+      ],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 74,
+      "title": "Cloud product definition: plans, hours quota, pricing, free-forever scope",
+      "url": "https://github.com/bloodf/velum/issues/74",
+      "state": "open",
+      "labels": [
+        "type:task",
+        "priority:p2",
+        "status:blocked-on-owner",
+        "platform:android",
+        "platform:ios",
+        "area:cloud"
+      ],
+      "priority": "priority:p2",
+      "scope_source": "https://github.com/bloodf/velum/issues/74",
+      "acceptance_excerpt": [
+        "Written product spec in private docs; public summary in README/site",
+        "No UI entry appears until this works end to end."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "external_or_owner_requirements_to_resolve",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "## Acceptance criteria"
+      ],
+      "referenced_issues": [],
+      "PRs": [],
+      "owner_or_external_blocker": "Inspect criteria for signing/service accounts/store access/product choice; do not create credentials or publish releases without specific scope."
+    },
+    {
+      "issue": 75,
+      "title": "Build flavors: oss vs store with build-time config injection",
+      "url": "https://github.com/bloodf/velum/issues/75",
+      "state": "open",
+      "labels": [
+        "area:release",
+        "type:task",
+        "priority:p2",
+        "platform:android",
+        "platform:ios",
+        "area:cloud"
+      ],
+      "priority": "priority:p2",
+      "scope_source": "https://github.com/bloodf/velum/issues/75",
+      "acceptance_excerpt": [
+        "oss APK contains no cloud code paths or endpoints (CI-verified)",
+        "store build works only when config injected",
+        "No UI entry appears until this works end to end."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "## Acceptance criteria",
+        "- [ ] oss APK contains no cloud code paths or endpoints (CI-verified)"
+      ],
+      "referenced_issues": [],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 76,
+      "title": "Client cloud module boundary and documented contract",
+      "url": "https://github.com/bloodf/velum/issues/76",
+      "state": "open",
+      "labels": [
+        "type:task",
+        "priority:p2",
+        "platform:android",
+        "platform:ios",
+        "area:cloud"
+      ],
+      "priority": "priority:p2",
+      "scope_source": "https://github.com/bloodf/velum/issues/76",
+      "acceptance_excerpt": [
+        "oss build compiles without the cloud implementation",
+        "Contract documented in docs/",
+        "No UI entry appears until this works end to end."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "## Acceptance criteria"
+      ],
+      "referenced_issues": [],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 77,
+      "title": "Private server repository bootstrap (pointer issue)",
+      "url": "https://github.com/bloodf/velum/issues/77",
+      "state": "open",
+      "labels": [
+        "type:task",
+        "priority:p2",
+        "status:blocked-on-owner",
+        "platform:android",
+        "platform:ios",
+        "area:cloud"
+      ],
+      "priority": "priority:p2",
+      "scope_source": "https://github.com/bloodf/velum/issues/77",
+      "acceptance_excerpt": [
+        "Private repo exists; this issue links status only",
+        "No UI entry appears until this works end to end."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "external_or_owner_requirements_to_resolve",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "## Acceptance criteria"
+      ],
+      "referenced_issues": [],
+      "PRs": [],
+      "owner_or_external_blocker": "Inspect criteria for signing/service accounts/store access/product choice; do not create credentials or publish releases without specific scope."
+    },
+    {
+      "issue": 78,
+      "title": "Accounts for store builds only (Sign in with Google / Apple)",
+      "url": "https://github.com/bloodf/velum/issues/78",
+      "state": "open",
+      "labels": [
+        "type:task",
+        "priority:p2",
+        "platform:android",
+        "platform:ios",
+        "area:cloud"
+      ],
+      "priority": "priority:p2",
+      "scope_source": "https://github.com/bloodf/velum/issues/78",
+      "acceptance_excerpt": [
+        "oss builds have no account UI or code paths",
+        "No UI entry appears until this works end to end."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "## Acceptance criteria"
+      ],
+      "referenced_issues": [],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 79,
+      "title": "Subscriptions and billing: Play Billing and StoreKit 2",
+      "url": "https://github.com/bloodf/velum/issues/79",
+      "state": "open",
+      "labels": [
+        "type:task",
+        "priority:p2",
+        "platform:android",
+        "platform:ios",
+        "area:cloud"
+      ],
+      "priority": "priority:p2",
+      "scope_source": "https://github.com/bloodf/velum/issues/79",
+      "acceptance_excerpt": [
+        "Purchase, renew, cancel and restore verified on both stores",
+        "No UI entry appears until this works end to end."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "external_or_owner_requirements_to_resolve",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "## Acceptance criteria",
+        "- [ ] Purchase, renew, cancel and restore verified on both stores"
+      ],
+      "referenced_issues": [],
+      "PRs": [],
+      "owner_or_external_blocker": "Inspect criteria for signing/service accounts/store access/product choice; do not create credentials or publish releases without specific scope."
+    },
+    {
+      "issue": 80,
+      "title": "Hosted transcription and summaries with metered hours",
+      "url": "https://github.com/bloodf/velum/issues/80",
+      "state": "open",
+      "labels": [
+        "type:task",
+        "priority:p2",
+        "platform:android",
+        "platform:ios",
+        "area:cloud"
+      ],
+      "priority": "priority:p2",
+      "scope_source": "https://github.com/bloodf/velum/issues/80",
+      "acceptance_excerpt": [
+        "Usage shown matches server metering",
+        "Falls back cleanly to Local when quota is exhausted",
+        "No UI entry appears until this works end to end."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "## Acceptance criteria"
+      ],
+      "referenced_issues": [],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 81,
+      "title": "Encrypted cloud storage/backup and cloud sync relay",
+      "url": "https://github.com/bloodf/velum/issues/81",
+      "state": "open",
+      "labels": [
+        "type:task",
+        "priority:p2",
+        "platform:android",
+        "platform:ios",
+        "area:sync",
+        "area:cloud"
+      ],
+      "priority": "priority:p2",
+      "scope_source": "https://github.com/bloodf/velum/issues/81",
+      "acceptance_excerpt": [
+        "Restore on a new device works",
+        "E2E mode: server cannot read content",
+        "No UI entry appears until this works end to end."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "## Acceptance criteria"
+      ],
+      "referenced_issues": [
+        73
+      ],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 82,
+      "title": "Managed integrations via server broker",
+      "url": "https://github.com/bloodf/velum/issues/82",
+      "state": "open",
+      "labels": [
+        "type:task",
+        "priority:p2",
+        "platform:android",
+        "platform:ios",
+        "area:integrations",
+        "area:cloud"
+      ],
+      "priority": "priority:p2",
+      "scope_source": "https://github.com/bloodf/velum/issues/82",
+      "acceptance_excerpt": [
+        "Each managed integration connects without user-registered clients",
+        "No UI entry appears until this works end to end."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "- Resolves client-secret issues (#59, #61) and verification burden (#49, #50)",
+        "## Acceptance criteria"
+      ],
+      "referenced_issues": [
+        49,
+        50,
+        59,
+        61,
+        64
+      ],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 83,
+      "title": "Privacy policy, terms, data deletion, LGPD/GDPR",
+      "url": "https://github.com/bloodf/velum/issues/83",
+      "state": "open",
+      "labels": [
+        "area:docs",
+        "type:task",
+        "priority:p2",
+        "status:blocked-on-owner",
+        "platform:android",
+        "platform:ios",
+        "area:cloud"
+      ],
+      "priority": "priority:p2",
+      "scope_source": "https://github.com/bloodf/velum/issues/83",
+      "acceptance_excerpt": [
+        "Store data-safety forms accepted",
+        "Deletion request removes all server data",
+        "No UI entry appears until this works end to end."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "## Acceptance criteria"
+      ],
+      "referenced_issues": [],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 84,
+      "title": "Epic: Velum Cloud (optional paid subscription, post-1.0)",
+      "url": "https://github.com/bloodf/velum/issues/84",
+      "state": "open",
+      "labels": [
+        "type:epic",
+        "priority:p2",
+        "platform:android",
+        "platform:ios",
+        "area:cloud"
+      ],
+      "priority": "priority:p2",
+      "scope_source": "https://github.com/bloodf/velum/issues/84",
+      "acceptance_excerpt": [
+        "All child tasks #74-#83 are closed or explicitly descoped.",
+        "The open-source build contains no cloud code paths (verified by a CI check once the oss/store flavor split in #75 lands).",
+        "Cloud features ship only in store builds, after Android 1.0."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "## Acceptance criteria",
+        "- [ ] The open-source build contains no cloud code paths (verified by a CI check once the oss/store flavor split in #75 lands)."
+      ],
+      "referenced_issues": [
+        74,
+        75,
+        76,
+        77,
+        78,
+        79,
+        80,
+        81,
+        82,
+        83
+      ],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 85,
+      "title": "BLE/Wi-Fi session download foreground service for background survival",
+      "url": "https://github.com/bloodf/velum/issues/85",
+      "state": "open",
+      "labels": [
+        "area:ble",
+        "area:wifi",
+        "type:task",
+        "priority:p0",
+        "platform:android",
+        "owner:dev-2",
+        "status:ready"
+      ],
+      "priority": "priority:p0",
+      "scope_source": "https://github.com/bloodf/velum/issues/85",
+      "acceptance_excerpt": [
+        "BLE and Wi-Fi session downloads run under a foreground service tied to download lifecycle, with applicable `connectedDevice` / `dataSync` service types and Android permissions declared.",
+        "Notification identifies active download; service and notification stop after completion, cancellation, or terminal failure.",
+        "On owner's Samsung Galaxy S26 Ultra + Note Pro, large session download continues with app backgrounded and screen off, including Doze testing.",
+        "During BLE and Wi-Fi transfers, test process death separately from backgrounding; interrupted downloads resume from last confirmed offset without duplicate or missing chunks.",
+        "Completed downloads pass CRC validation, including resumed transfers and Wi-Fi-to-BLE fallback.",
+        "Record device configuration, reproduction steps, and results in `docs/STATUS.md`; distinguish process death from Android force-stop."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "## Acceptance criteria",
+        "- [ ] On owner's Samsung Galaxy S26 Ultra + Note Pro, large session download continues with app backgrounded and screen off, including Doze testing.",
+        "- [ ] During BLE and Wi-Fi transfers, test process death separately from backgrounding; interrupted downloads resume from last confirmed offset without duplicate or missing chunks."
+      ],
+      "referenced_issues": [],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 86,
+      "title": "Stream Opus/WAV decode to disk to avoid OOM on multi-hour recordings",
+      "url": "https://github.com/bloodf/velum/issues/86",
+      "state": "open",
+      "labels": [
+        "area:audio",
+        "type:task",
+        "priority:p0",
+        "platform:android",
+        "owner:dev-2",
+        "status:ready"
+      ],
+      "priority": "priority:p0",
+      "scope_source": "https://github.com/bloodf/velum/issues/86",
+      "acceptance_excerpt": [
+        "`RecordingProcessor` decodes Opus and WAV incrementally into temporary `.s16le` files or equivalent disk-backed PCM storage, without allocating full decoded PCM in one heap `ByteArray`.",
+        "Existing ASR model contracts remain unchanged; decoded audio reaches downstream processing through disk-backed PCM storage.",
+        "Automated regression check covers both Opus and WAV chunked decoding and verifies decoded PCM against expected output.",
+        "Memory measurements across increasing recording durations demonstrate that decoder heap use does not grow with full decoded PCM size.",
+        "Multi-hour Note Pro captures complete processing without OOM; record capture duration, format, device, and peak memory alongside #6 validation results.",
+        "Decode failure, cancellation, and insufficient storage produce explicit errors where applicable, preserve source recordings, and clean up temporary output no longer needed."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "current_batch_review_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete.",
+        "This PR provides audio/session preservation only; it does not satisfy full streaming/startup mutation/orphan sweep criteria."
+      ],
+      "required_validation_notes": [
+        "## Acceptance criteria",
+        "- [ ] Automated regression check covers both Opus and WAV chunked decoding and verifies decoded PCM against expected output.",
+        "- [ ] Memory measurements across increasing recording durations demonstrate that decoder heap use does not grow with full decoded PCM size."
+      ],
+      "referenced_issues": [
+        6
+      ],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 87,
+      "title": "Localize Voice Profiles screen (EN + pt-BR, no engine jargon)",
+      "url": "https://github.com/bloodf/velum/issues/87",
+      "state": "open",
+      "labels": [
+        "area:ui",
+        "type:task",
+        "priority:p1",
+        "platform:android",
+        "owner:dev-2",
+        "status:ready"
+      ],
+      "priority": "priority:p1",
+      "scope_source": "https://github.com/bloodf/velum/issues/87",
+      "acceptance_excerpt": [
+        "All user-facing `VoiceProfilesScreen` copy uses `Strings`, with English and Brazilian Portuguese values, including labels, hints, errors, and accessibility descriptions.",
+        "Enrollment hint renders correctly in both locales without broken or mixed-language text.",
+        "Neither locale exposes developer or engine jargon, including `3D-Speaker` and `ECAPA`, in user-facing copy.",
+        "Screen walkthrough in English and Brazilian Portuguese covers enrollment and displayed error states; no untranslated text, clipped controls, or missing accessibility labels remain.",
+        "Runnable regression check verifies both locale entries for Voice Profiles strings and corrected enrollment hint."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "current_batch_review_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete.",
+        "Remaining locale consistency audit: MicRecordingService emits getString(native resource) while common App displays a nonblank service message directly; app preference language uses LocalStrings and no applicationLocales bridge is present. System-locale resources exist; app/system language divergence is not covered by current synthetic mic tests. Reconcile in the UI/localization batch; not a new data-integrity claim or proof of a hardware failure."
+      ],
+      "required_validation_notes": [
+        "## Acceptance criteria",
+        "- [ ] Runnable regression check verifies both locale entries for Voice Profiles strings and corrected enrollment hint."
+      ],
+      "referenced_issues": [],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 89,
+      "title": "Software: Note Pro identity extraction file format + parser (fixtures)",
+      "url": "https://github.com/bloodf/velum/issues/89",
+      "state": "closed",
+      "labels": [
+        "area:ble",
+        "area:import",
+        "type:task",
+        "priority:p0",
+        "platform:android",
+        "owner:dev-1",
+        "status:ready"
+      ],
+      "priority": "priority:p0",
+      "scope_source": "https://github.com/bloodf/velum/issues/89",
+      "acceptance_excerpt": [
+        "Documented, versioned format for the identity bundle produced by the USB route (fields named, never values).",
+        "Parser in shared code validates structure and rejects malformed/partial bundles with a clear user-facing error.",
+        "JVM tests with synthetic fixtures (no real identity values committed).",
+        "No identity value appears in logs, crash reports or UI (test asserts redaction)."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "closed_completed_in_this_task",
+      "implementation_evidence": [
+        "Merged PR #128 plus linked local evidence; see handoff validation table"
+      ],
+      "known_gaps": [],
+      "required_validation_notes": [
+        "Software side of #3, split out by Velum PM so it can be built and verified without hardware. The real-device confirmation stays in #3 (needs-hardware, batched for the owner).",
+        "Build and test everything against recorded/derived protocol fixtures and a simulated BLE peripheral; no real Note Pro needed.",
+        "## Acceptance criteria",
+        "- [ ] JVM tests with synthetic fixtures (no real identity values committed).",
+        "- [ ] No identity value appears in logs, crash reports or UI (test asserts redaction).",
+        "- Never send device commands 104, 5, 0xFE20, 128 or 143; never write device settings 4 or 26 (ForbiddenOpcodes / ForbiddenSettings guard tests stay green).",
+        "- Commit directly to main referencing this issue, with tests; CI green (JVM tests, assemble, OSV, emulator smoke, device walk debug + R8 release)."
+      ],
+      "referenced_issues": [
+        3
+      ],
+      "PRs": [
+        128
+      ],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 90,
+      "title": "Release build must not fall back to the committed debug keystore",
+      "url": "https://github.com/bloodf/velum/issues/90",
+      "state": "closed",
+      "labels": [
+        "area:release",
+        "type:bug",
+        "priority:p0",
+        "platform:android"
+      ],
+      "priority": "priority:p0",
+      "scope_source": "https://github.com/bloodf/velum/issues/90",
+      "acceptance_excerpt": [],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "closed_completed_in_this_task",
+      "implementation_evidence": [
+        "Merged PR #123 plus linked local evidence; see handoff validation table"
+      ],
+      "known_gaps": [],
+      "required_validation_notes": [
+        "## Acceptance criteria"
+      ],
+      "referenced_issues": [
+        26
+      ],
+      "PRs": [
+        123
+      ],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 91,
+      "title": "Reduce release APK size (~200 MB)",
+      "url": "https://github.com/bloodf/velum/issues/91",
+      "state": "open",
+      "labels": [
+        "area:release",
+        "type:task",
+        "priority:p1",
+        "platform:android"
+      ],
+      "priority": "priority:p1",
+      "scope_source": "https://github.com/bloodf/velum/issues/91",
+      "acceptance_excerpt": [],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "## Acceptance criteria",
+        "- The emulator smoke test and the debug and R8 release device walks stay green."
+      ],
+      "referenced_issues": [],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 92,
+      "title": "Validate identity import and Android Keystore storage with synthetic fixtures",
+      "url": "https://github.com/bloodf/velum/issues/92",
+      "state": "open",
+      "labels": [
+        "area:import",
+        "type:task",
+        "priority:p0",
+        "platform:android"
+      ],
+      "priority": "priority:p0",
+      "scope_source": "https://github.com/bloodf/velum/issues/92",
+      "acceptance_excerpt": [
+        "Synthetic Plaud JSON v1 and equivalent pasted fields both import successfully.",
+        "Imported synthetic values remain available through the secure store after app restart.",
+        "Inspection of private preferences confirms encrypted identity storage without plaintext identity values.",
+        "Malformed JSON and invalid fields produce clear errors without reporting successful import.",
+        "Captured logs contain no synthetic identity values during successful or failed imports.",
+        "Runnable regression checks cover import validation and Android Keystore-backed persistence.",
+        "Dependency #89 is satisfied before completion."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "open_partial_persistence_proven_atomicity_draft",
+      "implementation_evidence": [
+        "PR129 merged1f30a0f:372fresh units,6process-fixture phases,4standard API34walks,8filesystem executions",
+        "PR13148b2a02:66targeted core tests passed;2mutation regressions failed as expected;source restored"
+      ],
+      "known_gaps": [
+        "PR131 full regressions/lint/builds/UI and 3-vault emulator compatibility proof remain unrun. Rebuild JVM outputs after the deliberate mutation. Main still has the reproduced sequential-write integrity bug."
+      ],
+      "required_validation_notes": [
+        "Software side of #4, built and tested against protocol fixtures and a simulated BLE peripheral (no hardware). The real-device check stays in #4 (status:needs-hardware). Roadmap: #47.",
+        "Depends on #89. Issue #89 is absent from the supplied SOURCE, so its requirements and Product rules block cannot be verified or reproduced.",
+        "## Acceptance criteria",
+        "- Never send device commands 104, 5, 0xFE20, 128 or 143; never write device settings 4 or 26 (ForbiddenOpcodes / ForbiddenSettings guard tests stay green).",
+        "- Commit directly to main referencing this issue, with tests; CI green (JVM tests, assemble, OSV, emulator smoke, device walk debug + R8 release)."
+      ],
+      "referenced_issues": [
+        3,
+        4,
+        47,
+        89
+      ],
+      "PRs": [
+        129,
+        131
+      ],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 93,
+      "title": "Validate BLE unlock, advertising parsing, and battery updates with simulated peripheral",
+      "url": "https://github.com/bloodf/velum/issues/93",
+      "state": "open",
+      "labels": [
+        "area:ble",
+        "type:task",
+        "priority:p0",
+        "platform:android"
+      ],
+      "priority": "priority:p0",
+      "scope_source": "https://github.com/bloodf/velum/issues/93",
+      "acceptance_excerpt": [
+        "Protocol-fixture tests parse expected `portVersion` and project 881 advertising data.",
+        "Malformed advertising fixtures are handled without crashes or false successful discovery.",
+        "Unlock succeeds with matching synthetic credentials against the simulated peripheral; rejected credentials do not establish an unlocked session.",
+        "Disconnect/reconnect checks verify that the session remains usable as required by #5.",
+        "Simulated battery notifications update the displayed battery level.",
+        "Recorded outbound traffic contains none of opcodes 104, 5, 0xFE20, 128, or 143, and no writes to settings 4 or 26.",
+        "Runnable regression checks cover advertising parsing, unlock, reconnect, and battery updates.",
+        "Findings in `docs/STATUS.md` identify simulated coverage and retain real-device validation as unconfirmed."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "Software side of #5, built and tested against protocol fixtures and a simulated BLE peripheral (no hardware). The real-device check stays in #5 (status:needs-hardware). Roadmap: #47.",
+        "## Acceptance criteria",
+        "- [ ] Protocol-fixture tests parse expected `portVersion` and project 881 advertising data.",
+        "- [ ] Disconnect/reconnect checks verify that the session remains usable as required by #5.",
+        "- Never send device commands 104, 5, 0xFE20, 128 or 143; never write device settings 4 or 26 (ForbiddenOpcodes / ForbiddenSettings guard tests stay green).",
+        "- Commit directly to main referencing this issue, with tests; CI green (JVM tests, assemble, OSV, emulator smoke, device walk debug + R8 release)."
+      ],
+      "referenced_issues": [
+        5,
+        9,
+        47
+      ],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 94,
+      "title": "Validate multi-hour BLE download, resume, and CRC under simulated faults",
+      "url": "https://github.com/bloodf/velum/issues/94",
+      "state": "open",
+      "labels": [
+        "area:ble",
+        "area:audio",
+        "type:task",
+        "priority:p0",
+        "platform:android"
+      ],
+      "priority": "priority:p0",
+      "scope_source": "https://github.com/bloodf/velum/issues/94",
+      "acceptance_excerpt": [
+        "A synthetic recording representing at least two hours downloads completely and matches the fixture bytes and expected CRC.",
+        "Injected disconnects at multiple transfer offsets resume from the last persisted valid offset without duplicate or missing bytes.",
+        "App termination and restart preserve enough transfer state to resume without restarting the entire download.",
+        "Injected chunk corruption cannot produce a transfer reported as successfully CRC-verified.",
+        "Retrying or resuming after corruption produces the exact expected file with a matching CRC.",
+        "An Android screen-off/background check against the simulated peripheral verifies that the download foreground service keeps the transfer running, using #85 support where required.",
+        "Runnable regression checks cover multi-hour transfer, disconnect recovery, persisted resume, and corruption detection.",
+        "`docs/STATUS.md` distinguishes simulated results from outstanding real-device transfer-time and battery-drain measurements."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "Software side of #6, built and tested against protocol fixtures and a simulated BLE peripheral (no hardware). The real-device check stays in #6 (status:needs-hardware). Roadmap: #47.",
+        "## Acceptance criteria",
+        "- [ ] Injected chunk corruption cannot produce a transfer reported as successfully CRC-verified.",
+        "- [ ] An Android screen-off/background check against the simulated peripheral verifies that the download foreground service keeps the transfer running, using #85 support where required.",
+        "- [ ] `docs/STATUS.md` distinguishes simulated results from outstanding real-device transfer-time and battery-drain measurements.",
+        "- Never send device commands 104, 5, 0xFE20, 128 or 143; never write device settings 4 or 26 (ForbiddenOpcodes / ForbiddenSettings guard tests stay green).",
+        "- Commit directly to main referencing this issue, with tests; CI green (JVM tests, assemble, OSV, emulator smoke, device walk debug + R8 release)."
+      ],
+      "referenced_issues": [
+        6,
+        8,
+        47,
+        85,
+        86
+      ],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 95,
+      "title": "Validate Ogg Opus rate/channels detection and PLAUD.AI decrypt with synthetic fixtures",
+      "url": "https://github.com/bloodf/velum/issues/95",
+      "state": "open",
+      "labels": [
+        "area:audio",
+        "type:task",
+        "priority:p0",
+        "platform:android"
+      ],
+      "priority": "priority:p0",
+      "scope_source": "https://github.com/bloodf/velum/issues/95",
+      "acceptance_excerpt": [
+        "Rate and channel detection matches independently specified expectations for each synthetic Ogg Opus fixture, distinguishing header metadata from normalized output.",
+        "PLAUD.AI synthetic encrypted fixtures decrypt to the exact expected plaintext with their matching synthetic keys.",
+        "Wrong-key and malformed-input checks do not report successful processing or expose key material in errors or logs.",
+        "The Android decrypt/decode/normalization path produces 16 kHz PCM with the expected channel handling and duration for valid fixtures.",
+        "Runnable regression checks cover metadata detection, known-plaintext decryption, normalization, and failure handling.",
+        "Fixtures contain no owner audio, owner keys, or owner identity values.",
+        "`docs/STATUS.md` records synthetic coverage while leaving real-device parameters, listening validation, and ASR quality unconfirmed under #7."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "Software side of #7, built and tested against protocol fixtures and a simulated BLE peripheral (no hardware). The real-device check stays in #7 (status:needs-hardware). Roadmap: #47.",
+        "## Acceptance criteria",
+        "- Never send device commands 104, 5, 0xFE20, 128 or 143; never write device settings 4 or 26 (ForbiddenOpcodes / ForbiddenSettings guard tests stay green).",
+        "- Commit directly to main referencing this issue, with tests; CI green (JVM tests, assemble, OSV, emulator smoke, device walk debug + R8 release)."
+      ],
+      "referenced_issues": [
+        7,
+        47,
+        86
+      ],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 96,
+      "title": "Validate Android SoftAP :8081 fast transfer against a mock server",
+      "url": "https://github.com/bloodf/velum/issues/96",
+      "state": "open",
+      "labels": [
+        "area:wifi",
+        "type:task",
+        "priority:p0",
+        "platform:android",
+        "status:ready"
+      ],
+      "priority": "priority:p0",
+      "scope_source": "https://github.com/bloodf/velum/issues/96",
+      "acceptance_excerpt": [
+        "A documented, repeatable Android test starts a mock WebSocket server on `:8081` and exercises the existing fast-transfer client.",
+        "Tests verify socket binding to the selected Wi-Fi network and the token preamble described in `docs/protocol/WIFI_FAST_PATH.md`.",
+        "A complete transfer produces bytes matching the fixture and its CRC; throughput is recorded.",
+        "An injected mid-transfer Wi-Fi failure triggers automatic BLE fallback through a simulated BLE path; the completed file has no missing or duplicate data and matches the expected CRC.",
+        "Success and failure paths release transfer-specific network resources without retaining a process-wide network binding.",
+        "Test instructions distinguish simulated coverage from the real SoftAP join and normal-network restoration checks retained in #8.",
+        "Nonce work remains tracked in #28, linked without a duplicate implementation checklist."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "Software side of #8, built and tested against protocol fixtures and a simulated BLE peripheral (no hardware). The real-device check stays in #8 (status:needs-hardware). Roadmap: #47.",
+        "Exercise Android fast-transfer flow against a mock server using deterministic recording data. Reuse existing implementation and test infrastructure. Cover network binding, token preamble, transfer integrity, interrupted transfer, BLE fallback and network cleanup. Reference #28 for its nonce item; do not duplicate that work here.",
+        "## Acceptance criteria",
+        "- [ ] A documented, repeatable Android test starts a mock WebSocket server on `:8081` and exercises the existing fast-transfer client.",
+        "- [ ] Tests verify socket binding to the selected Wi-Fi network and the token preamble described in `docs/protocol/WIFI_FAST_PATH.md`.",
+        "- [ ] Test instructions distinguish simulated coverage from the real SoftAP join and normal-network restoration checks retained in #8.",
+        "- Never send device commands 104, 5, 0xFE20, 128 or 143; never write device settings 4 or 26 (ForbiddenOpcodes / ForbiddenSettings guard tests stay green).",
+        "- Commit directly to main referencing this issue, with tests; CI green (JVM tests, assemble, OSV, emulator smoke, device walk debug + R8 release)."
+      ],
+      "referenced_issues": [
+        8,
+        28,
+        47,
+        85
+      ],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 97,
+      "title": "Exercise FE10-only sessions with E2EE off against a simulated peripheral",
+      "url": "https://github.com/bloodf/velum/issues/97",
+      "state": "open",
+      "labels": [
+        "area:ble",
+        "type:task",
+        "priority:p0",
+        "platform:android",
+        "status:ready"
+      ],
+      "priority": "priority:p0",
+      "scope_source": "https://github.com/bloodf/velum/issues/97",
+      "acceptance_excerpt": [
+        "A repeatable test configures a simulated peripheral with E2EE off and synthetic identity data.",
+        "In the explicit FE10-only test path, captured protocol traffic contains FE10 and no FE11 during connection, listing, download and reconnect.",
+        "Listing returns the simulated recording; downloading produces bytes matching its fixture.",
+        "Simulated FE10 rejection and list/download failures produce actionable errors without silently sending FE11.",
+        "Regression coverage confirms the FE10-only path does not change the existing E2EE-enabled handshake.",
+        "Tests require no owner identity values and emit no identity secrets in logs or artifacts.",
+        "`docs/STATUS.md` and protocol documentation describe simulated results, reproduction steps and the unresolved hardware question tracked in #9."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "Software side of #9, built and tested against protocol fixtures and a simulated BLE peripheral (no hardware). The real-device check stays in #9 (status:needs-hardware). Roadmap: #47.",
+        "## Acceptance criteria",
+        "- [ ] A repeatable test configures a simulated peripheral with E2EE off and synthetic identity data.",
+        "- [ ] In the explicit FE10-only test path, captured protocol traffic contains FE10 and no FE11 during connection, listing, download and reconnect.",
+        "- [ ] Tests require no owner identity values and emit no identity secrets in logs or artifacts.",
+        "- Never send device commands 104, 5, 0xFE20, 128 or 143; never write device settings 4 or 26 (ForbiddenOpcodes / ForbiddenSettings guard tests stay green).",
+        "- Commit directly to main referencing this issue, with tests; CI green (JVM tests, assemble, OSV, emulator smoke, device walk debug + R8 release)."
+      ],
+      "referenced_issues": [
+        3,
+        4,
+        9,
+        47
+      ],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 98,
+      "title": "Add reproducible Android benchmark harness for Parakeet, Whisper and Gemma",
+      "url": "https://github.com/bloodf/velum/issues/98",
+      "state": "open",
+      "labels": [
+        "area:asr",
+        "area:llm",
+        "type:task",
+        "priority:p0",
+        "platform:android",
+        "status:ready"
+      ],
+      "priority": "priority:p0",
+      "scope_source": "https://github.com/bloodf/velum/issues/98",
+      "acceptance_excerpt": [
+        "Documented commands run the same harness on an Android emulator and a connected physical Android phone.",
+        "CI executes actual Parakeet, Whisper turbo/standard and Gemma inference on an Android emulator, not mocked model calls.",
+        "Fixed inputs, model identifiers, settings and workload selection are recorded so another run can reproduce the setup.",
+        "Reports contain elapsed time, RTF and peak RAM for each model/workload, with units, timing boundaries and memory measurement method documented.",
+        "RTF is defined as elapsed time divided by source audio duration; Gemma results identify the source duration associated with the fixed transcript workload.",
+        "Reports identify emulator/device, Android version, ABI and relevant runtime configuration, and are published as CI artifacts.",
+        "Model loading failures, inference failures and missing measurements fail the run rather than producing successful benchmark results.",
+        "A runnable check verifies RTF calculation and required report fields using known inputs.",
+        "Hardware instructions cover the 1h workload from #12 and distinguish emulator measurements from hardware performance evidence."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "Software side of #12, built and tested against protocol fixtures and a simulated BLE peripheral (no hardware). The real-device check stays in #12 (status:needs-hardware). Roadmap: #47.",
+        "#12 requires hardware measurements for Parakeet, Whisper turbo/standard and Gemma. Local models currently run only in CI/emulator; on-device quality and thermal throttling remain unconfirmed. Build reusable measurement tooling here so #12 can run it on physical phones.",
+        "## Acceptance criteria",
+        "- [ ] Reports contain elapsed time, RTF and peak RAM for each model/workload, with units, timing boundaries and memory measurement method documented.",
+        "- [ ] Model loading failures, inference failures and missing measurements fail the run rather than producing successful benchmark results.",
+        "- [ ] A runnable check verifies RTF calculation and required report fields using known inputs.",
+        "- [ ] Hardware instructions cover the 1h workload from #12 and distinguish emulator measurements from hardware performance evidence.",
+        "Physical mid-range/flagship measurements, battery drain, temperature, throttling, screen-off crash/ANR validation and hardware-driven tier adjustments remain in #12. Whistle validation remains in #13. No model quality or phone-performance claims based on emulator results."
+      ],
+      "referenced_issues": [
+        12,
+        13,
+        47
+      ],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 99,
+      "title": "Templates: deduplicate exact bodies with deterministic survivors and CI coverage",
+      "url": "https://github.com/bloodf/velum/issues/99",
+      "state": "open",
+      "labels": [
+        "area:templates",
+        "type:bug",
+        "priority:p0",
+        "status:ready"
+      ],
+      "priority": "priority:p0",
+      "scope_source": "https://github.com/bloodf/velum/issues/99",
+      "acceptance_excerpt": [
+        "Full catalog contains exactly one row per exact body value after cleanup.",
+        "Cleanup reports input rows, duplicate body groups, removed rows and output rows separately.",
+        "Shuffling input produces identical survivors and output ordering; running cleanup twice makes no further changes.",
+        "CI covers identical bodies with different names, official/Featured precedence, tie-breaking and bodies differing only in whitespace or case.",
+        "Existing installations reconcile builtin duplicates without deleting user-created templates or breaking recording template references.",
+        "Featured entries resolve to retained templates, and T3's category and official-template checks pass."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "source_gap_confirmed",
+      "implementation_evidence": [
+        "tools/templates/clean.py exact_key still normalizes name+body; dedupe_exact does not key by raw exact body",
+        "Current bundled full catalog:16153rows,16128distinct exact bodies,25duplicate groups/25surplus rows"
+      ],
+      "known_gaps": [
+        "Issue historical483group count is stale; current25groups still violate one-per-body criterion.",
+        "Need deterministic survivor ordering, install reconciliation and preserved user/recording references."
+      ],
+      "required_validation_notes": [
+        "Exact body equality including whitespace/case distinctions; input shuffle deterministic; idempotent cleanup",
+        "Existing builtin reconciliation preserves user templates and recording references",
+        "Featured/official survivor resolution after cleanup"
+      ],
+      "referenced_issues": [
+        47
+      ],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 100,
+      "title": "Templates: verify full All catalog import, paging and FTS search on Android",
+      "url": "https://github.com/bloodf/velum/issues/100",
+      "state": "open",
+      "labels": [
+        "area:templates",
+        "area:ui",
+        "type:validation",
+        "priority:p0",
+        "platform:android",
+        "status:ready"
+      ],
+      "priority": "priority:p0",
+      "scope_source": "https://github.com/bloodf/velum/issues/100",
+      "acceptance_excerpt": [
+        "Fresh-install import exposes every retained full-catalog entry in All, using post-T1 catalog contents as expected data.",
+        "Repeated import and app restart do not duplicate entries or lose FTS coverage.",
+        "Paging reaches first, intermediate and final entries without omissions or repeated entries in a stable result set.",
+        "FTS finds known entries outside Featured and handles no-match queries correctly.",
+        "Instrumented test exercises All selection, paging and search against the full bundled collection.",
+        "Measured import duration and FTS latency accompany documented test conditions; automated latency assertion uses the recorded budget.",
+        "Bundled browsing and search work without network access."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "## Acceptance criteria",
+        "- [ ] Instrumented test exercises All selection, paging and search against the full bundled collection.",
+        "- [ ] Measured import duration and FTS latency accompany documented test conditions; automated latency assertion uses the recorded budget.",
+        "- Never send device commands 104, 5, 0xFE20, 128 or 143; never write device settings 4 or 26 (ForbiddenOpcodes / ForbiddenSettings guard tests stay green).",
+        "- Commit directly to main referencing this issue, with tests; CI green (JVM tests, assemble, OSV, emulator smoke, device walk debug + R8 release)."
+      ],
+      "referenced_issues": [
+        47
+      ],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 101,
+      "title": "Templates: enforce 100 distinct Featured bodies per category and official coverage",
+      "url": "https://github.com/bloodf/velum/issues/101",
+      "state": "open",
+      "labels": [
+        "area:templates",
+        "type:task",
+        "priority:p0",
+        "status:ready"
+      ],
+      "priority": "priority:p0",
+      "scope_source": "https://github.com/bloodf/velum/issues/101",
+      "acceptance_excerpt": [
+        "Each listed category has at least 100 distinct exact bodies in Featured after T1 cleanup.",
+        "Every Featured entry resolves to a retained full-catalog template.",
+        "All 41 currently official rows remain represented by their retained official templates.",
+        "Official-template completeness is checked against a cited authoritative inventory; missing inventory or entries remain explicit blockers.",
+        "CI fails for a category below 100 distinct bodies, a missing official template or a Featured entry absent from the full catalog.",
+        "Regression check demonstrates that duplicate bodies with different names cannot inflate a category's count.",
+        "Catalog generation is deterministic; insufficient source coverage fails clearly rather than fabricating templates."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [
+        "Source-only count:1500Featured,100distinct exact bodies per category,41officialflags"
+      ],
+      "known_gaps": [
+        "Recheck against retained full catalog after#99",
+        "Authoritative official inventory still required; existing41flags do not prove completeness."
+      ],
+      "required_validation_notes": [
+        "## Acceptance criteria",
+        "- Never send device commands 104, 5, 0xFE20, 128 or 143; never write device settings 4 or 26 (ForbiddenOpcodes / ForbiddenSettings guard tests stay green).",
+        "- Commit directly to main referencing this issue, with tests; CI green (JVM tests, assemble, OSV, emulator smoke, device walk debug + R8 release)."
+      ],
+      "referenced_issues": [
+        47
+      ],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 102,
+      "title": "Templates: add composable category, tag and language filters in Discover",
+      "url": "https://github.com/bloodf/velum/issues/102",
+      "state": "open",
+      "labels": [
+        "area:templates",
+        "area:ui",
+        "type:task",
+        "priority:p0",
+        "platform:android",
+        "status:ready"
+      ],
+      "priority": "priority:p0",
+      "scope_source": "https://github.com/bloodf/velum/issues/102",
+      "acceptance_excerpt": [
+        "Category chips, tag filter and language filter appear in Discover with accessible labels and selected states.",
+        "Each filter independently returns matching templates only.",
+        "Combined category, tag, language and search constraints return their intersection within the selected tier.",
+        "Changing filters resets paging without stale results, omissions or duplicates.",
+        "Individual clear and clear-all controls restore expected results; no-match state allows clearing filters.",
+        "Missing language metadata is handled explicitly without assigning an invented language.",
+        "Automated query tests cover individual filters, combined constraints, empty results and missing metadata.",
+        "Android UI test covers selection, search composition, tier switching and clearing filters using bundled data offline."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "## Acceptance criteria",
+        "- [ ] Automated query tests cover individual filters, combined constraints, empty results and missing metadata.",
+        "- [ ] Android UI test covers selection, search composition, tier switching and clearing filters using bundled data offline.",
+        "- Never send device commands 104, 5, 0xFE20, 128 or 143; never write device settings 4 or 26 (ForbiddenOpcodes / ForbiddenSettings guard tests stay green).",
+        "- Commit directly to main referencing this issue, with tests; CI green (JVM tests, assemble, OSV, emulator smoke, device walk debug + R8 release)."
+      ],
+      "referenced_issues": [
+        47
+      ],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 103,
+      "title": "Templates: change recording template and regenerate summary with version preservation",
+      "url": "https://github.com/bloodf/velum/issues/103",
+      "state": "open",
+      "labels": [
+        "area:llm",
+        "area:templates",
+        "area:ui",
+        "type:task",
+        "priority:p0",
+        "platform:android",
+        "status:ready"
+      ],
+      "priority": "priority:p0",
+      "scope_source": "https://github.com/bloodf/velum/issues/103",
+      "acceptance_excerpt": [
+        "Changing a recording's template and regenerating produces a summary using the selected template and existing transcript.",
+        "Previous summary remains accessible with its template association after successful regeneration and app restart.",
+        "New summary and template association persist together; failure or cancellation does not overwrite the prior successful summary.",
+        "Local regeneration succeeds with network disabled when the required local model is available.",
+        "API regeneration uses the configured Summary model and provider; offline local selection does not silently invoke an API.",
+        "Missing local model, unavailable API and generation errors produce actionable UI feedback while preserving previous content.",
+        "Automated regression checks cover template propagation, Summary routing, version persistence and failure preservation.",
+        "Android end-to-end coverage exercises Change template through regenerated summary display for local and API routes; real execution results are recorded separately from test doubles."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "audit_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "`RecordingDetailScreen` already has a `Change template` action, but regeneration is not verified end-to-end. Per-task model selection already exists in `ApiModelResolver` and `ApiSettingsScreen`; reuse Summary routing rather than add model-selection settings.",
+        "## Acceptance criteria",
+        "- [ ] Android end-to-end coverage exercises Change template through regenerated summary display for local and API routes; real execution results are recorded separately from test doubles.",
+        "- Never send device commands 104, 5, 0xFE20, 128 or 143; never write device settings 4 or 26 (ForbiddenOpcodes / ForbiddenSettings guard tests stay green).",
+        "- Commit directly to main referencing this issue, with tests; CI green (JVM tests, assemble, OSV, emulator smoke, device walk debug + R8 release)."
+      ],
+      "referenced_issues": [
+        47
+      ],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 104,
+      "title": "Delete dead PlaudTemplateCatalogData.kt",
+      "url": "https://github.com/bloodf/velum/issues/104",
+      "state": "open",
+      "labels": [
+        "area:templates",
+        "type:task",
+        "priority:p2"
+      ],
+      "priority": "priority:p2",
+      "scope_source": "https://github.com/bloodf/velum/issues/104",
+      "acceptance_excerpt": [
+        "`PlaudTemplateCatalogData.kt` is deleted.",
+        "Repository search finds no remaining code references to `PlaudTemplateCatalogData`.",
+        "`:core:jvmTest` passes.",
+        "Bundled Featured and All template resources remain unchanged."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "source_gap_confirmed_next_batches",
+      "implementation_evidence": [
+        "core/src/commonMain/kotlin/dev/velum/core/templates/PlaudTemplateCatalogData.kt still exists"
+      ],
+      "known_gaps": [
+        "Delete unused empty object after reference search and core tests; bundled resources unchanged."
+      ],
+      "required_validation_notes": [
+        "## Acceptance criteria",
+        "- [ ] `:core:jvmTest` passes.",
+        "- Never send device commands 104, 5, 0xFE20, 128 or 143; never write device settings 4 or 26 (ForbiddenOpcodes / ForbiddenSettings guard tests stay green).",
+        "- Commit directly to main referencing this issue, with tests; CI green (JVM tests, assemble, OSV, emulator smoke, device walk debug + R8 release)."
+      ],
+      "referenced_issues": [
+        47
+      ],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 105,
+      "title": "docs: add ARCHITECTURE.md and docs/ENGINEERING_STANDARDS.md",
+      "url": "https://github.com/bloodf/velum/issues/105",
+      "state": "closed",
+      "labels": [
+        "area:docs",
+        "type:task",
+        "priority:p1"
+      ],
+      "priority": "priority:p1",
+      "scope_source": "https://github.com/bloodf/velum/issues/105",
+      "acceptance_excerpt": [
+        "`ARCHITECTURE.md` maps current modules, responsibilities, and dependency boundaries using repository paths.",
+        "Data-flow documentation identifies actual entry points and processing/storage boundaries, with code references.",
+        "Documentation distinguishes implemented paths from hardware validation still tracked in source issues.",
+        "BLE safety rules explicitly prohibit opcodes `104`, `5`, `0xFE20`, `128`, `143` (OTA) and writes to settings `4` / `26`.",
+        "Identity handling rules prohibit committing identity values or exposing them in issues, chat, logs, or CI artifacts.",
+        "Engineering standards document runnable test/build commands and distinguish JVM, emulator, debug device, and minified device checks.",
+        "Commit rules explicitly state direct-to-main workflow.",
+        "Engineering standards include the Product rules block copied verbatim from issue #89 once supplied.",
+        "Links to `docs/ARCHITECTURE_AI.md` and other referenced repository files resolve."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "closed_completed_in_this_task",
+      "implementation_evidence": [
+        "Merged PR #127 plus linked local evidence; see handoff validation table"
+      ],
+      "known_gaps": [],
+      "required_validation_notes": [
+        "Add top-level `ARCHITECTURE.md` with a verified module map and end-to-end data flow. Trace device/import input, transfer, audio processing, transcription, summaries, storage, and UI through actual code.",
+        "Add `docs/ENGINEERING_STANDARDS.md` covering BLE/protocol safety, testing, direct-to-main commit rules, and product rules. Link existing focused documentation instead of duplicating it. Document only verified implementation and established rules; distinguish unverified hardware behavior.",
+        "## Acceptance criteria",
+        "- [ ] Engineering standards document runnable test/build commands and distinguish JVM, emulator, debug device, and minified device checks.",
+        "- Never send device commands 104, 5, 0xFE20, 128 or 143; never write device settings 4 or 26 (ForbiddenOpcodes / ForbiddenSettings guard tests stay green).",
+        "- Commit directly to main referencing this issue, with tests; CI green (JVM tests, assemble, OSV, emulator smoke, device walk debug + R8 release)."
+      ],
+      "referenced_issues": [
+        47,
+        89
+      ],
+      "PRs": [
+        127
+      ],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 106,
+      "title": "Isolate R8 device tests in minifiedTest and restore shipping obfuscation",
+      "url": "https://github.com/bloodf/velum/issues/106",
+      "state": "open",
+      "labels": [
+        "area:release",
+        "type:task",
+        "priority:p0"
+      ],
+      "priority": "priority:p0",
+      "scope_source": "https://github.com/bloodf/velum/issues/106",
+      "acceptance_excerpt": [
+        "`minifiedTest` uses `initWith(release)`, keeps minification enabled, and loads its dedicated `proguard-test-rules.pro`.",
+        "Shipping release does not load test-only keep rules.",
+        "Shipping `proguard-rules.pro` contains no broad `-keep class dev.velum.** { *; }`, `-keepclassmembers class dev.velum.** { *; }`, or `-dontobfuscate` directives.",
+        "A narrow `@Keep` seam on `VelumApplication` survives R8 and supports container access from instrumented tests.",
+        "CI runs the device walk against `minifiedTest` with minification enabled, without `NoSuchMethodError VelumApplication.awaitContainer`.",
+        "No walk configuration disables minification through `instrumentedReleaseWalk`.",
+        "CI-only signing works without release secrets; shipping signing behavior satisfies #90 without logging secrets.",
+        "CI runs `:recorder:jvmTest` alongside existing JVM test tasks, and all pass.",
+        "R8 completes without kotlin-metadata parse warnings; the change records the verified cause and fix.",
+        "Emulator smoke and debug device walk remain green."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "open_partial_toolchain_draft_failed_validation",
+      "implementation_evidence": [
+        "Strictdebug/release/test Kotlin compile passed;debug+R8 dependency graphs alignCompose1.9.4/stdlib2.3.21;actualR8 8.13.19",
+        "327JVM tests passed; full validation aborted on deprecated API compile error"
+      ],
+      "known_gaps": [
+        "PR13076f403c: app Android unit compilation fails on createTempDir at WavWriterRecoverFinalizeTest.kt:14 and:45. R8/lint/full matrix/signing/persistence acceptance remains unrun."
+      ],
+      "required_validation_notes": [
+        "Release instrumented-test changes introduced broad application keeps and `-dontobfuscate` in `composeApp/proguard-rules.pro`, starting with `4f6f1c48`. Later changes include `d77e8c5` and `bb23533`; `instrumentedReleaseWalk` disables minification for the instrumented release walk.",
+        "The release walk failed with `NoSuchMethodError VelumApplication.awaitContainer`. R8 emits kotlin-metadata parse warnings. CI runs JVM tests for plaud-protocol, ble, core, and ai, but omits `:recorder:jvmTest`.",
+        "Add `minifiedTest` using `initWith(release)`, with minification explicitly enabled and its own `proguard-test-rules.pro`. Keep test-only rules out of shipping release configuration.",
+        "Provide a narrow `@Keep` test seam on `VelumApplication`, such as `awaitContainer`, addressing the instrumented call path. Remove broad `dev.velum.**` class/member keeps and `-dontobfuscate` from shipping rules; retain only necessary targeted production rules.",
+        "Move the R8 device walk to `minifiedTest`. Remove its dependence on disabling minification. Coordinate CI-only signing with #90 so device tests require no release secrets and shipping release never silently uses the committed debug key.",
+        "Add `:recorder:jvmTest` to CI. Diagnose kotlin-metadata parse warnings, checking kotlin-metadata/R8 version alignment, and fix the verified cause rather than suppressing warnings.",
+        "## Acceptance criteria",
+        "- [ ] `minifiedTest` uses `initWith(release)`, keeps minification enabled, and loads its dedicated `proguard-test-rules.pro`."
+      ],
+      "referenced_issues": [
+        47,
+        90,
+        91
+      ],
+      "PRs": [
+        123,
+        130
+      ],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 107,
+      "title": "Track independent review rounds until Android 1.0 passes a clean ship gate",
+      "url": "https://github.com/bloodf/velum/issues/107",
+      "state": "open",
+      "labels": [
+        "area:release",
+        "type:task",
+        "priority:p0"
+      ],
+      "priority": "priority:p0",
+      "scope_source": "https://github.com/bloodf/velum/issues/107",
+      "acceptance_excerpt": [
+        "Existing round 1–3 reports remain available at their current paths and are linked from this tracking issue.",
+        "Each new round uses a fresh, context-free cloud agent and audits the whole app.",
+        "Each new round has a committed `docs/audit/android-1.0-review-roundN.md` report identifying the reviewed revision, scope, findings, and gate results.",
+        "Every finding has a linked GitHub issue carrying a `priority:p0`, `priority:p1`, or `priority:p2` severity label.",
+        "Each round records evidence for JVM tests, assemble, OSV, emulator smoke, debug device walk, and R8 device walk.",
+        "The R8 device walk runs with minification enabled through the build configuration tracked in issue F.",
+        "A qualifying clean round reports zero findings and green CI on all required gates for the reviewed revision.",
+        "Android 1.0 does not ship before a qualifying clean round; this tracking issue closes only with links to its report and green gate evidence."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "pending_independent_review_after_fixes",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Existing reports round1–3 have findings; current visual findings remain. No clean independent round is claimed. A fresh reviewer required by criteria is distinct from this implementation session."
+      ],
+      "required_validation_notes": [
+        "## Acceptance criteria",
+        "- [ ] Each round records evidence for JVM tests, assemble, OSV, emulator smoke, debug device walk, and R8 device walk.",
+        "- Never send device commands 104, 5, 0xFE20, 128 or 143; never write device settings 4 or 26 (ForbiddenOpcodes / ForbiddenSettings guard tests stay green).",
+        "- Commit directly to main referencing this issue, with tests; CI green (JVM tests, assemble, OSV, emulator smoke, device walk debug + R8 release)."
+      ],
+      "referenced_issues": [
+        47
+      ],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 108,
+      "title": "Flaky test: AutoFlowRunnerTest.incompleteDuration_thenMatch_runsOnceAndPostsOnReady times out intermittently",
+      "url": "https://github.com/bloodf/velum/issues/108",
+      "state": "closed",
+      "labels": [
+        "type:bug",
+        "priority:p2",
+        "platform:android",
+        "owner:dev-2",
+        "status:ready",
+        "area:autoflow"
+      ],
+      "priority": "priority:p2",
+      "scope_source": "https://github.com/bloodf/velum/issues/108",
+      "acceptance_excerpt": [
+        "No unsynchronized shared counters or fixed-sleep readiness waits in `AutoFlowRunnerTest`",
+        "50 consecutive local or CI reruns of `AutoFlowRunnerTest` pass (log attached to the fixing commit or this issue)",
+        "`:ai:jvmTest` green in CI"
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "closed_completed_in_this_task",
+      "implementation_evidence": [
+        "Merged PR #124 plus linked local evidence; see handoff validation table"
+      ],
+      "known_gaps": [],
+      "required_validation_notes": [
+        "`AutoFlowRunnerTest.incompleteDuration_thenMatch_runsOnceAndPostsOnReady` (`ai/src/jvmTest/kotlin/dev/velum/ai/pipeline/AutoFlowRunnerTest.kt`) is flaky. In a dev cloud-agent run it timed out once in `:ai:jvmTest` and passed on rerun (reported by Velum Dev, 2026-10-28). I have not reproduced it myself yet.",
+        "Flaky tests make the Android 1.0 ship rule (green CI) unreliable and hide real AutoFlow regressions.",
+        "## Likely causes (from reading the test, not yet confirmed)",
+        "1. `processCalls` is a plain `var` incremented on the scheduler's thread and polled from the `runBlocking` test thread. There is no `AtomicInteger` or `@Volatile`, so visibility is not guaranteed.",
+        "2. The test relies on fixed sleeps (`delay(200)` after `runner.start()`, `delay(400)` for the negative check) to wait for the runner's repository subscription. These waits can be too short under CI load.",
+        "3. `runner.actions` is a `MutableSharedFlow` with `replay = 0`. The `async { actions.first { ... } }` subscriber only starts when the test coroutine first suspends, so an emit that happens before then is lost.",
+        "4. The scheduler lambda calls nested `runBlocking` on `Dispatchers.Default` threads, and the test's `CoroutineScope` is never cancelled. This can starve the dispatcher when tests run in parallel.",
+        "The test passes deterministically: 50 consecutive runs of `./gradlew :ai:jvmTest --tests '*AutoFlowRunnerTest*' --rerun-tasks` with zero failures."
+      ],
+      "referenced_issues": [],
+      "PRs": [
+        124
+      ],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 109,
+      "title": "AutoFlowRunner: one failing recording silently stops AutoFlow",
+      "url": "https://github.com/bloodf/velum/issues/109",
+      "state": "closed",
+      "labels": [
+        "type:bug",
+        "priority:p2",
+        "platform:android",
+        "owner:dev-2",
+        "status:ready",
+        "area:autoflow"
+      ],
+      "priority": "priority:p2",
+      "scope_source": "https://github.com/bloodf/velum/issues/109",
+      "acceptance_excerpt": [],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "closed_completed_in_this_task",
+      "implementation_evidence": [
+        "Merged PR #124 plus linked local evidence; see handoff validation table"
+      ],
+      "known_gaps": [],
+      "required_validation_notes": [
+        "## Acceptance criteria",
+        "- Tests: one test per throwing dependency, each asserting the runner is still alive and processes a second recording.",
+        "- No new delay-based waits in `AutoFlowRunnerTest`. The three remaining bounded `delay(50)` polls are converted to `passIndex` awaits where possible."
+      ],
+      "referenced_issues": [
+        108
+      ],
+      "PRs": [
+        124
+      ],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 110,
+      "title": "VoiceProfileStore key priming races with first access (MainScreenshotsTest flake, possible cold-start crash)",
+      "url": "https://github.com/bloodf/velum/issues/110",
+      "state": "closed",
+      "labels": [
+        "type:bug",
+        "priority:p1",
+        "platform:android",
+        "owner:dev-1",
+        "area:core"
+      ],
+      "priority": "priority:p1",
+      "scope_source": "https://github.com/bloodf/velum/issues/110",
+      "acceptance_excerpt": [
+        "The test awaits `ensureKey()` before `seedScreenshotFixtures` (carried by `b298fb6` on #19).",
+        "`MainScreenshotsTest` passes 20 runs in a row with `--rerun-tasks`.",
+        "Production audit: no caller can reach `VoiceProfileStore` before the key is ready on a cold start. Either every access awaits key readiness (suspend on a ready signal) or the race is proven impossible, with a test that hits the store immediately after `AppContainer` creation."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "closed_completed_in_this_task",
+      "implementation_evidence": [
+        "Merged PR #125 plus linked local evidence; see handoff validation table"
+      ],
+      "known_gaps": [],
+      "required_validation_notes": [
+        "`MainScreenshotsTest` fails intermittently in `setUp` with \"VoiceProfileStore key not primed\". The failure lands on whichever test is starting (seen on `modelManager`, `darkModelManager` and `brandSplashDark`).",
+        "2. Run `./gradlew :composeApp:testDebugUnitTest --tests '*MainScreenshotsTest*' --rerun-tasks` several times.",
+        "`AppContainer.kt:176-182` primes the key with `appScope.launch { ensureKey() }`, and `setUp` seeds immediately (`MainScreenshotsTest.kt:593` calls `voiceProfileStore.upsert`) without waiting. Since `7bf9b62`, `VoiceProfileStore.kt:45-48` throws instead of falling back.",
+        "## Acceptance criteria",
+        "- [ ] The test awaits `ensureKey()` before `seedScreenshotFixtures` (carried by `b298fb6` on #19).",
+        "- [ ] `MainScreenshotsTest` passes 20 runs in a row with `--rerun-tasks`."
+      ],
+      "referenced_issues": [
+        19
+      ],
+      "PRs": [
+        125
+      ],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 111,
+      "title": "Move FakeBleTransport and FakePlaudPeripheral out of production source sets into a test-only module",
+      "url": "https://github.com/bloodf/velum/issues/111",
+      "state": "open",
+      "labels": [
+        "area:ble",
+        "type:task",
+        "priority:p2",
+        "platform:android",
+        "status:ready"
+      ],
+      "priority": "priority:p2",
+      "scope_source": "https://github.com/bloodf/velum/issues/111",
+      "acceptance_excerpt": [],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "source_gap_confirmed_next_batches",
+      "implementation_evidence": [
+        "ble/src/commonMain/kotlin/dev/velum/ble/fake/FakeBleTransport.kt",
+        "ble/src/commonMain/kotlin/dev/velum/ble/fake/FakePlaudPeripheral.kt"
+      ],
+      "known_gaps": [
+        "Move fakes to test-only module after #93 without production tests leaking; enforce source-set check."
+      ],
+      "required_validation_notes": [
+        "`FakeBleTransport` lives in `ble/src/commonMain` and ships in the production artifact because `:ai` tests (`DeviceToSummaryE2ETest`) use it. #19 closes the sealed-write path with an explicit `internal override` and a compile-fail probe, so this is not a safety hole, but test doubles should not ship.",
+        "## Acceptance criteria",
+        "- A test-only module (for example `:ble-testing`) holds `FakeBleTransport` and `FakePlaudPeripheral`, consumed only through test dependencies (`commonTest` / `jvmTest` / `androidUnitTest` / `androidInstrumentedTest`).",
+        "- No production source set of any module contains a fake BLE transport or peripheral; a check (test or Gradle task) fails if one is reintroduced.",
+        "- All existing `:ble` and `:ai` tests pass unchanged in behavior; CI fully green on the landing tip."
+      ],
+      "referenced_issues": [
+        19,
+        93
+      ],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 112,
+      "title": "core: commonTest resources missing from Android unit-test classpath (PlaudExportImporterTest fails in :core:testDebugUnitTest)",
+      "url": "https://github.com/bloodf/velum/issues/112",
+      "state": "closed",
+      "labels": [
+        "type:bug",
+        "priority:p2",
+        "platform:android",
+        "area:core"
+      ],
+      "priority": "priority:p2",
+      "scope_source": "https://github.com/bloodf/velum/issues/112",
+      "acceptance_excerpt": [],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "closed_completed_in_this_task",
+      "implementation_evidence": [
+        "Merged PR #123 plus linked local evidence; see handoff validation table"
+      ],
+      "known_gaps": [],
+      "required_validation_notes": [
+        "`:core:testDebugUnitTest` fails on main because `commonTest/resources` isn't on the Android unit-test classpath. The tests that load `plaud_export_sample.json` throw a missing-resource error. The same tests pass on `:core:jvmTest`.",
+        "2. Run `./gradlew :core:testDebugUnitTest`.",
+        "`PlaudExportImporterTest` passes on the Android unit-test target, the same as on `jvmTest`.",
+        "On main, the 4 tests that load the fixture fail with:",
+        "IllegalStateException: Missing test resource plaud_export_sample.json",
+        "On #92's branch (`39e4de0`), `parse_sample_fixture_succeeds` and `importInto_stores_keys` fail with the same error at `PlaudExportImporterTest.kt:154` (92 tests, 2 failed).",
+        "- The fixture is in the tree at `core/src/commonTest/resources/plaud_export_sample.json`.",
+        "- It gets copied for jvmTest under `processedResources/jvm/test/`."
+      ],
+      "referenced_issues": [
+        92
+      ],
+      "PRs": [
+        123
+      ],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 113,
+      "title": "Re-downloading a device session creates a duplicate recording instead of reusing the existing one",
+      "url": "https://github.com/bloodf/velum/issues/113",
+      "state": "open",
+      "labels": [
+        "area:ble",
+        "type:bug",
+        "priority:p1",
+        "platform:android",
+        "owner:dev-2",
+        "status:ready"
+      ],
+      "priority": "priority:p1",
+      "scope_source": "https://github.com/bloodf/velum/issues/113",
+      "acceptance_excerpt": [],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "current_main_dedup_gap_confirmed",
+      "implementation_evidence": [
+        "AppContainer.persistDownloadedSession still creates RecordingIds.newId and writes decryptedBytes under that new recording path."
+      ],
+      "known_gaps": [
+        "Implement device-session uniqueness, atomic replacement preserving prior audio/note on failure, and safe existing-duplicate handling after streaming download work."
+      ],
+      "required_validation_notes": [
+        "Found by QA while verifying #86 (https://github.com/bloodf/velum/issues/86#issuecomment-6485035337).",
+        "## Acceptance criteria",
+        "- Tests: same session downloaded twice gives one row and one file; a failed re-download keeps the original; existing duplicate rows (if any) are handled by a migration or a documented no-op, since nothing has shipped."
+      ],
+      "referenced_issues": [
+        86
+      ],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 114,
+      "title": "test issue please ignore",
+      "url": "https://github.com/bloodf/velum/issues/114",
+      "state": "closed",
+      "labels": [],
+      "priority": null,
+      "scope_source": "https://github.com/bloodf/velum/issues/114",
+      "acceptance_excerpt": [],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "closed_before_task_not_reaudited",
+      "implementation_evidence": [
+        "GitHub state only; no claim of fresh source audit"
+      ],
+      "known_gaps": [],
+      "required_validation_notes": [],
+      "referenced_issues": [],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 115,
+      "title": "Device walk: soft misses must fail the walk; assert required coverage (#106 follow-up)",
+      "url": "https://github.com/bloodf/velum/issues/115",
+      "state": "open",
+      "labels": [
+        "area:release",
+        "type:task",
+        "priority:p0",
+        "platform:android",
+        "owner:dev-1"
+      ],
+      "priority": "priority:p0",
+      "scope_source": "https://github.com/bloodf/velum/issues/115",
+      "acceptance_excerpt": [
+        "Any `*-soft-miss` entry in `covered` fails the test at the end of the walk, and the failure message lists the misses.",
+        "The walk asserts a fixed required-coverage set (onboarding, settings/appearance, library, library/search, import/bundled-wav, transcription/device-walk-engine, recording/open, recording/change-template, explore, templates, autoflow). If any entry is missing, the test fails.",
+        "`runCatching` around `waitUntil` on the main navigation path (Files shell, Files chrome) is replaced by a hard wait with a clear failure message.",
+        "Soft helpers stay only for optional, locale-dependent UI, each with a comment explaining why it's optional.",
+        "Green on both the debug walk and the `minifiedTest` R8 walk in CI."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "current_batch_review_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "Acceptance criteria:",
+        "- [ ] Any `*-soft-miss` entry in `covered` fails the test at the end of the walk, and the failure message lists the misses.",
+        "- [ ] The walk asserts a fixed required-coverage set (onboarding, settings/appearance, library, library/search, import/bundled-wav, transcription/device-walk-engine, recording/open, recording/change-template, explore, templates, autoflow). If any entry is missing, the test fails.",
+        "- [ ] Green on both the debug walk and the `minifiedTest` R8 walk in CI."
+      ],
+      "referenced_issues": [
+        106
+      ],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 116,
+      "title": "Device walk: hard Files return still misses Settings gear after nested screens",
+      "url": "https://github.com/bloodf/velum/issues/116",
+      "state": "closed",
+      "labels": [],
+      "priority": null,
+      "scope_source": "https://github.com/bloodf/velum/issues/116",
+      "acceptance_excerpt": [],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "closed_before_task_not_reaudited",
+      "implementation_evidence": [
+        "GitHub state only; no claim of fresh source audit"
+      ],
+      "known_gaps": [],
+      "required_validation_notes": [],
+      "referenced_issues": [],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 117,
+      "title": "minifiedTest R8 keep-whack: InfiniteAnimationPolicy$DefaultImpls still missing",
+      "url": "https://github.com/bloodf/velum/issues/117",
+      "state": "open",
+      "labels": [
+        "area:release",
+        "type:task",
+        "priority:p0",
+        "platform:android",
+        "owner:staff"
+      ],
+      "priority": "priority:p0",
+      "scope_source": "https://github.com/bloodf/velum/issues/117",
+      "acceptance_excerpt": [],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "current_batch_review_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "Blocks acceptance of #106. Targeted keeps only — **blanket `-keep class kotlinx.coroutines.**` is not allowed** (rejected after `af87f76`; overridden in `52662ab`).",
+        "- `composeApp/proguard-test-rules.pro` (~16–24 on tip) — current targeted keeps for `DelayWithTimeoutDiagnostics`, `kotlin.time.**`, `InfiniteAnimationPolicy` / `InfiniteAnimationPolicy$*`",
+        "- `composeApp/build.gradle.kts` — `minifiedTest` build type / `proguard-test-rules.pro` wiring",
+        "- Failure surface: `composeApp` `connectedMinifiedTestAndroidTest` via `scripts/emulator-device-walk-both.sh`",
+        "1. Run CI `android-device-walk` with `minifiedTest` (minification on, test-only rules).",
+        "CI run [40806057120](https://github.com/bloodf/velum/actions/runs/40806057120) on `af87f76`: all four `connectedMinifiedTestAndroidTest` cells fail with:",
+        "2. Prefer referencing the Compose UI Test dependency graph (classes androidTest needs from the app APK) over package-wide keeps.",
+        "3. Keep shipping `assembleRelease` R8 rules unchanged; do not merge test rules into `proguard-rules.pro`."
+      ],
+      "referenced_issues": [
+        106
+      ],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 118,
+      "title": "ScreenTopBar still inside verticalScroll on most settings/import/ask screens",
+      "url": "https://github.com/bloodf/velum/issues/118",
+      "state": "open",
+      "labels": [
+        "area:ui",
+        "type:bug",
+        "priority:p1",
+        "platform:android",
+        "owner:dev-2",
+        "status:ready"
+      ],
+      "priority": "priority:p1",
+      "scope_source": "https://github.com/bloodf/velum/issues/118",
+      "acceptance_excerpt": [],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "source_gap_confirmed_next_batches",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete."
+      ],
+      "required_validation_notes": [
+        "3. From instrumentation, look up content description `Back` / `Voltar` (as `DeviceWalkUiTest.pressNavBack` does)."
+      ],
+      "referenced_issues": [
+        106,
+        116
+      ],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 119,
+      "title": "Test VelumApplication wiring of cleanupStaleDownloadsThenPublish (#86 follow-up)",
+      "url": "https://github.com/bloodf/velum/issues/119",
+      "state": "open",
+      "labels": [
+        "type:task",
+        "priority:p1",
+        "platform:android",
+        "owner:dev-2",
+        "status:ready"
+      ],
+      "priority": "priority:p1",
+      "scope_source": "https://github.com/bloodf/velum/issues/119",
+      "acceptance_excerpt": [
+        "A test drives `VelumApplication` startup, or the extracted startup function it calls, and fails if cleanup doesn't run before `ready.set(true)` / `complete()`.",
+        "Mutation check: reordering or removing the call in `VelumApplication` makes the test fail. QA verifies this.",
+        "No `delay`-based timing. CI is green."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "source_gap_confirmed_next_batches",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete.",
+        "This PR provides audio/session preservation only; it does not satisfy full streaming/startup mutation/orphan sweep criteria."
+      ],
+      "required_validation_notes": [
+        "QA's #86 run found a coverage gap: no test exercises `VelumApplication`. An app that skipped `cleanupStaleDownloadsThenPublish` and inlined the old publish-then-cleanup order would still pass every suite.",
+        "Acceptance criteria:",
+        "- [ ] A test drives `VelumApplication` startup, or the extracted startup function it calls, and fails if cleanup doesn't run before `ready.set(true)` / `complete()`.",
+        "- [ ] Mutation check: reordering or removing the call in `VelumApplication` makes the test fail. QA verifies this."
+      ],
+      "referenced_issues": [
+        86
+      ],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    },
+    {
+      "issue": 122,
+      "title": "Startup sweep: delete orphaned recording audio files left by #113 dedup",
+      "url": "https://github.com/bloodf/velum/issues/122",
+      "state": "open",
+      "labels": [],
+      "priority": null,
+      "scope_source": "https://github.com/bloodf/velum/issues/122",
+      "acceptance_excerpt": [
+        "On app start (off the main thread, after the container is ready), files in the recordings directory with no referencing recording row are deleted.",
+        "Partial-download files owned by #86 (`PartialRecordingRecovery`) are never deleted by the sweep.",
+        "Files referenced by any row (including rows mid-import) are never deleted; the sweep is safe if it runs while a download/import is in progress.",
+        "Idempotent: a second run deletes nothing.",
+        "JVM tests: orphan deleted, referenced kept, partial kept, empty dir, I/O error does not crash startup.",
+        "No file paths containing identity values are logged; log only counts."
+      ],
+      "excerpt_requires_canonical_issue_review": true,
+      "assessment_status": "current_batch_review_pending",
+      "implementation_evidence": [],
+      "known_gaps": [
+        "Criteria require source and test reconciliation; not yet marked complete.",
+        "This PR provides audio/session preservation only; it does not satisfy full streaming/startup mutation/orphan sweep criteria.",
+        "AudioImportPipeline.importFile currently wraps the entire normalization/persistence/enqueue path in runCatching and converts CancellationException to ImportResult.Failed; cancellation/temporary normalized-file cleanup must be tested when implementing general orphan reconciliation. No new runtime edit made during PR125 validation."
+      ],
+      "required_validation_notes": [
+        "## Acceptance criteria",
+        "- [ ] JVM tests: orphan deleted, referenced kept, partial kept, empty dir, I/O error does not crash startup."
+      ],
+      "referenced_issues": [
+        86,
+        113
+      ],
+      "PRs": [],
+      "owner_or_external_blocker": null
+    }
+  ]
+}
