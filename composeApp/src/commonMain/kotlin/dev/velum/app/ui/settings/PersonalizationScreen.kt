@@ -77,9 +77,14 @@ fun PersonalizationScreen(
         Modifier
             .fillMaxSize()
             .background(VelumSurface)
-            .verticalScroll(rememberScrollState()),
     ) {
         ScreenTopBar(strings.personalization, onBack = onBack)
+        Column(
+            Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState()),
+        ) {
         // Profile fields live on this screen (display name / focus / instructions).
         Spacer(Modifier.height(8.dp))
         SectionTitle(strings.displayName)
@@ -143,6 +148,7 @@ fun PersonalizationScreen(
             modifier = Modifier.padding(horizontal = 20.dp),
         )
         Spacer(Modifier.height(40.dp))
+        }
     }
 }
 

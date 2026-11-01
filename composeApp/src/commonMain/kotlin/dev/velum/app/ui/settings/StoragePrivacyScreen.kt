@@ -90,9 +90,14 @@ fun StoragePrivacyScreen(
         Modifier
             .fillMaxSize()
             .background(VelumSurface)
-            .verticalScroll(rememberScrollState()),
     ) {
         ScreenTopBar(strings.settingsUi.storagePrivacy, onBack = onBack)
+        Column(
+            Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState()),
+        ) {
         Text(
             strings.settingsUi.privacyOnDeviceStatement,
             color = VelumInk,
@@ -148,6 +153,7 @@ fun StoragePrivacyScreen(
             Text(it, color = VelumInkSecondary, modifier = Modifier.padding(horizontal = 20.dp))
         }
         Spacer(Modifier.height(40.dp))
+        }
     }
 }
 

@@ -104,9 +104,14 @@ fun ImportHubScreen(
         Modifier
             .fillMaxSize()
             .background(VelumBg)
-            .verticalScroll(rememberScrollState()),
     ) {
         ScreenTopBar(strings.importAudio, onBack = onBack)
+        Column(
+            Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState()),
+        ) {
         Column(Modifier.padding(20.dp)) {
             Text(
                 strings.ux.importHubTitle,
@@ -177,6 +182,7 @@ fun ImportHubScreen(
                 Spacer(Modifier.height(8.dp))
                 Text(it, color = VelumInkSecondary, fontSize = 13.sp)
             }
+        }
         }
     }
 }

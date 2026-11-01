@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -35,9 +36,14 @@ fun PreferencesScreen(
         Modifier
             .fillMaxSize()
             .background(VelumSurface)
-            .verticalScroll(rememberScrollState()),
     ) {
         ScreenTopBar(strings.preferences, onBack = onBack)
+        Column(
+            Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState()),
+        ) {
         SectionLabel(strings.aiProcessing)
         ChevronRow(
             strings.aiProcessing,
@@ -86,5 +92,6 @@ fun PreferencesScreen(
             showDivider = false,
         )
         Spacer(Modifier.height(40.dp))
+        }
     }
 }

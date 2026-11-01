@@ -132,9 +132,14 @@ fun VoiceProfilesScreen(
         Modifier
             .fillMaxSize()
             .background(VelumBg)
-            .verticalScroll(rememberScrollState()),
     ) {
         ScreenTopBar(strings.voiceProfiles, onBack = onBack)
+        Column(
+            Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState()),
+        ) {
         Column(Modifier.padding(20.dp)) {
             Text(
                 strings.ux.voiceProfilesHint,
@@ -310,6 +315,7 @@ fun VoiceProfilesScreen(
                 color = VelumInkSecondary,
                 fontSize = 12.sp,
             )
+        }
         }
     }
 

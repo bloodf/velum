@@ -40,9 +40,14 @@ fun RecordingSettingsScreen(
         Modifier
             .fillMaxSize()
             .background(VelumSurface)
-            .verticalScroll(rememberScrollState()),
     ) {
         ScreenTopBar(strings.settingsUi.recording, onBack = onBack)
+        Column(
+            Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState()),
+        ) {
         Text(
             strings.settingsUi.recordingHint,
             color = VelumInkSecondary,
@@ -76,5 +81,6 @@ fun RecordingSettingsScreen(
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
         )
         Spacer(Modifier.height(40.dp))
+        }
     }
 }

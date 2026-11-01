@@ -135,9 +135,14 @@ fun ApiSettingsScreen(
         Modifier
             .fillMaxSize()
             .background(VelumBg)
-            .verticalScroll(rememberScrollState()),
     ) {
         ScreenTopBar(strings.aiProvider, onBack = onBack)
+        Column(
+            Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState()),
+        ) {
         Spacer(Modifier.height(8.dp))
         ChevronRow(strings.aiProcessing, onAiProcessing)
         ChevronRow(strings.modelManager, onModelManager, showDivider = false)
@@ -359,6 +364,7 @@ fun ApiSettingsScreen(
             )
         }
         Spacer(Modifier.height(40.dp))
+        }
     }
 }
 

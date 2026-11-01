@@ -91,9 +91,14 @@ fun AiProcessingScreen(
         Modifier
             .fillMaxSize()
             .background(VelumBg)
-            .verticalScroll(rememberScrollState()),
     ) {
         ScreenTopBar(strings.aiProcessing, onBack = onBack)
+        Column(
+            Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState()),
+        ) {
         Text(
             strings.aiProcessingHint,
             color = VelumInkSecondary,
@@ -260,6 +265,7 @@ fun AiProcessingScreen(
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
         )
         Spacer(Modifier.height(40.dp))
+        }
     }
 
     if (pickAudio) {

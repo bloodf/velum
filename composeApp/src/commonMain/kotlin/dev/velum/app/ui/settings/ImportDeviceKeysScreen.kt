@@ -118,9 +118,14 @@ fun ImportDeviceKeysScreen(
         Modifier
             .fillMaxSize()
             .background(VelumBg)
-            .verticalScroll(rememberScrollState()),
     ) {
         ScreenTopBar(strings.importKeys.title, onBack = onBack)
+        Column(
+            Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState()),
+        ) {
         if (storageState == dev.velum.core.settings.SettingsLoadState.Unavailable) {
             Text(strings.ux.secureStorageUnavailable, color = VelumInk, modifier = Modifier.padding(20.dp, 8.dp))
             OutlineButton(strings.ux.retryProcessing, { container.settingsViewModel.reloadSettings() }, Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
@@ -255,6 +260,7 @@ fun ImportDeviceKeysScreen(
             Text(it, color = Color(0xFFFF3B30), modifier = Modifier.padding(20.dp, 8.dp).testTag("identity-import-error"))
         }
         Spacer(Modifier.height(40.dp))
+        }
     }
 
 

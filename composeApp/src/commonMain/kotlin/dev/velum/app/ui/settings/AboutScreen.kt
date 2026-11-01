@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -35,9 +36,14 @@ fun AboutScreen(onBack: () -> Unit) {
         Modifier
             .fillMaxSize()
             .background(VelumSurface)
-            .verticalScroll(rememberScrollState()),
     ) {
         ScreenTopBar(strings.aboutVelum, onBack = onBack)
+        Column(
+            Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState()),
+        ) {
         Spacer(Modifier.height(12.dp))
         VelumLogo(size = 72.dp, modifier = Modifier.padding(horizontal = 20.dp))
         Spacer(Modifier.height(12.dp))
@@ -74,5 +80,6 @@ fun AboutScreen(onBack: () -> Unit) {
             showDivider = false,
         )
         Spacer(Modifier.height(40.dp))
+        }
     }
 }

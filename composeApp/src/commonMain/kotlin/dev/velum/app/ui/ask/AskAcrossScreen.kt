@@ -75,9 +75,14 @@ fun AskAcrossScreen(
         Modifier
             .fillMaxSize()
             .background(VelumBg)
-            .verticalScroll(rememberScrollState()),
     ) {
         ScreenTopBar(strings.ux.askAcrossTitle, onBack = onBack)
+        Column(
+            Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState()),
+        ) {
         Column(Modifier.padding(20.dp)) {
             if (recordings.isEmpty() && previewAnswer == null) {
                 Text(
@@ -207,6 +212,7 @@ fun AskAcrossScreen(
                 }
             }
             Spacer(Modifier.height(40.dp))
+        }
         }
     }
 }
