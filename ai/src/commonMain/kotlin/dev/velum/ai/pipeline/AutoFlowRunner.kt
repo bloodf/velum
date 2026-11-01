@@ -11,17 +11,27 @@ import dev.velum.core.data.VelumRepository
 import dev.velum.core.db.Autoflow
 import dev.velum.core.db.Recording
 import dev.velum.core.settings.ApiModelOverride
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
@@ -30,86 +40,137 @@ import kotlinx.coroutines.withTimeoutOrNull
  * When [jobScheduler] is set, processing goes through that single path (WorkManager on
  * Android) so AutoFlow never double-runs with the UI enqueue.
  */
-class AutoFlowRunner(
-    private val repository: VelumRepository,
-    private val processor: RecordingProcessor,
+class AutoFlowRunner internal constructor(
+    private val repository: AutoFlowRecordingStore,
+    private val processRecording: (String, String?, ApiModelOverride?) -> Flow<JobProgress>,
     private val scope: CoroutineScope,
     val notifyEnabled: () -> Boolean = { true },
     private val calendar: CalendarEventProvider = createCalendarEventProvider(),
     private val nowEpochMs: () -> Long = { epochMsNow() },
     private val jobScheduler: RecordingJobScheduler? = null,
 ) {
-    private var job: Job? = null
+    constructor(
+        repository: VelumRepository,
+        processor: RecordingProcessor,
+        scope: CoroutineScope,
+        notifyEnabled: () -> Boolean = { true },
+        calendar: CalendarEventProvider = createCalendarEventProvider(),
+        nowEpochMs: () -> Long = { epochMsNow() },
+        jobScheduler: RecordingJobScheduler? = null,
+    ) : this(
+        RepositoryAutoFlowRecordingStore(repository),
+        { id, template, override -> processor.process(id, template, true, override) },
+        scope, notifyEnabled, calendar, nowEpochMs, jobScheduler,
+    )
+
+    private val job = MutableStateFlow<Job?>(null)
     private val processedIds = mutableSetOf<String>()
     private var seeded = false
 
     private val _actions = MutableSharedFlow<AutoFlowUiAction>(extraBufferCapacity = 8)
     val actions: SharedFlow<AutoFlowUiAction> = _actions.asSharedFlow()
 
+    // A restart may be requested before a cancelled collector finishes cleanup.
+    // Serialize collectors so they never concurrently mutate processedIds/seeded.
+    private val collectorMutex = Mutex()
+    private val _passIndex = MutableStateFlow(0L)
+
+    /** Test observation hook: number of completed passes, including seed/error/cancel. */
+    internal val passIndex = _passIndex.asStateFlow()
+    internal val isRunning: Boolean get() = job.value?.isActive == true
+
     fun start() {
-        if (job != null) return
-        job = scope.launch {
-            combine(
-                repository.observeRecordings(),
-                repository.observeAutoflows(),
-            ) { recordings, flows ->
-                recordings to flows
+        while (true) {
+            val previous = job.value
+            // Include a newly registered lazy job, before its owner starts it.
+            if (previous != null && !previous.isCompleted && !previous.isCancelled) return
+            val next = scope.launch(start = CoroutineStart.LAZY) { collectPasses() }
+            if (job.compareAndSet(previous, next)) {
+                next.invokeOnCompletion { job.compareAndSet(next, null) }
+                next.start()
+                return
             }
-                .distinctUntilChanged()
-                .collect { (recordings, flows) ->
-                    if (!seeded) {
-                        // Claim only terminal ready/failed. Do NOT claim matchable waiting
-                        // statuses (imported) or in-flight orphans (generating/queued) — those
-                        // remain eligible for rematch. Terminal rows must not re-ASR.
-                        processedIds.addAll(
-                            recordings
-                                .filter { isStableNonMatch(it) }
-                                .map { it.id },
-                        )
-                        seeded = true
-                        return@collect
+            next.cancel()
+        }
+    }
+
+    private suspend fun collectPasses() {
+        collectorMutex.withLock {
+            try {
+                combine(
+                    repository.observeRecordings(),
+                    repository.observeAutoflows(),
+                ) { recordings, flows -> recordings to flows }
+                    .distinctUntilChanged()
+                    .collect { (recordings, flows) ->
+                        try {
+                            runPass(recordings, flows)
+                        } finally {
+                            _passIndex.update { it + 1 }
+                        }
                     }
-                    val enabledFlows = flows.filter { it.enabled == 1L }
-                    for (recording in recordings) {
-                        if (recording.id in processedIds) continue
-                        maybeApplyCalendarTitle(recording)
-                        val match = enabledFlows.firstOrNull { flow ->
-                            matches(flow, recording)
-                        }
-                        if (match == null) {
-                            // Do not permanently skip incomplete rows (duration 0 / mid-capture).
-                            // Only mark stable terminal recordings that never matched.
-                            if (isStableNonMatch(recording)) {
-                                processedIds.add(recording.id)
-                            }
-                            continue
-                        }
-                        // WorkManager already finished (e.g. after process death) — claim
-                        // without re-enqueue / re-ASR. True orphans keep non-terminal status.
-                        if (isStableNonMatch(recording)) {
-                            processedIds.add(recording.id)
-                            continue
-                        }
-                        val override = AutoFlowResolve.modelOverride(match)
-                        val ready = runProcessing(recording.id, match.template_id, override)
-                        // Claim only on observed terminal ready/failed. Timeout must leave
-                        // the id unclaimed so a late WorkManager finish can still rematch
-                        // and fire post-actions.
-                        val terminal = repository.getRecording(recording.id)?.status
-                        if (terminal == "ready" || terminal == "failed") {
-                            processedIds.add(recording.id)
-                        }
-                        if (ready) {
-                            firePostAction(match, recording.id)
-                        }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                // A failed upstream subscription has no individual recording.
+                // Surface it, then allow start() to replace this completed job.
+                _actions.emit(AutoFlowUiAction.ProcessingFailed)
+            }
+        }
+    }
+
+    private suspend fun runPass(recordings: List<Recording>, flows: List<Autoflow>) {
+        if (!seeded) {
+            processedIds.addAll(recordings.filter { isStableNonMatch(it) }.map { it.id })
+            seeded = true
+            return
+        }
+        val enabledFlows = flows.filter { it.enabled == 1L }
+        for (recording in recordings) {
+            currentCoroutineContext().ensureActive()
+            if (recording.id in processedIds) continue
+            var processingCompleted = isStableNonMatch(recording)
+            try {
+                maybeApplyCalendarTitle(recording)
+                val match = enabledFlows.firstOrNull { matches(it, recording) }
+                if (match == null || isStableNonMatch(recording)) {
+                    if (isStableNonMatch(recording)) processedIds.add(recording.id)
+                    continue
+                }
+                val override = AutoFlowResolve.modelOverride(match)
+                val ready = runProcessing(recording.id, match.template_id, override)
+                processingCompleted = ready
+                // Timeout leaves the id unclaimed for a later terminal update.
+                val terminal = repository.getRecording(recording.id)?.status
+                if (terminal == "ready" || terminal == "failed") processedIds.add(recording.id)
+                if (ready) firePostAction(match, recording.id)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                if (!processingCompleted) {
+                    try {
+                        repository.updateStatus(recording.id, "failed")
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (_: Exception) {
+                        // The UI action below is also available when storage fails.
                     }
                 }
+                currentCoroutineContext().ensureActive()
+                // A failed post-action must not destroy a successfully generated note.
+                // Never expose dependency exception messages or recording contents.
+                _actions.emit(AutoFlowUiAction.ProcessingFailed)
+                currentCoroutineContext().ensureActive()
+                // Claim poison rows even if persisting failed also fails; otherwise
+                // their own DB emissions can repeatedly retry the same failure.
+                // Cancellation during failure handling must leave the row retryable.
+                processedIds.add(recording.id)
+            }
         }
     }
 
     fun stop() {
-        job?.cancel()
-        job = null
+        job.value?.cancel()
     }
 
     suspend fun applyCalendarTitleIfAvailable(recordingId: String) {
@@ -140,12 +201,7 @@ class AutoFlowRunner(
             return awaitReadyStatus(recordingId, alreadyInFlight = true)
         }
         var succeeded = false
-        processor.process(
-            recordingId = recordingId,
-            templateId = templateId,
-            retranscribe = true,
-            apiModelOverride = apiModelOverride,
-        ).collect { progress ->
+        processRecording(recordingId, templateId, apiModelOverride).collect { progress ->
             if (progress is JobProgress.Succeeded) succeeded = true
         }
         return succeeded || repository.getRecording(recordingId)?.status == "ready"
@@ -268,7 +324,25 @@ class AutoFlowRunner(
     }
 }
 
+/** Only operations used by the runner; keeps fault tests independent of SQL/engine internals. */
+internal interface AutoFlowRecordingStore {
+    fun observeRecordings(): Flow<List<Recording>>
+    fun observeAutoflows(): Flow<List<Autoflow>>
+    suspend fun getRecording(id: String): Recording?
+    suspend fun updateStatus(id: String, status: String)
+    suspend fun updateRecordingTitle(id: String, title: String)
+}
+
+internal class RepositoryAutoFlowRecordingStore(private val repository: VelumRepository) : AutoFlowRecordingStore {
+    override fun observeRecordings() = repository.observeRecordings()
+    override fun observeAutoflows() = repository.observeAutoflows()
+    override suspend fun getRecording(id: String) = repository.getRecording(id)
+    override suspend fun updateStatus(id: String, status: String) { repository.updateStatus(id, status) }
+    override suspend fun updateRecordingTitle(id: String, title: String) { repository.updateRecordingTitle(id, title) }
+}
+
 sealed class AutoFlowUiAction {
+    data object ProcessingFailed : AutoFlowUiAction()
     data class ShareMarkdown(val title: String, val body: String) : AutoFlowUiAction()
     data class InsertCalendarEvent(val title: String, val description: String) : AutoFlowUiAction()
     data class ExportMarkdownToFolder(val recordingId: String) : AutoFlowUiAction()

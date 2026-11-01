@@ -216,6 +216,7 @@ private fun VelumRoot(container: AppContainer) {
     LaunchedEffect(container) {
         container.autoFlowRunner.actions.collect { action ->
             when (action) {
+                AutoFlowUiAction.ProcessingFailed -> snackbar.showSnackbar(strings.ux.genericError)
                 is AutoFlowUiAction.ShareMarkdown -> shareText(action.title, action.body)
                 is AutoFlowUiAction.InsertCalendarEvent ->
                     openCalendarInsert(action.title, action.description)
