@@ -33,6 +33,16 @@ def main():
     adb_command = [adb_binary, "-s", args.serial]
     args.output.mkdir(parents=True, exist_ok=True)
     report = dict(started_utc=utc(), status="running", serial=args.serial, variants=[])
+    signature = base64.b64encode(bytes((i * 7) % 251 for i in range(256))).decode()
+    needles = [signature, signature.replace("/", "\\/"), "SYNTHETIC-INVALID-SIGNATURE"]
+    for kind in ("json", "paste"):
+        needles.extend(f"SYNTHETIC-{kind}-{field}" for field in ("SERIAL", "BIND-TOKEN", "PUBLIC-PEM", "PRIVATE-PEM"))
+
+    def redact(raw):
+        text = raw.decode(errors="replace")
+        for value in needles:
+            text = text.replace(value, "[redacted synthetic identity]")
+        return text
 
     def save():
         (args.output / "results.json").write_text(json.dumps(report, indent=2) + "\n")
@@ -40,8 +50,9 @@ def main():
     def adb(*command, timeout=60):
         result = subprocess.run(adb_command + list(command), stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout)
         if result.returncode:
-            # Do not echo arbitrary process output into terminal/error reports.
-            raise RuntimeError("ADB command failed: " + command[0])
+            evidence = args.output / ("adb-failure-" + uuid.uuid4().hex + ".txt")
+            evidence.write_text(redact(result.stdout + result.stderr))
+            raise RuntimeError("ADB command failed: " + command[0] + "; redacted details: " + str(evidence))
         return result.stdout
 
     def guard():
@@ -71,19 +82,16 @@ def main():
                 cell["APKs"][str(apk.relative_to(ROOT))] = hashlib.sha256(apk.read_bytes()).hexdigest()
                 if b"Success" not in adb("install", "-r", "-t", str(apk), timeout=120):
                     raise RuntimeError("Test APK installation failed")
+            registered = adb("shell", "pm", "list", "instrumentation")
+            if ("instrumentation:" + RUNNER).encode() not in registered:
+                raise RuntimeError("Isolated runner is not registered; build the test APK with -PvelumIdentityPersistenceTest=true")
             metadata_path = "files/synthetic-identity-verification/" + run + ".json"
-            signature = base64.b64encode(bytes((i * 7) % 251 for i in range(256))).decode()
-            needles = [signature, signature.replace("/", "\\/"), "SYNTHETIC-INVALID-SIGNATURE"]
-            for kind in ("json", "paste"):
-                needles.extend(f"SYNTHETIC-{kind}-{field}" for field in ("SERIAL", "BIND-TOKEN", "PUBLIC-PEM", "PRIVATE-PEM"))
 
             def record_safe(path, raw):
                 text = raw.decode(errors="replace")
                 leaked = any(value in text for value in needles)
                 # Even a failing verifier must not echo identity into its own reports.
-                for value in needles:
-                    text = text.replace(value, "[redacted synthetic identity]")
-                path.write_text(text)
+                path.write_text(redact(raw))
                 if leaked:
                     raise AssertionError("Captured output contained synthetic identity; evidence was redacted")
 
@@ -128,6 +136,9 @@ def main():
         guard()
         report.update(status="passed", finished_utc=utc())
     except Exception as error:
+        for cell in report["variants"]:
+            if cell["status"] == "running":
+                cell.update(status="failed", error=str(error))
         report.update(status="failed", error=str(error), finished_utc=utc(), failure_policy="No automatic cleanup/reset: inspect the recorded UUID and last confirmed phase before further action")
         raise
     finally:

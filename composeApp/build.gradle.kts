@@ -177,7 +177,11 @@ android {
         targetSdk = libs.versions.android.targetSdk.get().toInt()
         versionCode = 100
         versionName = "1.0.0"
-        testInstrumentationRunner = "dev.velum.app.devicewalk.DeviceWalkTestRunner"
+        // Explicit test-APK selection only; the default runner and production app are unchanged.
+        testInstrumentationRunner = if (
+            providers.gradleProperty("velumIdentityPersistenceTest").map { it.toBooleanStrict() }.getOrElse(false)
+        ) "dev.velum.app.identity.IdentityPersistenceTestRunner"
+        else "dev.velum.app.devicewalk.DeviceWalkTestRunner"
         // Prefer DSL over -Pandroid.testInstrumentationRunnerArguments.* (breaks config cache).
         testInstrumentationRunnerArguments += mapOf(
             "velumDeviceWalk" to "true",

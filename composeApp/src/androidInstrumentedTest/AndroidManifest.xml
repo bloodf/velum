@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <instrumentation
-        android:name="dev.velum.app.identity.IdentityPersistenceTestRunner"
-        android:targetPackage="dev.velum.app"
-        android:label="Synthetic identity persistence verification" />
-</manifest>
