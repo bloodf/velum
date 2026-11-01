@@ -172,7 +172,10 @@ object OggOpusDemuxer {
                     val packetBuf = concatPackets(packetParts)
                     packetParts.clear()
                     if (!sawIdHeader && packetBuf.size >= 19 && startsWithOpusHead(packetBuf)) {
+                        // RFC 7845 §5.1: major version nibble must be 0; channel count 0 is invalid.
+                        require(packetBuf[8].toInt() and 0xf0 == 0) { "Unsupported OpusHead version" }
                         channels = packetBuf[9].toInt() and 0xff
+                        require(channels > 0) { "OpusHead channel count is zero" }
                         sampleRate = readLe32(packetBuf, 12)
                         sawIdHeader = true
                         onHeader(sampleRate, channels)
@@ -183,6 +186,7 @@ object OggOpusDemuxer {
             }
             offset = bodyEnd
         }
+        require(offset == size) { "Truncated Ogg page header" }
 
         // EOS with a continued packet (segSize==255 only) — emit or fail loudly.
         if (packetParts.isNotEmpty()) {

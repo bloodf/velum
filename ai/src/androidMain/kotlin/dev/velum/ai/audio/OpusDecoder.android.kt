@@ -66,6 +66,7 @@ class KopusOpusDecoder : OpusDecoder {
                     onPacket = { packet ->
                         val n = decoder!!.decode(
                             inData = packet,
+                            len = packet.size,
                             outPcm = out,
                             frameSize = frameSize,
                         )
@@ -120,6 +121,7 @@ class KopusOpusDecoder : OpusDecoder {
                     { packet ->
                         val n = decoder!!.decode(
                             inData = packet,
+                            len = packet.size,
                             outPcm = out,
                             frameSize = frameSize,
                         )

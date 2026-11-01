@@ -140,6 +140,7 @@ Phone-only / external (no Plaud required):
 
 - [ ] **One-time device identity values** (`snSignature` / `sn-sign` + bind token + optional RSA) from owner Plaud dump — **cannot be generated locally**. Import UI + JSON schema + unit tests ready (`docs/PLAUD_IMPORT.md`); waiting on Heitor export. Hardware checklist: `docs/HARDWARE_VALIDATION.md`.
 - [ ] Confirm Ogg Opus rate/channels + PLAUD.AI decrypt against a real Note Pro capture
+  - Synthetic coverage only (#95): `OggOpusPlaudSyntheticTest` (generated Ogg Opus mono/stereo x 8/12/16/24/48 kHz, malformed/truncated, PLAUD.AI round-trip, wrong key/nonce, tamper). Real-device rate/channels, listening and ASR quality remain unconfirmed (#7).
 
 ## Removed (server inventory → local)
 
