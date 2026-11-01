@@ -21,10 +21,11 @@ object PlaudExportImporter {
         if (trimmed.isEmpty()) return PlaudExportParseResult.Failure("Empty JSON")
         val wire = try {
             json.decodeFromString(PlaudExportFile.serializer(), trimmed)
-        } catch (e: SerializationException) {
-            return PlaudExportParseResult.Failure("Invalid JSON: ${e.message}")
-        } catch (e: IllegalArgumentException) {
-            return PlaudExportParseResult.Failure("Invalid JSON: ${e.message}")
+        } catch (_: SerializationException) {
+            // Decoder diagnostics can contain the entire identity-bearing input.
+            return PlaudExportParseResult.Failure("Invalid JSON")
+        } catch (_: IllegalArgumentException) {
+            return PlaudExportParseResult.Failure("Invalid JSON")
         }
         if (wire.version != PLAUD_EXPORT_SUPPORTED_VERSION) {
             return PlaudExportParseResult.Failure(
@@ -45,9 +46,9 @@ object PlaudExportImporter {
 
         val signature = try {
             Base64.decode(sigB64)
-        } catch (t: Throwable) {
+        } catch (_: IllegalArgumentException) {
             return PlaudExportParseResult.Failure(
-                "device.snSignatureBase64 is not valid base64: ${t.message}",
+                "device.snSignatureBase64 is not valid base64",
             )
         }
         if (signature.size != PLAUD_EXPORT_REQUIRED_SIGNATURE_BYTES) {

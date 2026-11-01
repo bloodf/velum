@@ -7,6 +7,13 @@ import kotlin.test.assertTrue
 
 class UnlockTest {
     @Test
+    fun device_identity_diagnostic_representation_is_redacted() {
+        val keys = DeviceIdentityKeys("SYNTHETIC-SERIAL", ByteArray(256) { 7 }, "SYNTHETIC-PUBLIC-PEM", "SYNTHETIC-PRIVATE-PEM", "SYNTHETIC-TOKEN")
+        assertEquals("DeviceIdentityKeys([redacted])", keys.toString())
+        assertEquals(keys, keys.copy())
+    }
+
+    @Test
     fun encodeSnSignature_threeChunksOf100_plusRemainder() {
         val signature = ByteArray(256) { it.toByte() }
         val chunks = Unlock.encodeSnSignatureChunks(signature)

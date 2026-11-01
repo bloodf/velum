@@ -35,3 +35,7 @@ Velum never contacts Plaud servers. Device identity (`snSignature`, bind token, 
 ## UI
 
 Settings → **Import from Plaud**: paste fields and/or choose a JSON file (Android SAF). Material is stored via `SecureStore` (Android Keystore).
+
+Identity fields and the JSON draft are masked in the editor. Validation errors use controlled messages; decoder diagnostics, raw input and unexpected exception messages are never displayed. Identity objects also have redacted diagnostic representations. Do not paste real bundles into issues, chat, logs or test artifacts; fixtures must be synthetic.
+
+Malformed or partial bundles are rejected before writing identity or templates. Secure-storage failures remain explicit and retryable; cancellation propagates. A successful multi-field import is not an atomic transaction across identity entries and templates: a later storage failure can follow an earlier successful write. Real-device unlock and persistence checks remain owner-dependent (#3 / #4).
