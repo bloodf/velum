@@ -82,7 +82,13 @@ class IdentityPersistenceDeviceTest {
             "cleanup" -> {
                 val info = JSONObject(readText(metadata))
                 assertEquals(run, info.getString("run"))
-                assertEquals("verified", info.getString("phase"))
+                val priorPhase = info.getString("phase")
+                val verified = priorPhase == "verified"
+                if (!verified) {
+                    // Diagnostic cleanup is an explicit separate action, never an acceptance pass.
+                    assertEquals("true", arguments.getString("identityFixtureAllowFailedCleanup"))
+                    assertTrue("Unknown fixture state", priorPhase == "preparing" || priorPhase == "prepared")
+                }
                 for (kind in KINDS) {
                     val fixture = Fixture(context, run, kind)
                     // Explicit cleanup of only the two aliases/preferences created by this UUID.
@@ -91,7 +97,7 @@ class IdentityPersistenceDeviceTest {
                     assertTrue("Synthetic alias cleanup failed", !fixture.keyStore().containsAlias(fixture.alias))
                     assertTrue("Synthetic preference cleanup failed", !fixture.preferenceFile().exists())
                 }
-                writeMetadata(metadata, info.put("phase", "cleaned"))
+                writeMetadata(metadata, info.put("cleanup_from_phase", priorPhase).put("phase", if (verified) "cleaned" else "failed-fixture-cleaned"))
             }
         }
         Log.i(TAG, "end run=$run phase=$phase pid=$pid")
@@ -130,8 +136,16 @@ class IdentityPersistenceDeviceTest {
             assertTrue("Synthetic Keystore entry missing", keyStore().getEntry(alias, null) is KeyStore.SecretKeyEntry)
             val file = preferenceFile()
             val stat = Os.stat(file.absolutePath)
-            assertTrue("Preferences have group/other permissions", stat.st_mode and 0b111111 == 0)
+            // Android14 ContextImpl.setFilePermissionsFromMode deliberately uses0660
+            // for MODE_PRIVATE. The group must be this app's own GID, never a shared group.
+            assertTrue("Preferences have other-user permissions", stat.st_mode and 0b111 == 0)
             assertEquals(Process.myUid(), stat.st_uid)
+            assertEquals(Process.myUid(), stat.st_gid)
+            assertEquals(Os.getgid(), stat.st_gid)
+            val directory = Os.stat(context.applicationInfo.dataDir)
+            assertEquals(Process.myUid(), directory.st_uid)
+            assertEquals(Os.getgid(), directory.st_gid)
+            assertTrue("App directory is accessible to other users", directory.st_mode and 0b111 == 0)
             val raw = readText(file)
             val plaintext = listOf(serial, signature, token, publicPem, privatePem)
             for (value in plaintext) assertTrue("Plaintext identity in private preferences", !raw.contains(value))
