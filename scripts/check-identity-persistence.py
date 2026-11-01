@@ -87,7 +87,6 @@ def main():
             registered = adb("shell", "pm", "list", "instrumentation")
             if ("instrumentation:" + RUNNER).encode() not in registered:
                 raise RuntimeError("Isolated runner is not registered; build the test APK with -PvelumIdentityPersistenceTest=true")
-            metadata_path = "files/synthetic-identity-verification/" + run + ".json"
 
             def record_safe(path, raw):
                 text = raw.decode(errors="replace")
@@ -109,7 +108,11 @@ def main():
                 record_safe(dest / (phase + "-instrumentation.log"), raw)
                 if b"OK (1 test)" not in raw or b"FAILURES!!!" in raw:
                     raise AssertionError("Fixture phase failed; see local redacted instrumentation evidence")
-                metadata = json.loads(adb("exec-out", "run-as", PACKAGE, "cat", metadata_path))
+                prefix = "INSTRUMENTATION_RESULT: identityFixtureMetadata="
+                records = [line[len(prefix):] for line in raw.decode(errors="replace").splitlines() if line.startswith(prefix)]
+                if len(records) != 1:
+                    raise AssertionError("Missing structured instrumentation fixture metadata")
+                metadata = json.loads(records[0])
                 expected = {"prepare": "prepared", "verify": "verified", "cleanup": "cleaned"}[phase]
                 if metadata.get("run") != run or metadata.get("phase") != expected or metadata.get("namespace_reserved") is not True:
                     raise AssertionError("Fixture metadata did not confirm phase completion")
@@ -130,8 +133,6 @@ def main():
             verified = cell["phases"]["verify"]["metadata"]
             if prepared["first_pid"] == verified["verified_pid"] or prepared["first_start_elapsed"] == verified["verified_start_elapsed"]:
                 raise AssertionError("No genuine new process proved")
-            # Delete only this test's metadata after its local evidence was retained.
-            adb("shell", "run-as", PACKAGE, "rm", metadata_path)
             cell.update(status="passed", phase=None, genuine_new_process=True, encrypted_private_preferences=True, synthetic_fixture_cleaned=True)
             save()
             print("PASS", variant, "new process, encrypted private preferences, redacted logs; synthetic vaults cleaned", flush=True)

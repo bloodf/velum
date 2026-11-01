@@ -2,6 +2,7 @@ package dev.velum.app.identity
 
 import android.app.Application
 import android.content.Context
+import android.os.Bundle
 import android.os.Process
 import android.system.Os
 import android.util.Base64
@@ -92,11 +93,11 @@ class IdentityPersistenceDeviceTest {
                 assertEquals(run, info.getString("run"))
                 assertTrue("Fixture namespace was not reserved", info.getBoolean("namespace_reserved"))
                 val priorPhase = info.getString("phase")
-                val verified = priorPhase == "verified"
+                val verified = priorPhase == "verified" || priorPhase == "cleaned"
                 if (!verified) {
                     // Diagnostic cleanup is an explicit separate action, never an acceptance pass.
                     assertEquals("true", arguments.getString("identityFixtureAllowFailedCleanup"))
-                    assertTrue("Unknown fixture state", priorPhase == "preparing" || priorPhase == "prepared")
+                    assertTrue("Unknown fixture state", priorPhase == "preparing" || priorPhase == "prepared" || priorPhase == "failed-fixture-cleaned")
                 }
                 for (kind in KINDS) {
                     val fixture = Fixture(context, run, kind)
@@ -109,6 +110,12 @@ class IdentityPersistenceDeviceTest {
                 writeMetadata(metadata, info.put("cleanup_from_phase", priorPhase).put("phase", if (verified) "cleaned" else "failed-fixture-cleaned"))
             }
         }
+        // Non-secret fixture metadata travels through instrumentation, including on
+        // nondebuggable R8 targets. Never enable run-as or expose a data provider.
+        InstrumentationRegistry.getInstrumentation().addResults(Bundle().apply {
+            putString("identityFixtureMetadata", readText(metadata))
+        })
+        if (phase == "cleanup") assertTrue("Fixture metadata cleanup failed", metadata.delete())
         Log.i(TAG, "end run=$run phase=$phase pid=$pid")
     }
 
