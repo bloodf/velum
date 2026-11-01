@@ -6,7 +6,7 @@ Development was stopped at the owner's request. Only publication and handoff clo
 
 - Repository: <https://github.com/bloodf/velum>
 - Verified remote `main`: `1f30a0f18fb959a6020606f50e82d5ac0bb2601d`.
-- Handoff PR: **__HANDOFF_PR_URL__**. This is documentation only and is deliberately not merged. Resolve its current head from GitHub; its own hash is not embedded in itself.
+- Handoff PR: **https://github.com/bloodf/velum/pull/132**. This is documentation only and is deliberately not merged. Resolve its current head from GitHub; its own hash is not embedded in itself.
 - Ready-to-paste instructions: [Claude prompt](CLAUDE_PROMPT_2026-11-01.md).
 - Complete inventory: [117 issues, including 101 open and 16 closed](ISSUE_COVERAGE_2026-11-01.md), with [machine-readable criteria/evidence/gaps](issue-coverage-2026-11-01.json).
 - Many issue records remain unaudited against source. Completeness of the list is not completeness of the implementation. Canonical issues and current code take precedence over historical reports.
@@ -107,8 +107,8 @@ Do not add repetitions to claim a larger distinct suite, or reuse a historical m
 | `ad4048c` /127 |43relative links; exact Product rules block; code references reviewed | Docs only; runtime tests not rerun. |
 | `2f7ae21` /128 |726fresh tests;4selected walks;8filesystem;4actual import-screen cases,8screenshots inspected; redaction mutation proof | Selected matrix is4, not8. |
 | `5b51572` /129 |372fresh Android units;6fixture phases;4standard walks;8filesystem; packaging/runner/security flags checked | No production runtime change; all fixtures cleaned. |
-| `76f403c` /130 |Strict Android production/test compile; graphs aligned;327JVM pass | Full build failed on deprecated test API; no final R8/matrix. |
-| `48b2a02` /131 |66focused core tests;2expected mutation failures and exact source restoration | UI/extended emulator changes not compiled; full checks unrun; JVM outputs last contain mutant. |
+| `76f403c` /130 |Strict Android production/test compile; graphs aligned;327 JVM pass | Full build failed on deprecated test API; no final R8/matrix. |
+| `48b2a02` /131 |66 focused core tests;2expected mutation failures and exact source restoration | UI/extended emulator changes not compiled; full checks unrun; JVM outputs last contain mutant. |
 
 Device walks use synthetic audio/processing. R8 remains enabled; minifiedTest is debug-signed for installation, not a shipping release. API35 and physical hardware remain unverified. Old CI reports are diagnostic and may be stale; no blanket “CI green” claim was made.
 
@@ -146,7 +146,7 @@ Root: `/Users/heitor/Documents/Codex/2026-10-31/task-2/verification-logs/`. Raw 
 - `publication/identity-redaction/`: #128726tests, mutation,4walks,4actual UI contexts/contact sheet, final review/merge/original fast-forward receipts.
 - `publication/identity-persistence/`: #129 `final-review.json`, `verified-merge.json`, `process-and-packaging-evidence.json`, `final-persistence/`, `normal-walks/`, source/APK receipts, earlier attempts and explicit fixture cleanup.
 - `publication/identity-atomicity/`: #131 `targeted-result.json`/XML, `mutation-result.json`/XML, `run-mutation.py`; source restored but no post-mutation full rebuild. `publication/identity-atomicity-probe-result.json` records the main-branch defect using booleans only.
-- `publication/toolchain-106/`: #130 candidate compile, actual R8/dependency graph reports,327JVM/full-build failure, exact four-file patch and reproducible `run-validation.py`, `run-full.py`, alignment init script. These local drivers pin old heads/counts; review/adapt them before reuse.
+- `publication/toolchain-106/`: #130 candidate compile, actual R8/dependency graph reports,327 JVM/full-build failure, exact four-file patch and reproducible `run-validation.py`, `run-full.py`, alignment init script. These local drivers pin old heads/counts; review/adapt them before reuse.
 - `publication/handoff/`: original/local worktree inventory, archived-copy blob reconciliation, process stop receipt and local public issue snapshot. This supports the sanitized committed inventory; raw snapshot bodies were not copied into the handoff.
 
 The older audit documents contain conditional/stale “ready” statements. Use the source hashes, exact-head ledger, open issues and fresh verification instead. Do not infer whole-project readiness from issue count, test count or a successful merge.
