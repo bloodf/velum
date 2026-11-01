@@ -14,7 +14,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -25,7 +24,6 @@ import dev.velum.app.ui.components.SectionLabel
 import dev.velum.app.ui.theme.VelumInk
 import dev.velum.app.ui.theme.VelumInkSecondary
 import dev.velum.app.ui.theme.VelumSurface
-import kotlinx.coroutines.launch
 
 @Composable
 fun AppearanceScreen(
@@ -34,7 +32,6 @@ fun AppearanceScreen(
 ) {
     val strings = LocalStrings.current
     val prefs by container.settingsRepository.preferences.collectAsState()
-    val scope = rememberCoroutineScope()
 
     // Pin ScreenTopBar outside the scroll so Back stays reachable after
     // performScrollTo on language/theme rows (device-walk #106 root cause).
@@ -52,24 +49,24 @@ fun AppearanceScreen(
         ) {
             SectionLabel(strings.settingsUi.theme)
             ThemeOption(strings.settingsUi.themeSystem, prefs.themeMode == "system") {
-                scope.launch { container.settingsRepository.setThemeMode("system") }
+                container.settingsViewModel.runStorageAction { container.settingsRepository.setThemeMode("system") }
             }
             ThemeOption(strings.settingsUi.themeLight, prefs.themeMode == "light") {
-                scope.launch { container.settingsRepository.setThemeMode("light") }
+                container.settingsViewModel.runStorageAction { container.settingsRepository.setThemeMode("light") }
             }
             ThemeOption(strings.settingsUi.themeDark, prefs.themeMode == "dark") {
-                scope.launch { container.settingsRepository.setThemeMode("dark") }
+                container.settingsViewModel.runStorageAction { container.settingsRepository.setThemeMode("dark") }
             }
             Spacer(Modifier.height(12.dp))
             SectionLabel(strings.settingsUi.language)
             ThemeOption(strings.settingsUi.languageSystem, prefs.appLanguage == "system") {
-                scope.launch { container.settingsRepository.setAppLanguage("system") }
+                container.settingsViewModel.runStorageAction { container.settingsRepository.setAppLanguage("system") }
             }
             ThemeOption(strings.languageEn, prefs.appLanguage == "en") {
-                scope.launch { container.settingsRepository.setAppLanguage("en") }
+                container.settingsViewModel.runStorageAction { container.settingsRepository.setAppLanguage("en") }
             }
             ThemeOption(strings.languagePtBr, prefs.appLanguage == "pt-BR") {
-                scope.launch { container.settingsRepository.setAppLanguage("pt-BR") }
+                container.settingsViewModel.runStorageAction { container.settingsRepository.setAppLanguage("pt-BR") }
             }
             Spacer(Modifier.height(40.dp))
         }

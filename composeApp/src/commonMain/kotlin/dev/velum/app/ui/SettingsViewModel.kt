@@ -10,12 +10,12 @@ import dev.velum.core.settings.AiApiTask
 import dev.velum.core.settings.ApiEndpointProfile
 import dev.velum.core.settings.ApiModelResolver
 import dev.velum.core.settings.SettingsRepository
+import dev.velum.core.security.SecureStoreUnavailableException
+import kotlinx.coroutines.CancellationException
 import dev.velum.core.settings.TaskModelBinding
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 data class SettingsUiState(
@@ -30,81 +30,57 @@ class SettingsViewModel(
     private val settingsRepository: SettingsRepository,
     private val aiClient: OpenAiCompatibleClient,
 ) : ViewModel() {
-    val settings: StateFlow<AiProviderSettings> =
-        settingsRepository.settings.stateIn(
-            viewModelScope,
-            SharingStarted.Eagerly,
-            AiProviderSettings(),
-        )
+    val settings: StateFlow<AiProviderSettings> = settingsRepository.settings
 
     private val _ui = MutableStateFlow(SettingsUiState())
     val ui: StateFlow<SettingsUiState> = _ui.asStateFlow()
 
-    init {
-        viewModelScope.launch { settingsRepository.load() }
-    }
+    init { reloadSettings() }
 
-    fun setBaseUrl(url: String) {
-        viewModelScope.launch {
-            try {
-                settingsRepository.setBaseUrl(url)
-                clearMessage()
-            } catch (t: Throwable) {
-                _ui.value = SettingsUiState(
-                    error = t.message ?: t.toString(),
-                    errorStatus = null,
-                )
-            }
+    fun reloadSettings() = storageAction { settingsRepository.load() }
+
+    private fun storageAction(action: suspend () -> Unit) = viewModelScope.launch {
+        try {
+            action()
+            clearMessage()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: SecureStoreUnavailableException) {
+            storageFailed()
+        } catch (_: Exception) {
+            _ui.value = SettingsUiState(error = "generic")
         }
     }
 
-    fun setApiKey(key: String) {
-        // Never log the key — only store via Keystore-backed SecureStore.
-        viewModelScope.launch { settingsRepository.setApiKey(key) }
+    /** UI settings actions share a non-destructive failure path; unrelated bugs still propagate. */
+    fun runStorageAction(action: suspend () -> Unit) = viewModelScope.launch { handleStorageFailure(action) }
+
+    suspend fun handleStorageFailure(action: suspend () -> Unit): Boolean = try {
+        action()
+        true
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: SecureStoreUnavailableException) {
+        storageFailed()
+        false
     }
 
-    fun setProfileApiKey(profileId: String, key: String) {
-        viewModelScope.launch { settingsRepository.setProfileApiKey(profileId, key) }
+    private fun storageFailed() {
+        settingsRepository.reportStorageUnavailable()
+        _ui.value = SettingsUiState(error = "storage_unavailable")
     }
 
-    fun upsertProfile(profile: ApiEndpointProfile) {
-        viewModelScope.launch {
-            try {
-                settingsRepository.upsertProfile(profile)
-                clearMessage()
-            } catch (t: Throwable) {
-                _ui.value = SettingsUiState(error = t.message ?: t.toString())
-            }
-        }
-    }
-
-    fun deleteProfile(profileId: String) {
-        viewModelScope.launch { settingsRepository.deleteProfile(profileId) }
-    }
-
-    fun setActiveProfile(profileId: String) {
-        viewModelScope.launch { settingsRepository.setActiveProfile(profileId) }
-    }
-
-    fun setTaskBinding(task: AiApiTask, binding: TaskModelBinding) {
-        viewModelScope.launch { settingsRepository.setTaskBinding(task, binding) }
-    }
-
-    fun selectTranscriptionModel(id: String) {
-        viewModelScope.launch { settingsRepository.setTranscriptionModel(id) }
-    }
-
-    fun selectDiarizationModel(id: String) {
-        viewModelScope.launch { settingsRepository.setDiarizationModel(id) }
-    }
-
-    fun selectChatModel(id: String) {
-        viewModelScope.launch { settingsRepository.setChatModel(id) }
-    }
-
-    fun selectEmbeddingModel(id: String) {
-        viewModelScope.launch { settingsRepository.setEmbeddingModel(id) }
-    }
+    fun setBaseUrl(url: String) { storageAction { settingsRepository.setBaseUrl(url) } }
+    fun setApiKey(key: String) { storageAction { settingsRepository.setApiKey(key) } }
+    fun setProfileApiKey(profileId: String, key: String) { storageAction { settingsRepository.setProfileApiKey(profileId, key) } }
+    fun upsertProfile(profile: ApiEndpointProfile) { storageAction { settingsRepository.upsertProfile(profile) } }
+    fun deleteProfile(profileId: String) { storageAction { settingsRepository.deleteProfile(profileId) } }
+    fun setActiveProfile(profileId: String) { storageAction { settingsRepository.setActiveProfile(profileId) } }
+    fun setTaskBinding(task: AiApiTask, binding: TaskModelBinding) { storageAction { settingsRepository.setTaskBinding(task, binding) } }
+    fun selectTranscriptionModel(id: String) { storageAction { settingsRepository.setTranscriptionModel(id) } }
+    fun selectDiarizationModel(id: String) { storageAction { settingsRepository.setDiarizationModel(id) } }
+    fun selectChatModel(id: String) { storageAction { settingsRepository.setChatModel(id) } }
+    fun selectEmbeddingModel(id: String) { storageAction { settingsRepository.setEmbeddingModel(id) } }
 
     fun refreshModels(profileId: String? = null) {
         viewModelScope.launch {
@@ -131,6 +107,10 @@ class SettingsViewModel(
                     refreshing = false,
                     message = "loaded:${models.size}",
                 )
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: SecureStoreUnavailableException) {
+                storageFailed()
             } catch (t: MissingApiKeyException) {
                 _ui.value = SettingsUiState(
                     refreshing = false,
@@ -148,7 +128,7 @@ class SettingsViewModel(
                     error = "bad_url",
                     errorStatus = -1,
                 )
-            } catch (_: Throwable) {
+            } catch (_: Exception) {
                 _ui.value = SettingsUiState(
                     refreshing = false,
                     error = "generic",

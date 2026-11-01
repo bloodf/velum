@@ -93,6 +93,7 @@ import dev.velum.app.ui.templates.TemplatesScreen
 import dev.velum.app.ui.theme.VelumTheme
 import dev.velum.core.model.ComputeMode
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 @Composable
@@ -172,9 +173,26 @@ private fun VelumRoot(container: AppContainer) {
 
     val importPipeline = remember(container) { AudioImportPipeline(container) }
     LaunchedEffect(container, importPipeline) {
-        runCatching { container.settingsRepository.load() }
-        if (container.settingsRepository.preferences.value.autoSyncWatchedFolders) {
+        val loaded = container.settingsRepository.loadState.first {
+            it == dev.velum.core.settings.SettingsLoadState.Ready ||
+                it == dev.velum.core.settings.SettingsLoadState.Unavailable
+        }
+        if (loaded == dev.velum.core.settings.SettingsLoadState.Ready &&
+            container.settingsRepository.preferences.value.autoSyncWatchedFolders
+        ) {
             runCatching { syncWatchedFolders(importPipeline) }
+        }
+    }
+    val storageState by container.settingsRepository.loadState.collectAsState()
+    LaunchedEffect(container, storageState) {
+        if (storageState == dev.velum.core.settings.SettingsLoadState.Unavailable) {
+            val result = snackbar.showSnackbar(
+                message = strings.ux.secureStorageUnavailable,
+                actionLabel = strings.ux.retryProcessing,
+                withDismissAction = true,
+                duration = SnackbarDuration.Indefinite,
+            )
+            if (result == SnackbarResult.ActionPerformed) container.settingsViewModel.reloadSettings()
         }
     }
     val importAudio = rememberAudioImporter { path ->

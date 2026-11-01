@@ -2,6 +2,9 @@ package dev.velum.app.i18n
 
 /** Localized chrome for the BLE device screen (pt-BR + en). */
 object DeviceUiCopy {
+    fun secureStorageUnavailable(localeTag: String): String =
+        (if (isPt(localeTag)) PtBr else En).ux.secureStorageUnavailable
+
     fun tagline(localeTag: String): String =
         if (isPt(localeTag)) "Seu gravador, seus modelos, suas notas."
         else "Your recorder, your models, your notes."

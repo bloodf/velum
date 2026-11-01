@@ -25,7 +25,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -53,7 +52,6 @@ import dev.velum.app.ui.theme.VelumOnWarningContainer
 import dev.velum.app.ui.theme.VelumSurface
 import dev.velum.app.ui.theme.VelumWarningContainer
 import dev.velum.core.model.ComputeMode
-import kotlinx.coroutines.launch
 
 private data class LangOption(val code: String, val label: String)
 
@@ -67,7 +65,6 @@ fun AiProcessingScreen(
     val strings = LocalStrings.current
     val settings by container.settingsRepository.settings.collectAsState()
     val modelStates by container.localModelManager.states.collectAsState()
-    val scope = rememberCoroutineScope()
     var pickAudio by remember { mutableStateOf(false) }
     var pickOutput by remember { mutableStateOf(false) }
     var modelPrompt by remember { mutableStateOf<ModeResolution.NeedLocalModel?>(null) }
@@ -137,7 +134,7 @@ fun AiProcessingScreen(
                     OutlineButton(
                         strings.switchToApi,
                         {
-                            scope.launch {
+                            container.settingsViewModel.runStorageAction {
                                 container.settingsRepository.setTranscriptionMode(ComputeMode.Api)
                                 // Diarization has no remote contract — stay Local.
                                 container.settingsRepository.setSummaryMode(ComputeMode.Api)
@@ -167,7 +164,7 @@ fun AiProcessingScreen(
                         is ModeResolution.Proceed -> Unit
                     }
                 }
-                scope.launch { container.settingsRepository.setTranscriptionMode(mode) }
+                container.settingsViewModel.runStorageAction { container.settingsRepository.setTranscriptionMode(mode) }
             },
         )
         Spacer(Modifier.height(16.dp))
@@ -175,7 +172,9 @@ fun AiProcessingScreen(
         // API diarization has no remote contract — Local only.
         LaunchedEffect(settings.diarizationMode) {
             if (settings.diarizationMode == ComputeMode.Api) {
-                container.settingsRepository.setDiarizationMode(ComputeMode.Local)
+                container.settingsViewModel.handleStorageFailure {
+                    container.settingsRepository.setDiarizationMode(ComputeMode.Local)
+                }
             }
         }
         ModePicker(
@@ -194,7 +193,7 @@ fun AiProcessingScreen(
                     }
                     is ModeResolution.Proceed -> Unit
                 }
-                scope.launch { container.settingsRepository.setDiarizationMode(ComputeMode.Local) }
+                container.settingsViewModel.runStorageAction { container.settingsRepository.setDiarizationMode(ComputeMode.Local) }
             },
             allowApi = false,
         )
@@ -217,7 +216,7 @@ fun AiProcessingScreen(
                         is ModeResolution.Proceed -> Unit
                     }
                 }
-                scope.launch { container.settingsRepository.setSummaryMode(mode) }
+                container.settingsViewModel.runStorageAction { container.settingsRepository.setSummaryMode(mode) }
             },
         )
         Spacer(Modifier.height(20.dp))
@@ -232,7 +231,7 @@ fun AiProcessingScreen(
         AsrTierPicker(
             selected = settings.asrSizeTier,
             onSelect = { tier ->
-                scope.launch { container.settingsRepository.setAsrSizeTier(tier) }
+                container.settingsViewModel.runStorageAction { container.settingsRepository.setAsrSizeTier(tier) }
             },
         )
         Spacer(Modifier.height(16.dp))
@@ -269,7 +268,7 @@ fun AiProcessingScreen(
             options = languages,
             selected = settings.audioLanguage,
             onSelect = { code ->
-                scope.launch { container.settingsRepository.setAudioLanguage(code) }
+                container.settingsViewModel.runStorageAction { container.settingsRepository.setAudioLanguage(code) }
                 pickAudio = false
             },
             onDismiss = { pickAudio = false },
@@ -281,7 +280,7 @@ fun AiProcessingScreen(
             options = languages,
             selected = settings.outputLanguage,
             onSelect = { code ->
-                scope.launch { container.settingsRepository.setOutputLanguage(code) }
+                container.settingsViewModel.runStorageAction { container.settingsRepository.setOutputLanguage(code) }
                 pickOutput = false
             },
             onDismiss = { pickOutput = false },
@@ -295,14 +294,14 @@ fun AiProcessingScreen(
                 onModelManager()
             },
             onSwitchToApi = {
-                scope.launch {
+                container.settingsViewModel.runStorageAction {
                     when (need.task) {
                         AiTask.Transcription ->
                             container.settingsRepository.setTranscriptionMode(ComputeMode.Api)
                         AiTask.Diarization -> {
                             // No API diarization — keep prompting for local download.
                             modelPrompt = need
-                            return@launch
+                            return@runStorageAction
                         }
                         AiTask.Summary ->
                             container.settingsRepository.setSummaryMode(ComputeMode.Api)

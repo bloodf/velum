@@ -45,6 +45,8 @@ actual class ModelStoreDir actual constructor(absolutePath: String) {
         }
     }
 
+    actual fun deleteFile(): Boolean = !file.isDirectory && file.delete()
+
     actual fun deleteRecursively() {
         file.deleteRecursively()
     }

@@ -72,6 +72,19 @@ fun ApiSettingsScreen(
     val viewModel = container.settingsViewModel
     val settings by viewModel.settings.collectAsState()
     val ui by viewModel.ui.collectAsState()
+    val loadState by container.settingsRepository.loadState.collectAsState()
+    if (loadState != dev.velum.core.settings.SettingsLoadState.Ready) {
+        Column(Modifier.fillMaxSize().background(VelumBg)) {
+            ScreenTopBar(strings.aiProvider, onBack = onBack)
+            if (loadState == dev.velum.core.settings.SettingsLoadState.Unavailable) {
+                Text(strings.ux.secureStorageUnavailable, modifier = Modifier.padding(20.dp), color = VelumInk)
+                OutlineButton(strings.ux.retryProcessing, { viewModel.reloadSettings() }, Modifier.padding(20.dp))
+            } else {
+                CircularProgressIndicator(Modifier.padding(20.dp))
+            }
+        }
+        return
+    }
 
     val profiles = settings.profiles.ifEmpty {
         listOf(

@@ -15,7 +15,14 @@ interface SecureStore {
     suspend fun contains(key: String): Boolean
 }
 
+/** Storage failure is distinct from an absent credential. No secret/provider details in the message. */
+class SecureStoreUnavailableException(cause: Throwable) : IllegalStateException(
+    "Secure storage is unavailable. Stored data was preserved. Try again.", cause,
+)
+
 object SecureKeys {
+    // Losing this key makes on-disk voice embeddings permanently unreadable.
+    const val VOICE_PROFILE_AES_KEY = "voice.profile_aes_key_b64"
     const val AI_API_KEY = "ai.api_key"
 
     /** Per-endpoint-profile API key. Legacy [AI_API_KEY] mirrors the default profile. */

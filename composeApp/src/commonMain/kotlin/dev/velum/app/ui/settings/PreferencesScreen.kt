@@ -10,7 +10,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import dev.velum.app.di.AppContainer
@@ -20,7 +19,6 @@ import dev.velum.app.ui.components.ScreenTopBar
 import dev.velum.app.ui.components.SectionLabel
 import dev.velum.app.ui.components.ToggleRow
 import dev.velum.app.ui.theme.VelumSurface
-import kotlinx.coroutines.launch
 
 @Composable
 fun PreferencesScreen(
@@ -32,7 +30,6 @@ fun PreferencesScreen(
     val strings = LocalStrings.current
     val prefs by container.settingsRepository.preferences.collectAsState()
     val settings by container.settingsRepository.settings.collectAsState()
-    val scope = rememberCoroutineScope()
 
     Column(
         Modifier
@@ -62,13 +59,13 @@ fun PreferencesScreen(
         ToggleRow(
             strings.cleanTranscript,
             prefs.cleanTranscript,
-            { enabled -> scope.launch { container.settingsRepository.setCleanTranscript(enabled) } },
+            { enabled -> container.settingsViewModel.runStorageAction { container.settingsRepository.setCleanTranscript(enabled) } },
             strings.cleanTranscriptHint,
         )
         ChevronRow(
             strings.autoSpeakerLabel,
             {
-                scope.launch {
+                container.settingsViewModel.runStorageAction {
                     container.settingsRepository.setAutoSpeakerLabel(!prefs.autoSpeakerLabel)
                 }
             },
@@ -84,7 +81,7 @@ fun PreferencesScreen(
         ToggleRow(
             strings.messageNotification,
             prefs.autoflowNotify,
-            { enabled -> scope.launch { container.settingsRepository.setAutoflowNotify(enabled) } },
+            { enabled -> container.settingsViewModel.runStorageAction { container.settingsRepository.setAutoflowNotify(enabled) } },
             strings.doTranscribeSummarizeHint,
             showDivider = false,
         )

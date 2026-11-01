@@ -21,14 +21,15 @@ import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -59,7 +60,6 @@ import dev.velum.app.ui.theme.VelumOnWarningContainer
 import dev.velum.app.ui.theme.VelumSurface
 import dev.velum.core.calendar.CalendarLookupResult
 import dev.velum.core.data.epochSecondsNow
-import kotlinx.coroutines.launch
 
 @Composable
 fun IntegrationsScreen(
@@ -68,7 +68,19 @@ fun IntegrationsScreen(
 ) {
     val strings = LocalStrings.current
     val haptics = LocalHaptics.current
-    val scope = rememberCoroutineScope()
+    val storageState by container.settingsRepository.loadState.collectAsState()
+    if (storageState != dev.velum.core.settings.SettingsLoadState.Ready) {
+        Column(Modifier.fillMaxSize().background(VelumBg)) {
+            ScreenTopBar(strings.integrations, onBack = onBack)
+            if (storageState == dev.velum.core.settings.SettingsLoadState.Unavailable) {
+                Text(strings.ux.secureStorageUnavailable, modifier = Modifier.padding(20.dp), color = VelumInk)
+                OutlineButton(strings.ux.retryProcessing, { container.settingsViewModel.reloadSettings() }, Modifier.padding(20.dp))
+            } else {
+                CircularProgressIndicator(Modifier.padding(20.dp))
+            }
+        }
+        return
+    }
     var statusLabel by remember { mutableStateOf(strings.localCalendarHint) }
     var statusColor by remember { mutableStateOf(VelumInkSecondary) }
     var needsPermission by remember { mutableStateOf(false) }
@@ -123,10 +135,13 @@ fun IntegrationsScreen(
             }
         }
         folderUri = ExportFolderStore.currentUri()
-        webhookConfigured = container.webhookSettings.isConfigured()
-        webhookHasSecret = container.webhookSettings.hasSecret()
-        if (webhookUrl.isBlank()) {
-            webhookUrl = container.webhookSettings.getUrl().orEmpty()
+        container.settingsViewModel.handleStorageFailure {
+            val configured = container.webhookSettings.isConfigured()
+            val hasSecret = container.webhookSettings.hasSecret()
+            val url = if (webhookUrl.isBlank()) container.webhookSettings.getUrl().orEmpty() else webhookUrl
+            webhookConfigured = configured
+            webhookHasSecret = hasSecret
+            webhookUrl = url
         }
     }
 
@@ -162,7 +177,7 @@ fun IntegrationsScreen(
                     onClick = {
                         haptics.perform(HapticKind.Medium)
                         confirmClearWebhook = false
-                        scope.launch {
+                        container.settingsViewModel.runStorageAction {
                             container.webhookSettings.clear()
                             webhookUrl = ""
                             webhookSecret = ""
@@ -289,7 +304,7 @@ fun IntegrationsScreen(
                 BlackButton(
                     strings.ux.webhookSave,
                     {
-                        scope.launch {
+                        container.settingsViewModel.runStorageAction {
                             runCatching {
                                 container.webhookSettings.save(webhookUrl, webhookSecret)
                             }.onSuccess {
@@ -298,6 +313,7 @@ fun IntegrationsScreen(
                                 webhookMessageOk = true
                                 refreshTick++
                             }.onFailure {
+                                if (it is kotlinx.coroutines.CancellationException || it is dev.velum.core.security.SecureStoreUnavailableException) throw it
                                 webhookMessage = strings.ux.webhookInvalidUrl
                                 webhookMessageOk = false
                             }
@@ -311,25 +327,35 @@ fun IntegrationsScreen(
                         strings.ux.webhookTest,
                         {
                             if (testingWebhook) return@OutlineButton
-                            scope.launch {
+                            container.settingsViewModel.runStorageAction {
                                 testingWebhook = true
-                                val detail = runCatching { container.webhookDispatcher.ping() }
-                                    .getOrNull()
-                                when {
-                                    detail == null -> {
-                                        webhookMessage = strings.ux.webhookNotConfigured
-                                        webhookMessageOk = false
+                                try {
+                                    val detail = try {
+                                        container.webhookDispatcher.ping()
+                                    } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                                        throw cancelled
+                                    } catch (storage: dev.velum.core.security.SecureStoreUnavailableException) {
+                                        throw storage
+                                    } catch (_: Exception) {
+                                        null
                                     }
-                                    WebhookTestResult.isHttpSuccess(detail) -> {
-                                        webhookMessage = strings.ux.webhookPostedFormat.format(detail)
-                                        webhookMessageOk = true
+                                    when {
+                                        detail == null -> {
+                                            webhookMessage = strings.ux.webhookNotConfigured
+                                            webhookMessageOk = false
+                                        }
+                                        WebhookTestResult.isHttpSuccess(detail) -> {
+                                            webhookMessage = strings.ux.webhookPostedFormat.format(detail)
+                                            webhookMessageOk = true
+                                        }
+                                        else -> {
+                                            webhookMessage = strings.ux.webhookFailedFormat.format(detail)
+                                            webhookMessageOk = false
+                                        }
                                     }
-                                    else -> {
-                                        webhookMessage = strings.ux.webhookFailedFormat.format(detail)
-                                        webhookMessageOk = false
-                                    }
+                                } finally {
+                                    testingWebhook = false
                                 }
-                                testingWebhook = false
                             }
                         },
                         enabled = !testingWebhook,

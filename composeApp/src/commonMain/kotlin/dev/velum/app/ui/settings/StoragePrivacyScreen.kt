@@ -18,7 +18,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -35,7 +34,6 @@ import dev.velum.app.ui.components.ToggleRow
 import dev.velum.app.ui.theme.VelumInk
 import dev.velum.app.ui.theme.VelumInkSecondary
 import dev.velum.app.ui.theme.VelumSurface
-import kotlinx.coroutines.launch
 
 @Composable
 fun StoragePrivacyScreen(
@@ -44,7 +42,6 @@ fun StoragePrivacyScreen(
 ) {
     val strings = LocalStrings.current
     val prefs by container.settingsRepository.preferences.collectAsState()
-    val scope = rememberCoroutineScope()
     var confirmWipe by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf<String?>(null) }
     var usageLabel by remember { mutableStateOf(strings.settingsUi.storageUsageLoading) }
@@ -65,7 +62,7 @@ fun StoragePrivacyScreen(
                 TextButton(
                     onClick = {
                         confirmWipe = false
-                        scope.launch {
+                        container.settingsViewModel.runStorageAction {
                             container.repository.wipeAllUserData { path ->
                                 deleteFileAtPath(path)
                             }
@@ -123,7 +120,7 @@ fun StoragePrivacyScreen(
             strings.settingsUi.deleteAudioAfterProcessing,
             prefs.deleteAudioAfterProcessing,
             { enabled ->
-                scope.launch { container.settingsRepository.setDeleteAudioAfterProcessing(enabled) }
+                container.settingsViewModel.runStorageAction { container.settingsRepository.setDeleteAudioAfterProcessing(enabled) }
             },
             strings.settingsUi.deleteAudioAfterProcessingHint,
             showDivider = false,
@@ -132,7 +129,7 @@ fun StoragePrivacyScreen(
         BlackButton(
             strings.settingsUi.exportLibraryBackup,
             {
-                scope.launch {
+                container.settingsViewModel.runStorageAction {
                     val body = container.repository.exportLibraryBackupText()
                     shareText("Velum backup", body)
                     status = strings.settingsUi.exportLibraryBackupDone
