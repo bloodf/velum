@@ -24,6 +24,22 @@ Thanks for helping build a local-first, subscription-free recorder companion.
 ./gradlew :composeApp:run   # desktop shell (optional)
 ```
 
+Shipping `:composeApp:assembleRelease` and `:composeApp:bundleRelease` require all
+four environment variables: `VELUM_UPLOAD_STORE_FILE` (path to your private upload
+keystore), `VELUM_UPLOAD_STORE_PASSWORD`, `VELUM_UPLOAD_KEY_ALIAS`, and
+`VELUM_UPLOAD_KEY_PASSWORD`. Supply them through your local secret manager or CI;
+never commit them or print their values. Missing or blank values fail the release
+build. A shipping release never falls back to the committed public debug key.
+
+To check R8 locally without upload credentials, run
+`./gradlew :composeApp:assembleMinifiedTest`. This explicitly named test variant
+inherits release minification and uses debug signing plus instrumented-test keeps;
+do not distribute it as a production release. Run the device walk with
+`bash scripts/emulator-device-walk-both.sh`. CI checks missing/partial signing with
+`bash scripts/check-release-signing.sh --package` and builds this test variant
+without secrets. The check generates a disposable key to verify shipping APK/AAB
+packaging and resource shrinking; never distribute those test artifacts.
+
 ## Project layout
 
 | Module | Role |

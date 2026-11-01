@@ -55,6 +55,8 @@ android {
     // Pin them on the AGP main source set so classLoader.getResourceAsStream works
     // for PlaudTemplateAsset / AutoFlowTemplateAsset / PlaudFullTemplateAsset.
     sourceSets.getByName("main").resources.srcDir("src/commonMain/resources")
+    // The Android unit target also runs commonTest; keep its synthetic fixtures available.
+    sourceSets.getByName("test").resources.srcDir("src/commonTest/resources")
 }
 
 sqldelight {

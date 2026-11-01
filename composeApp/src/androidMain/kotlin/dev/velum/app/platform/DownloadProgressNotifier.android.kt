@@ -1,14 +1,17 @@
 package dev.velum.app.platform
 
+import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import dev.velum.app.R
 
 actual object DownloadProgressNotifier {
@@ -82,6 +85,10 @@ actual object DownloadProgressNotifier {
         progress: Float,
         cancelLabel: String,
     ) {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) return
         val pct = (progress.coerceIn(0f, 1f) * 100).toInt()
         val cancelIntent = PendingIntent.getBroadcast(
             context,
@@ -101,8 +108,10 @@ actual object DownloadProgressNotifier {
             .setProgress(100, pct, progress <= 0f)
             .addAction(0, cancelLabel, cancelIntent)
             .build()
-        runCatching {
+        try {
             NotificationManagerCompat.from(context).notify(notificationId(kind), notification)
+        } catch (_: SecurityException) {
+            // Permission can be revoked between the check and notify.
         }
     }
 

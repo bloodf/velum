@@ -39,8 +39,11 @@ jobs:
       - name: Assemble signed debug APK
         run: ./gradlew :composeApp:assembleDebug --stacktrace
 
-      - name: Assemble release APK (R8 minify)
-        run: ./gradlew :composeApp:assembleRelease --stacktrace
+      - name: Verify release signing and packaging with a disposable key
+        run: bash scripts/check-release-signing.sh --package
+
+      - name: Check shipping R8 rules and assemble CI-only APK
+        run: ./gradlew :composeApp:minifyReleaseWithR8 :composeApp:assembleMinifiedTest --stacktrace
 
       - name: Assert arm64-v8a native libs packaged
         run: |
