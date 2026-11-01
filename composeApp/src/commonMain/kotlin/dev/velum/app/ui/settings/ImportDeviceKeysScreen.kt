@@ -23,7 +23,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.velum.app.di.AppContainer
@@ -97,15 +99,15 @@ fun ImportDeviceKeysScreen(
                         status = strings.importKeys.fromPlaudJsonOk
                     }
                     is PlaudExportParseResult.Failure -> {
-                        error = parsed.message
+                        error = strings.importKeys.invalidJson
                     }
                 }
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
                 throw cancelled
             } catch (storage: dev.velum.core.security.SecureStoreUnavailableException) {
                 throw storage
-            } catch (t: Exception) {
-                error = t.message ?: t.toString()
+            } catch (_: Exception) {
+                error = strings.importKeys.importFailed
             }
         }
     }
@@ -144,6 +146,7 @@ fun ImportDeviceKeysScreen(
         )
         OutlinedTextField(
             value = jsonDraft,
+            visualTransformation = PasswordVisualTransformation(),
             onValueChange = { jsonDraft = it },
             modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
             label = { Text(strings.importKeys.fromPlaudJsonPaste) },
@@ -167,6 +170,7 @@ fun ImportDeviceKeysScreen(
         }
         OutlinedTextField(
             value = serial,
+            visualTransformation = PasswordVisualTransformation(),
             onValueChange = { serial = it },
             modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
             label = { Text(strings.importKeys.serial) },
@@ -175,6 +179,7 @@ fun ImportDeviceKeysScreen(
         )
         OutlinedTextField(
             value = snSignature,
+            visualTransformation = PasswordVisualTransformation(),
             onValueChange = { snSignature = it },
             modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
             label = { Text(strings.importKeys.snSignatureB64) },
@@ -183,6 +188,7 @@ fun ImportDeviceKeysScreen(
         )
         OutlinedTextField(
             value = bindToken,
+            visualTransformation = PasswordVisualTransformation(),
             onValueChange = { bindToken = it },
             modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
             label = { Text(strings.importKeys.bindToken) },
@@ -191,6 +197,7 @@ fun ImportDeviceKeysScreen(
         )
         OutlinedTextField(
             value = publicPem,
+            visualTransformation = PasswordVisualTransformation(),
             onValueChange = { publicPem = it },
             modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
             label = { Text(strings.importKeys.rsaPublicPemOptional) },
@@ -199,6 +206,7 @@ fun ImportDeviceKeysScreen(
         )
         OutlinedTextField(
             value = privatePem,
+            visualTransformation = PasswordVisualTransformation(),
             onValueChange = { privatePem = it },
             modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
             label = { Text(strings.importKeys.rsaPrivatePemOptional) },
@@ -226,8 +234,8 @@ fun ImportDeviceKeysScreen(
                         throw cancelled
                     } catch (storage: dev.velum.core.security.SecureStoreUnavailableException) {
                         throw storage
-                    } catch (t: Exception) {
-                        error = t.message ?: t.toString()
+                    } catch (_: Exception) {
+                        error = strings.importKeys.importFailed
                     }
                 }
             },
@@ -244,7 +252,7 @@ fun ImportDeviceKeysScreen(
             Text(it, color = VelumInk, modifier = Modifier.padding(20.dp, 8.dp))
         }
         error?.let {
-            Text(it, color = Color(0xFFFF3B30), modifier = Modifier.padding(20.dp, 8.dp))
+            Text(it, color = Color(0xFFFF3B30), modifier = Modifier.padding(20.dp, 8.dp).testTag("identity-import-error"))
         }
         Spacer(Modifier.height(40.dp))
     }

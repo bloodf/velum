@@ -6,6 +6,7 @@ import androidx.activity.compose.setContent
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.test.core.app.ApplicationProvider
 import dev.velum.ai.local.ModelStoreDir
 import dev.velum.app.i18n.*
@@ -27,11 +28,60 @@ import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowLog
 
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class, sdk = [34])
 class DeviceKeyImportStorageUiTest {
     @get:Rule val compose = createEmptyComposeRule()
+    @Test fun malformed_json_has_redacted_english_error_and_masked_identity_fields() = exerciseRedaction(En, json = true, unexpected = false)
+    @Test fun malformed_json_has_redacted_portuguese_error_and_masked_identity_fields() = exerciseRedaction(PtBr, json = true, unexpected = false)
+    @Test fun malformed_pasted_signature_has_redacted_english_error_and_preserves_keys() = exerciseRedaction(En, json = false, unexpected = false)
+    @Test fun malformed_pasted_signature_has_redacted_portuguese_error_and_preserves_keys() = exerciseRedaction(PtBr, json = false, unexpected = false)
+    @Test fun unexpected_json_failure_never_echoes_identity_or_raw_exception() = exerciseRedaction(En, json = true, unexpected = true)
+    @Test fun unexpected_pasted_failure_never_echoes_identity_or_raw_exception() = exerciseRedaction(PtBr, json = false, unexpected = true)
+
+    private fun exerciseRedaction(strings: Strings, json: Boolean, unexpected: Boolean) = fixture { f ->
+        val logStart = ShadowLog.getLogs().size
+        val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup()
+        try {
+            activity.get().setContent { CompositionLocalProvider(LocalStrings provides strings) { VelumTheme(darkTheme = false) { ImportDeviceKeysScreen(f.container, onBack = {}) } } }
+            compose.waitUntil(10_000) { f.container.settingsRepository.loadState.value == SettingsLoadState.Ready }
+            val marker = "SYNTHETIC-IDENTITY-SECRET"
+            if (json) {
+                val raw = if (unexpected) f.json else """{"version":1,"source":"synthetic","device":{"serial":"$marker","snSignatureBase64":{},"bindToken":"$marker","privateKeyPem":"$marker"}}"""
+                field(strings.importKeys.fromPlaudJsonPaste).performTextInput(raw)
+            } else {
+                field(strings.importKeys.serial).performTextInput(marker)
+                field(strings.importKeys.snSignatureB64).performTextInput(if (unexpected) f.signature else "#$marker")
+                field(strings.importKeys.bindToken).performTextInput(marker)
+                field(strings.importKeys.rsaPublicPemOptional).performTextInput(marker)
+                field(strings.importKeys.rsaPrivatePemOptional).performTextInput(marker)
+            }
+            // Password semantics and transformed display apply to every identity input,
+            // including a JSON draft. Editable values remain available only to editing APIs.
+            for (label in listOf(strings.importKeys.fromPlaudJsonPaste, strings.importKeys.serial, strings.importKeys.snSignatureB64, strings.importKeys.bindToken, strings.importKeys.rsaPublicPemOptional, strings.importKeys.rsaPrivatePemOptional)) {
+                field(label).assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Password))
+            }
+            val before = f.store.values.toMap()
+            if (unexpected) f.store.fault = IllegalStateException(marker)
+            val label = if (json) strings.importKeys.fromPlaudJsonApply else strings.save
+            compose.onNodeWithContentDescription(label).performScrollTo().performClick()
+            val expected = if (json && !unexpected) strings.importKeys.invalidJson else strings.importKeys.importFailed
+            compose.waitUntil(10_000) { compose.onAllNodesWithTag("identity-import-error").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithTag("identity-import-error").performScrollTo().assertIsDisplayed().assertTextEquals(expected)
+            compose.onNodeWithTag("identity-import-error").assert(hasText(marker, substring = true).not())
+            compose.onAllNodesWithText(strings.importKeys.saved).assertCountEquals(0)
+            compose.onAllNodesWithText(strings.importKeys.fromPlaudJsonOk).assertCountEquals(0)
+            assertEquals(before, f.store.values)
+            if (!unexpected) assertEquals(0, f.store.attempts.get())
+            val capturedLogs = ShadowLog.getLogs().drop(logStart).joinToString("\n") { it.msg + it.throwable?.stackTraceToString().orEmpty() }
+            assertFalse(capturedLogs.contains(marker))
+            assertFalse(capturedLogs.contains(f.signature))
+            assertFalse(capturedLogs.contains("synthetic-new-bind"))
+        } finally { activity.pause().stop().destroy() }
+    }
+
     @Test fun pasted_fields_surface_localized_vault_failure_preserve_entries_and_retry_without_false_success() = exerciseUi(PtBr, json = false)
     @Test fun json_import_surfaces_localized_vault_failure_preserves_draft_and_retries_without_false_success() = exerciseUi(En, json = true)
 

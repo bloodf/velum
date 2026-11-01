@@ -13,7 +13,9 @@ data class PlaudExportFile(
     val source: String,
     val device: PlaudExportDevice,
     val templates: List<PlaudExportTemplate> = emptyList(),
-)
+) {
+    override fun toString(): String = "PlaudExportFile([redacted])"
+}
 
 @Serializable
 data class PlaudExportDevice(
@@ -23,7 +25,9 @@ data class PlaudExportDevice(
     val bindToken: String,
     val publicKeyPem: String? = null,
     val privateKeyPem: String? = null,
-)
+) {
+    override fun toString(): String = "PlaudExportDevice([redacted])"
+}
 
 @Serializable
 data class PlaudExportTemplate(
@@ -41,7 +45,9 @@ data class ValidatedPlaudDevice(
     val bindToken: String,
     val publicKeyPem: String?,
     val privateKeyPem: String?,
-)
+) {
+    override fun toString(): String = "ValidatedPlaudDevice([redacted])"
+}
 
 data class ValidatedPlaudTemplate(
     val localId: String,
@@ -56,7 +62,9 @@ sealed class PlaudExportParseResult {
         val device: ValidatedPlaudDevice,
         val templates: List<ValidatedPlaudTemplate>,
         val source: String,
-    ) : PlaudExportParseResult()
+    ) : PlaudExportParseResult() {
+        override fun toString(): String = "PlaudExportParseResult.Success([redacted])"
+    }
 
     data class Failure(val message: String) : PlaudExportParseResult()
 }

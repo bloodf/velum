@@ -156,6 +156,8 @@ data class DeviceIdentityKeys(
     /** Bind token (= Plaud user_id). */
     val bindToken: String,
 ) {
+    override fun toString(): String = "DeviceIdentityKeys([redacted])"
+
     init {
         require(serialSignature.size == 256) {
             "serialSignature must be 256 bytes"

@@ -76,7 +76,12 @@ class SecureDeviceKeyImporter(
         require(serialNumber.isNotBlank()) { "serialNumber required" }
         require(serialSignatureBase64.isNotBlank()) { "snSignature (base64) required" }
         require(bindToken.isNotBlank()) { "bind token required" }
-        val signature = Base64.decode(serialSignatureBase64.trim())
+        val signature = try {
+            Base64.decode(serialSignatureBase64.trim())
+        } catch (_: IllegalArgumentException) {
+            // Do not retain the decoder cause: its message can echo imported identity.
+            throw IllegalArgumentException("snSignature is not valid base64")
+        }
         require(signature.size == 256) {
             "snSignature must decode to 256 bytes (got ${signature.size})"
         }
@@ -118,7 +123,7 @@ class SecureDeviceKeyImporter(
         val privatePem = store.getString(SecureKeys.DEVICE_PRIVATE_KEY_PEM).orEmpty()
         val signature = try {
             Base64.decode(sigB64)
-        } catch (_: Throwable) {
+        } catch (_: IllegalArgumentException) {
             return null
         }
         if (signature.size != 256) return null
