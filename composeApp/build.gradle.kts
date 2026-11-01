@@ -9,6 +9,9 @@ plugins {
     alias(libs.plugins.roborazzi)
 }
 
+val identityPersistenceTestEnabled = providers.gradleProperty("velumIdentityPersistenceTest")
+    .map { it.toBooleanStrict() }.getOrElse(false)
+
 val releaseSigningVariables = listOf(
     "VELUM_UPLOAD_STORE_FILE",
     "VELUM_UPLOAD_STORE_PASSWORD",
@@ -128,6 +131,9 @@ kotlin {
             }
         }
         val androidInstrumentedTest by getting {
+            // These host-coordinated tests require explicit UUID/phase arguments.
+            // Default test discovery retains only the original instrumented sources.
+            if (identityPersistenceTestEnabled) kotlin.srcDir("src/identityPersistenceTest/kotlin")
             dependencies {
                 implementation(libs.junit)
                 implementation(libs.kotlin.test)
@@ -177,12 +183,16 @@ android {
         targetSdk = libs.versions.android.targetSdk.get().toInt()
         versionCode = 100
         versionName = "1.0.0"
-        testInstrumentationRunner = "dev.velum.app.devicewalk.DeviceWalkTestRunner"
+        // Explicit test-APK selection only; the default runner and production app are unchanged.
+        testInstrumentationRunner = if (identityPersistenceTestEnabled) "dev.velum.app.identity.IdentityPersistenceTestRunner"
+        else "dev.velum.app.devicewalk.DeviceWalkTestRunner"
         // Prefer DSL over -Pandroid.testInstrumentationRunnerArguments.* (breaks config cache).
-        testInstrumentationRunnerArguments += mapOf(
-            "velumDeviceWalk" to "true",
-            "class" to "dev.velum.app.devicewalk.DeviceWalkUiTest",
-        )
+        if (!identityPersistenceTestEnabled) {
+            testInstrumentationRunnerArguments += mapOf(
+                "velumDeviceWalk" to "true",
+                "class" to "dev.velum.app.devicewalk.DeviceWalkUiTest",
+            )
+        }
     }
     packaging {
         jniLibs {
