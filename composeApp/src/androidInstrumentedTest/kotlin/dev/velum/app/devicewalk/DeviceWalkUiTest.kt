@@ -56,10 +56,40 @@ class DeviceWalkUiTest {
     private val covered = linkedSetOf<String>()
 
     companion object {
-        private val REQUIRED_COVERAGE = setOf(
+        /** Settings hub rows; each adds its marker when the destination opens. */
+        private val SETTINGS_ROW_MARKERS = listOf(
+            "settings/devices", "settings/recording", "settings/ai-processing",
+            "settings/model-manager", "settings/memory", "settings/personalization",
+            "settings/preferences", "settings/api", "settings/voice-profiles",
+            "settings/templates", "settings/autoflow", "settings/integrations",
+            "settings/import", "settings/about",
+        )
+
+        /** Exact markers every locale cell must produce (43 per cell, plus onboarding/appearance tags). */
+        val REQUIRED_COVERAGE: Set<String> = setOf(
             "settings/appearance", "library", "library/search", "import/bundled-wav",
-            "transcription/device-walk-engine", "recording/open", "recording/change-template",
-            "explore", "templates", "autoflow",
+            "transcription/device-walk-engine", "recording/open", "recording/notes",
+            "recording/change-template", "recording/versions", "recording/sources",
+            "explore", "templates", "templates/featured", "templates/all", "autoflow",
+            "settings", "settings/api-profiles", "settings/per-task-models",
+            "settings/integrations-sheet", "device", "settings/storage-privacy",
+            "settings/wipe-dialog", "rotate/landscape", "rotate/portrait", "background",
+            "restore-from-background", "process-death-restore",
+        ) + SETTINGS_ROW_MARKERS
+
+        /**
+         * Markers that depend on locale/device UI and may legitimately be absent.
+         * Anything outside REQUIRED + OPTIONAL + per-cell tags is drift and fails.
+         */
+        val OPTIONAL_COVERAGE: Set<String> = setOf(
+            "first-run-skip", // only when onboarding is still pending at launch
+            "library/trash", // Filter & Sort sheet copy differs per locale
+            "templates/search", "autoflow/templates", "autoflow/editor", "ask",
+            "device/permission-or-scan",
+        )
+
+        private val SETTINGS_HUB_ROWS = listOf(
+            "Phone recording", "Gravação no telefone", "AI processing", "Processamento de IA",
         )
     }
 
@@ -95,11 +125,11 @@ class DeviceWalkUiTest {
         val tag = "${lang}_$theme"
         waitForShell(lang)
         covered += "onboarding:$tag"
-        shot("01-after-onboarding-$tag")
+        shotWhenReady("01-after-onboarding-$tag", "Files shell not ready") { onFilesShellReady() }
 
         applyAppearance(lang, theme)
         covered += "appearance:$tag"
-        shot("02-appearance-$tag")
+        shotWhenReady("02-appearance-$tag", "Files shell not ready after appearance") { onFilesShellReady() }
 
         walkLibrary(lang)
         walkImportAndTranscribe(lang, tag)
@@ -118,11 +148,14 @@ class DeviceWalkUiTest {
         assertUiChrome(lang)
         assertFalse(device.hasObject(By.textContains("FATAL EXCEPTION")))
         File(shotDir, "coverage-$tag.txt").writeText(covered.sorted().joinToString("\n"))
-        val missing = (REQUIRED_COVERAGE + "onboarding:$tag") - covered
-        val softMisses = covered.filter { "soft-miss" in it }
+        val required = REQUIRED_COVERAGE + "onboarding:$tag" + "appearance:$tag"
+        val missing = (required - covered).sorted()
+        val softMisses = covered.filter { "soft-miss" in it }.sorted()
+        val unexpected = (covered - required - OPTIONAL_COVERAGE).filterNot { it in softMisses }.sorted()
         assertTrue(
-            missing.isEmpty() && softMisses.isEmpty(),
-            "Missing required coverage: $missing; soft misses: $softMisses",
+            missing.isEmpty() && softMisses.isEmpty() && unexpected.isEmpty(),
+            "Device walk coverage ($tag) failed. Missing required markers: $missing; " +
+                "soft misses: $softMisses; unexpected markers: $unexpected",
         )
     }
 
@@ -251,6 +284,7 @@ class DeviceWalkUiTest {
             composeRule.onAllNodes(hasSetTextAction()).fetchSemanticsNodes().isEmpty()
         }
         // Peek trash filter then restore All — never leave Trash selected.
+        // Optional: trash peek depends on Filter & Sort sheet copy per locale; marker is optional.
         runCatching {
             softClickContentDesc(
                 "Filter & Sort",
@@ -265,7 +299,7 @@ class DeviceWalkUiTest {
             SystemClock.sleep(300)
         }
         restoreAllFilesFilterSoft()
-        shot("03-library")
+        shotWhenReady("03-library", "Library chrome not ready") { onFilesChrome() }
     }
 
     private fun walkImportAndTranscribe(lang: String, tag: String) {
@@ -302,6 +336,7 @@ class DeviceWalkUiTest {
             }
         }
         covered += "transcription/device-walk-engine"
+        // Optional: refresh affordance is absent when the list already auto-updated.
         softClickContentDesc("Refresh library", "Atualizar biblioteca")
         restoreAllFilesFilterSoft()
         // LazyColumn preserves its visible anchor when a new row is inserted.
@@ -311,7 +346,7 @@ class DeviceWalkUiTest {
         waitUntil(45_000, "Processed recording '$title' did not appear in the library") {
             composeExists(title)
         }
-        shot("04-imported-$tag")
+        shotWhenReady("04-imported-$tag", "Imported row not visible") { composeExists(title) }
         clickTextPrefer(title)
         waitUntil(45_000, "Recording row did not open recording detail") {
             composeExists("Notes") || composeExists("Notas") ||
@@ -334,41 +369,26 @@ class DeviceWalkUiTest {
     }
 
     private fun walkRecordingDetail(lang: String, tag: String) {
-        val opened = runCatching {
-            waitUntil(45_000) {
-                composeExists("Notas") ||
-                    composeExists("Notes") ||
-                    composeExists("Fontes") ||
-                    composeExists("Sources") ||
-                    composeExists("Device walk")
-            }
-            true
-        }.getOrDefault(false)
-        if (opened) {
-            runCatching {
-                clickTextPrefer("Notes", "Notas")
-                covered += "recording/notes"
-                shot("05-notes-$tag")
-            }
-            runCatching {
-                clickTextPrefer("Change template", "Trocar modelo")
-                waitUntil(10_000, "Change template did not open its sheet") {
-                    composeRule.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsActions.Dismiss))
-                        .fetchSemanticsNodes().isNotEmpty()
-                }
-                covered += "recording/change-template"
-                pressNavBack()
-            }
-            runCatching {
-                clickTextPrefer("Versions", "Versões")
-                covered += "recording/versions"
-                pressNavBack()
-            }
-            runCatching {
-                clickTextPrefer("Sources", "Fontes")
-                covered += "recording/sources"
-            }
+        waitUntil(45_000, "Recording detail did not open") {
+            composeExists("Notas") || composeExists("Notes") ||
+                composeExists("Fontes") || composeExists("Sources") ||
+                composeExists("Device walk")
         }
+        clickTextPrefer("Notes", "Notas")
+        covered += "recording/notes"
+        shotWhenReady("05-notes-$tag", "Notes content not visible") { composeExists("Notes") || composeExists("Notas") }
+        clickTextPrefer("Change template", "Trocar modelo")
+        waitUntil(10_000, "Change template did not open its sheet") {
+            composeRule.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsActions.Dismiss))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        covered += "recording/change-template"
+        pressNavBack()
+        clickTextPrefer("Versions", "Versões")
+        covered += "recording/versions"
+        pressNavBack()
+        clickTextPrefer("Sources", "Fontes")
+        covered += "recording/sources"
         pressNavBack()
         pressBackToFiles(lang)
     }
@@ -380,7 +400,9 @@ class DeviceWalkUiTest {
             composeExists(if (lang == "en") "Help & support" else "Ajuda e suporte")
         }
         covered += "explore"
-        shot("06-explore-$tag")
+        shotWhenReady("06-explore-$tag", "Explore content not visible") {
+            composeExists(if (lang == "en") "Help & support" else "Ajuda e suporte")
+        }
         clickTextPrefer(
             if (lang == "en") "Templates" else "Modelos",
             "Templates",
@@ -393,13 +415,13 @@ class DeviceWalkUiTest {
                 composeExists(if (lang == "en") "Discover" else "Descobrir")
         }
         covered += "templates"
-        softClickText(
+        clickTextPrefer(
             if (lang == "en") "Featured" else "Destaques",
             "Featured",
             "Destaques",
         )
         covered += "templates/featured"
-        softClickText(
+        clickTextPrefer(
             if (lang == "en") "All" else "Todos",
             "All",
             "Todos",
@@ -414,7 +436,10 @@ class DeviceWalkUiTest {
             covered += "templates/search"
             pressNavBack()
         }
-        shot("07-templates-$tag")
+        shotWhenReady("07-templates-$tag", "Templates content not visible") {
+            composeExists(if (lang == "en") "My space" else "Meu espaço") &&
+                composeExists(if (lang == "en") "Discover" else "Descobrir")
+        }
         pressNavBack()
         pressBackToFiles(lang)
     }
@@ -427,7 +452,9 @@ class DeviceWalkUiTest {
             composeExists(if (lang == "en") "Receive notifications" else "Receber notificações")
         }
         covered += "autoflow"
-        shot("08-autoflow-$tag")
+        shotWhenReady("08-autoflow-$tag", "AutoFlow content not visible") {
+            composeExists(if (lang == "en") "Receive notifications" else "Receber notificações")
+        }
         runCatching {
             clickTextPrefer(
                 if (lang == "en") "Browse templates" else "Ver modelos",
@@ -467,7 +494,7 @@ class DeviceWalkUiTest {
                 "Perguntar",
             )
             covered += "ask"
-            shot("09-ask-$tag")
+            shotWhenReady("09-ask-$tag", "Ask not settled") { true }
             pressNavBack()
         }
         // Also from settings/explore if FAB path differed
@@ -514,39 +541,37 @@ class DeviceWalkUiTest {
         }
         for ((label, cov) in rows) {
             openSettings()
-            runCatching {
-                scrollClick(label)
-                covered += cov
-                shot("10-${cov.replace('/', '-')}-$tag")
-                // API profiles / per-task models
-                if (cov == "settings/api") {
-                    covered += "settings/api-profiles"
-                }
-                if (cov == "settings/ai-processing") {
-                    covered += "settings/per-task-models"
-                }
-                if (cov == "settings/integrations") {
-                    covered += "settings/integrations-sheet"
-                }
-                pressNavBack()
+            scrollClick(label)
+            covered += cov
+            shotWhenReady("10-${cov.replace('/', '-')}-$tag", "$cov did not leave the Settings hub") { settingsHubGone() }
+            // API profiles / per-task models
+            if (cov == "settings/api") {
+                covered += "settings/api-profiles"
             }
+            if (cov == "settings/ai-processing") {
+                covered += "settings/per-task-models"
+            }
+            if (cov == "settings/integrations") {
+                covered += "settings/integrations-sheet"
+            }
+            pressNavBack()
         }
         pressBackToFiles(lang)
     }
 
     private fun walkDevice(lang: String, tag: String) {
         openSettings()
-        runCatching {
-            scrollClick(if (lang == "en") "Devices" else "Dispositivos")
-            clickTextPrefer(
-                if (lang == "en") "Device" else "Dispositivo",
-                "Note Pro",
-                "Device",
-                "Dispositivo",
-            )
-            covered += "device"
-            shot("11-device-$tag")
-            // Permission rationale / scan button if present
+        scrollClick(if (lang == "en") "Devices" else "Dispositivos")
+        clickTextPrefer(
+            if (lang == "en") "Device" else "Dispositivo",
+            "Note Pro",
+            "Device",
+            "Dispositivo",
+        )
+        covered += "device"
+        shotWhenReady("11-device-$tag", "Device screen did not leave the Settings hub") { settingsHubGone() }
+        run {
+            // Optional: permission rationale / scan button only exists with a paired-device row.
             runCatching {
                 clickTextPrefer(
                     if (lang == "en") "Scan" else "Buscar",
@@ -567,12 +592,12 @@ class DeviceWalkUiTest {
 
     private fun walkStorageWipe(lang: String, tag: String) {
         openSettings()
-        runCatching {
+        run {
             scrollClick(
                 if (lang == "en") "Storage & privacy" else "Armazenamento e privacidade",
             )
             covered += "settings/storage-privacy"
-            shot("12-storage-$tag")
+            shotWhenReady("12-storage-$tag", "Storage screen did not leave the Settings hub") { settingsHubGone() }
             // Open wipe confirm dialog then cancel — do not destroy mid-matrix state unless last.
             clickTextPrefer(
                 if (lang == "en") "Wipe all data" else "Apagar todos os dados",
@@ -599,7 +624,7 @@ class DeviceWalkUiTest {
             }
         SystemClock.sleep(1_000)
         covered += "rotate/landscape"
-        shot("13-landscape-$tag")
+        shotWhenReady("13-landscape-$tag", "Landscape not settled") { true }
         runCatching { device.setOrientationNatural() }
             .recoverCatching {
                 composeRule.activity.requestedOrientation =
@@ -638,7 +663,9 @@ class DeviceWalkUiTest {
                 uiExists("Lixeira")
         }
         covered += "restore-from-background"
-        shot("14-restore-$tag")
+        shotWhenReady("14-restore-$tag", "Shell not restored", idle = false) {
+            onFilesShellReady() || uiExists("All files") || uiExists("Todos os arquivos")
+        }
     }
 
     /** FirstRun after rotate/background means firstRunPending recreate regress (#106). */
@@ -708,7 +735,9 @@ class DeviceWalkUiTest {
                 uiExists("Lixeira")
         }
         covered += "process-death-restore"
-        shot("15-process-death-$tag")
+        shotWhenReady("15-process-death-$tag", "Shell not restored after process death", idle = false) {
+            uiExists("All files") || uiExists("Todos os arquivos")
+        }
         // Locale must survive process death (prefs persisted).
         assertUiChrome(lang)
     }
@@ -860,11 +889,8 @@ class DeviceWalkUiTest {
         // Require an actual hub-only row. UiAutomator's accessibility snapshot
         // can remain stale even while the Compose tree already shows Settings;
         // the header gear alone must never satisfy this navigation assertion.
-        val hubRows = listOf(
-            "Phone recording", "Gravação no telefone", "AI processing", "Processamento de IA",
-        )
         waitUntil(20_000, "Settings button did not open the Settings hub") {
-            hubRows.any { composeExists(it) }
+            SETTINGS_HUB_ROWS.any { composeExists(it) }
         }
     }
 
@@ -1069,6 +1095,21 @@ class DeviceWalkUiTest {
         }.getOrElse { "Unable to dump Compose tree: $it" }
         File(shotDir, "$failureTag.txt").writeText("$message\n$tree")
         error("$message; diagnostic: $failureTag")
+    }
+
+    private fun settingsHubGone(): Boolean = SETTINGS_HUB_ROWS.none { composeExists(it) }
+
+    /**
+     * Capture only after the destination's own node is present and Compose is idle,
+     * so screenshots never show the previous screen mid-transition (#115).
+     * [idle]=false after process death, where composeRule no longer owns the activity.
+     */
+    private fun shotWhenReady(name: String, message: String, idle: Boolean = true, ready: () -> Boolean) {
+        waitUntil(15_000, message, ready)
+        // ponytail: waitForIdle can throw mid-draw; the node assertion above is the hard gate.
+        if (idle) runCatching { composeRule.waitForIdle() }
+        SystemClock.sleep(300)
+        shot(name)
     }
 
     private fun shot(name: String) {
