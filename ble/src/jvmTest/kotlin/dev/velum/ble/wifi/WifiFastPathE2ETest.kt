@@ -8,6 +8,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
+import java.net.ServerSocket
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -30,10 +31,11 @@ class WifiFastPathE2ETest {
         )
         val session = WifiFastTransferSession(softAp, server, cipher)
         val preamble = WifiTransferPreamble.defaultToken("e2e")
+        val port = freePort()
         session.start(
             ssid = "PLAUD-FAKE",
             password = "password12",
-            port = 18081,
+            port = port,
             preamble = preamble,
             bindHost = "127.0.0.1",
         )
@@ -43,8 +45,7 @@ class WifiFastPathE2ETest {
                 withTimeout(5_000) { server.incomingEncryptedFrames().first() }
             }
             delay(20)
-            val device = FakeWifiDeviceClient(port = 18081)
-            device.connect()
+            val device = connectWhenReady(port)
             device.sendPreamble(preamble)
             delay(50)
             val plaintext = byteArrayOf(0x01, 0x1A, 0x00, 0x01, 0x02, 0x03)
@@ -102,12 +103,11 @@ class WifiFastPathE2ETest {
             bleDownload = { error("BLE should not run") },
         )
         val expected = byteArrayOf(1, 2, 3, 4)
+        val port = freePort()
         // Drive device in parallel after server starts inside transferOrFallback.
         val deviceThread = Thread {
-            Thread.sleep(200)
-            val device = FakeWifiDeviceClient(port = 18082)
+            val device = connectWhenReady(port)
             try {
-                device.connect()
                 device.sendPreamble(preamble)
                 Thread.sleep(50)
                 device.sendBinary(frameCipher.seal(0, expected))
@@ -119,7 +119,7 @@ class WifiFastPathE2ETest {
         val outcome = coordinator.transferOrFallback(
             ssid = "PLAUD-FAKE",
             password = "password12",
-            port = 18082,
+            port = port,
             preamble = preamble,
             bindHost = "127.0.0.1",
             assemble = { s ->
@@ -132,5 +132,24 @@ class WifiFastPathE2ETest {
         deviceThread.join(10_000)
         assertIs<WifiTransferCoordinator.Outcome.Wifi>(outcome)
         assertEquals(expected.toList(), outcome.bytes.toList())
+    }
+
+    // Ephemeral port: avoids collisions between concurrent test runs.
+    private fun freePort(): Int = ServerSocket(0).use { it.localPort }
+
+    // Retry until the server accepts (bounded) instead of a fixed sleep.
+    private fun connectWhenReady(port: Int, timeoutMs: Long = 10_000): FakeWifiDeviceClient {
+        val deadline = System.nanoTime() + timeoutMs * 1_000_000
+        while (true) {
+            val device = FakeWifiDeviceClient(port = port)
+            try {
+                device.connect(timeoutMs = 1_000)
+                return device
+            } catch (e: Exception) {
+                device.close()
+                if (System.nanoTime() > deadline) throw e
+                Thread.sleep(50)
+            }
+        }
     }
 }
