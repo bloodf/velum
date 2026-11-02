@@ -86,6 +86,15 @@
     public java.lang.String noDevicesYet(java.lang.String);
     public java.lang.String desktopBleLater(java.lang.String);
 }
+# DeviceWalkUiTest reads copy by key (stringsFor(lang) -> Strings/SettingsUiStrings/UxStrings getters).
+# R8 otherwise inlines the file-facade getters and renames the classes: NoSuchMethodError getPtBr().
+-keep class dev.velum.app.i18n.StringsKt {
+    public static dev.velum.app.i18n.Strings getPtBr();
+    public static dev.velum.app.i18n.Strings getEn();
+}
+-keep class dev.velum.app.i18n.Strings { public *** get*(); }
+-keep class dev.velum.app.i18n.SettingsUiStrings { public *** get*(); }
+-keep class dev.velum.app.i18n.UxStrings { public *** get*(); }
 # Instrumentation imports one fixture through the real processor and verifies
 # its persisted result. Keep just those cross-APK calls; app names may obfuscate.
 -keepclassmembers,allowobfuscation class dev.velum.ai.pipeline.RecordingProcessor {
