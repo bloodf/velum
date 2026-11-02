@@ -55,7 +55,11 @@ import org.junit.runner.RunWith
  */
 @RunWith(AndroidJUnit4::class)
 class DeviceWalkUiTest {
-    @get:Rule
+    // Outer rule: wraps the compose rule so a hang anywhere in the cell fails with stacks.
+    @get:Rule(order = 0)
+    val watchdog = CellWatchdog { shotDir }
+
+    @get:Rule(order = 1)
     val composeRule = createAndroidComposeRule<MainActivity>()
 
     private lateinit var device: UiDevice
@@ -64,6 +68,8 @@ class DeviceWalkUiTest {
     private val covered = linkedSetOf<String>()
 
     companion object {
+        private const val ANR_CHECK_INTERVAL_MS = 2_000L
+
         /** Settings hub rows; each adds its marker when the destination opens. */
         private val SETTINGS_ROW_MARKERS = listOf(
             "settings/devices", "settings/recording", "settings/ai-processing",
@@ -947,8 +953,10 @@ class DeviceWalkUiTest {
         while (SystemClock.uptimeMillis() - start < timeoutMs) {
             val ready = try { condition() } catch (_: StaleObjectException) { false }
             if (ready) return
+            dismissSystemAnrDialog()
             SystemClock.sleep(300)
         }
+        if (try { condition() } catch (_: StaleObjectException) { false }) return
         error("UI condition not met within ${timeoutMs}ms")
     }
 
@@ -1195,10 +1203,15 @@ class DeviceWalkUiTest {
             if (composeRule.mainClock.autoAdvance) composeRule.mainClock.advanceTimeByFrame()
             val ready = try { condition() } catch (_: StaleObjectException) { false }
             if (ready) return
+            // A system "isn't responding" dialog (CI Pixel Launcher) hides the app from UiAutomator for the
+            // rest of the cell; it can reappear after the first dismissal, so retry on every miss.
+            dismissSystemAnrDialog()
             // Avoid composeRule.waitForIdle — it can throw
             // "performMeasureAndLayout called during measure layout" mid-draw.
             SystemClock.sleep(300)
         }
+        // A slow poll can outlast the deadline while the condition became true meanwhile.
+        if (try { condition() } catch (_: StaleObjectException) { false }) return
         val failureTag = "timeout-${SystemClock.uptimeMillis()}"
         shot(failureTag)
         // Preserve evidence without replacing the original failed assertion if
@@ -1292,15 +1305,32 @@ class DeviceWalkUiTest {
         }
     }
 
+    private var lastAnrCheckMs = 0L
+
     /**
      * A loaded CI emulator can show "<system app> isn't responding" over the app (seen on main CI with the
      * Pixel Launcher). It hides the app from UiAutomator and swallows gestures. Tap Wait, never Close app.
      */
     private fun dismissSystemAnrDialog() {
-        if (device.hasObject(By.textContains("isn't responding"))) {
-            device.findObject(By.text("Wait"))?.click()
-            SystemClock.sleep(500)
+        // A UiAutomator lookup can take seconds on a busy screen; poll at most every 2 s.
+        val now = SystemClock.uptimeMillis()
+        if (now - lastAnrCheckMs < ANR_CHECK_INTERVAL_MS) return
+        lastAnrCheckMs = now
+        // The system dialog lives in the "android" package; our own ANR must fail the cell, not be hidden.
+        val title = device.findObject(By.pkg("android").textContains("isn't responding"))?.text ?: return
+        val appLabel = appContext.applicationInfo.loadLabel(appContext.packageManager).toString()
+        if (title.contains(appLabel) || title.contains(appContext.packageName)) {
+            val tag = "own-anr-${SystemClock.uptimeMillis()}"
+            shot(tag)
+            error("The app itself is not responding: \"$title\"; diagnostic: $tag")
         }
+        try {
+            device.findObject(By.pkg("android").text("Wait"))?.click()
+            Log.w("VelumDeviceWalk", "Dismissed system ANR dialog: $title")
+        } catch (_: StaleObjectException) {
+            // The dialog closed between lookup and click; nothing left to dismiss.
+        }
+        SystemClock.sleep(500)
     }
 
     private fun dismissSystemPermissionDialogs() {

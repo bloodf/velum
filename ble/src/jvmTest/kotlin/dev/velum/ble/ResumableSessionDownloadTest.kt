@@ -238,5 +238,34 @@ class ResumableSessionDownloadTest {
         assertFalse(job.isActive)
     }
 
+    @Test fun a_store_larger_than_the_session_restarts_from_zero() = runTest {
+        val file = Random(14).nextBytes(5_000)
+        val rig = rig(file)
+        val store = MemoryStore().apply { write(ByteArray(file.size + 1)) }
+        val result = downloader(rig, CrcPolicy.Enforce).download(SESSION, file.size.toLong(), store)
+        assertContentEquals(file, store.bytes)
+        assertEquals(listOf(0L), rig.peripheral.syncStartOffsets)
+        assertEquals(CrcStatus.Verified, result.crc)
+    }
+
+    @Test fun enforced_crc_mismatch_gives_up_after_three_complete_transfers() = runTest {
+        val file = Random(15).nextBytes(5_000)
+        val rig = rig(file, stopCrc = StopCrc.Wrong)
+        assertFailsWith<TransferIntegrityException> {
+            downloader(rig, CrcPolicy.Enforce).download(SESSION, file.size.toLong(), MemoryStore())
+        }
+        assertEquals(3, rig.connects)
+    }
+
+    @Test fun lost_links_between_mismatches_do_not_defeat_the_crc_cap() = runTest {
+        val file = Random(16).nextBytes(10_000)
+        // Lost link, mismatch, lost link, ...: each lost link stores new bytes, which resets the no-progress count.
+        val rig = rig(file, TransferFaults(disconnectAt = (1L..8L).map { it * 1_000 }.toSet()), StopCrc.Wrong)
+        assertFailsWith<TransferIntegrityException> {
+            downloader(rig, CrcPolicy.Enforce).download(SESSION, file.size.toLong(), MemoryStore())
+        }
+        assertTrue(rig.peripheral.syncStartOffsets.count { it == 0L } <= 3, "${rig.peripheral.syncStartOffsets}")
+    }
+
     private companion object { const val SESSION = 1_700_000_000L }
 }

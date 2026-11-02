@@ -83,6 +83,7 @@ import dev.velum.core.templates.DiscoverTier
 import dev.velum.core.templates.TemplateJsonImporter
 import dev.velum.core.templates.TemplateTagVocabulary
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.random.Random
 
@@ -150,14 +151,24 @@ fun TemplatesScreen(
         else -> DiscoverTier.All
     }
     // Facet values come from catalog metadata for the current tier + search (+ category for tags/langs).
+    // `facetsLoaded` stays false until a load succeeds; a failed load keeps the previous facets and never prunes.
     var facets by remember { mutableStateOf(DiscoverFacets(emptyList(), emptyList(), emptyList())) }
-    LaunchedEffect(tier, searchQuery, selectedCategory, templateTick) {
-        facets = try {
-            container.repository.discoverFacets(DiscoverFilter(tier, searchQuery, selectedCategory))
+    var facetsLoaded by remember { mutableStateOf(false) }
+    // Debounced so each keystroke does not re-run the facet and page queries.
+    var debouncedQuery by remember { mutableStateOf(searchQuery) }
+    LaunchedEffect(searchQuery) {
+        // Clearing the search applies at once; only typing is debounced.
+        if (searchQuery.isNotEmpty() && searchQuery != debouncedQuery) delay(SEARCH_DEBOUNCE_MS)
+        debouncedQuery = searchQuery
+    }
+    LaunchedEffect(tier, debouncedQuery, selectedCategory, templateTick) {
+        try {
+            facets = container.repository.discoverFacets(DiscoverFilter(tier, debouncedQuery, selectedCategory))
+            facetsLoaded = true
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
-            DiscoverFacets(emptyList(), emptyList(), emptyList())
+            // Keep the previous facets (and the user's selections) on failure.
         }
     }
     val categoryTabs = remember(facets) {
@@ -166,48 +177,68 @@ fun TemplatesScreen(
     }
     val availableTags = facets.tags
     val availableLangs = facets.langs
-    LaunchedEffect(categoryTabs, selectedCategory) {
-        if (selectedCategory != null && selectedCategory !in categoryTabs) {
-            selectedCategory = null
-        }
+    LaunchedEffect(categoryTabs, selectedCategory, facetsLoaded) {
+        val kept = pruneSelection(selectedCategory, categoryTabs, facetsLoaded)
+        if (kept != selectedCategory) selectedCategory = kept
     }
-    LaunchedEffect(availableTags, selectedTags) {
-        val pruned = selectedTags.filter { it in availableTags }.toSet()
-        if (pruned != selectedTags) selectedTags = pruned
+    LaunchedEffect(availableTags, selectedTags, facetsLoaded) {
+        val kept = pruneSelection(selectedTags, availableTags, facetsLoaded)
+        if (kept != selectedTags) selectedTags = kept
     }
-    LaunchedEffect(availableLangs, selectedLang) {
-        if (selectedLang != null && selectedLang !in availableLangs) {
-            selectedLang = null
-        }
+    LaunchedEffect(availableLangs, selectedLang, facetsLoaded) {
+        val kept = pruneSelection(selectedLang, availableLangs, facetsLoaded)
+        if (kept != selectedLang) selectedLang = kept
     }
     val filter = DiscoverFilter(
         tier = tier,
-        search = searchQuery,
+        search = debouncedQuery,
         category = selectedCategory.takeIf { tab == 1 },
         tags = if (tab == 1) selectedTags else emptySet(),
         lang = selectedLang.takeIf { tab == 1 },
     )
-    // Any filter/tier/search change resets paging to the first page.
-    var pages by remember(filter) { mutableStateOf(1) }
-    var shown by remember { mutableStateOf<List<Template>>(emptyList()) }
+    // Any filter/tier/search/catalog change resets paging to the first page.
+    var pages by remember(filter, templateTick) { mutableStateOf(1) }
+    // null = nothing loaded yet for this filter (no empty-state flash, no stale rows).
+    var shown by remember { mutableStateOf<List<Template>?>(null) }
+    var shownFilter by remember { mutableStateOf<DiscoverFilter?>(null) }
+    // Catalog tick the rows were loaded at; the paging sentinel stays off while they are older than the catalog.
+    var shownTick by remember { mutableStateOf(-1L) }
     var totalMatches by remember { mutableStateOf(0L) }
     var loadFailed by remember { mutableStateOf(false) }
     LaunchedEffect(filter, pages, templateTick) {
+        // Snapshot before the first suspension: the tick may move while the queries run.
+        val loadTick = templateTick
+        // A different filter must not keep the previous filter's rows (or its paging sentinel) on screen.
+        if (shownFilter != filter) {
+            shown = null
+        }
         try {
-            val rows = container.repository.queryDiscoverTemplates(filter, limit = PAGE_SIZE * pages)
+            val current = shown.orEmpty()
+            val offset = if (pages == 1) 0 else current.size
+            val rows = container.repository.queryDiscoverTemplates(filter, limit = PAGE_SIZE, offset = offset)
             val total = container.repository.countDiscoverTemplates(filter)
-            shown = rows
+            shown = if (pages == 1) rows else appendPage(current, rows)
+            shownFilter = filter
+            shownTick = loadTick
             totalMatches = total
             loadFailed = false
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
-            // Never keep the previous filter's rows on screen after a failed load.
-            shown = emptyList()
-            totalMatches = 0
+            // A failed later page keeps the rows already loaded for this filter; anything else must not
+            // keep the previous filter's rows on screen.
+            if (pages == 1 || shownFilter != filter) {
+                shown = emptyList()
+                shownFilter = filter
+                shownTick = loadTick
+                totalMatches = 0
+            }
             loadFailed = true
         }
     }
+    // Rows from another filter are never visible, even for the frame before the effect clears them.
+    val visible = shown.takeIf { shownFilter == filter }
+    val rows = visible.orEmpty()
     // Weekly ranking uses Featured builtins only.
     var ranking by remember { mutableStateOf<List<Template>>(emptyList()) }
     LaunchedEffect(templateTick) {
@@ -292,7 +323,7 @@ fun TemplatesScreen(
 
         LazyVerticalGrid(
             columns = GridCells.Fixed(2),
-            modifier = Modifier.weight(1f).fillMaxWidth(),
+            modifier = Modifier.weight(1f).fillMaxWidth().testTag("templates:grid"),
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -455,7 +486,7 @@ fun TemplatesScreen(
                     }
                 }
             }
-            if (shown.isEmpty() && !fullImportRunning) {
+            if (showEmptyState(visible, fullImportRunning)) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     Box(
                         Modifier.fillMaxWidth().padding(vertical = 48.dp).testTag("templates:empty"),
@@ -477,7 +508,7 @@ fun TemplatesScreen(
                     }
                 }
             }
-            items(shown, key = { it.id }) { tpl ->
+            items(rows, key = { it.id }) { tpl ->
                 TemplateGridCard(
                     name = templateDisplayName(tpl, languageTag),
                     description = tpl.description,
@@ -488,10 +519,10 @@ fun TemplatesScreen(
                     modifier = Modifier.fillMaxWidth(),
                 ) { onOpenTemplate(tpl.id) }
             }
-            if (shown.size >= PAGE_SIZE * pages && shown.size < totalMatches) {
+            if (shownTick == templateTick && rows.size >= PAGE_SIZE * pages && rows.size < totalMatches) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     // Composed only when scrolled to the end: load the next page.
-                    LaunchedEffect(shown.size) { pages += 1 }
+                    LaunchedEffect(rows.size) { pages += 1 }
                     Spacer(Modifier.height(1.dp))
                 }
             }
