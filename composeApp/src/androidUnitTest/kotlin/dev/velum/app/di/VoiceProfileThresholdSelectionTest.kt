@@ -14,6 +14,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import dev.velum.ai.local.ModelStoreDir
+import dev.velum.app.i18n.PtBr
 import dev.velum.app.ui.settings.VoiceProfilesScreen
 import dev.velum.app.ui.theme.VelumTheme
 import dev.velum.core.data.DriverFactory
@@ -29,6 +30,10 @@ import org.robolectric.annotation.Config
 @RunWith(AndroidJUnit4::class)
 @Config(application = android.app.Application::class, sdk = [34])
 class VoiceProfileThresholdSelectionTest {
+    // Buttons are labelled with localized sensitivity names (0.55 = balanced, 0.75 = very strict), not numbers.
+    private val BALANCED = PtBr.ux.voiceProfilesSensitivityBalanced
+    private val VERY_STRICT = PtBr.ux.voiceProfilesSensitivityVeryStrict
+
     @get:Rule val compose = createEmptyComposeRule()
 
     @Test
@@ -41,16 +46,16 @@ class VoiceProfileThresholdSelectionTest {
         try {
             activity.get().setContent { VelumTheme(darkTheme = false) { VoiceProfilesScreen(container, onBack = {}) } }
             compose.waitUntil(10_000) {
-                compose.onAllNodes(hasContentDescription("0.55")).fetchSemanticsNodes().isNotEmpty()
+                compose.onAllNodes(hasContentDescription(BALANCED)).fetchSemanticsNodes().isNotEmpty()
             }
             // Default threshold 0.55 is active; the others are not.
-            compose.waitUntil(10_000) { compose.onAllNodes(hasContentDescription("0.55") and isSelected()).fetchSemanticsNodes().isNotEmpty() }
-            compose.onNodeWithContentDescription("0.55").performScrollTo().assertIsSelected()
-            compose.onNodeWithContentDescription("0.75").assertIsNotSelected()
+            compose.waitUntil(10_000) { compose.onAllNodes(hasContentDescription(BALANCED) and isSelected()).fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithContentDescription(BALANCED).performScrollTo().assertIsSelected()
+            compose.onNodeWithContentDescription(VERY_STRICT).assertIsNotSelected()
 
-            compose.onNodeWithContentDescription("0.75").performScrollTo().performClick()
-            compose.waitUntil(10_000) { compose.onAllNodes(hasContentDescription("0.75") and isSelected()).fetchSemanticsNodes().isNotEmpty() }
-            compose.onNodeWithContentDescription("0.55").assertIsNotSelected()
+            compose.onNodeWithContentDescription(VERY_STRICT).performScrollTo().performClick()
+            compose.waitUntil(10_000) { compose.onAllNodes(hasContentDescription(VERY_STRICT) and isSelected()).fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithContentDescription(BALANCED).assertIsNotSelected()
         } finally {
             activity.pause().stop().destroy()
             root.deleteRecursively()
