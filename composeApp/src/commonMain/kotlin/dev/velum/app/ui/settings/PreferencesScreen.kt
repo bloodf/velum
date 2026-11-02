@@ -44,54 +44,54 @@ fun PreferencesScreen(
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState()),
         ) {
-        SectionLabel(strings.aiProcessing)
-        ChevronRow(
-            strings.aiProcessing,
-            onAiProcessing,
-            value = if (settings.transcriptionMode.name == "Local") strings.computeLocal else strings.computeApi,
-        )
-        Spacer(Modifier.height(8.dp))
-        SectionLabel(strings.transcriptionSummary)
-        ChevronRow(
-            strings.transcriptionLanguage,
-            onAiProcessing,
-            value = when (settings.audioLanguage) {
-                "auto" -> strings.languageAuto
-                "pt-BR" -> strings.languagePtBr
-                "en" -> strings.languageEn
-                else -> settings.audioLanguage
-            },
-        )
-        ToggleRow(
-            strings.cleanTranscript,
-            prefs.cleanTranscript,
-            { enabled -> container.settingsViewModel.runStorageAction { container.settingsRepository.setCleanTranscript(enabled) } },
-            strings.cleanTranscriptHint,
-        )
-        ChevronRow(
-            strings.autoSpeakerLabel,
-            {
-                container.settingsViewModel.runStorageAction {
-                    container.settingsRepository.setAutoSpeakerLabel(!prefs.autoSpeakerLabel)
-                }
-            },
-            value = if (prefs.autoSpeakerLabel) strings.on else strings.off,
-        )
-        ChevronRow(
-            strings.customVocabulary,
-            onCustomVocabulary,
-            value = strings.glossary,
-        )
-        Spacer(Modifier.height(8.dp))
-        SectionLabel(strings.notification)
-        ToggleRow(
-            strings.messageNotification,
-            prefs.autoflowNotify,
-            { enabled -> container.settingsViewModel.runStorageAction { container.settingsRepository.setAutoflowNotify(enabled) } },
-            strings.doTranscribeSummarizeHint,
-            showDivider = false,
-        )
-        Spacer(Modifier.height(40.dp))
+            SectionLabel(strings.aiProcessing)
+            ChevronRow(
+                strings.aiProcessing,
+                onAiProcessing,
+                value = if (settings.transcriptionMode.name == "Local") strings.computeLocal else strings.computeApi,
+            )
+            Spacer(Modifier.height(8.dp))
+            SectionLabel(strings.transcriptionSummary)
+            ChevronRow(
+                strings.transcriptionLanguage,
+                onAiProcessing,
+                value = when (settings.audioLanguage) {
+                    "auto" -> strings.languageAuto
+                    "pt-BR" -> strings.languagePtBr
+                    "en" -> strings.languageEn
+                    else -> settings.audioLanguage
+                },
+            )
+            ToggleRow(
+                strings.cleanTranscript,
+                prefs.cleanTranscript,
+                { enabled -> container.settingsViewModel.runStorageAction { container.settingsRepository.setCleanTranscript(enabled) } },
+                strings.cleanTranscriptHint,
+            )
+            ChevronRow(
+                strings.autoSpeakerLabel,
+                {
+                    container.settingsViewModel.runStorageAction {
+                        container.settingsRepository.setAutoSpeakerLabel(!prefs.autoSpeakerLabel)
+                    }
+                },
+                value = if (prefs.autoSpeakerLabel) strings.on else strings.off,
+            )
+            ChevronRow(
+                strings.customVocabulary,
+                onCustomVocabulary,
+                value = strings.glossary,
+            )
+            Spacer(Modifier.height(8.dp))
+            SectionLabel(strings.notification)
+            ToggleRow(
+                strings.messageNotification,
+                prefs.autoflowNotify,
+                { enabled -> container.settingsViewModel.runStorageAction { container.settingsRepository.setAutoflowNotify(enabled) } },
+                strings.doTranscribeSummarizeHint,
+                showDivider = false,
+            )
+            Spacer(Modifier.height(40.dp))
         }
     }
 }

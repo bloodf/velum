@@ -53,33 +53,33 @@ fun DevicesSettingsScreen(
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState()),
         ) {
-        Text(
-            strings.settingsUi.devicesHint,
-            color = VelumInkSecondary,
-            fontSize = 13.sp,
-            lineHeight = 18.sp,
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-        )
-        SectionLabel(strings.deviceManagement)
-        ChevronRow(strings.scanDevices, onDevice, icon = Icons.Outlined.Devices)
-        ChevronRow(strings.importKeys.title, onImportKeys, icon = Icons.Outlined.Key, showDivider = false)
-        Spacer(Modifier.height(8.dp))
-        SectionLabel(strings.settingsUi.wifiTransfer)
-        Text(
-            strings.settingsUi.preferWifiFastPathHint,
-            color = VelumInkSecondary,
-            fontSize = 13.sp,
-            lineHeight = 18.sp,
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-        )
-        ToggleRow(
-            strings.settingsUi.autoSyncWatchedFolders,
-            prefs.autoSyncWatchedFolders,
-            { enabled -> container.settingsViewModel.runStorageAction { container.settingsRepository.setAutoSyncWatchedFolders(enabled) } },
-            strings.settingsUi.autoSyncWatchedFoldersHint,
-            showDivider = false,
-        )
-        Spacer(Modifier.height(40.dp))
+            Text(
+                strings.settingsUi.devicesHint,
+                color = VelumInkSecondary,
+                fontSize = 13.sp,
+                lineHeight = 18.sp,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+            )
+            SectionLabel(strings.deviceManagement)
+            ChevronRow(strings.scanDevices, onDevice, icon = Icons.Outlined.Devices)
+            ChevronRow(strings.importKeys.title, onImportKeys, icon = Icons.Outlined.Key, showDivider = false)
+            Spacer(Modifier.height(8.dp))
+            SectionLabel(strings.settingsUi.wifiTransfer)
+            Text(
+                strings.settingsUi.preferWifiFastPathHint,
+                color = VelumInkSecondary,
+                fontSize = 13.sp,
+                lineHeight = 18.sp,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+            )
+            ToggleRow(
+                strings.settingsUi.autoSyncWatchedFolders,
+                prefs.autoSyncWatchedFolders,
+                { enabled -> container.settingsViewModel.runStorageAction { container.settingsRepository.setAutoSyncWatchedFolders(enabled) } },
+                strings.settingsUi.autoSyncWatchedFoldersHint,
+                showDivider = false,
+            )
+            Spacer(Modifier.height(40.dp))
         }
     }
 }

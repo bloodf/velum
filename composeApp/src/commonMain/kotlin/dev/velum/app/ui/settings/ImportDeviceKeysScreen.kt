@@ -126,140 +126,140 @@ fun ImportDeviceKeysScreen(
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState()),
         ) {
-        if (storageState == dev.velum.core.settings.SettingsLoadState.Unavailable) {
-            Text(strings.ux.secureStorageUnavailable, color = VelumInk, modifier = Modifier.padding(20.dp, 8.dp))
-            OutlineButton(strings.ux.retryProcessing, { container.settingsViewModel.reloadSettings() }, Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
-        }
-        Text(
-            strings.importKeys.hint,
-            color = VelumInkSecondary,
-            fontSize = 13.sp,
-            lineHeight = 18.sp,
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-        )
-        Text(
-            strings.importKeys.fromPlaudJsonHint,
-            color = VelumInkSecondary,
-            fontSize = 12.sp,
-            lineHeight = 17.sp,
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
-        )
-        OutlineButton(
-            strings.importKeys.fromPlaudJson,
-            { pickJsonFile() },
-            Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
-        )
-        OutlinedTextField(
-            value = jsonDraft,
-            visualTransformation = PasswordVisualTransformation(),
-            onValueChange = { jsonDraft = it },
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
-            label = { Text(strings.importKeys.fromPlaudJsonPaste) },
-            shape = RoundedCornerShape(10.dp),
-            minLines = 4,
-        )
-        OutlineButton(
-            strings.importKeys.fromPlaudJsonApply,
-            { if (jsonDraft.isNotBlank()) applyJson(jsonDraft) },
-            Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
-            enabled = jsonDraft.isNotBlank(),
-        )
-        if (hasKeys) {
+            if (storageState == dev.velum.core.settings.SettingsLoadState.Unavailable) {
+                Text(strings.ux.secureStorageUnavailable, color = VelumInk, modifier = Modifier.padding(20.dp, 8.dp))
+                OutlineButton(strings.ux.retryProcessing, { container.settingsViewModel.reloadSettings() }, Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
+            }
             Text(
-                strings.importKeys.present,
-                color = VelumInk,
-                fontWeight = FontWeight.Medium,
-                fontSize = 14.sp,
+                strings.importKeys.hint,
+                color = VelumInkSecondary,
+                fontSize = 13.sp,
+                lineHeight = 18.sp,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+            )
+            Text(
+                strings.importKeys.fromPlaudJsonHint,
+                color = VelumInkSecondary,
+                fontSize = 12.sp,
+                lineHeight = 17.sp,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
             )
-        }
-        OutlinedTextField(
-            value = serial,
-            visualTransformation = PasswordVisualTransformation(),
-            onValueChange = { serial = it },
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
-            label = { Text(strings.importKeys.serial) },
-            singleLine = true,
-            shape = RoundedCornerShape(10.dp),
-        )
-        OutlinedTextField(
-            value = snSignature,
-            visualTransformation = PasswordVisualTransformation(),
-            onValueChange = { snSignature = it },
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
-            label = { Text(strings.importKeys.snSignatureB64) },
-            shape = RoundedCornerShape(10.dp),
-            minLines = 2,
-        )
-        OutlinedTextField(
-            value = bindToken,
-            visualTransformation = PasswordVisualTransformation(),
-            onValueChange = { bindToken = it },
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
-            label = { Text(strings.importKeys.bindToken) },
-            singleLine = true,
-            shape = RoundedCornerShape(10.dp),
-        )
-        OutlinedTextField(
-            value = publicPem,
-            visualTransformation = PasswordVisualTransformation(),
-            onValueChange = { publicPem = it },
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
-            label = { Text(strings.importKeys.rsaPublicPemOptional) },
-            shape = RoundedCornerShape(10.dp),
-            minLines = 3,
-        )
-        OutlinedTextField(
-            value = privatePem,
-            visualTransformation = PasswordVisualTransformation(),
-            onValueChange = { privatePem = it },
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
-            label = { Text(strings.importKeys.rsaPrivatePemOptional) },
-            shape = RoundedCornerShape(10.dp),
-            minLines = 3,
-        )
-        Spacer(Modifier.height(12.dp))
-        BlackButton(
-            strings.save,
-            {
-                container.settingsViewModel.runStorageAction {
-                    error = null
-                    status = null
-                    try {
-                        container.deviceKeyImporter.importKeys(
-                            serialNumber = serial,
-                            serialSignatureBase64 = snSignature,
-                            bindToken = bindToken,
-                            publicKeyPem = publicPem,
-                            privateKeyPem = privatePem,
-                        )
-                        hasKeys = true
-                        status = strings.importKeys.saved
-                    } catch (cancelled: kotlinx.coroutines.CancellationException) {
-                        throw cancelled
-                    } catch (storage: dev.velum.core.security.SecureStoreUnavailableException) {
-                        throw storage
-                    } catch (_: Exception) {
-                        error = strings.importKeys.importFailed
+            OutlineButton(
+                strings.importKeys.fromPlaudJson,
+                { pickJsonFile() },
+                Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+            )
+            OutlinedTextField(
+                value = jsonDraft,
+                visualTransformation = PasswordVisualTransformation(),
+                onValueChange = { jsonDraft = it },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
+                label = { Text(strings.importKeys.fromPlaudJsonPaste) },
+                shape = RoundedCornerShape(10.dp),
+                minLines = 4,
+            )
+            OutlineButton(
+                strings.importKeys.fromPlaudJsonApply,
+                { if (jsonDraft.isNotBlank()) applyJson(jsonDraft) },
+                Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+                enabled = jsonDraft.isNotBlank(),
+            )
+            if (hasKeys) {
+                Text(
+                    strings.importKeys.present,
+                    color = VelumInk,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 14.sp,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+                )
+            }
+            OutlinedTextField(
+                value = serial,
+                visualTransformation = PasswordVisualTransformation(),
+                onValueChange = { serial = it },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
+                label = { Text(strings.importKeys.serial) },
+                singleLine = true,
+                shape = RoundedCornerShape(10.dp),
+            )
+            OutlinedTextField(
+                value = snSignature,
+                visualTransformation = PasswordVisualTransformation(),
+                onValueChange = { snSignature = it },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
+                label = { Text(strings.importKeys.snSignatureB64) },
+                shape = RoundedCornerShape(10.dp),
+                minLines = 2,
+            )
+            OutlinedTextField(
+                value = bindToken,
+                visualTransformation = PasswordVisualTransformation(),
+                onValueChange = { bindToken = it },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
+                label = { Text(strings.importKeys.bindToken) },
+                singleLine = true,
+                shape = RoundedCornerShape(10.dp),
+            )
+            OutlinedTextField(
+                value = publicPem,
+                visualTransformation = PasswordVisualTransformation(),
+                onValueChange = { publicPem = it },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
+                label = { Text(strings.importKeys.rsaPublicPemOptional) },
+                shape = RoundedCornerShape(10.dp),
+                minLines = 3,
+            )
+            OutlinedTextField(
+                value = privatePem,
+                visualTransformation = PasswordVisualTransformation(),
+                onValueChange = { privatePem = it },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
+                label = { Text(strings.importKeys.rsaPrivatePemOptional) },
+                shape = RoundedCornerShape(10.dp),
+                minLines = 3,
+            )
+            Spacer(Modifier.height(12.dp))
+            BlackButton(
+                strings.save,
+                {
+                    container.settingsViewModel.runStorageAction {
+                        error = null
+                        status = null
+                        try {
+                            container.deviceKeyImporter.importKeys(
+                                serialNumber = serial,
+                                serialSignatureBase64 = snSignature,
+                                bindToken = bindToken,
+                                publicKeyPem = publicPem,
+                                privateKeyPem = privatePem,
+                            )
+                            hasKeys = true
+                            status = strings.importKeys.saved
+                        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                            throw cancelled
+                        } catch (storage: dev.velum.core.security.SecureStoreUnavailableException) {
+                            throw storage
+                        } catch (_: Exception) {
+                            error = strings.importKeys.importFailed
+                        }
                     }
-                }
-            },
-            Modifier.padding(horizontal = 20.dp),
-            enabled = serial.isNotBlank() && snSignature.isNotBlank() && bindToken.isNotBlank(),
-        )
-        Spacer(Modifier.height(8.dp))
-        OutlineButton(
-            strings.importKeys.clearKeys,
-            { showClearConfirm = true },
-            Modifier.padding(horizontal = 20.dp),
-        )
-        status?.let {
-            Text(it, color = VelumInk, modifier = Modifier.padding(20.dp, 8.dp))
-        }
-        error?.let {
-            Text(it, color = Color(0xFFFF3B30), modifier = Modifier.padding(20.dp, 8.dp).testTag("identity-import-error"))
-        }
-        Spacer(Modifier.height(40.dp))
+                },
+                Modifier.padding(horizontal = 20.dp),
+                enabled = serial.isNotBlank() && snSignature.isNotBlank() && bindToken.isNotBlank(),
+            )
+            Spacer(Modifier.height(8.dp))
+            OutlineButton(
+                strings.importKeys.clearKeys,
+                { showClearConfirm = true },
+                Modifier.padding(horizontal = 20.dp),
+            )
+            status?.let {
+                Text(it, color = VelumInk, modifier = Modifier.padding(20.dp, 8.dp))
+            }
+            error?.let {
+                Text(it, color = Color(0xFFFF3B30), modifier = Modifier.padding(20.dp, 8.dp).testTag("identity-import-error"))
+            }
+            Spacer(Modifier.height(40.dp))
         }
     }
 

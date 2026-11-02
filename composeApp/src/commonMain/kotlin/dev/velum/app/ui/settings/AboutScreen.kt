@@ -44,42 +44,42 @@ fun AboutScreen(onBack: () -> Unit) {
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState()),
         ) {
-        Spacer(Modifier.height(12.dp))
-        VelumLogo(size = 72.dp, modifier = Modifier.padding(horizontal = 20.dp))
-        Spacer(Modifier.height(12.dp))
-        Text(
-            "Velum",
-            fontWeight = FontWeight.SemiBold,
-            fontSize = 22.sp,
-            color = VelumInk,
-            modifier = Modifier.padding(horizontal = 20.dp),
-        )
-        Text(
-            APP_VERSION,
-            color = VelumInkSecondary,
-            fontSize = 14.sp,
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
-        )
-        Text(
-            strings.settingsUi.aboutBody,
-            color = VelumInkSecondary,
-            fontSize = 14.sp,
-            lineHeight = 20.sp,
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-        )
-        Spacer(Modifier.height(16.dp))
-        ChevronRow(strings.settingsUi.openSourceLicenses, {
-            openUrl("$GITHUB_REPO/blob/main/THIRD_PARTY.md")
-        })
-        ChevronRow(strings.settingsUi.privacyPolicy, { openUrl(PRIVACY_POLICY) })
-        ChevronRow(strings.settingsUi.githubRepo, { openUrl(GITHUB_REPO) })
-        ChevronRow(strings.settingsUi.reportIssue, { openUrl(GITHUB_ISSUES) })
-        ChevronRow(
-            strings.settingsUi.contributeTemplates,
-            { openUrl("$GITHUB_REPO/blob/main/CONTRIBUTING.md") },
-            showDivider = false,
-        )
-        Spacer(Modifier.height(40.dp))
+            Spacer(Modifier.height(12.dp))
+            VelumLogo(size = 72.dp, modifier = Modifier.padding(horizontal = 20.dp))
+            Spacer(Modifier.height(12.dp))
+            Text(
+                "Velum",
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 22.sp,
+                color = VelumInk,
+                modifier = Modifier.padding(horizontal = 20.dp),
+            )
+            Text(
+                APP_VERSION,
+                color = VelumInkSecondary,
+                fontSize = 14.sp,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+            )
+            Text(
+                strings.settingsUi.aboutBody,
+                color = VelumInkSecondary,
+                fontSize = 14.sp,
+                lineHeight = 20.sp,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+            )
+            Spacer(Modifier.height(16.dp))
+            ChevronRow(strings.settingsUi.openSourceLicenses, {
+                openUrl("$GITHUB_REPO/blob/main/THIRD_PARTY.md")
+            })
+            ChevronRow(strings.settingsUi.privacyPolicy, { openUrl(PRIVACY_POLICY) })
+            ChevronRow(strings.settingsUi.githubRepo, { openUrl(GITHUB_REPO) })
+            ChevronRow(strings.settingsUi.reportIssue, { openUrl(GITHUB_ISSUES) })
+            ChevronRow(
+                strings.settingsUi.contributeTemplates,
+                { openUrl("$GITHUB_REPO/blob/main/CONTRIBUTING.md") },
+                showDivider = false,
+            )
+            Spacer(Modifier.height(40.dp))
         }
     }
 }
