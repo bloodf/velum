@@ -50,10 +50,13 @@ class JavaWebsocketTransferServer : WifiTransferServer {
                 val bytes = ByteArray(message.remaining())
                 message.get(bytes)
                 // The single authenticated peer is clientRef; any other connection must send its own preamble.
+                // Latest authenticated wins: a device reconnect must not be locked out by a stale socket.
                 if (clientRef.get() !== conn) {
-                    val ok = WifiTransferPreamble.matches(bytes, expectedPreamble.get()) &&
-                        clientRef.compareAndSet(null, conn)
-                    if (!ok) conn.close(1008, "preamble_mismatch")
+                    if (WifiTransferPreamble.matches(bytes, expectedPreamble.get())) {
+                        clientRef.getAndSet(conn)?.let { old -> runCatching { old.close(1001, "superseded") } }
+                    } else {
+                        conn.close(1008, "preamble_mismatch")
+                    }
                     return
                 }
                 if (bytes.size > MAX_FRAME_BYTES) {
