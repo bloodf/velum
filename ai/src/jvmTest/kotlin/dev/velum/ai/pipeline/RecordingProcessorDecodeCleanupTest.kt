@@ -188,9 +188,49 @@ class RecordingProcessorDecodeCleanupTest {
     @Test
     fun real_enospc_from_dev_full_is_detected() {
         val devFull = File("/dev/full")
-        if (!devFull.exists()) return // Linux-only: macOS has no /dev/full
+        org.junit.Assume.assumeTrue("Linux-only: needs /dev/full", devFull.exists())
         val e = kotlin.runCatching { ModelStoreDir(devFull.path).appendBytes(ByteArray(4096)) }.exceptionOrNull()
         assertTrue(e != null && isOutOfStorage(e), "real write failure: $e")
+    }
+
+    @Test
+    fun cancellation_check_aborts_ogg_decode_between_packets() {
+        val packet = dev.velum.ai.audio.SyntheticOgg.audioPacket(stereo = false)
+        val dir = java.nio.file.Files.createTempDirectory("velum-86-cancel").toFile()
+        try {
+            val ogg = File(dir, "a.ogg").apply {
+                writeBytes(
+                    dev.velum.ai.audio.SyntheticOgg.page(listOf(dev.velum.ai.audio.SyntheticOgg.opusHead(1, 48_000)), 0, 2) +
+                        dev.velum.ai.audio.SyntheticOgg.page(listOf(dev.velum.ai.audio.SyntheticOgg.tags()), 1) +
+                        dev.velum.ai.audio.SyntheticOgg.page(List(50) { packet }, 2),
+                )
+            }
+            var packets = 0
+            val e = kotlin.runCatching {
+                dev.velum.ai.audio.KopusOpusDecoder().decodePathToPcmFile(ogg.path, ModelStoreDir(File(dir, "o.s16le").path)) {
+                    if (++packets == 3) throw kotlinx.coroutines.CancellationException("cancel")
+                }
+            }.exceptionOrNull()
+            assertTrue(e is kotlinx.coroutines.CancellationException, "e=$e")
+            assertEquals(3, packets, "decode stopped at the cancelled packet")
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun model_store_writes_through_a_symlinked_directory() {
+        val dir = java.nio.file.Files.createTempDirectory("velum-86-link").toFile()
+        try {
+            val real = File(dir, "real").apply { mkdirs() }
+            val link = File(dir, "link")
+            java.nio.file.Files.createSymbolicLink(link.toPath(), real.toPath())
+            ModelStoreDir(link.path).createDirectories()
+            ModelStoreDir(File(link, "x.bin").path).appendBytes(byteArrayOf(1, 2))
+            assertContentEquals(byteArrayOf(1, 2), File(real, "x.bin").readBytes())
+        } finally {
+            dir.deleteRecursively()
+        }
     }
 
     @Test

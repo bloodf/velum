@@ -24,6 +24,9 @@ import dev.velum.core.settings.ApiModelOverride
 import dev.velum.core.settings.SettingsRepository
 import dev.velum.core.templates.BuiltinTemplateCatalog
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -73,6 +76,7 @@ class RecordingProcessor(
             val filename: String
             val sampleRate: Int
             val localPath = recording.local_path
+            val job = currentCoroutineContext()[Job]
             val spillRoot = ModelStoreDir(defaultModelStoreRoot().absolutePath)
                 .resolve("tmp")
                 .resolve("pcm-$recordingId")
@@ -90,7 +94,7 @@ class RecordingProcessor(
                     filename.endsWith(".opus", ignoreCase = true)
                 if (oggByExt) {
                     // Stream Ogg pages from disk — never hold full Ogg or PCM on the heap.
-                    val meta = createOpusDecoder().decodePathToPcmFile(localPath, pcmFile)
+                    val meta = createOpusDecoder().decodePathToPcmFile(localPath, pcmFile) { job?.ensureActive() }
                     sampleRate = meta.sampleRateHz
                     pcmBuffer = PcmAudioBuffer.fromExistingFile(pcmFile, meta.sizeBytes)
                     if (meta.truncated) {
@@ -116,7 +120,7 @@ class RecordingProcessor(
                     } else {
                         (fileLen - pcmStart).coerceAtLeast(0L)
                     }
-                    copyFileRangeToPcm(src, pcmStart, pcmLen, pcmFile)
+                    copyFileRangeToPcm(src, pcmStart, pcmLen, pcmFile) { job?.ensureActive() }
                     pcmBuffer = PcmAudioBuffer.fromExistingFile(pcmFile, pcmLen)
                 } else {
                     val raw = readFileBytes(localPath)
@@ -603,6 +607,7 @@ class RecordingProcessor(
         start: Long,
         length: Long,
         dest: ModelStoreDir,
+        checkCancelled: () -> Unit,
     ) {
         dest.writeBytes(ByteArray(0))
         if (length <= 0L) return
@@ -610,6 +615,7 @@ class RecordingProcessor(
         val end = start + length
         val chunk = 256 * 1024
         while (offset < end) {
+            checkCancelled()
             val n = ((end - offset).coerceAtMost(chunk.toLong())).toInt()
             dest.appendBytes(src.readRange(offset, n))
             offset += n

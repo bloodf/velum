@@ -61,9 +61,9 @@ class HeapVsDurationDecodeTest {
     @Test
     fun peak_heap_does_not_grow_with_recording_duration() {
         val short = peakHeapDecoding(5 * 60)
-        val long = peakHeapDecoding(40 * 60) // 230 MB of PCM on disk
+        val long = peakHeapDecoding(40 * 60) // ~73 MiB of 16 kHz mono PCM on disk
         println("opus-decode heap delta: 5min=${short shr 10}KiB 40min=${long shr 10}KiB")
-        assertTrue(long < 64L shl 20, "40 min decode retained ${long shr 20} MiB (PCM is up to 220 MiB)")
+        assertTrue(long < 32L shl 20, "40 min decode retained ${long shr 20} MiB (PCM on disk is ~73 MiB)")
         assertTrue(long - short < 32L shl 20, "heap grew with duration: $short -> $long")
     }
 }

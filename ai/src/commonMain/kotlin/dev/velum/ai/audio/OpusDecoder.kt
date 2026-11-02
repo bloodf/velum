@@ -67,8 +67,9 @@ interface OpusDecoder {
     /**
      * Decode an on-disk Ogg Opus file without loading the whole file into a ByteArray.
      * Default reads all bytes then [decodeToPcmFile]; Android/JVM stream pages from disk.
+     * [checkCancelled] runs once per packet and should throw to abort the decode.
      */
-    fun decodePathToPcmFile(path: String, dest: ModelStoreDir): SpilledPcmMeta =
+    fun decodePathToPcmFile(path: String, dest: ModelStoreDir, checkCancelled: () -> Unit = {}): SpilledPcmMeta =
         decodeToPcmFile(ModelStoreDir(path).readBytes(), dest)
 }
 

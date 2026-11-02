@@ -17,16 +17,16 @@ actual class ModelStoreDir actual constructor(absolutePath: String) {
     actual fun isDirectory(): Boolean = file.isDirectory
 
     actual fun createDirectories() {
-        java.nio.file.Files.createDirectories(file.toPath())
+        ensureDir(file)
     }
 
     actual fun writeBytes(bytes: ByteArray) {
-        file.parentFile?.let { java.nio.file.Files.createDirectories(it.toPath()) }
+        file.parentFile?.let(::ensureDir)
         file.writeBytes(bytes)
     }
 
     actual fun appendBytes(bytes: ByteArray) {
-        file.parentFile?.let { java.nio.file.Files.createDirectories(it.toPath()) }
+        file.parentFile?.let(::ensureDir)
         file.appendBytes(bytes)
     }
 
@@ -86,4 +86,9 @@ actual class ModelStoreDir actual constructor(absolutePath: String) {
 actual fun defaultModelStoreRoot(): ModelStoreDir {
     val home = System.getProperty("user.home") ?: "."
     return ModelStoreDir(File(home, ".velum/models").absolutePath)
+}
+
+// Files.createDirectories throws on a symlink to a directory; only create when it is not one already.
+private fun ensureDir(dir: File) {
+    if (!dir.isDirectory) java.nio.file.Files.createDirectories(dir.toPath())
 }
