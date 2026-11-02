@@ -1,6 +1,7 @@
 package dev.velum.app.platform
 
 import android.app.Application
+import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.CompositionLocalProvider
@@ -16,6 +17,7 @@ import dev.velum.app.di.AppContainer
 import dev.velum.app.i18n.LocalStrings
 import dev.velum.app.i18n.PtBr
 import dev.velum.app.ui.recording.LiveTranscriptPane
+import dev.velum.app.ui.recording.savableLiveTranscript
 import dev.velum.app.ui.theme.VelumTheme
 import dev.velum.core.data.DriverFactory
 import dev.velum.core.security.InMemorySecureStore
@@ -37,6 +39,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.android.controller.ActivityController
 import org.robolectric.annotation.Config
 
@@ -54,6 +57,8 @@ class LiveTranscriberHandoffTest {
     private lateinit var activity: ActivityController<ComponentActivity>
     private lateinit var recordingId: String
     private var destroyed = false
+    private var queued = 0
+    @Volatile private var modelMissing = false
 
     @Before fun setUp() {
         val context = ApplicationProvider.getApplicationContext<Application>()
@@ -62,7 +67,7 @@ class LiveTranscriberHandoffTest {
         installRecordingFilesDir(root.path)
         container = AppContainer(InMemorySecureStore(), DriverFactory(context),
             modelStoreRoot = ModelStoreDir(File(root, "models").path), micCapture = mic,
-            recordingJobSchedulerFactory = { _, _ -> RecordingJobScheduler { _, _, _, _ -> } })
+            recordingJobSchedulerFactory = { _, _ -> RecordingJobScheduler { _, _, _, _ -> queued++ } })
         recordingId = runBlocking { container.createLocalRecording(status = "recording") }
         activity = Robolectric.buildActivity(ComponentActivity::class.java).setup()
         activity.get().setContent {
@@ -70,6 +75,7 @@ class LiveTranscriberHandoffTest {
                 VelumTheme(darkTheme = false) {
                     LiveTranscriptPane(container, recordingId, title = "", openTranscriber = {
                         assertTrue(modelLoad.await(30, TimeUnit.SECONDS), "Synthetic model load was never released")
+                        check(!modelMissing) { "Synthetic model failure" }
                         transcriber
                     })
                 }
@@ -122,6 +128,60 @@ class LiveTranscriberHandoffTest {
         assertTrue(compose.onAllNodesWithText(PtBr.micStartFailed).fetchSemanticsNodes().isEmpty())
     }
 
+    @Test fun stop_turns_the_mic_off_before_the_transcript_wait_ends() {
+        compose.onNodeWithContentDescription(PtBr.stopRecording).performClick()
+
+        compose.waitUntil(10_000) { mic.stops == 1 }
+        assertEquals(0, transcriber.finishes.get())
+        assertEquals(0, queued)
+        assertEquals("recording", recordingRow().status)
+    }
+
+    @Test fun leaving_during_the_transcript_wait_still_finalizes_and_queues() {
+        compose.onNodeWithContentDescription(PtBr.stopRecording).performClick()
+        compose.waitUntil(10_000) { mic.stops == 1 }
+
+        leaveScreen()
+        modelLoad.countDown()
+
+        waitOnMainLooper { queued == 1 }
+        val row = recordingRow()
+        assertEquals("queued", row.status)
+        assertEquals(SyntheticTranscriber.FINAL, row.transcript)
+        assertEquals(null, container.activeMicRecordingId)
+    }
+
+    @Test fun stop_without_any_transcribed_text_persists_no_placeholder() {
+        compose.onNodeWithContentDescription(PtBr.stopRecording).performClick()
+        modelMissing = true
+        modelLoad.countDown()
+
+        compose.waitUntil(10_000) { queued == 1 }
+        val row = recordingRow()
+        assertEquals("queued", row.status)
+        assertEquals(null, row.transcript)
+    }
+
+    @Test fun only_real_text_is_savable_and_never_with_the_preview_header() {
+        assertEquals(null, savableLiveTranscript("**partial** · 0:00\n"))
+        assertEquals(null, savableLiveTranscript("**partial** · 1:05\n\n"))
+        assertEquals(null, savableLiveTranscript("**Speaker 1** · 0:00\n\n"))
+        assertEquals("Synthetic words\n", savableLiveTranscript("**partial** · 1:05\nSynthetic words\n"))
+        assertEquals("**Speaker 1** · 0:00\nSynthetic words\n", savableLiveTranscript("**Speaker 1** · 0:00\nSynthetic words\n"))
+    }
+
+    private fun recordingRow() = runBlocking { container.repository.observeRecording(recordingId).first() }!!
+
+    /** The compose rule has nothing to wait on once the screen has been destroyed. */
+    private fun waitOnMainLooper(condition: () -> Boolean) {
+        val deadline = System.currentTimeMillis() + 10_000
+        while (!condition()) {
+            assertTrue(System.currentTimeMillis() < deadline, "Condition not met after leaving the screen")
+            shadowOf(Looper.getMainLooper()).idle()
+            Thread.sleep(20)
+        }
+    }
+
     private fun leaveScreen() {
         if (destroyed) return
         destroyed = true
@@ -159,8 +219,9 @@ class LiveTranscriberHandoffTest {
             return MicStartResult.Started(started)
         }
         override suspend fun stop(): MicStopResult {
-            stops++
             val current = session!!
+            // Like the platform: a repeated stop returns the retained terminal state.
+            if (sessions.value !is MicSessionState.Stopped) stops++
             sessions.value = MicSessionState.Stopped(current.absolutePath, 1, 64, current.token)
             return MicStopResult.Stopped(current.absolutePath, 1, 64, current)
         }

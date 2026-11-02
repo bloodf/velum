@@ -129,6 +129,7 @@ import dev.velum.core.templates.BuiltinTemplateCatalog
 import dev.velum.core.templates.TemplateTagFilter
 import dev.velum.core.templates.TemplateTagVocabulary
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.NonCancellable
@@ -1183,10 +1184,10 @@ internal fun LiveTranscriptPane(
     val preserveSeeded = seededTranscript != null
 
     // The queue closing (Stop or leaving the screen) ends the transcriber coroutine below.
-    suspend fun finishTranscript(): String {
+    suspend fun finishTranscript(): String? {
         finished.value = true
         pcmQueue.close()
-        return withTimeoutOrNull(LIVE_FINISH_WAIT_MS) { finalTranscript.await() } ?: partial
+        return savableLiveTranscript(withTimeoutOrNull(LIVE_FINISH_WAIT_MS) { finalTranscript.await() } ?: partial)
     }
 
     // Opening a model is a native load: off the main thread. NonCancellable because this coroutine
@@ -1410,11 +1411,18 @@ internal fun LiveTranscriptPane(
                     return@BlackButton
                 }
                 stopping = true
-                scope.launch {
+                // Undispatched and NonCancellable: leaving the screen must not abandon a Stop in progress.
+                scope.launch(start = CoroutineStart.UNDISPATCHED) { withContext(NonCancellable) {
                     val marks = container.micCapture.markers
+                    // Stop means the mic is off now, before any wait. The platform keeps the terminal
+                    // state, so the finalizer below picks up this same result.
+                    if (container.micCapture.isSupported && requested != null) {
+                        runCatching { container.micCapture.stop(requested) }
+                            .onFailure { println("VelumLivePcm: stop failed: ${it::class.simpleName}") }
+                    }
                     val finalMd = withContext(Dispatchers.Default) {
                         val base = finishTranscript()
-                        if (marks.isEmpty()) base
+                        if (base == null || marks.isEmpty()) base
                         else buildString {
                             append(base.trimEnd())
                             append("\n\n## Markers\n")
@@ -1449,7 +1457,7 @@ internal fun LiveTranscriptPane(
                             }
                         }
                         demoWavWriter.value != null -> {
-                            container.repository.updateTranscript(recordingId, finalMd)
+                            finalMd?.let { container.repository.updateTranscript(recordingId, it) }
                             // Unsupported-platform demo only (never Android mic failure).
                             val finishedWav = withContext(Dispatchers.IO) {
                                 demoWavWriter.value!!.finish()
@@ -1473,7 +1481,7 @@ internal fun LiveTranscriptPane(
                         }
                     }
                     onStoppedAndQueued()
-                }
+                } }
             },
             modifier = Modifier.padding(20.dp),
         )
@@ -1486,6 +1494,15 @@ private const val LIVE_PCM_BACKLOG_CHUNKS = 1024
 
 // Stop must not hang on a stuck native load. The queued recording is retranscribed from the WAV anyway.
 private const val LIVE_FINISH_WAIT_MS = 30_000L
+
+private val LIVE_PARTIAL_HEADER = Regex("""^\*\*partial\*\* · [^\n]*\n?""")
+private val LIVE_SPEAKER_HEADER = Regex("""\*\*Speaker \d+\*\* · \S+""")
+
+/** Live text worth persisting, without the preview header; null when nothing was actually transcribed. */
+internal fun savableLiveTranscript(markdown: String): String? {
+    val text = LIVE_PARTIAL_HEADER.replaceFirst(markdown, "")
+    return text.takeIf { body -> body.lineSequence().any { it.isNotBlank() && !LIVE_SPEAKER_HEADER.matches(it) } }
+}
 
 /**
  * Feeds queued PCM to a transcriber opened here and always finishes it once [pcm] closes.
