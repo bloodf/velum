@@ -75,7 +75,7 @@ class FtsDirtyRebuildTest {
     @Test fun failed_dirty_rebuild_still_opens_keeps_the_flag_and_is_repaired_next_open() = runBlocking {
         JdbcSqliteDriver(url).use { d ->
             VelumDatabase.Schema.create(d)
-            VelumRepository(VelumDatabase(d), d)
+            VelumRepository(VelumDatabase(d), d).addRecording("rec-old", "oldword")
         }
         JdbcSqliteDriver(url).use { real ->
             val d = withoutFts(real)
@@ -89,6 +89,8 @@ class FtsDirtyRebuildTest {
             assertTrue(repo.ftsAvailable)
             assertEquals("IllegalStateException", repo.ftsRebuildFailure)
             assertEquals("1", repo.getMeta(VelumRepository.META_FTS_DIRTY))
+            // The failed rebuild rolled back: the old index is intact, not half-cleared.
+            assertEquals(listOf("rec-old"), repo.searchRecordingIdsFts("oldword*"))
         }
 
         JdbcSqliteDriver(url).use { d ->

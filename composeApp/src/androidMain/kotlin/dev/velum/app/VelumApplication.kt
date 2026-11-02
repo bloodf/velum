@@ -81,6 +81,7 @@ class VelumApplication : Application() {
                     // Search falls back to a full list scan; class name only, never SQL or user data.
                     Log.w(TAG, "Full-text search unavailable (${built.repository.ftsFailure})")
                 }
+                built.repository.ftsRebuildFailure?.let { Log.w(TAG, "FTS rebuild failed, index stale ($it)") }
                 AiRuntimeHolder.install(
                     processor = built.recordingProcessor,
                     repository = built.repository,

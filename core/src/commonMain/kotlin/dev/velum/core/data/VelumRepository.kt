@@ -49,8 +49,6 @@ class VelumRepository(
     var ftsRebuildFailure: String? = null
         private set
 
-    private var dirtyRebuildFailed = false
-
     constructor(handle: DatabaseHandle) : this(handle.database, handle.driver)
 
     init {
@@ -65,15 +63,14 @@ class VelumRepository(
         if (ftsAvailable) {
             val dirty = q.getMeta(META_FTS_DIRTY).executeAsOneOrNull() != null
             when {
-                // Full rebuild after seed or template_fts schema upgrade.
-                fts.templateSchemaRecreated || seeded -> rebuildFtsIndex()
-                // After a run without FTS. A failure must not lock the user out: keep the flag, open on the stale index.
-                dirty -> try {
+                // Full rebuild after seed, template_fts schema upgrade, or a run without FTS. Only a rebuild
+                // for the dirty flag may fail soft (keep the flag, open on the stale index, retry next open).
+                fts.templateSchemaRecreated || seeded || dirty -> try {
                     rebuildFtsIndex()
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    dirtyRebuildFailed = true
+                    if (!dirty) throw e
                     ftsRebuildFailure = e::class.simpleName ?: "Exception"
                 }
                 else -> {
@@ -89,7 +86,7 @@ class VelumRepository(
                 }
             }
             // Only after the rebuild committed: a crash before this line just rebuilds again.
-            if (dirty && !dirtyRebuildFailed) q.deleteMeta(META_FTS_DIRTY)
+            if (dirty && ftsRebuildFailure == null) q.deleteMeta(META_FTS_DIRTY)
         }
     }
 
