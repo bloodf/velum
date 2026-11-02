@@ -389,7 +389,7 @@ class LocalModelManager(
                     throw IllegalStateException("SHA-256 mismatch for $id")
                 }
 
-                if (dest.exists()) dest.deleteRecursively()
+                // renameTo replaces a file target atomically and an existing directory by delete+move.
                 if (!partial.renameTo(dest)) {
                     // Never load multi-hundred-MB archives fully into heap on rename failure.
                     streamCopyModelFile(partial, dest)

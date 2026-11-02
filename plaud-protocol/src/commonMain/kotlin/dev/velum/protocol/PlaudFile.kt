@@ -139,22 +139,16 @@ interface FileDecryptor {
 }
 
 object PlaudFileCrypto {
+    /** Default [decryptStream] piece size: multiple of the 64-byte ChaCha20 block. */
+    const val STREAM_CHUNK_BYTES: Int = 256 * 1024
+
     fun decrypt(
         file: ByteArray,
         privateKeyPem: String,
         decryptor: FileDecryptor,
     ): ByteArray {
         val header = PlaudFileHeader.parse(file)
-        require(header.isRsaWrapped) {
-            "Only PLAUD.AI version 1 (RSA) is implemented; got version ${header.version}"
-        }
-        val contentKey = decryptor.unwrapContentKey(privateKeyPem, header.keyCipher)
-        val key32 = if (contentKey.size > 32) {
-            contentKey.copyOfRange(contentKey.size - 32, contentKey.size)
-        } else {
-            require(contentKey.size == 32) { "Content key must be 32 bytes" }
-            contentKey
-        }
+        val key32 = contentKey(header, privateKeyPem, decryptor)
         val body = file.copyOfRange(header.headerSize, file.size)
         return decryptor.chacha20Decrypt(
             key = key32,
@@ -163,5 +157,79 @@ object PlaudFileCrypto {
             segmentSize = header.segmentSize,
             ciphertext = body,
         )
+    }
+
+    /**
+     * Same output as [decrypt], but reads the file through [readAt] and emits plaintext
+     * to [write] in pieces of at most [chunkBytes], so neither the encrypted file nor
+     * the decrypted audio is ever held whole on the heap. Returns plaintext byte count.
+     *
+     * Pieces hold whole segments, or (segments larger than [chunkBytes] / unsegmented
+     * bodies) start on a 64-byte block so each is a ChaCha20 call at the matching counter.
+     */
+    fun decryptStream(
+        size: Long,
+        readAt: (position: Long, length: Int) -> ByteArray,
+        privateKeyPem: String,
+        decryptor: FileDecryptor,
+        chunkBytes: Int = STREAM_CHUNK_BYTES,
+        write: (ByteArray) -> Unit,
+    ): Long {
+        require(chunkBytes > 0 && chunkBytes % CHACHA_BLOCK == 0) {
+            "chunkBytes must be a positive multiple of $CHACHA_BLOCK"
+        }
+        require(size >= PlaudFile.HEADER_SIZE) { "File shorter than header ($size)" }
+        val header = PlaudFileHeader.parse(readAt(0L, PlaudFile.HEADER_SIZE))
+        require(header.headerSize <= size) { "Header size ${header.headerSize} exceeds file $size" }
+        val key32 = contentKey(header, privateKeyPem, decryptor)
+        val bodySize = size - header.headerSize
+        val seg = header.segmentSize
+        // Small segments: whole segments per piece, decryptor resets the counter per segment.
+        val wholeSegments = seg in 1L..chunkBytes.toLong()
+        var pos = 0L
+        while (pos < bodySize) {
+            val inSegment = if (seg > 0L) pos % seg else pos
+            val len = when {
+                wholeSegments -> minOf(chunkBytes / seg * seg, bodySize - pos)
+                seg > 0L -> minOf(chunkBytes.toLong(), seg - inSegment, bodySize - pos)
+                else -> minOf(chunkBytes.toLong(), bodySize - pos)
+            }.toInt()
+            val cipher = readAt(header.headerSize + pos, len)
+            require(cipher.size == len) { "Truncated PLAUD.AI body at ${header.headerSize + pos}" }
+            write(
+                decryptor.chacha20Decrypt(
+                    key = key32,
+                    nonce = header.chachaNonce,
+                    initialCounter = when {
+                        wholeSegments -> 0L
+                        seg > 0L -> inSegment / CHACHA_BLOCK
+                        else -> header.chachaCounter + inSegment / CHACHA_BLOCK
+                    },
+                    segmentSize = if (wholeSegments) seg else 0L,
+                    ciphertext = cipher,
+                ),
+            )
+            pos += len
+        }
+        return bodySize
+    }
+
+    private const val CHACHA_BLOCK = 64
+
+    private fun contentKey(
+        header: PlaudFileHeader,
+        privateKeyPem: String,
+        decryptor: FileDecryptor,
+    ): ByteArray {
+        require(header.isRsaWrapped) {
+            "Only PLAUD.AI version 1 (RSA) is implemented; got version ${header.version}"
+        }
+        val contentKey = decryptor.unwrapContentKey(privateKeyPem, header.keyCipher)
+        return if (contentKey.size > 32) {
+            contentKey.copyOfRange(contentKey.size - 32, contentKey.size)
+        } else {
+            require(contentKey.size == 32) { "Content key must be 32 bytes" }
+            contentKey
+        }
     }
 }
