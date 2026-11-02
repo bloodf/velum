@@ -21,13 +21,16 @@ androidx-test-ext-junit = "1.2.1"
 androidx-test-runner = "1.6.2"
 androidx-test-rules = "1.6.1"
 androidx-test-uiautomator = "2.3.0"
-androidx-compose-ui-test = "1.7.8"
+# Must match the androidx.compose.ui version resolved via compose-multiplatform
+# (1.9.3 -> ui 1.9.4); older ui-test bytecode calls removed app-side seams (#117).
+androidx-compose-ui-test = "1.9.4"
 markdown-renderer = "0.38.1"
 # v1.13.5+ ships 16 KB-aligned Android .so (incl. bundled onnxruntime).
 sherpa-onnx = "v1.13.8"
 kopus = "1.6.1.3"
 commons-compress = "1.28.0"
-# 0.18.x needs Kotlin 2.4 metadata; pin to 0.16.1 for Kotlin 2.2.21 (already 16 KB-aligned).
+# 0.16.1 ships Kotlin 2.3.0 metadata (verified kotlin.Metadata mv=[2,3,0]); 0.18.x
+# needs 2.4 metadata. 0.16.1 is already 16 KB-aligned.
 litertlm = "0.16.1"
 work = "2.10.0"
 splashscreen = "1.0.1"
