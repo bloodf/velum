@@ -192,6 +192,13 @@ object OggOpusDemuxer {
                         require(packetBuf[8].toInt() and 0xf0 == 0) { "Unsupported OpusHead version" }
                         channels = packetBuf[9].toInt() and 0xff
                         require(channels > 0) { "OpusHead channel count is zero" }
+                        // RFC 7845 section 5.1.1: only family 0 (and family 1 with 1-2 channels, which is
+                        // plain mono/stereo) is a single stream; others are multistream and need a
+                        // multistream decoder, so fail loudly instead of decoding garbage.
+                        val family = packetBuf[18].toInt() and 0xff
+                        require(channels <= 2 && family <= 1) {
+                            "Unsupported OpusHead mapping (family $family, $channels channels): multistream Opus"
+                        }
                         sampleRate = readLe32(packetBuf, 12)
                         sawIdHeader = true
                         onHeader(sampleRate, channels)

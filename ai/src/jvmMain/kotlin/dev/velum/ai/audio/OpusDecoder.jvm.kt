@@ -43,8 +43,8 @@ class KopusOpusDecoder : OpusDecoder {
     companion object {
         internal fun decodeInMemory(oggBytes: ByteArray): PcmAudio {
             var decoder: KopusDecoder? = null
-            var rate = 48_000
-            var channels = 1
+            val rate = DECODED_PCM_RATE_HZ
+            val channels = DECODED_PCM_CHANNELS
             var frameSize = rate / 50
             var out = ShortArray(0)
             var samples = ShortArray(0)
@@ -55,8 +55,6 @@ class KopusOpusDecoder : OpusDecoder {
                     onHeader = { _, _ ->
                         // libopus decodes any stream at the requested rate/channels: emit the import-path
                         // PCM contract (16 kHz mono) directly, frame by frame, so memory stays bounded (#95).
-                        rate = DECODED_PCM_RATE_HZ
-                        channels = DECODED_PCM_CHANNELS
                         frameSize = rate / 50 * 6
                         out = ShortArray(frameSize * channels)
                         samples = ShortArray(frameSize * channels * 64)
@@ -102,8 +100,8 @@ class KopusOpusDecoder : OpusDecoder {
         ): SpilledPcmMeta {
             dest.writeBytes(ByteArray(0))
             var decoder: KopusDecoder? = null
-            var rate = 48_000
-            var channels = 1
+            val rate = DECODED_PCM_RATE_HZ
+            val channels = DECODED_PCM_CHANNELS
             var frameSize = rate / 50
             var out = ShortArray(0)
             var byteChunk = ByteArray(0)
@@ -113,8 +111,6 @@ class KopusOpusDecoder : OpusDecoder {
                     { _, _ ->
                         // libopus decodes any stream at the requested rate/channels: emit the import-path
                         // PCM contract (16 kHz mono) directly, frame by frame, so memory stays bounded (#95).
-                        rate = DECODED_PCM_RATE_HZ
-                        channels = DECODED_PCM_CHANNELS
                         frameSize = rate / 50 * 6
                         out = ShortArray(frameSize * channels)
                         byteChunk = ByteArray(frameSize * channels * 2)
