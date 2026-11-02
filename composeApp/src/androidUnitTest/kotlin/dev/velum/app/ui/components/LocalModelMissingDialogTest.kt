@@ -21,12 +21,12 @@ import kotlin.test.assertEquals
 class LocalModelMissingDialogTest {
     @get:Rule val compose = createEmptyComposeRule()
 
-    private fun show(onSwitchToApi: (() -> Unit)?, onDownload: () -> Unit = {}, block: () -> Unit) {
+    private fun show(onSwitchToApi: (() -> Unit)?, onDownload: () -> Unit = {}, onDismiss: () -> Unit = {}, block: () -> Unit) {
         val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup()
         try {
             activity.get().setContent {
                 CompositionLocalProvider(LocalStrings provides PtBr) {
-                    LocalModelMissingDialog("Modelo X", onDownload, onSwitchToApi, onDismiss = {})
+                    LocalModelMissingDialog("Modelo X", onDownload, onSwitchToApi, onDismiss)
                 }
             }
             block()
@@ -47,8 +47,11 @@ class LocalModelMissingDialogTest {
     @Test
     fun no_switch_to_api_button_without_an_api_route_but_download_stays() {
         var downloads = 0
-        show(onSwitchToApi = null, onDownload = { downloads++ }) {
+        var dismissed = 0
+        show(onSwitchToApi = null, onDownload = { downloads++ }, onDismiss = { dismissed++ }) {
             compose.onNodeWithText(PtBr.switchToApi).assertDoesNotExist()
+            compose.onNodeWithText(PtBr.cancel).performClick() // an explicit way out next to Download
+            assertEquals(1, dismissed)
             compose.onNodeWithText(PtBr.downloadModel).performClick()
             assertEquals(1, downloads)
         }

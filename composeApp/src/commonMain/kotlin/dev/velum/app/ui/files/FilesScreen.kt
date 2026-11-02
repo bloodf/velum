@@ -100,8 +100,8 @@ fun FilesScreen(
     val strings = LocalStrings.current
     val haptics = LocalHaptics.current
     val scope = rememberCoroutineScope()
-    val recordings by container.repository.observeRecordings().collectAsState(emptyList())
-    val trashed by container.repository.observeTrashed().collectAsState(emptyList())
+    val recordings by remember(container) { container.repository.observeRecordings() }.collectAsState(emptyList())
+    val trashed by remember(container) { container.repository.observeTrashed() }.collectAsState(emptyList())
     val importPipeline = remember(container) { AudioImportPipeline(container) }
     var showFilter by remember { mutableStateOf(false) }
     var showSearch by remember { mutableStateOf(false) }
