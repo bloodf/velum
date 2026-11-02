@@ -55,7 +55,11 @@ import org.junit.runner.RunWith
  */
 @RunWith(AndroidJUnit4::class)
 class DeviceWalkUiTest {
-    @get:Rule
+    // Outer rule: wraps the compose rule so a hang anywhere in the cell fails with stacks.
+    @get:Rule(order = 0)
+    val watchdog = CellWatchdog { shotDir }
+
+    @get:Rule(order = 1)
     val composeRule = createAndroidComposeRule<MainActivity>()
 
     private lateinit var device: UiDevice
