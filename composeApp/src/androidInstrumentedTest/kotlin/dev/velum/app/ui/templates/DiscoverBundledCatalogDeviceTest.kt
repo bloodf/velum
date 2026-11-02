@@ -49,8 +49,8 @@ import org.junit.runner.RunWith
  * `repository.countDiscoverTemplates` for the same filter, and checks that each filter really narrows (negative
  * control: 0 < filtered < unfiltered). Covers tier switching both ways, category / tag / language filters, search
  * composition, the clearable no-match state, individual clear and clear-all. Offline: the catalog comes from the
- * APK, nothing here touches the network. Own database file; the app's velum.db is untouched (the screen under test
- * uses its own container, not the app's).
+ * APK, nothing here touches the network. The screen under test uses its own container and database file (not
+ * velum.db); the hosting MainActivity still starts the app's own container on velum.db.
  *
  * Hosted in [MainActivity] (the only activity in the debug manifest); its content is replaced by TemplatesScreen
  * once the app has finished its own handoff.
@@ -83,7 +83,11 @@ class DiscoverBundledCatalogDeviceTest {
     }
 
     private fun has(tag: String) = compose.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()
-    private fun tap(tag: String) = compose.onNodeWithTag(tag).performScrollTo().performClick()
+    /** Chips reappear only after the facets reload, so wait for the chip before tapping it. */
+    private fun tap(tag: String) {
+        until(what = "chip $tag") { has(tag) }
+        compose.onNodeWithTag(tag).performScrollTo().performClick()
+    }
     private fun until(ms: Long = UI_TIMEOUT_MS, what: String, cond: () -> Boolean) {
         try { compose.waitUntil(ms, cond) } catch (e: androidx.compose.ui.test.ComposeTimeoutException) {
             throw AssertionError("Timed out waiting for $what", e)
@@ -193,6 +197,20 @@ class DiscoverBundledCatalogDeviceTest {
         val langOnly = awaitCount(all.copy(lang = probe.lang))
         assertTrue("lang must narrow: $langOnly of $total", langOnly in 1 until total)
         tap("active:lang")
+        assertEquals(total, awaitCount(all))
+
+        // Combined filters without search must keep narrowing (counts move), and clear-all returns to the total.
+        tap("category:general")
+        val general = awaitCount(all.copy(category = "general"))
+        tap("lang:zh")
+        val generalZh = awaitCount(all.copy(category = "general", lang = "zh"))
+        tap("tag:bullets")
+        val generalZhBullets = awaitCount(all.copy(category = "general", lang = "zh", tags = setOf("bullets")))
+        assertTrue(
+            "each added filter must narrow: general=$general, +zh=$generalZh, +bullets=$generalZhBullets, total=$total",
+            generalZhBullets in 1 until generalZh && generalZh in 1 until general && general < total,
+        )
+        tap("filters:clear")
         assertEquals(total, awaitCount(all))
 
         // Search composition: category `meeting` plus a probe from another category is a clearable no-match.

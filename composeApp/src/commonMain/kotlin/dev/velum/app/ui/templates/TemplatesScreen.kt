@@ -174,7 +174,7 @@ fun TemplatesScreen(
             // Keep the previous facets (and the user's selections) on failure.
         }
     }
-    val canPrune = facetsLoaded && facetsSearch?.isBlank() == true
+    val canPrune = tab == 1 && facetsLoaded && facetsSearch?.isBlank() == true
     // The selected category stays listed even when the current search has no hit in it (#102).
     val categoryTabs = remember(facets, selectedCategory) {
         val categories = facets.categories.let { c -> if (selectedCategory != null && selectedCategory !in c) c + selectedCategory!! else c }
