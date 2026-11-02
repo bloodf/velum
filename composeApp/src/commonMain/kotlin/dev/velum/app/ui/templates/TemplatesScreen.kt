@@ -154,6 +154,8 @@ fun TemplatesScreen(
     // `facetsLoaded` stays false until a load succeeds; a failed load keeps the previous facets and never prunes.
     var facets by remember { mutableStateOf(DiscoverFacets(emptyList(), emptyList(), emptyList())) }
     var facetsLoaded by remember { mutableStateOf(false) }
+    // Search the current facets were loaded for: only a blank-search load may prune selections (#102).
+    var facetsSearch by remember { mutableStateOf<String?>(null) }
     // Debounced so each keystroke does not re-run the facet and page queries.
     var debouncedQuery by remember { mutableStateOf(searchQuery) }
     LaunchedEffect(searchQuery) {
@@ -165,28 +167,32 @@ fun TemplatesScreen(
         try {
             facets = container.repository.discoverFacets(DiscoverFilter(tier, debouncedQuery, selectedCategory))
             facetsLoaded = true
+            facetsSearch = debouncedQuery
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
             // Keep the previous facets (and the user's selections) on failure.
         }
     }
-    val categoryTabs = remember(facets) {
-        BuiltinTemplateCatalog.CategoryOrder.filter { it in facets.categories } +
-            facets.categories.filter { it !in BuiltinTemplateCatalog.CategoryOrder && it != "mine" }
+    val canPrune = tab == 1 && facetsLoaded && facetsSearch?.isBlank() == true
+    // The selected category stays listed even when the current search has no hit in it (#102).
+    val categoryTabs = remember(facets, selectedCategory) {
+        val categories = facets.categories.let { c -> if (selectedCategory != null && selectedCategory !in c) c + selectedCategory!! else c }
+        BuiltinTemplateCatalog.CategoryOrder.filter { it in categories } +
+            categories.filter { it !in BuiltinTemplateCatalog.CategoryOrder && it != "mine" }
     }
     val availableTags = facets.tags
     val availableLangs = facets.langs
-    LaunchedEffect(categoryTabs, selectedCategory, facetsLoaded) {
-        val kept = pruneSelection(selectedCategory, categoryTabs, facetsLoaded)
+    LaunchedEffect(facets, selectedCategory, canPrune) {
+        val kept = pruneSelection(selectedCategory, facets.categories, canPrune)
         if (kept != selectedCategory) selectedCategory = kept
     }
-    LaunchedEffect(availableTags, selectedTags, facetsLoaded) {
-        val kept = pruneSelection(selectedTags, availableTags, facetsLoaded)
+    LaunchedEffect(availableTags, selectedTags, canPrune) {
+        val kept = pruneSelection(selectedTags, availableTags, canPrune)
         if (kept != selectedTags) selectedTags = kept
     }
-    LaunchedEffect(availableLangs, selectedLang, facetsLoaded) {
-        val kept = pruneSelection(selectedLang, availableLangs, facetsLoaded)
+    LaunchedEffect(availableLangs, selectedLang, canPrune) {
+        val kept = pruneSelection(selectedLang, availableLangs, canPrune)
         if (kept != selectedLang) selectedLang = kept
     }
     val filter = DiscoverFilter(

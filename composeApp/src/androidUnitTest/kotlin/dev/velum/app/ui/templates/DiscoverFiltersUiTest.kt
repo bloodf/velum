@@ -203,6 +203,11 @@ class DiscoverFiltersUiTest {
             // Give the facets effect (a separate coroutine) time to fail and any pruning time to run.
             repeat(10) { Thread.sleep(100); compose.waitForIdle() }
             assertTrue(hasTag("active:category") && hasTag("active:tag:agenda"), "selections pruned after failed facets load")
+            // A failed load also keeps the previous facet options on screen (not an empty facet row).
+            assertTrue(
+                hasTag("category:meeting") && hasTag("tag:agenda") && hasTag("lang:en"),
+                "facet options cleared by a failed facets load",
+            )
         } finally {
             activity.pause().stop().destroy()
             root.deleteRecursively()
