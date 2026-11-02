@@ -328,3 +328,6 @@ SELECT COUNT(*) FROM summary_version WHERE recording_id = ?;
 
 deleteVersionsForRecording:
 DELETE FROM summary_version WHERE recording_id = ?;
+
+countTemplates:
+SELECT COUNT(*) FROM template;
