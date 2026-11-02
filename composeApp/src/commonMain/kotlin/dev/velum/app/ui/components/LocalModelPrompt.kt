@@ -24,8 +24,13 @@ fun LocalModelMissingDialog(
         confirmButton = {
             TextButton(onClick = onDownload) { Text(strings.downloadModel) }
         },
-        dismissButton = onSwitchToApi?.let { switchToApi ->
-            { TextButton(onClick = switchToApi) { Text(strings.switchToApi) } }
+        // Without an API route Download would be the only visible action, so offer an explicit Cancel.
+        dismissButton = {
+            if (onSwitchToApi != null) {
+                TextButton(onClick = onSwitchToApi) { Text(strings.switchToApi) }
+            } else {
+                TextButton(onClick = onDismiss) { Text(strings.cancel) }
+            }
         },
     )
 }
