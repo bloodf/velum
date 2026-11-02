@@ -23,7 +23,7 @@
 
 - `WifiFastTransferSession` / `WifiTransferServer` / `WifiTransferCoordinator` / `WifiTransferPreamble`
 - Android: `AndroidWifiSoftApJoiner`, `AndroidWifiTransferServer`
-- JVM fake: `FakeWifiSoftApJoiner`, `FakeWifiDeviceClient`, `JavaWebsocketTransferServer`
+- JVM fakes (test-only `:ble-testing`): `FakeWifiSoftApJoiner`, `FakeWifiDeviceClient`; real loopback server: `JavaWebsocketTransferServer`
 - Sync entry: `PlaudDeviceClient.downloadSessionPreferWifi`
 - Tests: `WifiFastPathE2ETest`
 

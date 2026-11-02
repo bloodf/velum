@@ -38,6 +38,7 @@ kotlin {
                 implementation(libs.kotlinx.coroutines.test)
                 implementation(libs.ktor.client.mock)
                 implementation(project(":ble"))
+                implementation(project(":ble-testing"))
                 implementation(project(":plaud-protocol"))
             }
         }

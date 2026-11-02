@@ -51,6 +51,36 @@ tasks.matching { it.name == "preReleaseBuild" }.configureEach {
     mustRunAfter(validateReleaseSigning)
 }
 
+// Test fakes (:ble-testing, #111) must never reach a shipping runtime classpath.
+val shippingClasspaths = listOf("releaseRuntimeClasspath", "minifiedTestRuntimeClasspath", "desktopRuntimeClasspath")
+val verifyNoTestFakesShipped by tasks.registering {
+    group = "verification"
+    description = "Fail if :ble-testing is on a release, minifiedTest or desktop runtime classpath."
+    val roots = shippingClasspaths.map { name ->
+        name to configurations.named(name).flatMap { it.incoming.resolutionResult.rootComponent }
+    }
+    doLast {
+        roots.forEach { (name, root) ->
+            val seen = mutableSetOf<org.gradle.api.artifacts.component.ComponentIdentifier>()
+            val queue = ArrayDeque(listOf(root.get()))
+            while (queue.isNotEmpty()) {
+                val component = queue.removeFirst()
+                if (!seen.add(component.id)) continue
+                val id = component.id
+                check(!(id is org.gradle.api.artifacts.component.ProjectComponentIdentifier && id.projectPath == ":ble-testing")) {
+                    ":ble-testing leaked onto $name; depend on it only from test source sets."
+                }
+                component.dependencies
+                    .filterIsInstance<org.gradle.api.artifacts.result.ResolvedDependencyResult>()
+                    .forEach { queue.add(it.selected) }
+            }
+        }
+    }
+}
+tasks.matching { it.name in setOf("preReleaseBuild", "preMinifiedTestBuild", "check") }.configureEach {
+    dependsOn(verifyNoTestFakesShipped)
+}
+
 kotlin {
     androidTarget {
         compilerOptions {

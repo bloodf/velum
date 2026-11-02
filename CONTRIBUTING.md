@@ -49,6 +49,7 @@ packaging and resource shrinking; never distribute those test artifacts.
 | `ai` | Audio decoding, local/API engines, model management and processing jobs |
 | `recorder` | Recorder driver interfaces and Plaud session/handshake logic |
 | `ble` | Transport interface; Kable on mobile; stub on desktop |
+| `ble-testing` | Test-only BLE fakes; add only as a test dependency |
 | `composeApp` | Shared Compose UI + platform entry points |
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the verified module/dependency map and input-to-storage/UI flow.
