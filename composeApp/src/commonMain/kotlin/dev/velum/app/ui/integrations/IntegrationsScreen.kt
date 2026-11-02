@@ -58,6 +58,7 @@ import dev.velum.app.ui.theme.VelumInk
 import dev.velum.app.ui.theme.VelumInkSecondary
 import dev.velum.app.ui.theme.VelumOnWarningContainer
 import dev.velum.app.ui.theme.VelumSurface
+import dev.velum.app.ui.theme.velumColors
 import dev.velum.core.calendar.CalendarLookupResult
 import dev.velum.core.data.epochSecondsNow
 
@@ -85,6 +86,8 @@ fun IntegrationsScreen(
     }
     var statusLabel by remember { mutableStateOf(strings.localCalendarHint) }
     // Store the tone, not the colour: colour tokens must be read at use so a theme flip applies.
+    // LocalVelumColors is provided by VelumTheme during composition, so this follows a theme flip on its own.
+    val palette = velumColors()
     var statusTone by remember { mutableStateOf(StatusTone.Neutral) }
     var needsPermission by remember { mutableStateOf(false) }
     var refreshTick by remember { mutableStateOf(0) }
@@ -213,9 +216,9 @@ fun IntegrationsScreen(
                 body = strings.localCalendarHint,
                 status = statusLabel,
                 statusColor = when (statusTone) {
-                    StatusTone.Neutral -> VelumInkSecondary
+                    StatusTone.Neutral -> palette.inkSecondary
                     StatusTone.Ok -> Color(0xFF15803D)
-                    StatusTone.Warn -> VelumOnWarningContainer
+                    StatusTone.Warn -> palette.onWarningContainer
                 },
             ) {
                 if (needsPermission) {
@@ -246,7 +249,7 @@ fun IntegrationsScreen(
                 } else {
                     strings.ux.folderExportConfigured
                 },
-                statusColor = if (folderUri.isNullOrBlank()) VelumInkSecondary else Color(0xFF15803D),
+                statusColor = if (folderUri.isNullOrBlank()) palette.inkSecondary else Color(0xFF15803D),
             ) {
                 Spacer(Modifier.height(12.dp))
                 BlackButton(strings.ux.folderExportPick, pickExportFolder)
@@ -269,7 +272,7 @@ fun IntegrationsScreen(
                 } else {
                     strings.oauthDisconnected
                 },
-                statusColor = if (webhookConfigured) Color(0xFF15803D) else VelumInkSecondary,
+                statusColor = if (webhookConfigured) Color(0xFF15803D) else palette.inkSecondary,
             ) {
                 Spacer(Modifier.height(12.dp))
                 Text(strings.ux.webhookUrl, color = VelumInkSecondary, fontSize = 13.sp)
