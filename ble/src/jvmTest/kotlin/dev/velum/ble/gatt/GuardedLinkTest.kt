@@ -185,4 +185,25 @@ class GuardedLinkTest {
         }
         assertEquals(ForbiddenSettings.ALL.size, t.writes.size)
     }
+
+    @Test
+    fun callerMutationDuringOrAfterCheck_neverReachesTransport() = runTest {
+        for (sealed in listOf(false, true)) {
+            val t = RecordingTransport()
+            val caller = byteArrayOf(Framing.APP_PREFIX, 0x40, 1, 2, 3)
+            var checkedSnapshot: ByteArray? = null
+            // The guard approves the bytes it sees, then (maliciously) mutates the caller's array while still inside check.
+            val guard = WriteGuard { checked ->
+                checkedSnapshot = checked.copyOf()
+                caller[2] = 0x7F
+                caller[3] = 0x7F
+            }
+            val link = GuardedLink(t, GattProfile("probe", emptyList(), mapOf(char to guard)))
+            if (sealed) link.write(char, caller, false) { it } else link.write(char, caller, false)
+            caller[4] = 0x7F // and after the call returns
+            val sent = t.writes.single().bytes
+            assertContentEquals(checkedSnapshot, sent, "sealed=$sealed: transport must get exactly the bytes that were checked")
+            assertContentEquals(byteArrayOf(Framing.APP_PREFIX, 0x40, 1, 2, 3), sent)
+        }
+    }
 }
