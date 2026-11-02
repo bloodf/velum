@@ -395,7 +395,8 @@ class DeviceWalkUiTest {
         runCatching {
             clickTextPrefer("Versions", "Versões")
             covered += "recording/versions"
-            pressNavBack()
+            // The versions sheet covers the top-bar Back; dismiss it so recording/sources can run.
+            dismissOpenSheet("Versions sheet")
         }
         runCatching {
             clickTextPrefer("Sources", "Fontes")
@@ -938,12 +939,6 @@ class DeviceWalkUiTest {
 
 
 
-    /**
-     * Pop one Compose destination via the top-bar Back affordance.
-     * Never use [UiDevice.pressBack] here — on API 35 predictive back can
-     * finish [MainActivity] and orphan ActivityScenario (DESTROYED outside
-     * scenario close), after which recreate/wait can never recover the shell.
-     */
     /** Closes the open modal sheet through its accessibility Dismiss action; hard-fails if none opened or it stays. */
     private fun dismissOpenSheet(what: String) {
         val dismissable = SemanticsMatcher.keyIsDefined(SemanticsActions.Dismiss)
@@ -956,6 +951,12 @@ class DeviceWalkUiTest {
         }
     }
 
+    /**
+     * Pop one Compose destination via the top-bar Back affordance.
+     * Never use [UiDevice.pressBack] here — on API 35 predictive back can
+     * finish [MainActivity] and orphan ActivityScenario (DESTROYED outside
+     * scenario close), after which recreate/wait can never recover the shell.
+     */
     private fun pressNavBack(): Boolean {
         if (softClickContentDesc("Back", "Voltar")) {
             SystemClock.sleep(400)
