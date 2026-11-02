@@ -61,6 +61,8 @@ import dev.velum.app.ui.theme.VelumSurface
 import dev.velum.core.calendar.CalendarLookupResult
 import dev.velum.core.data.epochSecondsNow
 
+private enum class StatusTone { Neutral, Ok, Warn }
+
 @Composable
 fun IntegrationsScreen(
     container: AppContainer,
@@ -82,7 +84,8 @@ fun IntegrationsScreen(
         return
     }
     var statusLabel by remember { mutableStateOf(strings.localCalendarHint) }
-    var statusColor by remember { mutableStateOf(VelumInkSecondary) }
+    // Store the tone, not the colour: colour tokens must be read at use so a theme flip applies.
+    var statusTone by remember { mutableStateOf(StatusTone.Neutral) }
     var needsPermission by remember { mutableStateOf(false) }
     var refreshTick by remember { mutableStateOf(0) }
     var folderUri by remember { mutableStateOf(ExportFolderStore.currentUri()) }
@@ -113,16 +116,16 @@ fun IntegrationsScreen(
                 val title = result.currentOrNext?.title
                 if (title.isNullOrBlank()) {
                     statusLabel = strings.oauthDisconnected
-                    statusColor = VelumInkSecondary
+                    statusTone = StatusTone.Neutral
                 } else {
                     statusLabel = "${strings.oauthConnected}: $title"
-                    statusColor = Color(0xFF15803D)
+                    statusTone = StatusTone.Ok
                 }
             }
             CalendarLookupResult.PermissionDenied -> {
                 needsPermission = true
                 statusLabel = strings.calendarPermissionBlocked
-                statusColor = VelumOnWarningContainer
+                statusTone = StatusTone.Warn
             }
             is CalendarLookupResult.Unavailable -> {
                 needsPermission = false
@@ -131,7 +134,7 @@ fun IntegrationsScreen(
                 } else {
                     result.reason.ifBlank { strings.ux.androidContextUnavailable }
                 }
-                statusColor = VelumOnWarningContainer
+                statusTone = StatusTone.Warn
             }
         }
         folderUri = ExportFolderStore.currentUri()
@@ -209,7 +212,11 @@ fun IntegrationsScreen(
                 title = strings.localCalendar,
                 body = strings.localCalendarHint,
                 status = statusLabel,
-                statusColor = statusColor,
+                statusColor = when (statusTone) {
+                    StatusTone.Neutral -> VelumInkSecondary
+                    StatusTone.Ok -> Color(0xFF15803D)
+                    StatusTone.Warn -> VelumOnWarningContainer
+                },
             ) {
                 if (needsPermission) {
                     Spacer(Modifier.height(12.dp))
