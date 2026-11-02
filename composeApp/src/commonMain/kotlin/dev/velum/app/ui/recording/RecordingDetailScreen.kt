@@ -1175,7 +1175,12 @@ internal fun LiveTranscriptPane(
         )
     }
     var markerCount by remember { mutableStateOf(0) }
-    var pausedUi by remember { mutableStateOf(container.micCapture.isPaused) }
+    // Mic already off (a Stop still finishing, or the notification): no model, no attach, and no false
+    // error. The Stop button still finalizes it; the finalizer is safe against a Stop already in progress.
+    val alreadyStopped = remember(recordingId) {
+        container.activeMicRecordingId == recordingId && container.micCapture.sessions.value is dev.velum.app.platform.MicSessionState.Stopped
+    }
+    var pausedUi by remember { mutableStateOf(container.micCapture.isPaused || alreadyStopped) }
     val finished = remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     // Capture only ever enqueues, so it never waits for the model or for decoding.
@@ -1208,7 +1213,7 @@ internal fun LiveTranscriptPane(
     // owns the native handle from open to finish, including when the screen leaves during the load.
     LaunchedEffect(Unit) {
         // A seeded transcript is never replaced by streaming, so no model is opened for it.
-        if (preserveSeeded) {
+        if (preserveSeeded || alreadyStopped) {
             finalTranscript.complete(null)
             return@LaunchedEffect
         }
@@ -1243,9 +1248,9 @@ internal fun LiveTranscriptPane(
                     ownedSession = started.session
                     pcmSubscription = container.micRecordings.attach(recordingId, started.session, push)
                     usingMic = pcmSubscription != null
-                    if (!usingMic) micError = strings.micStartFailed
+                    if (!usingMic && !alreadyStopped) micError = strings.micStartFailed
                     markerCount = container.micCapture.markers.size
-                    pausedUi = container.micCapture.isPaused
+                    pausedUi = container.micCapture.isPaused || alreadyStopped
                 }
                 MicStartResult.Unsupported -> { usingMic = false; useDemo = shouldUseDemoPcm(started) }
                 MicStartResult.PermissionRequired -> { usingMic = false; micError = strings.micPermissionRationale }
@@ -1335,7 +1340,7 @@ internal fun LiveTranscriptPane(
                 fontSize = 12.sp,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
             )
-        } else if (!usingMic) {
+        } else if (!usingMic && !alreadyStopped) {
             // Desktop/iOS Unsupported: PCM demo path — keep a single quiet hint.
             Text(
                 strings.streamingDemoHint,

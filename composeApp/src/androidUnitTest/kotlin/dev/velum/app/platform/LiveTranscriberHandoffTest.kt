@@ -60,6 +60,7 @@ class LiveTranscriberHandoffTest {
     private lateinit var recordingId: String
     private var destroyed = true
     private var queued = 0
+    private val opens = AtomicInteger()
     @Volatile private var modelMissing = false
 
     @Before fun setUp() {
@@ -76,7 +77,9 @@ class LiveTranscriberHandoffTest {
     private fun showPane(
         finishWaitMs: Long = 30_000,
         reportedFailures: MutableList<String>? = null,
+        awaitAttach: Boolean = true,
         open: (AppContainer) -> StreamingTranscriber = {
+            opens.incrementAndGet()
             assertTrue(modelLoad.await(30, TimeUnit.SECONDS), "Synthetic model load was never released")
             check(!modelMissing) { "Synthetic model failure" }
             transcriber
@@ -93,7 +96,7 @@ class LiveTranscriberHandoffTest {
                 }
             }
         }
-        compose.waitUntil(10_000) { mic.onPcmChunk != null }
+        if (awaitAttach) compose.waitUntil(10_000) { mic.onPcmChunk != null }
     }
 
     @After fun tearDown() {
@@ -152,6 +155,43 @@ class LiveTranscriberHandoffTest {
         assertEquals(0, transcriber.finishes.get())
         assertEquals(0, queued)
         assertEquals("recording", recordingRow().status)
+
+        // Stop is non-cancellable: let it finish before teardown closes the database.
+        modelLoad.countDown()
+        compose.waitUntil(10_000) { queued == 1 }
+    }
+
+    @Test fun reentering_during_the_transcript_wait_shows_no_error_and_opens_no_second_model() {
+        showPane()
+        compose.onNodeWithContentDescription(PtBr.stopRecording).performClick()
+        compose.waitUntil(10_000) { mic.stops == 1 }
+        leaveScreen()
+
+        showPane(awaitAttach = false)
+        compose.waitForIdle()
+        assertTrue(compose.onAllNodesWithText(PtBr.micStartFailed).fetchSemanticsNodes().isEmpty())
+        assertEquals(1, opens.get())
+
+        modelLoad.countDown()
+        waitOnMainLooper { queued == 1 }
+        assertEquals(SyntheticTranscriber.FINAL, recordingRow().transcript)
+    }
+
+    @Test fun a_session_stopped_from_the_notification_can_still_be_finalized_from_the_screen() {
+        modelLoad.countDown()
+        showPane()
+        compose.waitUntil(10_000) { transcriber.starts.get() == 1 }
+        leaveScreen()
+        runBlocking { mic.stop() }
+
+        showPane(awaitAttach = false)
+        compose.waitForIdle()
+        assertTrue(compose.onAllNodesWithText(PtBr.micStartFailed).fetchSemanticsNodes().isEmpty())
+        assertEquals(1, opens.get())
+
+        compose.onNodeWithContentDescription(PtBr.stopRecording).performClick()
+        compose.waitUntil(10_000) { queued == 1 }
+        assertEquals("queued", recordingRow().status)
     }
 
     @Test fun leaving_during_the_transcript_wait_still_finalizes_and_queues() {
