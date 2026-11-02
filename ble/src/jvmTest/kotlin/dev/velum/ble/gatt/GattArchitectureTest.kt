@@ -54,4 +54,15 @@ class GattArchitectureTest {
             }
         assertTrue(offenders.isEmpty(), "Raw GATT write API referenced outside :ble: $offenders")
     }
+
+    @Test
+    fun onlyBleModuleDeclaresKable() {
+        val root = repoRoot()
+        val offenders = root.listFiles { f -> f.isDirectory && f.name != "ble" }.orEmpty().flatMap { module ->
+            module.walkTopDown().onEnter { it.name != "build" && it.name != ".gradle" }
+                .filter { it.name == "build.gradle.kts" && it.readText().contains("kable", ignoreCase = true) }
+                .map { it.relativeTo(root).path }.toList()
+        }
+        assertTrue(offenders.isEmpty(), "Kable may only be declared by :ble: $offenders")
+    }
 }

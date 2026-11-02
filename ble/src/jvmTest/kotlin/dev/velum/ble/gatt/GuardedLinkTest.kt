@@ -157,4 +157,32 @@ class GuardedLinkTest {
         }
         assertEquals(true, t.writes.isNotEmpty())
     }
+
+    @Test
+    fun trimTrailingZeros_ofEveryForbiddenOpcode_isRejected() = runTest {
+        val (t, link) = rig()
+        for (op in ForbiddenOpcodes.ALL) {
+            val wire = Bytes.trimTrailingZeros(prefixed(op))
+            assertFailsWith<IllegalArgumentException>("opcode $op as ${wire.toList()}") {
+                link.write(char, wire, withoutResponse = false)
+            }
+        }
+        assertEquals(0, t.writes.size)
+    }
+
+    /**
+     * Known wire ambiguity, not a guard bug: a forbidden-setting write whose value is 0 is trimmed to
+     * [settingId] by Framing.encodeCommand, i.e. byte-identical to a READ. The device sees the same
+     * bytes, so it also treats it as a read; the guard allows exactly what the device interprets as a read.
+     */
+    @Test
+    fun forbiddenSettingWriteWithValueZero_trimsToReadShapedBytes() = runTest {
+        val (t, link) = rig()
+        for (id in ForbiddenSettings.ALL) {
+            val trimmed = Bytes.trimTrailingZeros(prefixed(CommonSettings.CMD, byteArrayOf(id.toByte(), 0)))
+            assertContentEquals(prefixed(CommonSettings.CMD, byteArrayOf(id.toByte())), trimmed)
+            link.write(char, trimmed, withoutResponse = false)
+        }
+        assertEquals(ForbiddenSettings.ALL.size, t.writes.size)
+    }
 }
