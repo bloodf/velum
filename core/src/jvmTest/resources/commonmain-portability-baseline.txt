@@ -1,0 +1,14 @@
+# Known JVM-only API use in commonMain/mobileMain, one "path:rule" line per occurrence.
+# CommonMainPortabilityTest fails on new offences and on stale lines: fix offences, then delete
+# their lines. Never add lines here for new code.
+composeApp/src/commonMain/kotlin/dev/velum/app/di/AppContainer.kt:Dispatchers.IO-import
+composeApp/src/commonMain/kotlin/dev/velum/app/ui/importing/ImportHubScreen.kt:string-format
+composeApp/src/commonMain/kotlin/dev/velum/app/ui/integrations/IntegrationsScreen.kt:string-format
+composeApp/src/commonMain/kotlin/dev/velum/app/ui/integrations/IntegrationsScreen.kt:string-format
+composeApp/src/commonMain/kotlin/dev/velum/app/ui/recording/LiveWaveform.kt:string-format
+composeApp/src/commonMain/kotlin/dev/velum/app/ui/recording/LiveWaveform.kt:string-format
+composeApp/src/commonMain/kotlin/dev/velum/app/ui/recording/RecordingDetailScreen.kt:string-format
+composeApp/src/commonMain/kotlin/dev/velum/app/ui/settings/StoragePrivacyScreen.kt:string-format
+composeApp/src/commonMain/kotlin/dev/velum/app/ui/settings/StoragePrivacyScreen.kt:string-format
+composeApp/src/commonMain/kotlin/dev/velum/app/ui/settings/StoragePrivacyScreen.kt:string-format
+composeApp/src/commonMain/kotlin/dev/velum/app/ui/theme/Theme.kt:Volatile-import
