@@ -206,6 +206,8 @@ fun TemplatesScreen(
     var totalMatches by remember { mutableStateOf(0L) }
     var loadFailed by remember { mutableStateOf(false) }
     LaunchedEffect(filter, pages, templateTick) {
+        // Snapshot before the first suspension: the tick may move while the queries run.
+        val loadTick = templateTick
         // A different filter must not keep the previous filter's rows (or its paging sentinel) on screen.
         if (shownFilter != filter) {
             shown = null
@@ -217,7 +219,7 @@ fun TemplatesScreen(
             val total = container.repository.countDiscoverTemplates(filter)
             shown = if (pages == 1) rows else appendPage(current, rows)
             shownFilter = filter
-            shownTick = templateTick
+            shownTick = loadTick
             totalMatches = total
             loadFailed = false
         } catch (cancelled: CancellationException) {
@@ -228,7 +230,7 @@ fun TemplatesScreen(
             if (pages == 1 || shownFilter != filter) {
                 shown = emptyList()
                 shownFilter = filter
-                shownTick = templateTick
+                shownTick = loadTick
                 totalMatches = 0
             }
             loadFailed = true

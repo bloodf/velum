@@ -17,7 +17,7 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performScrollToKey
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.test.core.app.ApplicationProvider
@@ -229,17 +229,19 @@ class DiscoverFiltersUiTest {
                     VelumTheme(darkTheme = false) { TemplatesScreen(container, onBack = {}, onOpenTemplate = {}) }
                 }
             }
-            await("PG 000")
-            assertTrue(!shows("PG 099"))
+            val grid = { compose.onNodeWithTag("templates:grid") }
+            // Page 1 is exactly 60 rows: pg-000 is loaded, pg-060 is not (composed rows alone would not show that).
+            waiting("first page") { runCatching { grid().performScrollToKey("pg-000") }.isSuccess }
+            assertTrue(runCatching { grid().performScrollToKey("pg-060") }.isFailure, "page 1 holds more than 60 rows")
             // Scrolling to the end composes the sentinel, which loads page 2 (offset 60, not a re-query).
-            compose.onNodeWithTag("templates:grid").performScrollToNode(hasText("PG 059"))
+            grid().performScrollToKey("pg-059")
             waiting("page 2 row PG 099") {
-                runCatching { compose.onNodeWithTag("templates:grid").performScrollToNode(hasText("PG 099")) }
+                runCatching { grid().performScrollToKey("pg-099") }
                 shows("PG 099")
             }
-            // Page 1 rows are still there once page 2 is appended.
-            compose.onNodeWithTag("templates:grid").performScrollToNode(hasText("PG 000"))
-            await("PG 000")
+            // Page 1 rows outside the top-5 ranking cards survive the append (not replaced by page 2).
+            grid().performScrollToKey("pg-010")
+            await("PG 010")
         } finally {
             activity.pause().stop().destroy()
             container.databaseHandle.driver.close()
