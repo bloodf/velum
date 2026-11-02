@@ -16,7 +16,7 @@ const val ORPHAN_PURGE_AFTER_MS = 7L * 24L * HOUR_MS
 /** Final audio names written by Velum (mic `rec-*.wav`, downloads `rec-*.{ogg,wav,bin}`). */
 private val FINAL_AUDIO_NAME = Regex("^rec-[A-Za-z0-9_-]+\\.(wav|ogg|bin)$", RegexOption.IGNORE_CASE)
 
-/** Temps of Velum's own atomic download write (`writeBytesToPath`). #86 `.part` files are not ours. */
+/** Temps left by the pre-#86 atomic download write; #86 `.part` files are swept by [sweepStaleDownloadParts]. */
 private val OWN_DOWNLOAD_TEMP_NAME = Regex("^rec-[A-Za-z0-9_-]+\\.(wav|ogg|bin)\\.download-tmp$", RegexOption.IGNORE_CASE)
 
 private class Refs(rows: List<Pair<String, String?>>) {

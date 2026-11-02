@@ -6,7 +6,7 @@ import dev.velum.ai.local.ModelStoreDir
 import dev.velum.ai.pipeline.RecordingJobScheduler
 import dev.velum.app.platform.installRecordingFilesDir
 import dev.velum.app.platform.recordingsDirectoryPath
-import dev.velum.app.platform.writeBytesToPath
+import dev.velum.app.platform.streamToFileAtomically
 import dev.velum.app.ui.DownloadedSessionAudio
 import dev.velum.core.data.DriverFactory
 import dev.velum.core.security.InMemorySecureStore
@@ -106,21 +106,21 @@ class PersistDownloadedSessionDedupTest {
         assertEquals(3, setOf(a, b, c).size)
     }
 
-    @Test fun atomic_write_failure_keeps_previous_file() = fixture {
-        val target = File(dir(), "rec-atomic.ogg")
-        writeBytesToPath(target.path, ogg(1))
-        // A non-empty directory at the temp path makes the temp write fail.
-        File("${target.path}.download-tmp").apply { mkdirs(); File(this, "x").writeText("x") }
-        assertFailsWith<Exception> { writeBytesToPath(target.path, ogg(2)) }
+    @Test fun stream_write_failure_keeps_previous_file() = fixture {
+        val target = File(dir(), "rec-atomic.ogg").apply { writeBytes(ogg(1)) }
+        // A non-empty directory at the part path makes the streamed write fail.
+        val part = File(dir(), "rec-atomic.part").apply { mkdirs(); File(this, "x").writeText("x") }
+        assertFailsWith<Exception> { streamToFileAtomically(part.path, 12, { target.path }) { it(ogg(2)) } }
         assertContentEquals(ogg(1), target.readBytes())
     }
 
-    @Test fun atomic_move_failure_keeps_destination_and_removes_temp() = fixture {
-        // A non-empty directory at the destination makes the atomic move fail after the temp is written.
+    @Test fun atomic_move_failure_keeps_destination_and_removes_part() = fixture {
+        // A non-empty directory at the destination makes the atomic move fail after the part is written.
         val target = File(dir(), "rec-move.ogg").apply { mkdirs(); File(this, "keep").writeText("x") }
-        assertFailsWith<Exception> { writeBytesToPath(target.path, ogg(1)) }
+        val part = File(dir(), "rec-move.part")
+        assertFailsWith<Exception> { streamToFileAtomically(part.path, 12, { target.path }) { it(ogg(1)) } }
         assertTrue(File(target, "keep").isFile)
-        assertFalse(File("${target.path}.download-tmp").exists())
+        assertFalse(part.exists())
     }
 
     @Test fun unknown_serial_never_merges_sessions_from_different_devices() = fixture {

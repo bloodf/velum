@@ -31,6 +31,15 @@ import kotlinx.coroutines.withContext
 
 /** Progress message when the Ogg source ended mid-page; only the decodable part is processed. */
 const val TRUNCATED_AUDIO_MESSAGE = "Audio file is truncated; processing the part that could be decoded"
+const val INSUFFICIENT_STORAGE_MESSAGE =
+    "Not enough free storage to decode this recording. Free up space and try again."
+
+/** True when [t] or a cause reports a full disk (ENOSPC); message text is all common code can see. */
+internal fun isOutOfStorage(t: Throwable): Boolean =
+    generateSequence(t) { it.cause }.take(8).any { e ->
+        val m = e.message.orEmpty()
+        m.contains("ENOSPC") || m.contains("No space left", ignoreCase = true)
+    }
 
 /**
  * End-to-end job: decode → transcribe → diarize → markdown transcript → summarize → DB.
@@ -380,9 +389,10 @@ class RecordingProcessor(
                 throw t
             }
             // The previous summary and versions are untouched; surface the reason in the UI.
-            repository.setProcessingError(recordingId, ApiErrorSanitizer.sanitize(t.message ?: t.toString()))
+            val reason = if (isOutOfStorage(t)) INSUFFICIENT_STORAGE_MESSAGE else t.message ?: t.toString()
+            repository.setProcessingError(recordingId, ApiErrorSanitizer.sanitize(reason))
             repository.updateStatus(recordingId, "failed")
-            emit(JobProgress.Failed(t.message ?: t.toString()))
+            emit(JobProgress.Failed(reason))
         }
     }
 
