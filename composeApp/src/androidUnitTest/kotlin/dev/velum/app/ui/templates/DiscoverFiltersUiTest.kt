@@ -69,7 +69,11 @@ class DiscoverFiltersUiTest {
         }
     }
 
-    private fun tap(tag: String) = compose.onNodeWithTag(tag).performClick()
+    /** Chips come from an async facets load, so wait for the node before tapping it. */
+    private fun tap(tag: String) {
+        awaitTag(tag)
+        compose.onNodeWithTag(tag).performClick()
+    }
 
     @Test
     fun tier_filters_search_and_clear_compose() {
@@ -233,7 +237,7 @@ class DiscoverFiltersUiTest {
             // Page 1 is exactly 60 rows: pg-000 is loaded, pg-060 is not (composed rows alone would not show that).
             waiting("first page") { runCatching { grid().performScrollToKey("pg-000") }.isSuccess }
             assertTrue(runCatching { grid().performScrollToKey("pg-060") }.isFailure, "page 1 holds more than 60 rows")
-            // Scrolling to the end composes the sentinel, which loads page 2 (offset 60, not a re-query).
+            // Scrolling to the end composes the sentinel, which loads page 2 and appends it.
             grid().performScrollToKey("pg-059")
             waiting("page 2 row PG 099") {
                 runCatching { grid().performScrollToKey("pg-099") }
