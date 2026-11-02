@@ -2,6 +2,7 @@ package dev.velum.core.data
 
 import io.requery.android.database.sqlite.RequerySQLiteOpenHelperFactory
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 
@@ -12,7 +13,16 @@ class BundledSqliteFactoryTest {
     }
 
     @Test fun missing_native_library_falls_back_to_the_framework_helper() {
-        assertNull(BundledSqlite.factoryOrNull(isRobolectric = false, load = { throw UnsatisfiedLinkError("synthetic") }))
+        val reasons = mutableListOf<String>()
+        assertNull(
+            BundledSqlite.factoryOrNull(
+                isRobolectric = false,
+                load = { throw UnsatisfiedLinkError("synthetic /data/app/path") },
+                onFallback = { reasons += it },
+            ),
+        )
+        // Class name only: the message can carry an install path.
+        assertEquals(listOf("UnsatisfiedLinkError"), reasons)
     }
 
     @Test fun robolectric_always_uses_the_framework_helper_without_loading() {
