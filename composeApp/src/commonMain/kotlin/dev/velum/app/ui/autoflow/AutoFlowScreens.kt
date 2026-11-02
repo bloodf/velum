@@ -233,7 +233,15 @@ fun AutoFlowEditScreen(
     // The catalog lazily reads a packaged asset on first use: resolve the seed off the main thread
     // (StrictMode) and compose the editor only once it is known, so its remembered state starts right.
     val lookup by produceState<SeedLookup?>(null, seedTemplateId) {
-        value = SeedLookup(withContext(Dispatchers.Default) { AutoFlowTemplateCatalog.byId(seedTemplateId) })
+        // A failed asset read must not leave the editor blank forever: fall back to "no seed".
+        value = SeedLookup(
+            runCatching { withContext(Dispatchers.Default) { AutoFlowTemplateCatalog.byId(seedTemplateId) } }
+                .onFailure {
+                    if (it is kotlinx.coroutines.CancellationException) throw it
+                    println("VelumAutoFlow: seed lookup failed: ${it::class.simpleName}")
+                }
+                .getOrNull(),
+        )
     }
     val resolved = lookup
     if (resolved == null) {

@@ -129,20 +129,26 @@ class OnlineStreamingTranscriber(
         check(started) { "start() required" }
         started = false
         val s = stream
-        if (s != null) {
-            s.inputFinished()
-            while (recognizer.isReady(s)) {
-                recognizer.decode(s)
+        stream = null
+        try {
+            if (s != null) {
+                s.inputFinished()
+                while (recognizer.isReady(s)) {
+                    recognizer.decode(s)
+                }
+                val text = recognizer.getResult(s).text.trim()
+                if (text.isNotBlank()) {
+                    if (committed.isNotEmpty()) committed.append(' ')
+                    committed.append(text)
+                }
             }
-            val text = recognizer.getResult(s).text.trim()
-            if (text.isNotBlank()) {
-                if (committed.isNotEmpty()) committed.append(' ')
-                committed.append(text)
+        } finally {
+            try {
+                s?.release()
+            } finally {
+                recognizer.release()
             }
-            s.release()
-            stream = null
         }
-        recognizer.release()
         val md = "**Speaker 1** · 0:00\n${committed}\n"
         onPartial(md)
         return md

@@ -1,6 +1,7 @@
 package dev.velum.ai.integrations
 
 import dev.velum.ai.createAiHttpClient
+import dev.velum.ai.pipeline.TranscriptFormatter
 import dev.velum.core.data.VelumRepository
 import dev.velum.core.integrations.WebhookPayload
 import dev.velum.core.integrations.WebhookSettingsStore
@@ -40,7 +41,7 @@ class WebhookDispatcher(
             durationSeconds = rec.duration_seconds,
             source = rec.source,
             speakers = speakers,
-            transcript = rec.transcript,
+            transcript = rec.transcript?.let { TranscriptFormatter.splitMarkers(it).first.ifBlank { null } },
             summaryMarkdown = rec.summary_markdown,
         )
         return postEncoded(url, WebhookPayload.encode(payload))
