@@ -308,7 +308,7 @@ fun VoiceProfilesScreen(
                                 }
                             },
                             modifier = Modifier.weight(1f).padding(horizontal = 2.dp),
-                        selected = kotlin.math.abs(settings.speakerMatchThreshold - t) < 0.005f,
+                            selected = kotlin.math.abs(settings.speakerMatchThreshold - t) < 0.005f,
                         )
                     }
                 }
