@@ -93,6 +93,11 @@ class DiscoverFiltersUiTest {
                     VelumTheme(darkTheme = false) { TemplatesScreen(container, onBack = {}, onOpenTemplate = {}) }
                 }
             }
+            // No empty-state flash before the first load finishes.
+            waiting("first rows") {
+                assertTrue(!hasTag("templates:empty"), "empty state flashed before the first load")
+                shows("ZQ Alpha")
+            }
             // Featured tier: featured rows only.
             await("ZQ Alpha"); await("ZQ Beta"); await("ZQ Gamma")
             assertTrue(!shows("ZQ Delta"))
@@ -104,7 +109,7 @@ class DiscoverFiltersUiTest {
             // Category filter, with the selected state exposed.
             tap("category:meeting")
             await("ZQ Gamma", present = false)
-            assertTrue(shows("ZQ Alpha") && shows("ZQ Beta"))
+            await("ZQ Alpha"); await("ZQ Beta")
             awaitTag("active:category")
             // A result card is actually on screen on a short phone, not just in the tree.
             compose.onAllNodesWithText("ZQ Beta")[0].assertIsDisplayed()
@@ -112,7 +117,7 @@ class DiscoverFiltersUiTest {
             // Tag filter composes with the category; removing it individually restores the row.
             tap("tag:agenda")
             await("ZQ Beta", present = false)
-            assertTrue(shows("ZQ Alpha"))
+            await("ZQ Alpha")
             tap("active:tag:agenda")
             await("ZQ Beta")
 
@@ -135,15 +140,52 @@ class DiscoverFiltersUiTest {
             compose.onNodeWithContentDescription(PtBr.search).performClick()
             compose.onNode(hasSetTextAction()).performTextInput("ZQ Beta")
             await("ZQ Alpha", present = false)
-            assertTrue(shows("ZQ Beta"))
+            await("ZQ Beta")
 
             // Clear-all keeps the search but drops every facet filter.
             tap("filters:clear")
             awaitTag("active:category", present = false)
-            assertTrue(shows("ZQ Beta") && !shows("ZQ Gamma"))
+            await("ZQ Beta"); await("ZQ Gamma", present = false)
         } finally {
             activity.pause().stop().destroy()
             container.databaseHandle.driver.close()
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun failed_facets_load_keeps_selections() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        context.deleteDatabase("velum.db")
+        val root = ModelStoreDir(Files.createTempDirectory("velum-discover-fail-test").toString())
+        val container = AppContainer(InMemorySecureStore(), DriverFactory(context), modelStoreRoot = root)
+        runBlocking {
+            container.repository.setMeta(SeedData.META_FULL_TEMPLATES_IMPORTED, "1")
+            container.repository.upsertTemplate(
+                id = "ui102-f", name = "ZQ Fail", category = "meeting", description = "synthetic", systemPrompt = "p",
+                builtin = true, featured = true, tags = listOf("agenda"), lang = "en", uses = 1_000_000,
+            )
+        }
+        val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup()
+        try {
+            activity.get().setContent {
+                CompositionLocalProvider(LocalStrings provides PtBr) {
+                    VelumTheme(darkTheme = false) { TemplatesScreen(container, onBack = {}, onOpenTemplate = {}) }
+                }
+            }
+            await("ZQ Fail")
+            tap("category:meeting"); awaitTag("active:category")
+            tap("tag:agenda"); awaitTag("active:tag:agenda")
+            // Every later facets/page query now fails; the selections must survive the failed load.
+            container.databaseHandle.driver.close()
+            compose.onNodeWithContentDescription(PtBr.search).performClick()
+            compose.onNode(hasSetTextAction()).performTextInput("zq")
+            compose.waitUntil(5_000) { true }
+            compose.mainClock.advanceTimeBy(1_000)
+            compose.waitForIdle()
+            assertTrue(hasTag("active:category") && hasTag("active:tag:agenda"), "selections pruned after failed facets load")
+        } finally {
+            activity.pause().stop().destroy()
             root.deleteRecursively()
         }
     }
