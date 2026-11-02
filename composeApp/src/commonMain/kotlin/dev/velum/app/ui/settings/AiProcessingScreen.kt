@@ -299,20 +299,19 @@ fun AiProcessingScreen(
                 modelPrompt = null
                 onModelManager()
             },
-            onSwitchToApi = {
-                container.settingsViewModel.runStorageAction {
-                    when (need.task) {
-                        AiTask.Transcription ->
-                            container.settingsRepository.setTranscriptionMode(ComputeMode.Api)
-                        AiTask.Diarization -> {
-                            // No API diarization — keep prompting for local download.
-                            modelPrompt = need
-                            return@runStorageAction
+            // No API diarization contract: that prompt only offers the local download.
+            onSwitchToApi = if (need.task == AiTask.Diarization) null else {
+                {
+                    container.settingsViewModel.runStorageAction {
+                        when (need.task) {
+                            AiTask.Transcription ->
+                                container.settingsRepository.setTranscriptionMode(ComputeMode.Api)
+                            AiTask.Summary ->
+                                container.settingsRepository.setSummaryMode(ComputeMode.Api)
+                            AiTask.Diarization -> Unit
                         }
-                        AiTask.Summary ->
-                            container.settingsRepository.setSummaryMode(ComputeMode.Api)
+                        modelPrompt = null
                     }
-                    modelPrompt = null
                 }
             },
             onDismiss = { modelPrompt = null },

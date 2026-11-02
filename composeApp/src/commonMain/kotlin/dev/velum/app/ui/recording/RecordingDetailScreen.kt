@@ -781,9 +781,10 @@ fun RecordingDetailScreen(
                 pendingApiOverride = null
                 onOpenModelManager()
             },
-            onSwitchToApi = {
-                // Diarization has no API route: keep the prompt (and the pending request) as is.
-                if (need.task != AiTask.Diarization && modelPrompt === need) {
+            // Diarization has no API route, so its prompt has no such button.
+            onSwitchToApi = if (need.task == AiTask.Diarization) null else {
+              {
+                if (modelPrompt === need) {
                     // Take the pending request and close the prompt synchronously, so a second tap that lands
                     // before recomposition finds nothing to run instead of enqueueing a default-template job.
                     val retranscribe = pendingRetranscribe ?: true
@@ -794,16 +795,20 @@ fun RecordingDetailScreen(
                     pendingTemplateId = null
                     pendingApiOverride = null
                     scope.launch {
-                        when (need.task) {
-                            AiTask.Transcription ->
-                                container.settingsRepository.setTranscriptionMode(ComputeMode.Api)
-                            AiTask.Summary ->
-                                container.settingsRepository.setSummaryMode(ComputeMode.Api)
-                            AiTask.Diarization -> Unit
+                        // A storage failure is reported like on the other settings screens and nothing is enqueued.
+                        val switched = container.settingsViewModel.handleStorageFailure {
+                            when (need.task) {
+                                AiTask.Transcription ->
+                                    container.settingsRepository.setTranscriptionMode(ComputeMode.Api)
+                                AiTask.Summary ->
+                                    container.settingsRepository.setSummaryMode(ComputeMode.Api)
+                                AiTask.Diarization -> Unit
+                            }
                         }
-                        enqueueAfterGate(retranscribe, templateId, apiOverride)
+                        if (switched) enqueueAfterGate(retranscribe, templateId, apiOverride)
                     }
                 }
+              }
             },
             onDismiss = {
                 modelPrompt = null
