@@ -89,10 +89,13 @@ class StreamingDownloadDecodeTest {
             val expected = KopusOpusDecoder.decodeInMemory(ogg)
             assertEquals(rate, meta.sampleRateHz)
             assertEquals(1, meta.channels)
-            assertEquals(expected.samples.size * 2L, meta.sizeBytes)
-            // Streaming path must equal the in-memory reference byte for byte. Sample
-            // amplitude correctness (kopus `len` argument) is covered by #135.
+            assertEquals(20L * rate * 2, meta.sizeBytes, "golden length: 20 s mono s16le")
+            // Streaming path must equal the in-memory reference byte for byte.
             assertContentEquals(expected.toByteArray(), pcm.readBytes())
+            assertTrue(expected.samples.any { it > 1000 }, "decoded sine is not silence")
+            val fromBytes = dir.resolve("from-bytes.s16le")
+            KopusOpusDecoder().decodeToPcmFile(ogg, fromBytes)
+            assertContentEquals(pcm.readBytes(), fromBytes.readBytes(), "byte[] and path decode agree")
         } finally {
             dir.deleteRecursively()
         }

@@ -18,6 +18,7 @@ import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.Density
 import androidx.test.core.app.ApplicationProvider
@@ -97,6 +98,7 @@ class ScreenTopBarPinnedTest(
     val composeRule = createEmptyComposeRule()
 
     private lateinit var container: AppContainer
+    private var backClicks = 0
     private lateinit var activity: ActivityController<ComponentActivity>
 
     @After
@@ -164,59 +166,59 @@ class ScreenTopBarPinnedTest(
     @Composable
     private fun contentFor(screen: ScreenCase) {
         when (screen) {
-            ScreenCase.About -> AboutScreen(onBack = {})
+            ScreenCase.About -> AboutScreen(onBack = { backClicks++ })
             ScreenCase.AiProcessing -> AiProcessingScreen(
                 container = container,
-                onBack = {},
+                onBack = { backClicks++ },
                 onModelManager = {},
             )
             ScreenCase.ApiSettings -> ApiSettingsScreen(
                 container = container,
-                onBack = {},
+                onBack = { backClicks++ },
                 onAiProcessing = {},
                 onModelManager = {},
             )
             ScreenCase.DevicesSettings -> DevicesSettingsScreen(
                 container = container,
-                onBack = {},
+                onBack = { backClicks++ },
                 onDevice = {},
                 onImportKeys = {},
             )
             ScreenCase.ImportDeviceKeys -> ImportDeviceKeysScreen(
                 container = container,
-                onBack = {},
+                onBack = { backClicks++ },
             )
             ScreenCase.Personalization -> PersonalizationScreen(
                 container = container,
-                onBack = {},
+                onBack = { backClicks++ },
                 onMemory = {},
             )
             ScreenCase.Preferences -> PreferencesScreen(
                 container = container,
-                onBack = {},
+                onBack = { backClicks++ },
             )
             ScreenCase.RecordingSettings -> RecordingSettingsScreen(
                 container = container,
-                onBack = {},
+                onBack = { backClicks++ },
             )
             ScreenCase.StoragePrivacy -> StoragePrivacyScreen(
                 container = container,
-                onBack = {},
+                onBack = { backClicks++ },
             )
             ScreenCase.VoiceProfiles -> VoiceProfilesScreen(
                 container = container,
-                onBack = {},
+                onBack = { backClicks++ },
             )
             ScreenCase.ImportHub -> ImportHubScreen(
                 container = container,
-                onBack = {},
+                onBack = { backClicks++ },
                 onOpenRecording = {},
                 onPickWatchedFolder = {},
                 onSyncWatchedFolder = { emptyList() },
             )
             ScreenCase.AskAcross -> AskAcrossScreen(
                 container = container,
-                onBack = {},
+                onBack = { backClicks++ },
                 onOpenCitation = { _, _ -> },
                 previewAnswer = askPreviewAnswer(),
                 initialQuestion = "What was decided in the last sync?",
@@ -304,6 +306,10 @@ class ScreenTopBarPinnedTest(
             backAfter.left.value,
             0.5f,
         )
+
+        // Back is reachable after the scroll: a click reaches the screen's onBack.
+        afterBack.performClick()
+        assertEquals("Back click must reach onBack [${screen.name}]", 1, backClicks)
     }
 
     companion object {
