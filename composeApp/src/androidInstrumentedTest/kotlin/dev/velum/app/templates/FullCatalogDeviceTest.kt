@@ -66,7 +66,7 @@ class FullCatalogDeviceTest {
         assertEquals("no repeated entries", ids.size, ids.toSet().size)
         assertTrue("no omitted entries", ids.toSet().containsAll(asset.keys))
         val keys = builtins.map { Triple(it.category, it.name, it.id) }
-        assertEquals("total, stable order", keys.sortedWith(compareBy({ it.first }, { it.second }, { it.third })), keys)
+        assertEquals("total, stable order", keys.sortedWith(sqliteBinaryOrder), keys)
         val pages = builtins.chunked(PAGE)
         assertTrue(pages.first().isNotEmpty() && pages[pages.size / 2].isNotEmpty() && pages.last().isNotEmpty())
 
@@ -119,6 +119,19 @@ class FullCatalogDeviceTest {
     }
 
     private companion object {
+        // Same comparator as core FullCatalogImportTest (separate module, so copied): SQLite's BINARY
+        // collation compares UTF-8 bytes, which differs from Kotlin's UTF-16 order for emoji names.
+        val utf8: Comparator<String> = Comparator { a, b ->
+            val x = a.encodeToByteArray(); val y = b.encodeToByteArray()
+            for (i in 0 until minOf(x.size, y.size)) {
+                val d = (x[i].toInt() and 0xFF) - (y[i].toInt() and 0xFF)
+                if (d != 0) return@Comparator d
+            }
+            x.size - y.size
+        }
+        val sqliteBinaryOrder: Comparator<Triple<String, String, String>> =
+            Comparator { a, b -> utf8.compare(a.first, b.first).takeIf { it != 0 } ?: utf8.compare(a.second, b.second).takeIf { it != 0 } ?: utf8.compare(a.third, b.third) }
+
         const val DB_NAME = "catalog100-instrumented.db"
         const val TAG = "VelumCatalog100"
         const val PAGE = 50
