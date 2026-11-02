@@ -76,6 +76,20 @@ class PlaudTemplateCatalogTest {
     }
 
     @Test
+    fun creditsMarkdown_ordersAuthorsCaseInsensitively() {
+        fun e(id: String, author: String) =
+            TemplateCatalogEntry(id = id, category = "meeting", name = id, author = author, body = "Summarize")
+        val md = PlaudTemplateCatalog.toCreditsMarkdown(
+            listOf(e("a", "beta"), e("b", "Alpha"), e("c", "gamma"), e("d", "beta")),
+        )
+        val authors = md.substringAfter("### Authors").lines().filter { it.startsWith("- **") }
+        assertEquals(
+            listOf("- **Alpha** — 1 template(s)", "- **beta** — 2 template(s)", "- **gamma** — 1 template(s)"),
+            authors,
+        )
+    }
+
+    @Test
     fun featuredCatalog_loadsAndValidatesEveryEntry() {
         val entries = PlaudTemplateCatalog.All
         assertTrue(entries.size >= 1500, "expected ≥1500 Featured (100×15); got ${entries.size}")
