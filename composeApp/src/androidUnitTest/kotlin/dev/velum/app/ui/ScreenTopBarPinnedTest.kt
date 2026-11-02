@@ -1,6 +1,8 @@
 package dev.velum.app.ui
 
 import android.content.Context
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -10,11 +12,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.getBoundsInRoot
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
-import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.Density
 import androidx.test.core.app.ApplicationProvider
@@ -43,14 +46,16 @@ import java.nio.file.Files
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.After
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.ParameterizedRobolectricTestRunner
+import org.robolectric.Robolectric
+import org.robolectric.android.controller.ActivityController
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
-import kotlin.math.abs
 
 /**
  * Regression for #118: ScreenTopBar (Back) must stay fixed while body scrolls
@@ -58,7 +63,7 @@ import kotlin.math.abs
  * verticalScroll.
  *
  * Short viewport forces a real scroll (anchor starts below the fold or moves).
- * A 2000dp-tall viewport must fail this test — see QA mutation checklist.
+ * A 2000dp-tall viewport must fail this test (the body would not need to scroll).
  */
 @RunWith(ParameterizedRobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -66,10 +71,8 @@ import kotlin.math.abs
     sdk = [34],
     // Short enough that every listed screen's bottom anchor starts off-screen.
     qualifiers = "w360dp-h200dp-xxhdpi",
-    // Registers ComponentActivity for createComposeRule without a debug APK manifest
-    // entry (keeps device-walk debug APK aligned with main). Avoids VelumApplication
-    // → AndroidKeyStore under Robolectric.
-    application = RobolectricComposeTestApp::class,
+    // Plain Application avoids VelumApplication -> AndroidKeyStore under Robolectric.
+    application = android.app.Application::class,
 )
 class ScreenTopBarPinnedTest(
     private val screen: ScreenCase,
@@ -91,9 +94,15 @@ class ScreenTopBarPinnedTest(
     }
 
     @get:Rule
-    val composeRule = createComposeRule()
+    val composeRule = createEmptyComposeRule()
 
     private lateinit var container: AppContainer
+    private lateinit var activity: ActivityController<ComponentActivity>
+
+    @After
+    fun tearDown() {
+        activity.pause().stop().destroy()
+    }
 
     @Before
     fun setUp() {
@@ -239,7 +248,8 @@ class ScreenTopBarPinnedTest(
         )
 
     private fun setScreen(content: @Composable () -> Unit) {
-        composeRule.setContent {
+        activity = Robolectric.buildActivity(ComponentActivity::class.java).setup()
+        activity.get().setContent {
             CompositionLocalProvider(
                 LocalStrings provides En,
                 LocalDensity provides Density(density = 3f, fontScale = 1f),
@@ -254,30 +264,28 @@ class ScreenTopBarPinnedTest(
         composeRule.waitForIdle()
     }
 
+    private fun verticalScrollRanges() =
+        composeRule.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.VerticalScrollAxisRange), useUnmergedTree = true)
+            .fetchSemanticsNodes()
+            .map { it.config[SemanticsProperties.VerticalScrollAxisRange] }
+
     private fun assertBackPinnedAfterRealScroll(scrollAnchorText: String) {
         val backCd = En.ux.back
         val back = composeRule.onNodeWithContentDescription(backCd)
         back.assertIsDisplayed()
         val backBefore = back.getBoundsInRoot()
-        val root = composeRule.onRoot().getBoundsInRoot()
         val anchor = anchorNode(scrollAnchorText)
-        val anchorBefore = anchor.getBoundsInRoot()
 
-        // Prove the body must scroll: anchor starts below the visible root, or
-        // performScrollTo actually moves it. Tall (e.g. 2000dp) viewports fail here.
-        val startedOffScreenBelow = anchorBefore.top.value >= root.bottom.value - 0.5f
-        val startedOffScreenAbove = anchorBefore.bottom.value <= root.top.value + 0.5f
-
+        // The body must be scrollable (maxValue > 0) and actually scroll (value > 0): a tall viewport fails here.
+        assertTrue(
+            "Expected '${screen.name}' to have scrollable overflow",
+            verticalScrollRanges().any { it.maxValue() > 0f },
+        )
         anchor.performScrollTo().assertIsDisplayed()
         composeRule.waitForIdle()
-
-        val anchorAfter = anchorNode(scrollAnchorText).getBoundsInRoot()
-        val moved = abs(anchorAfter.top.value - anchorBefore.top.value) > 1f
         assertTrue(
-            "Expected a real scroll for '$scrollAnchorText' on ${screen.name} " +
-                "(offBelow=$startedOffScreenBelow offAbove=$startedOffScreenAbove moved=$moved " +
-                "beforeTop=${anchorBefore.top} afterTop=${anchorAfter.top} rootBottom=${root.bottom})",
-            startedOffScreenBelow || startedOffScreenAbove || moved,
+            "Expected '${screen.name}' to have scrolled for '$scrollAnchorText'",
+            verticalScrollRanges().any { it.value() > 0f },
         )
 
         val afterBack = composeRule.onNodeWithContentDescription(backCd)
