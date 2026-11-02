@@ -104,27 +104,31 @@ class DiscoverFiltersUiTest {
 
             // Tier switching: All adds the non-featured row, Featured removes it again.
             tap("tier:all"); await("ZQ Delta")
-            tap("tier:featured"); await("ZQ Delta", present = false)
+            tap("tier:featured"); await("ZQ Alpha"); await("ZQ Delta", present = false)
+            assertTrue(!shows("ZQ Delta"))
 
             // Category filter, with the selected state exposed.
             tap("category:meeting")
-            await("ZQ Gamma", present = false)
             await("ZQ Alpha"); await("ZQ Beta")
+            assertTrue(!shows("ZQ Gamma"))
             awaitTag("active:category")
             // A result card is actually on screen on a short phone, not just in the tree.
             compose.onAllNodesWithText("ZQ Beta")[0].assertIsDisplayed()
 
             // Tag filter composes with the category; removing it individually restores the row.
             tap("tag:agenda")
-            await("ZQ Beta", present = false)
             await("ZQ Alpha")
+            assertTrue(!shows("ZQ Beta"))
+            assertTrue(!shows("ZQ Gamma"))
             tap("active:tag:agenda")
             await("ZQ Beta")
 
             // Language filter composes; a combination with no match shows the clearable empty state.
             tap("tag:agenda")
-            await("ZQ Beta", present = false)
+            await("ZQ Alpha")
+            assertTrue(!shows("ZQ Beta"))
             tap("lang:en"); await("ZQ Alpha")
+            assertTrue(!shows("ZQ Beta"))
             compose.onAllNodesWithText("ZQ Alpha")[0].assertIsDisplayed()
             tap("lang:pt")
             awaitTag("templates:empty")
@@ -139,13 +143,14 @@ class DiscoverFiltersUiTest {
             tap("category:meeting")
             compose.onNodeWithContentDescription(PtBr.search).performClick()
             compose.onNode(hasSetTextAction()).performTextInput("ZQ Beta")
-            await("ZQ Alpha", present = false)
-            await("ZQ Beta")
+            // Typing is debounced: wait for the old rows to go, then for the match to return.
+            await("ZQ Alpha", present = false); await("ZQ Beta")
+            assertTrue(!shows("ZQ Alpha"))
 
             // Clear-all keeps the search but drops every facet filter.
             tap("filters:clear")
             awaitTag("active:category", present = false)
-            await("ZQ Beta"); await("ZQ Gamma", present = false)
+            await("ZQ Beta"); assertTrue(!shows("ZQ Gamma")); assertTrue(!shows("ZQ Alpha"))
         } finally {
             activity.pause().stop().destroy()
             container.databaseHandle.driver.close()

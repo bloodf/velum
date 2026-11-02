@@ -157,7 +157,8 @@ fun TemplatesScreen(
     // Debounced so each keystroke does not re-run the facet and page queries.
     var debouncedQuery by remember { mutableStateOf(searchQuery) }
     LaunchedEffect(searchQuery) {
-        if (searchQuery != debouncedQuery) delay(SEARCH_DEBOUNCE_MS)
+        // Clearing the search applies at once; only typing is debounced.
+        if (searchQuery.isNotEmpty() && searchQuery != debouncedQuery) delay(SEARCH_DEBOUNCE_MS)
         debouncedQuery = searchQuery
     }
     LaunchedEffect(tier, debouncedQuery, selectedCategory, templateTick) {
