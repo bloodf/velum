@@ -563,12 +563,13 @@ class DeviceWalkUiTest {
             scrollClick(label)
             val str = stringsFor(lang)
             // Positive gate: a node that exists only on the destination screen.
-            waitUntil(15_000, "$cov destination content not visible") { composeExists(destinationMarker(cov, str)) }
+            waitUntil(15_000, "$cov destination content not visible") { composeExistsIgnoreCase(destinationMarker(cov, str)) }
             covered += cov
-            shotWhenReady("10-${cov.replace('/', '-')}-$tag", "$cov content not visible") { composeExists(destinationMarker(cov, str)) }
+            shotWhenReady("10-${cov.replace('/', '-')}-$tag", "$cov content not visible") { composeExistsIgnoreCase(destinationMarker(cov, str)) }
             // Sub-sections: each needs its own node on the destination.
             subSectionMarker(cov, str)?.let { (marker, name) ->
-                waitUntil(10_000, "$name section not visible") { composeExists(marker) }
+                // SectionLabel renders text.uppercase(), so sub-section headers never match case-sensitively.
+                waitUntil(10_000, "$name section not visible") { composeExistsIgnoreCase(marker) }
                 covered += name
             }
             pressNavBack()
@@ -1125,6 +1126,13 @@ class DeviceWalkUiTest {
         composeRule.onAllNodesWithText(text, substring = true)
             .fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty() ||
             composeRule.onAllNodesWithContentDescription(text, substring = true)
+                .fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty()
+
+    /** For markers that may render through [SectionLabel] (uppercased) or other casing transforms. */
+    private fun composeExistsIgnoreCase(text: String): Boolean =
+        composeRule.onAllNodesWithText(text, substring = true, ignoreCase = true)
+            .fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty() ||
+            composeRule.onAllNodesWithContentDescription(text, substring = true, ignoreCase = true)
                 .fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty()
 
     private fun waitUntil(timeoutMs: Long, condition: () -> Boolean) {
