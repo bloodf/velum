@@ -112,6 +112,24 @@ class DedupeExactBodiesTest(unittest.TestCase):
         self.assertEqual(0, twice.removed_rows)
 
 
+class GoldenRuleCasesTest(unittest.TestCase):
+    """Shared with the Kotlin TemplateDedupeRuleTest, which runs the same file."""
+
+    CASES = json.loads((HERE / "testdata" / "dedupe_rule_cases.json").read_text(encoding="utf-8"))
+
+    def test_every_golden_case(self):
+        self.assertGreaterEqual(len(self.CASES), 12)
+        for case in self.CASES:
+            with self.subTest(case["name"]):
+                res = dedupe_exact_bodies(case["rows"], frozenset(case["featured_ids"]))
+                self.assertEqual(case["expected_survivor_ids"], [r["id"] for r in res.survivors])
+                self.assertEqual(case["expected_aliases"], res.aliases)
+                for tid, flags in case.get("expected_flags", {}).items():
+                    survivor = next(r for r in res.survivors if r["id"] == tid)
+                    for key, want in flags.items():
+                        self.assertEqual(want, survivor.get(key), f"{tid}.{key}")
+
+
 class ResolveAliasesTest(unittest.TestCase):
     def test_follows_chain_to_retained_id(self):
         self.assertEqual({"a": "c", "b": "c"}, dedupe_catalog.resolve_aliases({"a": "b", "b": "c"}, {"c"}))
