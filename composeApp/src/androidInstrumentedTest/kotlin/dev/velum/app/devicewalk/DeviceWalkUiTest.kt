@@ -598,8 +598,11 @@ class DeviceWalkUiTest {
         run {
             // Required in both locales; click only a node that has a click action so the
             // empty-state hint text ("... toque em Buscar") is never the click target.
+            // The button reads "Scanning…"/"Buscando…" when an earlier cell in the same process left
+            // BLE scanning (shared container); accept both labels (CI runs all cells in one process).
             clickClickableText(
                 stringsFor(lang).ux.scan,
+                stringsFor(lang).ux.scanning,
                 "Connect",
                 "Conectar",
                 "Scan",
