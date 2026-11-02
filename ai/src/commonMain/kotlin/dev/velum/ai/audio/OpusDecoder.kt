@@ -10,6 +10,8 @@ data class PcmAudio(
     val samples: ShortArray,
     val sampleRateHz: Int,
     val channels: Int,
+    /** True when the Ogg stream ended inside a page or packet; audio before the cut is kept. */
+    val truncated: Boolean = false,
 ) {
     fun toByteArray(): ByteArray {
         val out = ByteArray(samples.size * 2)
@@ -42,6 +44,8 @@ data class SpilledPcmMeta(
     val sampleRateHz: Int,
     val channels: Int,
     val sizeBytes: Long,
+    /** True when the Ogg stream ended inside a page or packet; audio before the cut is kept. */
+    val truncated: Boolean = false,
 )
 
 interface OpusDecoder {
@@ -67,6 +71,11 @@ expect fun createOpusDecoder(): OpusDecoder
 data class OpusStreamMeta(
     val sampleRateHz: Int,
     val channels: Int,
+    /**
+     * True when the stream ended inside a page header, segment table, page body or an open
+     * continued packet. Complete pages before the cut were still delivered. Callers must surface this.
+     */
+    val truncated: Boolean = false,
 )
 
 /**
@@ -78,6 +87,7 @@ object OggOpusDemuxer {
         val sampleRateHz: Int,
         val channels: Int,
         val packets: List<ByteArray>,
+        val truncated: Boolean = false,
     )
 
     fun demux(oggBytes: ByteArray): OpusStream {
@@ -87,6 +97,7 @@ object OggOpusDemuxer {
             sampleRateHz = meta.sampleRateHz,
             channels = meta.channels,
             packets = packets,
+            truncated = meta.truncated,
         )
     }
 
@@ -135,9 +146,11 @@ object OggOpusDemuxer {
         var sawIdHeader = false
         val packetParts = ArrayList<ByteArray>()
         val header = ByteArray(27)
+        var truncated = false
+        var audioPackets = 0
 
         while (offset + 27L <= size) {
-            require(readAt(header, offset, 27) == 27) { "Truncated Ogg page header" }
+            if (readAt(header, offset, 27) != 27) { truncated = true; break }
             if (header[0] != 'O'.code.toByte() ||
                 header[1] != 'g'.code.toByte() ||
                 header[2] != 'g'.code.toByte() ||
@@ -147,20 +160,16 @@ object OggOpusDemuxer {
             }
             val pageSegments = header[26].toInt() and 0xff
             val segmentTable = ByteArray(pageSegments)
-            require(readAt(segmentTable, offset + 27L, pageSegments) == pageSegments) {
-                "Truncated Ogg segment table"
-            }
+            if (readAt(segmentTable, offset + 27L, pageSegments) != pageSegments) { truncated = true; break }
             var bodySize = 0
             for (i in 0 until pageSegments) {
                 bodySize += segmentTable[i].toInt() and 0xff
             }
             val bodyStart = offset + 27L + pageSegments
             val bodyEnd = bodyStart + bodySize
-            require(bodyEnd <= size) { "Truncated Ogg page body" }
+            if (bodyEnd > size) { truncated = true; break }
             val body = ByteArray(bodySize)
-            if (bodySize > 0) {
-                require(readAt(body, bodyStart, bodySize) == bodySize) { "Truncated Ogg page body" }
-            }
+            if (bodySize > 0 && readAt(body, bodyStart, bodySize) != bodySize) { truncated = true; break }
 
             var bodyPos = 0
             for (i in 0 until pageSegments) {
@@ -172,7 +181,7 @@ object OggOpusDemuxer {
                     val packetBuf = concatPackets(packetParts)
                     packetParts.clear()
                     if (!sawIdHeader && packetBuf.size >= 19 && startsWithOpusHead(packetBuf)) {
-                        // RFC 7845 §5.1: major version nibble must be 0; channel count 0 is invalid.
+                        // RFC 7845 section 5.1: major version nibble must be 0; channel count 0 is invalid.
                         require(packetBuf[8].toInt() and 0xf0 == 0) { "Unsupported OpusHead version" }
                         channels = packetBuf[9].toInt() and 0xff
                         require(channels > 0) { "OpusHead channel count is zero" }
@@ -180,26 +189,35 @@ object OggOpusDemuxer {
                         sawIdHeader = true
                         onHeader(sampleRate, channels)
                     } else if (sawIdHeader && !startsWithOpusTags(packetBuf)) {
+                        audioPackets++
                         onPacket(packetBuf)
                     }
                 }
             }
             offset = bodyEnd
         }
-        require(offset == size) { "Truncated Ogg page header" }
+        // 1..26 bytes left (too short for a page header) are a truncated tail, not a clean end.
+        if (offset < size) truncated = true
 
-        // EOS with a continued packet (segSize==255 only) — emit or fail loudly.
-        if (packetParts.isNotEmpty()) {
+        if (truncated) {
+            // The cut page's partial packet is dropped; complete pages before it are kept.
+            packetParts.clear()
+        } else if (packetParts.isNotEmpty()) {
+            // Clean EOF with a still-continued packet (last segment was 255 bytes): emit it, but flag it.
             require(sawIdHeader) { "Trailing Ogg packet without OpusHead" }
             val packetBuf = concatPackets(packetParts)
             packetParts.clear()
+            truncated = true
             if (!startsWithOpusTags(packetBuf)) {
+                audioPackets++
                 onPacket(packetBuf)
             }
         }
 
         require(sawIdHeader) { "No OpusHead page found in Ogg stream" }
-        return OpusStreamMeta(sampleRateHz = sampleRate, channels = channels)
+        // Salvage only when something decodable survived; otherwise fail loudly.
+        require(!truncated || audioPackets > 0) { "Ogg stream truncated before any complete audio packet" }
+        return OpusStreamMeta(sampleRateHz = sampleRate, channels = channels, truncated = truncated)
     }
 
     private fun concatPackets(parts: List<ByteArray>): ByteArray {

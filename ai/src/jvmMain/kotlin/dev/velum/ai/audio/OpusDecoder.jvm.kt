@@ -50,7 +50,7 @@ class KopusOpusDecoder : OpusDecoder {
             var samples = ShortArray(0)
             var count = 0
             try {
-                OggOpusDemuxer.demuxForEach(
+                val streamMeta = OggOpusDemuxer.demuxForEach(
                     oggBytes = oggBytes,
                     onHeader = { sampleRateHz, ch ->
                         rate = normalizeRate(sampleRateHz)
@@ -84,6 +84,7 @@ class KopusOpusDecoder : OpusDecoder {
                     samples = samples.copyOf(count),
                     sampleRateHz = rate,
                     channels = channels,
+                    truncated = streamMeta.truncated,
                 )
             } finally {
                 decoder?.close()
@@ -106,7 +107,7 @@ class KopusOpusDecoder : OpusDecoder {
             var byteChunk = ByteArray(0)
             var sizeBytes = 0L
             try {
-                demux(
+                val streamMeta = demux(
                     { sampleRateHz, ch ->
                         rate = normalizeRate(sampleRateHz)
                         channels = ch.coerceIn(1, 2)
@@ -139,6 +140,7 @@ class KopusOpusDecoder : OpusDecoder {
                     sampleRateHz = rate,
                     channels = channels,
                     sizeBytes = sizeBytes,
+                    truncated = streamMeta.truncated,
                 )
             } finally {
                 decoder?.close()

@@ -152,15 +152,60 @@ class OggOpusPlaudSyntheticTest {
                 OggOpusDemuxer.demux(ogg(ch, 48_000, 1))
             }
         }
-        assertFailsWith<IllegalArgumentException>("version 16") {
-            OggOpusDemuxer.demux(ogg(1, 48_000, 1, opusHead(1, 48_000, version = 16)))
+        assertFailsWith<IllegalArgumentException>("version 0x10") {
+            OggOpusDemuxer.demux(ogg(1, 48_000, 1, opusHead(1, 48_000, version = 0x10)))
         }
     }
 
     @Test
-    fun truncated_pages_fail_loudly_at_every_cut() {
+    fun opus_head_major_version_zero_is_accepted_and_nibble_boundary_is_exact() {
+        // RFC 7845: low nibble is the minor version (any), high nibble must be 0.
+        for (v in listOf(0x00, 0x01, 0x0F)) {
+            val s = OggOpusDemuxer.demux(ogg(2, 48_000, 1, opusHead(2, 48_000, version = v)))
+            assertEquals(2, s.channels, "version=0x${v.toString(16)}")
+            assertFalse(s.truncated)
+        }
+        assertFailsWith<IllegalArgumentException> {
+            OggOpusDemuxer.demux(ogg(1, 48_000, 1, opusHead(1, 48_000, version = 0x10)))
+        }
+    }
+
+    @Test
+    fun truncated_tail_after_complete_audio_page_is_salvaged_and_flagged() {
+        val head = page(listOf(opusHead(1, 48_000)), 0, 2) + page(listOf("OpusTags".encodeToByteArray() + ByteArray(8)), 1)
+        val a = page(List(2) { audioPacket(false) }, 2)
+        val b = page(List(2) { audioPacket(false) }, 3, 4)
+        val full = head + a + b
+        // 1..26 byte stub, mid-header, mid-segment-table and mid-body cuts of the last page.
+        val cuts = (head.size + a.size + 1) until full.size
+        for (cut in cuts) {
+            val s = OggOpusDemuxer.demux(full.copyOf(cut))
+            assertEquals(2, s.packets.size, "cut=$cut keeps the complete first audio page")
+            assertTrue(s.truncated, "cut=$cut must be flagged, never silent")
+        }
+        val clean = OggOpusDemuxer.demux(full)
+        assertEquals(4, clean.packets.size)
+        assertFalse(clean.truncated)
+        // 5 trailing bytes after a complete page.
+        val tail = OggOpusDemuxer.demux(head + a + ByteArray(5))
+        assertEquals(2, tail.packets.size)
+        assertTrue(tail.truncated)
+    }
+
+    @Test
+    fun decoder_reports_truncation_and_still_decodes_complete_pages() {
+        val head = page(listOf(opusHead(1, 48_000)), 0, 2) + page(listOf("OpusTags".encodeToByteArray() + ByteArray(8)), 1)
+        val a = page(List(2) { audioPacket(false) }, 2)
+        val meta = decode(head + a + ByteArray(7))
+        assertTrue(meta.truncated)
+        assertEquals(2 * 960 * 2L, meta.sizeBytes)
+        assertFalse(decode(head + a).truncated)
+    }
+
+    @Test
+    fun truncation_before_any_complete_audio_packet_fails_loudly() {
         val full = ogg(1, 48_000, 3)
-        // every cut inside page 2's header/segment table/body must throw, never succeed silently
+        // the only audio page is cut: nothing decodable survived, so it must throw
         val p2start = full.size - page(List(3) { audioPacket(false) }, 2, 4).size
         for (cut in (p2start + 1) until full.size) {
             assertFailsWith<IllegalArgumentException>("cut=$cut") {
