@@ -125,6 +125,42 @@ class VelumRepository(
         q.selectAllRecordings().executeAsList()
     }
 
+    /**
+     * #113 dedup key: device session id + real device serial. Includes trashed rows. Without a serial
+     * dedup is off (returns null), so sessions from different devices can never merge.
+     */
+    suspend fun findDeviceSessionRecording(sessionId: Long, deviceSerial: String?): Recording? =
+        withContext(Dispatchers.Default) {
+            val serial = deviceSerial?.takeIf { it.isNotBlank() } ?: return@withContext null
+            q.selectRecordingByDeviceSession(sessionId, serial).executeAsOneOrNull()
+        }
+
+    /** Subset of [sessionIds] already in the library for this device (one query; empty without a serial). */
+    suspend fun librarySessionIds(sessionIds: List<Long>, deviceSerial: String?): Set<Long> =
+        withContext(Dispatchers.Default) {
+            val serial = deviceSerial?.takeIf { it.isNotBlank() }
+            if (serial == null || sessionIds.isEmpty()) return@withContext emptySet()
+            // SQLite's default host-parameter limit is 999 on API 26-29: chunk the IN list.
+            sessionIds.distinct().chunked(LIBRARY_SESSION_CHUNK).flatMapTo(HashSet()) { chunk ->
+                q.selectLibrarySessionIds(serial, chunk).executeAsList().mapNotNull { it.session_id }
+            }
+        }
+
+    /** Fails (never replaces) when the device session already has a row. */
+    suspend fun insertDeviceSessionRecording(row: Recording) = withContext(Dispatchers.Default) {
+        q.insertDeviceSessionRecording(row)
+        indexRecording(row.id, row.title, row.transcript, row.summary_markdown)
+    }
+
+    /** Point an existing device-session row at re-downloaded audio; title/transcript/summary are kept. */
+    suspend fun replaceDeviceSessionAudio(id: String, localPath: String, sizeBytes: Long) =
+        withContext(Dispatchers.Default) { q.replaceDeviceSessionAudio(localPath, sizeBytes, id) }
+
+    /** Every row (trashed included) as (id, local_path) for orphan-file reconciliation. */
+    suspend fun getAllRecordingFileRefs(): List<Pair<String, String?>> = withContext(Dispatchers.Default) {
+        q.selectAllRecordingFileRefs().executeAsList().map { it.id to it.local_path }
+    }
+
     suspend fun getTemplate(id: String): Template? = withContext(Dispatchers.Default) {
         q.selectTemplateById(id).executeAsOneOrNull()
     }
@@ -816,6 +852,7 @@ class VelumRepository(
 
     companion object {
         const val META_FIRST_RUN_DONE = "first_run_done"
+        internal const val LIBRARY_SESSION_CHUNK = 500
     }
 }
 

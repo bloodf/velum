@@ -3,6 +3,7 @@ package dev.velum.core.data
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class RecordingIdCollisionTest {
@@ -16,7 +17,7 @@ class RecordingIdCollisionTest {
     }
 
     @Test
-    fun insertOrReplace_withCollidingShortId_wouldOverwrite_regressionGuard() = kotlinx.coroutines.runBlocking {
+    fun insert_withCollidingShortId_failsAndKeepsOriginal() = kotlinx.coroutines.runBlocking {
         val repo = VelumRepository(createDatabase(DriverFactory()))
         val shortId = "rec-1700000000-1234"
         repo.insertRecording(
@@ -34,23 +35,25 @@ class RecordingIdCollisionTest {
             summaryMarkdown = null,
             status = "ready",
         )
-        // Same id via INSERT OR REPLACE — demonstrates why RecordingIds must stay wide.
-        repo.insertRecording(
-            id = shortId,
-            sessionId = null,
-            folderId = null,
-            title = "Clobber",
-            source = "phone",
-            deviceSerial = null,
-            startedAt = 2,
-            durationSeconds = 1,
-            sizeBytes = 1,
-            localPath = "/b.wav",
-            transcript = "gone",
-            summaryMarkdown = null,
-            status = "ready",
-        )
-        assertEquals("Clobber", repo.getRecording(shortId)?.title)
-        assertEquals("gone", repo.getRecording(shortId)?.transcript)
+        // Plain INSERT (#113): a colliding id fails instead of clobbering the existing row.
+        assertFailsWith<Exception> {
+            repo.insertRecording(
+                id = shortId,
+                sessionId = null,
+                folderId = null,
+                title = "Clobber",
+                source = "phone",
+                deviceSerial = null,
+                startedAt = 2,
+                durationSeconds = 1,
+                sizeBytes = 1,
+                localPath = "/b.wav",
+                transcript = "gone",
+                summaryMarkdown = null,
+                status = "ready",
+            )
+        }
+        assertEquals("Keep me", repo.getRecording(shortId)?.title)
+        assertEquals("original", repo.getRecording(shortId)?.transcript)
     }
 }
