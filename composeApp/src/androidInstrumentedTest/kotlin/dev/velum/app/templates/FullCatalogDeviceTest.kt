@@ -4,7 +4,8 @@ import android.os.Bundle
 import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import app.cash.sqldelight.driver.android.AndroidSqliteDriver
+import app.cash.sqldelight.db.SqlDriver
+import dev.velum.core.data.DriverFactory
 import dev.velum.core.data.VelumRepository
 import dev.velum.core.db.VelumDatabase
 import dev.velum.core.search.FtsQuery
@@ -24,8 +25,8 @@ import org.junit.runner.RunWith
 
 /**
  * #100 on-device check of the full bundled "All" catalog: import, restart, paging order and search
- * latency against the real Android SQLite. Uses its own database file (never the app's velum.db) and
- * needs no network. Expected rows are read from the bundled asset, so the test is count-agnostic.
+ * latency through the shipping DriverFactory (bundled SQLite with FTS5). Uses its own database file
+ * (never the app's velum.db) and needs no network. Expected rows are read from the bundled asset, so the test is count-agnostic.
  *
  * Budgets are deliberately loose until measured on the reference emulator; the measured values are
  * reported as instrumentation status (key `velum.catalog`) and in logcat (tag `VelumCatalog100`).
@@ -36,12 +37,12 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class FullCatalogDeviceTest {
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
-    private lateinit var driver: AndroidSqliteDriver
+    private lateinit var driver: SqlDriver
     private lateinit var repo: VelumRepository
 
     @Before fun open() {
         context.deleteDatabase(DB_NAME)
-        driver = AndroidSqliteDriver(VelumDatabase.Schema, context, DB_NAME)
+        driver = DriverFactory(context, DB_NAME).createDriver()
         repo = VelumRepository(VelumDatabase(driver), driver)
     }
 
@@ -57,7 +58,7 @@ class FullCatalogDeviceTest {
 
         // Restart: a second repository on the same file keeps every row and the index.
         driver.close()
-        driver = AndroidSqliteDriver(VelumDatabase.Schema, context, DB_NAME)
+        driver = DriverFactory(context, DB_NAME).createDriver()
         repo = VelumRepository(VelumDatabase(driver), driver)
         assertEquals(0, repo.ensureFullTemplatesImported())
 
