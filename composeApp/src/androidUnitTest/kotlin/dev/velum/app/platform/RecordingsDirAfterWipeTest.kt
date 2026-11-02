@@ -13,6 +13,7 @@ class RecordingsDirAfterWipeTest {
     @Test
     fun path_lookup_is_disk_free_and_save_recreates_a_wiped_directory() {
         val base = Files.createTempDirectory("velum-recdir").toFile()
+        val previous = runCatching { File(recordingsDirectoryPath()).parent }.getOrNull()
         try {
             installRecordingFilesDir(base.absolutePath)
             val dir = recordingsDirectoryPath()
@@ -31,6 +32,7 @@ class RecordingsDirAfterWipeTest {
             writeBytesToPath(second, byteArrayOf(3, 4))
             assertContentEquals(byteArrayOf(3, 4), File(second).readBytes())
         } finally {
+            installRecordingFilesDir(previous)
             base.deleteRecursively()
         }
     }

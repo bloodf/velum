@@ -51,6 +51,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -462,14 +463,17 @@ fun RecordingDetailScreen(
         }
 
         if (isLiveRecording) {
-            LiveTranscriptPane(
-                container = container,
-                recordingId = recordingId,
-                title = recording?.title.orEmpty(),
-                initialTranscript = recording?.transcript,
-                initialElapsedSeconds = recording?.duration_seconds ?: 0L,
-                onStoppedAndQueued = { /* status observed via Flow */ },
-            )
+            // The tablet pane reuses this slot: state and transcript must never carry over to another recording.
+            key(recordingId) {
+                LiveTranscriptPane(
+                    container = container,
+                    recordingId = recordingId,
+                    title = recording?.title.orEmpty(),
+                    initialTranscript = recording?.transcript,
+                    initialElapsedSeconds = recording?.duration_seconds ?: 0L,
+                    onStoppedAndQueued = { /* status observed via Flow */ },
+                )
+            }
         } else if (tab == 0) {
             SourcesPane(
                 player = audioPlayer,
@@ -1150,7 +1154,8 @@ internal fun LiveTranscriptPane(
     initialTranscript: String? = null,
     initialElapsedSeconds: Long = 0L,
     onStoppedAndQueued: () -> Unit = {},
-    openTranscriber: (AppContainer) -> StreamingTranscriber = ::openStreamingTranscriber,
+    openTranscriber: (AppContainer) -> StreamingTranscriber? = ::openStreamingTranscriber,
+    finishWaitMs: Long = LIVE_FINISH_WAIT_MS,
 ) {
     val strings = LocalStrings.current
     val seededTranscript = initialTranscript?.takeIf { it.isNotBlank() }
@@ -1173,7 +1178,12 @@ internal fun LiveTranscriptPane(
     val finished = remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     // Capture only ever enqueues, so it never waits for the model or for decoding.
-    val pcmQueue = remember { Channel<ByteArray>(LIVE_PCM_BACKLOG_CHUNKS, BufferOverflow.DROP_OLDEST) }
+    val previewHasGap = remember { mutableStateOf(false) }
+    val pcmQueue = remember {
+        Channel<ByteArray>(LIVE_PCM_BACKLOG_CHUNKS, BufferOverflow.DROP_OLDEST) {
+            if (!finished.value) previewHasGap.value = true
+        }
+    }
     val finalTranscript = remember { CompletableDeferred<String?>() }
     val wavPath = remember(recordingId) {
         "${recordingsDirectoryPath()}/$recordingId.wav"
@@ -1183,14 +1193,17 @@ internal fun LiveTranscriptPane(
     // Seeded transcript (Roborazzi / resume) — keep it visible; skip PCM demo overwrite.
     val preserveSeeded = seededTranscript != null
 
-    // The queue closing (Stop or leaving the screen) ends the transcriber coroutine below.
+    // Cancelling the queue (Stop or leaving the screen) ends the transcriber coroutine below and drops
+    // any backlog: decoding it would only delay Stop, and the queued recording is retranscribed from the WAV.
     suspend fun finishTranscript(): String? {
         finished.value = true
-        pcmQueue.close()
-        return savableLiveTranscript(withTimeoutOrNull(LIVE_FINISH_WAIT_MS) { finalTranscript.await() } ?: partial)
+        pcmQueue.cancel()
+        val text = withTimeoutOrNull(finishWaitMs) { finalTranscript.await() } ?: partial
+        // Text with a hole in the middle must not pass for the transcript if retranscribing fails.
+        return if (previewHasGap.value) null else savableLiveTranscript(text)
     }
 
-    // Opening a model is a native load: off the main thread. NonCancellable because this coroutine
+    // Opening a model is a blocking native load: on IO. NonCancellable because this coroutine
     // owns the native handle from open to finish, including when the screen leaves during the load.
     LaunchedEffect(Unit) {
         // A seeded transcript is never replaced by streaming, so no model is opened for it.
@@ -1198,7 +1211,7 @@ internal fun LiveTranscriptPane(
             finalTranscript.complete(null)
             return@LaunchedEffect
         }
-        withContext(NonCancellable + Dispatchers.Default) {
+        withContext(NonCancellable + Dispatchers.IO) {
             finalTranscript.complete(
                 transcribeQueuedPcm(
                     open = { openTranscriber(container) },
@@ -1260,7 +1273,7 @@ internal fun LiveTranscriptPane(
             pcmSubscription?.close()
             pcmSubscription = null
             finished.value = true
-            pcmQueue.close()
+            pcmQueue.cancel()
         }
     }
 
@@ -1490,7 +1503,7 @@ internal fun LiveTranscriptPane(
 
 // ponytail: live preview only, the WAV never depends on it. At 40-130 ms per chunk this holds a slow
 // model load (about 40 s or more); older audio is dropped from the preview past that.
-private const val LIVE_PCM_BACKLOG_CHUNKS = 1024
+internal const val LIVE_PCM_BACKLOG_CHUNKS = 1024
 
 // Stop must not hang on a stuck native load. The queued recording is retranscribed from the WAV anyway.
 private const val LIVE_FINISH_WAIT_MS = 30_000L
@@ -1507,9 +1520,10 @@ internal fun savableLiveTranscript(markdown: String): String? {
 /**
  * Feeds queued PCM to a transcriber opened here and always finishes it once [pcm] closes.
  * Returns the final transcript, or null when no model could produce one (the WAV is unaffected).
+ * Audio captured before the screen attaches never reaches this queue, only the WAV.
  */
 private suspend fun transcribeQueuedPcm(
-    open: () -> StreamingTranscriber,
+    open: () -> StreamingTranscriber?,
     pcm: ReceiveChannel<ByteArray>,
     languageHint: String?,
     onPartial: (String) -> Unit,
@@ -1520,13 +1534,14 @@ private suspend fun transcribeQueuedPcm(
         streamer.onPartial = onPartial
         streamer.start(16_000, languageHint, null)
     }.onFailure { logFailure("start", it) }.isSuccess
-    if (started) {
-        for (chunk in pcm) runCatching { streamer.pushPcm(chunk) }.onFailure { logFailure("push", it) }
+    while (started) {
+        val chunk = pcm.receiveCatching().getOrNull() ?: break
+        runCatching { streamer.pushPcm(chunk) }.onFailure { logFailure("push", it) }
     }
     return runCatching { streamer.finish() }.onFailure { logFailure("finish", it) }.getOrNull()
 }
 
-private fun openStreamingTranscriber(container: AppContainer): StreamingTranscriber {
+internal fun openStreamingTranscriber(container: AppContainer): StreamingTranscriber? {
     val lang = container.settingsRepository.settings.value.audioLanguage
     val offlineId = LocalAsrRouter.chooseModelId(lang)
     val preferredIds = listOf(
@@ -1547,7 +1562,8 @@ private fun openStreamingTranscriber(container: AppContainer): StreamingTranscri
         val created = runCatching { createStreamingTranscriber(path, modelId) }.getOrNull()
         if (created != null) return created
     }
-    return FakeStreamingTranscriber()
+    // The fake's "chunk 1280B" lines are for the desktop/iOS demo only, never a real recording's transcript.
+    return if (container.micCapture.isSupported) null else FakeStreamingTranscriber()
 }
 
 /** Synthetic PCM16 mono chunk (~640 ms) for offline streaming demos. */

@@ -16,7 +16,9 @@ import dev.velum.ai.pipeline.RecordingJobScheduler
 import dev.velum.app.di.AppContainer
 import dev.velum.app.i18n.LocalStrings
 import dev.velum.app.i18n.PtBr
+import dev.velum.app.ui.recording.LIVE_PCM_BACKLOG_CHUNKS
 import dev.velum.app.ui.recording.LiveTranscriptPane
+import dev.velum.app.ui.recording.openStreamingTranscriber
 import dev.velum.app.ui.recording.savableLiveTranscript
 import dev.velum.app.ui.theme.VelumTheme
 import dev.velum.core.data.DriverFactory
@@ -56,7 +58,7 @@ class LiveTranscriberHandoffTest {
     private lateinit var container: AppContainer
     private lateinit var activity: ActivityController<ComponentActivity>
     private lateinit var recordingId: String
-    private var destroyed = false
+    private var destroyed = true
     private var queued = 0
     @Volatile private var modelMissing = false
 
@@ -69,15 +71,22 @@ class LiveTranscriberHandoffTest {
             modelStoreRoot = ModelStoreDir(File(root, "models").path), micCapture = mic,
             recordingJobSchedulerFactory = { _, _ -> RecordingJobScheduler { _, _, _, _ -> queued++ } })
         recordingId = runBlocking { container.createLocalRecording(status = "recording") }
+    }
+
+    private fun showPane(
+        finishWaitMs: Long = 30_000,
+        open: (AppContainer) -> StreamingTranscriber? = {
+            assertTrue(modelLoad.await(30, TimeUnit.SECONDS), "Synthetic model load was never released")
+            check(!modelMissing) { "Synthetic model failure" }
+            transcriber
+        },
+    ) {
+        destroyed = false
         activity = Robolectric.buildActivity(ComponentActivity::class.java).setup()
         activity.get().setContent {
             CompositionLocalProvider(LocalStrings provides PtBr) {
                 VelumTheme(darkTheme = false) {
-                    LiveTranscriptPane(container, recordingId, title = "", openTranscriber = {
-                        assertTrue(modelLoad.await(30, TimeUnit.SECONDS), "Synthetic model load was never released")
-                        check(!modelMissing) { "Synthetic model failure" }
-                        transcriber
-                    })
+                    LiveTranscriptPane(container, recordingId, title = "", openTranscriber = open, finishWaitMs = finishWaitMs)
                 }
             }
         }
@@ -86,13 +95,15 @@ class LiveTranscriberHandoffTest {
 
     @After fun tearDown() {
         modelLoad.countDown()
+        transcriber.pushGate.countDown()
         leaveScreen()
         installRecordingFilesDir(ApplicationProvider.getApplicationContext<Application>().filesDir.path)
         container.databaseHandle.driver.close()
         root.deleteRecursively()
     }
 
-    @Test fun capture_starts_during_the_load_and_its_first_audio_reaches_the_transcriber() {
+    @Test fun capture_starts_during_the_load_and_attached_audio_reaches_the_transcriber() {
+        showPane()
         assertEquals(1, mic.starts)
         assertEquals(0, transcriber.starts.get())
         compose.onAllNodesWithText(PtBr.micStartFailed).fetchSemanticsNodes().let { assertTrue(it.isEmpty()) }
@@ -106,6 +117,7 @@ class LiveTranscriberHandoffTest {
     }
 
     @Test fun leaving_during_the_load_still_finishes_the_late_transcriber() {
+        showPane()
         leaveScreen()
         assertEquals(0, transcriber.finishes.get())
 
@@ -117,6 +129,7 @@ class LiveTranscriberHandoffTest {
     }
 
     @Test fun stop_during_the_load_finalizes_the_recording_with_the_transcript() {
+        showPane()
         compose.onNodeWithContentDescription(PtBr.stopRecording).performClick()
         modelLoad.countDown()
 
@@ -129,6 +142,7 @@ class LiveTranscriberHandoffTest {
     }
 
     @Test fun stop_turns_the_mic_off_before_the_transcript_wait_ends() {
+        showPane()
         compose.onNodeWithContentDescription(PtBr.stopRecording).performClick()
 
         compose.waitUntil(10_000) { mic.stops == 1 }
@@ -138,6 +152,7 @@ class LiveTranscriberHandoffTest {
     }
 
     @Test fun leaving_during_the_transcript_wait_still_finalizes_and_queues() {
+        showPane()
         compose.onNodeWithContentDescription(PtBr.stopRecording).performClick()
         compose.waitUntil(10_000) { mic.stops == 1 }
 
@@ -152,6 +167,7 @@ class LiveTranscriberHandoffTest {
     }
 
     @Test fun stop_without_any_transcribed_text_persists_no_placeholder() {
+        showPane()
         compose.onNodeWithContentDescription(PtBr.stopRecording).performClick()
         modelMissing = true
         modelLoad.countDown()
@@ -160,6 +176,91 @@ class LiveTranscriberHandoffTest {
         val row = recordingRow()
         assertEquals("queued", row.status)
         assertEquals(null, row.transcript)
+    }
+
+    @Test fun a_stuck_load_cannot_hold_stop_past_the_limit_and_is_still_finished_later() {
+        showPane(finishWaitMs = 200)
+        compose.onNodeWithContentDescription(PtBr.stopRecording).performClick()
+
+        compose.waitUntil(10_000) { queued == 1 }
+        assertEquals("queued", recordingRow().status)
+        assertEquals(null, recordingRow().transcript)
+        assertEquals(0, transcriber.finishes.get())
+
+        modelLoad.countDown()
+        assertTrue(transcriber.finished.await(10, TimeUnit.SECONDS), "Late transcriber was never finished")
+    }
+
+    @Test fun backlog_overflow_drops_the_oldest_audio_and_saves_no_text_with_a_gap() {
+        showPane()
+        val extra = 5
+        (1..LIVE_PCM_BACKLOG_CHUNKS + extra).forEach { mic.onPcmChunk!!.invoke(byteArrayOf(it.toByte())) }
+        modelLoad.countDown()
+
+        compose.waitUntil(10_000) { transcriber.pushed.size == LIVE_PCM_BACKLOG_CHUNKS }
+        assertEquals((extra + 1).toByte(), transcriber.pushed.first())
+
+        compose.onNodeWithContentDescription(PtBr.stopRecording).performClick()
+        compose.waitUntil(10_000) { queued == 1 }
+        assertEquals(null, recordingRow().transcript)
+    }
+
+    @Test fun leaving_skips_the_queued_backlog_and_finishes_immediately() {
+        val held = CountDownLatch(1)
+        transcriber.pushGate = held
+        showPane()
+        mic.onPcmChunk!!.invoke(byteArrayOf(1))
+        modelLoad.countDown()
+        assertTrue(transcriber.pushEntered.await(10, TimeUnit.SECONDS), "First push never started")
+        mic.onPcmChunk!!.invoke(byteArrayOf(2))
+        mic.onPcmChunk!!.invoke(byteArrayOf(3))
+
+        leaveScreen()
+        held.countDown()
+
+        assertTrue(transcriber.finished.await(10, TimeUnit.SECONDS), "Transcriber was never finished")
+        assertEquals(listOf<Byte>(1), transcriber.pushed.toList())
+    }
+
+    @Test fun a_failed_start_still_finishes_the_transcriber_and_leaves_capture_alone() {
+        transcriber.failStart = true
+        showPane()
+        modelLoad.countDown()
+
+        assertTrue(transcriber.finished.await(10, TimeUnit.SECONDS), "Transcriber was never finished")
+        assertEquals(0, mic.stops)
+        assertTrue(mic.onPcmChunk != null)
+
+        compose.onNodeWithContentDescription(PtBr.stopRecording).performClick()
+        compose.waitUntil(10_000) { queued == 1 }
+        assertEquals("queued", recordingRow().status)
+    }
+
+    @Test fun returning_to_a_running_recording_reattaches_without_a_second_capture() {
+        modelLoad.countDown()
+        showPane()
+        compose.waitUntil(10_000) { transcriber.starts.get() == 1 }
+        leaveScreen()
+        assertTrue(transcriber.finished.await(10, TimeUnit.SECONDS), "First transcriber was never finished")
+        assertEquals(null, mic.onPcmChunk)
+
+        showPane()
+        compose.waitUntil(10_000) { transcriber.starts.get() == 2 }
+        mic.onPcmChunk!!.invoke(byteArrayOf(9))
+
+        compose.waitUntil(10_000) { transcriber.pushed.toList() == listOf<Byte>(9) }
+        assertEquals(1, mic.starts)
+        assertEquals(0, mic.stops)
+    }
+
+    @Test fun no_ready_model_on_a_real_mic_saves_no_fake_transcript() {
+        showPane(open = ::openStreamingTranscriber)
+        mic.onPcmChunk!!.invoke(ByteArray(32))
+
+        compose.onNodeWithContentDescription(PtBr.stopRecording).performClick()
+
+        compose.waitUntil(10_000) { queued == 1 }
+        assertEquals(null, recordingRow().transcript)
     }
 
     @Test fun only_real_text_is_savable_and_never_with_the_preview_header() {
@@ -195,8 +296,18 @@ class LiveTranscriberHandoffTest {
         val pushed = CopyOnWriteArrayList<Byte>()
         override val engineId = "synthetic-slow-open"
         override var onPartial: (String) -> Unit = {}
-        override fun start(sampleRateHz: Int, languageHint: String?, initialPrompt: String?) { starts.incrementAndGet() }
-        override fun pushPcm(pcm16Le: ByteArray) { pushed += pcm16Le.toList() }
+        @Volatile var failStart = false
+        @Volatile var pushGate = CountDownLatch(0)
+        val pushEntered = CountDownLatch(1)
+        override fun start(sampleRateHz: Int, languageHint: String?, initialPrompt: String?) {
+            starts.incrementAndGet()
+            check(!failStart) { "Synthetic start failure" }
+        }
+        override fun pushPcm(pcm16Le: ByteArray) {
+            pushEntered.countDown()
+            pushGate.await(30, TimeUnit.SECONDS)
+            pushed += pcm16Le.toList()
+        }
         override fun finish(): String { finishes.incrementAndGet(); finished.countDown(); return FINAL }
         companion object { const val FINAL = "Synthetic final transcript" }
     }

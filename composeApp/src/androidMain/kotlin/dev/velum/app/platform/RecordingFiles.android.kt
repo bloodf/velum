@@ -9,7 +9,7 @@ import java.nio.file.StandardOpenOption
 
 private var filesDirPath: String? = null
 
-fun installRecordingFilesDir(path: String) {
+fun installRecordingFilesDir(path: String?) {
     filesDirPath = path
 }
 
