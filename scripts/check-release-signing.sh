@@ -133,10 +133,7 @@ if with_test_key ./gradlew :composeApp:assembleRelease -Pvelum.unsignedRelease=t
 fi
 grep -q 'cannot be combined with VELUM_UPLOAD' "$check_dir/gradle.log" || {
   echo 'FAIL: unsignedRelease+signing failed for another reason'; cat "$check_dir/gradle.log"; exit 1; }
-# F-Droid metadata and fastlane changelogs must follow the universal versionCode.
-grep -q "^    versionCode: $universal_code\$" metadata/dev.velum.app.yml || { echo "FAIL: metadata versionCode != $universal_code"; exit 1; }
+# F-Droid auto-update fields must follow the universal versionCode too (versionCode and changelogs are
+# already asserted above).
 grep -q "^CurrentVersionCode: $universal_code\$" metadata/dev.velum.app.yml || { echo "FAIL: CurrentVersionCode != $universal_code"; exit 1; }
-for lang_dir in fastlane/metadata/android/*/changelogs; do
-  [[ -f "$lang_dir/$universal_code.txt" ]] || { echo "FAIL: missing $lang_dir/$universal_code.txt"; exit 1; }
-done
-echo 'PASS: unsigned F-Droid release path, metadata and changelogs match versionCode'
+echo 'PASS: unsigned F-Droid release path matches the universal versionCode'
