@@ -4,6 +4,7 @@ CREATE TABLE folder (
   created_at INTEGER NOT NULL
 );
 
+-- recording.processing_warning: stable code (never free text) for a non-fatal processing issue, e.g. 'truncated_audio'. NULL = none.
 CREATE TABLE recording (
   id TEXT NOT NULL PRIMARY KEY,
   session_id INTEGER,
@@ -19,7 +20,8 @@ CREATE TABLE recording (
   summary_markdown TEXT,
   status TEXT NOT NULL DEFAULT 'ready',
   trashed INTEGER NOT NULL DEFAULT 0,
-  created_at INTEGER NOT NULL
+  created_at INTEGER NOT NULL,
+  processing_warning TEXT
 );
 
 -- #113: one library row per (device session, real serial). Without a serial dedup is off, so two devices never merge.
@@ -123,6 +125,9 @@ UPDATE recording SET summary_markdown = ? WHERE id = ?;
 updateStatus:
 UPDATE recording SET status = ? WHERE id = ?;
 
+updateProcessingWarning:
+UPDATE recording SET processing_warning = ? WHERE id = ?;
+
 updateLocalPath:
 UPDATE recording SET local_path = ?, duration_seconds = ?, size_bytes = ? WHERE id = ?;
 
@@ -145,7 +150,7 @@ insertDeviceSessionRecording:
 INSERT INTO recording VALUES ?;
 
 replaceDeviceSessionAudio:
-UPDATE recording SET local_path = ?, size_bytes = ?, trashed = 0 WHERE id = ?;
+UPDATE recording SET local_path = ?, size_bytes = ?, trashed = 0, processing_warning = NULL WHERE id = ?;
 
 selectAllRecordingFileRefs:
 SELECT id, local_path FROM recording;

@@ -7,6 +7,6 @@ import kotlin.test.assertEquals
 class SchemaVersionTest {
     @Test
     fun schema_version_is_five_after_device_session_index() {
-        assertEquals(5L, VelumDatabase.Schema.version)
+        assertEquals(6L, VelumDatabase.Schema.version)
     }
 }

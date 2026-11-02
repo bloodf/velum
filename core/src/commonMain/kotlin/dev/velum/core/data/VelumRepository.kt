@@ -342,6 +342,11 @@ class VelumRepository(
         q.updateStatus(status, id)
     }
 
+    /** [code] is a [dev.velum.core.model.ProcessingWarning] constant, or null to clear. */
+    suspend fun setProcessingWarning(id: String, code: String?) = withContext(Dispatchers.Default) {
+        q.updateProcessingWarning(code, id)
+    }
+
     suspend fun updateLocalPath(
         id: String,
         localPath: String,

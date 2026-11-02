@@ -1,0 +1,2 @@
+-- #86/#95: stable-code warning for a recording whose audio decoded only partially (e.g. 'truncated_audio').
+ALTER TABLE recording ADD COLUMN processing_warning TEXT;

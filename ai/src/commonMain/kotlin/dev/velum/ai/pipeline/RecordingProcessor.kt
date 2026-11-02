@@ -16,6 +16,7 @@ import dev.velum.ai.local.ModelNotReadyException
 import dev.velum.ai.local.ModelStoreDir
 import dev.velum.ai.local.defaultModelStoreRoot
 import dev.velum.core.data.VelumRepository
+import dev.velum.core.model.ProcessingWarning
 import dev.velum.core.model.ComputeMode
 import dev.velum.core.settings.AiApiTask
 import dev.velum.core.settings.ApiModelOverride
@@ -62,6 +63,7 @@ class RecordingProcessor(
                 .resolve("tmp")
                 .resolve("pcm-$recordingId")
             var pcmBuffer: PcmAudioBuffer = PcmAudioBuffer.Memory(ByteArray(0))
+            var truncatedAudio = false
             try {
             if (!localPath.isNullOrBlank()) {
                 emit(JobProgress.Running(0.1f, "Decoding audio"))
@@ -76,7 +78,10 @@ class RecordingProcessor(
                     val meta = createOpusDecoder().decodePathToPcmFile(localPath, pcmFile)
                     sampleRate = meta.sampleRateHz
                     pcmBuffer = PcmAudioBuffer.fromExistingFile(pcmFile, meta.sizeBytes)
-                    if (meta.truncated) emit(JobProgress.Running(0.2f, TRUNCATED_AUDIO_MESSAGE))
+                    if (meta.truncated) {
+                        truncatedAudio = true
+                        emit(JobProgress.Running(0.2f, TRUNCATED_AUDIO_MESSAGE))
+                    }
                 } else if (filename.endsWith(".wav", ignoreCase = true)) {
                     // Stream WAV from disk — probe header only, then copy PCM slices.
                     val src = ModelStoreDir(localPath)
@@ -104,7 +109,10 @@ class RecordingProcessor(
                         val meta = createOpusDecoder().decodeToPcmFile(raw, pcmFile)
                         sampleRate = meta.sampleRateHz
                         pcmBuffer = PcmAudioBuffer.fromExistingFile(pcmFile, meta.sizeBytes)
-                        if (meta.truncated) emit(JobProgress.Running(0.2f, TRUNCATED_AUDIO_MESSAGE))
+                        if (meta.truncated) {
+                            truncatedAudio = true
+                            emit(JobProgress.Running(0.2f, TRUNCATED_AUDIO_MESSAGE))
+                        }
                     } else if (looksLikeWav(raw)) {
                         val range = locateWavPcm(raw)
                         sampleRate = range.sampleRateHz
@@ -125,6 +133,11 @@ class RecordingProcessor(
                         pcmBuffer = PcmAudioBuffer.fromPcmBytes(raw, spillRoot)
                     }
                 }
+                // Persist (or clear) the stable warning code so the UI can show it after the job ends.
+                repository.setProcessingWarning(
+                    recordingId,
+                    if (truncatedAudio) ProcessingWarning.TRUNCATED_AUDIO else null,
+                )
             } else {
                 // Demo / seed rows have no audio file — keep existing transcript path for summary-only.
                 filename = "missing.ogg"

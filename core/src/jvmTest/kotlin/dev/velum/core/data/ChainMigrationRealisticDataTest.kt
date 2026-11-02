@@ -88,7 +88,7 @@ Bob: ok', '## Sprint planning
             0,
         )
 
-        VelumDatabase.Schema.migrate(driver, oldVersion = 1, newVersion = 5)
+        VelumDatabase.Schema.migrate(driver, oldVersion = 1, newVersion = 6)
         // Mark seed current so maybeSeed does not wipe/replace library rows under test.
         driver.execute(
             null,
@@ -129,7 +129,7 @@ Bob: ok', '## Sprint planning
         val glossary = db.velumQueries.selectGlossary().executeAsList()
         assertTrue(glossary.any { it.term == "Velum" })
 
-        assertEquals(5, VelumDatabase.Schema.version)
+        assertEquals(6, VelumDatabase.Schema.version)
         assertEquals("rec-v1", repo.findDeviceSessionRecording(42, "SN-OLD")?.id)
     }
 

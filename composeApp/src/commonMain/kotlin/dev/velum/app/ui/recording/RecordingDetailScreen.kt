@@ -88,6 +88,7 @@ import dev.velum.app.platform.MicStartResult
 import dev.velum.app.platform.WavWriter
 import dev.velum.app.platform.createAudioPlayer
 import dev.velum.app.platform.MicStopResult
+import dev.velum.app.i18n.processingWarningText
 import dev.velum.app.platform.finalizeMicRecording
 import dev.velum.app.platform.localizedLabel
 import dev.velum.app.platform.shouldUseDemoPcm
@@ -396,6 +397,15 @@ fun RecordingDetailScreen(
         if (pausedThermal) {
             Text(
                 strings.pausedThermal,
+                color = Color(0xFFB45309),
+                fontSize = 13.sp,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+            )
+        }
+
+        strings.processingWarningText(recording?.processing_warning)?.let { warning ->
+            Text(
+                warning,
                 color = Color(0xFFB45309),
                 fontSize = 13.sp,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
