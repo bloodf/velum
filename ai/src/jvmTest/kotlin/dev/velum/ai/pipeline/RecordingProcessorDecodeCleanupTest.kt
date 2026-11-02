@@ -30,6 +30,7 @@ import kotlin.math.sin
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlinx.coroutines.CompletableDeferred
@@ -286,6 +287,13 @@ class RecordingProcessorDecodeCleanupTest {
         } finally {
             root.deleteRecursively()
         }
+    }
+
+    @Test
+    fun existing_pcm_file_with_wrong_length_fails_loudly() {
+        val f = File.createTempFile("velum-197-len", ".s16le").apply { writeBytes(ByteArray(100)); deleteOnExit() }
+        assertFailsWith<IllegalStateException> { PcmAudioBuffer.fromExistingFile(ModelStoreDir(f.path), 200L) }
+        assertEquals(100L, PcmAudioBuffer.fromExistingFile(ModelStoreDir(f.path), 100L).sizeBytes)
     }
 
     @Test

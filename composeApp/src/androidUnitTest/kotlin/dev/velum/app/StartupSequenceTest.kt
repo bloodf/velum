@@ -60,4 +60,15 @@ class StartupSequenceTest {
             assertEquals(first, successPath.lastIndexOf(marker), "$marker must appear once on the success path")
         }
     }
+
+    /** #197: the PCM spill sweep must run before a re-run job can exist, i.e. before AiRuntimeHolder.install. */
+    @Test fun pcm_spill_sweep_runs_before_worker_gate_opens() {
+        val src = listOf(
+            File("src/androidMain/kotlin/dev/velum/app/VelumApplication.kt"),
+            File("composeApp/src/androidMain/kotlin/dev/velum/app/VelumApplication.kt"),
+        ).first { it.isFile }.readText()
+        val sweep = src.indexOf("sweepOrphanPcmSpill()")
+        val install = src.indexOf("AiRuntimeHolder.install(")
+        assertTrue(sweep in 0 until install, "sweepOrphanPcmSpill must precede AiRuntimeHolder.install")
+    }
 }

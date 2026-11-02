@@ -66,6 +66,12 @@ class VelumApplication : Application() {
             try {
                 // filesDir / models path are disk reads — stay on Dispatchers.IO.
                 installRecordingFilesDir(filesDir.absolutePath)
+                // Before AiRuntimeHolder.install: WorkManager can re-run a killed job as soon as the
+                // holder is set, and it would race this sweep for its own tmp/pcm-<id> (#197).
+                runCatching {
+                    val spills = sweepOrphanPcmSpill()
+                    if (spills > 0) Log.i(TAG, "Removed $spills orphaned PCM spill dir(s)")
+                }.onFailure { t -> Log.w(TAG, "PCM spill sweep failed (${t::class.simpleName})") }
                 val modelsDir = File(filesDir, "models")
                 val built = AppContainer(
                     secureStore = AndroidSecureStore(appContext),
@@ -98,10 +104,6 @@ class VelumApplication : Application() {
                             )
                             if (swept.isNotEmpty()) Log.i(TAG, "Removed ${swept.size} stale download part(s)")
                         }.onFailure { t -> Log.w(TAG, "Stale download sweep failed (${t::class.simpleName})") }
-                        runCatching {
-                            val spills = sweepOrphanPcmSpill()
-                            if (spills > 0) Log.i(TAG, "Removed $spills orphaned PCM spill dir(s)")
-                        }.onFailure { t -> Log.w(TAG, "PCM spill sweep failed (${t::class.simpleName})") }
                         val report = sweepOrphanRecordingAudio(recordingsDirectoryPath(), c.repository::getAllRecordingFileRefs)
                         Log.i(TAG, "Orphan audio sweep: quarantined=${report.quarantined} purged=${report.purged} staleTemps=${report.staleTemps} failedMoves=${report.failedMoves}")
                     },
