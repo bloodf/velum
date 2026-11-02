@@ -24,6 +24,9 @@ class FakeBleTransport(
     private val serial: String = "881FAKE1",
     private val name: String = "PLAUD NOTE PRO",
 ) : BleTransport {
+    /** Runs before each write, for tests of a link whose write suspends or hangs. */
+    var beforeWrite: suspend () -> Unit = {}
+
     override val isAvailable: Boolean = true
 
     private val _state = MutableStateFlow<BleConnectionState>(BleConnectionState.Idle)
@@ -66,6 +69,7 @@ class FakeBleTransport(
     }
 
     override suspend fun writeRaw(write: GattWrite) {
+        beforeWrite()
         check(_state.value is BleConnectionState.Connected) { "Not connected" }
         peripheral.onWrite(write.bytes)
     }
