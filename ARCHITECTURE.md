@@ -43,11 +43,12 @@ There are three input paths:
    and the `DeviceKeyImporter` contract in
    [SecureStore.kt](core/src/commonMain/kotlin/dev/velum/core/security/SecureStore.kt).
    [PlaudRecorderDriver](recorder/src/commonMain/kotlin/dev/velum/recorder/plaud/PlaudRecorderDriver.kt)
-   handles recorder operations over the supplied transport. Downloaded bytes pass
-   through `PlaudFileCrypto` before `AppContainer.persistDownloadedSession`
-   writes a local file, inserts a recording and queues processing. The production
-   persistence boundary still accepts a full `ByteArray`; this is not proof of
-   bounded-memory multi-hour imports (#86). Session deduplication remains #113.
+   handles recorder operations over the supplied transport. Downloaded bytes go to
+   a temp file, then `PlaudFileCrypto.decryptStream` decrypts them in bounded
+   pieces into `<id>.part`, which `AppContainer.persistDownloadedSession` renames
+   to its final name before inserting a recording and queuing processing. JVM tests
+   bound the pieces and heap; multi-hour hardware captures are still unvalidated
+   (#86, #6). Session deduplication remains #113.
 2. File import starts in
    [AudioImportPipeline](composeApp/src/commonMain/kotlin/dev/velum/app/importing/AudioImportPipeline.kt).
    It hashes the source, normalizes audio using the platform `AudioNormalizer`,

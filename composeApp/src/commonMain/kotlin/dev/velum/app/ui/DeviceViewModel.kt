@@ -2,6 +2,7 @@ package dev.velum.app.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import dev.velum.ai.local.ModelStoreDir
 import dev.velum.app.i18n.DeviceUiCopy
 import dev.velum.app.platform.DownloadNotifyKind
 import dev.velum.app.platform.DownloadProgressNotifier
@@ -23,6 +24,8 @@ import dev.velum.recorder.RecorderDriverRegistry
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -51,8 +54,11 @@ data class DownloadedSessionAudio(
     val sessionId: Long,
     val deviceSerial: String?,
     val startedAtEpochSeconds: Long,
-    val sizeBytes: Long,
-    val decryptedBytes: ByteArray,
+    /**
+     * Streams decrypted audio into the sink in bounded chunks (never the whole file at
+     * once) and returns the total byte count. Throws on decrypt failure or cancellation.
+     */
+    val writeDecryptedAudio: (sink: (ByteArray) -> Unit) -> Long,
 )
 
 class DeviceViewModel(
@@ -249,27 +255,40 @@ class DeviceViewModel(
             _sessionUi.value = _sessionUi.value.copy(downloadProgress = progress)
             DownloadProgressNotifier.update(DownloadNotifyKind.DeviceSession, progress)
         }
+        val job = currentCoroutineContext()[Job]
+        val decryptor = createFileDecryptor()
         val temp = createTempSessionFile()
-        val encrypted = if (temp != null) {
-            try {
+        try {
+            val size: Long
+            val readAt: (Long, Int) -> ByteArray
+            if (temp != null) {
                 client.downloadSessionTo(sessionId, sizeBytes, temp, ::onProgress)
-                temp.readAll()
-            } finally {
-                temp.delete()
+                val source = ModelStoreDir(temp.absolutePath())
+                size = temp.size()
+                readAt = { position, length -> source.readRange(position, length) }
+            } else {
+                val encrypted = client.downloadSession(sessionId, sizeBytes, ::onProgress)
+                size = encrypted.size.toLong()
+                readAt = { position, length ->
+                    encrypted.copyOfRange(position.toInt(), position.toInt() + length)
+                }
             }
-        } else {
-            client.downloadSession(sessionId, sizeBytes, ::onProgress)
+            return persistDownloadedSession(
+                DownloadedSessionAudio(
+                    sessionId = sessionId,
+                    deviceSerial = deviceSerial,
+                    startedAtEpochSeconds = startedAtEpochSeconds,
+                    writeDecryptedAudio = { sink ->
+                        PlaudFileCrypto.decryptStream(size, readAt, privateKeyPem, decryptor) {
+                            job?.ensureActive()
+                            sink(it)
+                        }
+                    },
+                ),
+            )
+        } finally {
+            temp?.delete()
         }
-        val decrypted = PlaudFileCrypto.decrypt(encrypted, privateKeyPem, createFileDecryptor())
-        return persistDownloadedSession(
-            DownloadedSessionAudio(
-                sessionId = sessionId,
-                deviceSerial = deviceSerial,
-                startedAtEpochSeconds = startedAtEpochSeconds,
-                sizeBytes = decrypted.size.toLong(),
-                decryptedBytes = decrypted,
-            ),
-        )
     }
 
     private fun closeClient() {

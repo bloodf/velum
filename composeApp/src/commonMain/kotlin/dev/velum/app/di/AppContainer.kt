@@ -30,7 +30,6 @@ import dev.velum.app.platform.MicCapture
 import dev.velum.app.platform.createMicCapture
 import dev.velum.app.platform.recordingsDirectoryPath
 import dev.velum.app.platform.systemLanguageTag
-import dev.velum.app.platform.writeBytesToPath
 import dev.velum.app.ui.DeviceViewModel
 import dev.velum.app.ui.DownloadedSessionAudio
 import dev.velum.app.ui.SettingsViewModel
@@ -246,13 +245,34 @@ class AppContainer(
 
     suspend fun persistDownloadedSession(session: DownloadedSessionAudio): String {
         val id = RecordingIds.newId()
-        val ext = when {
-            looksLikeOgg(session.decryptedBytes) -> "ogg"
-            looksLikeWav(session.decryptedBytes) -> "wav"
-            else -> "bin"
+        val dir = recordingsDirectoryPath()
+        // Stream to a .part file and rename once complete, so a crash, cancellation or
+        // full disk never leaves a truncated recording under its final name.
+        val part = ModelStoreDir("$dir/$id.part")
+        val head = ByteArray(12)
+        var headLen = 0
+        val sizeBytes: Long
+        val path: String
+        try {
+            part.writeBytes(ByteArray(0))
+            sizeBytes = session.writeDecryptedAudio { chunk ->
+                val n = minOf(head.size - headLen, chunk.size)
+                chunk.copyInto(head, headLen, 0, n)
+                headLen += n
+                part.appendBytes(chunk)
+            }
+            val sniff = head.copyOf(headLen)
+            val ext = when {
+                looksLikeOgg(sniff) -> "ogg"
+                looksLikeWav(sniff) -> "wav"
+                else -> "bin"
+            }
+            path = "$dir/$id.$ext"
+            check(part.renameTo(ModelStoreDir(path))) { "Could not finalize downloaded recording" }
+        } catch (t: Throwable) {
+            part.deleteFile()
+            throw t
         }
-        val path = "${recordingsDirectoryPath()}/$id.$ext"
-        writeBytesToPath(path, session.decryptedBytes)
         val started = if (session.startedAtEpochSeconds > 1_000_000_000L) {
             session.startedAtEpochSeconds
         } else {
@@ -268,7 +288,7 @@ class AppContainer(
             deviceSerial = session.deviceSerial,
             startedAt = started,
             durationSeconds = 0,
-            sizeBytes = session.sizeBytes,
+            sizeBytes = sizeBytes,
             localPath = path,
             transcript = null,
             summaryMarkdown = null,
