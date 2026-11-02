@@ -48,15 +48,17 @@ class DeviceKeyImporterTest {
         assertEquals(256, loaded?.serialSignature?.size)
 
         // Values live only under SecureKeys — never concatenate into a log string here.
-        assertTrue(store.contains(SecureKeys.DEVICE_SERIAL))
-        assertTrue(store.contains(SecureKeys.DEVICE_SERIAL_SIGNATURE))
-        assertTrue(store.contains(SecureKeys.DEVICE_BIND_TOKEN))
+        assertTrue(store.contains(SecureKeys.DEVICE_IDENTITY_BUNDLE))
+        assertFalse(store.contains(SecureKeys.DEVICE_SERIAL))
+        assertFalse(store.contains(SecureKeys.DEVICE_SERIAL_SIGNATURE))
+        assertFalse(store.contains(SecureKeys.DEVICE_BIND_TOKEN))
 
         importer.clearKeys()
         assertFalse(importer.hasKeys())
         assertNull(importer.loadKeys())
         assertFalse(store.contains(SecureKeys.DEVICE_SERIAL))
         assertFalse(store.contains(SecureKeys.DEVICE_BIND_TOKEN))
+        assertFalse(store.contains(SecureKeys.DEVICE_IDENTITY_BUNDLE))
     }
 
     @Test
