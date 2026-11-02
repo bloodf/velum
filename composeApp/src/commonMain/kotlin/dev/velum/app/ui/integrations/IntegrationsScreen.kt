@@ -30,6 +30,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -61,6 +62,9 @@ import dev.velum.app.ui.theme.VelumSurface
 import dev.velum.app.ui.theme.velumColors
 import dev.velum.core.calendar.CalendarLookupResult
 import dev.velum.core.data.epochSecondsNow
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private enum class StatusTone { Neutral, Ok, Warn }
 
@@ -91,7 +95,9 @@ fun IntegrationsScreen(
     var statusTone by remember { mutableStateOf(StatusTone.Neutral) }
     var needsPermission by remember { mutableStateOf(false) }
     var refreshTick by remember { mutableStateOf(0) }
-    var folderUri by remember { mutableStateOf(ExportFolderStore.currentUri()) }
+    // SharedPreferences read: loaded off the main thread (StrictMode), null until then.
+    var folderUri by remember { mutableStateOf<String?>(null) }
+    val ioScope = rememberCoroutineScope()
     var webhookUrl by remember { mutableStateOf("") }
     var webhookSecret by remember { mutableStateOf("") }
     var webhookConfigured by remember { mutableStateOf(false) }
@@ -110,6 +116,10 @@ fun IntegrationsScreen(
     val pickExportFolder = rememberExportFolderPicker { uri ->
         folderUri = uri
         refreshTick++
+    }
+
+    LaunchedEffect(refreshTick) {
+        folderUri = withContext(Dispatchers.IO) { ExportFolderStore.currentUri() }
     }
 
     LaunchedEffect(container, refreshTick) {
@@ -140,7 +150,6 @@ fun IntegrationsScreen(
                 statusTone = StatusTone.Warn
             }
         }
-        folderUri = ExportFolderStore.currentUri()
         container.settingsViewModel.handleStorageFailure {
             val configured = container.webhookSettings.isConfigured()
             val hasSecret = container.webhookSettings.hasSecret()
@@ -161,9 +170,11 @@ fun IntegrationsScreen(
                     onClick = {
                         haptics.perform(HapticKind.Medium)
                         confirmClearFolder = false
-                        ExportFolderStore.clear()
                         folderUri = null
-                        refreshTick++
+                        ioScope.launch {
+                            withContext(Dispatchers.IO) { ExportFolderStore.clear() }
+                            refreshTick++
+                        }
                     },
                 ) { Text(strings.confirm) }
             },
