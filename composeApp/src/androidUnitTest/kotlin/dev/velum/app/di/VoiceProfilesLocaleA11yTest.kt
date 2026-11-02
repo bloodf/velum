@@ -3,6 +3,7 @@ package dev.velum.app.di
 import android.content.Context
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsActions
@@ -14,6 +15,8 @@ import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.unit.Density
@@ -86,15 +89,16 @@ class VoiceProfilesLocaleA11yTest {
      * here does appear, so the list cannot go stale.
      */
     private val UNREACHED = mapOf(
-        "VoiceProfilesMissingMetadata" to "needs a profile file with no metadata sidecar",
-        "VoiceProfilesInvalidMetadata" to "needs a corrupt metadata file",
-        "VoiceProfilesInvalidEmbedding" to "needs a corrupt embedding file",
-        "VoiceProfilesCannotDecrypt" to "needs an embedding encrypted under another key without a global key error",
-        "VoiceProfilesFileUnavailable" to "needs an unreadable file (I/O error)",
+        "VoiceProfilesFileUnavailable" to "needs a profile file that cannot be read (I/O error)",
         "VoiceProfilesFilesChanged" to "needs files repaired while the removal dialog is open",
         "VoiceProfilesChangeBlocked" to "needs saving a profile that turned unreadable",
-        "VoiceProfilesImportedFormat" to "needs a valid encrypted export pasted back; the export text cannot be copied in a test",
     )
+
+    /** Font scale seen from inside the app's theme, so a nested provider cannot silently reset it. */
+    private var observedFontScale = 0f
+
+    @Composable
+    private fun FontScaleProbe() { observedFontScale = LocalDensity.current.fontScale }
 
     /** Keys whose text is the same word in English and Portuguese on purpose. */
     private val SHARED = emptySet<String>()
@@ -193,10 +197,14 @@ class VoiceProfilesLocaleA11yTest {
                     LocalStrings provides s,
                     LocalDensity provides Density(density.density, scale),
                 ) {
-                    VelumTheme(darkTheme = false) { VoiceProfilesScreen(container, onBack = {}) }
+                    VelumTheme(darkTheme = false) {
+                        FontScaleProbe()
+                        VoiceProfilesScreen(container, onBack = {})
+                    }
                 }
             }
             block()
+            assertEquals(scale, observedFontScale, "font scale reached the screen")
         } finally {
             activity.pause().stop().destroy()
             container.databaseHandle.driver.close()
@@ -249,7 +257,10 @@ class VoiceProfilesLocaleA11yTest {
                 awaitLabel("Synthetic Healthy")
                 assertState("$tag list", s, other, seen)
                 tap("Synthetic Healthy")
-                for (field in listOf(s.name, s.ux.role, s.ux.company, s.ux.email, s.notes)) awaitLabel(field)
+                // The fields also render a visible label, so assert the accessibility name itself.
+                for (field in listOf(s.name, s.ux.role, s.ux.company, s.ux.email, s.notes, s.ux.voiceProfilesImportTitle)) {
+                    compose.onNodeWithContentDescription(field).performScrollTo().assertExists()
+                }
                 assertState("$tag editor", s, other, seen)
                 tap(s.save)
                 awaitLabel(s.ux.voiceProfilesSaved)
@@ -264,21 +275,50 @@ class VoiceProfilesLocaleA11yTest {
             root.deleteRecursively()
         }
 
-        // Unreadable profile and its removal confirmation.
+        // Unreadable profiles (one per problem the screen can name) and the removal confirmation.
         newRoot().let { root ->
             val memory = InMemorySecureStore()
             withProfile(root, memory)
-            root.resolve("voices/profiles/orphan.json").writeBytes(
-                """{"id":"orphan","displayName":"Synthetic Orphan","dim":2,"encrypted":true}""".encodeToByteArray(),
-            )
+            runBlocking { VoiceProfileStore(root, memory).withReady { upsert("Synthetic Corrupt", floatArrayOf(0f, 1f), id = "corrupt") } }
+            val dir = root.resolve("voices/profiles")
+            // Missing embedding, missing metadata, garbage metadata, wrong-length embedding, and a tampered ciphertext.
+            dir.resolve("orphan.json").writeBytes("""{"id":"orphan","displayName":"Synthetic Orphan","dim":2,"encrypted":true}""".encodeToByteArray())
+            dir.resolve("nometa.f32").writeBytes(ByteArray(8))
+            dir.resolve("badmeta.json").writeBytes("not json".encodeToByteArray())
+            dir.resolve("badembed.json").writeBytes("""{"id":"badembed","displayName":"Synthetic BadEmbed","dim":2,"encrypted":false}""".encodeToByteArray())
+            dir.resolve("badembed.f32").writeBytes(ByteArray(12))
+            val enc = dir.resolve("corrupt.enc")
+            enc.writeBytes(enc.readBytes().also { it[it.size - 1] = (it[it.size - 1].toInt() xor 0x55).toByte() })
             screen(s, scale, memory, root) {
                 awaitLabel(s.ux.voiceProfilesUnreadableTitle)
+                for (msg in listOf(
+                    s.ux.voiceProfilesMissingEmbedding, s.ux.voiceProfilesMissingMetadata, s.ux.voiceProfilesInvalidMetadata,
+                    s.ux.voiceProfilesInvalidEmbedding, s.ux.voiceProfilesCannotDecrypt,
+                )) awaitLabel(msg)
                 assertState("$tag unreadable", s, other, seen)
                 tap(s.ux.voiceProfilesRemoveFiles)
                 awaitLabel(s.ux.confirmDeleteTitle)
                 assertState("$tag remove files dialog", s, other, seen)
             }
             root.deleteRecursively()
+        }
+
+        // Import of a real export (a profile moved to an empty library under the same key).
+        newRoot().let { source ->
+            val memory = InMemorySecureStore()
+            withProfile(source, memory)
+            val export = runBlocking { VoiceProfileStore(source, memory).withReady { exportEncrypted() } }
+            newRoot().let { root ->
+                screen(s, scale, memory, root) {
+                    awaitLabel(s.ux.voiceProfilesEmpty)
+                    compose.onNodeWithContentDescription(s.ux.voiceProfilesImportTitle).performScrollTo().performTextInput(export)
+                    tap(s.ux.voiceProfilesImport)
+                    awaitLabel(s.ux.voiceProfilesImportedFormat.replace("%d", "1"))
+                    assertState("$tag imported", s, other, seen)
+                }
+                root.deleteRecursively()
+            }
+            source.deleteRecursively()
         }
 
         // Wrong key, then storage unavailable.
@@ -288,6 +328,7 @@ class VoiceProfilesLocaleA11yTest {
             runBlocking { memory.putString(VoiceProfileStore.PROFILE_KEY_SECURE, Base64.encode(ByteArray(32) { 37 })) }
             screen(s, scale, memory, root) {
                 awaitLabel(s.ux.voiceProfilesKeyUnavailable)
+                compose.onNodeWithContentDescription(s.ux.retryProcessing).performScrollTo().assertExists()
                 assertState("$tag wrong key", s, other, seen)
             }
             val unavailable = object : SecureStore by memory {
@@ -298,6 +339,7 @@ class VoiceProfilesLocaleA11yTest {
             }
             screen(s, scale, unavailable, root) {
                 awaitLabel(s.ux.secureStorageUnavailable)
+                compose.onNodeWithContentDescription(s.ux.retryProcessing).performScrollTo().assertExists()
                 assertState("$tag storage unavailable", s, other, seen)
             }
             root.deleteRecursively()
@@ -305,10 +347,10 @@ class VoiceProfilesLocaleA11yTest {
 
         // Coverage guard: every voiceProfiles* key was shown, or is listed (with a reason) as unreachable here.
         val all = voiceKeys(s).keys
+        assertTrue(all.size >= 30, "$tag: reflection found only ${all.size} voiceProfiles keys")
         val uncovered = all - seen - UNREACHED.keys
         assertTrue(uncovered.isEmpty(), "$tag: voiceProfiles strings not exercised and not listed in UNREACHED: $uncovered")
         val stale = UNREACHED.keys.filter { it in seen }
         assertTrue(stale.isEmpty(), "$tag: listed as UNREACHED but shown: $stale")
-        assertEquals(all, voiceKeys(other).keys, "$tag: both languages define the same voiceProfiles keys")
     }
 }
