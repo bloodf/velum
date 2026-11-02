@@ -201,13 +201,14 @@ fun TemplatesScreen(
     // null = nothing loaded yet for this filter (no empty-state flash, no stale rows).
     var shown by remember { mutableStateOf<List<Template>?>(null) }
     var shownFilter by remember { mutableStateOf<DiscoverFilter?>(null) }
+    // Catalog tick the rows were loaded at; the paging sentinel stays off while they are older than the catalog.
+    var shownTick by remember { mutableStateOf(-1L) }
     var totalMatches by remember { mutableStateOf(0L) }
     var loadFailed by remember { mutableStateOf(false) }
     LaunchedEffect(filter, pages, templateTick) {
         // A different filter must not keep the previous filter's rows (or its paging sentinel) on screen.
         if (shownFilter != filter) {
             shown = null
-            totalMatches = 0
         }
         try {
             val current = shown.orEmpty()
@@ -216,15 +217,20 @@ fun TemplatesScreen(
             val total = container.repository.countDiscoverTemplates(filter)
             shown = if (pages == 1) rows else appendPage(current, rows)
             shownFilter = filter
+            shownTick = templateTick
             totalMatches = total
             loadFailed = false
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
-            // Never keep the previous filter's rows on screen after a failed load.
-            shown = emptyList()
-            shownFilter = filter
-            totalMatches = 0
+            // A failed later page keeps the rows already loaded for this filter; anything else must not
+            // keep the previous filter's rows on screen.
+            if (pages == 1 || shownFilter != filter) {
+                shown = emptyList()
+                shownFilter = filter
+                shownTick = templateTick
+                totalMatches = 0
+            }
             loadFailed = true
         }
     }
@@ -511,7 +517,7 @@ fun TemplatesScreen(
                     modifier = Modifier.fillMaxWidth(),
                 ) { onOpenTemplate(tpl.id) }
             }
-            if (rows.size >= PAGE_SIZE * pages && rows.size < totalMatches) {
+            if (shownTick == templateTick && rows.size >= PAGE_SIZE * pages && rows.size < totalMatches) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     // Composed only when scrolled to the end: load the next page.
                     LaunchedEffect(rows.size) { pages += 1 }
