@@ -76,3 +76,14 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 }
+
+// BleFakesNotInProductionTest and GattArchitectureTest scan other modules' sources and build files;
+// declare them so the build cache cannot serve a stale result when only another module changed.
+tasks.matching { it.name == "jvmTest" }.configureEach {
+    inputs.files(
+        rootProject.fileTree(rootProject.projectDir) {
+            include("*/src/*/**/*.kt", "*/src/*/**/*.java", "**/build.gradle.kts")
+            exclude("**/build/**", "**/node_modules/**", "**/.gradle/**")
+        },
+    ).withPathSensitivity(PathSensitivity.RELATIVE).withPropertyName("sourceGuardScanSources")
+}
