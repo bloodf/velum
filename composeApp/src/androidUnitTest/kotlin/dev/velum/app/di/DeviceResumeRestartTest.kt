@@ -2,6 +2,7 @@ package dev.velum.app.di
 
 import androidx.lifecycle.ViewModelStore
 import dev.velum.app.i18n.DeviceUiCopy
+import dev.velum.app.platform.PartialTransfer
 import dev.velum.app.platform.PartialTransferFileStore
 import dev.velum.app.ui.DeviceViewModel
 import dev.velum.app.ui.DownloadedSessionAudio
@@ -71,6 +72,7 @@ class DeviceResumeRestartTest {
             saved = out.toByteArray()
             "rec-synthetic"
         },
+        open: (Long, String?) -> PartialTransfer? = { id, sn -> PartialTransferFileStore.open(partials, id, sn) },
     ): DeviceViewModel = runBlocking {
         Dispatchers.setMain(Dispatchers.Unconfined)
         val vm = DeviceViewModel(
@@ -78,7 +80,7 @@ class DeviceResumeRestartTest {
             Importer(keys),
             persistDownloadedSession = { persist(it) },
             localeTag = { "en" },
-            openPartialTransfer = { id, sn -> PartialTransferFileStore.open(partials, id, sn) },
+            openPartialTransfer = open,
         )
         owner.put("device", vm)
         vm.connect("fake-note-pro")
@@ -93,8 +95,10 @@ class DeviceResumeRestartTest {
     private var saved: ByteArray? = null
     private val owner = ViewModelStore()
 
-    private fun peripheral(faults: TransferFaults = TransferFaults()) =
-        FakePlaudPeripheral(createSessionCipher(), keys, encrypted, sessionId = session, requirePublicKey = false, chunkSize = 200, faults = faults)
+    private fun peripheral(
+        faults: TransferFaults = TransferFaults(),
+        stopCrc: FakePlaudPeripheral.StopCrc = FakePlaudPeripheral.StopCrc.NotProvided,
+    ) = FakePlaudPeripheral(createSessionCipher(), keys, encrypted, sessionId = session, requirePublicKey = false, chunkSize = 200, faults = faults, stopCrc = stopCrc)
 
     @Test fun restart_continues_from_the_checkpoint_and_clears_the_partial() {
         try {
@@ -107,7 +111,7 @@ class DeviceResumeRestartTest {
             assertEquals("rec-synthetic", vm.sessionUi.value.lastDownloadedRecordingId)
             assertEquals(listOf(checkpoint.toLong()), fake.syncStartOffsets, "must not restart the whole download")
             assertContentEquals(plaintext, assertNotNull(saved))
-            assertFalse(partials.listFiles()!!.any { it.isFile }, "partial is removed once persisted")
+            assertFalse(partials.list()!!.any { it.endsWith(".partial") || it.endsWith(".offset") }, "partial is removed once persisted")
         } finally { owner.clear(); Dispatchers.resetMain() }
     }
 
@@ -122,11 +126,47 @@ class DeviceResumeRestartTest {
         } finally { owner.clear(); Dispatchers.resetMain() }
     }
 
+    @Test fun real_device_crc_mismatch_keeps_the_recording_and_says_so() {
+        try {
+            val vm = run(peripheral(stopCrc = FakePlaudPeripheral.StopCrc.Wrong))
+            assertEquals("rec-synthetic", vm.sessionUi.value.lastDownloadedRecordingId)
+            assertEquals(DeviceUiCopy.downloadedSessionCrcMismatch("en", session), vm.sessionUi.value.statusMessage)
+            assertContentEquals(plaintext, assertNotNull(saved))
+        } finally { owner.clear(); Dispatchers.resetMain() }
+    }
+
+    @Test fun without_a_durable_store_a_failed_download_can_be_retried_on_the_same_client() {
+        try {
+            var failing = true
+            val vm = run(
+                peripheral(),
+                persist = { audio ->
+                    check(!failing) { "synthetic save failure" }
+                    val out = ByteArrayOutputStream()
+                    audio.writeDecryptedAudio { out.write(it) }
+                    saved = out.toByteArray()
+                    "rec-synthetic"
+                },
+                open = { _, _ -> null },
+            )
+            assertEquals(DeviceUiCopy.downloadFailed("en"), vm.sessionUi.value.statusMessage)
+            failing = false
+            vm.downloadSession(session)
+            runBlocking {
+                withTimeout(60_000) {
+                    while (vm.sessionUi.value.lastDownloadedRecordingId == null && vm.sessionUi.value.statusMessage != DeviceUiCopy.downloadFailed("en")) delay(5)
+                }
+            }
+            assertEquals("rec-synthetic", vm.sessionUi.value.lastDownloadedRecordingId)
+            assertContentEquals(plaintext, assertNotNull(saved))
+        } finally { owner.clear(); Dispatchers.resetMain() }
+    }
+
     @Test fun undecryptable_download_clears_the_partial_so_a_retry_starts_over() {
         try {
             val vm = run(peripheral(), persist = { error("synthetic decrypt failure") })
             assertEquals(DeviceUiCopy.downloadFailed("en"), vm.sessionUi.value.statusMessage)
-            assertTrue(partials.listFiles()!!.none { it.isFile })
+            assertTrue(partials.list()!!.none { it.endsWith(".partial") || it.endsWith(".offset") })
         } finally { owner.clear(); Dispatchers.resetMain() }
     }
 }

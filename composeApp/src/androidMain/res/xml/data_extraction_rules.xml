@@ -7,6 +7,7 @@
         <exclude domain="database" />
         <exclude domain="file" path="models/" />
         <exclude domain="file" path="recordings/" />
+        <exclude domain="file" path="downloads/" />
     </cloud-backup>
     <device-transfer>
         <exclude domain="sharedpref" path="velum_secure.xml" />
@@ -15,5 +16,6 @@
         <exclude domain="database" />
         <exclude domain="file" path="models/" />
         <exclude domain="file" path="recordings/" />
+        <exclude domain="file" path="downloads/" />
     </device-transfer>
 </data-extraction-rules>

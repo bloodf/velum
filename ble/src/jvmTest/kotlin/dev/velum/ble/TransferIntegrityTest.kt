@@ -222,6 +222,15 @@ class TransferIntegrityTest {
         client.close()
     }
 
+    @Test fun a_hanging_command_write_is_bounded() = runTest(timeout = 30.seconds) {
+        val (client, link) = linkClient()
+        link.hang = true
+        val started = testScheduler.currentTime
+        assertFailsWith<TimeoutCancellationException> { client.listSessions() }
+        assertEquals(5_000L, testScheduler.currentTime - started)
+        client.close()
+    }
+
     @Test fun cancelling_the_job_mid_transfer_still_sends_the_stop() = runTest {
         val (client, _) = linkClient()
         var job: Job? = null

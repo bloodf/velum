@@ -17,6 +17,8 @@ class PartialTransferFileStoreTest {
 
     @AfterTest fun cleanup() { root.deleteRecursively() }
 
+    private fun partialFiles() = root.listFiles()!!.filter { it.name.endsWith(".partial") || it.name.endsWith(".offset") }
+
     private fun open(session: Long = 1L, serial: String? = "SYNTH-SN-1", checkpointBytes: Int = 1_000) =
         PartialTransferFileStore.open(root, session, serial, checkpointBytes)
 
@@ -46,7 +48,7 @@ class PartialTransferFileStoreTest {
         store.write(ByteArray(50))
         assertEquals(50L, store.length())
         store.close()
-        val sidecar = root.listFiles()!!.single { it.name.endsWith(".offset") }
+        val sidecar = partialFiles().single { it.name.endsWith(".offset") }
         sidecar.writeText("not a number")
         assertEquals(0L, open().length())
         sidecar.writeText("999999") // claims more than the file holds
@@ -60,7 +62,7 @@ class PartialTransferFileStoreTest {
         assertEquals(40L, store.length())
         assertEquals(40L, open().length())
         store.delete()
-        assertFalse(root.listFiles()!!.any { it.isFile }, "no partial data left")
+        assertTrue(partialFiles().isEmpty(), "no partial data left")
     }
 
     @Test fun files_are_keyed_by_session_and_serial_and_never_name_the_serial() {
@@ -73,6 +75,17 @@ class PartialTransferFileStoreTest {
         assertNotEquals(0, root.list()!!.size)
     }
 
+    @Test fun serial_key_is_salted_per_install_and_stable_within_one() {
+        open().apply { write(ByteArray(5)); length(); close() }
+        val first = partialFiles().map { it.name }.toSet()
+        open().close()
+        assertEquals(first, partialFiles().map { it.name }.toSet(), "the same install finds its partial again")
+        val otherInstall = File(root, "other").apply { mkdirs() }
+        PartialTransferFileStore.open(otherInstall, 1L, "SYNTH-SN-1").close()
+        val otherNames = otherInstall.listFiles()!!.map { it.name }.filter { it.endsWith(".partial") }
+        assertFalse(otherNames.any { it in first }, "another install's salt gives another key")
+    }
+
     @Test fun without_a_real_serial_there_is_no_resume() {
         val a = open(serial = null)
         a.write(ByteArray(5)); assertEquals(5L, a.length()); a.close()
@@ -82,7 +95,7 @@ class PartialTransferFileStoreTest {
     @Test fun sweep_removes_only_stale_partial_files() {
         val store = open()
         store.write(ByteArray(5)); store.length(); store.close()
-        val files = root.listFiles()!!.toList()
+        val files = partialFiles()
         val other = File(root, "unrelated.txt").apply { writeText("x"); setLastModified(now - 10 * STALE_PARTIAL_TRANSFER_MS) }
         files.forEach { it.setLastModified(now - STALE_PARTIAL_TRANSFER_MS + 1_000) }
         assertEquals(0, PartialTransferFileStore.sweepStale(root, now))

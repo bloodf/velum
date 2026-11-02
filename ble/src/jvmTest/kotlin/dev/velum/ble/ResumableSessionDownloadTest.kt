@@ -25,6 +25,7 @@ import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
@@ -185,6 +186,25 @@ class ResumableSessionDownloadTest {
         val result = download.download(SESSION, file.size.toLong(), store)
         assertContentEquals(file, store.bytes)
         assertEquals(4, result.attempts)
+    }
+
+    @Test fun a_hanging_connect_is_bounded_and_uses_a_retry() = runTest(timeout = 30.seconds) {
+        val file = Random(17).nextBytes(5_000)
+        val rig = rig(file)
+        var calls = 0
+        val download = ResumableSessionDownload(
+            connect = {
+                if (++calls == 1) awaitCancellation()
+                rig.ble.connect("fake-note-pro")
+                PlaudDeviceClient(rig.ble, cipher, keys, responseTimeout = 5.seconds)
+            },
+            crcPolicy = CrcPolicy.Enforce,
+            connectTimeout = 10.seconds,
+        )
+        val store = MemoryStore()
+        val result = download.download(SESSION, file.size.toLong(), store)
+        assertContentEquals(file, store.bytes)
+        assertEquals(2, result.attempts)
     }
 
     @Test fun attempts_without_progress_back_off_and_then_give_up() = runTest {

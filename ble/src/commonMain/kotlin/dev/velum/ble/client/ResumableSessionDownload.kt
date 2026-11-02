@@ -8,6 +8,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withTimeout
 
 /**
  * Bytes received so far for one session. [length] is where a resumed transfer continues, so a durable
@@ -65,6 +66,8 @@ class ResumableSessionDownload(
     private val maxNoProgressAttempts: Int = 5,
     private val initialClient: PlaudDeviceClient? = null,
     private val onSuccess: (PlaudDeviceClient) -> Unit = { it.close() },
+    /** Bounds bringing the link up, unlock and handshake on each attempt. */
+    private val connectTimeout: Duration = 30.seconds,
 ) {
     init {
         require(maxNoProgressAttempts >= 1)
@@ -94,16 +97,21 @@ class ResumableSessionDownload(
             try {
                 val reused = unlocked
                 unlocked = null
-                client = reused ?: connect()
-                if (reused == null) {
-                    client.unlock()
-                    client.handshake()
+                if (reused != null) {
+                    client = reused
+                } else {
+                    withTimeout(connectTimeout) {
+                        client = connect()
+                        client?.unlock()
+                        client?.handshake()
+                    }
                 }
-                val deviceCrc = client.downloadSessionTo(sessionId, sizeBytes, store, onProgress, startOffset = before)
+                val current = checkNotNull(client)
+                val deviceCrc = current.downloadSessionTo(sessionId, sizeBytes, store, onProgress, startOffset = before)
                 val crc = crcStatus(deviceCrc, store)
                 if (crc !is CrcStatus.Mismatch || crcPolicy == CrcPolicy.ReportOnly) {
                     succeeded = true
-                    onSuccess(client)
+                    onSuccess(current)
                     return ResumableDownloadResult(store.length(), crc, attempts)
                 }
                 store.truncate(0)

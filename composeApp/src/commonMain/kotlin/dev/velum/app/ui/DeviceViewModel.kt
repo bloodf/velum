@@ -223,7 +223,6 @@ class DeviceViewModel(
         )
         val serial = dedupDeviceSerial(keys.serialNumber, connectedSerial)
         try {
-            client = null // the download owns it now: it may close it and reconnect
             val outcome = withContext(Dispatchers.IO) {
                 assembleDecryptAndPersist(
                     initialClient = c,
@@ -308,6 +307,7 @@ class DeviceViewModel(
             return DownloadOutcome(recordingId, c, CrcStatus.NotProvided)
         }
         // A transfer failure or cancellation keeps the partial for the next attempt.
+        client = null // the download owns it now: it may close it and reconnect
         var finished = initialClient
         val result = try {
             ResumableSessionDownload(

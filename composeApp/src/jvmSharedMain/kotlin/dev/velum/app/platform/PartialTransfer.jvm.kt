@@ -6,6 +6,7 @@ import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
+import java.security.SecureRandom
 
 /** Beside, not inside, the recordings directory: the recording sweeps never see these files. */
 private fun partialTransfersDir() = File(File(recordingsDirectoryPath()).parentFile, "downloads")
@@ -90,6 +91,8 @@ internal class PartialTransferFileStore private constructor(
         private const val DEFAULT_CHECKPOINT_BYTES = 256 * 1024
         private const val DATA_SUFFIX = ".partial"
         private const val CHECKPOINT_SUFFIX = ".offset"
+        private const val SALT_FILE = "serial-key.salt"
+        private const val SALT_BYTES = 16
 
         fun open(
             dir: File,
@@ -98,17 +101,34 @@ internal class PartialTransferFileStore private constructor(
             checkpointBytes: Int = DEFAULT_CHECKPOINT_BYTES,
         ): PartialTransferFileStore {
             dir.mkdirs()
-            val key = "$sessionId-${serialKey(deviceSerial)}"
+            val key = "$sessionId-${serialKey(dir, deviceSerial)}"
             val store = PartialTransferFileStore(File(dir, key + DATA_SUFFIX), File(dir, key + CHECKPOINT_SUFFIX), checkpointBytes)
             if (deviceSerial.isNullOrBlank()) store.truncate(0)
             return store
         }
 
-        /** A file name must not reveal the serial. */
-        private fun serialKey(deviceSerial: String?): String {
+        /**
+         * A file name must not reveal the serial. Serials are short, so a bare hash could be reversed by
+         * trying them all; a random per-install salt stops that for anyone holding only the file names.
+         * The salt sits beside the files, so it does not help against someone holding this directory.
+         */
+        private fun serialKey(dir: File, deviceSerial: String?): String {
             if (deviceSerial.isNullOrBlank()) return "noserial"
-            val digest = MessageDigest.getInstance("SHA-256").digest(deviceSerial.encodeToByteArray())
-            return digest.take(8).joinToString("") { (it.toInt() and 0xFF).toString(16).padStart(2, '0') }
+            val digest = MessageDigest.getInstance("SHA-256").apply {
+                update(installSalt(dir))
+                update(deviceSerial.encodeToByteArray())
+            }.digest()
+            return digest.take(16).joinToString("") { (it.toInt() and 0xFF).toString(16).padStart(2, '0') }
+        }
+
+        private fun installSalt(dir: File): ByteArray {
+            val file = File(dir, SALT_FILE)
+            if (file.isFile) file.readBytes().takeIf { it.size == SALT_BYTES }?.let { return it }
+            val salt = ByteArray(SALT_BYTES).also { SecureRandom().nextBytes(it) }
+            val temp = File(dir, "$SALT_FILE.tmp")
+            temp.writeBytes(salt)
+            Files.move(temp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING)
+            return salt
         }
 
         fun sweepStale(dir: File, nowEpochMs: Long): Int =

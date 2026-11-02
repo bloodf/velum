@@ -383,7 +383,7 @@ class PlaudDeviceClient(
     }
 
     private suspend fun transactCommand(expectedCmd: Int, packet: ByteArray): ByteArray {
-        writeOutbound(packet)
+        withTimeout(responseTimeout) { writeOutbound(packet) }
         val raw = awaitDecryptedFrame(responseTimeout) { frame ->
             val decoded = runCatching { Framing.decodeInbound(frame) }.getOrNull()
             decoded is InboundPacket.CommandResponse && decoded.cmd == expectedCmd
