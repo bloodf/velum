@@ -17,6 +17,8 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performScrollToKey
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
@@ -72,6 +74,8 @@ class DiscoverFiltersUiTest {
     /** Chips come from an async facets load, so wait for the node before tapping it. */
     private fun tap(tag: String) {
         awaitTag(tag)
+        // Chips sit in horizontally scrolling rows; bring the target into view first, like a user would.
+        runCatching { compose.onNodeWithTag(tag).performScrollTo() }
         compose.onNodeWithTag(tag).performClick()
     }
 
@@ -251,6 +255,89 @@ class DiscoverFiltersUiTest {
             // Page 1 rows outside the top-5 ranking cards survive the append (not replaced by page 2).
             grid().performScrollToKey("pg-010")
             await("PG 010")
+        } finally {
+            activity.pause().stop().destroy()
+            container.databaseHandle.driver.close()
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun last_available_tag_can_be_selected() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        context.deleteDatabase("velum.db")
+        val root = ModelStoreDir(Files.createTempDirectory("velum-discover-tags-test").toString())
+        val container = AppContainer(InMemorySecureStore(), DriverFactory(context), modelStoreRoot = root)
+        // One template per vocabulary tag: more tags than any fixed chip cap, so the last one must still be offered.
+        val slugs = dev.velum.core.templates.TemplateTagVocabulary.All.map { it.slug }.sorted()
+        assertTrue(slugs.size > 24, "fixture needs more than 24 tags")
+        runBlocking {
+            container.repository.setMeta(SeedData.META_FULL_TEMPLATES_IMPORTED, "1")
+            slugs.forEachIndexed { i, slug ->
+                container.repository.upsertTemplate(
+                    id = "tg-$i", name = "TG $i", category = "meeting", description = "synthetic", systemPrompt = "p",
+                    builtin = true, featured = true, tags = listOf(slug), lang = "en", uses = 1_000_000L - i,
+                )
+            }
+        }
+        val last = slugs.last()
+        val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup()
+        try {
+            activity.get().setContent {
+                CompositionLocalProvider(LocalStrings provides PtBr) {
+                    VelumTheme(darkTheme = false) { TemplatesScreen(container, onBack = {}, onOpenTemplate = {}) }
+                }
+            }
+            await("TG 0")
+            awaitTag("tag:$last")
+            compose.onNodeWithTag("tag:$last").performScrollTo()
+            tap("tag:$last")
+            awaitTag("active:tag:$last")
+            await("TG ${slugs.lastIndex}")
+            assertTrue(!shows("TG 0"))
+        } finally {
+            activity.pause().stop().destroy()
+            container.databaseHandle.driver.close()
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun changing_a_filter_after_page_two_resets_paging_without_omitting_rows() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        context.deleteDatabase("velum.db")
+        val root = ModelStoreDir(Files.createTempDirectory("velum-discover-reset-test").toString())
+        val container = AppContainer(InMemorySecureStore(), DriverFactory(context), modelStoreRoot = root)
+        runBlocking {
+            container.repository.setMeta(SeedData.META_FULL_TEMPLATES_IMPORTED, "1")
+            // 100 meeting rows rank above 70 sales rows, so page 2 is loaded before the filter changes.
+            suspend fun add(prefix: String, category: String, i: Int, uses: Long) =
+                container.repository.upsertTemplate(
+                    id = "%s-%03d".format(prefix, i), name = "%s %03d".format(prefix.uppercase(), i), category = category,
+                    description = "synthetic", systemPrompt = "p", builtin = true, featured = true,
+                    tags = emptyList(), lang = "en", uses = uses,
+                )
+            for (i in 0 until 100) add("pg", "meeting", i, 3_000_000L - i)
+            for (i in 0 until 70) add("sl", "sales", i, 1_000_000L - i)
+        }
+        val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup()
+        try {
+            activity.get().setContent {
+                CompositionLocalProvider(LocalStrings provides PtBr) {
+                    VelumTheme(darkTheme = false) { TemplatesScreen(container, onBack = {}, onOpenTemplate = {}) }
+                }
+            }
+            val grid = { compose.onNodeWithTag("templates:grid") }
+            waiting("first page") { runCatching { grid().performScrollToKey("pg-000") }.isSuccess }
+            grid().performScrollToKey("pg-059")
+            waiting("page 2 loaded") { runCatching { grid().performScrollToKey("pg-099") }.isSuccess }
+            // Filter change with paging at page 2: the new filter has 70 rows (two pages) and must show all of them.
+            // The filter chips are grid item 0; scroll back up to reach them.
+            grid().performScrollToIndex(0)
+            tap("category:sales")
+            waiting("sales page 1") { runCatching { grid().performScrollToKey("sl-000") }.isSuccess }
+            grid().performScrollToKey("sl-059")
+            waiting("sales page 2 (no rows omitted)") { runCatching { grid().performScrollToKey("sl-069") }.isSuccess }
         } finally {
             activity.pause().stop().destroy()
             container.databaseHandle.driver.close()

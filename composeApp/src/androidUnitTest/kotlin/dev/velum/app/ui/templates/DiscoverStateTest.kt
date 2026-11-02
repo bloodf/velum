@@ -15,9 +15,10 @@ class DiscoverStateTest {
     }
 
     @Test fun empty_state_only_after_load() {
-        assertFalse(showEmptyState(null, fullImportRunning = false))
-        assertTrue(showEmptyState(emptyList(), fullImportRunning = false))
-        assertFalse(showEmptyState(emptyList(), fullImportRunning = true))
+        assertFalse(showEmptyState(null, fullImportRunning = false, loadFailed = false))
+        assertTrue(showEmptyState(emptyList(), fullImportRunning = false, loadFailed = false))
+        assertFalse(showEmptyState(emptyList(), fullImportRunning = true, loadFailed = false))
+        assertFalse(showEmptyState(emptyList(), fullImportRunning = false, loadFailed = true))
     }
 
     private fun t(id: String) = dev.velum.core.db.Template(
