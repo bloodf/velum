@@ -90,6 +90,8 @@ class FullCatalogDeviceTest {
             "searchP95Ms=$p95 fts=${repo.ftsAvailable} sdk=${android.os.Build.VERSION.SDK_INT}"
         Log.i(TAG, report)
         InstrumentationRegistry.getInstrumentation().sendStatus(0, Bundle().apply { putString("velum.catalog", report) })
+        // Android framework SQLite lacks FTS5; the bundled SQLite must make the index available.
+        assertTrue("FTS must be available on Android", repo.ftsAvailable)
         assertTrue("import ${importMs}ms > budget", importMs <= IMPORT_BUDGET_MS)
         assertTrue("search p95 ${p95}ms > budget", p95 <= SEARCH_P95_BUDGET_MS)
     }
