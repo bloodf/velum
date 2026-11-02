@@ -79,11 +79,10 @@ val verifyNoTestFakesShipped by tasks.registering {
         }
     }
 }
+// Desktop: create(Release)Distributable and every package(Release)* distribution/installer/uber-jar task.
+val desktopPackaging = Regex("""create(Release)?Distributable|package(Release)?(Distribution\w*|Dmg|Pkg|Msi|Exe|Deb|Rpm|AppImage|UberJar\w*)""")
 tasks.matching {
-    it.name in setOf(
-        "preReleaseBuild", "preMinifiedTestBuild", "check",
-        "createDistributable", "packageDistributionForCurrentOS",
-    )
+    it.name in setOf("preReleaseBuild", "preMinifiedTestBuild", "check") || desktopPackaging.matches(it.name)
 }.configureEach {
     dependsOn(verifyNoTestFakesShipped)
 }
