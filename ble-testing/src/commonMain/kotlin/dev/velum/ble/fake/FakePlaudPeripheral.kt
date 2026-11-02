@@ -3,6 +3,7 @@ package dev.velum.ble.fake
 import dev.velum.protocol.BatteryReading
 import dev.velum.protocol.Bytes
 import dev.velum.protocol.Commands
+import dev.velum.protocol.Crc16Ccitt
 import dev.velum.protocol.DeviceIdentityKeys
 import dev.velum.protocol.Framing
 import dev.velum.protocol.PacketType
@@ -35,8 +36,31 @@ class FakePlaudPeripheral(
     private val batteryPercent: Int = 0x5d,
     private val requirePublicKey: Boolean = true,
     private val random: Random = Random.Default,
+    /** Audio bytes per type-2 packet (the wire length field is u8, so at most 255). */
+    private val chunkSize: Int = 100,
+    private val faults: TransferFaults = TransferFaults(),
+    /** CRC reported in the SYNC_FILE_STOP response. */
+    private val stopCrc: StopCrc = StopCrc.NotProvided,
 ) {
-    val notifications = MutableSharedFlow<ByteArray>(extraBufferCapacity = 128)
+    init {
+        require(chunkSize in 1..255) { "chunkSize must fit the u8 length field" }
+    }
+
+    /** What the device reports as the file CRC when a sync stops. */
+    enum class StopCrc {
+        /** `0xFFFF`, as in the only real-device capture (docs/protocol/README.md). */
+        NotProvided,
+
+        /** CRC-16/CCITT-FALSE of the whole session file (assumed algorithm, unconfirmed on hardware). */
+        Ccitt,
+    }
+
+    // Unbounded: a whole session is emitted while the client is still inside its SYNC_FILE_START write.
+    val notifications = MutableSharedFlow<ByteArray>(extraBufferCapacity = Int.MAX_VALUE)
+
+    /** `startOffset` of every SYNC_FILE_START received, in order. */
+    val syncStartOffsets: List<Long> get() = _syncStartOffsets.toList()
+    private val _syncStartOffsets = mutableListOf<Long>()
 
     private val mutex = Mutex()
     private val snChunks = mutableListOf<UnlockChunk>()
@@ -164,33 +188,22 @@ class FakePlaudPeripheral(
             }
             Commands.SYNC_FILE_START -> {
                 val sid = Bytes.readU32Le(payload, 0)
+                val startOffset = if (payload.size >= 8) Bytes.readU32Le(payload, 4) else 0L
+                _syncStartOffsets += startOffset
                 emitCommand(
                     Commands.SYNC_FILE_START,
                     Bytes.u32Le(sid) + byteArrayOf(0),
                 )
-                var offset = 0
-                val maxChunk = 100
-                while (offset < sessionFile.size) {
-                    val end = minOf(offset + maxChunk, sessionFile.size)
-                    val slice = sessionFile.copyOfRange(offset, end)
-                    val frame = byteArrayOf(PacketType.RecordingData.code.toByte()) +
-                        Bytes.u32Le(sessionId) +
-                        Bytes.u32Le(offset.toLong()) +
-                        byteArrayOf(slice.size.toByte()) +
-                        slice
-                    emitEncrypted(frame)
-                    offset = end
-                }
-                val endFrame = byteArrayOf(PacketType.RecordingData.code.toByte()) +
-                    Bytes.u32Le(sessionId) +
-                    Bytes.u32Le(0xFFFF_FFFFL) +
-                    byteArrayOf(0)
-                emitEncrypted(endFrame)
+                streamSessionFrom(startOffset.toInt())
             }
             Commands.SYNC_FILE_STOP -> {
+                val crc = when (stopCrc) {
+                    StopCrc.NotProvided -> 0xFFFF
+                    StopCrc.Ccitt -> Crc16Ccitt.compute(sessionFile)
+                }
                 emitCommand(
                     Commands.SYNC_FILE_STOP,
-                    Bytes.u32Le(sessionId) + Bytes.u16Le(0xFFFF),
+                    Bytes.u32Le(sessionId) + Bytes.u16Le(crc),
                 )
             }
             Commands.BATTERY_LIKELY -> {
@@ -202,6 +215,36 @@ class FakePlaudPeripheral(
         }
     }
 
+    /** Emits type-2 chunks from [startOffset] to the end, applying one-shot [faults]. */
+    private suspend fun streamSessionFrom(startOffset: Int) {
+        var offset = startOffset
+        while (offset < sessionFile.size) {
+            val end = minOf(offset + chunkSize, sessionFile.size)
+            val at = offset.toLong()
+            // Link lost: nothing more arrives, not even the end marker.
+            if (faults.takeDisconnect(at)) return
+            val slice = sessionFile.copyOfRange(offset, end)
+            if (faults.corrupt.remove(at)) slice[0] = (slice[0].toInt() xor 0x5A).toByte()
+            val frame = byteArrayOf(PacketType.RecordingData.code.toByte()) +
+                Bytes.u32Le(sessionId) +
+                Bytes.u32Le(at) +
+                byteArrayOf(slice.size.toByte()) +
+                slice
+            when {
+                faults.drop.remove(at) -> Unit
+                faults.garble.remove(at) -> emitEncrypted(frame, garble = true)
+                faults.duplicate.remove(at) -> { emitEncrypted(frame); emitEncrypted(frame) }
+                else -> emitEncrypted(frame)
+            }
+            offset = end
+        }
+        val endFrame = byteArrayOf(PacketType.RecordingData.code.toByte()) +
+            Bytes.u32Le(sessionId) +
+            Bytes.u32Le(0xFFFF_FFFFL) +
+            byteArrayOf(0)
+        emitEncrypted(endFrame)
+    }
+
     private suspend fun emitCommand(cmd: Int, payload: ByteArray) {
         val frame = ByteArray(1 + 2 + payload.size)
         frame[0] = PacketType.CommandResponse.code.toByte()
@@ -210,13 +253,15 @@ class FakePlaudPeripheral(
         emitEncrypted(frame)
     }
 
-    private suspend fun emitEncrypted(frame: ByteArray) {
+    private suspend fun emitEncrypted(frame: ByteArray, garble: Boolean = false) {
         val sec = secret
         if (sec == null) {
             emitRaw(frame)
         } else {
             val sealed = cipher.sealPacket(sec, deviceSendSeq, frame)
             deviceSendSeq += 1
+            // Flip a tag byte: the packet no longer authenticates (radio/link corruption).
+            if (garble) sealed[sealed.size - 1] = (sealed[sealed.size - 1].toInt() xor 0x01).toByte()
             emitRaw(sealed)
         }
     }
