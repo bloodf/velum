@@ -30,6 +30,9 @@ import androidx.test.uiautomator.Until
 import androidx.test.uiautomator.StaleObjectException
 import dev.velum.app.MainActivity
 import dev.velum.app.VelumApplication
+import dev.velum.app.i18n.En
+import dev.velum.app.i18n.PtBr
+import dev.velum.app.i18n.Strings
 import java.io.ByteArrayOutputStream
 import java.io.File
 import kotlin.test.assertFalse
@@ -67,7 +70,7 @@ class DeviceWalkUiTest {
             "settings/import", "settings/about",
         )
 
-        /** Exact markers every locale cell must produce: 41 + onboarding/appearance tags = 43 per cell (pt-BR and en alike). */
+        /** Exact markers every locale cell must produce: 43 + onboarding/appearance tags = 45 per cell (pt-BR and en alike). */
         val REQUIRED_COVERAGE: Set<String> = setOf(
             "settings/appearance", "library", "library/search", "import/bundled-wav",
             "transcription/device-walk-engine", "recording/open", "recording/notes",
@@ -152,12 +155,11 @@ class DeviceWalkUiTest {
         File(shotDir, "coverage-$tag.txt").writeText(covered.sorted().joinToString("\n"))
         val required = REQUIRED_COVERAGE + "onboarding:$tag" + "appearance:$tag"
         val missing = (required - covered).sorted()
-        val softMisses = covered.filter { "soft-miss" in it }.sorted()
-        val unexpected = (covered - required - OPTIONAL_COVERAGE).filterNot { it in softMisses }.sorted()
+        val unexpected = (covered - required - OPTIONAL_COVERAGE).sorted()
         assertTrue(
-            missing.isEmpty() && softMisses.isEmpty() && unexpected.isEmpty(),
+            missing.isEmpty() && unexpected.isEmpty(),
             "Device walk coverage ($tag) failed. Missing required markers: $missing; " +
-                "soft misses: $softMisses; unexpected markers: $unexpected",
+                "unexpected markers: $unexpected",
         )
     }
 
@@ -378,7 +380,8 @@ class DeviceWalkUiTest {
         }
         clickTextPrefer("Notes", "Notas")
         covered += "recording/notes"
-        shotWhenReady("05-notes-$tag", "Notes content not visible") { composeExists("Notes") || composeExists("Notas") }
+        // "Change template" only renders inside the Notes pane (summary present); the tab label alone does not prove it.
+        shotWhenReady("05-notes-$tag", "Notes pane content not visible") { composeExists(stringsFor(lang).changeTemplate) }
         clickTextPrefer("Change template", "Trocar modelo")
         waitUntil(10_000, "Change template did not open its sheet") {
             composeRule.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsActions.Dismiss))
@@ -559,17 +562,15 @@ class DeviceWalkUiTest {
                 continue
             }
             scrollClick(label)
+            val str = stringsFor(lang)
+            // Positive gate: a node that exists only on the destination screen.
+            waitUntil(15_000, "$cov destination content not visible") { composeExists(destinationMarker(cov, str)) }
             covered += cov
-            shotWhenReady("10-${cov.replace('/', '-')}-$tag", "$cov did not leave the Settings hub") { settingsHubGone() }
-            // API profiles / per-task models
-            if (cov == "settings/api") {
-                covered += "settings/api-profiles"
-            }
-            if (cov == "settings/ai-processing") {
-                covered += "settings/per-task-models"
-            }
-            if (cov == "settings/integrations") {
-                covered += "settings/integrations-sheet"
+            shotWhenReady("10-${cov.replace('/', '-')}-$tag", "$cov content not visible") { composeExists(destinationMarker(cov, str)) }
+            // Sub-sections: each needs its own node on the destination.
+            subSectionMarker(cov, str)?.let { (marker, name) ->
+                waitUntil(10_000, "$name section not visible") { composeExists(marker) }
+                covered += name
             }
             pressNavBack()
         }
@@ -586,7 +587,11 @@ class DeviceWalkUiTest {
             "Dispositivo",
         )
         covered += "device"
-        shotWhenReady("11-device-$tag", "Device screen did not leave the Settings hub") { settingsHubGone() }
+        // DeviceScreen shows the Devices title but not the Devices-settings hint.
+        val str = stringsFor(lang)
+        shotWhenReady("11-device-$tag", "Device screen not visible") {
+            composeExists(str.settingsUi.sectionDevices) && !composeExists(str.settingsUi.devicesHint)
+        }
         run {
             // Required in both locales; click only a node that has a click action so the
             // empty-state hint text ("... toque em Buscar") is never the click target.
@@ -613,7 +618,9 @@ class DeviceWalkUiTest {
                 if (lang == "en") "Storage & privacy" else "Armazenamento e privacidade",
             )
             covered += "settings/storage-privacy"
-            shotWhenReady("12-storage-$tag", "Storage screen did not leave the Settings hub") { settingsHubGone() }
+            shotWhenReady("12-storage-$tag", "Storage screen content not visible") {
+                composeExists(stringsFor(lang).settingsUi.privacyOnDeviceStatement)
+            }
             // Open wipe confirm dialog then cancel — do not destroy mid-matrix state unless last.
             clickTextPrefer(
                 if (lang == "en") "Wipe all data" else "Apagar todos os dados",
@@ -638,7 +645,7 @@ class DeviceWalkUiTest {
                 composeRule.activity.requestedOrientation =
                     ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
             }
-        SystemClock.sleep(1_000)
+        waitUntil(10_000, "Display did not rotate to landscape") { device.displayWidth > device.displayHeight }
         covered += "rotate/landscape"
         shotWhenReady("13-landscape-$tag", "Landscape not settled") { true }
         runCatching { device.setOrientationNatural() }
@@ -646,13 +653,13 @@ class DeviceWalkUiTest {
                 composeRule.activity.requestedOrientation =
                     ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
             }
-        SystemClock.sleep(1_000)
+        waitUntil(10_000, "Display did not return to portrait") { device.displayHeight > device.displayWidth }
         covered += "rotate/portrait"
         // Hard fail — never Skip-dismiss here; that masked the recreate regression
         // fixed by container firstRunPending (#106 / #115).
         assertFirstRunNotVisible("rotation")
         device.pressHome()
-        SystemClock.sleep(1_500)
+        waitUntil(10_000, "App did not leave the foreground") { device.currentPackageName != appContext.packageName }
         covered += "background"
         // Bring the existing task forward. CLEAR_TOP + NEW_TASK spawns a second
         // MainActivity that ActivityScenario ignores, then destroys the tracked one
@@ -1125,7 +1132,34 @@ class DeviceWalkUiTest {
         error("$message; diagnostic: $failureTag")
     }
 
-    private fun settingsHubGone(): Boolean = SETTINGS_HUB_ROWS.none { composeExists(it) }
+    private fun stringsFor(lang: String): Strings = if (lang == "en") En else PtBr
+
+    /** Text that exists only on the destination screen (hints/body), never on the Settings hub. */
+    private fun destinationMarker(cov: String, s: Strings): String = when (cov) {
+        "settings/devices" -> s.settingsUi.devicesHint
+        "settings/recording" -> s.settingsUi.recordingHint
+        "settings/ai-processing" -> s.aiProcessingHint
+        "settings/model-manager" -> s.modelManagerHint
+        "settings/memory" -> s.glossaryHint
+        "settings/personalization" -> s.useMemoryHint
+        "settings/preferences" -> s.cleanTranscriptHint
+        "settings/api" -> s.settingsUi.apiHint
+        "settings/voice-profiles" -> s.ux.voiceProfilesHint
+        "settings/autoflow" -> s.receiveNotifications
+        "settings/integrations" -> s.localCalendarHint
+        "settings/import" -> s.ux.importHubTitle
+        "settings/about" -> s.settingsUi.aboutBody
+        else -> error("No destination marker for $cov")
+    }
+
+    /** Second marker for rows that also credit a sub-section; null when the row has none. */
+    private fun subSectionMarker(cov: String, s: Strings): Pair<String, String>? = when (cov) {
+        "settings/api" -> s.settingsUi.endpointProfiles to "settings/api-profiles"
+        "settings/ai-processing" -> s.taskTranscription to "settings/per-task-models"
+        // Integrations has no sheet; its calendar card is the sub-surface.
+        "settings/integrations" -> s.localCalendar to "settings/integrations-sheet"
+        else -> null
+    }
 
     /**
      * Capture only after the destination's own node is present and Compose is idle,
