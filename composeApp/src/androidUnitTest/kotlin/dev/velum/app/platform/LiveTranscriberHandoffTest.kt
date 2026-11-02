@@ -79,6 +79,7 @@ class LiveTranscriberHandoffTest {
         finishWaitMs: Long = 30_000,
         reportedFailures: MutableList<String>? = null,
         awaitAttach: Boolean = true,
+        realOpener: Boolean = false,
         open: (AppContainer) -> StreamingTranscriber? = {
             opens.incrementAndGet()
             assertTrue(modelLoad.await(30, TimeUnit.SECONDS), "Synthetic model load was never released")
@@ -93,7 +94,11 @@ class LiveTranscriberHandoffTest {
                 VelumTheme(darkTheme = false) {
                     // As in App: the failure observer lives in the composition.
                     if (reportedFailures != null) LaunchedEffect(Unit) { observeMicFailures(container) { reportedFailures += it } }
-                    LiveTranscriptPane(container, recordingId, title = "", openTranscriber = open, finishWaitMs = finishWaitMs)
+                    if (realOpener) {
+                        LiveTranscriptPane(container, recordingId, title = "", finishWaitMs = finishWaitMs)
+                    } else {
+                        LiveTranscriptPane(container, recordingId, title = "", openTranscriber = open, finishWaitMs = finishWaitMs)
+                    }
                 }
             }
         }
@@ -237,6 +242,33 @@ class LiveTranscriberHandoffTest {
         assertEquals("queued", row.status)
         assertEquals(null, row.transcript)
         assertEquals(1, mic.stops)
+    }
+
+    // The shipped opener, with no model in the empty store: the same message, no fake text.
+    @Test fun the_real_opener_with_no_ready_model_shows_the_no_model_message() {
+        showPane(realOpener = true)
+        compose.waitUntil(10_000) { compose.onAllNodesWithText(PtBr.ux.liveNoModel).fetchSemanticsNodes().isNotEmpty() }
+        assertTrue(compose.onAllNodesWithText("chunk", substring = true).fetchSemanticsNodes().isEmpty())
+        compose.onNodeWithContentDescription(PtBr.stopRecording).performClick()
+        compose.waitUntil(10_000) { queued == 1 }
+        assertEquals(null, recordingRow().transcript)
+    }
+
+    @Test fun a_model_that_fails_to_start_says_unavailable_not_missing() {
+        showPane(open = { error("synthetic start failure") })
+        compose.waitUntil(10_000) { compose.onAllNodesWithText(PtBr.ux.liveModelUnavailable).fetchSemanticsNodes().isNotEmpty() }
+        assertTrue(compose.onAllNodesWithText(PtBr.ux.liveNoModel).fetchSemanticsNodes().isEmpty())
+    }
+
+    @Test fun a_mic_error_is_not_followed_by_a_claim_that_recording_continues() {
+        mic.startResult = MicStartResult.Failed("synthetic mic failure")
+        showPane(open = { opens.incrementAndGet(); null }, awaitAttach = false)
+        compose.waitUntil(10_000) { compose.onAllNodesWithText("synthetic mic failure").fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(10_000) { opens.get() == 1 }
+        compose.waitForIdle()
+        Thread.sleep(500) // the notice, if it were shown, is set right after the open returns null
+        compose.waitForIdle()
+        assertTrue(compose.onAllNodesWithText(PtBr.ux.liveNoModel).fetchSemanticsNodes().isEmpty())
     }
 
     @Test fun a_stuck_load_cannot_hold_stop_past_the_limit_and_is_still_finished_later() {
@@ -423,12 +455,14 @@ class LiveTranscriberHandoffTest {
         override val markers get() = currentMarkers
         @Volatile var currentMarkers = emptyList<MicMarker>()
         @Volatile var stopFailure: String? = null
+        @Volatile var startResult: MicStartResult? = null
         override var onPcmChunk: ((ByteArray) -> Unit)? = null
         @Volatile var starts = 0
         @Volatile var stops = 0
         private var session: MicSessionIdentity? = null
         override suspend fun start(absolutePath: String, inputSource: MicInputSource): MicStartResult {
             starts++
+            startResult?.let { return it }
             val started = MicSessionIdentity(starts.toLong(), absolutePath)
             session = started
             sessions.value = MicSessionState.Recording(absolutePath, 0, started.token)

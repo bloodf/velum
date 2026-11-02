@@ -1158,7 +1158,7 @@ internal fun LiveTranscriptPane(
     val strings = LocalStrings.current
     val seededTranscript = initialTranscript?.takeIf { it.isNotBlank() }
     var partial by remember(recordingId) {
-        mutableStateOf(seededTranscript ?: "**partial** · 0:00\n")
+        mutableStateOf(seededTranscript ?: "")
     }
     var usingMic by remember { mutableStateOf(false) }
     var ownedSession by remember(recordingId) { mutableStateOf<dev.velum.app.platform.MicSessionIdentity?>(null) }
@@ -1192,8 +1192,8 @@ internal fun LiveTranscriptPane(
         "${recordingsDirectoryPath()}/$recordingId.wav"
     }
     // No usable streaming model: recording and the WAV go on, the pane says so instead of showing text.
-    var noLiveModel by remember(recordingId) { mutableStateOf(false) }
-    // Seeded transcript (Roborazzi / resume) — keep it visible; skip PCM demo overwrite.
+    var liveNotice by remember(recordingId) { mutableStateOf<String?>(null) }
+    // Seeded transcript (Roborazzi / resume) — keep it visible; keep the stored text.
     val preserveSeeded = seededTranscript != null
 
     // Cancelling the queue (Stop or leaving the screen) ends the transcriber coroutine below and drops
@@ -1221,13 +1221,15 @@ internal fun LiveTranscriptPane(
                     pcm = pcmQueue,
                     languageHint = container.settingsRepository.settings.value.audioLanguage,
                     onPartial = { md -> partial = md },
-                    onNoTranscriber = { noLiveModel = true },
+                    onNoTranscriber = { modelFailed ->
+                        liveNotice = if (modelFailed) strings.ux.liveModelUnavailable else strings.ux.liveNoModel
+                    },
                 ),
             )
         }
     }
 
-    // Mic start is suspend (no main-thread runBlocking). Wire capture + optional PCM demo here.
+    // Mic start is suspend (no main-thread runBlocking). Wire capture here.
     LaunchedEffect(recordingId, inputSource) {
         // Changing input source while FGS is already running does not retarget capture —
         // chips are disabled while usingMic; skip re-start.
@@ -1393,14 +1395,18 @@ internal fun LiveTranscriptPane(
                 Text(title, fontWeight = FontWeight.Medium, fontSize = 14.sp, color = VelumInkSecondary)
                 Spacer(Modifier.height(8.dp))
             }
-            if (noLiveModel) {
-                Text(
-                    strings.ux.liveNoModel,
-                    color = VelumInkSecondary,
-                    fontSize = 14.sp,
-                    modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
-                )
-            } else {
+            val notice = liveNotice
+            if (notice != null) {
+                // "Recording continues" is only true while the mic really is capturing; a mic error is shown above.
+                if (usingMic && micError == null) {
+                    Text(
+                        notice,
+                        color = VelumInkSecondary,
+                        fontSize = 14.sp,
+                        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                    )
+                }
+            } else if (savableLiveTranscript(partial) != null) {
                 MarkdownPreview(partial)
             }
         }
@@ -1477,19 +1483,25 @@ private suspend fun transcribeQueuedPcm(
     pcm: ReceiveChannel<ByteArray>,
     languageHint: String?,
     onPartial: (String) -> Unit,
-    onNoTranscriber: () -> Unit,
+    /** Called when no live text can come: true when a model exists but failed, false when none is usable. */
+    onNoTranscriber: (modelFailed: Boolean) -> Unit,
 ): String? {
     fun logFailure(step: String, failure: Throwable) = println("VelumLivePcm: $step failed: ${failure::class.simpleName}")
-    val streamer = runCatching(open).onFailure { logFailure("open", it) }.getOrNull()
+    val opened = runCatching(open).onFailure { logFailure("open", it) }
+    val streamer = opened.getOrNull()
     if (streamer == null) {
-        onNoTranscriber()
+        pcm.cancel() // nothing will read the backlog
+        onNoTranscriber(opened.isFailure)
         return null
     }
     val started = runCatching {
         streamer.onPartial = onPartial
         streamer.start(16_000, languageHint, null)
     }.onFailure { logFailure("start", it) }.isSuccess
-    if (!started) onNoTranscriber()
+    if (!started) {
+        pcm.cancel()
+        onNoTranscriber(true)
+    }
     while (started) {
         val chunk = pcm.receiveCatching().getOrNull() ?: break
         runCatching { streamer.pushPcm(chunk) }.onFailure { logFailure("push", it) }
@@ -1497,7 +1509,10 @@ private suspend fun transcribeQueuedPcm(
     return runCatching { streamer.finish() }.onFailure { logFailure("finish", it) }.getOrNull()
 }
 
-/** Null when no streaming-capable model is ready: the caller must show that, never a stand-in. */
+/**
+ * Null when no streaming-capable model is Ready: the caller must show that, never a stand-in.
+ * Throws when a Ready model exists but none could be started, so the pane can say "unavailable".
+ */
 private fun openStreamingTranscriber(container: AppContainer): StreamingTranscriber? {
     val lang = container.settingsRepository.settings.value.audioLanguage
     val offlineId = LocalAsrRouter.chooseModelId(lang)
@@ -1513,12 +1528,15 @@ private fun openStreamingTranscriber(container: AppContainer): StreamingTranscri
         "streaming-zipformer-en-20m-mobile",
         offlineId,
     ).filterNotNull().distinct()
+    var readyButFailed = false
     for (modelId in preferredIds) {
         val path = container.localModelManager.modelPath(modelId)?.absolutePath ?: continue
         if (container.localModelManager.stateFor(modelId)?.status != LocalModelStatus.Ready) continue
         val created = runCatching { createStreamingTranscriber(path, modelId) }.getOrNull()
         if (created != null) return created
+        readyButFailed = true
     }
+    check(!readyButFailed) { "A streaming model is Ready but could not be started" }
     return null
 }
 
