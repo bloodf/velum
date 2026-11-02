@@ -54,7 +54,7 @@ class DeviceSimulatedPeripheralTest {
     }
 
     @Test
-    fun battery_level_from_simulated_peripheral_is_shown_and_survives_reconnect() = runTest {
+    fun polled_battery_level_from_simulated_peripheral_is_shown_and_survives_reconnect() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         val owner = ViewModelStore()
         try {
