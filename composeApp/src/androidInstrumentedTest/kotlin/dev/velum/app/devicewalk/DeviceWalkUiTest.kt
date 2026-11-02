@@ -943,6 +943,7 @@ class DeviceWalkUiTest {
         while (SystemClock.uptimeMillis() - start < timeoutMs) {
             val ready = try { condition() } catch (_: StaleObjectException) { false }
             if (ready) return
+            dismissSystemAnrDialog()
             SystemClock.sleep(300)
         }
         error("UI condition not met within ${timeoutMs}ms")
@@ -1191,6 +1192,9 @@ class DeviceWalkUiTest {
             if (composeRule.mainClock.autoAdvance) composeRule.mainClock.advanceTimeByFrame()
             val ready = try { condition() } catch (_: StaleObjectException) { false }
             if (ready) return
+            // A system "isn't responding" dialog (CI Pixel Launcher) hides the app from UiAutomator for the
+            // rest of the cell; it can reappear after the first dismissal, so retry on every miss.
+            dismissSystemAnrDialog()
             // Avoid composeRule.waitForIdle — it can throw
             // "performMeasureAndLayout called during measure layout" mid-draw.
             SystemClock.sleep(300)
