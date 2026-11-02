@@ -50,13 +50,16 @@ class VelumRepository(
         val fts = FtsIndex.ensureSchema(driver)
         ftsAvailable = fts.available
         ftsFailure = fts.failure
+        // Writes made now skip the index; the next open with FTS available must rebuild it.
+        if (!ftsAvailable) q.setMeta(META_FTS_DIRTY, "1")
         val seeded = SeedData.maybeSeed(db)
         reconcileRemovedTemplateDuplicates()
         backfillSummaryVersionsFromRecording()
         if (ftsAvailable) {
+            val dirty = q.getMeta(META_FTS_DIRTY).executeAsOneOrNull() != null
             when {
-                // Full rebuild after seed or template_fts schema upgrade.
-                fts.templateSchemaRecreated || seeded -> rebuildFtsIndex()
+                // Full rebuild after seed, template_fts schema upgrade, or a run without FTS.
+                fts.templateSchemaRecreated || seeded || dirty -> rebuildFtsIndex()
                 else -> {
                     // Empty library makes recording_fts empty — only rebuild the empty side
                     // so we do not rewrite every template on every cold start.
@@ -69,6 +72,8 @@ class VelumRepository(
                     }
                 }
             }
+            // Only after the rebuild committed: a crash before this line just rebuilds again.
+            if (dirty) q.deleteMeta(META_FTS_DIRTY)
         }
     }
 
@@ -1033,6 +1038,7 @@ class VelumRepository(
         const val META_FIRST_RUN_DONE = "first_run_done"
         internal const val LIBRARY_SESSION_CHUNK = 500
         const val META_TEMPLATE_ALIASES_RECONCILED = "template_aliases_reconciled"
+        const val META_FTS_DIRTY = "fts_dirty"
         private const val PROCESSING_ERROR_PREFIX = "processing_error:"
     }
 }

@@ -84,16 +84,26 @@ class GuardedLinkTest {
     }
 
     @Test
-    fun forbiddenSettingWrites_rejected_readsAllowed_plainAndSealed() = runTest {
+    fun forbiddenSettings_rejectedForReadsAndWrites_plainAndSealed() = runTest {
         val (t, link) = rig()
         for (id in ForbiddenSettings.ALL) {
-            val write = prefixed(CommonSettings.CMD, byteArrayOf(id.toByte(), 1))
-            assertFailsWith<IllegalArgumentException> { link.write(char, write, false) }
-            assertFailsWith<IllegalArgumentException> { link.write(char, write, false) { it } }
-            // Read of the same setting is [settingId] only.
-            link.write(char, prefixed(CommonSettings.CMD, byteArrayOf(id.toByte())), false)
+            for (params in listOf(byteArrayOf(id.toByte(), 1), byteArrayOf(id.toByte()))) {
+                for (frame in listOf(prefixed(CommonSettings.CMD, params), bare(CommonSettings.CMD, params))) {
+                    assertFailsWith<IllegalArgumentException> { link.write(char, frame, false) }
+                    assertFailsWith<IllegalArgumentException> { link.write(char, frame, false) { it } }
+                }
+            }
         }
-        assertEquals(ForbiddenSettings.ALL.size, t.writes.size)
+        assertEquals(0, t.writes.size)
+    }
+
+    @Test
+    fun otherSettingsAndParamlessCmd8_stillPass() = runTest {
+        val (t, link) = rig()
+        link.write(char, prefixed(CommonSettings.CMD, byteArrayOf(1)), false)
+        link.write(char, prefixed(CommonSettings.CMD, byteArrayOf(1, 0x0A)), false)
+        link.write(char, prefixed(CommonSettings.CMD), false)
+        assertEquals(3, t.writes.size)
     }
 
     @Test
@@ -171,19 +181,18 @@ class GuardedLinkTest {
     }
 
     /**
-     * Known wire ambiguity, not a guard bug: a forbidden-setting write whose value is 0 is trimmed to
-     * [settingId] by Framing.encodeCommand, i.e. byte-identical to a READ. The device sees the same
-     * bytes, so it also treats it as a read; the guard allows exactly what the device interprets as a read.
+     * A forbidden-setting write whose value is 0 is trimmed to [settingId] by Framing.encodeCommand, i.e.
+     * byte-identical to a read. That is why the guard rejects both shapes rather than only writes.
      */
     @Test
-    fun forbiddenSettingWriteWithValueZero_trimsToReadShapedBytes() = runTest {
+    fun forbiddenSettingWriteWithValueZero_trimsToReadShape_andIsRejected() = runTest {
         val (t, link) = rig()
         for (id in ForbiddenSettings.ALL) {
             val trimmed = Bytes.trimTrailingZeros(prefixed(CommonSettings.CMD, byteArrayOf(id.toByte(), 0)))
             assertContentEquals(prefixed(CommonSettings.CMD, byteArrayOf(id.toByte())), trimmed)
-            link.write(char, trimmed, withoutResponse = false)
+            assertFailsWith<IllegalArgumentException> { link.write(char, trimmed, withoutResponse = false) }
         }
-        assertEquals(ForbiddenSettings.ALL.size, t.writes.size)
+        assertEquals(0, t.writes.size)
     }
 
     @Test
