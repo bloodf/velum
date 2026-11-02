@@ -1158,8 +1158,13 @@ private fun LiveTranscriptPane(
     var pausedUi by remember { mutableStateOf(container.micCapture.isPaused) }
     val finished = remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
-    val streamer = remember {
-        openStreamingTranscriber(container)
+    // Opening a ready model does File.exists and a native load: never on the main thread.
+    val streamerReady = remember { kotlinx.coroutines.CompletableDeferred<StreamingTranscriber>() }
+    var streamerOrNull by remember { mutableStateOf<StreamingTranscriber?>(null) }
+    LaunchedEffect(Unit) {
+        val opened = withContext(Dispatchers.Default) { openStreamingTranscriber(container) }
+        streamerOrNull = opened
+        streamerReady.complete(opened)
     }
     val wavPath = remember(recordingId) {
         "${recordingsDirectoryPath()}/$recordingId.wav"
@@ -1172,7 +1177,7 @@ private fun LiveTranscriptPane(
     fun finishOnce(): String {
         if (finished.value) return partial
         finished.value = true
-        return runCatching { streamer.finish() }.getOrDefault(partial)
+        return runCatching { streamerOrNull?.finish() ?: partial }.getOrDefault(partial)
     }
 
     // Mic start is suspend (no main-thread runBlocking). Wire capture + optional PCM demo here.
@@ -1182,6 +1187,7 @@ private fun LiveTranscriptPane(
         if (usingMic && container.micCapture.isCapturing) {
             return@LaunchedEffect
         }
+        val streamer = streamerReady.await()
         streamer.onPartial = { md ->
             if (!preserveSeeded) partial = md
         }

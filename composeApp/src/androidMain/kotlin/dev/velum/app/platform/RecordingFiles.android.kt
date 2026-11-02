@@ -16,9 +16,9 @@ fun installRecordingFilesDir(path: String) {
 actual fun recordingsDirectoryPath(): String {
     val base = filesDirPath
         ?: throw IllegalStateException("Recording files dir not installed")
-    val dir = File(base, "recordings")
-    if (!dir.exists()) dir.mkdirs()
-    return dir.absolutePath
+    // Disk-free on purpose: this is called from composition. A wipe/purge may delete the directory, so
+    // every write site creates it (writeBytesToPath, ModelStoreDir, MicRecordingService do mkdirs).
+    return File(base, "recordings").absolutePath
 }
 
 /**
