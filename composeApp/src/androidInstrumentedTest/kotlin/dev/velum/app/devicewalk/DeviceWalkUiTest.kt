@@ -389,7 +389,8 @@ class DeviceWalkUiTest {
                 .fetchSemanticsNodes().isNotEmpty()
         }
         covered += "recording/change-template"
-        pressNavBack()
+        // The top-bar Back sits BEHIND the modal sheet and would pop the screen instead (#115).
+        dismissOpenSheet("Change template sheet")
         // Optional: never produced in the last verified matrix (#115), so not required.
         runCatching {
             clickTextPrefer("Versions", "Versões")
@@ -438,15 +439,14 @@ class DeviceWalkUiTest {
             "Todos",
         )
         covered += "templates/all"
-        runCatching {
-            softClickText(
-                if (lang == "en") "Search" else "Pesquisar",
-                "Search",
-                "Pesquisar",
-            )
-            covered += "templates/search"
-            pressNavBack()
-        }
+        // templates/search is a required marker: no runCatching, a missing or stuck sheet must fail.
+        clickTextPrefer(
+            if (lang == "en") "Search" else "Pesquisar",
+            "Search",
+            "Pesquisar",
+        )
+        covered += "templates/search"
+        dismissOpenSheet("Templates search sheet")
         shotWhenReady("07-templates-$tag", "Templates content not visible") {
             composeExists(if (lang == "en") "My space" else "Meu espaço") &&
                 composeExists(if (lang == "en") "Discover" else "Descobrir")
@@ -944,6 +944,18 @@ class DeviceWalkUiTest {
      * finish [MainActivity] and orphan ActivityScenario (DESTROYED outside
      * scenario close), after which recreate/wait can never recover the shell.
      */
+    /** Closes the open modal sheet through its accessibility Dismiss action; hard-fails if none opened or it stays. */
+    private fun dismissOpenSheet(what: String) {
+        val dismissable = SemanticsMatcher.keyIsDefined(SemanticsActions.Dismiss)
+        waitUntil(10_000, "$what: no sheet to dismiss") {
+            composeRule.onAllNodes(dismissable).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onAllNodes(dismissable)[0].performSemanticsAction(SemanticsActions.Dismiss) { it() }
+        waitUntil(10_000, "$what: sheet did not close") {
+            composeRule.onAllNodes(dismissable).fetchSemanticsNodes().isEmpty()
+        }
+    }
+
     private fun pressNavBack(): Boolean {
         if (softClickContentDesc("Back", "Voltar")) {
             SystemClock.sleep(400)
