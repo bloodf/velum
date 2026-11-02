@@ -10,6 +10,10 @@ import kotlin.test.assertTrue
  */
 class GattArchitectureTest {
     private val banned = listOf("writeRaw", "SealedWrite(", "PlainWrite(", "GattWrite")
+    // Test double that only IMPLEMENTS the link (cannot construct writes: constructors are internal).
+    private val allowedFiles = setOf(
+        "composeApp/src/androidUnitTest/kotlin/dev/velum/app/di/DeviceCredentialFailureTest.kt",
+    )
     private val allowedRoots = setOf("ble", "ble-testing")
 
     private fun repoRoot(): File {
@@ -27,6 +31,7 @@ class GattArchitectureTest {
                 module.walkTopDown()
                     .onEnter { it.name != "build" && it.name != ".gradle" }
                     .filter { it.isFile && it.extension == "kt" }
+                    .filter { it.relativeTo(root).path !in allowedFiles }
                     .filter { f -> banned.any { f.readText().contains(it) } }
                     .map { it.relativeTo(root).path }
                     .toList()
