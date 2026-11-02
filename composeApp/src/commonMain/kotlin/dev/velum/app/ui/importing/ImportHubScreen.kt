@@ -28,6 +28,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import dev.velum.app.di.AppContainer
 import dev.velum.app.i18n.LocalStrings
+import dev.velum.app.i18n.formatTemplate
 import dev.velum.app.importing.AudioImportPipeline
 import dev.velum.app.importing.ImportResult
 import dev.velum.app.platform.HapticKind
@@ -169,7 +170,7 @@ fun ImportHubScreen(
                                 val created = results.count { it is ImportResult.Created }
                                 val dupes = results.count { it is ImportResult.Duplicate }
                                 val failed = results.count { it is ImportResult.Failed }
-                                status = strings.ux.syncDoneFormat.format(created, dupes, failed)
+                                status = formatTemplate(strings.ux.syncDoneFormat, created, dupes, failed)
                                 results.filterIsInstance<ImportResult.Created>().lastOrNull()
                                     ?.let { onOpenRecording(it.recordingId) }
                                 importing = false
