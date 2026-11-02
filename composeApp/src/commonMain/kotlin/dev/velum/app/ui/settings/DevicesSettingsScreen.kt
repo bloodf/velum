@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -44,35 +45,41 @@ fun DevicesSettingsScreen(
         Modifier
             .fillMaxSize()
             .background(VelumSurface)
-            .verticalScroll(rememberScrollState()),
     ) {
         ScreenTopBar(strings.settingsUi.sectionDevices, onBack = onBack)
-        Text(
-            strings.settingsUi.devicesHint,
-            color = VelumInkSecondary,
-            fontSize = 13.sp,
-            lineHeight = 18.sp,
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-        )
-        SectionLabel(strings.deviceManagement)
-        ChevronRow(strings.scanDevices, onDevice, icon = Icons.Outlined.Devices)
-        ChevronRow(strings.importKeys.title, onImportKeys, icon = Icons.Outlined.Key, showDivider = false)
-        Spacer(Modifier.height(8.dp))
-        SectionLabel(strings.settingsUi.wifiTransfer)
-        Text(
-            strings.settingsUi.preferWifiFastPathHint,
-            color = VelumInkSecondary,
-            fontSize = 13.sp,
-            lineHeight = 18.sp,
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-        )
-        ToggleRow(
-            strings.settingsUi.autoSyncWatchedFolders,
-            prefs.autoSyncWatchedFolders,
-            { enabled -> container.settingsViewModel.runStorageAction { container.settingsRepository.setAutoSyncWatchedFolders(enabled) } },
-            strings.settingsUi.autoSyncWatchedFoldersHint,
-            showDivider = false,
-        )
-        Spacer(Modifier.height(40.dp))
+        Column(
+            Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState()),
+        ) {
+            Text(
+                strings.settingsUi.devicesHint,
+                color = VelumInkSecondary,
+                fontSize = 13.sp,
+                lineHeight = 18.sp,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+            )
+            SectionLabel(strings.deviceManagement)
+            ChevronRow(strings.scanDevices, onDevice, icon = Icons.Outlined.Devices)
+            ChevronRow(strings.importKeys.title, onImportKeys, icon = Icons.Outlined.Key, showDivider = false)
+            Spacer(Modifier.height(8.dp))
+            SectionLabel(strings.settingsUi.wifiTransfer)
+            Text(
+                strings.settingsUi.preferWifiFastPathHint,
+                color = VelumInkSecondary,
+                fontSize = 13.sp,
+                lineHeight = 18.sp,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+            )
+            ToggleRow(
+                strings.settingsUi.autoSyncWatchedFolders,
+                prefs.autoSyncWatchedFolders,
+                { enabled -> container.settingsViewModel.runStorageAction { container.settingsRepository.setAutoSyncWatchedFolders(enabled) } },
+                strings.settingsUi.autoSyncWatchedFoldersHint,
+                showDivider = false,
+            )
+            Spacer(Modifier.height(40.dp))
+        }
     }
 }
