@@ -196,6 +196,8 @@ class DiscoverFiltersUiTest {
             compose.onNode(hasSetTextAction()).performTextInput("zq")
             // The failed query is observable: the load error shows before we check the selections.
             await(PtBr.ux.genericError)
+            // Give the facets effect (a separate coroutine) time to fail and any pruning time to run.
+            repeat(10) { Thread.sleep(100); compose.waitForIdle() }
             assertTrue(hasTag("active:category") && hasTag("active:tag:agenda"), "selections pruned after failed facets load")
         } finally {
             activity.pause().stop().destroy()
