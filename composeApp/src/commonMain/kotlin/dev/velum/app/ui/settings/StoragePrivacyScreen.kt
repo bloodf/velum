@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.velum.app.di.AppContainer
 import dev.velum.app.i18n.LocalStrings
+import dev.velum.app.i18n.formatFixed
 import dev.velum.app.platform.deleteFileAtPath
 import dev.velum.app.platform.shareText
 import dev.velum.app.ui.components.BlackButton
@@ -160,8 +161,8 @@ fun StoragePrivacyScreen(
 private fun formatStorageBytes(bytes: Long): String {
     if (bytes < 1024) return "$bytes B"
     val kb = bytes / 1024.0
-    if (kb < 1024) return "${"%.1f".format(kb)} KB"
+    if (kb < 1024) return "${formatFixed(kb, 1)} KB"
     val mb = kb / 1024.0
-    if (mb < 1024) return "${"%.1f".format(mb)} MB"
-    return "${"%.2f".format(mb / 1024.0)} GB"
+    if (mb < 1024) return "${formatFixed(mb, 1)} MB"
+    return "${formatFixed(mb / 1024.0, 2)} GB"
 }
