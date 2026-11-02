@@ -6,7 +6,6 @@ import dev.velum.ble.client.TransferIntegrityException
 import dev.velum.ble.crypto.createSessionCipher
 import dev.velum.ble.crypto.rsaKeyPairToPem
 import dev.velum.ble.fake.FakeBleTransport
-import dev.velum.ble.gatt.GattWrite
 import dev.velum.ble.fake.FakePlaudPeripheral
 import dev.velum.ble.fake.TransferFaults
 import dev.velum.protocol.Commands
@@ -181,25 +180,25 @@ class TransferIntegrityTest {
     }
 
     /** A real transport's write suspends, and takes an hour of test time once [hang] is set. */
-    private class LinkTransport(private val delegate: BleTransport) : BleTransport by delegate {
+    private class WriteGate {
         var hang = false
 
-        override suspend fun writeRaw(write: GattWrite) {
+        suspend fun pass() {
             yield()
             if (hang) delay(1.hours)
-            delegate.writeRaw(write)
         }
     }
 
     private suspend fun linkClient(
         faults: TransferFaults = TransferFaults(),
         stopReply: FakePlaudPeripheral.StopReply = FakePlaudPeripheral.StopReply.Cmd29,
-    ): Pair<PlaudDeviceClient, LinkTransport> {
+    ): Pair<PlaudDeviceClient, WriteGate> {
         val fake = FakePlaudPeripheral(cipher, keys, file, chunkSize = 200, faults = faults, stopReply = stopReply)
         peripheral = fake
-        val link = LinkTransport(FakeBleTransport(fake))
+        val gate = WriteGate()
+        val link = FakeBleTransport(fake).apply { beforeWrite = gate::pass }
         link.connect("fake-note-pro")
-        return PlaudDeviceClient(link, cipher, keys, responseTimeout = 5.seconds).also { it.unlock() } to link
+        return PlaudDeviceClient(link, cipher, keys, responseTimeout = 5.seconds).also { it.unlock() } to gate
     }
 
     @Test fun abandoning_a_transfer_is_bounded_when_the_stop_write_hangs() = runTest(timeout = 30.seconds) {
