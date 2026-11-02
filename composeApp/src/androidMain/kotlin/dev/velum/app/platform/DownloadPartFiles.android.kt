@@ -3,6 +3,7 @@ package dev.velum.app.platform
 import java.io.File
 import java.io.FileOutputStream
 import java.nio.channels.FileChannel
+import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
@@ -32,12 +33,16 @@ actual fun streamToFileAtomically(
             out.fd.sync()
         }
         val finalPath = finalPathFor(head.copyOf(headLen))
-        Files.move(
-            part.toPath(),
-            File(finalPath).toPath(),
-            StandardCopyOption.ATOMIC_MOVE,
-            StandardCopyOption.REPLACE_EXISTING,
-        )
+        try {
+            Files.move(
+                part.toPath(),
+                File(finalPath).toPath(),
+                StandardCopyOption.ATOMIC_MOVE,
+                StandardCopyOption.REPLACE_EXISTING,
+            )
+        } catch (_: AtomicMoveNotSupportedException) {
+            Files.move(part.toPath(), File(finalPath).toPath(), StandardCopyOption.REPLACE_EXISTING)
+        }
         syncDirectory(part.absoluteFile.parentFile)
         return finalPath to size
     } catch (t: Throwable) {

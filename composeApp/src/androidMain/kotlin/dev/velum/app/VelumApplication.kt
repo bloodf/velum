@@ -66,11 +66,12 @@ class VelumApplication : Application() {
                 installRecordingFilesDir(filesDir.absolutePath)
                 // No download can be in flight before the container exists (#86).
                 runCatching {
-                    sweepStaleDownloadParts(
+                    val swept = sweepStaleDownloadParts(
                         recordingsDirectoryPath(),
                         System.currentTimeMillis() - STALE_DOWNLOAD_PART_AGE_MS,
                     )
-                }.onFailure { t -> Log.e(TAG, "Stale download sweep failed", t) }
+                    if (swept.isNotEmpty()) Log.i(TAG, "Removed ${swept.size} stale download part(s)")
+                }.onFailure { t -> Log.w(TAG, "Stale download sweep failed (${t::class.simpleName})") }
                 val modelsDir = File(filesDir, "models")
                 val built = AppContainer(
                     secureStore = AndroidSecureStore(appContext),
