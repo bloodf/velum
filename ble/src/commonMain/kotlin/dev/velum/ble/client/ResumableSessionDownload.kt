@@ -128,10 +128,6 @@ class ResumableSessionDownload(
             if (crcMismatches >= MAX_CRC_MISMATCHES) {
                 throw TransferIntegrityException("CRC mismatch on $crcMismatches complete transfers", lastError)
             }
-            // Lost links between complete transfers reset noProgress, so mismatches have their own cap.
-            if (crcMismatches >= MAX_CRC_MISMATCHES) {
-                throw TransferIntegrityException("CRC mismatch on $crcMismatches complete transfers", lastError)
-            }
             noProgress = if (store.length() > before) 0 else noProgress + 1
             if (noProgress >= maxNoProgressAttempts) {
                 throw TransferIntegrityException("Session download made no progress in $noProgress attempts", lastError)
