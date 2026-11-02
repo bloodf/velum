@@ -17,11 +17,14 @@ class GuardedLink(
         val guard = requireNotNull(profile.writes[char]) {
             "No write guard declared for ${char.characteristic} in profile ${profile.id}"
         }
-        guard.check(plaintext)
+        // Copy first, then check and use the same copy: the caller cannot mutate the bytes between
+        // the guard and the write.
+        val p = plaintext.copyOf()
+        guard.check(p)
         val write = if (seal == null) {
-            PlainWrite(char, plaintext.copyOf(), withoutResponse)
+            PlainWrite(char, p, withoutResponse)
         } else {
-            SealedWrite(char, seal(plaintext.copyOf()).copyOf(), withoutResponse)
+            SealedWrite(char, seal(p).copyOf(), withoutResponse)
         }
         transport.writeRaw(write)
     }

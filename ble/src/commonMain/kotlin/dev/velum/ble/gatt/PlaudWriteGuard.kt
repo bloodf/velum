@@ -7,7 +7,9 @@ import dev.velum.protocol.ForbiddenSettings
 import dev.velum.protocol.Framing
 
 /**
- * Plaud plaintext write guard (moved verbatim from `PlaudDeviceClient.assertOutboundAllowed`).
+ * Plaud plaintext write guard, moved from `PlaudDeviceClient.assertOutboundAllowed` with one addition:
+ * 2-byte `[APP_PREFIX, cmd]` frames (param-less single-byte opcodes after `Framing.encodeCommand` trims
+ * trailing zeros) are read as cmd, as the device does, instead of as a u16le.
  * Rejects forbidden opcodes (5 / 104 / 128 / 0xFE20 / 143) and writes of forbidden settings (4 / 26).
  */
 object PlaudWriteGuard : WriteGuard {
