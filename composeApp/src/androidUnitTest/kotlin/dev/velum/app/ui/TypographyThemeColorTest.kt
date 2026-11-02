@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -44,5 +45,19 @@ class TypographyThemeColorTest {
         compose.waitForIdle()
         assertEquals(LightVelumColors.ink, display)
         assertEquals(LightVelumColors.inkSecondary, body)
+    }
+
+    // Styles without an explicit colour take LocalContentColor; under a Surface that is onSurface.
+    @Test fun uncoloured_style_resolves_to_dark_on_surface() {
+        var title = Color.Unspecified
+        Robolectric.buildActivity(ComponentActivity::class.java).setup().get().setContent {
+            VelumTheme(darkTheme = true) {
+                Surface {
+                    Text("c", style = MaterialTheme.typography.titleLarge, onTextLayout = { title = it.layoutInput.style.color })
+                }
+            }
+        }
+        compose.waitForIdle()
+        assertEquals(DarkVelumColors.ink, title)
     }
 }
