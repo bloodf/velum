@@ -6,6 +6,8 @@ import com.juul.kable.Scanner
 import com.juul.kable.State
 import com.juul.kable.WriteType
 import com.juul.kable.characteristicOf
+import dev.velum.ble.gatt.GattProfiles
+import dev.velum.ble.gatt.GattWrite
 import dev.velum.core.model.ConnectedDevice
 import dev.velum.protocol.PlaudAdvertisement
 import dev.velum.protocol.PlaudUuids
@@ -157,10 +159,11 @@ class KableBleTransport : BleTransport {
         _state.value = BleConnectionState.Idle
     }
 
-    override suspend fun write(payload: ByteArray, withoutResponse: Boolean) {
+    override suspend fun writeRaw(write: GattWrite) {
         val p = peripheral ?: error("Not connected")
-        val type = if (withoutResponse) WriteType.WithoutResponse else WriteType.WithResponse
-        p.write(writeCharacteristic, payload, type)
+        require(write.char in GattProfiles.Plaud.writes) { "Unsupported write characteristic ${write.char}" }
+        val type = if (write.withoutResponse) WriteType.WithoutResponse else WriteType.WithResponse
+        p.write(writeCharacteristic, write.bytes, type)
     }
 
     override fun notifications(): Flow<ByteArray> = notifyFlow.asSharedFlow()

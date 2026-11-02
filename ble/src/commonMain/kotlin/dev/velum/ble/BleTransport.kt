@@ -1,5 +1,6 @@
 package dev.velum.ble
 
+import dev.velum.ble.gatt.GattWrite
 import dev.velum.core.model.ConnectedDevice
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
@@ -19,8 +20,11 @@ interface BleTransport {
     suspend fun connect(deviceId: String)
     suspend fun disconnect()
 
-    /** Write to the Plaud write characteristic (2BB1). */
-    suspend fun write(payload: ByteArray, withoutResponse: Boolean = false)
+    /**
+     * Raw GATT write. `internal` so only `:ble` can call it; every caller goes through
+     * [dev.velum.ble.gatt.GuardedLink], which runs the forbidden-command guard first.
+     */
+    internal suspend fun writeRaw(write: GattWrite)
 
     /** Notifications from the Plaud notify characteristic (2BB0). */
     fun notifications(): Flow<ByteArray>
