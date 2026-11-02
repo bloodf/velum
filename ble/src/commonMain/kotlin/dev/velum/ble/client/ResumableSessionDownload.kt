@@ -79,6 +79,7 @@ class ResumableSessionDownload(
         if (sizeBytes > 0 && store.length() > sizeBytes) store.truncate(0)
         var attempts = 0
         var noProgress = 0
+        var crcMismatches = 0
         var lastError: Exception? = null
         var unlocked = initialClient
         while (true) {
@@ -106,6 +107,7 @@ class ResumableSessionDownload(
                     return ResumableDownloadResult(store.length(), crc, attempts)
                 }
                 store.truncate(0)
+                crcMismatches++
                 lastError = TransferIntegrityException("CRC mismatch")
             } catch (e: TimeoutCancellationException) {
                 // Our own timeout (lost link, silent device); a caller cancellation fails ensureActive below.
@@ -116,6 +118,10 @@ class ResumableSessionDownload(
                 lastError = e
             } finally {
                 if (!succeeded) client?.close()
+            }
+            // Lost links between complete transfers reset noProgress, so mismatches have their own cap.
+            if (crcMismatches >= MAX_CRC_MISMATCHES) {
+                throw TransferIntegrityException("CRC mismatch on $crcMismatches complete transfers", lastError)
             }
             noProgress = if (store.length() > before) 0 else noProgress + 1
             if (noProgress >= maxNoProgressAttempts) {
@@ -144,6 +150,7 @@ class ResumableSessionDownload(
 
     private companion object {
         const val CRC_BLOCK = 64 * 1024
+        const val MAX_CRC_MISMATCHES = 3
         const val MAX_BACKOFF_SHIFT = 5 // 32 s
     }
 }

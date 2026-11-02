@@ -272,8 +272,10 @@ class PlaudDeviceClient(
         require(!startRsp.refused) { "Sync start refused status=${startRsp.status}" }
 
         var next = startOffset
+        var ignoredFrames = 0
         try {
             while (true) {
+                val before = next
                 val raw = awaitDecryptedFrame(responseTimeout) { true }
                 when (val inboundPacket = Framing.decodeInbound(raw)) {
                     is InboundPacket.RecordingData -> {
@@ -305,6 +307,11 @@ class PlaudDeviceClient(
                     else -> Unit
                 }
                 if (sizeBytes > 0 && next >= sizeBytes) break
+                // Every frame restarts the response timeout, so a device stuck repeating needs its own limit.
+                ignoredFrames = if (next != before) 0 else ignoredFrames + 1
+                if (ignoredFrames > MAX_CONSECUTIVE_IGNORED_FRAMES) {
+                    throw TransferIntegrityException("No new data in $ignoredFrames frames at offset $next")
+                }
             }
             if (sizeBytes > 0 && next != sizeBytes) {
                 throw TransferIntegrityException("Transfer ended at offset $next of $sizeBytes")
@@ -323,7 +330,7 @@ class PlaudDeviceClient(
 
     /** All bytes are stored, so nothing here may fail the transfer, except the caller's own cancellation. */
     private suspend fun stopCrcBestEffort(): Int = try {
-        writeOutbound(Sessions.encodeSyncStop())
+        withTimeout(responseTimeout) { writeOutbound(Sessions.encodeSyncStop()) }
         val raw = awaitDecryptedFrame(responseTimeout) { frame ->
             val decoded = runCatching { Framing.decodeInbound(frame) }.getOrNull()
             decoded is InboundPacket.CommandResponse && isStopReply(decoded.cmd)
@@ -469,6 +476,9 @@ class PlaudDeviceClient(
     companion object {
         /** Stop CRC value meaning "none", as in the only real capture (docs/protocol/README.md). */
         const val NO_DEVICE_CRC: Int = 0xFFFF
+
+        /** Frames in a row that add no bytes before a transfer is abandoned (about 1 MiB of 255-byte chunks). */
+        const val MAX_CONSECUTIVE_IGNORED_FRAMES: Int = 4096
 
         /** Hard cap for a single session download (512 MiB). */
         const val MAX_SESSION_DOWNLOAD_BYTES: Long = 512L * 1024 * 1024
