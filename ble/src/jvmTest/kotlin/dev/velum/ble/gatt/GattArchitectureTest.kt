@@ -14,8 +14,19 @@ class GattArchitectureTest {
     private val allowedFiles = setOf(
         "composeApp/src/androidUnitTest/kotlin/dev/velum/app/di/DeviceCredentialFailureTest.kt",
     )
-    // Test doubles inside :ble that wrap a transport and forward writeRaw (they cannot build writes).
-    private val recordingDoubles = setOf("SimulatedPeripheralScenariosTest.kt")
+    // Exact repo-relative paths, so a same-named file elsewhere gets no exemption.
+    private val guardedLink = "ble/src/commonMain/kotlin/dev/velum/ble/gatt/GuardedLink.kt"
+    private val thisTest = "ble/src/jvmTest/kotlin/dev/velum/ble/gatt/GattArchitectureTest.kt"
+    // Test double inside :ble that wraps a transport and forwards writeRaw (it cannot build writes).
+    private val recordingDouble = "ble/src/jvmTest/kotlin/dev/velum/ble/SimulatedPeripheralScenariosTest.kt"
+    private val implementers = setOf(
+        "ble/src/commonMain/kotlin/dev/velum/ble/gatt/Gatt.kt",
+        "ble/src/commonMain/kotlin/dev/velum/ble/StubBleTransport.kt",
+        "ble/src/mobileMain/kotlin/dev/velum/ble/KableBleTransport.kt",
+        "ble/src/jvmTest/kotlin/dev/velum/ble/gatt/GuardedLinkTest.kt",
+        "ble-testing/src/commonMain/kotlin/dev/velum/ble/fake/FakeBleTransport.kt",
+        recordingDouble,
+    )
     private val allowedRoots = setOf("ble", "ble-testing")
 
     private fun repoRoot(): File {
@@ -24,24 +35,29 @@ class GattArchitectureTest {
         return checkNotNull(dir) { "settings.gradle.kts not found above ${File("").absolutePath}" }
     }
 
+    private fun File.isSource() = isFile && extension in setOf("kt", "java")
+
     @Test
     fun insideBle_onlyGuardedLinkBuildsWritesOrCallsWriteRaw() {
-        val bleSrc = File(repoRoot(), "ble/src")
-        val files = bleSrc.walkTopDown().filter { it.isFile && it.extension == "kt" }
-            .filter { it.name != "GattArchitectureTest.kt" }.toList()
+        val root = repoRoot()
+        val files = listOf("ble/src", "ble-testing/src")
+            .flatMap { File(root, it).walkTopDown().filter { f -> f.isSource() }.toList() }
+            .map { it.relativeTo(root).invariantSeparatorsPath to it.readText() }
+            .filter { (path, _) -> path != thisTest }
+        assertTrue(guardedLink in files.map { it.first }, "scan root wrong: $root")
         // Construction ban has no exceptions except GuardedLink.kt itself.
-        val builders = files.filter { it.name != "GuardedLink.kt" }
-            .filter { f -> f.readText().let { "PlainWrite(" in it || "SealedWrite(" in it } }.map { it.name }
+        val builders = files.filter { (path, text) ->
+            path != guardedLink && ("PlainWrite(" in text || "SealedWrite(" in text)
+        }.map { it.first }
         assertTrue(builders.isEmpty(), "Only GuardedLink.kt may build writes: $builders")
-        // Forwarding test doubles are exempt from the writeRaw CALL ban by name only.
-        val callers = files.filter { it.name != "GuardedLink.kt" && it.name !in recordingDoubles }
-            .filter { ".writeRaw(" in it.readText() }.map { it.name }
+        // The forwarding test double is exempt from the writeRaw CALL ban by exact path only.
+        val callers = files.filter { (path, text) ->
+            path != guardedLink && path != recordingDouble && ".writeRaw(" in text
+        }.map { it.first }
         assertTrue(callers.isEmpty(), "Only GuardedLink.kt may call writeRaw: $callers")
-        val implementers = setOf(
-            "Gatt.kt", "GattArchitectureTest.kt", "SimulatedPeripheralScenariosTest.kt", "StubBleTransport.kt", "FakeBleTransport.kt", "KableBleTransport.kt", "GuardedLinkTest.kt",
-        )
-        val overriders = bleSrc.walkTopDown().filter { it.isFile && it.extension == "kt" }
-            .filter { "fun writeRaw" in it.readText() && it.name !in implementers }.map { it.name }.toList()
+        val overriders = files.filter { (path, text) ->
+            path !in implementers && (if (path.endsWith(".java")) "writeRaw(" in text else "fun writeRaw" in text)
+        }.map { it.first }
         assertTrue(overriders.isEmpty(), "writeRaw implemented outside transports: $overriders")
     }
 
@@ -53,8 +69,8 @@ class GattArchitectureTest {
             .flatMap { module ->
                 module.walkTopDown()
                     .onEnter { it.name != "build" && it.name != ".gradle" }
-                    .filter { it.isFile && it.extension == "kt" }
-                    .filter { it.relativeTo(root).path !in allowedFiles }
+                    .filter { it.isSource() }
+                    .filter { it.relativeTo(root).invariantSeparatorsPath !in allowedFiles }
                     .filter { f -> banned.any { f.readText().contains(it) } }
                     .map { it.relativeTo(root).path }
                     .toList()

@@ -5,6 +5,7 @@ package dev.velum.protocol
  *
  * Write payloads are `[settingId u8][value…]`. [ForbiddenSettings] are rejected
  * before framing so AUTO_DELETE / AUTO_SYNC can never leave the device.
+ * `PlaudWriteGuard` in `:ble` rejects reads of them too: a value-0 write trims to read-shaped bytes.
  */
 object CommonSettings {
     const val CMD: Int = 8
