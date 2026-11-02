@@ -58,7 +58,7 @@ fun AskAcrossScreen(
 ) {
     val strings = LocalStrings.current
     val scope = rememberCoroutineScope()
-    val recordings by container.repository.observeRecordings().collectAsState(emptyList())
+    val recordings by remember(container) { container.repository.observeRecordings() }.collectAsState(emptyList())
     var question by remember { mutableStateOf(initialQuestion) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }

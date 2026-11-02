@@ -87,7 +87,7 @@ fun AutoFlowListScreen(
     onBrowseTemplates: () -> Unit,
 ) {
     val strings = LocalStrings.current
-    val flows by container.repository.observeAutoflows().collectAsState(emptyList())
+    val flows by remember(container) { container.repository.observeAutoflows() }.collectAsState(emptyList())
     val prefs by container.settingsRepository.preferences.collectAsState()
     val scope = rememberCoroutineScope()
 
@@ -221,7 +221,7 @@ fun AutoFlowEditScreen(
     onOpenIntegrations: () -> Unit = {},
 ) {
     val strings = LocalStrings.current
-    val flows by container.repository.observeAutoflows().collectAsState(emptyList())
+    val flows by remember(container) { container.repository.observeAutoflows() }.collectAsState(emptyList())
     val templatesFlow = remember(container) { container.repository.observeTemplates() }
     val templates by templatesFlow.collectAsState(emptyList())
     val seed = remember(seedTemplateId) {
