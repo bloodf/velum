@@ -176,6 +176,7 @@ class WifiSoftApBleFallbackTest {
         assertIs<WifiTransferCoordinator.Outcome.BleFallback>(outcome)
         assertEquals("wifi_frame_rejected", outcome.reason)
         assertTrue(ble.writes > 0, "BLE path must actually have run")
+        assertEquals(1, joiner.joinCount, "SoftAP must have been joined before it was left")
         assertTrue(!joiner.joined, "SoftAP must be left after failure")
         assertContentEquals(fixture, outcome.bytes) // no missing or duplicate data, no partial Wi-Fi bytes
         assertEquals(crc(fixture), crc(outcome.bytes))
@@ -187,6 +188,7 @@ class WifiSoftApBleFallbackTest {
         assertIs<WifiTransferCoordinator.Outcome.BleFallback>(outcome)
         assertTrue(outcome.reason.startsWith("wifi_timeout"), outcome.reason)
         assertTrue(ble.writes > 0, "BLE path must actually have run")
+        assertEquals(1, joiner.joinCount, "SoftAP must have been joined before it was left")
         assertTrue(!joiner.joined, "SoftAP must be left after failure")
         assertContentEquals(fixture, outcome.bytes)
         assertEquals(crc(fixture), crc(outcome.bytes))

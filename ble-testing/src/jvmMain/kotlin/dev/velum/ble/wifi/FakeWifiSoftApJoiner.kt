@@ -9,9 +9,15 @@ class FakeWifiSoftApJoiner : WifiSoftApJoiner {
     var joined: Boolean = false
         private set
 
+    /** Successful joins so far: with `!joined` it proves a join then a leave happened, not that none ran. */
+    @Volatile
+    var joinCount: Int = 0
+        private set
+
     override suspend fun join(ssid: String, password: String, ssidIsPattern: Boolean) {
         require(ssid.isNotBlank()) { "ssid required" }
         require(password.isNotBlank()) { "password required" }
+        joinCount++
         joined = true
     }
 
