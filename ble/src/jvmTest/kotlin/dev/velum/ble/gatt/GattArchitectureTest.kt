@@ -14,6 +14,8 @@ class GattArchitectureTest {
     private val allowedFiles = setOf(
         "composeApp/src/androidUnitTest/kotlin/dev/velum/app/di/DeviceCredentialFailureTest.kt",
     )
+    // Test doubles inside :ble that wrap a transport and forward writeRaw (they cannot build writes).
+    private val recordingDoubles = setOf("SimulatedPeripheralScenariosTest.kt")
     private val allowedRoots = setOf("ble", "ble-testing")
 
     private fun repoRoot(): File {
@@ -26,12 +28,12 @@ class GattArchitectureTest {
     fun insideBle_onlyGuardedLinkBuildsWritesOrCallsWriteRaw() {
         val bleSrc = File(repoRoot(), "ble/src")
         val offenders = bleSrc.walkTopDown().filter { it.isFile && it.extension == "kt" }
-            .filter { it.name != "GuardedLink.kt" && it.name != "GattArchitectureTest.kt" }
+            .filter { it.name != "GuardedLink.kt" && it.name != "GattArchitectureTest.kt" && it.name !in recordingDoubles }
             .filter { f -> f.readText().let { "PlainWrite(" in it || "SealedWrite(" in it || ".writeRaw(" in it } }
             .map { it.name }.toList()
         assertTrue(offenders.isEmpty(), "Only GuardedLink.kt may build writes or call writeRaw: $offenders")
         val implementers = setOf(
-            "Gatt.kt", "GattArchitectureTest.kt", "StubBleTransport.kt", "FakeBleTransport.kt", "KableBleTransport.kt", "GuardedLinkTest.kt",
+            "Gatt.kt", "GattArchitectureTest.kt", "SimulatedPeripheralScenariosTest.kt", "StubBleTransport.kt", "FakeBleTransport.kt", "KableBleTransport.kt", "GuardedLinkTest.kt",
         )
         val overriders = bleSrc.walkTopDown().filter { it.isFile && it.extension == "kt" }
             .filter { "fun writeRaw" in it.readText() && it.name !in implementers }.map { it.name }.toList()
