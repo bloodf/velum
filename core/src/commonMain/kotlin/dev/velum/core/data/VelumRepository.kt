@@ -30,6 +30,7 @@ import dev.velum.core.templates.DiscoverFacets
 import dev.velum.core.templates.DiscoverFilter
 import dev.velum.core.templates.DiscoverSearchMode
 import dev.velum.core.templates.DiscoverTemplateQuery
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.flow
 
 class VelumRepository(
@@ -44,19 +45,34 @@ class VelumRepository(
     /** Why FTS is unavailable (exception class only), for platform logging; null when available. */
     val ftsFailure: String?
 
+    /** Exception class of a failed fts_dirty rebuild (index stays stale, flag kept, retried next open); else null. */
+    var ftsRebuildFailure: String? = null
+        private set
+
     constructor(handle: DatabaseHandle) : this(handle.database, handle.driver)
 
     init {
         val fts = FtsIndex.ensureSchema(driver)
         ftsAvailable = fts.available
         ftsFailure = fts.failure
+        // Writes made now skip the index; the next open with FTS available must rebuild it.
+        if (!ftsAvailable) q.setMeta(META_FTS_DIRTY, "1")
         val seeded = SeedData.maybeSeed(db)
         reconcileRemovedTemplateDuplicates()
         backfillSummaryVersionsFromRecording()
         if (ftsAvailable) {
+            val dirty = q.getMeta(META_FTS_DIRTY).executeAsOneOrNull() != null
             when {
-                // Full rebuild after seed or template_fts schema upgrade.
-                fts.templateSchemaRecreated || seeded -> rebuildFtsIndex()
+                // Full rebuild after seed, template_fts schema upgrade, or a run without FTS. Only a rebuild
+                // for the dirty flag may fail soft (keep the flag, open on the stale index, retry next open).
+                fts.templateSchemaRecreated || seeded || dirty -> try {
+                    rebuildFtsIndex()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    if (!dirty) throw e
+                    ftsRebuildFailure = e::class.simpleName ?: "Exception"
+                }
                 else -> {
                     // Empty library makes recording_fts empty — only rebuild the empty side
                     // so we do not rewrite every template on every cold start.
@@ -69,6 +85,8 @@ class VelumRepository(
                     }
                 }
             }
+            // Only after the rebuild committed: a crash before this line just rebuilds again.
+            if (dirty && ftsRebuildFailure == null) q.deleteMeta(META_FTS_DIRTY)
         }
     }
 
@@ -1037,6 +1055,7 @@ class VelumRepository(
         const val META_FIRST_RUN_DONE = "first_run_done"
         internal const val LIBRARY_SESSION_CHUNK = 500
         const val META_TEMPLATE_ALIASES_RECONCILED = "template_aliases_reconciled"
+        const val META_FTS_DIRTY = "fts_dirty"
         private const val PROCESSING_ERROR_PREFIX = "processing_error:"
     }
 }

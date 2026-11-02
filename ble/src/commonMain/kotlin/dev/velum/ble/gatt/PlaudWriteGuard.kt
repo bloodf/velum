@@ -10,7 +10,9 @@ import dev.velum.protocol.Framing
  * Plaud plaintext write guard, moved from `PlaudDeviceClient.assertOutboundAllowed` with one addition:
  * 2-byte `[APP_PREFIX, cmd]` frames (param-less single-byte opcodes after `Framing.encodeCommand` trims
  * trailing zeros) are read as cmd, as the device does, instead of as a u16le.
- * Rejects forbidden opcodes (5 / 104 / 128 / 0xFE20 / 143) and writes of forbidden settings (4 / 26).
+ * Rejects forbidden opcodes (5 / 104 / 128 / 0xFE20 / 143) and every cmd 8 frame addressing a forbidden
+ * setting (4 / 26), reads included: `Framing.encodeCommand` trims a value-0 write to `[settingId]`, which
+ * is byte-identical to a read, so the two cannot be told apart here.
  */
 object PlaudWriteGuard : WriteGuard {
     override fun check(plaintext: ByteArray) {
@@ -33,10 +35,11 @@ object PlaudWriteGuard : WriteGuard {
             } else {
                 ByteArray(0)
             }
-            // Cmd 8 read is [settingId]; write is [settingId][value…].
-            // Only writes of forbidden settings are rejected (reads stay allowed).
-            if (params.size > 1) {
-                ForbiddenSettings.requireWritable(params[0].toInt() and 0xFF)
+            params.firstOrNull()?.let { first ->
+                val settingId = first.toInt() and 0xFF
+                require(!ForbiddenSettings.isForbidden(settingId)) {
+                    "Forbidden setting id $settingId: cmd 8 frames for AUTO_DELETE(4) / AUTO_SYNC(26) never leave the app"
+                }
             }
         }
     }

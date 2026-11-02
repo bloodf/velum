@@ -53,7 +53,7 @@ Use **`0x2A19`** for battery and **`0x180A`** for firmware/model info.
 
 **Never send (ForbiddenOpcodes):** 5 (depair), **128 (resetFindmy)**, 104 (clear all), 0xFE20, OTA **143**.
 
-**Never WRITE settings (ForbiddenSettings):** **4** (AUTO_DELETE), **26** (AUTO_SYNC).
+**Never WRITE settings (ForbiddenSettings):** **4** (AUTO_DELETE), **26** (AUTO_SYNC). `PlaudWriteGuard` also rejects reads of these ids, because a value-0 write trims to the same bytes as a read.
 
 **Unused in APK command map (do not send):** 5, 13, 38, 50, 51, 109, 141, 142, 145, 151 — mirrored as `UnusedCommands`.
 

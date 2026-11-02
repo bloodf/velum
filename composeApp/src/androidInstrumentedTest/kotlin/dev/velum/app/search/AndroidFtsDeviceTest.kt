@@ -15,6 +15,7 @@ import org.junit.runner.RunWith
 /**
  * The production DriverFactory must give Android a SQLite with FTS5 (framework SQLite has only
  * FTS3/4), so recording and template search use the index instead of a full scan. Own DB file.
+ * Debug build only: the minifiedTest APK has no R8 keeps for the app/core symbols used here.
  */
 @RunWith(AndroidJUnit4::class)
 class AndroidFtsDeviceTest {
