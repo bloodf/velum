@@ -85,6 +85,9 @@ tools=$(ls -d "$sdk"/build-tools/*/ 2>/dev/null | sort -V | tail -1)
 apk_dir=composeApp/build/outputs/apk/release
 version_code() { "${tools}aapt2" dump badging "$1" | sed -n "s/.*versionCode='\([0-9]*\)'.*/\1/p"; }
 native_code() { "${tools}aapt2" dump badging "$1" | sed -n "s/^native-code: //p"; }
+for abi in universal arm64-v8a armeabi-v7a; do
+  [[ -f "$apk_dir/composeApp-$abi-release.apk" ]] || { echo "FAIL: missing composeApp-$abi-release.apk"; ls "$apk_dir"; exit 1; }
+done
 universal_code=$(version_code "$apk_dir/composeApp-universal-release.apk")
 (( universal_code % 10 == 0 )) || { echo "FAIL: universal versionCode $universal_code not base*10"; exit 1; }
 for abi_digit in arm64-v8a:2 armeabi-v7a:1 universal:0; do
@@ -92,11 +95,27 @@ for abi_digit in arm64-v8a:2 armeabi-v7a:1 universal:0; do
   apk="$apk_dir/composeApp-$abi-release.apk"
   code=$(version_code "$apk")
   [[ "$code" == $((universal_code + ${abi_digit##*:})) ]] || { echo "FAIL: $apk versionCode $code"; exit 1; }
-  "${tools}zipalign" -c -P 16 4 "$apk" >/dev/null || { echo "FAIL: $apk not 16 KB aligned"; exit 1; }
+  "${tools}zipalign" -c -P 16 4 "$apk" >/dev/null || {
+    echo "FAIL: $apk not 16 KB aligned (zipalign from build-tools $(basename "$tools"); -P 16 needs 35+)"
+    exit 1
+  }
   echo "PASS: $(basename "$apk") versionCode=$code native-code=$(native_code "$apk")"
 done
-[[ "$(native_code "$apk_dir/composeApp-universal-release.apk")" == *x86_64* ]] || { echo 'FAIL: universal APK lacks x86_64'; exit 1; }
-[[ "$(native_code "$apk_dir/composeApp-arm64-v8a-release.apk")" != *x86* ]] || { echo 'FAIL: arm64 APK has x86 libs'; exit 1; }
+# Each split carries exactly its own ABI; the universal APK carries all four.
+[[ "$(native_code "$apk_dir/composeApp-universal-release.apk")" == "'arm64-v8a' 'armeabi-v7a' 'x86' 'x86_64'" ]] \
+  || { echo 'FAIL: universal APK native-code is not arm64-v8a armeabi-v7a x86 x86_64'; exit 1; }
+for abi in arm64-v8a armeabi-v7a; do
+  [[ "$(native_code "$apk_dir/composeApp-$abi-release.apk")" == "'$abi'" ]] \
+    || { echo "FAIL: composeApp-$abi-release.apk native-code is not only $abi"; exit 1; }
+done
+
+# Store metadata must track the universal versionCode.
+for locale_dir in fastlane/metadata/android/*/; do
+  [[ -f "${locale_dir}changelogs/$universal_code.txt" ]] \
+    || { echo "FAIL: missing ${locale_dir}changelogs/$universal_code.txt"; exit 1; }
+done
+grep -q "versionCode: $universal_code\$" metadata/dev.velum.app.yml \
+  || { echo "FAIL: metadata/dev.velum.app.yml versionCode is not $universal_code"; exit 1; }
 echo 'PASS: release APK splits'
 
 # F-Droid path: no signing variables plus the explicit property builds an unsigned universal APK.
