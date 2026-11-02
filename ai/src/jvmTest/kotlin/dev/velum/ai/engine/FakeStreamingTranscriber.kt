@@ -2,7 +2,7 @@ package dev.velum.ai.engine
 
 /**
  * JVM / CI test double. Concatenates PCM chunk sizes into a Markdown log.
- * Not for production Android — use [createStreamingTranscriber] there.
+ * Test source only: nothing shipped may construct it, so fake text cannot reach a database (#196).
  */
 class FakeStreamingTranscriber : StreamingTranscriber {
     override val engineId: String = "fake-streaming-asr"

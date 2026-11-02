@@ -79,7 +79,7 @@ class LiveTranscriberHandoffTest {
         finishWaitMs: Long = 30_000,
         reportedFailures: MutableList<String>? = null,
         awaitAttach: Boolean = true,
-        open: (AppContainer) -> StreamingTranscriber = {
+        open: (AppContainer) -> StreamingTranscriber? = {
             opens.incrementAndGet()
             assertTrue(modelLoad.await(30, TimeUnit.SECONDS), "Synthetic model load was never released")
             check(!modelMissing) { "Synthetic model failure" }
@@ -220,6 +220,23 @@ class LiveTranscriberHandoffTest {
         val row = recordingRow()
         assertEquals("queued", row.status)
         assertEquals(null, row.transcript)
+    }
+
+    // #196: with no usable streaming model the pane says so, shows no stand-in text, and saves the audio only.
+    @Test fun no_streaming_model_shows_a_message_not_fake_text_and_saves_audio_only() {
+        showPane(open = { opens.incrementAndGet(); null })
+        compose.waitUntil(10_000) { compose.onAllNodesWithText(PtBr.ux.liveNoModel).fetchSemanticsNodes().isNotEmpty() }
+        mic.onPcmChunk!!.invoke(ByteArray(1024))
+        listOf("partial", "chunk", "final").forEach {
+            assertTrue(compose.onAllNodesWithText(it, substring = true, ignoreCase = true).fetchSemanticsNodes().isEmpty(), "fake text '$it' shown")
+        }
+        compose.onNodeWithContentDescription(PtBr.stopRecording).performClick()
+
+        compose.waitUntil(10_000) { queued == 1 }
+        val row = recordingRow()
+        assertEquals("queued", row.status)
+        assertEquals(null, row.transcript)
+        assertEquals(1, mic.stops)
     }
 
     @Test fun a_stuck_load_cannot_hold_stop_past_the_limit_and_is_still_finished_later() {

@@ -63,7 +63,9 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -71,7 +73,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.velum.ai.engine.AiTask
-import dev.velum.ai.engine.FakeStreamingTranscriber
 import dev.velum.ai.engine.ModeResolution
 import dev.velum.ai.engine.StreamingTranscriber
 import dev.velum.ai.engine.createStreamingTranscriber
@@ -87,13 +88,11 @@ import dev.velum.app.platform.AudioPlayer
 import dev.velum.app.platform.MicInputSource
 import dev.velum.app.platform.MicMarkerResult
 import dev.velum.app.platform.MicStartResult
-import dev.velum.app.platform.WavWriter
 import dev.velum.app.platform.createAudioPlayer
 import dev.velum.app.platform.MicStopResult
 import dev.velum.app.i18n.processingWarningText
 import dev.velum.app.platform.finalizeMicRecording
 import dev.velum.app.platform.localizedLabel
-import dev.velum.app.platform.shouldUseDemoPcm
 import dev.velum.app.platform.HapticKind
 import dev.velum.app.platform.LocalHaptics
 import dev.velum.app.platform.canExportPdf
@@ -138,8 +137,6 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ReceiveChannel
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -1155,7 +1152,7 @@ internal fun LiveTranscriptPane(
     initialTranscript: String? = null,
     initialElapsedSeconds: Long = 0L,
     onStoppedAndQueued: () -> Unit = {},
-    openTranscriber: (AppContainer) -> StreamingTranscriber = ::openStreamingTranscriber,
+    openTranscriber: (AppContainer) -> StreamingTranscriber? = ::openStreamingTranscriber,
     finishWaitMs: Long = LIVE_FINISH_WAIT_MS,
 ) {
     val strings = LocalStrings.current
@@ -1194,8 +1191,8 @@ internal fun LiveTranscriptPane(
     val wavPath = remember(recordingId) {
         "${recordingsDirectoryPath()}/$recordingId.wav"
     }
-    // Only allocate WavWriter for Unsupported (desktop/iOS) demo. Never on Android failure.
-    val demoWavWriter = remember(recordingId) { mutableStateOf<WavWriter?>(null) }
+    // No usable streaming model: recording and the WAV go on, the pane says so instead of showing text.
+    var noLiveModel by remember(recordingId) { mutableStateOf(false) }
     // Seeded transcript (Roborazzi / resume) — keep it visible; skip PCM demo overwrite.
     val preserveSeeded = seededTranscript != null
 
@@ -1224,6 +1221,7 @@ internal fun LiveTranscriptPane(
                     pcm = pcmQueue,
                     languageHint = container.settingsRepository.settings.value.audioLanguage,
                     onPartial = { md -> partial = md },
+                    onNoTranscriber = { noLiveModel = true },
                 ),
             )
         }
@@ -1240,7 +1238,6 @@ internal fun LiveTranscriptPane(
             if (!preserveSeeded) pcmQueue.trySend(pcm)
         }
 
-        var useDemo = false
         micError = null
         if (!preserveSeeded || container.activeMicRecordingId == recordingId) {
             when (val started = container.micRecordings.startOrAttach(recordingId, wavPath, inputSource)) {
@@ -1252,26 +1249,13 @@ internal fun LiveTranscriptPane(
                     markerCount = container.micCapture.markers.size
                     pausedUi = container.micCapture.isPaused || alreadyStopped
                 }
-                MicStartResult.Unsupported -> { usingMic = false; useDemo = shouldUseDemoPcm(started) }
+                MicStartResult.Unsupported -> { usingMic = false; micError = strings.micUnsupported }
                 MicStartResult.PermissionRequired -> { usingMic = false; micError = strings.micPermissionRationale }
                 is MicStartResult.Failed -> { usingMic = false; micError = started.message.ifBlank { strings.micStartFailed } }
             }
         } else {
             usingMic = false
             if (container.micCapture.isCapturing) micError = strings.micStartFailed
-        }
-
-        if (useDemo) {
-            val writer = WavWriter(wavPath, sampleRateHz = 16_000)
-            demoWavWriter.value = writer
-            var tick = 0
-            while (isActive && !finished.value) {
-                val chunk = demoPcmChunk(tick)
-                writer.writePcm(chunk)
-                push(chunk)
-                tick++
-                delay(400)
-            }
         }
     }
     DisposableEffect(recordingId) {
@@ -1336,14 +1320,6 @@ internal fun LiveTranscriptPane(
         } else if (micError != null) {
             Text(
                 micError!!,
-                color = VelumInkSecondary,
-                fontSize = 12.sp,
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-            )
-        } else if (!usingMic && !alreadyStopped) {
-            // Desktop/iOS Unsupported: PCM demo path — keep a single quiet hint.
-            Text(
-                strings.streamingDemoHint,
                 color = VelumInkSecondary,
                 fontSize = 12.sp,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
@@ -1417,7 +1393,16 @@ internal fun LiveTranscriptPane(
                 Text(title, fontWeight = FontWeight.Medium, fontSize = 14.sp, color = VelumInkSecondary)
                 Spacer(Modifier.height(8.dp))
             }
-            MarkdownPreview(partial)
+            if (noLiveModel) {
+                Text(
+                    strings.ux.liveNoModel,
+                    color = VelumInkSecondary,
+                    fontSize = 14.sp,
+                    modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                )
+            } else {
+                MarkdownPreview(partial)
+            }
         }
         BlackButton(
             if (stopping) strings.generating else strings.stopRecording,
@@ -1453,27 +1438,8 @@ internal fun LiveTranscriptPane(
                                 else -> Unit
                             }
                         }
-                        demoWavWriter.value != null -> {
-                            finalMd?.let { container.repository.updateTranscript(recordingId, it) }
-                            // Unsupported-platform demo only (never Android mic failure).
-                            val finishedWav = withContext(Dispatchers.IO) {
-                                demoWavWriter.value!!.finish()
-                            }
-                            container.repository.updateLocalPath(
-                                id = recordingId,
-                                localPath = finishedWav.absolutePath,
-                                durationSeconds = finishedWav.durationSeconds,
-                                sizeBytes = finishedWav.sizeBytes,
-                            )
-                            container.repository.updateStatus(recordingId, "queued")
-                            container.enqueueProcessing(
-                                recordingId = recordingId,
-                                templateId = "velum.meeting",
-                                retranscribe = true,
-                            )
-                        }
                         else -> {
-                            // Android MicStartResult failure: no demo PCM, mark failed.
+                            // No mic capture to finalize: mark failed.
                             container.repository.updateStatus(recordingId, "failed")
                         }
                     }
@@ -1507,17 +1473,23 @@ internal fun savableLiveTranscript(markdown: String): String? {
  * Audio captured before the screen attaches never reaches this queue, only the WAV.
  */
 private suspend fun transcribeQueuedPcm(
-    open: () -> StreamingTranscriber,
+    open: () -> StreamingTranscriber?,
     pcm: ReceiveChannel<ByteArray>,
     languageHint: String?,
     onPartial: (String) -> Unit,
+    onNoTranscriber: () -> Unit,
 ): String? {
     fun logFailure(step: String, failure: Throwable) = println("VelumLivePcm: $step failed: ${failure::class.simpleName}")
-    val streamer = runCatching(open).onFailure { logFailure("open", it) }.getOrNull() ?: return null
+    val streamer = runCatching(open).onFailure { logFailure("open", it) }.getOrNull()
+    if (streamer == null) {
+        onNoTranscriber()
+        return null
+    }
     val started = runCatching {
         streamer.onPartial = onPartial
         streamer.start(16_000, languageHint, null)
     }.onFailure { logFailure("start", it) }.isSuccess
+    if (!started) onNoTranscriber()
     while (started) {
         val chunk = pcm.receiveCatching().getOrNull() ?: break
         runCatching { streamer.pushPcm(chunk) }.onFailure { logFailure("push", it) }
@@ -1525,7 +1497,8 @@ private suspend fun transcribeQueuedPcm(
     return runCatching { streamer.finish() }.onFailure { logFailure("finish", it) }.getOrNull()
 }
 
-private fun openStreamingTranscriber(container: AppContainer): StreamingTranscriber {
+/** Null when no streaming-capable model is ready: the caller must show that, never a stand-in. */
+private fun openStreamingTranscriber(container: AppContainer): StreamingTranscriber? {
     val lang = container.settingsRepository.settings.value.audioLanguage
     val offlineId = LocalAsrRouter.chooseModelId(lang)
     val preferredIds = listOf(
@@ -1546,24 +1519,7 @@ private fun openStreamingTranscriber(container: AppContainer): StreamingTranscri
         val created = runCatching { createStreamingTranscriber(path, modelId) }.getOrNull()
         if (created != null) return created
     }
-    return FakeStreamingTranscriber()
-}
-
-/** Synthetic PCM16 mono chunk (~640 ms) for offline streaming demos. */
-private fun demoPcmChunk(tick: Int): ByteArray {
-    val sampleRate = 16_000
-    val samples = sampleRate * 2 / 5
-    val out = ByteArray(samples * 2)
-    val freq = 220.0 + (tick % 7) * 40.0
-    var i = 0
-    while (i < samples) {
-        val t = i.toDouble() / sampleRate
-        val sample = (kotlin.math.sin(2.0 * kotlin.math.PI * freq * t) * 4000).toInt().toShort()
-        out[i * 2] = (sample.toInt() and 0xFF).toByte()
-        out[i * 2 + 1] = (sample.toInt() shr 8 and 0xFF).toByte()
-        i++
-    }
-    return out
+    return null
 }
 
 @Composable

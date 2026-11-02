@@ -28,7 +28,10 @@ class LiveTranscriptMicFailureSourceTest {
                 .containsMatchIn(src),
             "MicStartResult failure must not fall through to useDemo=true",
         )
-        assertTrue(src.contains("shouldUseDemoPcm"))
+        // #196: no synthetic audio or stand-in transcriber anywhere in the screen, on any platform.
+        listOf("useDemo", "demoPcmChunk", "FakeStreamingTranscriber", "WavWriter").forEach {
+            assertFalse(src.contains(it), "RecordingDetailScreen must not reference $it")
+        }
         assertTrue(src.contains("MicStartResult.Unsupported"))
         assertTrue(src.contains("is MicStartResult.Failed"))
         assertTrue(src.contains("micError"))

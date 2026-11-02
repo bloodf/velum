@@ -3,13 +3,18 @@ package dev.velum.ai.engine
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class FakeStreamingTranscriberTest {
     @Test
+    fun jvmFactoryNeverHandsOutAFake() {
+        assertFailsWith<UnsupportedOperationException> { createStreamingTranscriber() }
+    }
+
+    @Test
     fun concatenatesChunksIntoMarkdown() {
-        val streamer = createStreamingTranscriber()
-        assertTrue(streamer is FakeStreamingTranscriber)
+        val streamer = FakeStreamingTranscriber()
         val partials = mutableListOf<String>()
         streamer.onPartial = { partials += it }
         streamer.start(16_000, "en", "Velum BLE")
