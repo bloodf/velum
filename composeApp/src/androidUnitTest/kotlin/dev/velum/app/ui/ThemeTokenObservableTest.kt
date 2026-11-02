@@ -10,10 +10,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import dev.velum.app.ui.theme.DarkVelumColors
 import dev.velum.app.ui.theme.LightVelumColors
+import dev.velum.app.ui.theme.LocalVelumColors
 import dev.velum.app.ui.theme.VelumBg
 import dev.velum.app.ui.theme.VelumTheme
 import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -27,18 +27,25 @@ import org.robolectric.annotation.Config
 class ThemeTokenObservableTest {
     @get:Rule val compose = createEmptyComposeRule()
 
-    @Test fun velum_bg_recomposes_with_new_palette_in_same_frame() {
+    @Test fun velum_bg_matches_local_palette_on_every_frame_across_flips() {
         var dark by mutableStateOf(false)
-        var seen = Color.Unspecified
-        var count = 0
+        // (LocalVelumColors.bg, VelumBg) per content invocation. They differ only when the
+        // global bridge lags the composition-local palette, e.g. an effect-timed write.
+        val frames = mutableListOf<Pair<Color, Color>>()
         Robolectric.buildActivity(ComponentActivity::class.java).setup().get().setContent {
-            VelumTheme(darkTheme = dark) { seen = VelumBg; count++ }
+            VelumTheme(darkTheme = dark) { frames += LocalVelumColors.current.bg to VelumBg }
         }
         compose.waitForIdle()
-        assertEquals(LightVelumColors.bg, seen)
         dark = true
         compose.waitForIdle()
-        assertEquals(DarkVelumColors.bg, seen)
-        assertTrue(count <= 2, "recomposed $count times") // initial + one flip; no loop
+        dark = false
+        compose.waitForIdle()
+
+        frames.forEach { (local, bridge) -> assertEquals(local, bridge, "VelumBg lagged palette: $frames") }
+        assertEquals(
+            listOf(LightVelumColors.bg, DarkVelumColors.bg, LightVelumColors.bg),
+            frames.map { it.first },
+            "expected exactly initial + one recomposition per flip",
+        )
     }
 }

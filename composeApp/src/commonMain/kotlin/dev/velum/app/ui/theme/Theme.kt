@@ -78,7 +78,12 @@ val DarkVelumColors = VelumColors(
 
 val LocalVelumColors = staticCompositionLocalOf { LightVelumColors }
 
-/** Active palette bridge so existing Velum* call sites follow [VelumTheme]. */
+/**
+ * Active palette bridge so existing Velum* call sites follow [VelumTheme].
+ *
+ * Invariant: one live [VelumTheme] per process. The bridge is a single global value; two live
+ * compositions with different palettes would overwrite each other and recompose forever.
+ */
 internal object VelumTokenBridge {
     // Snapshot state so Velum* getters are observed by Compose and recompose on theme change.
     var current: VelumColors by mutableStateOf(LightVelumColors)
@@ -204,7 +209,10 @@ fun VelumTheme(
     content: @Composable () -> Unit,
 ) {
     val palette = if (darkTheme) DarkVelumColors else LightVelumColors
-    // Set during composition (not in an effect) so children read the new palette in the same frame.
+    // Intentional write during composition: children composed later in this pass read the new
+    // palette in the same frame (an effect would lag one frame, #118). Safe because nothing reads
+    // Velum* tokens before VelumTheme in the tree (no backwards write), the guard keeps it to one
+    // write per flip, and a discarded composition rolls the write back with its snapshot.
     if (VelumTokenBridge.current != palette) VelumTokenBridge.current = palette
     CompositionLocalProvider(LocalVelumColors provides palette) {
         MaterialTheme(
