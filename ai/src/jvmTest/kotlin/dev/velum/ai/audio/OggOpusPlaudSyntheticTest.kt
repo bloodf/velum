@@ -44,6 +44,16 @@ class OggOpusPlaudSyntheticTest {
         }
     }
 
+    private fun decodedFileBytes(bytes: ByteArray): ByteArray {
+        val file = Files.createTempFile("velum-ogg", ".pcm")
+        try {
+            decoder.decodeToPcmFile(bytes, ModelStoreDir(file.toString()))
+            return Files.readAllBytes(file)
+        } finally {
+            Files.deleteIfExists(file)
+        }
+    }
+
     // ---- header metadata vs normalized output ----------------------------
 
     @Test
@@ -57,23 +67,23 @@ class OggOpusPlaudSyntheticTest {
     }
 
     @Test
-    fun decode_supported_rates_and_channels_yield_expected_duration() {
+    fun decode_any_header_rate_and_channels_yields_16k_mono_with_expected_duration() {
         for (ch in 1..2) for (rate in listOf(8_000, 12_000, 16_000, 24_000, 48_000)) {
             val n = 5
             val meta = decode(ogg(ch, rate, n))
-            assertEquals(rate, meta.sampleRateHz)
-            assertEquals(ch, meta.channels)
-            // 5 x 20 ms frames, 16-bit samples
-            assertEquals(n * (rate / 50) * ch * 2L, meta.sizeBytes, "rate=$rate ch=$ch")
+            assertEquals(16_000, meta.sampleRateHz, "rate=$rate ch=$ch")
+            assertEquals(1, meta.channels, "rate=$rate ch=$ch")
+            // 5 x 20 ms frames at 16 kHz mono, 16-bit samples
+            assertEquals(n * 320 * 2L, meta.sizeBytes, "rate=$rate ch=$ch")
         }
     }
 
     @Test
-    fun unsupported_header_rate_normalizes_to_48k_decoder_rate() {
-        // OpusHead rate is informational (RFC 7845); 44100 is not a decoder rate.
+    fun unsupported_header_rate_still_decodes_to_16k_mono() {
+        // OpusHead rate is informational (RFC 7845); output follows the 16 kHz mono contract.
         val meta = decode(ogg(1, 44_100, 3))
-        assertEquals(48_000, meta.sampleRateHz)
-        assertEquals(3 * 960 * 2L, meta.sizeBytes)
+        assertEquals(16_000, meta.sampleRateHz)
+        assertEquals(3 * 320 * 2L, meta.sizeBytes)
     }
 
     @Test
@@ -89,8 +99,9 @@ class OggOpusPlaudSyntheticTest {
         val bytes = ogg(2, 16_000, 4)
         val pcm = decoder.decodeToPcm(bytes)
         assertEquals(16_000, pcm.sampleRateHz)
-        assertEquals(2, pcm.channels)
-        assertEquals(4 * 320 * 2, pcm.samples.size)
+        assertEquals(1, pcm.channels)
+        assertEquals(4 * 320, pcm.samples.size)
+        assertContentEquals(pcm.toByteArray(), decodedFileBytes(bytes))
     }
 
     // ---- malformed / truncated -------------------------------------------
@@ -163,7 +174,7 @@ class OggOpusPlaudSyntheticTest {
         val a = page(List(2) { audioPacket(false) }, 2)
         val pcm = decoder.decodeToPcm(head + a + ByteArray(9))
         assertTrue(pcm.truncated)
-        assertEquals(2 * 960, pcm.samples.size)
+        assertEquals(2 * 320, pcm.samples.size)
         assertFalse(decoder.decodeToPcm(head + a).truncated)
     }
 
@@ -173,7 +184,7 @@ class OggOpusPlaudSyntheticTest {
         val a = page(List(2) { audioPacket(false) }, 2)
         val meta = decode(head + a + ByteArray(7))
         assertTrue(meta.truncated)
-        assertEquals(2 * 960 * 2L, meta.sizeBytes)
+        assertEquals(2 * 320 * 2L, meta.sizeBytes)
         assertFalse(decode(head + a).truncated)
     }
 
@@ -211,8 +222,8 @@ class OggOpusPlaudSyntheticTest {
         val plain = PlaudFileCrypto.decrypt(file, keys.second, dec)
         assertContentEquals(ogg, plain)
         val meta = decode(plain)
-        assertEquals(2, meta.channels)
-        assertEquals(6 * 960 * 2 * 2L, meta.sizeBytes)
+        assertEquals(1, meta.channels)
+        assertEquals(6 * 320 * 2L, meta.sizeBytes)
     }
 
     @Test

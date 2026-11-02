@@ -28,7 +28,7 @@ import kotlinx.coroutines.runBlocking
 
 /** A truncated Ogg tail must not be processed silently: progress carries a visible warning. */
 class RecordingProcessorTruncatedAudioTest {
-    private class Result(val events: List<JobProgress>, val warning: String?)
+    private class Result(val events: List<JobProgress>, val warning: String?, val asrInputs: List<AudioInput>)
 
     private fun run(ogg: ByteArray, thenClean: ByteArray? = null): Result = runBlocking {
         val repo = VelumRepository(createDatabase(DriverFactory()))
@@ -40,10 +40,13 @@ class RecordingProcessorTruncatedAudioTest {
             it.setDiarizationMode(ComputeMode.Local)
             it.setSummaryMode(ComputeMode.Local)
         }
+        val asrInputs = mutableListOf<AudioInput>()
         val asr = object : Transcriber {
             override val engineId = "asr"
-            override suspend fun transcribe(input: AudioInput, modelId: String) =
-                TranscriptionResult(text = "hello", engineId = engineId, modelId = modelId)
+            override suspend fun transcribe(input: AudioInput, modelId: String): TranscriptionResult {
+                asrInputs += input
+                return TranscriptionResult(text = "hello", engineId = engineId, modelId = modelId)
+            }
         }
         val diar = object : Diarizer {
             override val engineId = "noop"
@@ -85,7 +88,7 @@ class RecordingProcessorTruncatedAudioTest {
                 apiModelOverride = ApiModelOverride(profileId = "work", modelId = "whisper-custom"),
             ).toList()
         }
-        Result(events, repo.getRecording("rec-trunc")!!.processing_warning)
+        Result(events, repo.getRecording("rec-trunc")!!.processing_warning, asrInputs)
     }
 
     private val head = SyntheticOgg.page(listOf(SyntheticOgg.opusHead(1, 48_000)), 0, 2) +
@@ -108,6 +111,22 @@ class RecordingProcessorTruncatedAudioTest {
         assertEquals(null, result.warning)
         assertTrue(events.last() is JobProgress.Succeeded, "last=${events.last()}")
         assertEquals(0, events.count { it is JobProgress.Running && it.message == TRUNCATED_AUDIO_MESSAGE })
+    }
+
+    @Test
+    fun stereo_48k_ogg_reaches_asr_as_16k_mono_with_true_duration() {
+        // #95: ASR/WAV consumers assume mono PCM at AudioInput.sampleRateHz. A 48 kHz stereo
+        // header must not leak through (that would misreport duration by 3x/6x).
+        val stereoHead = SyntheticOgg.page(listOf(SyntheticOgg.opusHead(2, 48_000)), 0, 2) +
+            SyntheticOgg.page(listOf(SyntheticOgg.tags()), 1)
+        val stereoAudio = SyntheticOgg.page(List(50) { SyntheticOgg.audioPacket(stereo = true) }, 2, 4)
+        val result = run(stereoHead + stereoAudio)
+        assertTrue(result.events.last() is JobProgress.Succeeded, "last=${result.events.last()}")
+        assertTrue(result.asrInputs.isNotEmpty())
+        result.asrInputs.forEach { assertEquals(16_000, it.sampleRateHz) }
+        val pcmBytes = result.asrInputs.sumOf { it.bytes.size.toLong() }
+        val durationMs = pcmBytes / 2 * 1000 / 16_000
+        assertTrue(kotlin.math.abs(durationMs - 1000) <= 20, "1 s of audio reached ASR as ${durationMs}ms")
     }
 
     @Test

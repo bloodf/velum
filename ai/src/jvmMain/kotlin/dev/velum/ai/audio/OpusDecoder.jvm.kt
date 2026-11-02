@@ -52,9 +52,11 @@ class KopusOpusDecoder : OpusDecoder {
             try {
                 val streamMeta = OggOpusDemuxer.demuxForEach(
                     oggBytes = oggBytes,
-                    onHeader = { sampleRateHz, ch ->
-                        rate = normalizeRate(sampleRateHz)
-                        channels = ch.coerceIn(1, 2)
+                    onHeader = { _, _ ->
+                        // libopus decodes any stream at the requested rate/channels: emit the import-path
+                        // PCM contract (16 kHz mono) directly, frame by frame, so memory stays bounded (#95).
+                        rate = DECODED_PCM_RATE_HZ
+                        channels = DECODED_PCM_CHANNELS
                         frameSize = rate / 50 * 6
                         out = ShortArray(frameSize * channels)
                         samples = ShortArray(frameSize * channels * 64)
@@ -108,9 +110,11 @@ class KopusOpusDecoder : OpusDecoder {
             var sizeBytes = 0L
             try {
                 val streamMeta = demux(
-                    { sampleRateHz, ch ->
-                        rate = normalizeRate(sampleRateHz)
-                        channels = ch.coerceIn(1, 2)
+                    { _, _ ->
+                        // libopus decodes any stream at the requested rate/channels: emit the import-path
+                        // PCM contract (16 kHz mono) directly, frame by frame, so memory stays bounded (#95).
+                        rate = DECODED_PCM_RATE_HZ
+                        channels = DECODED_PCM_CHANNELS
                         frameSize = rate / 50 * 6
                         out = ShortArray(frameSize * channels)
                         byteChunk = ByteArray(frameSize * channels * 2)
@@ -145,11 +149,6 @@ class KopusOpusDecoder : OpusDecoder {
             } finally {
                 decoder?.close()
             }
-        }
-
-        private fun normalizeRate(hz: Int): Int = when (hz) {
-            8_000, 12_000, 16_000, 24_000, 48_000 -> hz
-            else -> 48_000
         }
     }
 }

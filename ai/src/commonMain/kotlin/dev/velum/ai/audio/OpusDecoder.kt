@@ -48,6 +48,13 @@ data class SpilledPcmMeta(
     val truncated: Boolean = false,
 )
 
+/**
+ * Decoded Opus output contract (#95): 16 kHz mono PCM16 LE, the same as the import path
+ * (AudioNormalizer). OpusHead rate/channels are metadata only and never change the output.
+ */
+const val DECODED_PCM_RATE_HZ = 16_000
+const val DECODED_PCM_CHANNELS = 1
+
 interface OpusDecoder {
     fun decodeToPcm(oggBytes: ByteArray): PcmAudio
 
