@@ -33,13 +33,18 @@ build. A shipping release never falls back to the committed public debug key.
 
 Release APKs: `./gradlew :composeApp:assembleRelease -Pvelum.abiSplits=true` writes
 `composeApp-arm64-v8a-release.apk`, `composeApp-armeabi-v7a-release.apk` and
-`composeApp-universal-release.apk` (all ABIs, incl. x86/x86_64 for sideload / ChromeOS)
+`composeApp-universal-release.apk` (native code for `arm64-v8a`, `armeabi-v7a`, `x86` and
+`x86_64`, for sideload / ChromeOS)
 under `composeApp/build/outputs/apk/release/`. Without the property you get one universal
 `composeApp-release.apk`. Build the Play AAB in a separate invocation without the property
 (`./gradlew :composeApp:bundleRelease`); combining the property with a bundle task fails.
 Release versionCode is `defaultConfig.versionCode * 10 + ABI digit`: universal / AAB `0`,
 `armeabi-v7a` `1`, `arm64-v8a` `2`, so a universal install can move to its ABI APK and the
 next release outranks every output of this one.
+Play gets only the AAB (versionCode `base * 10`, e.g. 1000); never upload the per-ABI
+APKs (1001 / 1002) alongside it. `check-release-signing.sh --package` also requires
+`fastlane/metadata/android/*/changelogs/<universal versionCode>.txt` and the F-Droid draft
+`versionCode` to match the universal APK.
 
 To check R8 locally without upload credentials, run
 `./gradlew :composeApp:assembleMinifiedTest`. This explicitly named test variant
