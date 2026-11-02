@@ -109,7 +109,7 @@ class SimulatedPeripheralScenariosTest {
             is Sent.Raw -> assertFalse(s.opcode in ForbiddenOpcodes.ALL, "raw ${s.opcode}")
             is Sent.App -> {
                 assertFalse(s.cmd in ForbiddenOpcodes.ALL, "cmd ${s.cmd}")
-                if (s.cmd == 8 && s.params.size > 1) {
+                if (s.cmd == 8 && s.params.isNotEmpty()) {
                     assertFalse((s.params[0].toInt() and 0xff) in ForbiddenSettings.ALL)
                 }
             }

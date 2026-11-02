@@ -59,6 +59,7 @@ class FtsDirtyRebuildTest {
             assertEquals("1", repo.getMeta(VelumRepository.META_FTS_DIRTY))
             repo.addRecording("rec-new", "newword")
             repo.deleteRecordingHard("rec-old")
+            repo.upsertTemplate("tpl-new", "Quokka", "meeting", "", "prompt")
         }
 
         JdbcSqliteDriver(url).use { d ->
@@ -66,7 +67,43 @@ class FtsDirtyRebuildTest {
             assertTrue(repo.ftsAvailable)
             assertEquals(listOf("rec-new"), repo.searchRecordingIdsFts("newword*"))
             assertEquals(emptyList(), repo.searchRecordingIdsFts("oldword*"))
+            assertEquals(listOf("tpl-new"), repo.searchTemplateIdsFts("quokka*"))
             assertNull(repo.getMeta(VelumRepository.META_FTS_DIRTY))
+        }
+    }
+
+    @Test fun failed_dirty_rebuild_still_opens_keeps_the_flag_and_is_repaired_next_open() = runBlocking {
+        JdbcSqliteDriver(url).use { d ->
+            VelumDatabase.Schema.create(d)
+            VelumRepository(VelumDatabase(d), d)
+        }
+        JdbcSqliteDriver(url).use { real ->
+            val d = withoutFts(real)
+            val repo = VelumRepository(VelumDatabase(d), d)
+            repo.addRecording("rec-new", "newword")
+        }
+
+        JdbcSqliteDriver(url).use { real ->
+            val d = failingFtsInsert(real)
+            val repo = VelumRepository(VelumDatabase(d), d)
+            assertTrue(repo.ftsAvailable)
+            assertEquals("IllegalStateException", repo.ftsRebuildFailure)
+            assertEquals("1", repo.getMeta(VelumRepository.META_FTS_DIRTY))
+        }
+
+        JdbcSqliteDriver(url).use { d ->
+            val repo = VelumRepository(VelumDatabase(d), d)
+            assertNull(repo.ftsRebuildFailure)
+            assertEquals(listOf("rec-new"), repo.searchRecordingIdsFts("newword*"))
+            assertNull(repo.getMeta(VelumRepository.META_FTS_DIRTY))
+        }
+    }
+
+    /** FTS is available but writing the recording index throws. */
+    private fun failingFtsInsert(d: SqlDriver): SqlDriver = object : SqlDriver by d {
+        override fun execute(identifier: Int?, sql: String, parameters: Int, binders: (SqlPreparedStatement.() -> Unit)?): QueryResult<Long> {
+            if (sql.contains("INSERT INTO recording_fts")) throw IllegalStateException("fts insert failed")
+            return d.execute(identifier, sql, parameters, binders)
         }
     }
 }

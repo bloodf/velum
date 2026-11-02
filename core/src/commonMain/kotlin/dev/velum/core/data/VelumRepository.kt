@@ -30,6 +30,7 @@ import dev.velum.core.templates.DiscoverFacets
 import dev.velum.core.templates.DiscoverFilter
 import dev.velum.core.templates.DiscoverSearchMode
 import dev.velum.core.templates.DiscoverTemplateQuery
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.flow
 
 class VelumRepository(
@@ -43,6 +44,12 @@ class VelumRepository(
 
     /** Why FTS is unavailable (exception class only), for platform logging; null when available. */
     val ftsFailure: String?
+
+    /** Exception class of a failed fts_dirty rebuild (index stays stale, flag kept, retried next open); else null. */
+    var ftsRebuildFailure: String? = null
+        private set
+
+    private var dirtyRebuildFailed = false
 
     constructor(handle: DatabaseHandle) : this(handle.database, handle.driver)
 
@@ -58,8 +65,17 @@ class VelumRepository(
         if (ftsAvailable) {
             val dirty = q.getMeta(META_FTS_DIRTY).executeAsOneOrNull() != null
             when {
-                // Full rebuild after seed, template_fts schema upgrade, or a run without FTS.
-                fts.templateSchemaRecreated || seeded || dirty -> rebuildFtsIndex()
+                // Full rebuild after seed or template_fts schema upgrade.
+                fts.templateSchemaRecreated || seeded -> rebuildFtsIndex()
+                // After a run without FTS. A failure must not lock the user out: keep the flag, open on the stale index.
+                dirty -> try {
+                    rebuildFtsIndex()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    dirtyRebuildFailed = true
+                    ftsRebuildFailure = e::class.simpleName ?: "Exception"
+                }
                 else -> {
                     // Empty library makes recording_fts empty — only rebuild the empty side
                     // so we do not rewrite every template on every cold start.
@@ -73,7 +89,7 @@ class VelumRepository(
                 }
             }
             // Only after the rebuild committed: a crash before this line just rebuilds again.
-            if (dirty) q.deleteMeta(META_FTS_DIRTY)
+            if (dirty && !dirtyRebuildFailed) q.deleteMeta(META_FTS_DIRTY)
         }
     }
 
