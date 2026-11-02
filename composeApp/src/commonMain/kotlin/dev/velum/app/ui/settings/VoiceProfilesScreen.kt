@@ -18,6 +18,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -59,6 +60,7 @@ fun VoiceProfilesScreen(
     val scope = rememberCoroutineScope()
     var profiles by remember(container) { mutableStateOf(emptyList<VoiceProfile>()) }
     var loaded by remember(container) { mutableStateOf(false) }
+    val settings by container.settingsRepository.settings.collectAsState()
     var unreadable by remember(container) { mutableStateOf(emptyList<UnreadableVoiceProfile>()) }
     var pendingRemoval by remember(container) { mutableStateOf<UnreadableVoiceProfile?>(null) }
     var selected by remember { mutableStateOf<VoiceProfile?>(null) }
@@ -297,6 +299,7 @@ fun VoiceProfilesScreen(
                             }
                         },
                         modifier = Modifier.weight(1f).padding(horizontal = 2.dp),
+                        selected = kotlin.math.abs(settings.speakerMatchThreshold - t) < 0.005f,
                     )
                 }
             }
