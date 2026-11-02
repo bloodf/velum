@@ -2,6 +2,7 @@ package dev.velum.app.platform
 
 import java.io.File
 import java.io.RandomAccessFile
+import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -11,7 +12,7 @@ import kotlin.test.assertTrue
 class WavWriterRecoverFinalizeTest {
     @Test
     fun recoverOrFinalize_rewritesZeroDataHeader() {
-        val dir = createTempDir(prefix = "velum-wav-")
+        val dir = createTempDirectory("velum-wav-").toFile()
         try {
             val wav = File(dir, "crash.wav")
             RandomAccessFile(wav, "rw").use { raf ->
@@ -42,7 +43,7 @@ class WavWriterRecoverFinalizeTest {
 
     @Test
     fun recoverOrFinalize_publishesPartialAndPreservesOriginal() {
-        val dir = createTempDir(prefix = "velum-wav-partial-")
+        val dir = createTempDirectory("velum-wav-partial-").toFile()
         try {
             val partial = File(dir, "rec.wav.partial")
             RandomAccessFile(partial, "rw").use { raf ->
