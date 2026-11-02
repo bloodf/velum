@@ -1,5 +1,6 @@
 package dev.velum.ai.pipeline
 
+import dev.velum.ai.ApiErrorSanitizer
 import dev.velum.ai.MissingApiKeyException
 import dev.velum.ai.audio.createOpusDecoder
 import dev.velum.ai.engine.AiTask
@@ -22,8 +23,10 @@ import dev.velum.core.settings.ApiModelOverride
 import dev.velum.core.settings.SettingsRepository
 import dev.velum.core.templates.BuiltinTemplateCatalog
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.withContext
 
 /**
  * End-to-end job: decode → transcribe → diarize → markdown transcript → summarize → DB.
@@ -45,6 +48,8 @@ class RecordingProcessor(
         apiModelOverride: ApiModelOverride? = null,
     ): Flow<JobProgress> = flow {
         emit(JobProgress.Running(0.05f, "Starting"))
+        val priorStatus = repository.getRecording(recordingId)?.status
+        repository.setProcessingError(recordingId, null)
         repository.updateStatus(recordingId, "generating")
 
         try {
@@ -60,7 +65,8 @@ class RecordingProcessor(
                 .resolve("pcm-$recordingId")
             var pcmBuffer: PcmAudioBuffer = PcmAudioBuffer.Memory(ByteArray(0))
             try {
-            if (!localPath.isNullOrBlank()) {
+            // Summary-only runs (change template) use the stored transcript; audio is not needed.
+            if (retranscribe && !localPath.isNullOrBlank()) {
                 emit(JobProgress.Running(0.1f, "Decoding audio"))
                 awaitThermalGate { emit(it) }
                 filename = localPath.substringAfterLast('/')
@@ -132,6 +138,9 @@ class RecordingProcessor(
             )
 
             var transcriptMarkdown = recording.transcript.orEmpty()
+            if (!retranscribe && transcriptMarkdown.isBlank()) {
+                throw IllegalStateException("This recording has no transcript to summarize.")
+            }
             if (retranscribe) {
                 if (pcmBuffer.sizeBytes <= 0L) {
                     if (transcriptMarkdown.isBlank()) {
@@ -317,6 +326,7 @@ class RecordingProcessor(
                 templateName = templateName,
             )
             repository.updateStatus(recordingId, "ready")
+            repository.setProcessingError(recordingId, null)
             if (settings.preferences.value.deleteAudioAfterProcessing &&
                 !localPath.isNullOrBlank()
             ) {
@@ -337,8 +347,14 @@ class RecordingProcessor(
             if (t is CancellationException ||
                 t is kotlin.coroutines.cancellation.CancellationException
             ) {
+                // Cancelled work never saved a version; restore the status so notes stay usable.
+                withContext(NonCancellable) {
+                    repository.updateStatus(recordingId, priorStatus ?: "ready")
+                }
                 throw t
             }
+            // The previous summary and versions are untouched; surface the reason in the UI.
+            repository.setProcessingError(recordingId, ApiErrorSanitizer.sanitize(t.message ?: t.toString()))
             repository.updateStatus(recordingId, "failed")
             emit(JobProgress.Failed(t.message ?: t.toString()))
         }

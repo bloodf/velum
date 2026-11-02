@@ -342,6 +342,13 @@ class VelumRepository(
         q.setMeta(key, value)
     }
 
+    /** Last processing failure for [recordingId] (already sanitized), or null. Previous notes are never touched. */
+    suspend fun getProcessingError(recordingId: String): String? =
+        getMeta("processing_error:$recordingId")?.takeIf { it.isNotBlank() }
+
+    suspend fun setProcessingError(recordingId: String, message: String?) =
+        setMeta("processing_error:$recordingId", message.orEmpty())
+
     suspend fun isFirstRunDone(): Boolean = getMeta(META_FIRST_RUN_DONE) == "1"
 
     suspend fun markFirstRunDone() = setMeta(META_FIRST_RUN_DONE, "1")
