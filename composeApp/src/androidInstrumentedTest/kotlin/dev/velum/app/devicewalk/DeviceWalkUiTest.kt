@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.pm.ActivityInfo
 import android.os.Environment
 import android.os.SystemClock
+import android.util.Log
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
@@ -1158,6 +1159,22 @@ class DeviceWalkUiTest {
             composeRule.onRoot(useUnmergedTree = true).printToString()
         }.getOrElse { "Unable to dump Compose tree: $it" }
         File(shotDir, "$failureTag.txt").writeText("$message\n$tree")
+        // #160: the connected task uninstalls the app before shotDir is pulled. Logcat and
+        // AGP's additionalTestOutputDir (pulled before uninstall) keep the evidence.
+        val windows = runCatching {
+            ByteArrayOutputStream().also { device.dumpWindowHierarchy(it) }.toString(Charsets.UTF_8.name())
+        }.getOrElse { "Unable to dump window hierarchy: $it" }
+        listOf("compose" to "$message\n$tree", "windows" to windows).forEach { (kind, text) ->
+            // 1000 chars stays under logcat's ~4 KB entry limit even for 4-byte UTF-8.
+            text.chunked(1000).forEachIndexed { i, chunk -> Log.e("VelumDeviceWalk", "$failureTag $kind[$i] $chunk") }
+        }
+        InstrumentationRegistry.getArguments().getString("additionalTestOutputDir")?.let { path ->
+            runCatching {
+                val dir = File(path).also { it.mkdirs() }
+                device.takeScreenshot(File(dir, "$failureTag.png"))
+                File(dir, "$failureTag.txt").writeText("$message\n$tree\n\n$windows")
+            }.onFailure { Log.e("VelumDeviceWalk", "$failureTag additional output failed", it) }
+        }
         error("$message; diagnostic: $failureTag")
     }
 
