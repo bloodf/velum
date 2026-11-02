@@ -51,6 +51,16 @@ tasks.matching { it.name == "preReleaseBuild" }.configureEach {
     mustRunAfter(validateReleaseSigning)
 }
 
+// Per-ABI shipping APKs (#91). Enabled only when the shipping APK tasks are requested
+// so debug/minifiedTest stay universal (CI runs them on an x86_64 emulator, local on arm64)
+// and the debug APK glob keeps matching a single file. AAB delivery splits by ABI itself.
+// AGP fails buildReleasePreBundle when ABI splits and a bundle task share one invocation,
+// so run bundleRelease separately from assembleRelease.
+val splitReleaseAbis = gradle.startParameter.taskNames.let { tasks ->
+    tasks.none { it.contains("bundle", ignoreCase = true) } &&
+        tasks.any { it.substringAfterLast(':') in setOf("assembleRelease", "packageRelease") }
+}
+
 kotlin {
     androidTarget {
         compilerOptions {
@@ -192,6 +202,14 @@ android {
                 "velumDeviceWalk" to "true",
                 "class" to "dev.velum.app.devicewalk.DeviceWalkUiTest",
             )
+        }
+    }
+    splits {
+        abi {
+            isEnable = splitReleaseAbis
+            reset()
+            include("arm64-v8a", "armeabi-v7a")
+            isUniversalApk = false
         }
     }
     packaging {

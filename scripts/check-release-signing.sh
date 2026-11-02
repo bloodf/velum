@@ -46,12 +46,15 @@ expect_missing_signing :composeApp:assembleRelease \
 # Verify the positive path without publishing or using the committed debug key.
 # --package also checks shipping APK/AAB packaging and resource shrinking. Those
 # disposable-key artifacts must never be distributed as production releases.
-if ! VELUM_UPLOAD_STORE_FILE="$check_dir/synthetic.jks" \
-    VELUM_UPLOAD_STORE_PASSWORD=signing-check VELUM_UPLOAD_KEY_ALIAS=signing-check \
-    VELUM_UPLOAD_KEY_PASSWORD=signing-check \
-    ./gradlew "${positive_tasks[@]}" --console=plain >"$check_dir/gradle.log" 2>&1; then
-  echo 'FAIL: explicit disposable release signing was rejected'
-  cat "$check_dir/gradle.log"
-  exit 1
-fi
+# One Gradle invocation per task: ABI-split APKs and the AAB cannot share one (#91).
+for task in "${positive_tasks[@]}"; do
+  if ! VELUM_UPLOAD_STORE_FILE="$check_dir/synthetic.jks" \
+      VELUM_UPLOAD_STORE_PASSWORD=signing-check VELUM_UPLOAD_KEY_ALIAS=signing-check \
+      VELUM_UPLOAD_KEY_PASSWORD=signing-check \
+      ./gradlew "$task" --console=plain >"$check_dir/gradle.log" 2>&1; then
+    echo "FAIL: explicit disposable release signing was rejected by $task"
+    cat "$check_dir/gradle.log"
+    exit 1
+  fi
+done
 echo 'PASS: explicit disposable release signing accepted'
