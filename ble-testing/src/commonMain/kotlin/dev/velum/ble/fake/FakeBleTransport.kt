@@ -2,6 +2,7 @@ package dev.velum.ble.fake
 
 import dev.velum.ble.BleConnectionState
 import dev.velum.ble.BleTransport
+import dev.velum.ble.gatt.GattWrite
 import dev.velum.core.model.ConnectedDevice
 import dev.velum.protocol.Bytes
 import dev.velum.protocol.DeviceModel
@@ -64,9 +65,9 @@ class FakeBleTransport(
         _state.value = BleConnectionState.Idle
     }
 
-    override suspend fun write(payload: ByteArray, withoutResponse: Boolean) {
+    override suspend fun writeRaw(write: GattWrite) {
         check(_state.value is BleConnectionState.Connected) { "Not connected" }
-        peripheral.onWrite(payload)
+        peripheral.onWrite(write.bytes)
     }
 
     override fun notifications(): Flow<ByteArray> = peripheral.notifications
