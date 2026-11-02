@@ -66,7 +66,7 @@ class ResumableSessionDownload(
     private val maxNoProgressAttempts: Int = 5,
     private val initialClient: PlaudDeviceClient? = null,
     private val onSuccess: (PlaudDeviceClient) -> Unit = { it.close() },
-    /** Bounds bringing the link up, unlock and handshake on each attempt. */
+    /** Bounds bringing the link up, and then unlock and handshake, on each attempt. */
     private val connectTimeout: Duration = 30.seconds,
 ) {
     init {
@@ -97,16 +97,16 @@ class ResumableSessionDownload(
             try {
                 val reused = unlocked
                 unlocked = null
-                if (reused != null) {
-                    client = reused
-                } else {
+                val current = reused ?: withTimeout(connectTimeout) { connect() }
+                client = current
+                if (reused == null) {
+                    // Outside the timeout: the notification job would be its child and keep it from completing.
+                    current.start()
                     withTimeout(connectTimeout) {
-                        client = connect()
-                        client?.unlock()
-                        client?.handshake()
+                        current.unlock()
+                        current.handshake()
                     }
                 }
-                val current = checkNotNull(client)
                 val deviceCrc = current.downloadSessionTo(sessionId, sizeBytes, store, onProgress, startOffset = before)
                 val crc = crcStatus(deviceCrc, store)
                 if (crc !is CrcStatus.Mismatch || crcPolicy == CrcPolicy.ReportOnly) {

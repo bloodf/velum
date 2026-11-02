@@ -207,6 +207,30 @@ class ResumableSessionDownloadTest {
         assertEquals(2, result.attempts)
     }
 
+    @Test fun a_hanging_write_during_unlock_is_bounded_and_uses_a_retry() = runTest(timeout = 30.seconds) {
+        val file = Random(18).nextBytes(5_000)
+        val rig = rig(file)
+        var hang = true
+        rig.ble.beforeWrite = {
+            if (hang) {
+                hang = false
+                awaitCancellation()
+            }
+        }
+        val download = ResumableSessionDownload(
+            connect = {
+                rig.ble.connect("fake-note-pro")
+                PlaudDeviceClient(rig.ble, cipher, keys, responseTimeout = 5.seconds)
+            },
+            crcPolicy = CrcPolicy.Enforce,
+            connectTimeout = 10.seconds,
+        )
+        val store = MemoryStore()
+        val result = download.download(SESSION, file.size.toLong(), store)
+        assertContentEquals(file, store.bytes)
+        assertEquals(2, result.attempts)
+    }
+
     @Test fun attempts_without_progress_back_off_and_then_give_up() = runTest {
         var calls = 0
         val download = ResumableSessionDownload(connect = { calls++; throw IOException("synthetic") }, crcPolicy = CrcPolicy.Enforce)

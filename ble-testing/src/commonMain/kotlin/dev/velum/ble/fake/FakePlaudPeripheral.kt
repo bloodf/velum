@@ -227,7 +227,7 @@ class FakePlaudPeripheral(
                 // Like real GATT, the write completes first and notifications follow under backpressure.
                 // Emitting inside the write would deadlock once the buffers fill (nothing reads yet).
                 streamJob?.cancel()
-                streamJob = CoroutineScope(currentCoroutineContext()).launch { streamSessionFrom(startOffset.toInt()) }
+                streamJob = launchDetached { streamSessionFrom(startOffset.toInt()) }
             }
             Commands.SYNC_FILE_STOP -> {
                 // A real device stops streaming; its reply follows the completed write.
@@ -243,7 +243,7 @@ class FakePlaudPeripheral(
                     StopReply.Silent -> null
                 }
                 if (replyCmd != null) {
-                    streamJob = CoroutineScope(currentCoroutineContext()).launch {
+                    streamJob = launchDetached {
                         emitCommand(replyCmd, Bytes.u32Le(sessionId) + Bytes.u16Le(crc))
                     }
                 }
@@ -256,6 +256,10 @@ class FakePlaudPeripheral(
             else -> error("Fake peripheral does not handle cmd $cmd")
         }
     }
+
+    /** Not a child of the write: like real GATT, a write completes (and any timeout around it ends) while this runs. */
+    private suspend fun launchDetached(block: suspend () -> Unit): Job =
+        CoroutineScope(currentCoroutineContext().minusKey(Job)).launch { block() }
 
     /** Emits type-2 chunks from [startOffset] to the end, applying one-shot [faults]. */
     private suspend fun streamSessionFrom(startOffset: Int) {
