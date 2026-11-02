@@ -6,8 +6,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.Dp
+import dev.velum.app.resources.Res
+import dev.velum.app.resources.velum_hero_dark
+import dev.velum.app.resources.velum_hero_light
+import dev.velum.app.resources.velum_wordmark_light
+import org.jetbrains.compose.resources.painterResource
 
 @Composable
 actual fun VelumHero(
@@ -15,9 +19,10 @@ actual fun VelumHero(
     dark: Boolean,
     contentDescription: String?,
 ) {
-    val path = if (dark) "icons/velum-hero-dark.png" else "icons/velum-hero-light.png"
     Image(
-        painter = painterResource(path),
+        painter = painterResource(
+            if (dark) Res.drawable.velum_hero_dark else Res.drawable.velum_hero_light,
+        ),
         contentDescription = contentDescription,
         modifier = modifier.fillMaxWidth(),
         contentScale = ContentScale.FillWidth,
@@ -31,7 +36,7 @@ actual fun VelumWordmark(
     contentDescription: String?,
 ) {
     Image(
-        painter = painterResource("icons/velum-wordmark-light.png"),
+        painter = painterResource(Res.drawable.velum_wordmark_light),
         contentDescription = contentDescription,
         modifier = modifier.fillMaxWidth().height(height),
         contentScale = ContentScale.Fit,
