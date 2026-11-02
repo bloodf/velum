@@ -97,3 +97,13 @@ tasks.matching {
 }.configureEach {
     dependsOn(validateAutoflowTemplates)
 }
+
+// CommonMainPortabilityTest scans every module's shared sources; declare them so the build cache
+// cannot serve a stale result when only another module changed.
+tasks.matching { it.name == "jvmTest" }.configureEach {
+    inputs.files(
+        rootProject.fileTree(rootProject.projectDir) {
+            include("*/src/commonMain/**/*.kt", "*/src/mobileMain/**/*.kt")
+        },
+    ).withPathSensitivity(PathSensitivity.RELATIVE).withPropertyName("portabilityScanSources")
+}
