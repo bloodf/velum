@@ -298,4 +298,45 @@ class DiscoverFiltersUiTest {
             root.deleteRecursively()
         }
     }
+
+    @Test
+    fun changing_a_filter_after_page_two_resets_paging_without_omitting_rows() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        context.deleteDatabase("velum.db")
+        val root = ModelStoreDir(Files.createTempDirectory("velum-discover-reset-test").toString())
+        val container = AppContainer(InMemorySecureStore(), DriverFactory(context), modelStoreRoot = root)
+        runBlocking {
+            container.repository.setMeta(SeedData.META_FULL_TEMPLATES_IMPORTED, "1")
+            // 100 meeting rows rank above 70 sales rows, so page 2 is loaded before the filter changes.
+            suspend fun add(prefix: String, category: String, i: Int, uses: Long) =
+                container.repository.upsertTemplate(
+                    id = "%s-%03d".format(prefix, i), name = "%s %03d".format(prefix.uppercase(), i), category = category,
+                    description = "synthetic", systemPrompt = "p", builtin = true, featured = true,
+                    tags = emptyList(), lang = "en", uses = uses,
+                )
+            for (i in 0 until 100) add("pg", "meeting", i, 3_000_000L - i)
+            for (i in 0 until 70) add("sl", "sales", i, 1_000_000L - i)
+        }
+        val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup()
+        try {
+            activity.get().setContent {
+                CompositionLocalProvider(LocalStrings provides PtBr) {
+                    VelumTheme(darkTheme = false) { TemplatesScreen(container, onBack = {}, onOpenTemplate = {}) }
+                }
+            }
+            val grid = { compose.onNodeWithTag("templates:grid") }
+            waiting("first page") { runCatching { grid().performScrollToKey("pg-000") }.isSuccess }
+            grid().performScrollToKey("pg-059")
+            waiting("page 2 loaded") { runCatching { grid().performScrollToKey("pg-099") }.isSuccess }
+            // Filter change with paging at page 2: the new filter has 70 rows (two pages) and must show all of them.
+            tap("category:sales")
+            waiting("sales page 1") { runCatching { grid().performScrollToKey("sl-000") }.isSuccess }
+            grid().performScrollToKey("sl-059")
+            waiting("sales page 2 (no rows omitted)") { runCatching { grid().performScrollToKey("sl-069") }.isSuccess }
+        } finally {
+            activity.pause().stop().destroy()
+            container.databaseHandle.driver.close()
+            root.deleteRecursively()
+        }
+    }
 }

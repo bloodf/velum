@@ -101,7 +101,7 @@ class DiscoverFilterQueryTest {
     }
 
     @Test
-    fun pagingHasNoOverlapOrOmissionAndFiltersResetIt() = runBlocking {
+    fun pagingHasNoOverlapOrOmission() = runBlocking {
         val r = repo()
         val f = all.copy(category = "zz102-2")
         val full = r.ids(f)
