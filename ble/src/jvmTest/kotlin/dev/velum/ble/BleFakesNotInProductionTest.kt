@@ -81,7 +81,9 @@ class BleFakesNotInProductionTest {
             .filter { it.name == "build.gradle.kts" }
             .flatMap { file ->
                 val lines = file.readLines()
-                lines.indices.filter { "project(\":ble-testing\")" in lines[it] }.mapNotNull { index ->
+                val srcDirBypass = lines.indices.filter { "ble-testing/src" in lines[it] }
+                    .map { "${file.relativeTo(root).path}:${it + 1} (srcDir into ble-testing sources)" }
+                srcDirBypass + lines.indices.filter { "project(\":ble-testing\")" in lines[it] }.mapNotNull { index ->
                     val sourceSet = (index downTo 0).firstNotNullOfOrNull { i ->
                         sourceSetOpener.find(lines[i])?.groupValues?.get(1)
                     }

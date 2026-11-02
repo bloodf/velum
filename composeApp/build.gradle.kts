@@ -55,7 +55,9 @@ tasks.matching { it.name == "preReleaseBuild" }.configureEach {
 val shippingClasspaths = listOf("releaseRuntimeClasspath", "minifiedTestRuntimeClasspath", "desktopRuntimeClasspath")
 val verifyNoTestFakesShipped by tasks.registering {
     group = "verification"
-    description = "Fail if :ble-testing is on a release, minifiedTest or desktop runtime classpath."
+    // debugRuntimeClasspath is deliberately not checked: debug APKs are never distributed.
+    description = "Fail if :ble-testing is on a release, minifiedTest or desktop runtime classpath " +
+        "(debug is deliberately unchecked: debug APKs are never distributed)."
     val roots = shippingClasspaths.map { name ->
         name to configurations.named(name).flatMap { it.incoming.resolutionResult.rootComponent }
     }
@@ -77,7 +79,12 @@ val verifyNoTestFakesShipped by tasks.registering {
         }
     }
 }
-tasks.matching { it.name in setOf("preReleaseBuild", "preMinifiedTestBuild", "check") }.configureEach {
+tasks.matching {
+    it.name in setOf(
+        "preReleaseBuild", "preMinifiedTestBuild", "check",
+        "createDistributable", "packageDistributionForCurrentOS",
+    )
+}.configureEach {
     dependsOn(verifyNoTestFakesShipped)
 }
 
