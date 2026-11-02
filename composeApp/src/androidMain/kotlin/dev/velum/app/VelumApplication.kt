@@ -18,6 +18,7 @@ import dev.velum.app.platform.installMicCaptureContext
 import dev.velum.app.platform.installRecordingFilesDir
 import dev.velum.app.platform.recoverPartialMicRecordings
 import dev.velum.app.platform.recordingsDirectoryPath
+import dev.velum.app.platform.sweepOrphanRecordingAudio
 import dev.velum.core.calendar.installCalendarContext
 import dev.velum.core.data.DriverFactory
 import dev.velum.core.integrations.IntegrationConfig
@@ -79,11 +80,21 @@ class VelumApplication : Application() {
                     repository = built.repository,
                     settings = built.settingsRepository,
                 )
-                // Complete the deferred before flipping ready so splash dismiss
-                // cannot race ahead of awaitContainer (#106 minifiedTest).
-                containerDeferred.complete(built)
-                ready.set(true)
-                Log.i(TAG, "AppContainer ready")
+                cleanupThenPublish(
+                    built = built,
+                    cleanup = { c ->
+                        val report = sweepOrphanRecordingAudio(recordingsDirectoryPath(), c.repository::getAllRecordingFileRefs)
+                        Log.i(TAG, "Orphan audio sweep: quarantined=${report.quarantined} purged=${report.purged} staleTemps=${report.staleTemps} failedMoves=${report.failedMoves}")
+                    },
+                    publish = { c ->
+                        // Complete the deferred before flipping ready so splash dismiss
+                        // cannot race ahead of awaitContainer (#106 minifiedTest).
+                        containerDeferred.complete(c)
+                        ready.set(true)
+                        Log.i(TAG, "AppContainer ready")
+                    },
+                    onCleanupFailure = { t -> Log.w(TAG, "Orphan audio sweep skipped (${t::class.simpleName})") },
+                )
                 runCatching {
                     recoverPartialMicRecordings(
                         recordingsDirPath = recordingsDirectoryPath(),

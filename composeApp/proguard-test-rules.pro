@@ -94,7 +94,9 @@
 }
 # Exact cross-APK calls from IdentityPersistenceDeviceTest (verified with javap).
 # Test-only interfaces/types stay identifiable; unused members may still shrink.
--keep interface dev.velum.core.security.SecureStore {}
+-keep interface dev.velum.core.security.SecureStore {
+    public java.lang.Object putString(java.lang.String,java.lang.String,kotlin.coroutines.Continuation);
+}
 -keep interface dev.velum.core.security.DeviceKeyImporter {}
 -keep class dev.velum.core.security.SecureDeviceKeyImporter {
     public <init>(dev.velum.core.security.SecureStore);

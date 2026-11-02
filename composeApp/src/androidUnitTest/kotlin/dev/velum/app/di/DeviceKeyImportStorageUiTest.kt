@@ -118,10 +118,11 @@ class DeviceKeyImportStorageUiTest {
             compose.onNodeWithContentDescription(label).performScrollTo().performClick()
             val success = if (json) strings.importKeys.fromPlaudJsonOk else strings.importKeys.saved
             compose.waitUntil(10_000) { compose.onAllNodesWithText(success).fetchSemanticsNodes().isNotEmpty() }
-            assertEquals("SYNTHETIC-NEW", f.store.values[SecureKeys.DEVICE_SERIAL])
-            assertEquals("synthetic-new-bind", f.store.values[SecureKeys.DEVICE_BIND_TOKEN])
-            assertEquals(before[SecureKeys.VOICE_PROFILE_AES_KEY], f.store.values[SecureKeys.VOICE_PROFILE_AES_KEY])
-            assertEquals(before[SecureKeys.AI_API_KEY], f.store.values[SecureKeys.AI_API_KEY])
+            val loaded = runBlocking { f.container.deviceKeyImporter.loadKeys() }
+            assertTrue(loaded?.serialNumber == "SYNTHETIC-NEW")
+            assertTrue(loaded?.bindToken == "synthetic-new-bind")
+            assertTrue(SecureKeys.DEVICE_IDENTITY_BUNDLE in f.store.values)
+            for ((key,value) in before) assertTrue(f.store.values[key] == value, "Legacy or sibling entry changed")
         } finally { activity.pause().stop().destroy() }
     }
     @Test fun pasted_field_import_cancellation_propagates_through_the_shared_handler_without_mutation() = exerciseCancellation(json = false)

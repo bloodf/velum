@@ -37,7 +37,7 @@ def main():
     report = dict(started_utc=utc(), status="running", serial=args.serial, variants=[])
     signature = base64.b64encode(bytes((i * 7) % 251 for i in range(256))).decode()
     needles = [signature, signature.replace("/", "\\/"), "SYNTHETIC-INVALID-SIGNATURE"]
-    for kind in ("json", "paste"):
+    for kind in ("json", "paste", "legacy"):
         needles.extend(f"SYNTHETIC-{kind}-{field}" for field in ("SERIAL", "BIND-TOKEN", "PUBLIC-PEM", "PRIVATE-PEM"))
 
     def redact(raw):

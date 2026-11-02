@@ -1,0 +1,45 @@
+package dev.velum.app.ui
+
+import android.app.Application
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.semantics.SemanticsProperties
+import kotlin.test.assertTrue
+import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeUp
+import dev.velum.app.i18n.En
+import dev.velum.app.i18n.LocalStrings
+import dev.velum.app.ui.settings.AboutScreen
+import dev.velum.app.ui.theme.VelumTheme
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.Robolectric
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+
+// #118: Back must stay composed after the body scrolls (device-walk pressNavBack).
+@RunWith(RobolectricTestRunner::class)
+@Config(application = Application::class, sdk = [34], qualifiers = "w320dp-h400dp")
+class PinnedTopBarTest {
+    @get:Rule val compose = createEmptyComposeRule()
+
+    @Test fun back_stays_displayed_after_scrolling_body() {
+        Robolectric.buildActivity(ComponentActivity::class.java).setup().get().setContent {
+            CompositionLocalProvider(LocalStrings provides En) { VelumTheme(darkTheme = false) { AboutScreen(onBack = {}) } }
+        }
+        // Not vacuous: the body must overflow this viewport and actually move.
+        val body = compose.onNode(hasScrollAction())
+        fun range() = body.fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange]
+        assertTrue(range().maxValue() > 0f, "About body must overflow the 400dp viewport")
+        repeat(3) { compose.onRoot().performTouchInput { swipeUp() } }
+        assertTrue(range().value() > 0f, "body must have scrolled")
+        compose.onNodeWithContentDescription(En.ux.back).assertIsDisplayed()
+    }
+}

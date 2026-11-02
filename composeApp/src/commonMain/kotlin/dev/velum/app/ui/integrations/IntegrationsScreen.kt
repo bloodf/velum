@@ -58,8 +58,11 @@ import dev.velum.app.ui.theme.VelumInk
 import dev.velum.app.ui.theme.VelumInkSecondary
 import dev.velum.app.ui.theme.VelumOnWarningContainer
 import dev.velum.app.ui.theme.VelumSurface
+import dev.velum.app.ui.theme.velumColors
 import dev.velum.core.calendar.CalendarLookupResult
 import dev.velum.core.data.epochSecondsNow
+
+private enum class StatusTone { Neutral, Ok, Warn }
 
 @Composable
 fun IntegrationsScreen(
@@ -82,7 +85,10 @@ fun IntegrationsScreen(
         return
     }
     var statusLabel by remember { mutableStateOf(strings.localCalendarHint) }
-    var statusColor by remember { mutableStateOf(VelumInkSecondary) }
+    // Store the tone, not the colour: colour tokens must be read at use so a theme flip applies.
+    // LocalVelumColors is provided by VelumTheme during composition, so this follows a theme flip on its own.
+    val palette = velumColors()
+    var statusTone by remember { mutableStateOf(StatusTone.Neutral) }
     var needsPermission by remember { mutableStateOf(false) }
     var refreshTick by remember { mutableStateOf(0) }
     var folderUri by remember { mutableStateOf(ExportFolderStore.currentUri()) }
@@ -113,16 +119,16 @@ fun IntegrationsScreen(
                 val title = result.currentOrNext?.title
                 if (title.isNullOrBlank()) {
                     statusLabel = strings.oauthDisconnected
-                    statusColor = VelumInkSecondary
+                    statusTone = StatusTone.Neutral
                 } else {
                     statusLabel = "${strings.oauthConnected}: $title"
-                    statusColor = Color(0xFF15803D)
+                    statusTone = StatusTone.Ok
                 }
             }
             CalendarLookupResult.PermissionDenied -> {
                 needsPermission = true
                 statusLabel = strings.calendarPermissionBlocked
-                statusColor = VelumOnWarningContainer
+                statusTone = StatusTone.Warn
             }
             is CalendarLookupResult.Unavailable -> {
                 needsPermission = false
@@ -131,7 +137,7 @@ fun IntegrationsScreen(
                 } else {
                     result.reason.ifBlank { strings.ux.androidContextUnavailable }
                 }
-                statusColor = VelumOnWarningContainer
+                statusTone = StatusTone.Warn
             }
         }
         folderUri = ExportFolderStore.currentUri()
@@ -209,7 +215,11 @@ fun IntegrationsScreen(
                 title = strings.localCalendar,
                 body = strings.localCalendarHint,
                 status = statusLabel,
-                statusColor = statusColor,
+                statusColor = when (statusTone) {
+                    StatusTone.Neutral -> palette.inkSecondary
+                    StatusTone.Ok -> Color(0xFF15803D)
+                    StatusTone.Warn -> palette.onWarningContainer
+                },
             ) {
                 if (needsPermission) {
                     Spacer(Modifier.height(12.dp))
@@ -239,7 +249,7 @@ fun IntegrationsScreen(
                 } else {
                     strings.ux.folderExportConfigured
                 },
-                statusColor = if (folderUri.isNullOrBlank()) VelumInkSecondary else Color(0xFF15803D),
+                statusColor = if (folderUri.isNullOrBlank()) palette.inkSecondary else Color(0xFF15803D),
             ) {
                 Spacer(Modifier.height(12.dp))
                 BlackButton(strings.ux.folderExportPick, pickExportFolder)
@@ -262,7 +272,7 @@ fun IntegrationsScreen(
                 } else {
                     strings.oauthDisconnected
                 },
-                statusColor = if (webhookConfigured) Color(0xFF15803D) else VelumInkSecondary,
+                statusColor = if (webhookConfigured) Color(0xFF15803D) else palette.inkSecondary,
             ) {
                 Spacer(Modifier.height(12.dp))
                 Text(strings.ux.webhookUrl, color = VelumInkSecondary, fontSize = 13.sp)

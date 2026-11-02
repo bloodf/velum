@@ -1,5 +1,6 @@
 package dev.velum.ai.pipeline
 
+import dev.velum.ai.ApiErrorSanitizer
 import dev.velum.ai.MissingApiKeyException
 import dev.velum.ai.audio.createOpusDecoder
 import dev.velum.ai.engine.AiTask
@@ -16,14 +17,20 @@ import dev.velum.ai.local.ModelNotReadyException
 import dev.velum.ai.local.ModelStoreDir
 import dev.velum.ai.local.defaultModelStoreRoot
 import dev.velum.core.data.VelumRepository
+import dev.velum.core.model.ProcessingWarning
 import dev.velum.core.model.ComputeMode
 import dev.velum.core.settings.AiApiTask
 import dev.velum.core.settings.ApiModelOverride
 import dev.velum.core.settings.SettingsRepository
 import dev.velum.core.templates.BuiltinTemplateCatalog
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.withContext
+
+/** Progress message when the Ogg source ended mid-page; only the decodable part is processed. */
+const val TRUNCATED_AUDIO_MESSAGE = "Audio file is truncated; processing the part that could be decoded"
 
 /**
  * End-to-end job: decode → transcribe → diarize → markdown transcript → summarize → DB.
@@ -45,6 +52,8 @@ class RecordingProcessor(
         apiModelOverride: ApiModelOverride? = null,
     ): Flow<JobProgress> = flow {
         emit(JobProgress.Running(0.05f, "Starting"))
+        val priorStatus = repository.getRecording(recordingId)?.status
+        repository.setProcessingError(recordingId, null)
         repository.updateStatus(recordingId, "generating")
 
         try {
@@ -59,8 +68,10 @@ class RecordingProcessor(
                 .resolve("tmp")
                 .resolve("pcm-$recordingId")
             var pcmBuffer: PcmAudioBuffer = PcmAudioBuffer.Memory(ByteArray(0))
+            var truncatedAudio = false
             try {
-            if (!localPath.isNullOrBlank()) {
+            // Summary-only runs (change template) use the stored transcript; audio is not needed.
+            if (retranscribe && !localPath.isNullOrBlank()) {
                 emit(JobProgress.Running(0.1f, "Decoding audio"))
                 awaitThermalGate { emit(it) }
                 filename = localPath.substringAfterLast('/')
@@ -73,6 +84,10 @@ class RecordingProcessor(
                     val meta = createOpusDecoder().decodePathToPcmFile(localPath, pcmFile)
                     sampleRate = meta.sampleRateHz
                     pcmBuffer = PcmAudioBuffer.fromExistingFile(pcmFile, meta.sizeBytes)
+                    if (meta.truncated) {
+                        truncatedAudio = true
+                        emit(JobProgress.Running(0.2f, TRUNCATED_AUDIO_MESSAGE))
+                    }
                 } else if (filename.endsWith(".wav", ignoreCase = true)) {
                     // Stream WAV from disk — probe header only, then copy PCM slices.
                     val src = ModelStoreDir(localPath)
@@ -100,6 +115,10 @@ class RecordingProcessor(
                         val meta = createOpusDecoder().decodeToPcmFile(raw, pcmFile)
                         sampleRate = meta.sampleRateHz
                         pcmBuffer = PcmAudioBuffer.fromExistingFile(pcmFile, meta.sizeBytes)
+                        if (meta.truncated) {
+                            truncatedAudio = true
+                            emit(JobProgress.Running(0.2f, TRUNCATED_AUDIO_MESSAGE))
+                        }
                     } else if (looksLikeWav(raw)) {
                         val range = locateWavPcm(raw)
                         sampleRate = range.sampleRateHz
@@ -120,6 +139,11 @@ class RecordingProcessor(
                         pcmBuffer = PcmAudioBuffer.fromPcmBytes(raw, spillRoot)
                     }
                 }
+                // Persist (or clear) the stable warning code so the UI can show it after the job ends.
+                repository.setProcessingWarning(
+                    recordingId,
+                    if (truncatedAudio) ProcessingWarning.TRUNCATED_AUDIO else null,
+                )
             } else {
                 // Demo / seed rows have no audio file — keep existing transcript path for summary-only.
                 filename = "missing.ogg"
@@ -132,6 +156,9 @@ class RecordingProcessor(
             )
 
             var transcriptMarkdown = recording.transcript.orEmpty()
+            if (!retranscribe && transcriptMarkdown.isBlank()) {
+                throw IllegalStateException("This recording has no transcript to summarize.")
+            }
             if (retranscribe) {
                 if (pcmBuffer.sizeBytes <= 0L) {
                     if (transcriptMarkdown.isBlank()) {
@@ -240,9 +267,11 @@ class RecordingProcessor(
                 outputLanguage = cfg.outputLanguage,
                 audioLanguage = cfg.audioLanguage,
             )
-            val resolvedTemplateId = BuiltinTemplateCatalog.resolveId(templateId)
-            val dbTemplate = repository.getTemplate(resolvedTemplateId)
-                ?: repository.getTemplate(templateId.orEmpty())
+            // Exact row first: an edited builtin keeps its id (builtin = 0) and must win over
+            // legacy / removed-duplicate alias resolution (#99).
+            val exactTemplate = templateId?.takeIf { it.isNotBlank() }?.let { repository.getTemplate(it) }
+            val resolvedTemplateId = exactTemplate?.id ?: BuiltinTemplateCatalog.resolveId(templateId)
+            val dbTemplate = exactTemplate ?: repository.getTemplate(resolvedTemplateId)
             val catalogEntry = BuiltinTemplateCatalog.get(resolvedTemplateId)
             val baseTemplate = dbTemplate?.system_prompt
                 ?: catalogEntry?.systemPrompt
@@ -317,6 +346,7 @@ class RecordingProcessor(
                 templateName = templateName,
             )
             repository.updateStatus(recordingId, "ready")
+            repository.setProcessingError(recordingId, null)
             if (settings.preferences.value.deleteAudioAfterProcessing &&
                 !localPath.isNullOrBlank()
             ) {
@@ -337,8 +367,20 @@ class RecordingProcessor(
             if (t is CancellationException ||
                 t is kotlin.coroutines.cancellation.CancellationException
             ) {
+                // Cancelled work never saved a version; restore the status so notes stay usable.
+                withContext(NonCancellable) {
+                    // A pre-run "generating"/"queued" state is not restorable: it would look stuck forever.
+                    val restore = when (priorStatus) {
+                        null, "generating", "queued" ->
+                            if (repository.getRecording(recordingId)?.summary_markdown.isNullOrBlank()) "failed" else "ready"
+                        else -> priorStatus
+                    }
+                    repository.updateStatus(recordingId, restore)
+                }
                 throw t
             }
+            // The previous summary and versions are untouched; surface the reason in the UI.
+            repository.setProcessingError(recordingId, ApiErrorSanitizer.sanitize(t.message ?: t.toString()))
             repository.updateStatus(recordingId, "failed")
             emit(JobProgress.Failed(t.message ?: t.toString()))
         }

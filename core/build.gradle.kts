@@ -63,7 +63,7 @@ sqldelight {
     databases {
         create("VelumDatabase") {
             packageName.set("dev.velum.core.db")
-            // Schema version is 4 (Velum.sq + migrations/1.sqm + 2.sqm + 3.sqm). Next change needs migrations/4.sqm.
+            // Schema version is 6 (Velum.sq + migrations/1.sqm .. 5.sqm). Next change needs migrations/6.sqm.
             // See src/commonMain/sqldelight/dev/velum/core/db/migrations/README.md
             migrationOutputDirectory.set(layout.buildDirectory.dir("generated/sqldelight/migrations"))
             verifyMigrations.set(true)
