@@ -49,6 +49,10 @@ data class DeviceSessionUi(
     val librarySessionIds: Set<Long> = emptySet(),
 )
 
+/** Real device serial for the #113 dedup key, or null (dedup off) when none is known. */
+internal fun dedupDeviceSerial(keySerial: String?, advertisedSerial: String?): String? =
+    keySerial?.takeIf { it.isNotBlank() } ?: advertisedSerial?.takeIf { it.isNotBlank() }
+
 data class DownloadedSessionAudio(
     val sessionId: Long,
     val deviceSerial: String?,
@@ -210,12 +214,12 @@ class DeviceViewModel(
                     sizeBytes = entry.sizeBytes,
                     totalBytes = totalBytes,
                     privateKeyPem = keys.privateKeyPem,
-                    deviceSerial = keys.serialNumber.ifBlank { connectedSerial },
+                    deviceSerial = dedupDeviceSerial(keys.serialNumber, connectedSerial),
                     startedAtEpochSeconds = sessionId.coerceAtLeast(0L),
                 )
             }
             val sessions = c.listSessions()
-            val inLibrary = librarySessionIds(sessions.entries.map { it.sessionId }, keys.serialNumber.ifBlank { connectedSerial })
+            val inLibrary = loadLibrarySessionIds(sessions.entries.map { it.sessionId }, dedupDeviceSerial(keys.serialNumber, connectedSerial))
             _sessionUi.value = _sessionUi.value.copy(
                 sessions = sessions.entries,
                 librarySessionIds = inLibrary,
@@ -277,6 +281,16 @@ class DeviceViewModel(
         )
     }
 
+    /** Library marking is best-effort: a lookup failure must not break the session list. */
+    private suspend fun loadLibrarySessionIds(ids: List<Long>, serial: String?): Set<Long> =
+        try {
+            librarySessionIds(ids, serial)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            emptySet()
+        }
+
     private fun closeClient() {
         client?.close()
         client = null
@@ -286,7 +300,7 @@ class DeviceViewModel(
     private suspend fun runProtocolIfKeysPresent() {
         val locale = localeTag()
         val connected = (connectionState.value as? BleConnectionState.Connected)?.device
-        connectedSerial = connected?.serial ?: connected?.name
+        connectedSerial = connected?.serial // never the BLE name: it is not a stable device identity (#113)
         val scanMatch = RecorderDriverRegistry.matchAdvertisement(
             name = connected?.name,
             manufacturerPayload = null,
@@ -338,7 +352,7 @@ class DeviceViewModel(
             val sessions = c.listSessions()
             val battery = c.readBattery()
             val wifiCapable = DeviceCapabilityRegistry.supportsWifiFastPath(caps)
-            val inLibrary = librarySessionIds(sessions.entries.map { it.sessionId }, keys.serialNumber.ifBlank { connectedSerial })
+            val inLibrary = loadLibrarySessionIds(sessions.entries.map { it.sessionId }, dedupDeviceSerial(keys.serialNumber, connectedSerial))
             _sessionUi.value = DeviceSessionUi(
                 batteryPercent = battery.percent,
                 sessions = sessions.entries,

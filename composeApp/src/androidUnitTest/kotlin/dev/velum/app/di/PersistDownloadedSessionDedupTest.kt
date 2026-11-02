@@ -16,6 +16,7 @@ import java.nio.file.Files
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -109,17 +110,47 @@ class PersistDownloadedSessionDedupTest {
         assertContentEquals(ogg(1), target.readBytes())
     }
 
+    @Test fun atomic_move_failure_keeps_destination_and_removes_temp() = fixture {
+        // A non-empty directory at the destination makes the atomic move fail after the temp is written.
+        val target = File(dir(), "rec-move.ogg").apply { mkdirs(); File(this, "keep").writeText("x") }
+        assertFailsWith<Exception> { writeBytesToPath(target.path, ogg(1)) }
+        assertTrue(File(target, "keep").isFile)
+        assertFalse(File("${target.path}.download-tmp").exists())
+    }
+
+    @Test fun unknown_serial_never_merges_sessions_from_different_devices() = fixture {
+        val a = container.persistDownloadedSession(session(ogg(1), serial = null))
+        val b = container.persistDownloadedSession(session(ogg(2), serial = " "))
+        assertTrue(a != b)
+        assertContentEquals(ogg(1), File(row(a).local_path!!).readBytes())
+        assertEquals(null, row(b).device_serial)
+    }
+
+    @Test fun library_session_ids_mark_only_this_devices_sessions() = fixture {
+        container.persistDownloadedSession(session(ogg(1)))
+        assertEquals(setOf(1_700_000_000L), container.repository.librarySessionIds(listOf(1_700_000_000, 5), "SYNTH-SN-1"))
+        assertEquals(emptySet(), container.repository.librarySessionIds(listOf(1_700_000_000), "SYNTH-SN-OTHER"))
+    }
+
+    @Test fun seeded_autoflows_enabled_still_give_one_row_and_file() = fixture(disableAutoflows = false) {
+        val first = container.persistDownloadedSession(session(ogg(1)))
+        val second = container.persistDownloadedSession(session(ogg(2)))
+        assertEquals(first, second)
+        assertEquals(1, container.repository.getAllRecordings().count { it.session_id == 1_700_000_000L })
+        assertEquals(listOf("$first.ogg"), audioFiles())
+    }
+
     private fun ogg(n: Int) = byteArrayOf('O'.code.toByte(), 'g'.code.toByte(), 'g'.code.toByte(), 'S'.code.toByte(), n.toByte())
     private fun wav() = "RIFF\u0000\u0000\u0000\u0000WAVE".encodeToByteArray()
     private fun session(bytes: ByteArray, sessionId: Long = 1_700_000_000, serial: String? = "SYNTH-SN-1") =
         DownloadedSessionAudio(sessionId, serial, sessionId, bytes.size.toLong(), bytes)
 
-    private fun fixture(block: suspend Fixture.() -> Unit) = runBlocking {
+    private fun fixture(disableAutoflows: Boolean = true, block: suspend Fixture.() -> Unit) = runBlocking {
         withTimeout(20_000) {
             val context = ApplicationProvider.getApplicationContext<Application>(); context.deleteDatabase("velum.db")
             val f = Fixture(context)
             // Isolate persist from the async AutoFlow pass (seeded rules would re-queue rows on their own).
-            f.container.repository.listAutoflows().forEach { f.container.repository.setAutoflowEnabled(it.id, false) }
+            if (disableAutoflows) f.container.repository.listAutoflows().forEach { f.container.repository.setAutoflowEnabled(it.id, false) }
             try { f.block() } finally { f.container.databaseHandle.driver.close(); f.root.deleteRecursively() }
         }
     }

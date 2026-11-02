@@ -29,6 +29,7 @@ import dev.velum.app.platform.ExportFolderStore
 import dev.velum.app.platform.MicCapture
 import dev.velum.app.platform.createMicCapture
 import dev.velum.app.platform.deleteFileAtPath
+import dev.velum.app.platform.isSupersededOwnAudio
 import dev.velum.app.platform.recordingsDirectoryPath
 import dev.velum.app.platform.systemLanguageTag
 import dev.velum.app.platform.writeBytesToPath
@@ -114,7 +115,7 @@ class AppContainer(
         keyImporter = deviceKeyImporter,
         preferWifiFastPath = { settingsRepository.preferences.value.preferWifiFastPath },
         persistDownloadedSession = { session -> persistDownloadedSession(session) },
-        librarySessionIds = { ids, serial -> ids.filterTo(HashSet()) { repository.findDeviceSessionRecording(it, serial) != null } },
+        librarySessionIds = { ids, serial -> repository.librarySessionIds(ids, serial) },
         localeTag = {
             when (settingsRepository.preferences.value.appLanguage) {
                 "en" -> "en"
@@ -266,7 +267,9 @@ class AppContainer(
             looksLikeWav(session.decryptedBytes) -> "wav"
             else -> "bin"
         }
-        val existing = repository.findDeviceSessionRecording(session.sessionId, session.deviceSerial)
+        // Without a real serial dedup is off (null key): never risk merging sessions of two devices.
+        val serial = session.deviceSerial?.takeIf { it.isNotBlank() }
+        val existing = repository.findDeviceSessionRecording(session.sessionId, serial)
         val id = existing?.id ?: RecordingIds.newId()
         val dir = recordingsDirectoryPath()
         val path = "$dir/$id.$ext"
@@ -275,11 +278,7 @@ class AppContainer(
             repository.replaceDeviceSessionAudio(id, path, session.sizeBytes)
             // Only this row's own superseded file in the recordings dir (e.g. .ogg -> .wav).
             val previousPath = existing.local_path
-            if (previousPath != null && previousPath != path && previousPath == "$dir/${previousPath.substringAfterLast('/')}" &&
-                previousPath.substringAfterLast('/').startsWith("$id.")
-            ) {
-                deleteFileAtPath(previousPath)
-            }
+            if (previousPath != null && isSupersededOwnAudio(previousPath, path, dir, id)) deleteFileAtPath(previousPath)
             // Re-process only a row that never produced a transcript; never overwrite user content.
             if (existing.transcript.isNullOrBlank() && existing.summary_markdown.isNullOrBlank()) {
                 repository.updateStatus(id, "queued")
@@ -300,7 +299,7 @@ class AppContainer(
                 folder_id = null,
                 title = title,
                 source = "note_pro",
-                device_serial = session.deviceSerial,
+                device_serial = serial,
                 started_at = started,
                 duration_seconds = 0,
                 size_bytes = session.sizeBytes,

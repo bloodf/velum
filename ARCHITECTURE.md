@@ -48,7 +48,7 @@ There are three input paths:
    writes a local file, inserts a recording and queues processing. The production
    persistence boundary still accepts a full `ByteArray`; this is not proof of
    bounded-memory multi-hour imports (#86). Rows are unique on device session id
-   plus device serial; a re-download atomically replaces the existing row's audio and
+   plus device serial (no dedup without a real serial); a re-download atomically replaces the existing row's audio and
    keeps its title, transcript and summary (#113).
 2. File import starts in
    [AudioImportPipeline](composeApp/src/commonMain/kotlin/dev/velum/app/importing/AudioImportPipeline.kt).

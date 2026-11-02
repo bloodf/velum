@@ -125,10 +125,22 @@ class VelumRepository(
         q.selectAllRecordings().executeAsList()
     }
 
-    /** #113 dedup key: device session id + device serial (null == ""). Includes trashed rows. */
+    /**
+     * #113 dedup key: device session id + real device serial. Includes trashed rows. Without a serial
+     * dedup is off (returns null), so sessions from different devices can never merge.
+     */
     suspend fun findDeviceSessionRecording(sessionId: Long, deviceSerial: String?): Recording? =
         withContext(Dispatchers.Default) {
-            q.selectRecordingByDeviceSession(sessionId, deviceSerial.orEmpty()).executeAsOneOrNull()
+            val serial = deviceSerial?.takeIf { it.isNotBlank() } ?: return@withContext null
+            q.selectRecordingByDeviceSession(sessionId, serial).executeAsOneOrNull()
+        }
+
+    /** Subset of [sessionIds] already in the library for this device (one query; empty without a serial). */
+    suspend fun librarySessionIds(sessionIds: List<Long>, deviceSerial: String?): Set<Long> =
+        withContext(Dispatchers.Default) {
+            val serial = deviceSerial?.takeIf { it.isNotBlank() }
+            if (serial == null || sessionIds.isEmpty()) return@withContext emptySet()
+            q.selectLibrarySessionIds(serial, sessionIds).executeAsList().mapNotNullTo(HashSet()) { it.session_id }
         }
 
     /** Fails (never replaces) when the device session already has a row. */
