@@ -19,10 +19,10 @@ class KopusOpusDecoder : OpusDecoder {
             OggOpusDemuxer.demuxForEach(oggBytes, onHeader, onPacket)
         }
 
-    override fun decodePathToPcmFile(path: String, dest: ModelStoreDir): SpilledPcmMeta =
+    override fun decodePathToPcmFile(path: String, dest: ModelStoreDir, checkCancelled: () -> Unit): SpilledPcmMeta =
         RandomAccessFile(path, "r").use { raf ->
             val size = raf.length()
-            decodeStreaming(dest) { onHeader, onPacket ->
+            decodeStreaming(dest, checkCancelled) { onHeader, onPacket ->
                 OggOpusDemuxer.demuxAtForEach(
                     size = size,
                     readAt = { buf, position, length ->
@@ -95,6 +95,7 @@ class KopusOpusDecoder : OpusDecoder {
 
         private fun decodeStreaming(
             dest: ModelStoreDir,
+            checkCancelled: () -> Unit = {},
             demux: (
                 onHeader: (Int, Int) -> Unit,
                 onPacket: (ByteArray) -> Unit,
@@ -119,6 +120,7 @@ class KopusOpusDecoder : OpusDecoder {
                         decoder = KopusDecoder(sampleRate = rate, channels = channels)
                     },
                     { packet ->
+                        checkCancelled()
                         val n = decoder!!.decode(
                             inData = packet,
                             len = packet.size,
