@@ -28,8 +28,11 @@ import org.junit.runner.RunWith
  * latency through the shipping DriverFactory (bundled SQLite with FTS5). Uses its own database file
  * (never the app's velum.db) and needs no network. Expected rows are read from the bundled asset, so the test is count-agnostic.
  *
- * Budgets are deliberately loose until measured on the reference emulator; the measured values are
- * reported as instrumentation status (key `velum.catalog`) and in logcat (tag `VelumCatalog100`).
+ * Measured values are reported as instrumentation status (key `velum.catalog`) and in logcat (tag
+ * `VelumCatalog100`). Reference measurement (2026-11-02, emulator-5554 API 34, debug build of #153 on
+ * integration batch A, 16,128 rows, bundled SQLite FTS5, macOS host load 500-900): import 7,171 ms,
+ * search p50 4 ms / p95 16 ms over 20 alternating accented/unaccented queries. Budgets keep a wide
+ * margin for slow CI emulators and low-end devices: import 30 s, search p95 250 ms.
  *
  * Run: adb shell am instrument -w -e class dev.velum.app.templates.FullCatalogDeviceTest \
  *   -e velumDeviceWalk false dev.velum.app.test/dev.velum.app.devicewalk.DeviceWalkTestRunner
@@ -139,8 +142,8 @@ class FullCatalogDeviceTest {
         const val TAG = "VelumCatalog100"
         const val PAGE = 50
         const val SEARCH_RUNS = 20
-        // Provisional ceilings; tighten to measured value plus margin after the first emulator run.
-        const val IMPORT_BUDGET_MS = 90_000L
-        const val SEARCH_P95_BUDGET_MS = 1_500L
+        // Measured 7.2 s import / 16 ms search p95 (see KDoc); ~4x and ~15x headroom.
+        const val IMPORT_BUDGET_MS = 30_000L
+        const val SEARCH_P95_BUDGET_MS = 250L
     }
 }
