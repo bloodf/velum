@@ -253,6 +253,9 @@ class PlaudDeviceClient(
      * transfer and is ignored. Absolute offsets come from community protocol notes (docs/protocol) and are
      * unverified on the owner's device (#6).
      *
+     * With [storedBytes] a repeat must match what is stored, which catches a device whose offsets don't mean
+     * what we assume on a resume, such as relative ones, before its bytes land on the expected offset.
+     *
      * [onProgress] reports the absolute byte offset reached. Returns the device's stop CRC, or
      * [NO_DEVICE_CRC] when there is none: the stop reply is best-effort, so a transfer holding all its
      * bytes is never lost to a missing tail. Verifying the CRC is the caller's job.
@@ -263,6 +266,7 @@ class PlaudDeviceClient(
         sink: SessionByteSink,
         onProgress: ((receivedBytes: Long) -> Unit)? = null,
         startOffset: Long = 0L,
+        storedBytes: ((offset: Long, length: Int) -> ByteArray)? = null,
     ): Int {
         require(sizeBytes in 0..MAX_SESSION_DOWNLOAD_BYTES) {
             "Session sizeBytes=$sizeBytes exceeds cap of $MAX_SESSION_DOWNLOAD_BYTES"
@@ -287,6 +291,11 @@ class PlaudDeviceClient(
                                 val end = data.offset + data.data.size
                                 val ignored = isStray(data.sessionId, sessionId) || end <= next
                                 if (!isStray(data.sessionId, sessionId)) smallestChunk = minOf(smallestChunk, data.data.size)
+                                if (!isStray(data.sessionId, sessionId) && end <= next && storedBytes != null && data.data.isNotEmpty() &&
+                                    !storedBytes(data.offset, data.data.size).contentEquals(data.data)
+                                ) {
+                                    throw TransferIntegrityException("Repeated chunk at offset ${data.offset} differs from the stored bytes")
+                                }
                                 if (!ignored) {
                                     if (data.offset != next) {
                                         throw TransferIntegrityException("Chunk at offset ${data.offset}, expected $next")

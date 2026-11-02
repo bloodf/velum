@@ -264,6 +264,26 @@ class ResumableSessionDownloadTest {
         assertEquals(CrcStatus.Verified, result.crc)
     }
 
+    @Test fun relative_offsets_on_a_resume_never_join_wrong_bytes() = runTest {
+        // More remains than is stored, so a relative offset reaches the expected one with the wrong bytes.
+        val file = Random(25).nextBytes(5_000)
+        val rig = rig(file, TransferFaults(relativeOffsets = true))
+        val store = storeHolding(file.copyOf(2_000))
+        val result = downloader(rig, CrcPolicy.ReportOnly).download(SESSION, file.size.toLong(), store)
+        assertContentEquals(file, store.bytes)
+        assertEquals(listOf(2_000L, 0L), rig.peripheral.syncStartOffsets)
+        assertEquals(CrcStatus.Verified, result.crc)
+    }
+
+    @Test fun relative_offsets_with_little_left_restart_from_zero() = runTest {
+        val file = Random(26).nextBytes(5_000)
+        val rig = rig(file, TransferFaults(relativeOffsets = true))
+        val store = storeHolding(file.copyOf(4_000))
+        downloader(rig, CrcPolicy.Enforce).download(SESSION, file.size.toLong(), store)
+        assertContentEquals(file, store.bytes)
+        assertEquals(listOf(4_000L, 0L), rig.peripheral.syncStartOffsets)
+    }
+
     @Test fun lost_link_right_after_a_resume_keeps_the_partial() = runTest {
         val file = Random(22).nextBytes(5_000)
         val rig = rig(file, TransferFaults(disconnectAt = setOf(2_000)))

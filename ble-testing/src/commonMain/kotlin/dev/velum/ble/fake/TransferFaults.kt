@@ -34,6 +34,8 @@ class TransferFaults(
     repeatBurstAt: Map<Long, Int> = emptyMap(),
     /** Stream from 0 whatever start offset is asked for. */
     internal val ignoreStartOffset: Boolean = false,
+    /** Number chunks from the start offset asked for, not from the start of the file. */
+    internal val relativeOffsets: Boolean = false,
     /** Refuse any SYNC_FILE_START with a non-zero offset. */
     internal val refuseNonZeroStart: Boolean = false,
     /** Lose the link at this offset once on every pass that starts from 0. */

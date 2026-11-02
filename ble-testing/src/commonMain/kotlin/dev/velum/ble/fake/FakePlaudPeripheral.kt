@@ -296,7 +296,7 @@ class FakePlaudPeripheral(
             }
             val slice = sessionFile.copyOfRange(offset, end)
             if (faults.corrupt.remove(at)) slice[0] = (slice[0].toInt() xor 0x5A).toByte()
-            val frame = chunkFrame(sessionId, at, slice)
+            val frame = chunkFrame(sessionId, if (faults.relativeOffsets) at - startOffset else at, slice)
             when {
                 faults.drop.remove(at) -> Unit
                 faults.garble.remove(at) -> emitEncrypted(frame, garble = true)

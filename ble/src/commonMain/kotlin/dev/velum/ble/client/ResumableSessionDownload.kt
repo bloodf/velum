@@ -104,7 +104,7 @@ class ResumableSessionDownload(
                     current.unlock()
                     current.handshake()
                 }
-                val deviceCrc = current.downloadSessionTo(sessionId, sizeBytes, store, onProgress, startOffset = before)
+                val deviceCrc = current.downloadSessionTo(sessionId, sizeBytes, store, onProgress, startOffset = before, storedBytes = store::read)
                 val crc = crcStatus(deviceCrc, store)
                 if (crc !is CrcStatus.Mismatch || crcPolicy == CrcPolicy.ReportOnly) {
                     succeeded = true
