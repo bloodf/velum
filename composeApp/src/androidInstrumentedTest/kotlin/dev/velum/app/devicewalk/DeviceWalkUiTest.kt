@@ -30,6 +30,7 @@ import androidx.test.uiautomator.Until
 import androidx.test.uiautomator.StaleObjectException
 import dev.velum.app.MainActivity
 import dev.velum.app.VelumApplication
+import dev.velum.app.i18n.DeviceUiCopy
 import dev.velum.app.i18n.En
 import dev.velum.app.i18n.PtBr
 import dev.velum.app.i18n.Strings
@@ -587,10 +588,15 @@ class DeviceWalkUiTest {
             "Dispositivo",
         )
         covered += "device"
-        // DeviceScreen shows the Devices title but not the Devices-settings hint.
-        val str = stringsFor(lang)
-        shotWhenReady("11-device-$tag", "Device screen not visible") {
-            composeExists(str.settingsUi.sectionDevices) && !composeExists(str.settingsUi.devicesHint)
+        // Positive gate: DeviceScreen's status banner / empty-device copy (DeviceUiCopy) is rendered
+        // only there, whichever BLE state the fixture is in. sectionDevices also appears on the hub.
+        val tagLocale = stringsFor(lang).localeTag
+        shotWhenReady("11-device-$tag", "Device screen content not visible") {
+            listOf(
+                DeviceUiCopy.readyToScan(tagLocale), DeviceUiCopy.scanningRecorders(tagLocale),
+                DeviceUiCopy.bleStubbed(tagLocale), DeviceUiCopy.connectionFailed(tagLocale),
+                DeviceUiCopy.noDevicesYet(tagLocale), DeviceUiCopy.desktopBleLater(tagLocale),
+            ).any { composeExists(it) }
         }
         run {
             // Required in both locales; click only a node that has a click action so the
