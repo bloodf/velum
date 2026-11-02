@@ -140,7 +140,10 @@ class VelumRepository(
         withContext(Dispatchers.Default) {
             val serial = deviceSerial?.takeIf { it.isNotBlank() }
             if (serial == null || sessionIds.isEmpty()) return@withContext emptySet()
-            q.selectLibrarySessionIds(serial, sessionIds).executeAsList().mapNotNullTo(HashSet()) { it.session_id }
+            // SQLite's default host-parameter limit is 999 on API 26-29: chunk the IN list.
+            sessionIds.distinct().chunked(LIBRARY_SESSION_CHUNK).flatMapTo(HashSet()) { chunk ->
+                q.selectLibrarySessionIds(serial, chunk).executeAsList().mapNotNull { it.session_id }
+            }
         }
 
     /** Fails (never replaces) when the device session already has a row. */
@@ -849,6 +852,7 @@ class VelumRepository(
 
     companion object {
         const val META_FIRST_RUN_DONE = "first_run_done"
+        internal const val LIBRARY_SESSION_CHUNK = 500
     }
 }
 

@@ -52,6 +52,18 @@ class DeviceSessionRecordingTest {
     }
 
     @Test
+    fun library_session_ids_handle_more_ids_than_the_sqlite_parameter_limit() = runTest {
+        val (repo, _) = repo()
+        repo.insertSession("rec-first", 1, "SYNTH-SN-1")
+        repo.insertSession("rec-mid", 1_200, "SYNTH-SN-1")
+        repo.insertSession("rec-last", 40_000, "SYNTH-SN-1")
+        // 1200 exceeds Android's 999 limit (API 26-29); 40000 also exceeds the JDBC driver's 32766, so an
+        // unchunked IN list fails on the test host too.
+        assertEquals(setOf(1L, 1_200L), repo.librarySessionIds((1L..1_200L).toList(), "SYNTH-SN-1"))
+        assertEquals(setOf(1L, 1_200L, 40_000L), repo.librarySessionIds((1L..40_000L).toList(), "SYNTH-SN-1"))
+    }
+
+    @Test
     fun insert_recording_with_existing_id_fails_instead_of_replacing() = runTest {
         val (repo, _) = repo()
         repo.insertSession("rec-a", null, null)

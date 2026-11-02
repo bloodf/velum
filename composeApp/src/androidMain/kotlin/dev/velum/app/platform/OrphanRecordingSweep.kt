@@ -5,7 +5,7 @@ import java.nio.file.Files
 import java.nio.file.LinkOption
 
 /** Counts only: paths and file names carry recording/session identity and must not be logged. */
-data class OrphanSweepReport(val quarantined: Int = 0, val purged: Int = 0, val staleTemps: Int = 0)
+data class OrphanSweepReport(val quarantined: Int = 0, val purged: Int = 0, val staleTemps: Int = 0, val failedMoves: Int = 0)
 
 /** Quarantine (not delete) lives inside the recordings dir; the sweep never recurses into it. */
 const val ORPHAN_QUARANTINE_DIR = ".orphaned"
@@ -60,6 +60,7 @@ suspend fun sweepOrphanRecordingAudio(
     val quarantine = File(dir, ORPHAN_QUARANTINE_DIR)
     var quarantined = 0
     var staleTemps = 0
+    var failedMoves = 0
     for (file in dir.listFiles().orEmpty()) {
         if (!file.isPlainFile() || !file.olderThan(minAgeMs, nowMs)) continue
         if (OWN_DOWNLOAD_TEMP_NAME.matches(file.name)) {
@@ -69,25 +70,29 @@ suspend fun sweepOrphanRecordingAudio(
         if (!FINAL_AUDIO_NAME.matches(file.name) || refs.protects(file)) continue
         if (!quarantine.isDirectory && !quarantine.mkdirs()) break
         val target = File(quarantine, file.name)
-        if (target.exists() || !file.renameTo(target)) continue
-        // The purge clock is the quarantine mtime; if it cannot be set, undo the move rather than guess.
-        if (!target.setLastModified(nowMs)) { target.renameTo(file); continue }
+        if (target.exists()) continue
+        // The purge clock is the quarantine mtime. Stamp it BEFORE the move (rename keeps mtime), so no undo
+        // path exists: a failed stamp skips the file; a failed rename only leaves it fresh, i.e. kept for 24h.
+        if (!file.setLastModified(nowMs) || !file.renameTo(target)) { failedMoves++; continue }
         quarantined++
     }
-    val purged = purgeQuarantine(dir, quarantine, Refs(fileRefs()), nowMs, purgeAfterMs)
-    return OrphanSweepReport(quarantined, purged, staleTemps)
+    val purge = purgeQuarantine(dir, quarantine, Refs(fileRefs()), nowMs, purgeAfterMs)
+    return OrphanSweepReport(quarantined, purge.first, staleTemps, failedMoves + purge.second)
 }
 
-private fun purgeQuarantine(dir: File, quarantine: File, refs: Refs, nowMs: Long, purgeAfterMs: Long): Int {
+/** @return (purged, failed restores). A failed restore stays in quarantine and is retried next start. */
+private fun purgeQuarantine(dir: File, quarantine: File, refs: Refs, nowMs: Long, purgeAfterMs: Long): Pair<Int, Int> {
     var purged = 0
+    var failedRestores = 0
     for (file in quarantine.listFiles().orEmpty()) {
         if (!file.isPlainFile()) continue
         val original = File(dir, file.name)
+        // Referenced again: never purge; move back when the original slot is free.
         if (refs.protects(original)) {
-            if (!original.exists()) file.renameTo(original)
+            if (!original.exists() && !file.renameTo(original)) failedRestores++
             continue
         }
         if (file.olderThan(purgeAfterMs, nowMs) && file.delete()) purged++
     }
-    return purged
+    return purged to failedRestores
 }

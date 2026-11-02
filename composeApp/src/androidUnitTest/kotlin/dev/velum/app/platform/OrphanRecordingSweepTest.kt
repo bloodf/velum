@@ -10,6 +10,7 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
+import org.junit.Assume
 
 /** #122: orphan sweep is data-safe. Synthetic ids/files only. */
 class OrphanRecordingSweepTest {
@@ -108,5 +109,21 @@ class OrphanRecordingSweepTest {
         val part = file("rec-9-3.part")
         assertEquals(OrphanSweepReport(staleTemps = 1), sweep())
         assertFalse(stale.exists()); assertTrue(young.isFile); assertTrue(part.isFile)
+    }
+
+    @Test fun failed_restore_is_counted_and_the_file_stays_quarantined_never_purged() {
+        file("rec-10-1.ogg"); sweep()
+        root.setWritable(false)
+        try {
+            // Root ignores directory permissions; the scenario cannot be produced there.
+            Assume.assumeFalse(root.canWrite())
+            val report = runBlocking {
+                sweepOrphanRecordingAudio(root.path, { listOf("rec-10-1" to null) }, nowMs = now + 10 * ORPHAN_PURGE_AFTER_MS)
+            }
+            assertEquals(OrphanSweepReport(failedMoves = 1), report)
+        } finally {
+            root.setWritable(true)
+        }
+        assertTrue(quarantined("rec-10-1.ogg").isFile)
     }
 }
