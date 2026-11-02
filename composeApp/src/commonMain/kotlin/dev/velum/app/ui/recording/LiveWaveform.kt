@@ -16,6 +16,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.unit.dp
+import dev.velum.app.i18n.formatTemplate
 import dev.velum.app.ui.theme.VelumInk
 import kotlin.math.sin
 import kotlinx.coroutines.delay
@@ -75,5 +76,5 @@ fun formatDurationClock(totalSeconds: Long): String {
     val h = totalSeconds / 3600
     val m = (totalSeconds % 3600) / 60
     val s = totalSeconds % 60
-    return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%02d:%02d".format(m, s)
+    return if (h > 0) formatTemplate("%d:%02d:%02d", h, m, s) else formatTemplate("%02d:%02d", m, s)
 }
