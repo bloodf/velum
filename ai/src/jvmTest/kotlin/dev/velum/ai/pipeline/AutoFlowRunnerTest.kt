@@ -528,7 +528,7 @@ class AutoFlowRunnerTest {
             id = id, session_id = null, folder_id = null, title = "Recording $id",
             source = "note_pro", device_serial = null, started_at = 1, duration_seconds = duration,
             size_bytes = 0, local_path = null, transcript = null, summary_markdown = null,
-            status = status, trashed = 0, created_at = 1,
+            status = status, trashed = 0, created_at = 1, processing_warning = null,
         )
         private fun rule(durationMin: Long = 0, postAction: AutoFlowPostAction = AutoFlowPostAction.Webhook) = Autoflow(
             id = "test-flow", name = "Synthetic flow", enabled = 1, wake_phrase = null,

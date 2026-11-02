@@ -8,3 +8,5 @@ actual fun writeBytesToPath(absolutePath: String, bytes: ByteArray) {
 }
 
 actual fun deleteFileAtPath(absolutePath: String): Boolean = false
+
+actual fun isSupersededOwnAudio(previousPath: String, newPath: String, dir: String, id: String): Boolean = false

@@ -7,9 +7,13 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
 import androidx.documentfile.provider.DocumentFile
 import java.io.OutputStreamWriter
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.nio.charset.StandardCharsets
 
 actual object ExportFolderStore {
@@ -38,12 +42,16 @@ actual object ExportFolderStore {
 @Composable
 actual fun rememberExportFolderPicker(onPicked: (treeUri: String) -> Unit): () -> Unit {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree(),
     ) { uri: Uri? ->
         if (uri == null) return@rememberLauncherForActivityResult
-        ExportFolderStore.remember(context, uri)
-        onPicked(uri.toString())
+        // Prefs write + permission grant happen off the main thread; the callback runs back on it.
+        scope.launch {
+            withContext(Dispatchers.IO) { ExportFolderStore.remember(context, uri) }
+            onPicked(uri.toString())
+        }
     }
     return remember(launcher) { { launcher.launch(null) } }
 }

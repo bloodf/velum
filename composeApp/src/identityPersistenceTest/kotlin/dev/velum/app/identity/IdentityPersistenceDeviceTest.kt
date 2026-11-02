@@ -14,9 +14,11 @@ import dev.velum.core.security.PlaudExportImporter
 import dev.velum.core.security.PlaudExportParseResult
 import dev.velum.core.security.SecureDeviceKeyImporter
 import dev.velum.core.security.SecureKeys
+import dev.velum.core.security.SecureStore
 import java.io.File
 import java.nio.file.Files
 import java.security.KeyStore
+import java.security.MessageDigest
 import java.util.Arrays
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
@@ -48,7 +50,7 @@ class IdentityPersistenceDeviceTest {
             "prepare" -> {
                 assertTrue("Fixture UUID was already used", !metadata.exists())
                 assertTrue("Fixture directory unavailable", directory.isDirectory || directory.mkdirs())
-                // Reserve both namespaces before creating either vault. A pre-existing
+                // Reserve all fixture namespaces before creating any vault. A pre-existing
                 // alias/file collision must never become eligible for diagnostic cleanup.
                 for (kind in KINDS) {
                     val fixture = Fixture(context, run, kind)
@@ -59,19 +61,25 @@ class IdentityPersistenceDeviceTest {
                 val info = JSONObject().put("run", run).put("first_pid", pid).put("first_start_elapsed", start)
                     .put("phase", "preparing").put("namespace_reserved", true)
                 writeMetadata(metadata, info)
+                val ciphertextHashes = JSONObject()
                 for (kind in KINDS) {
                     val fixture = Fixture(context, run, kind)
                     if (kind == "json") {
                         val result = PlaudExportImporter.importInto(fixture.json(), fixture.importer(), null)
                         assertTrue("Synthetic JSON import failed", result is PlaudExportParseResult.Success)
-                    } else {
+                    } else if (kind == "paste") {
                         fixture.importer().importKeys(fixture.serial, fixture.signature, fixture.token, fixture.publicPem, fixture.privatePem)
+                    } else {
+                        fixture.seedLegacy()
                     }
+                    val beforeRead = fixture.ciphertextHash()
                     fixture.checkLoaded()
                     fixture.checkEncryptedPrivatePreferences()
                     fixture.checkMalformedPreservesCiphertext()
+                    assertEquals(beforeRead, fixture.ciphertextHash())
+                    ciphertextHashes.put(kind, beforeRead)
                 }
-                writeMetadata(metadata, info.put("phase", "prepared"))
+                writeMetadata(metadata, info.put("phase", "prepared").put("ciphertext_sha256", ciphertextHashes))
             }
             "verify" -> {
                 val info = JSONObject(readText(metadata))
@@ -85,6 +93,7 @@ class IdentityPersistenceDeviceTest {
                     fixture.checkLoaded()
                     fixture.checkEncryptedPrivatePreferences()
                     fixture.checkMalformedPreservesCiphertext()
+                    assertEquals(info.getJSONObject("ciphertext_sha256").getString(kind), fixture.ciphertextHash())
                 }
                 writeMetadata(metadata, info.put("phase", "verified").put("verified_pid", pid).put("verified_start_elapsed", start))
             }
@@ -101,7 +110,7 @@ class IdentityPersistenceDeviceTest {
                 }
                 for (kind in KINDS) {
                     val fixture = Fixture(context, run, kind)
-                    // Explicit cleanup of only the two aliases/preferences created by this UUID.
+                    // Explicit cleanup of only the fixture namespaces reserved by this UUID.
                     fixture.keyStore().deleteEntry(fixture.alias)
                     context.deleteSharedPreferences(fixture.prefsName)
                     assertTrue("Synthetic alias cleanup failed", !fixture.keyStore().containsAlias(fixture.alias))
@@ -119,7 +128,7 @@ class IdentityPersistenceDeviceTest {
         Log.i(TAG, "end run=$run phase=$phase pid=$pid")
     }
 
-    private class Fixture(val context: Context, run: String, kind: String) {
+    private class Fixture(val context: Context, run: String, val kind: String) {
         val prefsName = "velum_synthetic_identity_${run}_$kind"
         val alias = "dev.velum.synthetic.identity.$run.$kind"
         val serial = "SYNTHETIC-$kind-SERIAL"
@@ -132,6 +141,21 @@ class IdentityPersistenceDeviceTest {
         fun preferences() = context.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
         fun preferenceFile() = File(context.applicationInfo.dataDir, "shared_prefs/$prefsName.xml")
         fun importer() = SecureDeviceKeyImporter(AndroidSecureStore(context, prefsName, alias))
+        suspend fun seedLegacy() {
+            val store: SecureStore = AndroidSecureStore(context, prefsName, alias)
+            store.putString(SecureKeys.DEVICE_SERIAL, serial)
+            store.putString(SecureKeys.DEVICE_SERIAL_SIGNATURE, signature)
+            store.putString(SecureKeys.DEVICE_BIND_TOKEN, token)
+            store.putString(SecureKeys.DEVICE_PUBLIC_KEY_PEM, publicPem)
+            store.putString(SecureKeys.DEVICE_PRIVATE_KEY_PEM, privatePem)
+        }
+        fun ciphertextHash(): String {
+            val bytes = MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(preferenceFile().toPath()))
+            val hex = "0123456789abcdef"
+            return StringBuilder().apply {
+                for (byte in bytes) { val n = byte.toInt() and 255; append(hex[n ushr 4]); append(hex[n and 15]) }
+            }.toString()
+        }
         fun json(signatureValue: String = signature) = JSONObject().put("version", 1).put("source", "synthetic-test").put("device", JSONObject()
             .put("serial", serial).put("snSignatureBase64", signatureValue).put("bindToken", token)
             .put("publicKeyPem", publicPem).put("privateKeyPem", privatePem)).toString()
@@ -166,7 +190,10 @@ class IdentityPersistenceDeviceTest {
             val plaintext = listOf(serial, signature, token, publicPem, privatePem)
             for (value in plaintext) assertTrue("Plaintext identity in private preferences", !raw.contains(value))
             val prefs = preferences()
-            for (key in listOf(SecureKeys.DEVICE_SERIAL, SecureKeys.DEVICE_SERIAL_SIGNATURE, SecureKeys.DEVICE_BIND_TOKEN, SecureKeys.DEVICE_PUBLIC_KEY_PEM, SecureKeys.DEVICE_PRIVATE_KEY_PEM)) {
+            val legacyKeys = listOf(SecureKeys.DEVICE_SERIAL, SecureKeys.DEVICE_SERIAL_SIGNATURE, SecureKeys.DEVICE_BIND_TOKEN, SecureKeys.DEVICE_PUBLIC_KEY_PEM, SecureKeys.DEVICE_PRIVATE_KEY_PEM)
+            val expectedKeys = if (kind == "legacy") legacyKeys else listOf(SecureKeys.DEVICE_IDENTITY_BUNDLE)
+            assertTrue("Unexpected identity storage entries", prefs.all.keys == java.util.HashSet(expectedKeys))
+            for (key in expectedKeys) {
                 val payload = Base64.decode(requireNotNull(prefs.getString(key, null)), Base64.DEFAULT)
                 assertTrue("Missing encrypted payload", payload.size > 29)
                 val ivLength = payload[0].toInt() and 255
@@ -188,7 +215,7 @@ class IdentityPersistenceDeviceTest {
 
     private companion object {
         const val TAG = "SyntheticIdentityFixture"
-        val KINDS = arrayOf("json", "paste")
+        val KINDS = arrayOf("json", "paste", "legacy")
         fun readText(file: File): String = String(Files.readAllBytes(file.toPath()), Charsets.UTF_8)
         fun writeMetadata(file: File, info: JSONObject) {
             Files.write(file.toPath(), info.toString().toByteArray(Charsets.UTF_8))

@@ -284,13 +284,13 @@ object BuiltinTemplateCatalog {
     fun get(id: String): Spec? = byId[id]
 
     /**
-     * Resolve blank → default meeting; map legacy `tpl-*` ids to `velum.*`;
-     * leave user / unknown ids unchanged.
+     * Resolve blank → default meeting; map legacy `tpl-*` ids to `velum.*` and removed
+     * exact-body duplicates to their survivor (#99); leave user / unknown ids unchanged.
      */
     fun resolveId(id: String?): String {
         if (id.isNullOrBlank()) return DEFAULT_ID
         if (byId.containsKey(id)) return id
-        return LegacyAliases[id] ?: id
+        return LegacyAliases[id] ?: PlaudTemplateAliases.RemovedDuplicates[id] ?: id
     }
 
     val LegacyAliases: Map<String, String> = mapOf(

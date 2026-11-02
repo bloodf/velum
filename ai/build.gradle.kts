@@ -8,8 +8,6 @@ kotlin {
     androidTarget {
         compilerOptions {
             jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
-            // litertlm-android ships Kotlin 2.4 metadata; keep compiling on 2.2.x toolchain.
-            freeCompilerArgs.add("-Xskip-metadata-version-check")
         }
     }
     jvm()

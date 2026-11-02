@@ -4,6 +4,7 @@ CREATE TABLE folder (
   created_at INTEGER NOT NULL
 );
 
+-- recording.processing_warning: stable code (never free text) for a non-fatal processing issue, e.g. 'truncated_audio'. NULL = none.
 CREATE TABLE recording (
   id TEXT NOT NULL PRIMARY KEY,
   session_id INTEGER,
@@ -19,8 +20,12 @@ CREATE TABLE recording (
   summary_markdown TEXT,
   status TEXT NOT NULL DEFAULT 'ready',
   trashed INTEGER NOT NULL DEFAULT 0,
-  created_at INTEGER NOT NULL
+  created_at INTEGER NOT NULL,
+  processing_warning TEXT
 );
+
+-- #113: one library row per (device session, real serial). Without a serial dedup is off, so two devices never merge.
+CREATE UNIQUE INDEX recording_device_session ON recording(session_id, device_serial) WHERE session_id IS NOT NULL AND device_serial IS NOT NULL;
 
 CREATE TABLE speaker (
   id TEXT NOT NULL PRIMARY KEY,
@@ -101,8 +106,9 @@ SELECT * FROM recording WHERE trashed = 1 ORDER BY started_at DESC;
 selectRecordingById:
 SELECT * FROM recording WHERE id = ?;
 
+-- Plain INSERT: an id or device-session conflict must fail, never REPLACE (delete) an existing row.
 insertRecording:
-INSERT OR REPLACE INTO recording(
+INSERT INTO recording(
   id, session_id, folder_id, title, source, device_serial, started_at,
   duration_seconds, size_bytes, local_path, transcript, summary_markdown, status, trashed, created_at
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
@@ -119,6 +125,9 @@ UPDATE recording SET summary_markdown = ? WHERE id = ?;
 updateStatus:
 UPDATE recording SET status = ? WHERE id = ?;
 
+updateProcessingWarning:
+UPDATE recording SET processing_warning = ? WHERE id = ?;
+
 updateLocalPath:
 UPDATE recording SET local_path = ?, duration_seconds = ?, size_bytes = ? WHERE id = ?;
 
@@ -130,6 +139,21 @@ UPDATE recording SET trashed = 1 WHERE id = ?;
 
 restoreRecording:
 UPDATE recording SET trashed = 0 WHERE id = ?;
+
+selectRecordingByDeviceSession:
+SELECT * FROM recording WHERE session_id = ? AND device_serial = ? LIMIT 1;
+
+selectLibrarySessionIds:
+SELECT session_id FROM recording WHERE device_serial = ? AND session_id IN ?;
+
+insertDeviceSessionRecording:
+INSERT INTO recording VALUES ?;
+
+replaceDeviceSessionAudio:
+UPDATE recording SET local_path = ?, size_bytes = ?, trashed = 0, processing_warning = NULL WHERE id = ?;
+
+selectAllRecordingFileRefs:
+SELECT id, local_path FROM recording;
 
 deleteRecordingHard:
 DELETE FROM recording WHERE id = ?;
@@ -185,6 +209,12 @@ DELETE FROM template WHERE id = ? AND builtin = 0;
 
 deleteTemplateHard:
 DELETE FROM template WHERE id = ?;
+
+deleteBuiltinTemplate:
+DELETE FROM template WHERE id = ? AND builtin = 1;
+
+repointAutoflowTemplate:
+UPDATE autoflow SET template_id = ? WHERE template_id = ?;
 
 deleteAllBuiltinTemplates:
 DELETE FROM template WHERE builtin = 1;
@@ -263,6 +293,12 @@ SELECT value FROM app_meta WHERE key = ?;
 
 setMeta:
 INSERT OR REPLACE INTO app_meta(key, value) VALUES (?, ?);
+
+deleteMeta:
+DELETE FROM app_meta WHERE key = ?;
+
+deleteMetaWithPrefix:
+DELETE FROM app_meta WHERE key LIKE ? || '%';
 
 selectVersionsForRecording:
 SELECT * FROM summary_version WHERE recording_id = ? ORDER BY created_at DESC;

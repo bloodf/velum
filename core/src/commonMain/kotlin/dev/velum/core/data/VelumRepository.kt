@@ -15,6 +15,7 @@ import dev.velum.core.db.Template
 import dev.velum.core.db.VelumDatabase
 import dev.velum.core.search.FtsIndex
 import dev.velum.core.templates.PlaudFullTemplateAsset
+import dev.velum.core.templates.PlaudTemplateAliases
 import dev.velum.core.templates.PlaudTemplateCatalog
 import dev.velum.core.templates.TemplateTagVocabulary
 import kotlin.random.Random
@@ -37,6 +38,7 @@ class VelumRepository(
         val fts = FtsIndex.ensureSchema(driver)
         ftsAvailable = fts.available
         val seeded = SeedData.maybeSeed(db)
+        reconcileRemovedTemplateDuplicates()
         backfillSummaryVersionsFromRecording()
         if (ftsAvailable) {
             when {
@@ -54,6 +56,30 @@ class VelumRepository(
                     }
                 }
             }
+        }
+    }
+
+    /**
+     * #99: drop builtin rows removed as exact-body duplicates (left by a pre-dedupe "All"
+     * import) and repoint AutoFlows to the survivor. User templates (builtin = 0) are never
+     * touched; summary versions keep their historical id and resolve via
+     * [dev.velum.core.templates.BuiltinTemplateCatalog.resolveId].
+     */
+    private fun reconcileRemovedTemplateDuplicates() {
+        // Alias map only grows, so its size identifies what has been reconciled already.
+        val version = PlaudTemplateAliases.RemovedDuplicates.size.toString()
+        if (q.getMeta(META_TEMPLATE_ALIASES_RECONCILED).executeAsOneOrNull() == version) return
+        db.transaction {
+            PlaudTemplateAliases.RemovedDuplicates.forEach { (removed, survivor) ->
+                val row = q.selectTemplateById(removed).executeAsOneOrNull()
+                if (row != null && row.builtin == 0L) return@forEach
+                q.repointAutoflowTemplate(survivor, removed)
+                if (row != null) {
+                    q.deleteBuiltinTemplate(removed)
+                    if (ftsAvailable) FtsIndex.deleteTemplate(driver, removed)
+                }
+            }
+            q.setMeta(META_TEMPLATE_ALIASES_RECONCILED, version)
         }
     }
 
@@ -123,6 +149,42 @@ class VelumRepository(
 
     suspend fun getAllRecordings(): List<Recording> = withContext(Dispatchers.Default) {
         q.selectAllRecordings().executeAsList()
+    }
+
+    /**
+     * #113 dedup key: device session id + real device serial. Includes trashed rows. Without a serial
+     * dedup is off (returns null), so sessions from different devices can never merge.
+     */
+    suspend fun findDeviceSessionRecording(sessionId: Long, deviceSerial: String?): Recording? =
+        withContext(Dispatchers.Default) {
+            val serial = deviceSerial?.takeIf { it.isNotBlank() } ?: return@withContext null
+            q.selectRecordingByDeviceSession(sessionId, serial).executeAsOneOrNull()
+        }
+
+    /** Subset of [sessionIds] already in the library for this device (one query; empty without a serial). */
+    suspend fun librarySessionIds(sessionIds: List<Long>, deviceSerial: String?): Set<Long> =
+        withContext(Dispatchers.Default) {
+            val serial = deviceSerial?.takeIf { it.isNotBlank() }
+            if (serial == null || sessionIds.isEmpty()) return@withContext emptySet()
+            // SQLite's default host-parameter limit is 999 on API 26-29: chunk the IN list.
+            sessionIds.distinct().chunked(LIBRARY_SESSION_CHUNK).flatMapTo(HashSet()) { chunk ->
+                q.selectLibrarySessionIds(serial, chunk).executeAsList().mapNotNull { it.session_id }
+            }
+        }
+
+    /** Fails (never replaces) when the device session already has a row. */
+    suspend fun insertDeviceSessionRecording(row: Recording) = withContext(Dispatchers.Default) {
+        q.insertDeviceSessionRecording(row)
+        indexRecording(row.id, row.title, row.transcript, row.summary_markdown)
+    }
+
+    /** Point an existing device-session row at re-downloaded audio; title/transcript/summary are kept. */
+    suspend fun replaceDeviceSessionAudio(id: String, localPath: String, sizeBytes: Long) =
+        withContext(Dispatchers.Default) { q.replaceDeviceSessionAudio(localPath, sizeBytes, id) }
+
+    /** Every row (trashed included) as (id, local_path) for orphan-file reconciliation. */
+    suspend fun getAllRecordingFileRefs(): List<Pair<String, String?>> = withContext(Dispatchers.Default) {
+        q.selectAllRecordingFileRefs().executeAsList().map { it.id to it.local_path }
     }
 
     suspend fun getTemplate(id: String): Template? = withContext(Dispatchers.Default) {
@@ -306,6 +368,11 @@ class VelumRepository(
         q.updateStatus(status, id)
     }
 
+    /** [code] is a [dev.velum.core.model.ProcessingWarning] constant, or null to clear. */
+    suspend fun setProcessingWarning(id: String, code: String?) = withContext(Dispatchers.Default) {
+        q.updateProcessingWarning(code, id)
+    }
+
     suspend fun updateLocalPath(
         id: String,
         localPath: String,
@@ -341,6 +408,17 @@ class VelumRepository(
     suspend fun setMeta(key: String, value: String) = withContext(Dispatchers.Default) {
         q.setMeta(key, value)
     }
+
+    /** Last processing failure for [recordingId] (already sanitized), or null. Previous notes are never touched. */
+    suspend fun getProcessingError(recordingId: String): String? =
+        getMeta(processingErrorKey(recordingId))?.takeIf { it.isNotBlank() }
+
+    /** Null removes the row; provider error text must not outlive the recording or a wipe. */
+    suspend fun setProcessingError(recordingId: String, message: String?) = withContext(Dispatchers.Default) {
+        if (message == null) q.deleteMeta(processingErrorKey(recordingId)) else q.setMeta(processingErrorKey(recordingId), message)
+    }
+
+    private fun processingErrorKey(recordingId: String) = "$PROCESSING_ERROR_PREFIX$recordingId"
 
     suspend fun isFirstRunDone(): Boolean = getMeta(META_FIRST_RUN_DONE) == "1"
 
@@ -455,6 +533,7 @@ class VelumRepository(
         q.deleteVersionsForRecording(id)
         q.deleteSpeakersForRecording(id)
         q.deleteRecordingHard(id)
+        q.deleteMeta(processingErrorKey(id))
         if (ftsAvailable) FtsIndex.deleteRecording(driver, id)
     }
 
@@ -483,6 +562,7 @@ class VelumRepository(
         q.deleteAllAutoflows()
         q.deleteAllMemories()
         q.deleteAllGlossary()
+        q.deleteMetaWithPrefix(PROCESSING_ERROR_PREFIX)
         // Clear seed marker so maybeSeed re-inserts default AutoFlow + builtins.
         SeedData.clearSeedMarker(db)
         SeedData.maybeSeed(db)
@@ -816,8 +896,10 @@ class VelumRepository(
 
     companion object {
         const val META_FIRST_RUN_DONE = "first_run_done"
+        internal const val LIBRARY_SESSION_CHUNK = 500
+        const val META_TEMPLATE_ALIASES_RECONCILED = "template_aliases_reconciled"
+        private const val PROCESSING_ERROR_PREFIX = "processing_error:"
     }
 }
-
 
 expect fun epochSecondsNow(): Long
