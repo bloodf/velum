@@ -30,6 +30,12 @@ class TransferFaults(
     strayEndAt: Set<Long> = emptySet(),
     /** From this chunk on, keep sending the previous chunk forever (a device stuck repeating). */
     internal val endlessRepeatAt: Long? = null,
+    /** Before the chunk, send the previous chunk this many times. */
+    repeatBurstAt: Map<Long, Int> = emptyMap(),
+    /** Stream from 0 whatever start offset is asked for. */
+    internal val ignoreStartOffset: Boolean = false,
+    /** Lose the link at this offset once on every pass that starts from 0. */
+    internal val disconnectEveryPassAt: Long? = null,
     /** Deliver the previous session-list reply's sealed packet again before each new one. */
     internal val replayStaleListReply: Boolean = false,
 ) {
@@ -43,6 +49,18 @@ class TransferFaults(
     internal val overlap = overlapAt.toMutableSet()
     internal val stray = strayAt.toMutableSet()
     internal val strayEnd = strayEndAt.toMutableSet()
+    internal val repeatBurst = repeatBurstAt.toMutableMap()
+    private var passArmed = false
+
+    internal fun startPass(fromOffset: Int) {
+        if (fromOffset == 0) passArmed = true
+    }
+
+    internal fun takePassDisconnect(chunkOffset: Long): Boolean {
+        if (!passArmed || chunkOffset != disconnectEveryPassAt) return false
+        passArmed = false
+        return true
+    }
 
     internal fun takeDisconnect(chunkOffset: Long): Boolean {
         val hit = disconnect.firstOrNull { it <= chunkOffset } ?: return false

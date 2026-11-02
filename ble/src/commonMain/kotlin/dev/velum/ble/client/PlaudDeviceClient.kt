@@ -40,7 +40,6 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
-import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Protocol-20 client over [BleTransport].
@@ -271,6 +270,7 @@ class PlaudDeviceClient(
 
         var next = startOffset
         var ignoredFrames = 0
+        var smallestChunk = Int.MAX_VALUE
         try {
             while (true) {
                 val before = next
@@ -281,6 +281,7 @@ class PlaudDeviceClient(
                             is RecordingDataPacket.Chunk -> {
                                 val end = data.offset + data.data.size
                                 val ignored = isStray(data.sessionId, sessionId) || end <= next
+                                if (!isStray(data.sessionId, sessionId)) smallestChunk = minOf(smallestChunk, data.data.size)
                                 if (!ignored) {
                                     if (data.offset != next) {
                                         throw TransferIntegrityException("Chunk at offset ${data.offset}, expected $next")
@@ -307,7 +308,10 @@ class PlaudDeviceClient(
                 if (sizeBytes > 0 && next >= sizeBytes) break
                 // Every frame restarts the response timeout, so a device stuck repeating needs its own limit.
                 ignoredFrames = if (next != before) 0 else ignoredFrames + 1
-                if (ignoredFrames > MAX_CONSECUTIVE_IGNORED_FRAMES) {
+                // A device ignoring the start offset resends from 0, so the limit must allow a full catch-up.
+                // Rising offsets alone don't reset the count: a device looping through the file must still stop.
+                val limit = maxOf(MAX_CONSECUTIVE_IGNORED_FRAMES.toLong(), next / smallestChunk.coerceAtLeast(1))
+                if (ignoredFrames > limit) {
                     throw TransferIntegrityException("No new data in $ignoredFrames frames at offset $next")
                 }
             }
@@ -328,7 +332,7 @@ class PlaudDeviceClient(
 
     /** All bytes are stored, so nothing here may fail the transfer, except the caller's own cancellation. */
     private suspend fun stopCrcBestEffort(): Int = try {
-        withTimeout(responseTimeout) { writeOutbound(Sessions.encodeSyncStop()) }
+        writeOutbound(Sessions.encodeSyncStop())
         val raw = awaitDecryptedFrame(responseTimeout) { frame ->
             val decoded = runCatching { Framing.decodeInbound(frame) }.getOrNull()
             decoded is InboundPacket.CommandResponse && isStopReply(decoded.cmd)
@@ -348,7 +352,7 @@ class PlaudDeviceClient(
     /** Ask the device to stop streaming when a transfer is abandoned; no reply is awaited. */
     private suspend fun sendStopBestEffort() {
         withContext(NonCancellable) {
-            runCatching { withTimeoutOrNull(responseTimeout) { writeOutbound(Sessions.encodeSyncStop()) } }
+            runCatching { writeOutbound(Sessions.encodeSyncStop()) }
         }
     }
 
@@ -380,7 +384,7 @@ class PlaudDeviceClient(
     }
 
     private suspend fun transactCommand(expectedCmd: Int, packet: ByteArray): ByteArray {
-        withTimeout(responseTimeout) { writeOutbound(packet) }
+        writeOutbound(packet)
         val raw = awaitDecryptedFrame(responseTimeout) { frame ->
             val decoded = runCatching { Framing.decodeInbound(frame) }.getOrNull()
             decoded is InboundPacket.CommandResponse && decoded.cmd == expectedCmd
@@ -390,7 +394,7 @@ class PlaudDeviceClient(
     }
 
     private suspend fun writePlain(packet: ByteArray, withoutResponse: Boolean) =
-        link.write(GattProfiles.PLAUD_WRITE, packet, withoutResponse)
+        withTimeout(responseTimeout) { link.write(GattProfiles.PLAUD_WRITE, packet, withoutResponse) }
 
     private suspend fun writeOutbound(packet: ByteArray) {
         writeMutex.withLock {
@@ -399,10 +403,14 @@ class PlaudDeviceClient(
                 writePlain(packet, withoutResponse = false)
             } else {
                 // Guard runs on the plaintext inside GuardedLink; sendSeq advances only after it passes.
-                link.write(GattProfiles.PLAUD_WRITE, packet, withoutResponse = false) {
-                    val sealed = cipher.sealPacket(sec, sendSeq, it)
-                    sendSeq += 1
-                    sealed
+                // A write that times out leaves sendSeq advanced. Later commands then fail on a device that
+                // requires exact sequence numbers (unverified, #6) until a reconnect brings a new client.
+                withTimeout(responseTimeout) {
+                    link.write(GattProfiles.PLAUD_WRITE, packet, withoutResponse = false) {
+                        val sealed = cipher.sealPacket(sec, sendSeq, it)
+                        sendSeq += 1
+                        sealed
+                    }
                 }
             }
         }

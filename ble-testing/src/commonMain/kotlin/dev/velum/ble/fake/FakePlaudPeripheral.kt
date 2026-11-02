@@ -227,7 +227,7 @@ class FakePlaudPeripheral(
                 // Like real GATT, the write completes first and notifications follow under backpressure.
                 // Emitting inside the write would deadlock once the buffers fill (nothing reads yet).
                 streamJob?.cancel()
-                streamJob = launchDetached { streamSessionFrom(startOffset.toInt()) }
+                streamJob = launchDetached { streamSessionFrom(if (faults.ignoreStartOffset) 0 else startOffset.toInt()) }
             }
             Commands.SYNC_FILE_STOP -> {
                 // A real device stops streaming; its reply follows the completed write.
@@ -264,14 +264,22 @@ class FakePlaudPeripheral(
     /** Emits type-2 chunks from [startOffset] to the end, applying one-shot [faults]. */
     private suspend fun streamSessionFrom(startOffset: Int) {
         var offset = startOffset
+        faults.startPass(startOffset)
         while (offset < sessionFile.size) {
             val end = minOf(offset + chunkSize, sessionFile.size)
             val at = offset.toLong()
             // Link lost: nothing more arrives, not even the end marker.
-            if (faults.takeDisconnect(at)) return
+            if (faults.takeDisconnect(at) || faults.takePassDisconnect(at)) return
             // At the offset the client expects next, so only the session id tells it apart.
             if (faults.stray.remove(at)) emitEncrypted(chunkFrame(sessionId + 1, at, ByteArray(10) { 0x77 }))
             if (faults.strayEnd.remove(at)) emitEncrypted(endFrame(sessionId + 1))
+            faults.repeatBurst.remove(at)?.let { times ->
+                val previous = chunkFrame(sessionId, at - chunkSize, sessionFile.copyOfRange(offset - chunkSize, offset))
+                repeat(times) {
+                    emitEncrypted(previous)
+                    yield()
+                }
+            }
             if (faults.endlessRepeatAt == at) {
                 val previous = chunkFrame(sessionId, at - chunkSize, sessionFile.copyOfRange(offset - chunkSize, offset))
                 while (true) {
