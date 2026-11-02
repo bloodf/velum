@@ -10,6 +10,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Brush
@@ -146,14 +147,14 @@ private val darkScheme = darkColorScheme(
     onErrorContainer = DarkVelumColors.onWarningContainer,
 )
 
-private val type = Typography(
+private fun typographyFor(c: VelumColors) = Typography(
     displayLarge = TextStyle(
         fontFamily = FontFamily.SansSerif,
         fontWeight = FontWeight.Thin,
         fontSize = 36.sp,
         lineHeight = 42.sp,
         letterSpacing = (-0.5).sp,
-        color = LightVelumColors.ink,
+        color = c.ink,
     ),
     headlineMedium = TextStyle(
         fontFamily = FontFamily.SansSerif,
@@ -183,7 +184,7 @@ private val type = Typography(
         fontWeight = FontWeight.Normal,
         fontSize = 14.sp,
         lineHeight = 20.sp,
-        color = LightVelumColors.inkSecondary,
+        color = c.inkSecondary,
     ),
     labelLarge = TextStyle(
         fontFamily = FontFamily.SansSerif,
@@ -209,7 +210,7 @@ fun VelumTheme(
     CompositionLocalProvider(LocalVelumColors provides palette) {
         MaterialTheme(
             colorScheme = if (darkTheme) darkScheme else lightScheme,
-            typography = type,
+            typography = remember(palette) { typographyFor(palette) },
             content = content,
         )
     }
