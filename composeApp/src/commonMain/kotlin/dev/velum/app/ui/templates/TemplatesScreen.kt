@@ -94,7 +94,8 @@ fun TemplatesScreen(
     onOpenTemplate: (String) -> Unit,
 ) {
     val strings = LocalStrings.current
-    val templateTick by container.repository.observeTemplateChanges().collectAsState(0L)
+    val templateChanges = remember(container) { container.repository.observeTemplateChanges() }
+    val templateTick by templateChanges.collectAsState(0L)
     var tab by remember { mutableStateOf(1) } // 0 my space, 1 discover
     /** Discover tier: true = Featured builtins, false = All builtins. */
     var discoverFeaturedOnly by remember { mutableStateOf(true) }
@@ -764,7 +765,8 @@ fun TemplateDetailScreen(
     onBack: () -> Unit,
 ) {
     val strings = LocalStrings.current
-    val tpl = container.repository.observeTemplate(templateId).collectAsState(null).value
+    val templateFlow = remember(container, templateId) { container.repository.observeTemplate(templateId) }
+    val tpl = templateFlow.collectAsState(null).value
     val contributorCredit = tpl?.let { templateUiCredit(it) }
 
     Column(Modifier.fillMaxSize().background(VelumBg).verticalScroll(rememberScrollState())) {

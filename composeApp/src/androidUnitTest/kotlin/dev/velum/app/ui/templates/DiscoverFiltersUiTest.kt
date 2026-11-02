@@ -120,6 +120,7 @@ class DiscoverFiltersUiTest {
             tap("tag:agenda")
             await("ZQ Beta", present = false)
             tap("lang:en"); await("ZQ Alpha")
+            compose.onAllNodesWithText("ZQ Alpha")[0].assertIsDisplayed()
             tap("lang:pt")
             awaitTag("templates:empty")
             assertTrue(!shows("ZQ Alpha"))
