@@ -160,17 +160,15 @@ fun TemplatesScreen(
             DiscoverFacets(emptyList(), emptyList(), emptyList())
         }
     }
-    val categoryTabs = remember(facets) {
-        BuiltinTemplateCatalog.CategoryOrder.filter { it in facets.categories } +
-            facets.categories.filter { it !in BuiltinTemplateCatalog.CategoryOrder && it != "mine" }
+    // The selected category stays listed even when the current search has no hit in it: the screen then shows the
+    // clearable no-match state instead of silently dropping the filter (#102).
+    val categoryTabs = remember(facets, selectedCategory) {
+        val categories = facets.categories.let { c -> if (selectedCategory != null && selectedCategory !in c) c + selectedCategory!! else c }
+        BuiltinTemplateCatalog.CategoryOrder.filter { it in categories } +
+            categories.filter { it !in BuiltinTemplateCatalog.CategoryOrder && it != "mine" }
     }
     val availableTags = facets.tags
     val availableLangs = facets.langs
-    LaunchedEffect(categoryTabs, selectedCategory) {
-        if (selectedCategory != null && selectedCategory !in categoryTabs) {
-            selectedCategory = null
-        }
-    }
     LaunchedEffect(availableTags, selectedTags) {
         val pruned = selectedTags.filter { it in availableTags }.toSet()
         if (pruned != selectedTags) selectedTags = pruned

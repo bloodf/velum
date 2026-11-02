@@ -4,9 +4,9 @@ import android.content.Context
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
-import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
@@ -72,7 +72,9 @@ class DiscoverBundledCatalogDeviceTest {
     }
 
     private fun has(tag: String) = compose.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()
-    private fun shows(text: String) = compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()
+    /** A result card showing [text]; the search field also contains the query, so editable nodes do not count. */
+    private fun shows(text: String) =
+        compose.onAllNodes(hasText(text) and !hasSetTextAction()).fetchSemanticsNodes().isNotEmpty()
     private fun tap(tag: String) = compose.onNodeWithTag(tag).performScrollTo().performClick()
     private fun until(ms: Long = UI_TIMEOUT_MS, what: String, cond: () -> Boolean) {
         try { compose.waitUntil(ms, cond) } catch (e: androidx.compose.ui.test.ComposeTimeoutException) {
@@ -126,6 +128,10 @@ class DiscoverBundledCatalogDeviceTest {
         compose.onNodeWithContentDescription(En.search).performClick()
         compose.onNode(hasSetTextAction()).performTextInput(probe.name)
         until(what = "empty state for meeting + probe") { has("templates:empty") }
+        // Facets reload asynchronously after the search; the category must survive them (it used to be dropped).
+        Thread.sleep(FACET_SETTLE_MS)
+        compose.waitForIdle()
+        assertTrue("category dropped by search facets", has("templates:empty") && has("active:category"))
         assertTrue("probe must be excluded by category", !shows(probe.name))
         tap("active:category") // individual clear
         until(what = "probe after clearing category") { shows(probe.name) }
@@ -155,5 +161,6 @@ class DiscoverBundledCatalogDeviceTest {
         const val DB_NAME = "discover102-instrumented.db"
         const val IMPORT_TIMEOUT_MS = 120_000L
         const val UI_TIMEOUT_MS = 15_000L
+        const val FACET_SETTLE_MS = 2_000L
     }
 }
