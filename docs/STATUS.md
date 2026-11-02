@@ -141,6 +141,7 @@ Phone-only / external (no Plaud required):
 - [ ] **One-time device identity values** (`snSignature` / `sn-sign` + bind token + optional RSA) from owner Plaud dump — **cannot be generated locally**. Import UI + JSON schema + unit tests ready (`docs/PLAUD_IMPORT.md`); waiting on Heitor export. Hardware checklist: `docs/HARDWARE_VALIDATION.md`.
 - [ ] Confirm Ogg Opus rate/channels + PLAUD.AI decrypt against a real Note Pro capture
   - Synthetic coverage only (#95): `OggOpusPlaudSyntheticTest` (generated Ogg Opus mono/stereo x 8/12/16/24/48 kHz, malformed/truncated, PLAUD.AI round-trip, wrong key/nonce, tamper). Real-device rate/channels, listening and ASR quality remain unconfirmed (#7).
+- [ ] Real Note Pro BLE unlock / reconnect / battery (#5) and FE10-only with E2EE off (#9) — **simulated coverage only** (#93, #97): `SimulatedPeripheralScenariosTest` (`:ble:jvmTest`) and `DeviceSimulatedPeripheralTest` (`:composeApp:testDebugUnitTest`) run synthetic identity against the in-process fake peripheral. Simulator success is not evidence of device support. The client tolerates an FE10-only unlock (no FE11) in simulation; whether a real Note Pro accepts it is unconfirmed (#9). Reproduce: `./gradlew :ble:jvmTest --rerun` and `./gradlew :composeApp:testDebugUnitTest --tests '*DeviceSimulatedPeripheralTest*'`.
 
 ## Removed (server inventory → local)
 
