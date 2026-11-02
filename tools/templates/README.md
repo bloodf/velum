@@ -35,7 +35,7 @@ python3 tools/templates/curate.py \
 python3 tools/templates/assert_hygiene.py \
   --featured core/src/commonMain/resources/plaud_templates.jsonl \
   --full core/src/commonMain/resources/plaud_templates_full.jsonl.gz \
-  --official-baseline docs/templates/official_baseline.txt
+  --official-baseline core/src/jvmTest/resources/templates/official_baseline.txt
 
 # Or everything (still uses --existing in run_all.sh — override clean step if needed):
 ./tools/templates/run_all.sh /tmp/template-collection/templates
@@ -58,7 +58,7 @@ python3 tools/templates/assert_hygiene.py \
 | `docs/templates/plaud_templates.jsonl` | Featured set (shipped; seeded at first launch) |
 | `docs/templates/plaud_templates_full.jsonl` | Full cleaned set (gzip’d into resources; lazy import) |
 | `docs/templates/catalog_report.json` | Featured/full counts |
-| `docs/templates/official_baseline.txt` | Official ids that must stay official + Featured |
+| `core/src/jvmTest/resources/templates/official_baseline.txt` | Official ids that must stay official + Featured |
 | `core/.../templates/PlaudTemplateAliases.kt` | Generated removed-duplicate → survivor id map |
 
 ## Hygiene rules (summary)
@@ -88,11 +88,18 @@ python3 tools/templates/assert_hygiene.py \
   is a removed alias, drops their FTS rows and repoints `autoflow.template_id` to the survivor.
   `BuiltinTemplateCatalog.resolveId` maps removed ids for queued jobs and old summary versions.
 
+Why exact matching is enough here: #99 asks for exact equality and requires bodies that differ
+only in whitespace or case to stay distinct. On the shipped Full set (16153 rows) exact matching
+finds 25 groups; trimming, whitespace-collapsing or case-folding also give 25, and the
+punctuation-stripping hygiene `norm_key` gives 26. The "483" in the issue is a stale historical
+count (see `docs/handoff/issue-coverage-2026-11-01.json`) and is not reproducible from any
+committed catalog version.
+
 ## Featured gate (#101)
 
 `assert_hygiene.py` fails when any of the 15 categories has fewer than `--min-per-category`
 distinct exact bodies in Featured (renamed copies do not count twice), a Featured id is absent
-from Full, or a template in `docs/templates/official_baseline.txt` is missing / no longer
+from Full, or a template in `core/src/jvmTest/resources/templates/official_baseline.txt` is missing / no longer
 official / not Featured. That baseline is the 41 rows flagged official at `1f30a0f`; it is
 **not** an authoritative upstream inventory. Without `--official-inventory` the script prints
 an explicit `BLOCKER` line — official completeness stays unverified until such an inventory

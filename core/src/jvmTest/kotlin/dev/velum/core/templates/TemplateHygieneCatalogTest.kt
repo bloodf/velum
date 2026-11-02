@@ -86,13 +86,12 @@ class TemplateHygieneCatalogTest {
 
     @Test
     fun official_baseline_stays_official_and_featured() {
-        val file = assertNotNull(
-            generateSequence(java.io.File(System.getProperty("user.dir")).absoluteFile) { it.parentFile }
-                .map { it.resolve("docs/templates/official_baseline.txt") }
-                .firstOrNull { it.isFile },
-            "docs/templates/official_baseline.txt not found from ${System.getProperty("user.dir")}",
-        )
-        val baseline = file.readLines().map { it.trim() }.filter { it.isNotEmpty() && !it.startsWith("#") }
+        // Single source of truth, shared with tools/templates/assert_hygiene.py --official-baseline.
+        val text = assertNotNull(
+            javaClass.getResource("/templates/official_baseline.txt"),
+            "test resource templates/official_baseline.txt missing",
+        ).readText()
+        val baseline = text.lines().map { it.trim() }.filter { it.isNotEmpty() && !it.startsWith("#") }
         assertTrue(baseline.size >= 41, "baseline has ${baseline.size} ids")
         val full = PlaudTemplateCatalog.parseJsonl(PlaudFullTemplateAsset.readJsonl()).associateBy { it.id }
         val featuredIds = PlaudTemplateCatalog.All.mapTo(HashSet()) { it.id }

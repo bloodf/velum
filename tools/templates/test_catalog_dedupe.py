@@ -227,7 +227,7 @@ class ShippedCatalogTest(unittest.TestCase):
         code = assert_hygiene.main([
             "--featured", str(res / "plaud_templates.jsonl"),
             "--full", str(res / "plaud_templates_full.jsonl.gz"),
-            "--official-baseline", str(ROOT / "docs" / "templates" / "official_baseline.txt"),
+            "--official-baseline", str(ROOT / "core" / "src" / "jvmTest" / "resources" / "templates" / "official_baseline.txt"),
         ])
         self.assertEqual(0, code)
 

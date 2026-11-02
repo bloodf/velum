@@ -1,5 +1,5 @@
 # Official templates at origin/main 1f30a0f (41). Must stay official + Featured (#101).
-# Not an authoritative upstream inventory — see docs/templates/README.md.
+# Not an authoritative upstream inventory — see tools/templates/README.md (Featured gate). Also read by TemplateHygieneCatalogTest.
 plaud.12-cbd8f428ed
 plaud.call.call-discussion.0bdd6651c74e
 plaud.call.phone-qa.249ecaea3bfb
