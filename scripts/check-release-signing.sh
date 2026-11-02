@@ -117,3 +117,23 @@ done
 grep -q "versionCode: $universal_code\$" metadata/dev.velum.app.yml \
   || { echo "FAIL: metadata/dev.velum.app.yml versionCode is not $universal_code"; exit 1; }
 echo 'PASS: release APK splits'
+
+# F-Droid path: no signing variables plus the explicit property builds an unsigned universal APK.
+env -u VELUM_UPLOAD_STORE_FILE -u VELUM_UPLOAD_STORE_PASSWORD -u VELUM_UPLOAD_KEY_ALIAS \
+    -u VELUM_UPLOAD_KEY_PASSWORD ./gradlew :composeApp:assembleRelease -Pvelum.unsignedRelease=true \
+    --console=plain >"$check_dir/gradle.log" 2>&1 || {
+  echo 'FAIL: unsigned F-Droid release build was rejected'; cat "$check_dir/gradle.log"; exit 1; }
+unsigned_apk="$apk_dir/composeApp-release-unsigned.apk"
+[[ -f "$unsigned_apk" ]] || { echo "FAIL: missing $unsigned_apk"; ls "$apk_dir"; exit 1; }
+[[ "$(version_code "$unsigned_apk")" == "$universal_code" ]] || { echo 'FAIL: unsigned APK versionCode differs from universal'; exit 1; }
+# The property must never combine with real signing variables.
+if with_test_key ./gradlew :composeApp:assembleRelease -Pvelum.unsignedRelease=true --console=plain \
+    >"$check_dir/gradle.log" 2>&1; then
+  echo 'FAIL: unsignedRelease accepted together with signing variables'; exit 1
+fi
+grep -q 'cannot be combined with VELUM_UPLOAD' "$check_dir/gradle.log" || {
+  echo 'FAIL: unsignedRelease+signing failed for another reason'; cat "$check_dir/gradle.log"; exit 1; }
+# F-Droid auto-update fields must follow the universal versionCode too (versionCode and changelogs are
+# already asserted above).
+grep -q "^CurrentVersionCode: $universal_code\$" metadata/dev.velum.app.yml || { echo "FAIL: CurrentVersionCode != $universal_code"; exit 1; }
+echo 'PASS: unsigned F-Droid release path matches the universal versionCode'
