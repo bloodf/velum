@@ -9,6 +9,8 @@ mkdir -p "$ARTIFACT_DIR"
 
 echo "=== Device walk ($BUILD_TYPE) ==="
 adb logcat -c || true
+# Timeout dumps (#160) are many 1 KB lines; a bigger ring buffer keeps them until the final logcat -d.
+adb logcat -G 16M || true
 
 GRADLE_PROPS=()
 case "$BUILD_TYPE" in
