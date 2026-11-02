@@ -28,7 +28,9 @@ import kotlinx.coroutines.runBlocking
 
 /** A truncated Ogg tail must not be processed silently: progress carries a visible warning. */
 class RecordingProcessorTruncatedAudioTest {
-    private fun run(ogg: ByteArray): List<JobProgress> = runBlocking {
+    private class Result(val events: List<JobProgress>, val warning: String?)
+
+    private fun run(ogg: ByteArray, thenClean: ByteArray? = null): Result = runBlocking {
         val repo = VelumRepository(createDatabase(DriverFactory()))
         val settings = SettingsRepository(InMemorySecureStore()).also {
             it.load()
@@ -68,12 +70,22 @@ class RecordingProcessorTruncatedAudioTest {
             deviceSerial = null, startedAt = 1, durationSeconds = 1, sizeBytes = ogg.size.toLong(),
             localPath = path, transcript = null, summaryMarkdown = null, status = "queued",
         )
-        RecordingProcessor(router, repo, settings)
+        val processor = RecordingProcessor(router, repo, settings)
+        var events = processor
             .process(
                 "rec-trunc", templateId = "velum.meeting", retranscribe = true,
                 apiModelOverride = ApiModelOverride(profileId = "work", modelId = "whisper-custom"),
             )
             .toList()
+        if (thenClean != null) {
+            // Re-process after the audio was replaced by a complete file: the warning must clear.
+            java.io.File(path).writeBytes(thenClean)
+            events = processor.process(
+                "rec-trunc", templateId = "velum.meeting", retranscribe = true,
+                apiModelOverride = ApiModelOverride(profileId = "work", modelId = "whisper-custom"),
+            ).toList()
+        }
+        Result(events, repo.getRecording("rec-trunc")!!.processing_warning)
     }
 
     private val head = SyntheticOgg.page(listOf(SyntheticOgg.opusHead(1, 48_000)), 0, 2) +
@@ -82,15 +94,25 @@ class RecordingProcessorTruncatedAudioTest {
 
     @Test
     fun truncated_ogg_still_processes_but_emits_warning() {
-        val events = run(head + audio + ByteArray(9))
+        val result = run(head + audio + ByteArray(9))
+        val events = result.events
+        assertEquals("truncated_audio", result.warning)
         assertTrue(events.last() is JobProgress.Succeeded, "last=${events.last()}")
         assertTrue(events.any { it is JobProgress.Running && it.message == TRUNCATED_AUDIO_MESSAGE })
     }
 
     @Test
     fun clean_ogg_emits_no_truncation_warning() {
-        val events = run(head + audio)
+        val result = run(head + audio)
+        val events = result.events
+        assertEquals(null, result.warning)
         assertTrue(events.last() is JobProgress.Succeeded, "last=${events.last()}")
         assertEquals(0, events.count { it is JobProgress.Running && it.message == TRUNCATED_AUDIO_MESSAGE })
+    }
+
+    @Test
+    fun warning_clears_after_clean_reprocess() {
+        val result = run(head + audio + ByteArray(9), thenClean = head + audio)
+        assertEquals(null, result.warning)
     }
 }

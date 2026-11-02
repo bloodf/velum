@@ -309,6 +309,7 @@ class AppContainer(
                 status = "queued",
                 trashed = 0,
                 created_at = epochSecondsNow(),
+                processing_warning = null,
             ),
         )
         enqueueDownloadedSession(id, title)
