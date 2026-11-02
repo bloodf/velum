@@ -1,0 +1,3 @@
+# Known JVM-only API use in commonMain/mobileMain, one "path:rule" line per occurrence.
+# CommonMainPortabilityTest fails on new offences and on stale lines: fix offences, then delete
+# their lines. Never add lines here for new code.
