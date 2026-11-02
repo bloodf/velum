@@ -276,8 +276,8 @@ class LocalModelManager(
     )
     val states: StateFlow<List<LocalModelState>> = _states.asStateFlow()
 
-    private val downloadJobsLock = Any()
-    private val downloadJobs = mutableMapOf<String, Job>()
+    // Atomic CAS map (common; `synchronized` is JVM-only), same pattern as cancelRequested.
+    private val downloadJobs = MutableStateFlow<Map<String, Job>>(emptyMap())
     private val cancelRequested = MutableStateFlow(setOf<String>())
 
     fun stateFor(id: String): LocalModelState? = _states.value.firstOrNull { it.spec.id == id }
@@ -299,13 +299,13 @@ class LocalModelManager(
     /** Cancel an in-flight [download] for [id], if any. */
     fun cancelDownload(id: String) {
         cancelRequested.update { it + id }
-        val job = synchronized(downloadJobsLock) { downloadJobs[id] }
+        val job = downloadJobs.value[id]
         job?.cancel()
     }
 
     fun download(id: String): Flow<LocalModelState> = flow {
         val collectorJob = currentCoroutineContext().job
-        synchronized(downloadJobsLock) { downloadJobs[id] = collectorJob }
+        downloadJobs.update { it + (id to collectorJob) }
         cancelRequested.update { it - id }
         try {
             val current = stateFor(id) ?: return@flow
@@ -389,7 +389,7 @@ class LocalModelManager(
                     throw IllegalStateException("SHA-256 mismatch for $id")
                 }
 
-                if (dest.exists()) dest.deleteRecursively()
+                // renameTo replaces a file target atomically and an existing directory by delete+move.
                 if (!partial.renameTo(dest)) {
                     // Never load multi-hundred-MB archives fully into heap on rename failure.
                     streamCopyModelFile(partial, dest)
@@ -437,9 +437,7 @@ class LocalModelManager(
                 emit(requireNotNull(stateFor(id)))
             }
         } finally {
-            synchronized(downloadJobsLock) {
-                if (downloadJobs[id] === collectorJob) downloadJobs.remove(id)
-            }
+            downloadJobs.update { if (it[id] === collectorJob) it - id else it }
             cancelRequested.update { it - id }
         }
     }

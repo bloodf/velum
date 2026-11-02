@@ -59,6 +59,25 @@ actual class ModelStoreDir actual constructor(absolutePath: String) {
     actual fun renameTo(dest: ModelStoreDir): Boolean {
         val target = File(dest.absolutePath)
         target.parentFile?.mkdirs()
+        if (file.isFile && !target.isDirectory) {
+            // Atomic replace: readers see the old file or the new one, never neither.
+            return runCatching {
+                try {
+                    java.nio.file.Files.move(
+                        file.toPath(),
+                        target.toPath(),
+                        java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                    )
+                } catch (_: java.nio.file.AtomicMoveNotSupportedException) {
+                    java.nio.file.Files.move(
+                        file.toPath(),
+                        target.toPath(),
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                    )
+                }
+            }.isSuccess
+        }
         if (target.exists()) target.deleteRecursively()
         return file.renameTo(target)
     }

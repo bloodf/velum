@@ -15,7 +15,9 @@ import dev.velum.app.platform.MicRecordingService
 import dev.velum.app.platform.ShareTextHolder
 import dev.velum.app.platform.installAppContext
 import dev.velum.app.platform.installMicCaptureContext
+import dev.velum.app.platform.STALE_DOWNLOAD_PART_AGE_MS
 import dev.velum.app.platform.installRecordingFilesDir
+import dev.velum.app.platform.sweepStaleDownloadParts
 import dev.velum.app.platform.recoverPartialMicRecordings
 import dev.velum.app.platform.recordingsDirectoryPath
 import dev.velum.app.platform.sweepOrphanRecordingAudio
@@ -75,6 +77,10 @@ class VelumApplication : Application() {
                     thermalPolicy = ThermalMonitor.asPolicy(powerManager),
                 )
                 container = built
+                if (!built.repository.ftsAvailable) {
+                    // Search falls back to a full list scan; class name only, never SQL or user data.
+                    Log.w(TAG, "Full-text search unavailable (${built.repository.ftsFailure})")
+                }
                 AiRuntimeHolder.install(
                     processor = built.recordingProcessor,
                     repository = built.repository,
@@ -83,6 +89,14 @@ class VelumApplication : Application() {
                 cleanupThenPublish(
                     built = built,
                     cleanup = { c ->
+                        // Runs before publish, so no download can be in flight (#86).
+                        runCatching {
+                            val swept = sweepStaleDownloadParts(
+                                recordingsDirectoryPath(),
+                                System.currentTimeMillis() - STALE_DOWNLOAD_PART_AGE_MS,
+                            )
+                            if (swept.isNotEmpty()) Log.i(TAG, "Removed ${swept.size} stale download part(s)")
+                        }.onFailure { t -> Log.w(TAG, "Stale download sweep failed (${t::class.simpleName})") }
                         val report = sweepOrphanRecordingAudio(recordingsDirectoryPath(), c.repository::getAllRecordingFileRefs)
                         Log.i(TAG, "Orphan audio sweep: quarantined=${report.quarantined} purged=${report.purged} staleTemps=${report.staleTemps} failedMoves=${report.failedMoves}")
                     },

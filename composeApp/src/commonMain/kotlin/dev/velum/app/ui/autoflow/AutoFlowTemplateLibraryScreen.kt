@@ -47,8 +47,11 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -87,9 +90,13 @@ fun AutoFlowTemplateLibraryScreen(
     var category by remember { mutableStateOf<String?>(null) }
     var preview by remember { mutableStateOf<AutoFlowTemplate?>(null) }
 
-    val categories = remember { AutoFlowTemplateCatalog.categoriesPresent() }
-    val filtered = remember(query, category, locale) {
-        AutoFlowTemplateCatalog.search(query, category, locale)
+    // The catalog lazily reads a packaged asset on first use: never touch it during composition
+    // (main-thread disk read, caught by StrictMode). Lists stay empty until it has loaded.
+    val categories by produceState(emptyList<String>()) {
+        value = withContext(Dispatchers.Default) { AutoFlowTemplateCatalog.categoriesPresent() }
+    }
+    val filtered by produceState(emptyList<AutoFlowTemplate>(), query, category, locale) {
+        value = withContext(Dispatchers.Default) { AutoFlowTemplateCatalog.search(query, category, locale) }
     }
 
     Column(

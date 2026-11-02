@@ -28,11 +28,12 @@ import dev.velum.app.devicewalk.DeviceWalkTranscriber
 import dev.velum.app.platform.ExportFolderStore
 import dev.velum.app.platform.MicCapture
 import dev.velum.app.platform.createMicCapture
+import dev.velum.app.platform.DOWNLOAD_PART_SUFFIX
 import dev.velum.app.platform.deleteFileAtPath
 import dev.velum.app.platform.isSupersededOwnAudio
 import dev.velum.app.platform.recordingsDirectoryPath
+import dev.velum.app.platform.streamToFileAtomically
 import dev.velum.app.platform.systemLanguageTag
-import dev.velum.app.platform.writeBytesToPath
 import dev.velum.app.ui.DeviceViewModel
 import dev.velum.app.ui.DownloadedSessionAudio
 import dev.velum.app.ui.SettingsViewModel
@@ -67,6 +68,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 
 class AppContainer(
     val secureStore: SecureStore,
@@ -86,7 +88,13 @@ class AppContainer(
 
     val databaseHandle = createDatabase(driverFactory)
     val database = databaseHandle.database
-    val repository = VelumRepository(databaseHandle)
+    // A failed repository init must not abandon an open database (StrictMode LeakedClosableViolation).
+    val repository = try {
+        VelumRepository(databaseHandle)
+    } catch (t: Throwable) {
+        runCatching { databaseHandle.driver.close() }
+        throw t
+    }
     /**
      * In-memory FirstRun gate. Initial value is read once on the container
      * construction path (Android: [Dispatchers.IO] in VelumApplication) — never
@@ -260,22 +268,30 @@ class AppContainer(
      */
     suspend fun persistDownloadedSession(
         session: DownloadedSessionAudio,
-        writeAudio: (String, ByteArray) -> Unit = ::writeBytesToPath,
     ): String = downloadPersistMutex.withLock {
-        val ext = when {
-            looksLikeOgg(session.decryptedBytes) -> "ogg"
-            looksLikeWav(session.decryptedBytes) -> "wav"
-            else -> "bin"
-        }
         // Without a real serial dedup is off (null key): never risk merging sessions of two devices.
         val serial = session.deviceSerial?.takeIf { it.isNotBlank() }
         val existing = repository.findDeviceSessionRecording(session.sessionId, serial)
         val id = existing?.id ?: RecordingIds.newId()
         val dir = recordingsDirectoryPath()
-        val path = "$dir/$id.$ext"
-        writeAudio(path, session.decryptedBytes)
+        // Stream into a fsynced .part and atomically rename once complete (#86), so a crash,
+        // cancellation or full disk never leaves a truncated recording under its final name.
+        val (path, sizeBytes) = withContext(Dispatchers.IO) {
+            streamToFileAtomically(
+                partPath = "$dir/$id$DOWNLOAD_PART_SUFFIX",
+                headBytes = 12,
+                finalPathFor = { head ->
+                    val ext = when {
+                        looksLikeOgg(head) -> "ogg"
+                        looksLikeWav(head) -> "wav"
+                        else -> "bin"
+                    }
+                    "$dir/$id.$ext"
+                },
+            ) { sink -> session.writeDecryptedAudio(sink) }
+        }
         if (existing != null) {
-            repository.replaceDeviceSessionAudio(id, path, session.sizeBytes)
+            repository.replaceDeviceSessionAudio(id, path, sizeBytes)
             // Only this row's own superseded file in the recordings dir (e.g. .ogg -> .wav).
             val previousPath = existing.local_path
             if (previousPath != null && isSupersededOwnAudio(previousPath, path, dir, id)) deleteFileAtPath(previousPath)
@@ -302,7 +318,7 @@ class AppContainer(
                 device_serial = serial,
                 started_at = started,
                 duration_seconds = 0,
-                size_bytes = session.sizeBytes,
+                size_bytes = sizeBytes,
                 local_path = path,
                 transcript = null,
                 summary_markdown = null,

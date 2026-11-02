@@ -17,6 +17,7 @@ compose-navigation = "2.9.0"
 sqldelight = "2.0.2"
 roborazzi = "1.77.0"
 robolectric = "4.14.1"
+requerySqlite = "3.49.0"
 androidx-test-ext-junit = "1.2.1"
 androidx-test-runner = "1.6.2"
 androidx-test-rules = "1.6.1"
@@ -69,6 +70,8 @@ compose-navigation = { module = "org.jetbrains.androidx.navigation:navigation-co
 sqldelight-runtime = { module = "app.cash.sqldelight:runtime", version.ref = "sqldelight" }
 sqldelight-coroutines = { module = "app.cash.sqldelight:coroutines-extensions", version.ref = "sqldelight" }
 sqldelight-android = { module = "app.cash.sqldelight:android-driver", version.ref = "sqldelight" }
+# SQLite with FTS5 for Android (framework SQLite ships FTS3/4 only). Published on JitPack.
+requery-sqlite-android = { module = "com.github.requery:sqlite-android", version.ref = "requerySqlite" }
 sqldelight-jvm = { module = "app.cash.sqldelight:sqlite-driver", version.ref = "sqldelight" }
 sqldelight-native = { module = "app.cash.sqldelight:native-driver", version.ref = "sqldelight" }
 
