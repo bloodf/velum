@@ -80,11 +80,18 @@ class PlaudTemplateCatalogTest {
         fun e(id: String, author: String) =
             TemplateCatalogEntry(id = id, category = "meeting", name = id, author = author, body = "Summarize")
         val md = PlaudTemplateCatalog.toCreditsMarkdown(
-            listOf(e("a", "beta"), e("b", "Alpha"), e("c", "gamma"), e("d", "beta")),
+            listOf(e("a", "beta"), e("b", "Alpha"), e("c", "gamma"), e("d", "beta"), e("e", "Beta")),
         )
         val authors = md.substringAfter("### Authors").lines().filter { it.startsWith("- **") }
+        // "beta" / "Beta" differ only in case: both listed with their own counts. A
+        // case-insensitive TreeMap would merge them into one entry and drop a group.
         assertEquals(
-            listOf("- **Alpha** — 1 template(s)", "- **beta** — 2 template(s)", "- **gamma** — 1 template(s)"),
+            listOf(
+                "- **Alpha** — 1 template(s)",
+                "- **beta** — 2 template(s)",
+                "- **Beta** — 1 template(s)",
+                "- **gamma** — 1 template(s)",
+            ),
             authors,
         )
     }

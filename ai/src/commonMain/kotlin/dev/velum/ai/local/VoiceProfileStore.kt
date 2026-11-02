@@ -1,5 +1,6 @@
 package dev.velum.ai.local
 
+import kotlin.concurrent.Volatile
 import dev.velum.core.security.SecureKeys
 import dev.velum.core.security.SecureStore
 import kotlin.io.encoding.Base64
@@ -9,6 +10,7 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock

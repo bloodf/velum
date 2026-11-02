@@ -129,6 +129,7 @@ import dev.velum.core.templates.BuiltinTemplateCatalog
 import dev.velum.core.templates.TemplateTagFilter
 import dev.velum.core.templates.TemplateTagVocabulary
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch

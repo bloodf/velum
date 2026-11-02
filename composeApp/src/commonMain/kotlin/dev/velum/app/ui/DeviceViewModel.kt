@@ -23,6 +23,7 @@ import dev.velum.protocol.SessionEntry
 import dev.velum.recorder.RecorderDriverRegistry
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
