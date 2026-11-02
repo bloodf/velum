@@ -115,6 +115,20 @@ class SimulatedPeripheralScenariosTest {
         }
     }
 
+    /** Full stack trace (message + causes) must carry no token, PEM or signature material. */
+    private fun assertNoIdentityLeak(t: Throwable, vararg signatures: ByteArray) {
+        val trace = t.stackTraceToString()
+        assertFalse(trace.contains(keys.bindToken), "bind token leaked")
+        assertFalse(trace.contains("-----"), "PEM marker leaked")
+        assertFalse(trace.contains("PRIVATE KEY") || trace.contains("PUBLIC KEY"))
+        assertFalse(trace.contains(pems.first.lines()[1]) || trace.contains(pems.second.lines()[1]), "PEM body leaked")
+        for (sg in signatures) {
+            assertFalse(trace.contains(java.util.Base64.getEncoder().encodeToString(sg)), "signature base64 leaked")
+            assertFalse(trace.contains(sg.joinToString("") { "%02x".format(it) }), "signature hex leaked")
+            assertFalse(trace.contains(sg.joinToString(", ")), "signature byte list leaked")
+        }
+    }
+
     private class Rig(
         val ble: RecordingBle,
         val peripheral: FakePlaudPeripheral,
@@ -193,7 +207,8 @@ class SimulatedPeripheralScenariosTest {
         r.ble.connect("fake-note-pro")
         val wrong = keys.copy(serialSignature = ByteArray(256) { 7 })
         val c = PlaudDeviceClient(r.ble, cipher, wrong)
-        assertFailsWith<IllegalStateException> { c.unlock() }
+        val e = assertFailsWith<IllegalStateException> { c.unlock() }
+        assertNoIdentityLeak(e, wrong.serialSignature, sig)
         assertNull(c.sessionSecret)
         // Only FE10 chunks went out: no public key, no app commands.
         val sent = decode(r.ble.segments.single(), null)
@@ -245,6 +260,7 @@ class SimulatedPeripheralScenariosTest {
             val c = PlaudDeviceClient(r.ble, cipher, keys)
             c.unlock(); c.handshake()
             assertEquals(level, c.readBattery().percent)
+            assertSafe(decode(r.ble.segments.single(), c.sessionSecret))
             c.close()
         }
     }
@@ -300,7 +316,8 @@ class SimulatedPeripheralScenariosTest {
         r.ble.connect("fake-note-pro")
         val c = PlaudDeviceClient(r.ble, cipher, keys.copy(serialSignature = ByteArray(256) { 9 }))
         // The error comes from the fake failing the write; the client adds no FE10-specific error.
-        assertFailsWith<IllegalStateException> { c.unlock() }
+        val e = assertFailsWith<IllegalStateException> { c.unlock() }
+        assertNoIdentityLeak(e, ByteArray(256) { 9 }, sig)
         assertEquals(setOf(Sent.Raw(Commands.UNLOCK_SN_SIGNATURE)), decode(r.ble.segments.single(), null).toSet())
         assertTrue(r.deviceFrames.isEmpty(), "no FE11/FE12 offered after rejection")
         c.close()
@@ -312,7 +329,8 @@ class SimulatedPeripheralScenariosTest {
         r.ble.connect("fake-note-pro")
         r.ble.swallowWrites = true
         val c = PlaudDeviceClient(r.ble, cipher, keys, responseTimeout = 200.milliseconds)
-        assertFailsWith<TimeoutCancellationException> { c.unlock() }
+        val e = assertFailsWith<TimeoutCancellationException> { c.unlock() }
+        assertNoIdentityLeak(e, sig)
         assertNull(c.sessionSecret)
         assertEquals(setOf(Sent.Raw(Commands.UNLOCK_SN_SIGNATURE)), decode(r.ble.segments.single(), null).toSet())
         c.close()
@@ -327,7 +345,7 @@ class SimulatedPeripheralScenariosTest {
             val c = PlaudDeviceClient(r.ble, cipher, keys, responseTimeout = 200.milliseconds)
             c.unlock(); c.handshake()
             r.ble.swallowWrites = true
-            assertFailsWith<TimeoutCancellationException> { c.listSessions() }
+            assertNoIdentityLeak(assertFailsWith<TimeoutCancellationException> { c.listSessions() }, sig)
             assertFalse(Commands.UNLOCK_NEED_PUBLIC_KEY in r.deviceRawOpcodes())
             assertSafe(decode(r.ble.segments.single(), c.sessionSecret))
             c.close()
@@ -339,7 +357,7 @@ class SimulatedPeripheralScenariosTest {
             val c = PlaudDeviceClient(r.ble, cipher, keys, responseTimeout = 200.milliseconds)
             c.unlock(); c.handshake(); c.listSessions()
             r.ble.swallowWrites = true
-            assertFailsWith<TimeoutCancellationException> { c.downloadSession(1_700_000_000L, encrypted.size.toLong()) }
+            assertNoIdentityLeak(assertFailsWith<TimeoutCancellationException> { c.downloadSession(1_700_000_000L, encrypted.size.toLong()) }, sig)
             assertFalse(Commands.UNLOCK_NEED_PUBLIC_KEY in r.deviceRawOpcodes())
             assertSafe(decode(r.ble.segments.single(), c.sessionSecret))
             c.close()
