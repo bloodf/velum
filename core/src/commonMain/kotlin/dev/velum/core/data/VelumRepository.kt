@@ -19,6 +19,8 @@ import dev.velum.core.templates.PlaudTemplateCatalog
 import dev.velum.core.templates.TemplateTagVocabulary
 import kotlin.random.Random
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
 
@@ -397,20 +399,25 @@ class VelumRepository(
      *
      * The "imported" meta flag is set only after a successful FTS rebuild so a
      * process kill mid-import cannot leave All templates present but unsearchable.
+     * Cancellation is checked per row and rolls the whole import back (#100). A user-edited
+     * builtin (same id, builtin = 0) is never overwritten by a re-import (#100).
      * @return number of rows upserted, or 0 if already imported / asset empty.
      */
     suspend fun ensureFullTemplatesImported(): Int = withContext(Dispatchers.Default) {
         if (q.getMeta(SeedData.META_FULL_TEMPLATES_IMPORTED).executeAsOneOrNull() == "1") {
             return@withContext 0
         }
+        val job = coroutineContext[Job]
         val now = epochSeconds()
         var upserted = 0
         var sawAny = false
         db.transaction {
             PlaudFullTemplateAsset.forEachLine { line ->
+                job?.ensureActive()
                 val entry = PlaudTemplateCatalog.parseJsonlLine(line) ?: return@forEachLine
                 sawAny = true
                 val existing = q.selectTemplateById(entry.id).executeAsOneOrNull()
+                if (existing != null && existing.builtin == 0L) return@forEachLine
                 val uses = existing?.uses ?: entry.uses
                 val createdAt = existing?.created_at ?: now
                 val tagsEncoded = TemplateTagVocabulary.encode(
@@ -603,7 +610,11 @@ class VelumRepository(
             }
             if (templates) {
                 q.selectTemplates().executeAsList().forEach { t ->
-                    indexTemplate(t.id, t.name, t.description, t.category, t.system_prompt, t.tags)
+                    // Table was cleared above: plain inserts keep the rebuild linear (#100).
+                    FtsIndex.upsertTemplate(
+                        driver, t.id, t.name, t.description, t.category, t.system_prompt, t.tags,
+                        replaceExisting = false,
+                    )
                 }
             }
         }
