@@ -79,11 +79,13 @@ object SeedData {
             }
 
             q.deleteAllBuiltinTemplates()
+            // A user-edited builtin keeps its id with builtin = 0: never delete or replace it (#100).
+            fun userEdited(id: String) = q.selectTemplateById(id).executeAsOneOrNull()?.builtin == 0L
             BuiltinTemplateCatalog.LegacyAliases.keys.forEach { legacyId ->
-                q.deleteTemplateHard(legacyId)
+                if (!userEdited(legacyId)) q.deleteTemplateHard(legacyId)
             }
             // Featured builtins only; full Plaud set is lazy-imported on Discover "All".
-            builtinTemplates().forEach { t ->
+            builtinTemplates().filterNot { userEdited(it.id) }.forEach { t ->
                 q.insertTemplate(
                     id = t.id,
                     name = t.name,
