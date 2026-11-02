@@ -81,6 +81,7 @@ import dev.velum.app.export.RecordingExport
 import dev.velum.app.export.copyToClipboard
 import dev.velum.app.export.shareBytes
 import dev.velum.app.i18n.LocalStrings
+import dev.velum.app.i18n.formatFixed
 import dev.velum.app.platform.AudioPlayer
 import dev.velum.app.platform.MicInputSource
 import dev.velum.app.platform.MicMarkerResult
@@ -1965,7 +1966,7 @@ fun SpeakerLabelSheetContent(
                         append("${strings.totalDuration}: $dur")
                         row.matchConfidence?.let {
                             append(" · ")
-                            append("%.0f".format(it * 100))
+                            append(formatFixed((it * 100).toDouble(), 0))
                             append('%')
                         }
                     },
