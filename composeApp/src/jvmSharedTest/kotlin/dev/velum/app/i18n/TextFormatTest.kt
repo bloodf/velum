@@ -16,6 +16,11 @@ class TextFormatTest {
     }
 
     @Test
+    fun formatFixed_on_jvm_rounds_half_up_on_decimal_digits() {
+        assertEquals("2.68", withLocale(Locale.ROOT) { formatFixed(2.675, 2) })
+    }
+
+    @Test
     fun formatFixed_uses_device_locale_separator_without_grouping() {
         assertEquals("1,5", withLocale(Locale.forLanguageTag("pt-BR")) { formatFixed(1.5, 1) })
         assertEquals("1.5", withLocale(Locale.ENGLISH) { formatFixed(1.5, 1) })

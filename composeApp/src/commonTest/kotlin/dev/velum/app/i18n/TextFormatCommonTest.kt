@@ -26,7 +26,17 @@ class TextFormatCommonTest {
     }
 
     @Test
-    fun every_shipped_template_in_both_locales_fills_cleanly() {
+    fun sync_done_and_webhook_templates_render_exact_text_in_both_locales() {
+        assertEquals("Pronto · 7 novos · 8 duplicados · 9 falhas", fillTemplateAscii(PtBr.ux.syncDoneFormat, arrayOf(7, 8, 9)))
+        assertEquals("Done · 7 new · 8 dupes · 9 failed", fillTemplateAscii(En.ux.syncDoneFormat, arrayOf(7, 8, 9)))
+        assertEquals("Webhook enviado (HTTP 200)", fillTemplateAscii(PtBr.ux.webhookPostedFormat, arrayOf("HTTP 200")))
+        assertEquals("Webhook posted (HTTP 200)", fillTemplateAscii(En.ux.webhookPostedFormat, arrayOf("HTTP 200")))
+        assertEquals("Webhook falhou: HTTP 500", fillTemplateAscii(PtBr.ux.webhookFailedFormat, arrayOf("HTTP 500")))
+        assertEquals("Webhook failed: HTTP 500", fillTemplateAscii(En.ux.webhookFailedFormat, arrayOf("HTTP 500")))
+    }
+
+    @Test
+    fun sync_done_and_webhook_templates_in_both_locales_fill_cleanly() {
         for ((name, strings) in listOf("PtBr" to PtBr, "En" to En)) {
             check(name, strings.ux.syncDoneFormat, arrayOf(7, 8, 9))
             check(name, strings.ux.webhookPostedFormat, arrayOf("HTTP 200"))
