@@ -20,6 +20,7 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.printToString
 import androidx.compose.ui.semantics.SemanticsActions
@@ -72,7 +73,7 @@ class DeviceWalkUiTest {
             "settings/import", "settings/about",
         )
 
-        /** Exact markers every locale cell must produce: 43 + onboarding/appearance tags = 45 per cell (pt-BR and en alike). */
+        /** Exact markers every locale cell must produce: 44 + onboarding/appearance tags = 46 per cell (pt-BR and en alike). */
         val REQUIRED_COVERAGE: Set<String> = setOf(
             "settings/appearance", "library", "library/search", "import/bundled-wav",
             "transcription/device-walk-engine", "recording/open", "recording/notes",
@@ -82,7 +83,7 @@ class DeviceWalkUiTest {
             "settings", "settings/api-profiles", "settings/per-task-models",
             "settings/integrations-sheet", "device", "device/permission-or-scan", "settings/storage-privacy",
             "settings/wipe-dialog", "rotate/landscape", "rotate/portrait", "background",
-            "restore-from-background", "process-death-restore",
+            "restore-from-background", "process-death-restore", "settings/storage-back-pinned",
         ) + SETTINGS_ROW_MARKERS
 
         /**
@@ -93,7 +94,6 @@ class DeviceWalkUiTest {
             "first-run-skip", // only when onboarding is still pending at launch
             // Never produced in the last verified 8-cell matrix (#115); steps stay best-effort.
             "recording/versions", "recording/sources", "settings/templates", "ask",
-            "settings/storage-back-pinned", // #118; optional until it holds in all 4 cells and both builds
         )
 
         private val SETTINGS_HUB_ROWS = listOf(
@@ -641,19 +641,48 @@ class DeviceWalkUiTest {
             waitUntil(10_000, "Wipe confirmation dialog did not close") {
                 !composeExistsIgnoreCase(str.settingsUi.wipeAllDataBody)
             }
-            // #118: scroll the body, then Back must still be on screen and return to the hub in the same activity.
-            val activityBefore = composeRule.activity
-            device.swipe(device.displayWidth / 2, device.displayHeight * 4 / 5, device.displayWidth / 2, device.displayHeight / 5, 20)
-            composeRule.waitForIdle()
-            check(pressNavBack()) { "Back not reachable on Storage & privacy after scrolling (#118)" }
-            waitUntil(10_000, "Back from Storage & privacy did not return to the Settings hub") {
-                !composeExists(str.settingsUi.privacyOnDeviceStatement) && SETTINGS_HUB_ROWS.any { composeExists(it) }
+            // #118: in landscape the body must overflow. Scrolling moves the body but not the top bar, then
+            // Back must return to the hub in the same activity.
+            runCatching { device.setOrientationLeft() }
+            waitUntil(10_000, "Display did not rotate to landscape") { device.displayWidth > device.displayHeight }
+            try {
+                val statement = str.settingsUi.privacyOnDeviceStatement
+                val backLabels = listOf(str.ux.back, "Back", "Voltar")
+                waitUntil(10_000, "Storage & privacy not shown in landscape") { composeExists(statement) && backTop(backLabels) != null }
+                val activityBefore = composeRule.activity // rotation may recreate; capture after it
+                val bodyTop0 = textTop(statement) ?: error("statement node missing")
+                val backTop0 = checkNotNull(backTop(backLabels))
+                device.swipe(device.displayWidth / 2, device.displayHeight * 4 / 5, device.displayWidth / 2, device.displayHeight / 5, 20)
+                waitUntil(5_000, "Storage & privacy body did not scroll in landscape (no overflow, or top bar moved with it): top was $bodyTop0") {
+                    (textTop(statement) ?: bodyTop0) < bodyTop0 - 1f
+                }
+                val backTop1 = backTop(backLabels)
+                check(backTop1 != null && kotlin.math.abs(backTop1 - backTop0) < 1f) {
+                    "Back moved while the body scrolled: before=$backTop0 after=$backTop1 (#118)"
+                }
+                check(pressNavBack()) { "Back not reachable on Storage & privacy after scrolling (#118)" }
+                waitUntil(10_000, "Back from Storage & privacy did not return to the Settings hub") {
+                    !composeExists(statement) && SETTINGS_HUB_ROWS.any { composeExists(it) }
+                }
+                check(composeRule.activity === activityBefore) { "Activity was recreated by Back from Storage & privacy" }
+                assertFirstRunNotVisible("storage back")
+                covered += "settings/storage-back-pinned"
+            } finally {
+                runCatching { device.setOrientationNatural() }
+                waitUntil(10_000, "Display did not return to portrait") { device.displayHeight > device.displayWidth }
             }
-            check(composeRule.activity === activityBefore) { "Activity was recreated by Back from Storage & privacy" }
-            assertFirstRunNotVisible("storage back")
-            covered += "settings/storage-back-pinned"
         }
         pressBackToFiles(lang)
+    }
+
+    /** Unclipped top (px) of the first node showing [text], or null. */
+    private fun textTop(text: String): Float? =
+        composeRule.onAllNodesWithText(text).fetchSemanticsNodes(atLeastOneRootRequired = false)
+            .firstOrNull()?.positionInRoot?.y
+
+    private fun backTop(labels: List<String>): Float? = labels.firstNotNullOfOrNull { label ->
+        composeRule.onAllNodesWithContentDescription(label).fetchSemanticsNodes(atLeastOneRootRequired = false)
+            .firstOrNull()?.positionInRoot?.y
     }
 
     private fun rotateAndBackground(lang: String, tag: String) {
