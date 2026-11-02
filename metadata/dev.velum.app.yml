@@ -17,8 +17,11 @@ RepoType: git
 Repo: https://github.com/bloodf/velum.git
 
 Builds:
-  - versionName: 0.1.0-foundation
-    versionCode: 1
+  # Universal APK (no -Pvelum.abiSplits): all ABIs. versionCode = defaultConfig.versionCode * 10
+  # (universal digit 0; see CONTRIBUTING.md). Per-ABI F-Droid builds would add entries with
+  # gradleprops velum.abiSplits=true and versionCode +1 (armeabi-v7a) / +2 (arm64-v8a).
+  - versionName: 1.0.0
+    versionCode: 1000
     commit: main
     subdir: composeApp
     gradle:

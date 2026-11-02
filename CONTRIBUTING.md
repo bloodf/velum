@@ -31,6 +31,16 @@ keystore), `VELUM_UPLOAD_STORE_PASSWORD`, `VELUM_UPLOAD_KEY_ALIAS`, and
 never commit them or print their values. Missing or blank values fail the release
 build. A shipping release never falls back to the committed public debug key.
 
+Release APKs: `./gradlew :composeApp:assembleRelease -Pvelum.abiSplits=true` writes
+`composeApp-arm64-v8a-release.apk`, `composeApp-armeabi-v7a-release.apk` and
+`composeApp-universal-release.apk` (all ABIs, incl. x86/x86_64 for sideload / ChromeOS)
+under `composeApp/build/outputs/apk/release/`. Without the property you get one universal
+`composeApp-release.apk`. Build the Play AAB in a separate invocation without the property
+(`./gradlew :composeApp:bundleRelease`); combining the property with a bundle task fails.
+Release versionCode is `defaultConfig.versionCode * 10 + ABI digit`: universal / AAB `0`,
+`armeabi-v7a` `1`, `arm64-v8a` `2`, so a universal install can move to its ABI APK and the
+next release outranks every output of this one.
+
 To check R8 locally without upload credentials, run
 `./gradlew :composeApp:assembleMinifiedTest`. This explicitly named test variant
 inherits release minification and uses debug signing plus instrumented-test keeps;

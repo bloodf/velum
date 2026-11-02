@@ -51,14 +51,34 @@ tasks.matching { it.name == "preReleaseBuild" }.configureEach {
     mustRunAfter(validateReleaseSigning)
 }
 
-// Per-ABI shipping APKs (#91). Enabled only when the shipping APK tasks are requested
-// so debug/minifiedTest stay universal (CI runs them on an x86_64 emulator, local on arm64)
-// and the debug APK glob keeps matching a single file. AAB delivery splits by ABI itself.
-// AGP fails buildReleasePreBundle when ABI splits and a bundle task share one invocation,
-// so run bundleRelease separately from assembleRelease.
-val splitReleaseAbis = gradle.startParameter.taskNames.let { tasks ->
-    tasks.none { it.contains("bundle", ignoreCase = true) } &&
-        tasks.any { it.substringAfterLast(':') in setOf("assembleRelease", "packageRelease") }
+// Per-ABI APKs (#91): opt in with -Pvelum.abiSplits=true (shipping APK builds via
+// scripts/check-release-signing.sh / CONTRIBUTING.md). Off by default so debug and
+// minifiedTest keep one universal APK (CI globs, x86_64 emulator). Split builds also emit a
+// universal APK (all ABIs incl. x86/x86_64) for sideload / ChromeOS. Play gets the AAB.
+val abiSplitsEnabled = providers.gradleProperty("velum.abiSplits")
+    .map { it.toBooleanStrict() }.getOrElse(false)
+
+// Release versionCode = base * 10 + ABI digit. Universal (and the AAB / non-split APK) = 0,
+// so a device on the universal APK can move to its ABI APK of the same release; every
+// output of the next release (base + 1) outranks every output of this one.
+val releaseBaseVersionCode = 100
+val abiVersionCodeDigit = mapOf("armeabi-v7a" to 1, "arm64-v8a" to 2)
+
+// Never combine ABI splits with an App Bundle in one invocation: fail loudly, never fall back.
+val rejectAbiSplitsWithBundle by tasks.registering {
+    group = "verification"
+    description = "Fail when -Pvelum.abiSplits=true is combined with an App Bundle task."
+    val splits = abiSplitsEnabled
+    doLast {
+        check(!splits) {
+            "-Pvelum.abiSplits=true cannot be combined with bundle tasks. " +
+                "Run assembleRelease (with the property) and bundleRelease (without it) separately."
+        }
+    }
+}
+val bundleTaskName = Regex("bundle(Debug|Release|MinifiedTest)|build(Debug|Release|MinifiedTest)PreBundle")
+tasks.matching { bundleTaskName.matches(it.name) }.configureEach {
+    dependsOn(rejectAbiSplitsWithBundle)
 }
 
 kotlin {
@@ -191,7 +211,7 @@ android {
         applicationId = "dev.velum.app"
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
-        versionCode = 100
+        versionCode = releaseBaseVersionCode
         versionName = "1.0.0"
         // Explicit test-APK selection only; the default runner and production app are unchanged.
         testInstrumentationRunner = if (identityPersistenceTestEnabled) "dev.velum.app.identity.IdentityPersistenceTestRunner"
@@ -206,10 +226,10 @@ android {
     }
     splits {
         abi {
-            isEnable = splitReleaseAbis
+            isEnable = abiSplitsEnabled
             reset()
-            include("arm64-v8a", "armeabi-v7a")
-            isUniversalApk = false
+            include(*abiVersionCodeDigit.keys.toTypedArray())
+            isUniversalApk = true
         }
     }
     packaging {
@@ -279,6 +299,17 @@ android {
             isIncludeAndroidResources = true
         }
         animationsDisabled = true
+    }
+}
+
+androidComponents {
+    onVariants(selector().withBuildType("release")) { variant ->
+        variant.outputs.forEach { output ->
+            val abi = output.filters
+                .find { it.filterType == com.android.build.api.variant.FilterConfiguration.FilterType.ABI }
+                ?.identifier
+            output.versionCode.set(releaseBaseVersionCode * 10 + (abi?.let(abiVersionCodeDigit::getValue) ?: 0))
+        }
     }
 }
 
