@@ -349,7 +349,13 @@ class RecordingProcessor(
             ) {
                 // Cancelled work never saved a version; restore the status so notes stay usable.
                 withContext(NonCancellable) {
-                    repository.updateStatus(recordingId, priorStatus ?: "ready")
+                    // A pre-run "generating"/"queued" state is not restorable: it would look stuck forever.
+                    val restore = when (priorStatus) {
+                        null, "generating", "queued" ->
+                            if (repository.getRecording(recordingId)?.summary_markdown.isNullOrBlank()) "failed" else "ready"
+                        else -> priorStatus
+                    }
+                    repository.updateStatus(recordingId, restore)
                 }
                 throw t
             }

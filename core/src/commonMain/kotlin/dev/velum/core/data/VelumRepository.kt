@@ -344,10 +344,14 @@ class VelumRepository(
 
     /** Last processing failure for [recordingId] (already sanitized), or null. Previous notes are never touched. */
     suspend fun getProcessingError(recordingId: String): String? =
-        getMeta("processing_error:$recordingId")?.takeIf { it.isNotBlank() }
+        getMeta(processingErrorKey(recordingId))?.takeIf { it.isNotBlank() }
 
-    suspend fun setProcessingError(recordingId: String, message: String?) =
-        setMeta("processing_error:$recordingId", message.orEmpty())
+    /** Null removes the row; provider error text must not outlive the recording or a wipe. */
+    suspend fun setProcessingError(recordingId: String, message: String?) = withContext(Dispatchers.Default) {
+        if (message == null) q.deleteMeta(processingErrorKey(recordingId)) else q.setMeta(processingErrorKey(recordingId), message)
+    }
+
+    private fun processingErrorKey(recordingId: String) = "$PROCESSING_ERROR_PREFIX$recordingId"
 
     suspend fun isFirstRunDone(): Boolean = getMeta(META_FIRST_RUN_DONE) == "1"
 
@@ -462,6 +466,7 @@ class VelumRepository(
         q.deleteVersionsForRecording(id)
         q.deleteSpeakersForRecording(id)
         q.deleteRecordingHard(id)
+        q.deleteMeta(processingErrorKey(id))
         if (ftsAvailable) FtsIndex.deleteRecording(driver, id)
     }
 
@@ -490,6 +495,7 @@ class VelumRepository(
         q.deleteAllAutoflows()
         q.deleteAllMemories()
         q.deleteAllGlossary()
+        q.deleteMetaWithPrefix(PROCESSING_ERROR_PREFIX)
         // Clear seed marker so maybeSeed re-inserts default AutoFlow + builtins.
         SeedData.clearSeedMarker(db)
         SeedData.maybeSeed(db)
@@ -823,6 +829,7 @@ class VelumRepository(
 
     companion object {
         const val META_FIRST_RUN_DONE = "first_run_done"
+        private const val PROCESSING_ERROR_PREFIX = "processing_error:"
     }
 }
 

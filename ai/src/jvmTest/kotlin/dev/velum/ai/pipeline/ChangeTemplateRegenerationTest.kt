@@ -181,6 +181,23 @@ class ChangeTemplateRegenerationTest {
     }
 
     @Test
+    fun cancellation_fromQueued_mapsToReadyWithSummary_andFailedWithout() = runBlocking<Unit> {
+        for (withSummary in listOf(true, false)) {
+            val r = rig()
+            r.repo.seed("rec")
+            if (withSummary) r.processor.process("rec", "velum.meeting", retranscribe = false).last()
+            r.repo.updateStatus("rec", "queued")
+            val gate = CompletableDeferred<Unit>()
+            r.local.gate = gate
+            val expectedRequests = if (withSummary) 2 else 1
+            val job = async(start = CoroutineStart.UNDISPATCHED) { r.processor.process("rec", "velum.sales", retranscribe = false).last() }
+            withTimeout(5_000) { while (r.local.requests.size < expectedRequests) kotlinx.coroutines.delay(10) }
+            job.cancelAndJoin()
+            assertEquals(if (withSummary) "ready" else "failed", r.repo.getRecording("rec")!!.status, "withSummary=$withSummary")
+        }
+    }
+
+    @Test
     fun localSummaryMode_neverCallsApi_andApiModeNeverCallsLocal() = runBlocking<Unit> {
         val local = rig(ComputeMode.Local)
         local.repo.seed("rec")
