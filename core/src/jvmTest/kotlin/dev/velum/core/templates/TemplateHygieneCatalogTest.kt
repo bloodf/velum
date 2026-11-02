@@ -74,14 +74,31 @@ class TemplateHygieneCatalogTest {
     @Test
     fun featured_has_100_distinct_bodies_per_category_and_every_official() {
         val featured = PlaudTemplateCatalog.All
-        val distinct = featured.groupBy { it.category }.mapValues { (_, v) -> v.mapTo(HashSet()) { it.body }.size }
-        CATEGORIES.forEach { cat ->
-            assertTrue((distinct[cat] ?: 0) >= 100, "Featured $cat has ${distinct[cat] ?: 0} distinct bodies")
-        }
+        val shortfalls = featuredShortfalls(featured)
+        assertTrue(shortfalls.isEmpty(), "Featured categories below $FEATURED_FLOOR distinct bodies: $shortfalls")
         val featuredIds = featured.mapTo(HashSet()) { it.id }
         val officials = PlaudTemplateCatalog.parseJsonl(PlaudFullTemplateAsset.readJsonl()).filter { it.official }
         assertTrue(officials.size >= 41, "official rows dropped: ${officials.size} < 41")
         officials.forEach { assertTrue(it.id in featuredIds, "official ${it.id} not Featured") }
+    }
+
+    /** #101: the floor counts distinct exact bodies, so renamed copies of one body cannot satisfy it. */
+    @Test
+    fun renamed_duplicates_cannot_inflate_the_featured_floor() {
+        // 300 rows, 300 distinct names and ids, but only 60 distinct bodies (each body five times).
+        val inflated = (0 until 300).map { i -> entry("dup-$i", "meeting", "Unique name $i", "body ${i % 60}") }
+        assertEquals(300, inflated.mapTo(HashSet()) { it.name }.size)
+        assertEquals(mapOf("meeting" to 60), featuredShortfalls(inflated, listOf("meeting")))
+
+        // Whitespace and case variants are distinct exact bodies (the #99 rule), so they do count.
+        val variants = (0 until 100).map { i -> entry("v-$i", "meeting", "Name $i", "Body" + " ".repeat(i)) }
+        assertTrue(featuredShortfalls(variants, listOf("meeting")).isEmpty())
+
+        // Exactly 100 distinct bodies passes; 99 does not; a missing category is a shortfall of 0.
+        val exact = (0 until 100).map { i -> entry("e-$i", "call", "Name $i", "body $i") }
+        assertTrue(featuredShortfalls(exact, listOf("call")).isEmpty())
+        assertEquals(mapOf("call" to 99), featuredShortfalls(exact.drop(1), listOf("call")))
+        assertEquals(mapOf("legal" to 0), featuredShortfalls(exact, listOf("call", "legal")))
     }
 
     @Test
@@ -107,7 +124,20 @@ class TemplateHygieneCatalogTest {
         assertTrue(!PLAUD_RE.containsMatchIn(text), "plaud branding in $id")
     }
 
+    private fun entry(id: String, category: String, name: String, body: String) =
+        TemplateCatalogEntry(id = id, category = category, name = name, body = body)
+
+    /** Categories (from [categories]) whose Featured count of distinct exact bodies is below the floor. */
+    private fun featuredShortfalls(
+        featured: List<TemplateCatalogEntry>,
+        categories: List<String> = CATEGORIES,
+    ): Map<String, Int> {
+        val distinct = featured.groupBy { it.category }.mapValues { (_, rows) -> rows.mapTo(HashSet()) { it.body }.size }
+        return categories.associateWith { distinct[it] ?: 0 }.filterValues { it < FEATURED_FLOOR }
+    }
+
     companion object {
+        private const val FEATURED_FLOOR = 100
         private val CATEGORIES = listOf(
             "general", "meeting", "call", "sales", "interview", "consulting", "education", "speech",
             "medical", "legal", "financial", "estate", "construction", "it", "extractive",
