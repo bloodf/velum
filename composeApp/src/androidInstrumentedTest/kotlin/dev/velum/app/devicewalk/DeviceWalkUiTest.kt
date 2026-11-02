@@ -489,13 +489,10 @@ class DeviceWalkUiTest {
             waitUntil(10_000, "AutoFlow list not visible before opening the editor") {
                 composeExists(if (lang == "en") "Receive notifications" else "Receber notificações")
             }
-            clickClickableText(
-                if (lang == "en") "New AutoFlow" else "Novo AutoFlow",
-                "New",
-                "Novo",
-                "Create",
-                "Criar",
-            )
+            // The list's new-flow control is the top-bar "+" icon: a clickable Box whose Icon has
+            // contentDescription strings.add ("Add" / "Adicionar"); there is no "New AutoFlow" text.
+            val str = stringsFor(lang)
+            clickClickableText(str.add, str.newAutoFlow, "New", "Novo", "Create", "Criar")
             covered += "autoflow/editor"
             pressNavBack()
         }
@@ -603,7 +600,7 @@ class DeviceWalkUiTest {
             // Required in both locales; click only a node that has a click action so the
             // empty-state hint text ("... toque em Buscar") is never the click target.
             clickClickableText(
-                if (lang == "en") "Scan" else "Buscar",
+                stringsFor(lang).ux.scan,
                 "Connect",
                 "Conectar",
                 "Scan",
@@ -1098,14 +1095,22 @@ class DeviceWalkUiTest {
 
     /** Waits for a node whose text matches a label AND has a click action, then clicks it. */
     private fun clickClickableText(vararg labels: String) {
-        val clickable = { label: String -> (hasText(label, substring = true) or hasContentDescription(label, substring = true)) and hasClickAction() }
-        waitUntil(10_000, "No clickable node with text/contentDescription in ${labels.toList()}") {
-            labels.any { composeRule.onAllNodes(clickable(it)).fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty() }
+        // Merged tree (default): a clickable Box merges its Icon's contentDescription, so the
+        // clickable ancestor itself matches. Exact matches win over substring ones ("Add" must not
+        // pick an unrelated "Add ..." node while "Add" itself is present).
+        fun matchers(label: String) = listOf(
+            (hasText(label) or hasContentDescription(label)) and hasClickAction(),
+            (hasText(label, substring = true) or hasContentDescription(label, substring = true)) and hasClickAction(),
+        )
+        fun find(): SemanticsMatcher? = matchers("").indices.firstNotNullOfOrNull { pass ->
+            labels.filter { it.isNotBlank() }.firstNotNullOfOrNull { label ->
+                matchers(label)[pass].takeIf {
+                    composeRule.onAllNodes(it).fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty()
+                }
+            }
         }
-        val label = labels.first {
-            composeRule.onAllNodes(clickable(it)).fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty()
-        }
-        composeRule.onAllNodes(clickable(label))[0].performClick()
+        waitUntil(10_000, "No clickable node with text/contentDescription in ${labels.toList()}") { find() != null }
+        composeRule.onAllNodes(checkNotNull(find()))[0].performClick()
     }
 
     private fun clickTextPrefer(vararg labels: String) {
