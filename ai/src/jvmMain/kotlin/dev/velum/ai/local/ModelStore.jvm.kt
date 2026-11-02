@@ -17,16 +17,16 @@ actual class ModelStoreDir actual constructor(absolutePath: String) {
     actual fun isDirectory(): Boolean = file.isDirectory
 
     actual fun createDirectories() {
-        if (!file.exists()) file.mkdirs()
+        java.nio.file.Files.createDirectories(file.toPath())
     }
 
     actual fun writeBytes(bytes: ByteArray) {
-        file.parentFile?.mkdirs()
+        file.parentFile?.let { java.nio.file.Files.createDirectories(it.toPath()) }
         file.writeBytes(bytes)
     }
 
     actual fun appendBytes(bytes: ByteArray) {
-        file.parentFile?.mkdirs()
+        file.parentFile?.let { java.nio.file.Files.createDirectories(it.toPath()) }
         file.appendBytes(bytes)
     }
 

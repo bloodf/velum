@@ -178,6 +178,14 @@ class RecordingProcessorDecodeCleanupTest {
     }
 
     @Test
+    fun real_enospc_from_dev_full_is_detected() {
+        val devFull = File("/dev/full")
+        if (!devFull.exists()) return // Linux-only: macOS has no /dev/full
+        val e = kotlin.runCatching { ModelStoreDir(devFull.path).appendBytes(ByteArray(4096)) }.exceptionOrNull()
+        assertTrue(e != null && isOutOfStorage(e), "real write failure: $e")
+    }
+
+    @Test
     fun out_of_storage_detection_walks_causes_only() {
         assertTrue(isOutOfStorage(RuntimeException("wrap", IOException("No space left on device"))))
         assertFalse(isOutOfStorage(IOException("Permission denied")))

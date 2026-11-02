@@ -38,11 +38,11 @@ class HeapVsDurationDecodeTest {
             val running = AtomicBoolean(true)
             val peak = AtomicLong(0L)
             val sampler = Thread {
-                var tick = 0
+                // Sample only right after a GC so the peak is retained memory, not uncollected garbage.
                 while (running.get()) {
-                    if (tick++ % 20 == 0) System.gc()
+                    System.gc()
                     peak.accumulateAndGet(rt.totalMemory() - rt.freeMemory() - baseline) { a, b -> maxOf(a, b) }
-                    Thread.sleep(25)
+                    Thread.sleep(100)
                 }
             }.apply { isDaemon = true; start() }
             val meta = try {
