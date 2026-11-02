@@ -21,7 +21,9 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.onSubscription
 import kotlinx.coroutines.flow.transformWhile
 import kotlinx.coroutines.launch
@@ -53,13 +55,10 @@ class WifiSoftApBleFallbackTest {
     private fun freePort(): Int = ServerSocket(0).use { it.localPort }
     private fun crc(bytes: ByteArray): Long = CRC32().also { it.update(bytes) }.value
 
-    /** Counts writes that reach the simulated BLE peripheral, proving the BLE path really ran. */
+    /** Counts frames from the simulated peripheral, which only answers real client writes: the BLE path really ran. */
     private class CountingBle(private val inner: BleTransport) : BleTransport by inner {
-        var writes = 0
-        override suspend fun write(payload: ByteArray, withoutResponse: Boolean) {
-            writes++
-            inner.write(payload, withoutResponse)
-        }
+        var frames = 0
+        override fun notifications(): Flow<ByteArray> = inner.notifications().onEach { frames++ }
     }
 
     private val keys = rsaKeyPairToPem().let { (pub, priv) ->
@@ -175,7 +174,7 @@ class WifiSoftApBleFallbackTest {
         val (outcome, ble, joiner) = transfer(wifiTimeoutMs = 10_000, good = 2, corruptNext = true)
         assertIs<WifiTransferCoordinator.Outcome.BleFallback>(outcome)
         assertEquals("wifi_frame_rejected", outcome.reason)
-        assertTrue(ble.writes > 0, "BLE path must actually have run")
+        assertTrue(ble.frames > 0, "BLE path must actually have run")
         assertEquals(1, joiner.joinCount, "SoftAP must have been joined before it was left")
         assertTrue(!joiner.joined, "SoftAP must be left after failure")
         assertContentEquals(fixture, outcome.bytes) // no missing or duplicate data, no partial Wi-Fi bytes
@@ -187,7 +186,7 @@ class WifiSoftApBleFallbackTest {
         val (outcome, ble, joiner) = transfer(wifiTimeoutMs = 1_500, good = 2, corruptNext = false)
         assertIs<WifiTransferCoordinator.Outcome.BleFallback>(outcome)
         assertTrue(outcome.reason.startsWith("wifi_timeout"), outcome.reason)
-        assertTrue(ble.writes > 0, "BLE path must actually have run")
+        assertTrue(ble.frames > 0, "BLE path must actually have run")
         assertEquals(1, joiner.joinCount, "SoftAP must have been joined before it was left")
         assertTrue(!joiner.joined, "SoftAP must be left after failure")
         assertContentEquals(fixture, outcome.bytes)

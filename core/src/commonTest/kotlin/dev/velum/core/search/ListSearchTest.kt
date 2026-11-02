@@ -35,4 +35,13 @@ class ListSearchTest {
         val result = ListSearch.filter(items, "xyz") { listOf(it.title, it.body) }
         assertEquals(emptyList(), result)
     }
+
+    /** #100: devices without FTS5 fall back here; pt-BR users type without accents (and vice versa). */
+    @Test
+    fun matchesIgnoringDiacriticsInBothDirections() {
+        assertEquals(listOf(items[2]), ListSearch.filter(items, "reuniao") { listOf(it.title, it.body) })
+        assertEquals(listOf(items[2]), ListSearch.filter(items, "DIÁRIA") { listOf(it.title, it.body) })
+        val plain = listOf(Item("Acao rapida", null))
+        assertEquals(plain, ListSearch.filter(plain, "ação") { listOf(it.title, it.body) })
+    }
 }

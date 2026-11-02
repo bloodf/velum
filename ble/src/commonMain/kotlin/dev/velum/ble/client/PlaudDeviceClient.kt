@@ -1,14 +1,13 @@
 package dev.velum.ble.client
 
 import dev.velum.ble.BleTransport
+import dev.velum.ble.gatt.GattProfiles
+import dev.velum.ble.gatt.GuardedLink
 import dev.velum.protocol.Battery
 import dev.velum.protocol.BatteryReading
 import dev.velum.protocol.Bytes
 import dev.velum.protocol.Commands
 import dev.velum.protocol.DeviceIdentityKeys
-import dev.velum.protocol.CommonSettings
-import dev.velum.protocol.ForbiddenOpcodes
-import dev.velum.protocol.ForbiddenSettings
 import dev.velum.protocol.Framing
 import dev.velum.protocol.HandshakeResponse
 import dev.velum.protocol.HandshakeStatus
@@ -57,6 +56,7 @@ class PlaudDeviceClient(
     private val responseTimeout: Duration = 10.seconds,
     private val protocolVersionHint: Int = 20,
 ) {
+    private val link = GuardedLink(ble)
     private val inbound = Channel<ByteArray>(capacity = 128)
     private val writeMutex = Mutex()
     private var notifyJob: Job? = null
@@ -104,8 +104,7 @@ class PlaudDeviceClient(
                 }
             }
             for (chunk in Unlock.encodeSnSignatureChunks(keys.serialSignature)) {
-                assertOutboundAllowed(chunk)
-                ble.write(chunk, withoutResponse = true)
+                writePlain(chunk, withoutResponse = true)
             }
 
             val first = awaitRaw(responseTimeout) { raw ->
@@ -118,8 +117,7 @@ class PlaudDeviceClient(
                 Commands.UNLOCK_NEED_PUBLIC_KEY -> {
                     val pem = keys.publicKeyPem.encodeToByteArray()
                     for (chunk in Unlock.encodePublicKeyChunks(pem)) {
-                        assertOutboundAllowed(chunk)
-                        ble.write(chunk, withoutResponse = true)
+                        writePlain(chunk, withoutResponse = true)
                     }
                     collectUnlockChunks(Commands.UNLOCK_SESSION_SECRET, secretChunks)
                 }
@@ -355,7 +353,6 @@ class PlaudDeviceClient(
      * Exposed for tests: attempt to send an arbitrary opcode (still guarded).
      */
     suspend fun writeCommandForTest(cmd: Int, params: ByteArray = ByteArray(0)) {
-        ForbiddenOpcodes.requireAllowed(cmd)
         writeOutbound(Framing.encodeCommand(cmd, params))
     }
 
@@ -383,16 +380,21 @@ class PlaudDeviceClient(
         return decoded.payload
     }
 
+    private suspend fun writePlain(packet: ByteArray, withoutResponse: Boolean) =
+        link.write(GattProfiles.PLAUD_WRITE, packet, withoutResponse)
+
     private suspend fun writeOutbound(packet: ByteArray) {
         writeMutex.withLock {
-            assertOutboundAllowed(packet)
             val sec = secret
             if (sec == null) {
-                ble.write(packet, withoutResponse = false)
+                writePlain(packet, withoutResponse = false)
             } else {
-                val sealed = cipher.sealPacket(sec, sendSeq, packet)
-                sendSeq += 1
-                ble.write(sealed, withoutResponse = false)
+                // Guard runs on the plaintext inside GuardedLink; sendSeq advances only after it passes.
+                link.write(GattProfiles.PLAUD_WRITE, packet, withoutResponse = false) {
+                    val sealed = cipher.sealPacket(sec, sendSeq, it)
+                    sendSeq += 1
+                    sealed
+                }
             }
         }
     }
@@ -438,30 +440,6 @@ class PlaudDeviceClient(
         }
         @Suppress("UNREACHABLE_CODE")
         error("unreachable")
-    }
-
-    private fun assertOutboundAllowed(packet: ByteArray) {
-        require(packet.size >= 2) { "Outbound packet too short" }
-        val hasAppPrefix = packet[0] == Framing.APP_PREFIX && packet.size >= 3
-        val opcode = if (hasAppPrefix) {
-            Bytes.readU16Le(packet, 1)
-        } else {
-            Bytes.readU16Le(packet, 0)
-        }
-        ForbiddenOpcodes.requireAllowed(opcode)
-        if (opcode == CommonSettings.CMD) {
-            val paramsOffset = if (hasAppPrefix) 3 else 2
-            val params = if (packet.size > paramsOffset) {
-                packet.copyOfRange(paramsOffset, packet.size)
-            } else {
-                ByteArray(0)
-            }
-            // Cmd 8 read is [settingId]; write is [settingId][value…].
-            // Only writes of forbidden settings are rejected (reads stay allowed).
-            if (params.size > 1) {
-                ForbiddenSettings.requireWritable(params[0].toInt() and 0xFF)
-            }
-        }
     }
 
     companion object {

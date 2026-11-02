@@ -20,8 +20,17 @@ import dev.velum.core.templates.PlaudTemplateCatalog
 import dev.velum.core.templates.TemplateTagVocabulary
 import kotlin.random.Random
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
+import app.cash.sqldelight.db.QueryResult
+import dev.velum.core.search.FtsQuery
+import dev.velum.core.templates.DiscoverFacets
+import dev.velum.core.templates.DiscoverFilter
+import dev.velum.core.templates.DiscoverSearchMode
+import dev.velum.core.templates.DiscoverTemplateQuery
+import kotlinx.coroutines.flow.flow
 
 class VelumRepository(
     private val db: VelumDatabase,
@@ -32,11 +41,15 @@ class VelumRepository(
     /** False on hosts without SQLite FTS5 (e.g. Robolectric). Search falls back to ListSearch. */
     val ftsAvailable: Boolean
 
+    /** Why FTS is unavailable (exception class only), for platform logging; null when available. */
+    val ftsFailure: String?
+
     constructor(handle: DatabaseHandle) : this(handle.database, handle.driver)
 
     init {
         val fts = FtsIndex.ensureSchema(driver)
         ftsAvailable = fts.available
+        ftsFailure = fts.failure
         val seeded = SeedData.maybeSeed(db)
         reconcileRemovedTemplateDuplicates()
         backfillSummaryVersionsFromRecording()
@@ -200,6 +213,119 @@ class VelumRepository(
         withContext(Dispatchers.Default) {
             if (!ftsAvailable) emptyList() else FtsIndex.searchTemplateIds(driver, matchQuery)
         }
+
+    // ---- Discover filters (#102): SQL pushdown, separate from the template CRUD ----
+
+    suspend fun queryDiscoverTemplates(
+        filter: DiscoverFilter,
+        limit: Int,
+        offset: Int = 0,
+    ): List<Template> = withContext(Dispatchers.Default) {
+        discoverQuery(filter) { mode, match ->
+            val built = DiscoverTemplateQuery.page(filter, mode, match)
+            driver.executeQuery(
+                identifier = null,
+                sql = built.sql,
+                mapper = { c ->
+                    val rows = mutableListOf<Template>()
+                    while (c.next().value) {
+                        rows += Template(
+                            id = c.getString(0)!!,
+                            name = c.getString(1)!!,
+                            category = c.getString(2)!!,
+                            description = c.getString(3)!!,
+                            author = c.getString(4)!!,
+                            system_prompt = c.getString(5)!!,
+                            uses = c.getLong(6)!!,
+                            builtin = c.getLong(7)!!,
+                            created_at = c.getLong(8)!!,
+                            featured = c.getLong(9)!!,
+                            tags = c.getString(10)!!,
+                            lang = c.getString(11)!!,
+                            preferred_model = c.getString(12),
+                            preferred_endpoint_profile_id = c.getString(13),
+                        )
+                    }
+                    QueryResult.Value(rows)
+                },
+                parameters = built.args.size + 2,
+            ) {
+                built.args.forEachIndexed { i, a -> bindString(i, a) }
+                bindLong(built.args.size, limit.toLong())
+                bindLong(built.args.size + 1, offset.toLong())
+            }.value
+        }
+    }
+
+    suspend fun countDiscoverTemplates(filter: DiscoverFilter): Long = withContext(Dispatchers.Default) {
+        discoverQuery(filter) { mode, match ->
+            val built = DiscoverTemplateQuery.count(filter, mode, match)
+            driver.executeQuery(
+                identifier = null,
+                sql = built.sql,
+                mapper = { c ->
+                    c.next()
+                    QueryResult.Value(c.getLong(0) ?: 0L)
+                },
+                parameters = built.args.size,
+            ) { built.args.forEachIndexed { i, a -> bindString(i, a) } }.value
+        }
+    }
+
+    suspend fun discoverFacets(filter: DiscoverFilter): DiscoverFacets = withContext(Dispatchers.Default) {
+        fun column(built: DiscoverTemplateQuery.Built): List<String> = driver.executeQuery(
+            identifier = null,
+            sql = built.sql,
+            mapper = { c ->
+                val out = mutableListOf<String>()
+                while (c.next().value) c.getString(0)?.let { out += it }
+                QueryResult.Value(out)
+            },
+            parameters = built.args.size,
+        ) { built.args.forEachIndexed { i, a -> bindString(i, a) } }.value
+        discoverQuery(filter) { mode, match ->
+            DiscoverFacets(
+                categories = column(DiscoverTemplateQuery.categories(filter, mode, match)),
+                tags = column(DiscoverTemplateQuery.tagColumns(filter, mode, match))
+                    .flatMap { TemplateTagVocabulary.decode(it) }.distinct().sorted(),
+                langs = column(DiscoverTemplateQuery.langs(filter, mode, match))
+                    .filter { it.isNotBlank() && it != "und" }.distinct().sorted(),
+            )
+        }
+    }
+
+    /**
+     * Same search semantics as before: FTS hits (ranked) when FTS yields any, else substring
+     * fallback. A MATCH that SQLite rejects (or a missing FTS table) is detected by a probe query
+     * with a trivial mapper and falls back to substring mode; later query errors are not swallowed.
+     */
+    private fun <T> discoverQuery(filter: DiscoverFilter, run: (DiscoverSearchMode?, String?) -> T): T {
+        val match = if (ftsAvailable && filter.search.isNotBlank()) FtsQuery.fromUserInput(filter.search) else null
+        if (match == null) return run(DiscoverSearchMode.Like, null)
+        val ftsHasHits = try {
+            driver.executeQuery(
+                identifier = null,
+                sql = "SELECT COUNT(*) FROM template_fts WHERE template_fts MATCH ?",
+                mapper = { c -> c.next(); QueryResult.Value((c.getLong(0) ?: 0L) > 0L) },
+                parameters = 1,
+            ) { bindString(0, match) }.value
+        } catch (_: Exception) {
+            false
+        }
+        if (!ftsHasHits) return run(DiscoverSearchMode.Like, null)
+        // MATCH syntax was validated above, so errors from here on are real bugs and must surface.
+        return run(DiscoverSearchMode.Fts, match)
+    }
+
+    /** Single-row observe for the template detail screen (no full-table load). */
+    fun observeTemplate(id: String): Flow<Template?> =
+        q.selectTemplateById(id).asFlow().mapToOneOrNull(Dispatchers.Default)
+
+    /** Emits once per template table notification (edits, use counts, imports), not per row count. */
+    fun observeTemplateChanges(): Flow<Long> = flow {
+        var n = 0L
+        q.countTemplates().asFlow().collect { emit(++n) }
+    }
 
     suspend fun setAutoflowEnabled(id: String, enabled: Boolean) = withContext(Dispatchers.Default) {
         q.updateAutoflowEnabled(if (enabled) 1 else 0, id)
@@ -475,20 +601,25 @@ class VelumRepository(
      *
      * The "imported" meta flag is set only after a successful FTS rebuild so a
      * process kill mid-import cannot leave All templates present but unsearchable.
+     * Cancellation is checked per row and rolls the whole import back (#100). A user-edited
+     * builtin (same id, builtin = 0) is never overwritten by a re-import (#100).
      * @return number of rows upserted, or 0 if already imported / asset empty.
      */
     suspend fun ensureFullTemplatesImported(): Int = withContext(Dispatchers.Default) {
         if (q.getMeta(SeedData.META_FULL_TEMPLATES_IMPORTED).executeAsOneOrNull() == "1") {
             return@withContext 0
         }
+        val job = coroutineContext[Job]
         val now = epochSeconds()
         var upserted = 0
         var sawAny = false
         db.transaction {
             PlaudFullTemplateAsset.forEachLine { line ->
+                job?.ensureActive()
                 val entry = PlaudTemplateCatalog.parseJsonlLine(line) ?: return@forEachLine
                 sawAny = true
                 val existing = q.selectTemplateById(entry.id).executeAsOneOrNull()
+                if (existing != null && existing.builtin == 0L) return@forEachLine
                 val uses = existing?.uses ?: entry.uses
                 val createdAt = existing?.created_at ?: now
                 val tagsEncoded = TemplateTagVocabulary.encode(
@@ -683,7 +814,11 @@ class VelumRepository(
             }
             if (templates) {
                 q.selectTemplates().executeAsList().forEach { t ->
-                    indexTemplate(t.id, t.name, t.description, t.category, t.system_prompt, t.tags)
+                    // Table was cleared above: plain inserts keep the rebuild linear (#100).
+                    FtsIndex.upsertTemplate(
+                        driver, t.id, t.name, t.description, t.category, t.system_prompt, t.tags,
+                        replaceExisting = false,
+                    )
                 }
             }
         }
