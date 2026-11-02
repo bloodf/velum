@@ -57,6 +57,16 @@ kotlin {
             }
         }
 
+        val androidUnitTest by getting {
+            dependencies {
+                implementation(libs.kotlin.test)
+                implementation(libs.junit)
+                implementation(libs.androidx.test.ext.junit)
+                implementation(libs.robolectric)
+                implementation(libs.kotlinx.coroutines.test)
+            }
+        }
+
         // With the default hierarchy, apple/ios intermediate sets exist after applyDefaultHierarchyTemplate.
         val iosMain by getting {
             dependsOn(mobileMain)
@@ -73,5 +83,10 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+    }
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+        }
     }
 }
