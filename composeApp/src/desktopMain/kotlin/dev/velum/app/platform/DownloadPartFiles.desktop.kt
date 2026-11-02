@@ -41,6 +41,8 @@ actual fun streamToFileAtomically(
                 StandardCopyOption.REPLACE_EXISTING,
             )
         } catch (_: AtomicMoveNotSupportedException) {
+            // Not atomic: may briefly leave neither file. Only reached where ATOMIC_MOVE is
+            // unsupported, which a same-directory rename on ext4/f2fs never is.
             Files.move(part.toPath(), File(finalPath).toPath(), StandardCopyOption.REPLACE_EXISTING)
         }
         syncDirectory(part.absoluteFile.parentFile)
