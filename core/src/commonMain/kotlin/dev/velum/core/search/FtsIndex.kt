@@ -16,6 +16,8 @@ object FtsIndex {
         val available: Boolean,
         /** True when template_fts was dropped/recreated (caller must rebuild rows). */
         val templateSchemaRecreated: Boolean,
+        /** Exception class when FTS is unavailable (no message: it may echo SQL); null otherwise. */
+        val failure: String? = null,
     )
 
     fun ensureSchema(driver: SqlDriver): EnsureResult {
@@ -83,9 +85,9 @@ object FtsIndex {
                 )
             }
             EnsureResult(available = true, templateSchemaRecreated = needsTagsUpgrade)
-        } catch (_: Exception) {
-            // Robolectric / stripped SQLite: "no such module: fts5"
-            EnsureResult(available = false, templateSchemaRecreated = false)
+        } catch (e: Exception) {
+            // Robolectric / framework SQLite without FTS5: "no such module: fts5"
+            EnsureResult(available = false, templateSchemaRecreated = false, failure = e::class.simpleName ?: "Exception")
         }
     }
 
