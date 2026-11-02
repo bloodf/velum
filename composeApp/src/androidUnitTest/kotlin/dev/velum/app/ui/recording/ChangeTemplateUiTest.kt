@@ -23,6 +23,10 @@ import dev.velum.app.ui.theme.VelumTheme
 import dev.velum.core.data.DriverFactory
 import dev.velum.core.model.ComputeMode
 import dev.velum.core.security.InMemorySecureStore
+import dev.velum.core.security.SecureStore
+import dev.velum.core.security.SecureStoreUnavailableException
+import java.security.ProviderException
+import java.util.concurrent.atomic.AtomicBoolean
 import java.nio.file.Files
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -76,12 +80,18 @@ class ChangeTemplateUiTest {
         }
     }
 
-    private fun fixture(summaryMode: ComputeMode, block: (AppContainer) -> Unit) {
+    private fun fixture(
+        summaryMode: ComputeMode,
+        store: SecureStore = InMemorySecureStore(),
+        status: String = "ready",
+        setup: suspend (AppContainer) -> Unit = {},
+        block: (AppContainer) -> Unit,
+    ) {
         DeviceWalkMode.enabled = true
         val context = ApplicationProvider.getApplicationContext<Context>()
         context.deleteDatabase("velum.db")
         val root = ModelStoreDir(Files.createTempDirectory("velum-ct-ui-test").toString())
-        val container = AppContainer(InMemorySecureStore(), DriverFactory(context), modelStoreRoot = root)
+        val container = AppContainer(store, DriverFactory(context), modelStoreRoot = root)
         runBlocking {
             container.settingsRepository.load()
             container.settingsRepository.setSummaryMode(summaryMode)
@@ -94,8 +104,9 @@ class ChangeTemplateUiTest {
             container.repository.insertRecording(
                 id = "rec", sessionId = null, folderId = null, title = "Weekly", source = "phone", deviceSerial = null,
                 startedAt = 1, durationSeconds = 60, sizeBytes = 0, localPath = null,
-                transcript = "Speaker 1: ship on Friday.", summaryMarkdown = "## Prior heading\n- prior point", status = "ready",
+                transcript = "Speaker 1: ship on Friday.", summaryMarkdown = "## Prior heading\n- prior point", status = status,
             )
+            setup(container)
         }
         val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup()
         try {
@@ -190,4 +201,50 @@ class ChangeTemplateUiTest {
             // The prior summary is kept as a baseline version without a template; every templated version is a job.
             assertEquals(listOf("ui103-target"), versions.mapNotNull { it.template_id }, "one job, with the picked template")
         }
+
+    @Test
+    fun diarization_prompt_has_download_and_cancel_but_no_switch_to_api() =
+        fixture(
+            ComputeMode.Local,
+            status = "failed",
+            setup = { c ->
+                c.settingsRepository.setTranscriptionMode(ComputeMode.Api)
+                c.settingsRepository.setSummaryMode(ComputeMode.Api)
+                c.settingsRepository.setDiarizationMode(ComputeMode.Local)
+            },
+        ) { container ->
+            tap(PtBr.ux.retryProcessing)
+
+            await(PtBr.localModelMissingTitle)
+            assertTrue(shows(PtBr.downloadModel))
+            assertTrue(shows(PtBr.cancel), "an explicit way out is offered")
+            assertTrue(!shows(PtBr.switchToApi), "no API route exists for diarization")
+            tap(PtBr.cancel)
+            compose.waitUntil(10_000) { !shows(PtBr.localModelMissingTitle) }
+            assertEquals("failed", runBlocking { container.repository.getRecording("rec")!!.status })
+        }
+
+    @Test
+    fun storage_failure_on_switch_to_api_is_shown_and_nothing_is_enqueued() {
+        val memory = InMemorySecureStore()
+        val armed = AtomicBoolean(false)
+        val failing = object : SecureStore by memory {
+            override suspend fun putString(key: String, value: String) {
+                // setSummaryMode writes its mode key first, so this is the call that must fail.
+                if (armed.get() && key == "ai.summary_mode") throw SecureStoreUnavailableException(ProviderException("synthetic"))
+                memory.putString(key, value)
+            }
+        }
+        fixture(ComputeMode.Local, store = failing) { container ->
+            pickTemplateAndApply()
+            await(PtBr.localModelMissingTitle)
+            armed.set(true)
+
+            tap(PtBr.switchToApi)
+
+            await(PtBr.ux.secureStorageUnavailable)
+            assertEquals(0, runBlocking { container.repository.getSummaryVersions("rec") }.count { it.template_id == "ui103-target" })
+            assertEquals(ComputeMode.Local, container.settingsRepository.settings.value.summaryMode)
+        }
+    }
 }

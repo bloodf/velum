@@ -783,32 +783,37 @@ fun RecordingDetailScreen(
             },
             // Diarization has no API route, so its prompt has no such button.
             onSwitchToApi = if (need.task == AiTask.Diarization) null else {
-              {
-                if (modelPrompt === need) {
-                    // Take the pending request and close the prompt synchronously, so a second tap that lands
-                    // before recomposition finds nothing to run instead of enqueueing a default-template job.
-                    val retranscribe = pendingRetranscribe ?: true
-                    val templateId = pendingTemplateId
-                    val apiOverride = pendingApiOverride
-                    modelPrompt = null
-                    pendingRetranscribe = null
-                    pendingTemplateId = null
-                    pendingApiOverride = null
-                    scope.launch {
-                        // A storage failure is reported like on the other settings screens and nothing is enqueued.
-                        val switched = container.settingsViewModel.handleStorageFailure {
-                            when (need.task) {
-                                AiTask.Transcription ->
-                                    container.settingsRepository.setTranscriptionMode(ComputeMode.Api)
-                                AiTask.Summary ->
-                                    container.settingsRepository.setSummaryMode(ComputeMode.Api)
-                                AiTask.Diarization -> Unit
+                {
+                    if (modelPrompt === need) {
+                        // Take the pending request and close the prompt synchronously, so a second tap that lands
+                        // before recomposition finds nothing to run instead of enqueueing a default-template job.
+                        val retranscribe = pendingRetranscribe ?: true
+                        val templateId = pendingTemplateId
+                        val apiOverride = pendingApiOverride
+                        modelPrompt = null
+                        pendingRetranscribe = null
+                        pendingTemplateId = null
+                        pendingApiOverride = null
+                        scope.launch {
+                            // A storage failure is reported like on the other settings screens and nothing is enqueued.
+                            val switched = container.settingsViewModel.handleStorageFailure {
+                                when (need.task) {
+                                    AiTask.Transcription ->
+                                        container.settingsRepository.setTranscriptionMode(ComputeMode.Api)
+                                    AiTask.Summary ->
+                                        container.settingsRepository.setSummaryMode(ComputeMode.Api)
+                                    AiTask.Diarization -> Unit
+                                }
+                            }
+                            if (switched) {
+                                enqueueAfterGate(retranscribe, templateId, apiOverride)
+                            } else {
+                                // Visible on this screen even when the app-level storage notice was already shown.
+                                processError = strings.ux.secureStorageUnavailable
                             }
                         }
-                        if (switched) enqueueAfterGate(retranscribe, templateId, apiOverride)
                     }
                 }
-              }
             },
             onDismiss = {
                 modelPrompt = null
