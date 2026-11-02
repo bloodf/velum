@@ -30,6 +30,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -43,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.velum.app.di.AppContainer
 import dev.velum.app.i18n.LocalStrings
+import dev.velum.app.i18n.formatTemplate
 import dev.velum.app.platform.AppPermission
 import dev.velum.app.platform.ExportFolderStore
 import dev.velum.app.platform.HapticKind
@@ -58,8 +60,15 @@ import dev.velum.app.ui.theme.VelumInk
 import dev.velum.app.ui.theme.VelumInkSecondary
 import dev.velum.app.ui.theme.VelumOnWarningContainer
 import dev.velum.app.ui.theme.VelumSurface
+import dev.velum.app.ui.theme.velumColors
 import dev.velum.core.calendar.CalendarLookupResult
 import dev.velum.core.data.epochSecondsNow
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+private enum class StatusTone { Neutral, Ok, Warn }
 
 @Composable
 fun IntegrationsScreen(
@@ -82,10 +91,15 @@ fun IntegrationsScreen(
         return
     }
     var statusLabel by remember { mutableStateOf(strings.localCalendarHint) }
-    var statusColor by remember { mutableStateOf(VelumInkSecondary) }
+    // Store the tone, not the colour: colour tokens must be read at use so a theme flip applies.
+    // LocalVelumColors is provided by VelumTheme during composition, so this follows a theme flip on its own.
+    val palette = velumColors()
+    var statusTone by remember { mutableStateOf(StatusTone.Neutral) }
     var needsPermission by remember { mutableStateOf(false) }
     var refreshTick by remember { mutableStateOf(0) }
-    var folderUri by remember { mutableStateOf(ExportFolderStore.currentUri()) }
+    // SharedPreferences read: loaded off the main thread (StrictMode), null until then.
+    var folderUri by remember { mutableStateOf<String?>(null) }
+    val ioScope = rememberCoroutineScope()
     var webhookUrl by remember { mutableStateOf("") }
     var webhookSecret by remember { mutableStateOf("") }
     var webhookConfigured by remember { mutableStateOf(false) }
@@ -106,6 +120,10 @@ fun IntegrationsScreen(
         refreshTick++
     }
 
+    LaunchedEffect(refreshTick) {
+        folderUri = withContext(Dispatchers.IO) { ExportFolderStore.currentUri() }
+    }
+
     LaunchedEffect(container, refreshTick) {
         when (val result = container.calendarProvider.currentOrNextEvent(epochSecondsNow() * 1000)) {
             is CalendarLookupResult.Ok -> {
@@ -113,16 +131,16 @@ fun IntegrationsScreen(
                 val title = result.currentOrNext?.title
                 if (title.isNullOrBlank()) {
                     statusLabel = strings.oauthDisconnected
-                    statusColor = VelumInkSecondary
+                    statusTone = StatusTone.Neutral
                 } else {
                     statusLabel = "${strings.oauthConnected}: $title"
-                    statusColor = Color(0xFF15803D)
+                    statusTone = StatusTone.Ok
                 }
             }
             CalendarLookupResult.PermissionDenied -> {
                 needsPermission = true
                 statusLabel = strings.calendarPermissionBlocked
-                statusColor = VelumOnWarningContainer
+                statusTone = StatusTone.Warn
             }
             is CalendarLookupResult.Unavailable -> {
                 needsPermission = false
@@ -131,10 +149,9 @@ fun IntegrationsScreen(
                 } else {
                     result.reason.ifBlank { strings.ux.androidContextUnavailable }
                 }
-                statusColor = VelumOnWarningContainer
+                statusTone = StatusTone.Warn
             }
         }
-        folderUri = ExportFolderStore.currentUri()
         container.settingsViewModel.handleStorageFailure {
             val configured = container.webhookSettings.isConfigured()
             val hasSecret = container.webhookSettings.hasSecret()
@@ -155,9 +172,11 @@ fun IntegrationsScreen(
                     onClick = {
                         haptics.perform(HapticKind.Medium)
                         confirmClearFolder = false
-                        ExportFolderStore.clear()
                         folderUri = null
-                        refreshTick++
+                        ioScope.launch {
+                            withContext(Dispatchers.IO) { ExportFolderStore.clear() }
+                            refreshTick++
+                        }
                     },
                 ) { Text(strings.confirm) }
             },
@@ -209,7 +228,11 @@ fun IntegrationsScreen(
                 title = strings.localCalendar,
                 body = strings.localCalendarHint,
                 status = statusLabel,
-                statusColor = statusColor,
+                statusColor = when (statusTone) {
+                    StatusTone.Neutral -> palette.inkSecondary
+                    StatusTone.Ok -> Color(0xFF15803D)
+                    StatusTone.Warn -> palette.onWarningContainer
+                },
             ) {
                 if (needsPermission) {
                     Spacer(Modifier.height(12.dp))
@@ -239,7 +262,7 @@ fun IntegrationsScreen(
                 } else {
                     strings.ux.folderExportConfigured
                 },
-                statusColor = if (folderUri.isNullOrBlank()) VelumInkSecondary else Color(0xFF15803D),
+                statusColor = if (folderUri.isNullOrBlank()) palette.inkSecondary else Color(0xFF15803D),
             ) {
                 Spacer(Modifier.height(12.dp))
                 BlackButton(strings.ux.folderExportPick, pickExportFolder)
@@ -262,7 +285,7 @@ fun IntegrationsScreen(
                 } else {
                     strings.oauthDisconnected
                 },
-                statusColor = if (webhookConfigured) Color(0xFF15803D) else VelumInkSecondary,
+                statusColor = if (webhookConfigured) Color(0xFF15803D) else palette.inkSecondary,
             ) {
                 Spacer(Modifier.height(12.dp))
                 Text(strings.ux.webhookUrl, color = VelumInkSecondary, fontSize = 13.sp)
@@ -345,11 +368,11 @@ fun IntegrationsScreen(
                                             webhookMessageOk = false
                                         }
                                         WebhookTestResult.isHttpSuccess(detail) -> {
-                                            webhookMessage = strings.ux.webhookPostedFormat.format(detail)
+                                            webhookMessage = formatTemplate(strings.ux.webhookPostedFormat, detail)
                                             webhookMessageOk = true
                                         }
                                         else -> {
-                                            webhookMessage = strings.ux.webhookFailedFormat.format(detail)
+                                            webhookMessage = formatTemplate(strings.ux.webhookFailedFormat, detail)
                                             webhookMessageOk = false
                                         }
                                     }

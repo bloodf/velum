@@ -46,7 +46,7 @@ Phone-only / external (no Plaud required):
 | User template JSON | Templates → JSON import | Upserts local templates; built-ins untouched |
 
 ### Audio / AI
-- [x] Ogg demux + Opus decode (kopus) → PCM
+- [x] Ogg demux + Opus decode (kopus) → PCM 16 kHz mono (same contract as import; OpusHead rate/channels are metadata only, #95)
 - [x] OpenAI-compatible API: URL / key / model list refresh / transcribe / chat (BYO URL only; no Plaud hosts)
 - [x] Per-task Local vs API settings (mix allowed); **default Local** for every task
 - [x] `resolveModeOrPrompt`: Local when model Ready, else UI prompts Download or switch to API
@@ -90,6 +90,8 @@ Phone-only / external (no Plaud required):
 - [x] Glossary + memory tables in `Velum.sq`; CRUD under Personalization / Memory
 - [x] Local JSON/Markdown templates create/edit persist locally (community/cloud templates removed)
 - [x] Built-in catalog: **15 Velum originals** + curated **1,500 Plaud** templates (100×15 categories; unique names within category; lazy classpath asset) + optional Velum PR contributions (`contributor` credit on detail only). Plaud author/official stay in JSONL + `docs/TEMPLATES_CREDITS.md` (not shown in app UI). Discover: category tabs, FTS over name/description/body, popularity sort. Local JSON importer kept (`TemplateJsonImporter`). Sync via `scripts/sync-plaud-templates.sh`
+- [x] Official-template baseline (#101): the 41-row official baseline (`core/src/jvmTest/resources/templates/official_baseline.txt`) is the current official set and is enforced by `TemplateHygieneCatalogTest`. The Featured floor (100 distinct exact bodies per category, renamed copies counted once) is enforced by the same test.
+- [ ] Official-template external inventory check (#101): **blocked (#101 owner decision)**. No citable authoritative inventory exists given the Plaud branding rules, so the baseline is not checked against one. Nothing is invented to fill a gap.
 - [x] CalendarProvider read current/next event title to name recordings after sync (permission-denied reported clearly)
 - [x] Runtime READ_CALENDAR permission with rationale (Integrations + AutoFlow blocked path)
 
@@ -140,6 +142,8 @@ Phone-only / external (no Plaud required):
 
 - [ ] **One-time device identity values** (`snSignature` / `sn-sign` + bind token + optional RSA) from owner Plaud dump — **cannot be generated locally**. Import UI + JSON schema + unit tests ready (`docs/PLAUD_IMPORT.md`); waiting on Heitor export. Hardware checklist: `docs/HARDWARE_VALIDATION.md`.
 - [ ] Confirm Ogg Opus rate/channels + PLAUD.AI decrypt against a real Note Pro capture
+  - Synthetic coverage only (#95): `OggOpusPlaudSyntheticTest` (generated Ogg Opus mono/stereo x 8/12/16/24/48 kHz, malformed/truncated, PLAUD.AI round-trip, wrong key/nonce, tamper) and `OpusDecode16kMonoTest` (48 kHz stereo → 16 kHz mono: rate, channels, duration, pitch). Real-device rate/channels, listening and ASR quality remain unconfirmed (#7).
+- [ ] Real Note Pro BLE unlock / reconnect / battery (#5) and FE10-only with E2EE off (#9) — **simulated coverage only** (#93, #97): `SimulatedPeripheralScenariosTest` (`:ble:jvmTest`) and `DeviceSimulatedPeripheralTest` (`:composeApp:testDebugUnitTest`) run synthetic identity against the in-process fake peripheral. Simulator success is not evidence of device support. The client tolerates an FE10-only unlock (no FE11) in simulation; whether a real Note Pro accepts it is unconfirmed (#9). Reproduce: `./gradlew :ble:jvmTest --rerun` and `./gradlew :composeApp:testDebugUnitTest --tests '*DeviceSimulatedPeripheralTest*'`.
 
 ## Removed (server inventory → local)
 
@@ -152,7 +156,7 @@ Phone-only / external (no Plaud required):
 ## Confirm only on owner’s real Plaud Note Pro
 
 - Live BLE advertise `portVersion` / project 881, unlock with owner keys, battery notify
-- Full multi-hour download resume + CRC
+- Full multi-hour download resume + CRC. **Simulated only** (#94): `ResumableSessionDownloadTest` and `TransferIntegrityTest` (`:ble:jvmTest`) cover a 2-hour synthetic transfer, resume after disconnects and integrity failures, and CRC handling against the fake peripheral. Still unconfirmed on hardware (#6): whether a Note Pro honours a non-zero SYNC_FILE_START offset, whether chunk offsets are absolute (community protocol notes say so), how it answers SYNC_FILE_STOP and which CRC it reports (the only capture shows `0xFFFF`), real transfer time and battery drain. Offset gaps and short transfers are hard failures everywhere, because decryption is positional; real-device CRC mismatches are report-only. One real download under #6 should check the stop reply and the Ogg page CRCs of the result.
 - On-device Parakeet/Whisper/Gemma quality + thermal throttling on physical silicon
 - Whether FE10 alone works with E2EE off (no FE11) after one-time key import
 - Wi-Fi SoftAP against real Note Pro hardware (JVM fake path is green)

@@ -17,16 +17,16 @@ actual class ModelStoreDir actual constructor(absolutePath: String) {
     actual fun isDirectory(): Boolean = file.isDirectory
 
     actual fun createDirectories() {
-        if (!file.exists()) file.mkdirs()
+        ensureDir(file)
     }
 
     actual fun writeBytes(bytes: ByteArray) {
-        file.parentFile?.mkdirs()
+        file.parentFile?.let(::ensureDir)
         file.writeBytes(bytes)
     }
 
     actual fun appendBytes(bytes: ByteArray) {
-        file.parentFile?.mkdirs()
+        file.parentFile?.let(::ensureDir)
         file.appendBytes(bytes)
     }
 
@@ -59,6 +59,25 @@ actual class ModelStoreDir actual constructor(absolutePath: String) {
     actual fun renameTo(dest: ModelStoreDir): Boolean {
         val target = File(dest.absolutePath)
         target.parentFile?.mkdirs()
+        if (file.isFile && !target.isDirectory) {
+            // Atomic replace: readers see the old file or the new one, never neither.
+            return runCatching {
+                try {
+                    java.nio.file.Files.move(
+                        file.toPath(),
+                        target.toPath(),
+                        java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                    )
+                } catch (_: java.nio.file.AtomicMoveNotSupportedException) {
+                    java.nio.file.Files.move(
+                        file.toPath(),
+                        target.toPath(),
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                    )
+                }
+            }.isSuccess
+        }
         if (target.exists()) target.deleteRecursively()
         return file.renameTo(target)
     }
@@ -67,4 +86,9 @@ actual class ModelStoreDir actual constructor(absolutePath: String) {
 actual fun defaultModelStoreRoot(): ModelStoreDir {
     val home = System.getProperty("user.home") ?: "."
     return ModelStoreDir(File(home, ".velum/models").absolutePath)
+}
+
+// Files.createDirectories throws on a symlink to a directory; only create when it is not one already.
+private fun ensureDir(dir: File) {
+    if (!dir.isDirectory) java.nio.file.Files.createDirectories(dir.toPath())
 }

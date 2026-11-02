@@ -38,3 +38,7 @@ Hex dumps exercised in `:plaud-protocol` tests (from community captures / docs):
 - Plaud account tokens or refresh tokens
 - Embedded Fernet / cloud response keys from official apps
 - User RSA private keys or serial signatures (user import only)
+
+## Simulated FE10-only results (#97)
+
+`SimulatedPeripheralScenariosTest` configures `FakePlaudPeripheral(requirePublicKey = false)` with a synthetic identity. Recorded traffic: the app sends only FE10 chunks before the session secret, the peripheral never emits FE11, the app never sends FE12 public-key chunks, and list, download (bytes equal the fixture) and reconnect all succeed. The E2EE-on path still runs FE10, then FE11/FE12. Whether a real Note Pro accepts FE10 alone is unresolved and tracked in #9.

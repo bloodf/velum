@@ -6,6 +6,8 @@ import com.juul.kable.Scanner
 import com.juul.kable.State
 import com.juul.kable.WriteType
 import com.juul.kable.characteristicOf
+import dev.velum.ble.gatt.GattProfiles
+import dev.velum.ble.gatt.GattWrite
 import dev.velum.core.model.ConnectedDevice
 import dev.velum.protocol.PlaudAdvertisement
 import dev.velum.protocol.PlaudUuids
@@ -86,7 +88,8 @@ class KableBleTransport : BleTransport {
         scanJob = scope.launch {
             try {
                 scanner.advertisements.collect { adv ->
-                    val device = adv.toConnectedDevice()
+                    // The scanner also matches on company id alone; drop those whose payload is not Plaud.
+                    val device = adv.toConnectedDevice() ?: return@collect
                     seen[device.id] = adv
                     _devices.update { current ->
                         val without = current.filterNot { it.id == device.id }
@@ -114,6 +117,11 @@ class KableBleTransport : BleTransport {
                 _state.value = BleConnectionState.Failed("Unknown device $deviceId — scan first")
                 return
             }
+        // Validate before opening a peripheral so a bad advert never leaks a connection or notify job.
+        val device = adv.toConnectedDevice() ?: run {
+            _state.value = BleConnectionState.Failed("Device $deviceId is not a Plaud recorder")
+            return
+        }
         stopScan()
         _state.value = BleConnectionState.Connecting(deviceId)
         try {
@@ -125,7 +133,6 @@ class KableBleTransport : BleTransport {
             notifyJob = scope.launch {
                 p.observe(notifyCharacteristic).collect { notifyFlow.emit(it) }
             }
-            val device = adv.toConnectedDevice()
             _state.value = BleConnectionState.Connected(device)
             disconnectWatchJob?.cancel()
             disconnectWatchJob = scope.launch {
@@ -157,18 +164,22 @@ class KableBleTransport : BleTransport {
         _state.value = BleConnectionState.Idle
     }
 
-    override suspend fun write(payload: ByteArray, withoutResponse: Boolean) {
+    override suspend fun writeRaw(write: GattWrite) {
         val p = peripheral ?: error("Not connected")
-        val type = if (withoutResponse) WriteType.WithoutResponse else WriteType.WithResponse
-        p.write(writeCharacteristic, payload, type)
+        require(write.char in GattProfiles.Plaud.writes) { "Unsupported write characteristic ${write.char}" }
+        val type = if (write.withoutResponse) WriteType.WithoutResponse else WriteType.WithResponse
+        p.write(writeCharacteristic, write.bytes, type)
     }
 
     override fun notifications(): Flow<ByteArray> = notifyFlow.asSharedFlow()
 
-    private fun Advertisement.toConnectedDevice(): ConnectedDevice {
+    /** Null when the advert is not a Plaud service advert, not valid 0x005D data, and not Plaud-named 0x005D data. */
+    private fun Advertisement.toConnectedDevice(): ConnectedDevice? {
         val mfg = manufacturerData(PlaudUuids.MANUFACTURER_ID)
-            ?: manufacturerData?.data
-        val parsed = mfg?.let { PlaudAdvertisement.parseManufacturerData(it) }
+        val parsed = mfg?.let { PlaudAdvertisement.parse(PlaudUuids.MANUFACTURER_ID, it) }
+        val hasPlaudService = uuids.contains(Uuid.parse(PlaudUuids.SERVICE))
+        // Strict parse failures with a Plaud-looking name are still listed (model/serial null).
+        if (!PlaudAdvertisement.shouldList(hasPlaudService, mfg, name ?: peripheralName)) return null
         return ConnectedDevice(
             id = identifier.toString(),
             name = name ?: peripheralName,

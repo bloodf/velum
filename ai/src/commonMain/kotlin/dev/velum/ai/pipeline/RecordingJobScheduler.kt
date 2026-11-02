@@ -2,9 +2,12 @@ package dev.velum.ai.pipeline
 
 import dev.velum.core.settings.ApiModelOverride
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /**
@@ -41,30 +44,29 @@ fun createCoroutineRecordingJobScheduler(
     processor: RecordingProcessor,
     scope: CoroutineScope,
 ): RecordingJobScheduler {
-    val lock = Any()
-    val inFlight = mutableMapOf<String, Job>()
+    // Atomic CAS map (common; `synchronized` is JVM-only). The job starts only after it is
+    // registered, so its own cleanup can never run before the registration.
+    val inFlight = MutableStateFlow<Map<String, Job>>(emptyMap())
     return RecordingJobScheduler { recordingId, templateId, retranscribe, apiModelOverride ->
-        synchronized(lock) {
-            val previous = inFlight[recordingId]
-            lateinit var job: Job
-            job = scope.launch {
-                previous?.cancelAndJoin()
-                try {
-                    processor.process(
-                        recordingId = recordingId,
-                        templateId = templateId,
-                        retranscribe = retranscribe,
-                        apiModelOverride = apiModelOverride,
-                    ).collect { }
-                } finally {
-                    synchronized(lock) {
-                        if (inFlight[recordingId] === job) {
-                            inFlight.remove(recordingId)
-                        }
-                    }
-                }
+        var previous: Job? = null
+        lateinit var job: Job
+        job = scope.launch(start = CoroutineStart.LAZY) {
+            previous?.cancelAndJoin()
+            try {
+                processor.process(
+                    recordingId = recordingId,
+                    templateId = templateId,
+                    retranscribe = retranscribe,
+                    apiModelOverride = apiModelOverride,
+                ).collect { }
+            } finally {
+                inFlight.update { if (it[recordingId] === job) it - recordingId else it }
             }
-            inFlight[recordingId] = job
         }
+        inFlight.update { current ->
+            previous = current[recordingId]
+            current + (recordingId to job)
+        }
+        job.start()
     }
 }

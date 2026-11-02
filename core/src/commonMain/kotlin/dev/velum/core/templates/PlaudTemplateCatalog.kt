@@ -89,8 +89,9 @@ object PlaudTemplateCatalog {
             sb.appendLine()
             sb.appendLine("### Authors")
             sb.appendLine()
-            entries.groupBy { it.author }
-                .toSortedMap(String.CASE_INSENSITIVE_ORDER)
+            // Common stdlib (toSortedMap is JVM-only): same case-insensitive author order.
+            entries.groupBy { it.author }.entries
+                .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.key })
                 .forEach { (author, list) ->
                     sb.appendLine("- **$author** — ${list.size} template(s)")
                 }

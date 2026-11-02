@@ -201,7 +201,7 @@ class AskAcrossRecordings(
     private fun formatTimestamp(totalSeconds: Long): String {
         val m = totalSeconds / 60
         val s = totalSeconds % 60
-        return "%d:%02d".format(m, s)
+        return "$m:${s.toString().padStart(2, '0')}"
     }
 
     private suspend fun ensureApiKeyIfNeeded(mode: ComputeMode) {

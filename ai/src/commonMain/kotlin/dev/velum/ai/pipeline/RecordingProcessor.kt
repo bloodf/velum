@@ -1,6 +1,9 @@
 package dev.velum.ai.pipeline
 
+import dev.velum.ai.ApiErrorSanitizer
 import dev.velum.ai.MissingApiKeyException
+import dev.velum.ai.AiApiException
+import dev.velum.ai.audio.OpusDecoder
 import dev.velum.ai.audio.createOpusDecoder
 import dev.velum.ai.engine.AiTask
 import dev.velum.ai.engine.AiTaskRouter
@@ -16,14 +19,39 @@ import dev.velum.ai.local.ModelNotReadyException
 import dev.velum.ai.local.ModelStoreDir
 import dev.velum.ai.local.defaultModelStoreRoot
 import dev.velum.core.data.VelumRepository
+import dev.velum.core.model.ProcessingWarning
 import dev.velum.core.model.ComputeMode
 import dev.velum.core.settings.AiApiTask
 import dev.velum.core.settings.ApiModelOverride
 import dev.velum.core.settings.SettingsRepository
 import dev.velum.core.templates.BuiltinTemplateCatalog
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.withContext
+
+/** Progress message when the Ogg source ended mid-page; only the decodable part is processed. */
+const val TRUNCATED_AUDIO_MESSAGE = "Audio file is truncated; processing the part that could be decoded"
+const val INSUFFICIENT_STORAGE_MESSAGE =
+    "Not enough free storage to process this recording. Free up space and try again."
+
+/** True when [t] or a cause reports a full disk (ENOSPC); message text is all common code can see. */
+internal fun isOutOfStorage(t: Throwable): Boolean =
+    // AiApiException messages come from a remote provider, not this device's disk.
+    generateSequence(t) { it.cause }.take(8).filter { it !is AiApiException }.any { e ->
+        val m = e.message.orEmpty()
+        m.contains("ENOSPC") || m.contains("No space left", ignoreCase = true) || m.contains("disk is full", ignoreCase = true)
+    }
+
+/** Removes spilled PCM dirs (`tmp/pcm-*`) left by a process death mid-decode. Run only when no job is active. */
+fun sweepOrphanPcmSpill(root: ModelStoreDir = defaultModelStoreRoot()): Int =
+    root.resolve("tmp").takeIf { it.isDirectory() }?.listChildren().orEmpty()
+        .filter { it.name.startsWith("pcm-") }
+        .count { runCatching { it.deleteRecursively() }; !it.exists() }
 
 /**
  * End-to-end job: decode → transcribe → diarize → markdown transcript → summarize → DB.
@@ -37,6 +65,7 @@ class RecordingProcessor(
         runCatching { ModelStoreDir(path).deleteRecursively() }
     },
     private val thermal: ThermalPolicy = NoOpThermalPolicy,
+    private val opusDecoder: () -> OpusDecoder = ::createOpusDecoder,
 ) {
     fun process(
         recordingId: String,
@@ -45,6 +74,8 @@ class RecordingProcessor(
         apiModelOverride: ApiModelOverride? = null,
     ): Flow<JobProgress> = flow {
         emit(JobProgress.Running(0.05f, "Starting"))
+        val priorStatus = repository.getRecording(recordingId)?.status
+        repository.setProcessingError(recordingId, null)
         repository.updateStatus(recordingId, "generating")
 
         try {
@@ -55,12 +86,15 @@ class RecordingProcessor(
             val filename: String
             val sampleRate: Int
             val localPath = recording.local_path
+            val job = currentCoroutineContext()[Job]
             val spillRoot = ModelStoreDir(defaultModelStoreRoot().absolutePath)
                 .resolve("tmp")
                 .resolve("pcm-$recordingId")
             var pcmBuffer: PcmAudioBuffer = PcmAudioBuffer.Memory(ByteArray(0))
+            var truncatedAudio = false
             try {
-            if (!localPath.isNullOrBlank()) {
+            // Summary-only runs (change template) use the stored transcript; audio is not needed.
+            if (retranscribe && !localPath.isNullOrBlank()) {
                 emit(JobProgress.Running(0.1f, "Decoding audio"))
                 awaitThermalGate { emit(it) }
                 filename = localPath.substringAfterLast('/')
@@ -70,9 +104,13 @@ class RecordingProcessor(
                     filename.endsWith(".opus", ignoreCase = true)
                 if (oggByExt) {
                     // Stream Ogg pages from disk — never hold full Ogg or PCM on the heap.
-                    val meta = createOpusDecoder().decodePathToPcmFile(localPath, pcmFile)
+                    val meta = opusDecoder().decodePathToPcmFile(localPath, pcmFile) { job?.ensureActive() }
                     sampleRate = meta.sampleRateHz
                     pcmBuffer = PcmAudioBuffer.fromExistingFile(pcmFile, meta.sizeBytes)
+                    if (meta.truncated) {
+                        truncatedAudio = true
+                        emit(JobProgress.Running(0.2f, TRUNCATED_AUDIO_MESSAGE))
+                    }
                 } else if (filename.endsWith(".wav", ignoreCase = true)) {
                     // Stream WAV from disk — probe header only, then copy PCM slices.
                     val src = ModelStoreDir(localPath)
@@ -92,14 +130,18 @@ class RecordingProcessor(
                     } else {
                         (fileLen - pcmStart).coerceAtLeast(0L)
                     }
-                    copyFileRangeToPcm(src, pcmStart, pcmLen, pcmFile)
+                    copyFileRangeToPcm(src, pcmStart, pcmLen, pcmFile) { job?.ensureActive() }
                     pcmBuffer = PcmAudioBuffer.fromExistingFile(pcmFile, pcmLen)
                 } else {
                     val raw = readFileBytes(localPath)
                     if (looksLikeOgg(raw)) {
-                        val meta = createOpusDecoder().decodeToPcmFile(raw, pcmFile)
+                        val meta = opusDecoder().decodeToPcmFile(raw, pcmFile)
                         sampleRate = meta.sampleRateHz
                         pcmBuffer = PcmAudioBuffer.fromExistingFile(pcmFile, meta.sizeBytes)
+                        if (meta.truncated) {
+                            truncatedAudio = true
+                            emit(JobProgress.Running(0.2f, TRUNCATED_AUDIO_MESSAGE))
+                        }
                     } else if (looksLikeWav(raw)) {
                         val range = locateWavPcm(raw)
                         sampleRate = range.sampleRateHz
@@ -120,6 +162,11 @@ class RecordingProcessor(
                         pcmBuffer = PcmAudioBuffer.fromPcmBytes(raw, spillRoot)
                     }
                 }
+                // Persist (or clear) the stable warning code so the UI can show it after the job ends.
+                repository.setProcessingWarning(
+                    recordingId,
+                    if (truncatedAudio) ProcessingWarning.TRUNCATED_AUDIO else null,
+                )
             } else {
                 // Demo / seed rows have no audio file — keep existing transcript path for summary-only.
                 filename = "missing.ogg"
@@ -131,7 +178,11 @@ class RecordingProcessor(
                 includeMemory = prefs.useSavedMemory,
             )
 
-            var transcriptMarkdown = recording.transcript.orEmpty()
+            val (storedTranscript, storedMarkers) = TranscriptFormatter.splitMarkers(recording.transcript.orEmpty())
+            var transcriptMarkdown = storedTranscript
+            if (!retranscribe && transcriptMarkdown.isBlank()) {
+                throw IllegalStateException("This recording has no transcript to summarize.")
+            }
             if (retranscribe) {
                 if (pcmBuffer.sizeBytes <= 0L) {
                     if (transcriptMarkdown.isBlank()) {
@@ -216,7 +267,7 @@ class RecordingProcessor(
                     }
                     val withSpeakers = transcription.copy(segments = mergedSegments)
                     transcriptMarkdown = TranscriptFormatter.toMarkdown(withSpeakers, diarization)
-                    repository.updateTranscript(recordingId, transcriptMarkdown)
+                    repository.updateTranscript(recordingId, listOfNotNull(transcriptMarkdown, storedMarkers).joinToString("\n\n"))
 
                     if (diarization != null && diarization.spans.isNotEmpty()) {
                         val bySpeaker = diarization.spans.groupBy { it.speakerId }
@@ -240,9 +291,11 @@ class RecordingProcessor(
                 outputLanguage = cfg.outputLanguage,
                 audioLanguage = cfg.audioLanguage,
             )
-            val resolvedTemplateId = BuiltinTemplateCatalog.resolveId(templateId)
-            val dbTemplate = repository.getTemplate(resolvedTemplateId)
-                ?: repository.getTemplate(templateId.orEmpty())
+            // Exact row first: an edited builtin keeps its id (builtin = 0) and must win over
+            // legacy / removed-duplicate alias resolution (#99).
+            val exactTemplate = templateId?.takeIf { it.isNotBlank() }?.let { repository.getTemplate(it) }
+            val resolvedTemplateId = exactTemplate?.id ?: BuiltinTemplateCatalog.resolveId(templateId)
+            val dbTemplate = exactTemplate ?: repository.getTemplate(resolvedTemplateId)
             val catalogEntry = BuiltinTemplateCatalog.get(resolvedTemplateId)
             val baseTemplate = dbTemplate?.system_prompt
                 ?: catalogEntry?.systemPrompt
@@ -317,6 +370,7 @@ class RecordingProcessor(
                 templateName = templateName,
             )
             repository.updateStatus(recordingId, "ready")
+            repository.setProcessingError(recordingId, null)
             if (settings.preferences.value.deleteAudioAfterProcessing &&
                 !localPath.isNullOrBlank()
             ) {
@@ -337,10 +391,23 @@ class RecordingProcessor(
             if (t is CancellationException ||
                 t is kotlin.coroutines.cancellation.CancellationException
             ) {
+                // Cancelled work never saved a version; restore the status so notes stay usable.
+                withContext(NonCancellable) {
+                    // A pre-run "generating"/"queued" state is not restorable: it would look stuck forever.
+                    val restore = when (priorStatus) {
+                        null, "generating", "queued" ->
+                            if (repository.getRecording(recordingId)?.summary_markdown.isNullOrBlank()) "failed" else "ready"
+                        else -> priorStatus
+                    }
+                    repository.updateStatus(recordingId, restore)
+                }
                 throw t
             }
+            // The previous summary and versions are untouched; surface the reason in the UI.
+            val reason = if (isOutOfStorage(t)) INSUFFICIENT_STORAGE_MESSAGE else t.message ?: t.toString()
+            repository.setProcessingError(recordingId, ApiErrorSanitizer.sanitize(reason))
             repository.updateStatus(recordingId, "failed")
-            emit(JobProgress.Failed(t.message ?: t.toString()))
+            emit(JobProgress.Failed(reason))
         }
     }
 
@@ -551,6 +618,7 @@ class RecordingProcessor(
         start: Long,
         length: Long,
         dest: ModelStoreDir,
+        checkCancelled: () -> Unit,
     ) {
         dest.writeBytes(ByteArray(0))
         if (length <= 0L) return
@@ -558,6 +626,7 @@ class RecordingProcessor(
         val end = start + length
         val chunk = 256 * 1024
         while (offset < end) {
+            checkCancelled()
             val n = ((end - offset).coerceAtMost(chunk.toLong())).toInt()
             dest.appendBytes(src.readRange(offset, n))
             offset += n

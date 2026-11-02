@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.velum.app.di.AppContainer
 import dev.velum.app.i18n.LocalStrings
+import dev.velum.app.i18n.formatFixed
 import dev.velum.app.platform.deleteFileAtPath
 import dev.velum.app.platform.shareText
 import dev.velum.app.ui.components.BlackButton
@@ -90,72 +91,78 @@ fun StoragePrivacyScreen(
         Modifier
             .fillMaxSize()
             .background(VelumSurface)
-            .verticalScroll(rememberScrollState()),
     ) {
         ScreenTopBar(strings.settingsUi.storagePrivacy, onBack = onBack)
-        Text(
-            strings.settingsUi.privacyOnDeviceStatement,
-            color = VelumInk,
-            fontSize = 15.sp,
-            lineHeight = 22.sp,
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
-        )
-        Text(
-            strings.settingsUi.privacyNoTelemetry,
-            color = VelumInkSecondary,
-            fontSize = 13.sp,
-            lineHeight = 18.sp,
-            modifier = Modifier.padding(horizontal = 20.dp),
-        )
-        Spacer(Modifier.height(16.dp))
-        SectionLabel(strings.settingsUi.storageUsage)
-        Text(
-            usageLabel,
-            color = VelumInk,
-            fontSize = 15.sp,
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-        )
-        Spacer(Modifier.height(8.dp))
-        ToggleRow(
-            strings.settingsUi.deleteAudioAfterProcessing,
-            prefs.deleteAudioAfterProcessing,
-            { enabled ->
-                container.settingsViewModel.runStorageAction { container.settingsRepository.setDeleteAudioAfterProcessing(enabled) }
-            },
-            strings.settingsUi.deleteAudioAfterProcessingHint,
-            showDivider = false,
-        )
-        Spacer(Modifier.height(24.dp))
-        BlackButton(
-            strings.settingsUi.exportLibraryBackup,
-            {
-                container.settingsViewModel.runStorageAction {
-                    val body = container.repository.exportLibraryBackupText()
-                    shareText("Velum backup", body)
-                    status = strings.settingsUi.exportLibraryBackupDone
-                }
-            },
-            Modifier.fillMaxWidth().padding(horizontal = 20.dp),
-        )
-        Spacer(Modifier.height(12.dp))
-        OutlineButton(
-            strings.settingsUi.wipeAllData,
-            { confirmWipe = true },
-            Modifier.fillMaxWidth().padding(horizontal = 20.dp),
-        )
-        status?.let {
+        Column(
+            Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState()),
+        ) {
+            Text(
+                strings.settingsUi.privacyOnDeviceStatement,
+                color = VelumInk,
+                fontSize = 15.sp,
+                lineHeight = 22.sp,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+            )
+            Text(
+                strings.settingsUi.privacyNoTelemetry,
+                color = VelumInkSecondary,
+                fontSize = 13.sp,
+                lineHeight = 18.sp,
+                modifier = Modifier.padding(horizontal = 20.dp),
+            )
             Spacer(Modifier.height(16.dp))
-            Text(it, color = VelumInkSecondary, modifier = Modifier.padding(horizontal = 20.dp))
+            SectionLabel(strings.settingsUi.storageUsage)
+            Text(
+                usageLabel,
+                color = VelumInk,
+                fontSize = 15.sp,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+            )
+            Spacer(Modifier.height(8.dp))
+            ToggleRow(
+                strings.settingsUi.deleteAudioAfterProcessing,
+                prefs.deleteAudioAfterProcessing,
+                { enabled ->
+                    container.settingsViewModel.runStorageAction { container.settingsRepository.setDeleteAudioAfterProcessing(enabled) }
+                },
+                strings.settingsUi.deleteAudioAfterProcessingHint,
+                showDivider = false,
+            )
+            Spacer(Modifier.height(24.dp))
+            BlackButton(
+                strings.settingsUi.exportLibraryBackup,
+                {
+                    container.settingsViewModel.runStorageAction {
+                        val body = container.repository.exportLibraryBackupText()
+                        shareText("Velum backup", body)
+                        status = strings.settingsUi.exportLibraryBackupDone
+                    }
+                },
+                Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+            )
+            Spacer(Modifier.height(12.dp))
+            OutlineButton(
+                strings.settingsUi.wipeAllData,
+                { confirmWipe = true },
+                Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+            )
+            status?.let {
+                Spacer(Modifier.height(16.dp))
+                Text(it, color = VelumInkSecondary, modifier = Modifier.padding(horizontal = 20.dp))
+            }
+            Spacer(Modifier.height(40.dp))
         }
-        Spacer(Modifier.height(40.dp))
     }
 }
 
 private fun formatStorageBytes(bytes: Long): String {
     if (bytes < 1024) return "$bytes B"
     val kb = bytes / 1024.0
-    if (kb < 1024) return "${"%.1f".format(kb)} KB"
+    if (kb < 1024) return "${formatFixed(kb, 1)} KB"
     val mb = kb / 1024.0
-    if (mb < 1024) return "${"%.1f".format(mb)} MB"
-    return "${"%.2f".format(mb / 1024.0)} GB"
+    if (mb < 1024) return "${formatFixed(mb, 1)} MB"
+    return "${formatFixed(mb / 1024.0, 2)} GB"
 }

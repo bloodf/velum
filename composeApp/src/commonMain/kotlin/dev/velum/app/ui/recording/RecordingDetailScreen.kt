@@ -51,6 +51,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -81,6 +82,7 @@ import dev.velum.app.export.RecordingExport
 import dev.velum.app.export.copyToClipboard
 import dev.velum.app.export.shareBytes
 import dev.velum.app.i18n.LocalStrings
+import dev.velum.app.i18n.formatFixed
 import dev.velum.app.platform.AudioPlayer
 import dev.velum.app.platform.MicInputSource
 import dev.velum.app.platform.MicMarkerResult
@@ -88,6 +90,7 @@ import dev.velum.app.platform.MicStartResult
 import dev.velum.app.platform.WavWriter
 import dev.velum.app.platform.createAudioPlayer
 import dev.velum.app.platform.MicStopResult
+import dev.velum.app.i18n.processingWarningText
 import dev.velum.app.platform.finalizeMicRecording
 import dev.velum.app.platform.localizedLabel
 import dev.velum.app.platform.shouldUseDemoPcm
@@ -127,11 +130,19 @@ import dev.velum.core.settings.ApiModelOverride
 import dev.velum.core.templates.BuiltinTemplateCatalog
 import dev.velum.core.templates.TemplateTagFilter
 import dev.velum.core.templates.TemplateTagVocabulary
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -149,8 +160,8 @@ fun RecordingDetailScreen(
 ) {
     val strings = LocalStrings.current
     val haptics = LocalHaptics.current
-    val recording by container.repository.observeRecording(recordingId).collectAsState(null)
-    val folders by container.repository.observeFolders().collectAsState(emptyList())
+    val recording by remember(container, recordingId) { container.repository.observeRecording(recordingId) }.collectAsState(null)
+    val folders by remember(container) { container.repository.observeFolders() }.collectAsState(emptyList())
     var tab by rememberSaveable(recordingId) { mutableStateOf(initialTab) } // 0 fontes, 1 notas
     var seekSeconds by remember(recordingId, initialSeekSeconds) {
         mutableStateOf(initialSeekSeconds.coerceAtLeast(0))
@@ -175,10 +186,14 @@ fun RecordingDetailScreen(
     var askBusy by remember { mutableStateOf(false) }
     var askError by remember { mutableStateOf<String?>(null) }
     var processError by remember { mutableStateOf<String?>(null) }
+    var lastFailure by remember { mutableStateOf<String?>(null) }
     var pendingRetranscribe by remember { mutableStateOf<Boolean?>(null) }
+    // The request that hit the missing-model prompt, so switching to API reruns it with the same template/model.
+    var pendingTemplateId by remember { mutableStateOf<String?>(null) }
+    var pendingApiOverride by remember { mutableStateOf<ApiModelOverride?>(null) }
     var modelPrompt by remember { mutableStateOf<ModeResolution.NeedLocalModel?>(null) }
     val scope = rememberCoroutineScope()
-    val audioPlayer = remember { createAudioPlayer() }
+    val audioPlayer = remember(recordingId) { createAudioPlayer() }
     DisposableEffect(recordingId) {
         onDispose { audioPlayer.release() }
     }
@@ -197,6 +212,9 @@ fun RecordingDetailScreen(
     val isLiveRecording = recording?.status == "recording"
     val pausedThermal = recording?.status == "paused_thermal"
     val isFailed = recording?.status == "failed"
+    LaunchedEffect(recordingId, recording?.status) {
+        lastFailure = if (recording?.status == "failed") container.repository.getProcessingError(recordingId) else null
+    }
     // Only true while a job is actively running — blank notes on a ready recording
     // must show an empty CTA, not the forever "Generating" skeleton.
     val generating = recording != null && !isLiveRecording && (
@@ -209,11 +227,18 @@ fun RecordingDetailScreen(
         apiModelOverride: ApiModelOverride? = null,
     ) {
         processError = null
-        val tasks = listOf(AiTask.Transcription, AiTask.Diarization, AiTask.Summary)
+        // Change template reuses the stored transcript, so only the Summary route must be ready.
+        val tasks = if (retranscribe) {
+            listOf(AiTask.Transcription, AiTask.Diarization, AiTask.Summary)
+        } else {
+            listOf(AiTask.Summary)
+        }
         for (task in tasks) {
             when (val resolution = container.aiRouter.resolveModeOrPrompt(task, container.localModelManager)) {
                 is ModeResolution.NeedLocalModel -> {
                     pendingRetranscribe = retranscribe
+                    pendingTemplateId = templateId
+                    pendingApiOverride = apiModelOverride
                     modelPrompt = resolution
                     return
                 }
@@ -402,6 +427,15 @@ fun RecordingDetailScreen(
             )
         }
 
+        strings.processingWarningText(recording?.processing_warning)?.let { warning ->
+            Text(
+                warning,
+                color = Color(0xFFB45309),
+                fontSize = 13.sp,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+            )
+        }
+
         if (isFailed) {
             Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
                 Text(
@@ -409,6 +443,9 @@ fun RecordingDetailScreen(
                     color = Color(0xFFB45309),
                     fontSize = 14.sp,
                 )
+                lastFailure?.let {
+                    Text(it, color = VelumInkSecondary, fontSize = 12.sp)
+                }
                 Spacer(Modifier.height(8.dp))
                 OutlineButton(
                     text = strings.ux.retryProcessing,
@@ -427,14 +464,17 @@ fun RecordingDetailScreen(
         }
 
         if (isLiveRecording) {
-            LiveTranscriptPane(
-                container = container,
-                recordingId = recordingId,
-                title = recording?.title.orEmpty(),
-                initialTranscript = recording?.transcript,
-                initialElapsedSeconds = recording?.duration_seconds ?: 0L,
-                onStoppedAndQueued = { /* status observed via Flow */ },
-            )
+            // The tablet pane reuses this slot: state and transcript must never carry over to another recording.
+            key(recordingId) {
+                LiveTranscriptPane(
+                    container = container,
+                    recordingId = recordingId,
+                    title = recording?.title.orEmpty(),
+                    initialTranscript = recording?.transcript,
+                    initialElapsedSeconds = recording?.duration_seconds ?: 0L,
+                    onStoppedAndQueued = { /* status observed via Flow */ },
+                )
+            }
         } else if (tab == 0) {
             SourcesPane(
                 player = audioPlayer,
@@ -607,7 +647,7 @@ fun RecordingDetailScreen(
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
             containerColor = VelumSurface,
         ) {
-            val speakers by container.repository.observeSpeakers(recordingId).collectAsState(emptyList())
+            val speakers by remember(container, recordingId) { container.repository.observeSpeakers(recordingId) }.collectAsState(emptyList())
             SpeakerLabelSheetContent(
                 speakers = speakers.map {
                     SpeakerLabelRow(
@@ -666,7 +706,8 @@ fun RecordingDetailScreen(
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
             containerColor = VelumSurface,
         ) {
-            val catalogTemplates by container.repository.observeTemplates().collectAsState(emptyList())
+            val templatesFlow = remember(container) { container.repository.observeTemplates() }
+            val catalogTemplates by templatesFlow.collectAsState(emptyList())
             val aiSettings by container.settingsRepository.settings.collectAsState()
             GenerateSheetContent(
                 onClose = {
@@ -701,7 +742,7 @@ fun RecordingDetailScreen(
         LaunchedEffect(recordingId) {
             container.repository.ensureBaselineVersion(recordingId)
         }
-        val versions by container.repository.observeSummaryVersions(recordingId)
+        val versions by remember(container, recordingId) { container.repository.observeSummaryVersions(recordingId) }
             .collectAsState(emptyList())
         ModalBottomSheet(
             onDismissRequest = { showSummaryVersions = false },
@@ -748,30 +789,50 @@ fun RecordingDetailScreen(
             modelDisplayName = need.displayName,
             onDownload = {
                 modelPrompt = null
+                pendingRetranscribe = null
+                pendingTemplateId = null
+                pendingApiOverride = null
                 onOpenModelManager()
             },
-            onSwitchToApi = {
-                scope.launch {
-                    when (need.task) {
-                        AiTask.Transcription ->
-                            container.settingsRepository.setTranscriptionMode(ComputeMode.Api)
-                        AiTask.Diarization -> {
-                            // No API diarization contract — keep Local and open model manager.
-                            modelPrompt = need
-                            return@launch
+            // Diarization has no API route, so its prompt has no such button.
+            onSwitchToApi = if (need.task == AiTask.Diarization) null else {
+                {
+                    if (modelPrompt === need) {
+                        // Take the pending request and close the prompt synchronously, so a second tap that lands
+                        // before recomposition finds nothing to run instead of enqueueing a default-template job.
+                        val retranscribe = pendingRetranscribe ?: true
+                        val templateId = pendingTemplateId
+                        val apiOverride = pendingApiOverride
+                        modelPrompt = null
+                        pendingRetranscribe = null
+                        pendingTemplateId = null
+                        pendingApiOverride = null
+                        scope.launch {
+                            // A storage failure is reported like on the other settings screens and nothing is enqueued.
+                            val switched = container.settingsViewModel.handleStorageFailure {
+                                when (need.task) {
+                                    AiTask.Transcription ->
+                                        container.settingsRepository.setTranscriptionMode(ComputeMode.Api)
+                                    AiTask.Summary ->
+                                        container.settingsRepository.setSummaryMode(ComputeMode.Api)
+                                    AiTask.Diarization -> Unit
+                                }
+                            }
+                            if (switched) {
+                                enqueueAfterGate(retranscribe, templateId, apiOverride)
+                            } else {
+                                // Visible on this screen even when the app-level storage notice was already shown.
+                                processError = strings.ux.secureStorageUnavailable
+                            }
                         }
-                        AiTask.Summary ->
-                            container.settingsRepository.setSummaryMode(ComputeMode.Api)
                     }
-                    modelPrompt = null
-                    val retranscribe = pendingRetranscribe ?: true
-                    pendingRetranscribe = null
-                    enqueueAfterGate(retranscribe)
                 }
             },
             onDismiss = {
                 modelPrompt = null
                 pendingRetranscribe = null
+                pendingTemplateId = null
+                pendingApiOverride = null
             },
         )
     }
@@ -1087,13 +1148,15 @@ private fun formatSpeedLabel(speed: Float): String {
 }
 
 @Composable
-private fun LiveTranscriptPane(
+internal fun LiveTranscriptPane(
     container: AppContainer,
     recordingId: String,
     title: String,
     initialTranscript: String? = null,
     initialElapsedSeconds: Long = 0L,
     onStoppedAndQueued: () -> Unit = {},
+    openTranscriber: (AppContainer) -> StreamingTranscriber = ::openStreamingTranscriber,
+    finishWaitMs: Long = LIVE_FINISH_WAIT_MS,
 ) {
     val strings = LocalStrings.current
     val seededTranscript = initialTranscript?.takeIf { it.isNotBlank() }
@@ -1112,12 +1175,22 @@ private fun LiveTranscriptPane(
         )
     }
     var markerCount by remember { mutableStateOf(0) }
-    var pausedUi by remember { mutableStateOf(container.micCapture.isPaused) }
+    // Mic already off (a Stop still finishing, or the notification): no model, no attach, and no false
+    // error. The Stop button still finalizes it; the finalizer is safe against a Stop already in progress.
+    val alreadyStopped = remember(recordingId) {
+        container.activeMicRecordingId == recordingId && container.micCapture.sessions.value is dev.velum.app.platform.MicSessionState.Stopped
+    }
+    var pausedUi by remember { mutableStateOf(container.micCapture.isPaused || alreadyStopped) }
     val finished = remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
-    val streamer = remember {
-        openStreamingTranscriber(container)
+    // Capture only ever enqueues, so it never waits for the model or for decoding.
+    val previewHasGap = remember { mutableStateOf(false) }
+    val pcmQueue = remember {
+        Channel<ByteArray>(LIVE_PCM_BACKLOG_CHUNKS, BufferOverflow.DROP_OLDEST) {
+            if (!finished.value) previewHasGap.value = true
+        }
     }
+    val finalTranscript = remember { CompletableDeferred<String?>() }
     val wavPath = remember(recordingId) {
         "${recordingsDirectoryPath()}/$recordingId.wav"
     }
@@ -1126,10 +1199,34 @@ private fun LiveTranscriptPane(
     // Seeded transcript (Roborazzi / resume) — keep it visible; skip PCM demo overwrite.
     val preserveSeeded = seededTranscript != null
 
-    fun finishOnce(): String {
-        if (finished.value) return partial
+    // Cancelling the queue (Stop or leaving the screen) ends the transcriber coroutine below and drops
+    // any backlog: decoding it would only delay Stop, and the queued recording is retranscribed from the WAV.
+    suspend fun finishTranscript(): String? {
         finished.value = true
-        return runCatching { streamer.finish() }.getOrDefault(partial)
+        pcmQueue.cancel()
+        val text = withTimeoutOrNull(finishWaitMs) { finalTranscript.await() } ?: partial
+        // Text with a hole in the middle must not pass for the transcript if retranscribing fails.
+        return if (previewHasGap.value) null else savableLiveTranscript(text)
+    }
+
+    // Opening a model is a blocking native load: on IO. NonCancellable because this coroutine
+    // owns the native handle from open to finish, including when the screen leaves during the load.
+    LaunchedEffect(Unit) {
+        // A seeded transcript is never replaced by streaming, so no model is opened for it.
+        if (preserveSeeded || alreadyStopped) {
+            finalTranscript.complete(null)
+            return@LaunchedEffect
+        }
+        withContext(NonCancellable + Dispatchers.IO) {
+            finalTranscript.complete(
+                transcribeQueuedPcm(
+                    open = { openTranscriber(container) },
+                    pcm = pcmQueue,
+                    languageHint = container.settingsRepository.settings.value.audioLanguage,
+                    onPartial = { md -> partial = md },
+                ),
+            )
+        }
     }
 
     // Mic start is suspend (no main-thread runBlocking). Wire capture + optional PCM demo here.
@@ -1139,20 +1236,8 @@ private fun LiveTranscriptPane(
         if (usingMic && container.micCapture.isCapturing) {
             return@LaunchedEffect
         }
-        streamer.onPartial = { md ->
-            if (!preserveSeeded) partial = md
-        }
-        val settingsLang = container.settingsRepository.settings.value.audioLanguage
-        if (!preserveSeeded) {
-            streamer.start(16_000, settingsLang, null)
-        }
-
         val push: (ByteArray) -> Unit = { pcm ->
-            try {
-                streamer.pushPcm(pcm)
-            } catch (t: Throwable) {
-                println("VelumLivePcm: push failed: ${t.message ?: t}")
-            }
+            if (!preserveSeeded) pcmQueue.trySend(pcm)
         }
 
         var useDemo = false
@@ -1163,9 +1248,9 @@ private fun LiveTranscriptPane(
                     ownedSession = started.session
                     pcmSubscription = container.micRecordings.attach(recordingId, started.session, push)
                     usingMic = pcmSubscription != null
-                    if (!usingMic) micError = strings.micStartFailed
+                    if (!usingMic && !alreadyStopped) micError = strings.micStartFailed
                     markerCount = container.micCapture.markers.size
-                    pausedUi = container.micCapture.isPaused
+                    pausedUi = container.micCapture.isPaused || alreadyStopped
                 }
                 MicStartResult.Unsupported -> { usingMic = false; useDemo = shouldUseDemoPcm(started) }
                 MicStartResult.PermissionRequired -> { usingMic = false; micError = strings.micPermissionRationale }
@@ -1183,7 +1268,7 @@ private fun LiveTranscriptPane(
             while (isActive && !finished.value) {
                 val chunk = demoPcmChunk(tick)
                 writer.writePcm(chunk)
-                streamer.pushPcm(chunk)
+                push(chunk)
                 tick++
                 delay(400)
             }
@@ -1193,7 +1278,8 @@ private fun LiveTranscriptPane(
         onDispose {
             pcmSubscription?.close()
             pcmSubscription = null
-            finishOnce()
+            finished.value = true
+            pcmQueue.cancel()
         }
     }
 
@@ -1254,7 +1340,7 @@ private fun LiveTranscriptPane(
                 fontSize = 12.sp,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
             )
-        } else if (!usingMic) {
+        } else if (!usingMic && !alreadyStopped) {
             // Desktop/iOS Unsupported: PCM demo path — keep a single quiet hint.
             Text(
                 strings.streamingDemoHint,
@@ -1344,36 +1430,21 @@ private fun LiveTranscriptPane(
                     return@BlackButton
                 }
                 stopping = true
-                scope.launch {
+                // Undispatched and NonCancellable: leaving the screen must not abandon a Stop in progress.
+                scope.launch(start = CoroutineStart.UNDISPATCHED) { withContext(NonCancellable) {
                     val marks = container.micCapture.markers
-                    val finalMd = withContext(Dispatchers.Default) {
-                        val base = finishOnce()
-                        if (marks.isEmpty()) base
-                        else buildString {
-                            append(base.trimEnd())
-                            append("\n\n## Markers\n")
-                            marks.forEach { m ->
-                                val sec = m.offsetMs / 1000
-                                val mm = sec / 60
-                                val ss = sec % 60
-                                append("- **")
-                                append(mm)
-                                append(':')
-                                append(ss.toString().padStart(2, '0'))
-                                append("**")
-                                if (m.label.isNotBlank()) {
-                                    append(' ')
-                                    append(m.label)
-                                }
-                                append('\n')
-                            }
-                        }
+                    // Stop means the mic is off now, before any wait. The platform keeps the terminal
+                    // state, so the finalizer below picks up this same result.
+                    if (container.micCapture.isSupported && requested != null) {
+                        runCatching { container.micCapture.stop(requested) }
+                            .onFailure { println("VelumLivePcm: stop failed: ${it::class.simpleName}") }
                     }
+                    val finalMd = withContext(Dispatchers.Default) { finishTranscript() }
                     when {
                         // The asynchronous transcript finish may outlive ownership. The finalizer
                         // rechecks the captured identity under its lock before any database write.
                         container.micCapture.isSupported -> {
-                            when (val stopped = finalizeMicRecording(container, recordingId, wavPath, requested, transcript = finalMd)) {
+                            when (val stopped = finalizeMicRecording(container, recordingId, wavPath, requested, transcript = finalMd, markers = marks)) {
                                 is MicStopResult.Stopped -> Unit // Finalizer queued the verified audio.
                                 is MicStopResult.Failed -> {
                                     usingMic = false
@@ -1383,7 +1454,7 @@ private fun LiveTranscriptPane(
                             }
                         }
                         demoWavWriter.value != null -> {
-                            container.repository.updateTranscript(recordingId, finalMd)
+                            finalMd?.let { container.repository.updateTranscript(recordingId, it) }
                             // Unsupported-platform demo only (never Android mic failure).
                             val finishedWav = withContext(Dispatchers.IO) {
                                 demoWavWriter.value!!.finish()
@@ -1407,11 +1478,51 @@ private fun LiveTranscriptPane(
                         }
                     }
                     onStoppedAndQueued()
-                }
+                } }
             },
             modifier = Modifier.padding(20.dp),
         )
     }
+}
+
+// ponytail: live preview only, the WAV never depends on it. At 40-130 ms per chunk this holds a slow
+// model load (about 40 s or more); older audio is dropped from the preview past that.
+internal const val LIVE_PCM_BACKLOG_CHUNKS = 1024
+
+// Stop must not hang on a stuck native load. The queued recording is retranscribed from the WAV anyway.
+private const val LIVE_FINISH_WAIT_MS = 30_000L
+
+private val LIVE_PARTIAL_HEADER = Regex("""^\*\*partial\*\* · [^\n]*\n?""")
+private val LIVE_SPEAKER_HEADER = Regex("""\*\*Speaker \d+\*\* · \S+""")
+
+/** Live text worth persisting, without the preview header; null when nothing was actually transcribed. */
+internal fun savableLiveTranscript(markdown: String): String? {
+    val text = LIVE_PARTIAL_HEADER.replaceFirst(markdown, "")
+    return text.takeIf { body -> body.lineSequence().any { it.isNotBlank() && !LIVE_SPEAKER_HEADER.matches(it) } }
+}
+
+/**
+ * Feeds queued PCM to a transcriber opened here and always finishes it once [pcm] closes.
+ * Returns the final transcript, or null when no model could produce one (the WAV is unaffected).
+ * Audio captured before the screen attaches never reaches this queue, only the WAV.
+ */
+private suspend fun transcribeQueuedPcm(
+    open: () -> StreamingTranscriber,
+    pcm: ReceiveChannel<ByteArray>,
+    languageHint: String?,
+    onPartial: (String) -> Unit,
+): String? {
+    fun logFailure(step: String, failure: Throwable) = println("VelumLivePcm: $step failed: ${failure::class.simpleName}")
+    val streamer = runCatching(open).onFailure { logFailure("open", it) }.getOrNull() ?: return null
+    val started = runCatching {
+        streamer.onPartial = onPartial
+        streamer.start(16_000, languageHint, null)
+    }.onFailure { logFailure("start", it) }.isSuccess
+    while (started) {
+        val chunk = pcm.receiveCatching().getOrNull() ?: break
+        runCatching { streamer.pushPcm(chunk) }.onFailure { logFailure("push", it) }
+    }
+    return runCatching { streamer.finish() }.onFailure { logFailure("finish", it) }.getOrNull()
 }
 
 private fun openStreamingTranscriber(container: AppContainer): StreamingTranscriber {
@@ -1916,7 +2027,7 @@ fun SpeakerLabelSheetContent(
                         append("${strings.totalDuration}: $dur")
                         row.matchConfidence?.let {
                             append(" · ")
-                            append("%.0f".format(it * 100))
+                            append(formatFixed((it * 100).toDouble(), 0))
                             append('%')
                         }
                     },

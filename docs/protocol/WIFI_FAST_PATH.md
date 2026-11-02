@@ -17,13 +17,14 @@
 
 - **Socket-level SoftAP bind** via SoftAP host bind / `Network.bindSocket` — never `bindProcessToNetwork`.
 - **Preamble** first WS binary message (`VELUM-WIFI-v1:<bindToken>`) so a random SoftAP client is rejected.
+- **Per-connection preamble, latest authenticated wins:** authorization is tracked per WebSocket connection. A valid preamble from a new connection replaces the current peer (the old socket is closed with 1001); an invalid one is closed with 1008; an unauthenticated close changes nothing. **Unverified (#8 hardware validation):** how the Note Pro reacts to a 1008/1001 close, and whether it ever opens parallel sockets.
 - **BLE fallback** (`WifiTransferCoordinator` / `PlaudDeviceClient.downloadSessionPreferWifi`) on timeout, SoftAP failure, preamble mismatch, or cipher errors.
 
 ## Code map
 
 - `WifiFastTransferSession` / `WifiTransferServer` / `WifiTransferCoordinator` / `WifiTransferPreamble`
 - Android: `AndroidWifiSoftApJoiner`, `AndroidWifiTransferServer`
-- JVM fake: `FakeWifiSoftApJoiner`, `FakeWifiDeviceClient`, `JavaWebsocketTransferServer`
+- JVM fakes (test-only `:ble-testing`): `FakeWifiSoftApJoiner`, `FakeWifiDeviceClient`; real loopback server: `JavaWebsocketTransferServer`
 - Sync entry: `PlaudDeviceClient.downloadSessionPreferWifi`
 - Tests: `WifiFastPathE2ETest`, `WifiSoftApMockServerTest`
 

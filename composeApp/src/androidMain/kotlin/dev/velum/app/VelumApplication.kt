@@ -9,15 +9,19 @@ import dev.velum.ai.local.ModelStoreDir
 import dev.velum.ai.pipeline.AiRuntimeHolder
 import dev.velum.ai.pipeline.ThermalMonitor
 import dev.velum.ai.pipeline.createWorkManagerRecordingJobScheduler
+import dev.velum.ai.pipeline.sweepOrphanPcmSpill
 import dev.velum.app.di.AppContainer
 import dev.velum.app.platform.DownloadProgressNotifier
 import dev.velum.app.platform.MicRecordingService
 import dev.velum.app.platform.ShareTextHolder
 import dev.velum.app.platform.installAppContext
 import dev.velum.app.platform.installMicCaptureContext
+import dev.velum.app.platform.STALE_DOWNLOAD_PART_AGE_MS
 import dev.velum.app.platform.installRecordingFilesDir
+import dev.velum.app.platform.sweepStaleDownloadParts
 import dev.velum.app.platform.recoverPartialMicRecordings
 import dev.velum.app.platform.recordingsDirectoryPath
+import dev.velum.app.platform.sweepOrphanRecordingAudio
 import dev.velum.core.calendar.installCalendarContext
 import dev.velum.core.data.DriverFactory
 import dev.velum.core.integrations.IntegrationConfig
@@ -62,6 +66,12 @@ class VelumApplication : Application() {
             try {
                 // filesDir / models path are disk reads — stay on Dispatchers.IO.
                 installRecordingFilesDir(filesDir.absolutePath)
+                // Before AiRuntimeHolder.install: WorkManager can re-run a killed job as soon as the
+                // holder is set, and it would race this sweep for its own tmp/pcm-<id> (#197).
+                runCatching {
+                    val spills = sweepOrphanPcmSpill()
+                    if (spills > 0) Log.i(TAG, "Removed $spills orphaned PCM spill dir(s)")
+                }.onFailure { t -> Log.w(TAG, "PCM spill sweep failed (${t::class.simpleName})") }
                 val modelsDir = File(filesDir, "models")
                 val built = AppContainer(
                     secureStore = AndroidSecureStore(appContext),
@@ -74,16 +84,39 @@ class VelumApplication : Application() {
                     thermalPolicy = ThermalMonitor.asPolicy(powerManager),
                 )
                 container = built
+                if (!built.repository.ftsAvailable) {
+                    // Search falls back to a full list scan; class name only, never SQL or user data.
+                    Log.w(TAG, "Full-text search unavailable (${built.repository.ftsFailure})")
+                }
+                built.repository.ftsRebuildFailure?.let { Log.w(TAG, "FTS rebuild failed, index stale ($it)") }
                 AiRuntimeHolder.install(
                     processor = built.recordingProcessor,
                     repository = built.repository,
                     settings = built.settingsRepository,
                 )
-                // Complete the deferred before flipping ready so splash dismiss
-                // cannot race ahead of awaitContainer (#106 minifiedTest).
-                containerDeferred.complete(built)
-                ready.set(true)
-                Log.i(TAG, "AppContainer ready")
+                cleanupThenPublish(
+                    built = built,
+                    cleanup = { c ->
+                        // Runs before publish, so no download can be in flight (#86).
+                        runCatching {
+                            val swept = sweepStaleDownloadParts(
+                                recordingsDirectoryPath(),
+                                System.currentTimeMillis() - STALE_DOWNLOAD_PART_AGE_MS,
+                            )
+                            if (swept.isNotEmpty()) Log.i(TAG, "Removed ${swept.size} stale download part(s)")
+                        }.onFailure { t -> Log.w(TAG, "Stale download sweep failed (${t::class.simpleName})") }
+                        val report = sweepOrphanRecordingAudio(recordingsDirectoryPath(), c.repository::getAllRecordingFileRefs)
+                        Log.i(TAG, "Orphan audio sweep: quarantined=${report.quarantined} purged=${report.purged} staleTemps=${report.staleTemps} failedMoves=${report.failedMoves}")
+                    },
+                    publish = { c ->
+                        // Complete the deferred before flipping ready so splash dismiss
+                        // cannot race ahead of awaitContainer (#106 minifiedTest).
+                        containerDeferred.complete(c)
+                        ready.set(true)
+                        Log.i(TAG, "AppContainer ready")
+                    },
+                    onCleanupFailure = { t -> Log.w(TAG, "Orphan audio sweep skipped (${t::class.simpleName})") },
+                )
                 runCatching {
                     recoverPartialMicRecordings(
                         recordingsDirPath = recordingsDirectoryPath(),

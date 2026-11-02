@@ -2,6 +2,7 @@ package dev.velum.app.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import dev.velum.ai.local.ModelStoreDir
 import dev.velum.app.i18n.DeviceUiCopy
 import dev.velum.app.platform.DownloadNotifyKind
 import dev.velum.app.platform.DownloadProgressNotifier
@@ -22,7 +23,10 @@ import dev.velum.protocol.SessionEntry
 import dev.velum.recorder.RecorderDriverRegistry
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -45,14 +49,23 @@ data class DeviceSessionUi(
     val downloadingSessionId: Long? = null,
     val downloadProgress: Float? = null,
     val lastDownloadedRecordingId: String? = null,
+    /** Device sessions already in the library (#113); their action re-downloads into the same row. */
+    val librarySessionIds: Set<Long> = emptySet(),
 )
+
+/** Real device serial for the #113 dedup key, or null (dedup off) when none is known. */
+internal fun dedupDeviceSerial(keySerial: String?, advertisedSerial: String?): String? =
+    keySerial?.takeIf { it.isNotBlank() } ?: advertisedSerial?.takeIf { it.isNotBlank() }
 
 data class DownloadedSessionAudio(
     val sessionId: Long,
     val deviceSerial: String?,
     val startedAtEpochSeconds: Long,
-    val sizeBytes: Long,
-    val decryptedBytes: ByteArray,
+    /**
+     * Streams decrypted audio into the sink in bounded chunks (never the whole file at
+     * once) and returns the total byte count. Throws on decrypt failure or cancellation.
+     */
+    val writeDecryptedAudio: (sink: (ByteArray) -> Unit) -> Long,
 )
 
 class DeviceViewModel(
@@ -64,6 +77,7 @@ class DeviceViewModel(
         error("persistDownloadedSession not configured")
     },
     private val localeTag: () -> String = { systemLanguageTag() },
+    private val librarySessionIds: suspend (sessionIds: List<Long>, deviceSerial: String?) -> Set<Long> = { _, _ -> emptySet() },
 ) : ViewModel() {
     val connectionState: StateFlow<BleConnectionState> =
         ble.connectionState.stateIn(viewModelScope, SharingStarted.Eagerly, BleConnectionState.Idle)
@@ -207,13 +221,15 @@ class DeviceViewModel(
                     sizeBytes = entry.sizeBytes,
                     totalBytes = totalBytes,
                     privateKeyPem = keys.privateKeyPem,
-                    deviceSerial = keys.serialNumber.ifBlank { connectedSerial },
+                    deviceSerial = dedupDeviceSerial(keys.serialNumber, connectedSerial),
                     startedAtEpochSeconds = sessionId.coerceAtLeast(0L),
                 )
             }
             val sessions = c.listSessions()
+            val inLibrary = loadLibrarySessionIds(sessions.entries.map { it.sessionId }, dedupDeviceSerial(keys.serialNumber, connectedSerial))
             _sessionUi.value = _sessionUi.value.copy(
                 sessions = sessions.entries,
+                librarySessionIds = inLibrary,
                 downloadingSessionId = null,
                 downloadProgress = null,
                 lastDownloadedRecordingId = recordingId,
@@ -249,28 +265,51 @@ class DeviceViewModel(
             _sessionUi.value = _sessionUi.value.copy(downloadProgress = progress)
             DownloadProgressNotifier.update(DownloadNotifyKind.DeviceSession, progress)
         }
+        val job = currentCoroutineContext()[Job]
+        val decryptor = createFileDecryptor()
         val temp = createTempSessionFile()
-        val encrypted = if (temp != null) {
-            try {
+        try {
+            val size: Long
+            val readAt: (Long, Int) -> ByteArray
+            if (temp != null) {
                 client.downloadSessionTo(sessionId, sizeBytes, temp, ::onProgress)
-                temp.readAll()
-            } finally {
-                temp.delete()
+                val source = ModelStoreDir(temp.absolutePath())
+                size = temp.size()
+                readAt = { position, length -> source.readRange(position, length) }
+            } else {
+                val encrypted = client.downloadSession(sessionId, sizeBytes, ::onProgress)
+                size = encrypted.size.toLong()
+                readAt = { position, length ->
+                    encrypted.copyOfRange(position.toInt(), position.toInt() + length)
+                }
             }
-        } else {
-            client.downloadSession(sessionId, sizeBytes, ::onProgress)
+            return persistDownloadedSession(
+                DownloadedSessionAudio(
+                    sessionId = sessionId,
+                    deviceSerial = deviceSerial,
+                    startedAtEpochSeconds = startedAtEpochSeconds,
+                    writeDecryptedAudio = { sink ->
+                        PlaudFileCrypto.decryptStream(size, readAt, privateKeyPem, decryptor) {
+                            job?.ensureActive()
+                            sink(it)
+                        }
+                    },
+                ),
+            )
+        } finally {
+            temp?.delete()
         }
-        val decrypted = PlaudFileCrypto.decrypt(encrypted, privateKeyPem, createFileDecryptor())
-        return persistDownloadedSession(
-            DownloadedSessionAudio(
-                sessionId = sessionId,
-                deviceSerial = deviceSerial,
-                startedAtEpochSeconds = startedAtEpochSeconds,
-                sizeBytes = decrypted.size.toLong(),
-                decryptedBytes = decrypted,
-            ),
-        )
     }
+
+    /** Library marking is best-effort: a lookup failure must not break the session list. */
+    private suspend fun loadLibrarySessionIds(ids: List<Long>, serial: String?): Set<Long> =
+        try {
+            librarySessionIds(ids, serial)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            emptySet()
+        }
 
     private fun closeClient() {
         client?.close()
@@ -281,7 +320,7 @@ class DeviceViewModel(
     private suspend fun runProtocolIfKeysPresent() {
         val locale = localeTag()
         val connected = (connectionState.value as? BleConnectionState.Connected)?.device
-        connectedSerial = connected?.serial ?: connected?.name
+        connectedSerial = connected?.serial // never the BLE name: it is not a stable device identity (#113)
         val scanMatch = RecorderDriverRegistry.matchAdvertisement(
             name = connected?.name,
             manufacturerPayload = null,
@@ -333,9 +372,11 @@ class DeviceViewModel(
             val sessions = c.listSessions()
             val battery = c.readBattery()
             val wifiCapable = DeviceCapabilityRegistry.supportsWifiFastPath(caps)
+            val inLibrary = loadLibrarySessionIds(sessions.entries.map { it.sessionId }, dedupDeviceSerial(keys.serialNumber, connectedSerial))
             _sessionUi.value = DeviceSessionUi(
                 batteryPercent = battery.percent,
                 sessions = sessions.entries,
+                librarySessionIds = inLibrary,
                 protocolVersion = hs.protocolVersion,
                 modelDisplayName = caps.displayName,
                 wifiFastPath = false,

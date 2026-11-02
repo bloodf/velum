@@ -15,12 +15,23 @@ import dev.velum.core.db.Template
 import dev.velum.core.db.VelumDatabase
 import dev.velum.core.search.FtsIndex
 import dev.velum.core.templates.PlaudFullTemplateAsset
+import dev.velum.core.templates.PlaudTemplateAliases
 import dev.velum.core.templates.PlaudTemplateCatalog
 import dev.velum.core.templates.TemplateTagVocabulary
 import kotlin.random.Random
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
+import app.cash.sqldelight.db.QueryResult
+import dev.velum.core.search.FtsQuery
+import dev.velum.core.templates.DiscoverFacets
+import dev.velum.core.templates.DiscoverFilter
+import dev.velum.core.templates.DiscoverSearchMode
+import dev.velum.core.templates.DiscoverTemplateQuery
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.flow
 
 class VelumRepository(
     private val db: VelumDatabase,
@@ -31,17 +42,37 @@ class VelumRepository(
     /** False on hosts without SQLite FTS5 (e.g. Robolectric). Search falls back to ListSearch. */
     val ftsAvailable: Boolean
 
+    /** Why FTS is unavailable (exception class only), for platform logging; null when available. */
+    val ftsFailure: String?
+
+    /** Exception class of a failed fts_dirty rebuild (index stays stale, flag kept, retried next open); else null. */
+    var ftsRebuildFailure: String? = null
+        private set
+
     constructor(handle: DatabaseHandle) : this(handle.database, handle.driver)
 
     init {
         val fts = FtsIndex.ensureSchema(driver)
         ftsAvailable = fts.available
+        ftsFailure = fts.failure
+        // Writes made now skip the index; the next open with FTS available must rebuild it.
+        if (!ftsAvailable) q.setMeta(META_FTS_DIRTY, "1")
         val seeded = SeedData.maybeSeed(db)
+        reconcileRemovedTemplateDuplicates()
         backfillSummaryVersionsFromRecording()
         if (ftsAvailable) {
+            val dirty = q.getMeta(META_FTS_DIRTY).executeAsOneOrNull() != null
             when {
-                // Full rebuild after seed or template_fts schema upgrade.
-                fts.templateSchemaRecreated || seeded -> rebuildFtsIndex()
+                // Full rebuild after seed, template_fts schema upgrade, or a run without FTS. Only a rebuild
+                // for the dirty flag may fail soft (keep the flag, open on the stale index, retry next open).
+                fts.templateSchemaRecreated || seeded || dirty -> try {
+                    rebuildFtsIndex()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    if (!dirty) throw e
+                    ftsRebuildFailure = e::class.simpleName ?: "Exception"
+                }
                 else -> {
                     // Empty library makes recording_fts empty — only rebuild the empty side
                     // so we do not rewrite every template on every cold start.
@@ -54,6 +85,32 @@ class VelumRepository(
                     }
                 }
             }
+            // Only after the rebuild committed: a crash before this line just rebuilds again.
+            if (dirty && ftsRebuildFailure == null) q.deleteMeta(META_FTS_DIRTY)
+        }
+    }
+
+    /**
+     * #99: drop builtin rows removed as exact-body duplicates (left by a pre-dedupe "All"
+     * import) and repoint AutoFlows to the survivor. User templates (builtin = 0) are never
+     * touched; summary versions keep their historical id and resolve via
+     * [dev.velum.core.templates.BuiltinTemplateCatalog.resolveId].
+     */
+    private fun reconcileRemovedTemplateDuplicates() {
+        // Alias map only grows, so its size identifies what has been reconciled already.
+        val version = PlaudTemplateAliases.RemovedDuplicates.size.toString()
+        if (q.getMeta(META_TEMPLATE_ALIASES_RECONCILED).executeAsOneOrNull() == version) return
+        db.transaction {
+            PlaudTemplateAliases.RemovedDuplicates.forEach { (removed, survivor) ->
+                val row = q.selectTemplateById(removed).executeAsOneOrNull()
+                if (row != null && row.builtin == 0L) return@forEach
+                q.repointAutoflowTemplate(survivor, removed)
+                if (row != null) {
+                    q.deleteBuiltinTemplate(removed)
+                    if (ftsAvailable) FtsIndex.deleteTemplate(driver, removed)
+                }
+            }
+            q.setMeta(META_TEMPLATE_ALIASES_RECONCILED, version)
         }
     }
 
@@ -125,6 +182,42 @@ class VelumRepository(
         q.selectAllRecordings().executeAsList()
     }
 
+    /**
+     * #113 dedup key: device session id + real device serial. Includes trashed rows. Without a serial
+     * dedup is off (returns null), so sessions from different devices can never merge.
+     */
+    suspend fun findDeviceSessionRecording(sessionId: Long, deviceSerial: String?): Recording? =
+        withContext(Dispatchers.Default) {
+            val serial = deviceSerial?.takeIf { it.isNotBlank() } ?: return@withContext null
+            q.selectRecordingByDeviceSession(sessionId, serial).executeAsOneOrNull()
+        }
+
+    /** Subset of [sessionIds] already in the library for this device (one query; empty without a serial). */
+    suspend fun librarySessionIds(sessionIds: List<Long>, deviceSerial: String?): Set<Long> =
+        withContext(Dispatchers.Default) {
+            val serial = deviceSerial?.takeIf { it.isNotBlank() }
+            if (serial == null || sessionIds.isEmpty()) return@withContext emptySet()
+            // SQLite's default host-parameter limit is 999 on API 26-29: chunk the IN list.
+            sessionIds.distinct().chunked(LIBRARY_SESSION_CHUNK).flatMapTo(HashSet()) { chunk ->
+                q.selectLibrarySessionIds(serial, chunk).executeAsList().mapNotNull { it.session_id }
+            }
+        }
+
+    /** Fails (never replaces) when the device session already has a row. */
+    suspend fun insertDeviceSessionRecording(row: Recording) = withContext(Dispatchers.Default) {
+        q.insertDeviceSessionRecording(row)
+        indexRecording(row.id, row.title, row.transcript, row.summary_markdown)
+    }
+
+    /** Point an existing device-session row at re-downloaded audio; title/transcript/summary are kept. */
+    suspend fun replaceDeviceSessionAudio(id: String, localPath: String, sizeBytes: Long) =
+        withContext(Dispatchers.Default) { q.replaceDeviceSessionAudio(localPath, sizeBytes, id) }
+
+    /** Every row (trashed included) as (id, local_path) for orphan-file reconciliation. */
+    suspend fun getAllRecordingFileRefs(): List<Pair<String, String?>> = withContext(Dispatchers.Default) {
+        q.selectAllRecordingFileRefs().executeAsList().map { it.id to it.local_path }
+    }
+
     suspend fun getTemplate(id: String): Template? = withContext(Dispatchers.Default) {
         q.selectTemplateById(id).executeAsOneOrNull()
     }
@@ -138,6 +231,119 @@ class VelumRepository(
         withContext(Dispatchers.Default) {
             if (!ftsAvailable) emptyList() else FtsIndex.searchTemplateIds(driver, matchQuery)
         }
+
+    // ---- Discover filters (#102): SQL pushdown, separate from the template CRUD ----
+
+    suspend fun queryDiscoverTemplates(
+        filter: DiscoverFilter,
+        limit: Int,
+        offset: Int = 0,
+    ): List<Template> = withContext(Dispatchers.Default) {
+        discoverQuery(filter) { mode, match ->
+            val built = DiscoverTemplateQuery.page(filter, mode, match)
+            driver.executeQuery(
+                identifier = null,
+                sql = built.sql,
+                mapper = { c ->
+                    val rows = mutableListOf<Template>()
+                    while (c.next().value) {
+                        rows += Template(
+                            id = c.getString(0)!!,
+                            name = c.getString(1)!!,
+                            category = c.getString(2)!!,
+                            description = c.getString(3)!!,
+                            author = c.getString(4)!!,
+                            system_prompt = c.getString(5)!!,
+                            uses = c.getLong(6)!!,
+                            builtin = c.getLong(7)!!,
+                            created_at = c.getLong(8)!!,
+                            featured = c.getLong(9)!!,
+                            tags = c.getString(10)!!,
+                            lang = c.getString(11)!!,
+                            preferred_model = c.getString(12),
+                            preferred_endpoint_profile_id = c.getString(13),
+                        )
+                    }
+                    QueryResult.Value(rows)
+                },
+                parameters = built.args.size + 2,
+            ) {
+                built.args.forEachIndexed { i, a -> bindString(i, a) }
+                bindLong(built.args.size, limit.toLong())
+                bindLong(built.args.size + 1, offset.toLong())
+            }.value
+        }
+    }
+
+    suspend fun countDiscoverTemplates(filter: DiscoverFilter): Long = withContext(Dispatchers.Default) {
+        discoverQuery(filter) { mode, match ->
+            val built = DiscoverTemplateQuery.count(filter, mode, match)
+            driver.executeQuery(
+                identifier = null,
+                sql = built.sql,
+                mapper = { c ->
+                    c.next()
+                    QueryResult.Value(c.getLong(0) ?: 0L)
+                },
+                parameters = built.args.size,
+            ) { built.args.forEachIndexed { i, a -> bindString(i, a) } }.value
+        }
+    }
+
+    suspend fun discoverFacets(filter: DiscoverFilter): DiscoverFacets = withContext(Dispatchers.Default) {
+        fun column(built: DiscoverTemplateQuery.Built): List<String> = driver.executeQuery(
+            identifier = null,
+            sql = built.sql,
+            mapper = { c ->
+                val out = mutableListOf<String>()
+                while (c.next().value) c.getString(0)?.let { out += it }
+                QueryResult.Value(out)
+            },
+            parameters = built.args.size,
+        ) { built.args.forEachIndexed { i, a -> bindString(i, a) } }.value
+        discoverQuery(filter) { mode, match ->
+            DiscoverFacets(
+                categories = column(DiscoverTemplateQuery.categories(filter, mode, match)),
+                tags = column(DiscoverTemplateQuery.tagColumns(filter, mode, match))
+                    .flatMap { TemplateTagVocabulary.decode(it) }.distinct().sorted(),
+                langs = column(DiscoverTemplateQuery.langs(filter, mode, match))
+                    .filter { it.isNotBlank() && it != "und" }.distinct().sorted(),
+            )
+        }
+    }
+
+    /**
+     * Same search semantics as before: FTS hits (ranked) when FTS yields any, else substring
+     * fallback. A MATCH that SQLite rejects (or a missing FTS table) is detected by a probe query
+     * with a trivial mapper and falls back to substring mode; later query errors are not swallowed.
+     */
+    private fun <T> discoverQuery(filter: DiscoverFilter, run: (DiscoverSearchMode?, String?) -> T): T {
+        val match = if (ftsAvailable && filter.search.isNotBlank()) FtsQuery.fromUserInput(filter.search) else null
+        if (match == null) return run(DiscoverSearchMode.Like, null)
+        val ftsHasHits = try {
+            driver.executeQuery(
+                identifier = null,
+                sql = "SELECT COUNT(*) FROM template_fts WHERE template_fts MATCH ?",
+                mapper = { c -> c.next(); QueryResult.Value((c.getLong(0) ?: 0L) > 0L) },
+                parameters = 1,
+            ) { bindString(0, match) }.value
+        } catch (_: Exception) {
+            false
+        }
+        if (!ftsHasHits) return run(DiscoverSearchMode.Like, null)
+        // MATCH syntax was validated above, so errors from here on are real bugs and must surface.
+        return run(DiscoverSearchMode.Fts, match)
+    }
+
+    /** Single-row observe for the template detail screen (no full-table load). */
+    fun observeTemplate(id: String): Flow<Template?> =
+        q.selectTemplateById(id).asFlow().mapToOneOrNull(Dispatchers.Default)
+
+    /** Emits once per template table notification (edits, use counts, imports), not per row count. */
+    fun observeTemplateChanges(): Flow<Long> = flow {
+        var n = 0L
+        q.countTemplates().asFlow().collect { emit(++n) }
+    }
 
     suspend fun setAutoflowEnabled(id: String, enabled: Boolean) = withContext(Dispatchers.Default) {
         q.updateAutoflowEnabled(if (enabled) 1 else 0, id)
@@ -306,6 +512,11 @@ class VelumRepository(
         q.updateStatus(status, id)
     }
 
+    /** [code] is a [dev.velum.core.model.ProcessingWarning] constant, or null to clear. */
+    suspend fun setProcessingWarning(id: String, code: String?) = withContext(Dispatchers.Default) {
+        q.updateProcessingWarning(code, id)
+    }
+
     suspend fun updateLocalPath(
         id: String,
         localPath: String,
@@ -341,6 +552,17 @@ class VelumRepository(
     suspend fun setMeta(key: String, value: String) = withContext(Dispatchers.Default) {
         q.setMeta(key, value)
     }
+
+    /** Last processing failure for [recordingId] (already sanitized), or null. Previous notes are never touched. */
+    suspend fun getProcessingError(recordingId: String): String? =
+        getMeta(processingErrorKey(recordingId))?.takeIf { it.isNotBlank() }
+
+    /** Null removes the row; provider error text must not outlive the recording or a wipe. */
+    suspend fun setProcessingError(recordingId: String, message: String?) = withContext(Dispatchers.Default) {
+        if (message == null) q.deleteMeta(processingErrorKey(recordingId)) else q.setMeta(processingErrorKey(recordingId), message)
+    }
+
+    private fun processingErrorKey(recordingId: String) = "$PROCESSING_ERROR_PREFIX$recordingId"
 
     suspend fun isFirstRunDone(): Boolean = getMeta(META_FIRST_RUN_DONE) == "1"
 
@@ -397,20 +619,25 @@ class VelumRepository(
      *
      * The "imported" meta flag is set only after a successful FTS rebuild so a
      * process kill mid-import cannot leave All templates present but unsearchable.
+     * Cancellation is checked per row and rolls the whole import back (#100). A user-edited
+     * builtin (same id, builtin = 0) is never overwritten by a re-import (#100).
      * @return number of rows upserted, or 0 if already imported / asset empty.
      */
     suspend fun ensureFullTemplatesImported(): Int = withContext(Dispatchers.Default) {
         if (q.getMeta(SeedData.META_FULL_TEMPLATES_IMPORTED).executeAsOneOrNull() == "1") {
             return@withContext 0
         }
+        val job = coroutineContext[Job]
         val now = epochSeconds()
         var upserted = 0
         var sawAny = false
         db.transaction {
             PlaudFullTemplateAsset.forEachLine { line ->
+                job?.ensureActive()
                 val entry = PlaudTemplateCatalog.parseJsonlLine(line) ?: return@forEachLine
                 sawAny = true
                 val existing = q.selectTemplateById(entry.id).executeAsOneOrNull()
+                if (existing != null && existing.builtin == 0L) return@forEachLine
                 val uses = existing?.uses ?: entry.uses
                 val createdAt = existing?.created_at ?: now
                 val tagsEncoded = TemplateTagVocabulary.encode(
@@ -455,6 +682,7 @@ class VelumRepository(
         q.deleteVersionsForRecording(id)
         q.deleteSpeakersForRecording(id)
         q.deleteRecordingHard(id)
+        q.deleteMeta(processingErrorKey(id))
         if (ftsAvailable) FtsIndex.deleteRecording(driver, id)
     }
 
@@ -483,6 +711,7 @@ class VelumRepository(
         q.deleteAllAutoflows()
         q.deleteAllMemories()
         q.deleteAllGlossary()
+        q.deleteMetaWithPrefix(PROCESSING_ERROR_PREFIX)
         // Clear seed marker so maybeSeed re-inserts default AutoFlow + builtins.
         SeedData.clearSeedMarker(db)
         SeedData.maybeSeed(db)
@@ -557,24 +786,28 @@ class VelumRepository(
         trashed: Long = 0,
         createdAt: Long = epochSeconds(),
     ) = withContext(Dispatchers.Default) {
-        q.insertRecording(
-            id = id,
-            session_id = sessionId,
-            folder_id = folderId,
-            title = title,
-            source = source,
-            device_serial = deviceSerial,
-            started_at = startedAt,
-            duration_seconds = durationSeconds,
-            size_bytes = sizeBytes,
-            local_path = localPath,
-            transcript = transcript,
-            summary_markdown = summaryMarkdown,
-            status = status,
-            trashed = trashed,
-            created_at = createdAt,
-        )
-        indexRecording(id, title, transcript, summaryMarkdown)
+        // One transaction: observers (AutoFlow) only see the row once it is indexed, so their own
+        // writes never interleave with this FTS write on a shared connection.
+        db.transaction {
+            q.insertRecording(
+                id = id,
+                session_id = sessionId,
+                folder_id = folderId,
+                title = title,
+                source = source,
+                device_serial = deviceSerial,
+                started_at = startedAt,
+                duration_seconds = durationSeconds,
+                size_bytes = sizeBytes,
+                local_path = localPath,
+                transcript = transcript,
+                summary_markdown = summaryMarkdown,
+                status = status,
+                trashed = trashed,
+                created_at = createdAt,
+            )
+            indexRecording(id, title, transcript, summaryMarkdown)
+        }
     }
 
     /**
@@ -603,7 +836,11 @@ class VelumRepository(
             }
             if (templates) {
                 q.selectTemplates().executeAsList().forEach { t ->
-                    indexTemplate(t.id, t.name, t.description, t.category, t.system_prompt, t.tags)
+                    // Table was cleared above: plain inserts keep the rebuild linear (#100).
+                    FtsIndex.upsertTemplate(
+                        driver, t.id, t.name, t.description, t.category, t.system_prompt, t.tags,
+                        replaceExisting = false,
+                    )
                 }
             }
         }
@@ -816,8 +1053,11 @@ class VelumRepository(
 
     companion object {
         const val META_FIRST_RUN_DONE = "first_run_done"
+        internal const val LIBRARY_SESSION_CHUNK = 500
+        const val META_TEMPLATE_ALIASES_RECONCILED = "template_aliases_reconciled"
+        const val META_FTS_DIRTY = "fts_dirty"
+        private const val PROCESSING_ERROR_PREFIX = "processing_error:"
     }
 }
-
 
 expect fun epochSecondsNow(): Long
