@@ -75,6 +75,17 @@
 -keepclassmembers class dev.velum.app.VelumApplication { *; }
 -keep class dev.velum.app.di.AppContainer { *; }
 -keepclassmembers class dev.velum.app.di.AppContainer { *; }
+# DeviceWalkUiTest gates DeviceScreen on this copy (cross-APK). R8 otherwise
+# inlines the whole object away under minifiedTest (#138).
+-keep class dev.velum.app.i18n.DeviceUiCopy {
+    public static final dev.velum.app.i18n.DeviceUiCopy INSTANCE;
+    public java.lang.String readyToScan(java.lang.String);
+    public java.lang.String scanningRecorders(java.lang.String);
+    public java.lang.String bleStubbed(java.lang.String);
+    public java.lang.String connectionFailed(java.lang.String);
+    public java.lang.String noDevicesYet(java.lang.String);
+    public java.lang.String desktopBleLater(java.lang.String);
+}
 # Instrumentation imports one fixture through the real processor and verifies
 # its persisted result. Keep just those cross-APK calls; app names may obfuscate.
 -keepclassmembers,allowobfuscation class dev.velum.ai.pipeline.RecordingProcessor {

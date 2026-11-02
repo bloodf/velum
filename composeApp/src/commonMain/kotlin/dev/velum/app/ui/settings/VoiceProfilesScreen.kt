@@ -298,9 +298,9 @@ fun VoiceProfilesScreen(
                     color = VelumInk,
                 )
                 Row(Modifier.fillMaxWidth()) {
-                thresholdOptions(strings).forEach { (t, label) ->
+                    thresholdOptions(strings).forEach { (t, label) ->
                         OutlineButton(
-                        label,
+                            label,
                             {
                                 container.settingsViewModel.runStorageAction {
                                     container.settingsRepository.setSpeakerMatchThreshold(t)
