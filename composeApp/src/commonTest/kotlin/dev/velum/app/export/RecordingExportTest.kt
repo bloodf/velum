@@ -43,6 +43,14 @@ class RecordingExportTest {
     }
 
     @Test
+    fun srt_leavesMarkersOutOfTheLastCue() {
+        val srt = RecordingExport.srt("**Speaker 1** · 0:00\nSynthetic words\n\n## Markers\n- **1:05** Synthetic note\n")
+        assertTrue(srt.contains("Speaker 1: Synthetic words"))
+        assertFalse(srt.contains("Markers"))
+        assertFalse(srt.contains("Synthetic note"))
+    }
+
+    @Test
     fun srt_supportsHourTimestamps() {
         val transcript = """
             **Narrator** · 1:02:03

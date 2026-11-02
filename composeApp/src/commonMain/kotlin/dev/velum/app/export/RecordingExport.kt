@@ -1,5 +1,7 @@
 package dev.velum.app.export
 
+import dev.velum.ai.pipeline.TranscriptFormatter
+
 /**
  * Formats a recording transcript / summary for share and file export.
  * Pure formatting — no I/O.
@@ -120,7 +122,9 @@ object RecordingExport {
     )
 
     internal fun parseCues(transcriptMarkdown: String): List<Cue> {
-        if (transcriptMarkdown.isBlank()) return emptyList()
+        // Markers are the user's notes, not speech: they must not land in the last subtitle.
+        val spoken = TranscriptFormatter.splitMarkers(transcriptMarkdown).first
+        if (spoken.isBlank()) return emptyList()
         val cueHeader = Regex(
             """^\*\*(.+?)\*\*\s*·\s*(?:(\d+):)?(\d{1,2}):(\d{2})(?:[.,](\d{1,3}))?\s*$""",
         )
@@ -144,7 +148,7 @@ object RecordingExport {
             havePending = false
         }
 
-        transcriptMarkdown.lineSequence().forEach { raw ->
+        spoken.lineSequence().forEach { raw ->
             val line = raw.trimEnd()
             val match = cueHeader.matchEntire(line.trim())
             if (match != null) {
