@@ -18,6 +18,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performScrollToKey
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
@@ -329,6 +330,8 @@ class DiscoverFiltersUiTest {
             grid().performScrollToKey("pg-059")
             waiting("page 2 loaded") { runCatching { grid().performScrollToKey("pg-099") }.isSuccess }
             // Filter change with paging at page 2: the new filter has 70 rows (two pages) and must show all of them.
+            // The filter chips are grid item 0; scroll back up to reach them.
+            grid().performScrollToIndex(0)
             tap("category:sales")
             waiting("sales page 1") { runCatching { grid().performScrollToKey("sl-000") }.isSuccess }
             grid().performScrollToKey("sl-059")
