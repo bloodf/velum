@@ -1,0 +1,23 @@
+-- #113: one row per (session_id, device_serial) with a real serial. The survivor is the untrashed row,
+-- then the row with notes, then the oldest. Later duplicates are detached (session_id = NULL): no row,
+-- edit or audio is deleted and detached rows remain ordinary library recordings. Rows without a serial
+-- are left alone because dedup is off for them.
+UPDATE recording SET session_id = NULL
+WHERE session_id IS NOT NULL
+  AND device_serial IS NOT NULL
+  AND id NOT IN (
+    SELECT (
+      SELECT r2.id FROM recording r2
+      WHERE r2.session_id = r1.session_id
+        AND r2.device_serial = r1.device_serial
+      ORDER BY r2.trashed ASC,
+        (r2.transcript IS NOT NULL OR r2.summary_markdown IS NOT NULL) DESC,
+        r2.created_at ASC,
+        r2.id ASC
+      LIMIT 1
+    )
+    FROM recording r1
+    WHERE r1.session_id IS NOT NULL AND r1.device_serial IS NOT NULL
+  );
+
+CREATE UNIQUE INDEX recording_device_session ON recording(session_id, device_serial) WHERE session_id IS NOT NULL AND device_serial IS NOT NULL;

@@ -50,13 +50,16 @@ There are three input paths:
    bound the pieces and heap; multi-hour hardware captures are still unvalidated
    (#86, #6). On iOS `createTempSessionFile()` returns null, so the encrypted
    session is still held whole in memory before chunked decrypt; iOS recorder
-   import is not a supported target. Session deduplication remains #113.
+   import is not a supported target. Rows are unique on device session id plus
+   device serial (no dedup without a real serial); a re-download atomically
+   replaces the existing row's audio and keeps its title, transcript and summary (#113).
 2. File import starts in
    [AudioImportPipeline](composeApp/src/commonMain/kotlin/dev/velum/app/importing/AudioImportPipeline.kt).
    It hashes the source, normalizes audio using the platform `AudioNormalizer`,
    checks normalized content hashes, creates a local recording, resolves AutoFlow
-   parameters and enqueues the same processor. General interrupted-import and
-   orphan reconciliation remains #122.
+   parameters and enqueues the same processor. Before the container is published,
+   a startup sweep quarantines unreferenced final audio files older than 24 hours in
+   the recordings directory and purges quarantine after 7 days (#122).
 3. Android phone capture uses
    [MicCapture](composeApp/src/androidMain/kotlin/dev/velum/app/platform/MicCapture.android.kt),
    [MicRecordingService](composeApp/src/androidMain/kotlin/dev/velum/app/platform/MicRecordingService.kt)

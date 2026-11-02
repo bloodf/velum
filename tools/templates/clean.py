@@ -3,7 +3,8 @@
 Full data-hygiene pass over the collected template dump.
 
 Writes cleaned per-category JSONL under --out-dir and a Markdown report to --report.
-Identical duplicates (normalized title + body) are deleted — exactly one survivor kept.
+Rows with an identical `body` (exact string, no whitespace/case normalization) are
+collapsed to one survivor: official, then existing Featured, then name, then canonical row.
 """
 from __future__ import annotations
 
@@ -163,6 +164,8 @@ class Stats:
     language_counts: Counter = field(default_factory=Counter)
     tag_counts: Counter = field(default_factory=Counter)
     exact_dupes_removed: int = 0
+    duplicate_body_groups: int = 0
+    dedupe_input_rows: int = 0
 
 
 def nfkc(s: str) -> str:
@@ -477,27 +480,67 @@ def clean_row(raw: dict, stats: Stats) -> dict | None:
     }
 
 
-def dedupe_exact(rows: list[dict], stats: Stats) -> list[dict]:
-    best: dict[str, dict] = {}
+@dataclass(frozen=True)
+class DedupeResult:
+    survivors: list[dict]
+    aliases: dict[str, str]  # removed id -> survivor id
+    input_rows: int
+    duplicate_groups: int
+    removed_rows: int
+
+    @property
+    def output_rows(self) -> int:
+        return len(self.survivors)
+
+
+def canonical_row(row: dict) -> str:
+    return json.dumps(row, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def survivor_rank(row: dict, featured_ids: frozenset[str] = frozenset()) -> tuple:
+    """Lower wins: official, then existing Featured, then name (codepoint order), then canonical row."""
+    featured = parse_bool(row.get("featured")) or row.get("id") in featured_ids
+    return (
+        0 if parse_bool(row.get("official")) else 1,
+        0 if featured else 1,
+        row.get("name") or "",
+        canonical_row(row),
+    )
+
+
+def dedupe_exact_bodies(rows: list[dict], featured_ids: frozenset[str] = frozenset()) -> DedupeResult:
+    """
+    Keep one row per exact `body` (no whitespace/case normalization). The survivor keeps
+    official / featured status if any collapsed row had it. Output is sorted by
+    [survivor_rank], so it is independent of input order; inputs are not mutated.
+    """
+    groups: dict[str, list[dict]] = defaultdict(list)
     for row in rows:
-        key = exact_key(row["name"], row["body"])
-        prev = best.get(key)
-        if prev is None:
-            best[key] = row
-            continue
-        stats.exact_dupes_removed += 1
-        stats.removed["exact_duplicate"] += 1
-        # Prefer official, then longer body, then existing higher usage
-        def rank(r: dict) -> tuple:
-            return (
-                1 if r.get("official") else 0,
-                len(r.get("body") or ""),
-                int(r.get("usageCount") or 0),
-                r.get("id") or "",
-            )
-        if rank(row) > rank(prev):
-            best[key] = row
-    return list(best.values())
+        groups[row["body"]].append(row)
+    survivors: list[dict] = []
+    aliases: dict[str, str] = {}
+    duplicate_groups = 0
+    for members in groups.values():
+        members = sorted(members, key=lambda r: survivor_rank(r, featured_ids))
+        best = dict(members[0])
+        if len(members) > 1:
+            duplicate_groups += 1
+            if any(parse_bool(m.get("official")) for m in members):
+                best["official"] = True
+            if "featured" in best and any(parse_bool(m.get("featured")) for m in members):
+                best["featured"] = True
+            for m in members[1:]:
+                if m.get("id") and m["id"] != best.get("id"):
+                    aliases[m["id"]] = best["id"]
+        survivors.append(best)
+    survivors.sort(key=lambda r: survivor_rank(r, featured_ids))
+    return DedupeResult(
+        survivors=survivors,
+        aliases=dict(sorted(aliases.items())),
+        input_rows=len(rows),
+        duplicate_groups=duplicate_groups,
+        removed_rows=len(rows) - len(survivors),
+    )
 
 
 def write_outputs(out_dir: Path, rows: list[dict]) -> None:
@@ -528,8 +571,10 @@ def write_report(path: Path, stats: Stats) -> None:
     lines.append("## Totals")
     lines.append("")
     lines.append(f"- Input rows considered: **{stats.before_total}**")
-    lines.append(f"- Output rows (exact-deduped): **{stats.after_total}**")
-    lines.append(f"- Exact duplicates removed: **{stats.exact_dupes_removed}**")
+    lines.append(f"- Rows entering exact-body dedupe: **{stats.dedupe_input_rows}**")
+    lines.append(f"- Duplicate body groups (exact body): **{stats.duplicate_body_groups}**")
+    lines.append(f"- Exact-body duplicates removed: **{stats.exact_dupes_removed}**")
+    lines.append(f"- Output rows (exact-body deduped): **{stats.after_total}**")
     lines.append("")
     lines.append("## Removals by reason")
     lines.append("")
@@ -593,13 +638,21 @@ def main(argv: list[str] | None = None) -> int:
             if row:
                 cleaned.append(row)
 
+    featured_ids: set[str] = set()
     if args.existing and args.existing.exists():
         for raw in load_jsonl(args.existing):
             row = clean_row(raw, stats)
             if row:
                 cleaned.append(row)
+                if parse_bool(raw.get("featured")):
+                    featured_ids.add(row["id"])
 
-    cleaned = dedupe_exact(cleaned, stats)
+    deduped = dedupe_exact_bodies(cleaned, frozenset(featured_ids))
+    cleaned = deduped.survivors
+    stats.dedupe_input_rows = deduped.input_rows
+    stats.duplicate_body_groups = deduped.duplicate_groups
+    stats.exact_dupes_removed = deduped.removed_rows
+    stats.removed["exact_duplicate"] += deduped.removed_rows
 
     # Ensure unique ids
     used: set[str] = set()
@@ -623,6 +676,8 @@ def main(argv: list[str] | None = None) -> int:
             {
                 "before": stats.before_total,
                 "after": stats.after_total,
+                "dedupe_input_rows": stats.dedupe_input_rows,
+                "duplicate_body_groups": stats.duplicate_body_groups,
                 "exact_dupes_removed": stats.exact_dupes_removed,
                 "removed": dict(stats.removed),
             },

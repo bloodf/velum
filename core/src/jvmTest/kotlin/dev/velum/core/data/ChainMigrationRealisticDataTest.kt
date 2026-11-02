@@ -10,11 +10,11 @@ import kotlinx.coroutines.test.runTest
 
 /**
  * Round-3: migrate a realistic v1 library (recording + notes + template + autoflow
- * + speaker + glossary) through every shipped step (1→2→3→4) and assert no data loss.
+ * + speaker + glossary) through every shipped step (1→2→3→4→5) and assert no data loss.
  */
 class ChainMigrationRealisticDataTest {
     @Test
-    fun upgrade_v1_to_v4_preserves_library_and_backfills_versions() = runTest {
+    fun upgrade_v1_to_v5_preserves_library_and_backfills_versions() = runTest {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         CREATE_V1_DDL.split(';')
             .map { it.trim() }
@@ -88,7 +88,7 @@ Bob: ok', '## Sprint planning
             0,
         )
 
-        VelumDatabase.Schema.migrate(driver, oldVersion = 1, newVersion = 4)
+        VelumDatabase.Schema.migrate(driver, oldVersion = 1, newVersion = 6)
         // Mark seed current so maybeSeed does not wipe/replace library rows under test.
         driver.execute(
             null,
@@ -129,7 +129,8 @@ Bob: ok', '## Sprint planning
         val glossary = db.velumQueries.selectGlossary().executeAsList()
         assertTrue(glossary.any { it.term == "Velum" })
 
-        assertEquals(4, VelumDatabase.Schema.version)
+        assertEquals(6, VelumDatabase.Schema.version)
+        assertEquals("rec-v1", repo.findDeviceSessionRecording(42, "SN-OLD")?.id)
     }
 
     companion object {

@@ -41,7 +41,7 @@ class SummaryVersionMigrationTest {
             0,
         )
 
-        VelumDatabase.Schema.migrate(driver, oldVersion = 3, newVersion = 4)
+        VelumDatabase.Schema.migrate(driver, oldVersion = 3, newVersion = 6)
         val db = VelumDatabase(driver)
         val repo = VelumRepository(db, driver)
 

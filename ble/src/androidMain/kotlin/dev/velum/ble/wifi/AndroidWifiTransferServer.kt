@@ -27,7 +27,6 @@ class AndroidWifiTransferServer(
     private val serverRef = AtomicReference<WebSocketServer?>(null)
     private val clientRef = AtomicReference<WebSocket?>(null)
     private val expectedPreamble = AtomicReference(WifiTransferPreamble.defaultToken())
-    private val preambleOk = AtomicBoolean(false)
 
     override suspend fun start(
         port: Int,
@@ -36,7 +35,6 @@ class AndroidWifiTransferServer(
     ) {
         stop()
         expectedPreamble.set(preamble)
-        preambleOk.set(false)
         val address = if (bindHost != null) {
             InetSocketAddress(bindHost, port)
         } else {
@@ -46,12 +44,11 @@ class AndroidWifiTransferServer(
         val server = object : WebSocketServer(address) {
             override fun onOpen(conn: WebSocket, handshake: ClientHandshake) {
                 bindClientToSoftAp(conn, network)
-                clientRef.compareAndSet(null, conn)
+                // Authorization is per connection: the peer is only recorded after its own preamble.
             }
 
             override fun onClose(conn: WebSocket, code: Int, reason: String, remote: Boolean) {
                 clientRef.compareAndSet(conn, null)
-                preambleOk.set(false)
             }
 
             override fun onMessage(conn: WebSocket, message: String) = Unit
@@ -59,9 +56,11 @@ class AndroidWifiTransferServer(
             override fun onMessage(conn: WebSocket, message: ByteBuffer) {
                 val bytes = ByteArray(message.remaining())
                 message.get(bytes)
-                if (!preambleOk.get()) {
+                // The single authenticated peer is clientRef; any other connection must send its own preamble.
+                // Latest authenticated wins: a device reconnect must not be locked out by a stale socket.
+                if (clientRef.get() !== conn) {
                     if (WifiTransferPreamble.matches(bytes, expectedPreamble.get())) {
-                        preambleOk.set(true)
+                        clientRef.getAndSet(conn)?.let { old -> runCatching { old.close(1001, "superseded") } }
                     } else {
                         conn.close(1008, "preamble_mismatch")
                     }
@@ -92,7 +91,6 @@ class AndroidWifiTransferServer(
 
     override suspend fun stop() {
         running.set(false)
-        preambleOk.set(false)
         clientRef.getAndSet(null)?.let { runCatching { it.close() } }
         serverRef.getAndSet(null)?.let { s -> runCatching { s.stop(500) } }
     }
@@ -101,8 +99,7 @@ class AndroidWifiTransferServer(
 
     override suspend fun sendEncryptedFrame(bytes: ByteArray) {
         val client = clientRef.get()
-            ?: error("No Wi-Fi WebSocket client on :${WifiTransferServer.DEFAULT_PORT}")
-        require(preambleOk.get()) { "Wi-Fi preamble not accepted yet" }
+            ?: error("No authenticated Wi-Fi WebSocket client on :${WifiTransferServer.DEFAULT_PORT}")
         require(bytes.size <= MAX_FRAME_BYTES) { "Frame exceeds $MAX_FRAME_BYTES" }
         synchronized(client) { client.send(bytes) }
     }

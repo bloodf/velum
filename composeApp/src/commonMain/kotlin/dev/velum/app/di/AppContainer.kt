@@ -29,6 +29,8 @@ import dev.velum.app.platform.ExportFolderStore
 import dev.velum.app.platform.MicCapture
 import dev.velum.app.platform.createMicCapture
 import dev.velum.app.platform.DOWNLOAD_PART_SUFFIX
+import dev.velum.app.platform.deleteFileAtPath
+import dev.velum.app.platform.isSupersededOwnAudio
 import dev.velum.app.platform.recordingsDirectoryPath
 import dev.velum.app.platform.streamToFileAtomically
 import dev.velum.app.platform.systemLanguageTag
@@ -44,6 +46,7 @@ import dev.velum.core.data.DriverFactory
 import dev.velum.core.data.RecordingIds
 import dev.velum.core.data.VelumRepository
 import dev.velum.core.data.createDatabase
+import dev.velum.core.db.Recording
 import dev.velum.core.data.epochSecondsNow
 import dev.velum.core.integrations.IntegrationAuthStore
 import dev.velum.core.integrations.IntegrationConfig
@@ -63,6 +66,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 class AppContainer(
@@ -112,6 +117,7 @@ class AppContainer(
         keyImporter = deviceKeyImporter,
         preferWifiFastPath = { settingsRepository.preferences.value.preferWifiFastPath },
         persistDownloadedSession = { session -> persistDownloadedSession(session) },
+        librarySessionIds = { ids, serial -> repository.librarySessionIds(ids, serial) },
         localeTag = {
             when (settingsRepository.preferences.value.appLanguage) {
                 "en" -> "en"
@@ -246,10 +252,23 @@ class AppContainer(
         return id
     }
 
-    suspend fun persistDownloadedSession(session: DownloadedSessionAudio): String {
-        val id = RecordingIds.newId()
+    /** Serializes persist so check-then-write on the (session, serial) key cannot interleave (#113). */
+    private val downloadPersistMutex = Mutex()
+
+    /**
+     * One library row per device session (#113). A re-download atomically replaces the existing
+     * row's audio and keeps its id, title, transcript, summary and template; a failed write leaves
+     * the existing row and file untouched.
+     */
+    suspend fun persistDownloadedSession(
+        session: DownloadedSessionAudio,
+    ): String = downloadPersistMutex.withLock {
+        // Without a real serial dedup is off (null key): never risk merging sessions of two devices.
+        val serial = session.deviceSerial?.takeIf { it.isNotBlank() }
+        val existing = repository.findDeviceSessionRecording(session.sessionId, serial)
+        val id = existing?.id ?: RecordingIds.newId()
         val dir = recordingsDirectoryPath()
-        // Stream into a fsynced .part and atomically rename once complete, so a crash,
+        // Stream into a fsynced .part and atomically rename once complete (#86), so a crash,
         // cancellation or full disk never leaves a truncated recording under its final name.
         val (path, sizeBytes) = withContext(Dispatchers.IO) {
             streamToFileAtomically(
@@ -265,27 +284,49 @@ class AppContainer(
                 },
             ) { sink -> session.writeDecryptedAudio(sink) }
         }
+        if (existing != null) {
+            repository.replaceDeviceSessionAudio(id, path, sizeBytes)
+            // Only this row's own superseded file in the recordings dir (e.g. .ogg -> .wav).
+            val previousPath = existing.local_path
+            if (previousPath != null && isSupersededOwnAudio(previousPath, path, dir, id)) deleteFileAtPath(previousPath)
+            // Re-process only a row that never produced a transcript; never overwrite user content.
+            if (existing.transcript.isNullOrBlank() && existing.summary_markdown.isNullOrBlank()) {
+                repository.updateStatus(id, "queued")
+                enqueueDownloadedSession(id, existing.title)
+            }
+            return@withLock id
+        }
         val started = if (session.startedAtEpochSeconds > 1_000_000_000L) {
             session.startedAtEpochSeconds
         } else {
             epochSecondsNow()
         }
         val title = formatRecordingTitle(started)
-        repository.insertRecording(
-            id = id,
-            sessionId = session.sessionId,
-            folderId = null,
-            title = title,
-            source = "note_pro",
-            deviceSerial = session.deviceSerial,
-            startedAt = started,
-            durationSeconds = 0,
-            sizeBytes = sizeBytes,
-            localPath = path,
-            transcript = null,
-            summaryMarkdown = null,
-            status = "queued",
+        repository.insertDeviceSessionRecording(
+            Recording(
+                id = id,
+                session_id = session.sessionId,
+                folder_id = null,
+                title = title,
+                source = "note_pro",
+                device_serial = serial,
+                started_at = started,
+                duration_seconds = 0,
+                size_bytes = sizeBytes,
+                local_path = path,
+                transcript = null,
+                summary_markdown = null,
+                status = "queued",
+                trashed = 0,
+                created_at = epochSecondsNow(),
+                processing_warning = null,
+            ),
         )
+        enqueueDownloadedSession(id, title)
+        id
+    }
+
+    private suspend fun enqueueDownloadedSession(id: String, title: String) {
         // Resolve AutoFlow before first enqueue so KEEP cannot drop template/model.
         val match = repository.findMatchingAutoflow(
             source = "note_pro",
@@ -298,7 +339,6 @@ class AppContainer(
             retranscribe = true,
             apiModelOverride = match?.let { AutoFlowResolve.modelOverride(it) },
         )
-        return id
     }
 
     private fun looksLikeOgg(bytes: ByteArray): Boolean =
