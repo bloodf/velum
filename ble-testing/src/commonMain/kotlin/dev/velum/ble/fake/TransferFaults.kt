@@ -20,6 +20,12 @@ class TransferFaults(
      * while the app stalls): the sequence number is used up, unlike [dropAt].
      */
     lostNotificationAt: Set<Long> = emptySet(),
+    /** Deliver the same sealed packet twice (seq already seen). */
+    replayAt: Set<Long> = emptySet(),
+    /** Instead of the chunk, send one starting 50 bytes before it (a partial overlap). */
+    overlapAt: Set<Long> = emptySet(),
+    /** Before the chunk, send a chunk carrying another session's id (a stray from an interrupted transfer). */
+    strayAt: Set<Long> = emptySet(),
 ) {
     private val disconnect = disconnectAt.sorted().toMutableList()
     internal val corrupt = corruptAt.toMutableSet()
@@ -27,6 +33,9 @@ class TransferFaults(
     internal val drop = dropAt.toMutableSet()
     internal val duplicate = duplicateAt.toMutableSet()
     internal val lostNotification = lostNotificationAt.toMutableSet()
+    internal val replay = replayAt.toMutableSet()
+    internal val overlap = overlapAt.toMutableSet()
+    internal val stray = strayAt.toMutableSet()
 
     internal fun takeDisconnect(chunkOffset: Long): Boolean {
         val hit = disconnect.firstOrNull { it <= chunkOffset } ?: return false

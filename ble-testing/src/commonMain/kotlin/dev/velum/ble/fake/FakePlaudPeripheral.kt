@@ -16,6 +16,7 @@ import dev.velum.protocol.UnlockSecretLayout
 import kotlin.random.Random
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
@@ -45,6 +46,7 @@ class FakePlaudPeripheral(
     private val faults: TransferFaults = TransferFaults(),
     /** CRC reported in the SYNC_FILE_STOP response. */
     private val stopCrc: StopCrc = StopCrc.NotProvided,
+    private val stopReply: StopReply = StopReply.Cmd29,
 ) {
     init {
         require(chunkSize in 1..255) { "chunkSize must fit the u8 length field" }
@@ -59,7 +61,22 @@ class FakePlaudPeripheral(
         Ccitt,
     }
 
+    /** How the device answers SYNC_FILE_STOP. */
+    enum class StopReply {
+        Cmd29,
+
+        /** Answers as command 30 (never sent by the app; delete in our docs). */
+        Cmd30,
+
+        /** Never answers. */
+        Silent,
+    }
+
     val notifications = MutableSharedFlow<ByteArray>(extraBufferCapacity = 128)
+
+    /** Every command received after unlock, in order. */
+    val receivedCommands: List<Int> get() = _receivedCommands.toList()
+    private val _receivedCommands = mutableListOf<Int>()
 
     /** `startOffset` of every SYNC_FILE_START received, in order. */
     val syncStartOffsets: List<Long> get() = _syncStartOffsets.toList()
@@ -174,6 +191,7 @@ class FakePlaudPeripheral(
             packet[1].toInt() and 0xFF
         }
         val payload = if (packet.size > 3) packet.copyOfRange(3, packet.size) else ByteArray(0)
+        _receivedCommands += cmd
         when (cmd) {
             Commands.HANDSHAKE -> {
                 val hsPayload = Bytes.hexToBytes("001400051e0101000156000701")
@@ -207,14 +225,22 @@ class FakePlaudPeripheral(
                 streamJob = CoroutineScope(currentCoroutineContext()).launch { streamSessionFrom(startOffset.toInt()) }
             }
             Commands.SYNC_FILE_STOP -> {
+                // A real device stops streaming; its reply follows the completed write.
+                streamJob?.cancelAndJoin()
                 val crc = when (stopCrc) {
                     StopCrc.NotProvided -> 0xFFFF
                     StopCrc.Ccitt -> Crc16Ccitt.compute(sessionFile)
                 }
-                emitCommand(
-                    Commands.SYNC_FILE_STOP,
-                    Bytes.u32Le(sessionId) + Bytes.u16Le(crc),
-                )
+                val replyCmd = when (stopReply) {
+                    StopReply.Cmd29 -> Commands.SYNC_FILE_STOP
+                    StopReply.Cmd30 -> Commands.DELETE_FILE
+                    StopReply.Silent -> null
+                }
+                if (replyCmd != null) {
+                    streamJob = CoroutineScope(currentCoroutineContext()).launch {
+                        emitCommand(replyCmd, Bytes.u32Le(sessionId) + Bytes.u16Le(crc))
+                    }
+                }
             }
             Commands.BATTERY_LIKELY -> {
                 val batPayload = byteArrayOf(0x00, batteryPercent.toByte())
@@ -233,17 +259,20 @@ class FakePlaudPeripheral(
             val at = offset.toLong()
             // Link lost: nothing more arrives, not even the end marker.
             if (faults.takeDisconnect(at)) return
+            if (faults.stray.remove(at)) emitEncrypted(chunkFrame(sessionId + 1, 0L, ByteArray(10) { 0x77 }))
+            if (faults.overlap.remove(at)) {
+                emitEncrypted(chunkFrame(sessionId, at - 50, sessionFile.copyOfRange(offset - 50, offset + 50)))
+                offset = end
+                continue
+            }
             val slice = sessionFile.copyOfRange(offset, end)
             if (faults.corrupt.remove(at)) slice[0] = (slice[0].toInt() xor 0x5A).toByte()
-            val frame = byteArrayOf(PacketType.RecordingData.code.toByte()) +
-                Bytes.u32Le(sessionId) +
-                Bytes.u32Le(at) +
-                byteArrayOf(slice.size.toByte()) +
-                slice
+            val frame = chunkFrame(sessionId, at, slice)
             when {
                 faults.drop.remove(at) -> Unit
                 faults.garble.remove(at) -> emitEncrypted(frame, garble = true)
                 faults.lostNotification.remove(at) -> emitEncrypted(frame, lost = true)
+                faults.replay.remove(at) -> emitEncrypted(frame, replay = true)
                 faults.duplicate.remove(at) -> { emitEncrypted(frame); emitEncrypted(frame) }
                 else -> emitEncrypted(frame)
             }
@@ -255,6 +284,13 @@ class FakePlaudPeripheral(
             byteArrayOf(0)
         emitEncrypted(endFrame)
     }
+
+    private fun chunkFrame(sid: Long, offset: Long, data: ByteArray) =
+        byteArrayOf(PacketType.RecordingData.code.toByte()) +
+            Bytes.u32Le(sid) +
+            Bytes.u32Le(offset) +
+            byteArrayOf(data.size.toByte()) +
+            data
 
     private suspend fun emitCommand(cmd: Int, payload: ByteArray) {
         val frame = ByteArray(1 + 2 + payload.size)
@@ -268,6 +304,7 @@ class FakePlaudPeripheral(
         frame: ByteArray,
         garble: Boolean = false,
         lost: Boolean = false,
+        replay: Boolean = false,
     ) = emitMutex.withLock {
         val sec = secret
         if (sec == null) {
@@ -278,6 +315,7 @@ class FakePlaudPeripheral(
             // Flip a tag byte: the packet no longer authenticates (radio/link corruption).
             if (garble) sealed[sealed.size - 1] = (sealed[sealed.size - 1].toInt() xor 0x01).toByte()
             if (!lost) emitRaw(sealed)
+            if (replay) emitRaw(sealed)
         }
     }
 

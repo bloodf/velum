@@ -8,16 +8,23 @@ import dev.velum.ble.crypto.rsaKeyPairToPem
 import dev.velum.ble.fake.FakeBleTransport
 import dev.velum.ble.fake.FakePlaudPeripheral
 import dev.velum.ble.fake.TransferFaults
+import dev.velum.protocol.Commands
 import dev.velum.protocol.DeviceIdentityKeys
 import java.io.ByteArrayOutputStream
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
+import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 
-/** #94: a single transfer must fail fast on bytes it cannot trust instead of stalling or gapping. Synthetic keys/data. */
+/** #94: a transfer must fail fast on bytes it cannot trust, and tolerate what is harmless. Synthetic keys/data. */
 class TransferIntegrityTest {
     private val pems = rsaKeyPairToPem()
     private val keys = DeviceIdentityKeys(
@@ -30,9 +37,15 @@ class TransferIntegrityTest {
     private val cipher = createSessionCipher()
     private val file = Random(7).nextBytes(10_000)
 
-    private suspend fun clientFor(faults: TransferFaults): PlaudDeviceClient {
-        val peripheral = FakePlaudPeripheral(cipher, keys, file, chunkSize = 200, faults = faults)
-        val ble = FakeBleTransport(peripheral)
+    private var peripheral: FakePlaudPeripheral? = null
+
+    private suspend fun clientFor(
+        faults: TransferFaults,
+        stopReply: FakePlaudPeripheral.StopReply = FakePlaudPeripheral.StopReply.Cmd29,
+    ): PlaudDeviceClient {
+        val fake = FakePlaudPeripheral(cipher, keys, file, chunkSize = 200, faults = faults, stopReply = stopReply)
+        peripheral = fake
+        val ble = FakeBleTransport(fake)
         ble.connect("fake-note-pro")
         return PlaudDeviceClient(ble, cipher, keys, responseTimeout = 5.seconds).also { it.unlock() }
     }
@@ -42,39 +55,89 @@ class TransferIntegrityTest {
         override fun write(data: ByteArray) = out.write(data)
     }
 
-    @Test fun packet_failing_authentication_fails_the_transfer_instead_of_stalling() = runTest {
-        // Before #94 the client skipped the packet; every later packet then failed its sequence check,
-        // so the transfer hung until the response timeout and surfaced as a cancellation.
-        val client = clientFor(TransferFaults(garbleAt = setOf(2_000)))
-        assertFailsWith<TransferIntegrityException> { client.downloadSessionTo(1_700_000_000L, file.size.toLong(), Sink()) }
+    private suspend fun assertFailsKeepingOnly(bytesKept: Int, faults: TransferFaults) {
+        val client = clientFor(faults)
+        val sink = Sink()
+        assertFailsWith<TransferIntegrityException> { client.downloadSessionTo(SESSION, file.size.toLong(), sink) }
+        assertContentEquals(file.copyOf(bytesKept), sink.out.toByteArray(), "nothing past the failure is kept")
+        assertTrue(Commands.SYNC_FILE_STOP in peripheral!!.receivedCommands, "the device is asked to stop streaming")
         client.close()
+    }
+
+    @Test fun packet_failing_authentication_shows_up_as_a_gap_not_a_stall() = runTest {
+        // Before #94 the client skipped the packet and required the exact next seq, so every later packet
+        // was rejected too: the transfer hung until the response timeout and surfaced as a cancellation.
+        val started = testScheduler.currentTime
+        assertFailsKeepingOnly(2_000, TransferFaults(garbleAt = setOf(2_000)))
+        assertTrue(testScheduler.currentTime - started < 5_000, "must fail before the response timeout")
     }
 
     @Test fun missing_chunk_is_a_gap_not_a_shorter_file() = runTest {
-        val client = clientFor(TransferFaults(dropAt = setOf(4_000)))
-        assertFailsWith<TransferIntegrityException> { client.downloadSessionTo(1_700_000_000L, file.size.toLong(), Sink()) }
-        client.close()
+        assertFailsKeepingOnly(4_000, TransferFaults(dropAt = setOf(4_000)))
     }
 
-    @Test fun repeated_chunk_is_an_overlap_not_duplicate_bytes() = runTest {
-        val client = clientFor(TransferFaults(duplicateAt = setOf(6_000)))
-        assertFailsWith<TransferIntegrityException> { client.downloadSessionTo(1_700_000_000L, file.size.toLong(), Sink()) }
-        client.close()
+    @Test fun notification_lost_to_a_buffer_overflow_is_a_gap_not_a_shorter_file() = runTest {
+        assertFailsKeepingOnly(8_000, TransferFaults(lostNotificationAt = setOf(8_000)))
     }
 
-    @Test fun notification_lost_to_a_buffer_overflow_fails_instead_of_gapping() = runTest {
-        val client = clientFor(TransferFaults(lostNotificationAt = setOf(8_000)))
+    @Test fun partial_overlap_fails() = runTest {
+        assertFailsKeepingOnly(6_000, TransferFaults(overlapAt = setOf(6_000)))
+    }
+
+    @Test fun chunk_overrunning_the_declared_size_is_not_written() = runTest {
+        val client = clientFor(TransferFaults())
         val sink = Sink()
-        assertFailsWith<TransferIntegrityException> { client.downloadSessionTo(1_700_000_000L, file.size.toLong(), sink) }
-        assertContentEquals(file.copyOf(8_000), sink.out.toByteArray(), "nothing after the lost packet is kept")
+        // The device holds more than was declared: the chunk crossing the limit must not reach the sink.
+        assertFailsWith<TransferIntegrityException> { client.downloadSessionTo(SESSION, 5_050L, sink) }
+        assertContentEquals(file.copyOf(5_000), sink.out.toByteArray())
         client.close()
+    }
+
+    @Test fun repeated_chunks_replays_and_strays_are_skipped_without_duplicate_bytes() = runTest {
+        val faults = TransferFaults(duplicateAt = setOf(1_000), replayAt = setOf(3_000), strayAt = setOf(5_000))
+        val client = clientFor(faults)
+        val sink = Sink()
+        client.downloadSessionTo(SESSION, file.size.toLong(), sink)
+        assertContentEquals(file, sink.out.toByteArray())
+        client.close()
+    }
+
+    @Test fun complete_transfer_survives_a_missing_stop_reply() = runTest {
+        val client = clientFor(TransferFaults(), FakePlaudPeripheral.StopReply.Silent)
+        val sink = Sink()
+        assertEquals(PlaudDeviceClient.NO_DEVICE_CRC, client.downloadSessionTo(SESSION, file.size.toLong(), sink))
+        assertContentEquals(file, sink.out.toByteArray())
+        client.close()
+    }
+
+    @Test fun stop_reply_30_is_accepted_and_30_is_never_sent() = runTest {
+        val client = clientFor(TransferFaults(), FakePlaudPeripheral.StopReply.Cmd30)
+        val started = testScheduler.currentTime
+        assertEquals(PlaudDeviceClient.NO_DEVICE_CRC, client.downloadSessionTo(SESSION, file.size.toLong(), Sink()))
+        assertEquals(started, testScheduler.currentTime, "reply 30 must end the wait, not the timeout")
+        assertFalse(Commands.DELETE_FILE in peripheral!!.receivedCommands)
+        client.close()
+    }
+
+    @Test fun missing_stop_reply_does_not_swallow_the_callers_cancellation() = runTest {
+        val job = launch {
+            val client = clientFor(TransferFaults(), FakePlaudPeripheral.StopReply.Silent)
+            client.downloadSessionTo(SESSION, file.size.toLong(), Sink())
+            error("cancellation must not be swallowed")
+        }
+        runCurrent()
+        assertTrue(job.isActive, "waiting for the stop reply")
+        job.cancelAndJoin()
+        assertTrue(job.isCancelled)
     }
 
     @Test fun clean_transfer_is_byte_exact() = runTest {
         val client = clientFor(TransferFaults())
         val sink = Sink()
-        client.downloadSessionTo(1_700_000_000L, file.size.toLong(), sink)
+        client.downloadSessionTo(SESSION, file.size.toLong(), sink)
         assertContentEquals(file, sink.out.toByteArray())
         client.close()
     }
+
+    private companion object { const val SESSION = 1_700_000_000L }
 }

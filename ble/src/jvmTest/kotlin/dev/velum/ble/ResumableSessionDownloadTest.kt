@@ -11,6 +11,7 @@ import dev.velum.ble.crypto.rsaKeyPairToPem
 import dev.velum.ble.fake.FakeBleTransport
 import dev.velum.ble.fake.FakePlaudPeripheral
 import dev.velum.ble.fake.FakePlaudPeripheral.StopCrc
+import dev.velum.ble.fake.FakePlaudPeripheral.StopReply
 import dev.velum.ble.fake.TransferFaults
 import dev.velum.protocol.Crc16Ccitt
 import dev.velum.protocol.DeviceIdentityKeys
@@ -23,7 +24,14 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.delay
+import java.io.IOException
+import kotlin.test.assertFalse
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * #94 software side of #6: resume and CRC against the simulated peripheral (no hardware). Synthetic
@@ -68,8 +76,9 @@ class ResumableSessionDownloadTest {
         faults: TransferFaults = TransferFaults(),
         stopCrc: StopCrc = StopCrc.Ccitt,
         chunk: Int = 200,
+        stopReply: StopReply = StopReply.Cmd29,
     ): Rig {
-        val peripheral = FakePlaudPeripheral(cipher, keys, file, chunkSize = chunk, faults = faults, stopCrc = stopCrc)
+        val peripheral = FakePlaudPeripheral(cipher, keys, file, chunkSize = chunk, faults = faults, stopCrc = stopCrc, stopReply = stopReply)
         return Rig(peripheral, FakeBleTransport(peripheral))
     }
 
@@ -77,7 +86,7 @@ class ResumableSessionDownloadTest {
         connect = {
             rig.connects++
             rig.ble.connect("fake-note-pro")
-            PlaudDeviceClient(rig.ble, cipher, keys, responseTimeout = 5.seconds).also { it.unlock() }
+            PlaudDeviceClient(rig.ble, cipher, keys, responseTimeout = 5.seconds)
         },
         crcPolicy = policy,
     )
@@ -114,8 +123,7 @@ class ResumableSessionDownloadTest {
             TransferFaults(garbleAt = setOf(3_000)) to 3_000L,
             TransferFaults(dropAt = setOf(12_000)) to 12_000L,
             TransferFaults(lostNotificationAt = setOf(18_000)) to 18_000L,
-            // The first copy is stored; the second copy is the overlap, so the resume continues after it.
-            TransferFaults(duplicateAt = setOf(25_000)) to 25_200L,
+            TransferFaults(overlapAt = setOf(25_000)) to 25_000L,
         )
         for ((faults, resumedAt) in cases) {
             val rig = rig(file, faults)
@@ -157,14 +165,77 @@ class ResumableSessionDownloadTest {
         assertEquals(CrcStatus.NotProvided, result.crc)
     }
 
-    @Test fun persistent_failure_gives_up_after_max_attempts() = runTest {
+    @Test fun failed_reconnects_use_retries_and_then_the_transfer_completes() = runTest {
         val file = Random(9).nextBytes(5_000)
-        // A fault per attempt at the same offset, more than the attempt budget.
-        val rig = rig(file, TransferFaults(disconnectAt = (0L..5L).toSet()))
-        assertFailsWith<TransferIntegrityException> {
-            downloader(rig, CrcPolicy.Enforce).download(SESSION, file.size.toLong(), MemoryStore())
+        val rig = rig(file)
+        var calls = 0
+        val download = ResumableSessionDownload(
+            connect = {
+                when (++calls) {
+                    1 -> throw IOException("synthetic connect failure")
+                    2 -> withTimeout(1.milliseconds) { delay(1.seconds) } // an internal timeout, not a cancellation
+                    3 -> Unit // link not up: unlock fails inside the attempt
+                    else -> rig.ble.connect("fake-note-pro")
+                }
+                PlaudDeviceClient(rig.ble, cipher, keys, responseTimeout = 5.seconds)
+            },
+            crcPolicy = CrcPolicy.Enforce,
+        )
+        val store = MemoryStore()
+        val result = download.download(SESSION, file.size.toLong(), store)
+        assertContentEquals(file, store.bytes)
+        assertEquals(4, result.attempts)
+    }
+
+    @Test fun attempts_without_progress_back_off_and_then_give_up() = runTest {
+        var calls = 0
+        val download = ResumableSessionDownload(connect = { calls++; throw IOException("synthetic") }, crcPolicy = CrcPolicy.Enforce)
+        assertFailsWith<TransferIntegrityException> { download.download(SESSION, 5_000L, MemoryStore()) }
+        assertEquals(5, calls)
+        assertEquals(1_000L + 2_000 + 4_000 + 8_000, testScheduler.currentTime, "delays between the 5 attempts")
+    }
+
+    @Test fun progressing_attempts_do_not_use_up_the_retry_budget() = runTest {
+        val file = Random(10).nextBytes(20_000)
+        val offsets = (1..12).map { it * 1_000L }.toSet()
+        val rig = rig(file, TransferFaults(disconnectAt = offsets))
+        val store = MemoryStore()
+        val result = downloader(rig, CrcPolicy.Enforce).download(SESSION, file.size.toLong(), store)
+        assertContentEquals(file, store.bytes)
+        assertEquals(13, result.attempts)
+    }
+
+    @Test fun missing_stop_reply_keeps_the_complete_file_without_verifying_it() = runTest {
+        val file = Random(11).nextBytes(5_000)
+        val rig = rig(file, stopReply = StopReply.Silent)
+        val store = MemoryStore()
+        val result = downloader(rig, CrcPolicy.Enforce).download(SESSION, file.size.toLong(), store)
+        assertContentEquals(file, store.bytes)
+        assertEquals(CrcStatus.NotProvided, result.crc)
+        assertEquals(1, result.attempts)
+    }
+
+    @Test fun a_store_already_holding_every_byte_does_not_connect() = runTest {
+        val file = Random(12).nextBytes(5_000)
+        val rig = rig(file)
+        val store = MemoryStore().apply { write(file) }
+        val result = downloader(rig, CrcPolicy.Enforce).download(SESSION, file.size.toLong(), store)
+        assertEquals(0, rig.connects)
+        assertEquals(CrcStatus.NotProvided, result.crc)
+        assertContentEquals(file, store.bytes)
+    }
+
+    @Test fun caller_cancellation_is_not_retried() = runTest {
+        val file = Random(13).nextBytes(5_000)
+        val rig = rig(file)
+        val store = object : PartialTransferStore by MemoryStore() {
+            override fun write(data: ByteArray) = throw CancellationException("synthetic caller cancellation")
         }
-        assertEquals(5, rig.connects)
+        val job = launch { downloader(rig, CrcPolicy.Enforce).download(SESSION, file.size.toLong(), store) }
+        job.join()
+        assertTrue(job.isCancelled)
+        assertEquals(1, rig.connects)
+        assertFalse(job.isActive)
     }
 
     private companion object { const val SESSION = 1_700_000_000L }
