@@ -240,9 +240,11 @@ class RecordingProcessor(
                 outputLanguage = cfg.outputLanguage,
                 audioLanguage = cfg.audioLanguage,
             )
-            val resolvedTemplateId = BuiltinTemplateCatalog.resolveId(templateId)
-            val dbTemplate = repository.getTemplate(resolvedTemplateId)
-                ?: repository.getTemplate(templateId.orEmpty())
+            // Exact row first: an edited builtin keeps its id (builtin = 0) and must win over
+            // legacy / removed-duplicate alias resolution (#99).
+            val exactTemplate = templateId?.takeIf { it.isNotBlank() }?.let { repository.getTemplate(it) }
+            val resolvedTemplateId = exactTemplate?.id ?: BuiltinTemplateCatalog.resolveId(templateId)
+            val dbTemplate = exactTemplate ?: repository.getTemplate(resolvedTemplateId)
             val catalogEntry = BuiltinTemplateCatalog.get(resolvedTemplateId)
             val baseTemplate = dbTemplate?.system_prompt
                 ?: catalogEntry?.systemPrompt

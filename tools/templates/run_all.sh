@@ -24,9 +24,16 @@ python3 "$ROOT/tools/templates/curate.py" \
 
 "$ROOT/tools/templates/sync_assets.sh"
 
+# Exact-body dedupe of shipped assets + alias map for removed ids (#99). No-op when clean.
+(cd "$ROOT/tools/templates" && python3 dedupe_catalog.py)
+
 python3 "$ROOT/tools/templates/assert_hygiene.py" \
   --featured "$ROOT/docs/templates/plaud_templates.jsonl" \
-  --full "$ROOT/docs/templates/plaud_templates_full.jsonl" \
-  --min-per-category 100
+  --full "$ROOT/core/src/commonMain/resources/plaud_templates_full.jsonl.gz" \
+  --min-per-category 100 \
+  --official-baseline "$ROOT/core/src/jvmTest/resources/templates/official_baseline.txt"
+
+# Dedupe / Featured gate regression tests (#99, #101).
+python3 -m unittest discover -s "$ROOT/tools/templates" -p "test_*.py"
 
 echo "Pipeline complete."

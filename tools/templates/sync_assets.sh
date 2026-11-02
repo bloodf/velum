@@ -20,7 +20,8 @@ cp "$FEATURED" "$RES/plaud_templates.jsonl"
 cp "$CONTRIB" "$RES/velum_contributed.jsonl"
 
 # Gzip full set for lazy on-device import (keep uncompressed docs copy for audits).
-gzip -c -9 "$FULL" > "$RES/plaud_templates_full.jsonl.gz"
+# -n: no name/mtime in the header so regeneration is byte-deterministic.
+gzip -c -9 -n "$FULL" > "$RES/plaud_templates_full.jsonl.gz"
 
 FEATURED_N=$(grep -c '[^[:space:]]' "$FEATURED" || true)
 FULL_N=$(grep -c '[^[:space:]]' "$FULL" || true)
