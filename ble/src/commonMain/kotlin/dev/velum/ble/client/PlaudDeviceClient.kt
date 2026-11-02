@@ -233,35 +233,47 @@ class PlaudDeviceClient(
         return buffer.toByteArray()
     }
 
-    /** Stream session bytes into [sink] without retaining the full payload in a Byte list. */
+    /**
+     * Stream session bytes from [startOffset] into [sink] without retaining the full payload.
+     *
+     * Every chunk must start exactly where the previous one ended and every packet must authenticate;
+     * otherwise this throws [TransferIntegrityException] (never a shorter or gapped file). [onProgress]
+     * reports the absolute byte offset reached. Returns the CRC field of the device's SYNC_FILE_STOP
+     * response (`0xFFFF` when the device does not provide one); verifying it is the caller's job.
+     */
     suspend fun downloadSessionTo(
         sessionId: Long,
         sizeBytes: Long,
         sink: SessionByteSink,
         onProgress: ((receivedBytes: Long) -> Unit)? = null,
-    ) {
+        startOffset: Long = 0L,
+    ): Int {
         require(sizeBytes in 0..MAX_SESSION_DOWNLOAD_BYTES) {
             "Session sizeBytes=$sizeBytes exceeds cap of $MAX_SESSION_DOWNLOAD_BYTES"
         }
-        val start = Sessions.encodeSyncStart(sessionId, 0, sizeBytes)
+        require(startOffset >= 0 && (sizeBytes == 0L || startOffset <= sizeBytes)) { "startOffset=$startOffset out of range" }
+        val start = Sessions.encodeSyncStart(sessionId, startOffset, sizeBytes)
         val startPayload = transactCommand(Commands.SYNC_FILE_START, start)
         val startRsp = Sessions.parseSyncStartResponse(startPayload)
         require(!startRsp.refused) { "Sync start refused status=${startRsp.status}" }
 
-        var written = 0L
+        var next = startOffset
         try {
             while (true) {
-                val raw = awaitDecryptedFrame(responseTimeout) { true }
+                val raw = awaitDecryptedFrame(responseTimeout, rejectUnopenable = true) { true }
                 when (val inboundPacket = Framing.decodeInbound(raw)) {
                     is InboundPacket.RecordingData -> {
                         when (val data = Sessions.parseRecordingData(raw, protocolVersion)) {
                             is RecordingDataPacket.Chunk -> {
-                                require(written + data.data.size <= MAX_SESSION_DOWNLOAD_BYTES) {
+                                if (data.offset != next) {
+                                    throw TransferIntegrityException("Chunk at offset ${data.offset}, expected $next")
+                                }
+                                require(next + data.data.size <= MAX_SESSION_DOWNLOAD_BYTES) {
                                     "Session download exceeded ${MAX_SESSION_DOWNLOAD_BYTES}-byte cap"
                                 }
                                 sink.write(data.data)
-                                written += data.data.size
-                                onProgress?.invoke(written)
+                                next += data.data.size
+                                onProgress?.invoke(next)
                             }
                             is RecordingDataPacket.End -> break
                         }
@@ -271,11 +283,14 @@ class PlaudDeviceClient(
                     }
                     else -> Unit
                 }
-                if (sizeBytes > 0 && written >= sizeBytes) break
+                if (sizeBytes > 0 && next >= sizeBytes) break
+            }
+            if (sizeBytes > 0 && next != sizeBytes) {
+                throw TransferIntegrityException("Transfer ended at offset $next of $sizeBytes")
             }
 
             val stopPayload = transactCommand(Commands.SYNC_FILE_STOP, Sessions.encodeSyncStop())
-            Sessions.parseSyncStopResponse(stopPayload)
+            return Sessions.parseSyncStopResponse(stopPayload).crc
         } catch (e: kotlinx.coroutines.CancellationException) {
             runCatching {
                 transactCommand(Commands.SYNC_FILE_STOP, Sessions.encodeSyncStop())
@@ -336,8 +351,13 @@ class PlaudDeviceClient(
         }
     }
 
+    /**
+     * [rejectUnopenable]: during a transfer a packet that fails authentication or its sequence check
+     * must fail the transfer. Skipping it would desynchronize every later packet (seq is checked).
+     */
     private suspend fun awaitDecryptedFrame(
         timeout: Duration,
+        rejectUnopenable: Boolean = false,
         predicate: (ByteArray) -> Boolean,
     ): ByteArray {
         val sec = secret
@@ -345,7 +365,12 @@ class PlaudDeviceClient(
             while (true) {
                 val raw = inbound.receive()
                 val frame = if (sec != null) {
-                    val opened = cipher.openPacket(sec, recvSeq, raw) ?: continue
+                    val opened = cipher.openPacket(sec, recvSeq, raw)
+                        ?: if (rejectUnopenable) {
+                            throw TransferIntegrityException("Packet failed authentication at sequence $recvSeq")
+                        } else {
+                            continue
+                        }
                     recvSeq = opened.first + 1
                     opened.second
                 } else {
