@@ -200,13 +200,20 @@ object FtsIndex {
         category: String,
         systemPrompt: String,
         tags: String = "",
+        /**
+         * False only when the table was just cleared (bulk rebuild). `template_id` is UNINDEXED, so each
+         * DELETE scans the whole table: per-row deletes make a 16k-row rebuild quadratic (#100).
+         */
+        replaceExisting: Boolean = true,
     ) {
         inTransaction(driver) {
-            driver.execute(
-                identifier = null,
-                sql = "DELETE FROM template_fts WHERE template_id = ?",
-                parameters = 1,
-            ) { bindString(0, id) }
+            if (replaceExisting) {
+                driver.execute(
+                    identifier = null,
+                    sql = "DELETE FROM template_fts WHERE template_id = ?",
+                    parameters = 1,
+                ) { bindString(0, id) }
+            }
             driver.execute(
                 identifier = null,
                 sql = "INSERT INTO template_fts(template_id, name, description, category, system_prompt, tags) VALUES (?, ?, ?, ?, ?, ?)",

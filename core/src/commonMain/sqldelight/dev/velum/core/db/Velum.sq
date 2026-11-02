@@ -186,17 +186,18 @@ SELECT * FROM folder ORDER BY name ASC;
 insertFolder:
 INSERT OR REPLACE INTO folder(id, name, created_at) VALUES (?, ?, ?);
 
+-- id breaks (category, name) ties: catalog names repeat, and paging needs a total order (#100).
 selectTemplates:
-SELECT * FROM template ORDER BY category ASC, name ASC;
+SELECT * FROM template ORDER BY category ASC, name ASC, id ASC;
 
 selectTemplatesByCategory:
-SELECT * FROM template WHERE category = ? ORDER BY name ASC;
+SELECT * FROM template WHERE category = ? ORDER BY name ASC, id ASC;
 
 selectFeaturedBuiltinTemplates:
-SELECT * FROM template WHERE builtin = 1 AND featured = 1 ORDER BY category ASC, name ASC;
+SELECT * FROM template WHERE builtin = 1 AND featured = 1 ORDER BY category ASC, name ASC, id ASC;
 
 selectAllBuiltinTemplates:
-SELECT * FROM template WHERE builtin = 1 ORDER BY category ASC, name ASC;
+SELECT * FROM template WHERE builtin = 1 ORDER BY category ASC, name ASC, id ASC;
 
 insertTemplate:
 INSERT OR REPLACE INTO template(
