@@ -168,4 +168,26 @@ class ChangeTemplateUiTest {
             val versions = runBlocking { container.repository.getSummaryVersions("rec") }
             assertEquals("ui103-target", versions.single { it.is_active != 0L }.template_id)
         }
+
+    @Test
+    fun a_double_tap_on_switch_to_api_runs_the_picked_template_once() =
+        fixture(ComputeMode.Local) { container ->
+            pickTemplateAndApply()
+            await(PtBr.localModelMissingTitle)
+
+            // Fire the button's click twice before the dialog can recompose away.
+            val node = compose.onAllNodesWithText(PtBr.switchToApi)[0].fetchSemanticsNode()
+            val onClick = node.config[androidx.compose.ui.semantics.SemanticsActions.OnClick].action!!
+            compose.runOnUiThread { onClick(); onClick() }
+
+            compose.waitUntil(30_000) { runBlocking { container.repository.getSummaryVersions("rec") }.any { it.is_active != 0L } }
+            // Give a stray second job, if there were one, time to land before counting.
+            runBlocking { kotlinx.coroutines.delay(2_000) }
+            val versions = runBlocking { container.repository.getSummaryVersions("rec") }
+            // A leaked second tap would restart a full run (Transcription is still Local without its model),
+            // which re-opens the missing-model prompt.
+            assertTrue(!shows(PtBr.localModelMissingTitle), "no second prompt from a double tap")
+            // The prior summary is kept as a baseline version without a template; every templated version is a job.
+            assertEquals(listOf("ui103-target"), versions.mapNotNull { it.template_id }, "one job, with the picked template")
+        }
 }
