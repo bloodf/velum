@@ -155,6 +155,7 @@ kotlin {
             kotlin.srcDir("src/jvmSharedTest/kotlin")
             dependencies {
                 implementation(libs.kotlin.test)
+                implementation(project(":ble-testing"))
                 implementation(libs.junit)
                 implementation(libs.androidx.test.ext.junit)
                 implementation(libs.androidx.compose.ui.test.junit4)
