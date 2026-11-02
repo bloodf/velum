@@ -25,6 +25,9 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 
+/** Progress message when the Ogg source ended mid-page; only the decodable part is processed. */
+const val TRUNCATED_AUDIO_MESSAGE = "Audio file is truncated; processing the part that could be decoded"
+
 /**
  * End-to-end job: decode → transcribe → diarize → markdown transcript → summarize → DB.
  */
@@ -73,6 +76,7 @@ class RecordingProcessor(
                     val meta = createOpusDecoder().decodePathToPcmFile(localPath, pcmFile)
                     sampleRate = meta.sampleRateHz
                     pcmBuffer = PcmAudioBuffer.fromExistingFile(pcmFile, meta.sizeBytes)
+                    if (meta.truncated) emit(JobProgress.Running(0.2f, TRUNCATED_AUDIO_MESSAGE))
                 } else if (filename.endsWith(".wav", ignoreCase = true)) {
                     // Stream WAV from disk — probe header only, then copy PCM slices.
                     val src = ModelStoreDir(localPath)
@@ -100,6 +104,7 @@ class RecordingProcessor(
                         val meta = createOpusDecoder().decodeToPcmFile(raw, pcmFile)
                         sampleRate = meta.sampleRateHz
                         pcmBuffer = PcmAudioBuffer.fromExistingFile(pcmFile, meta.sizeBytes)
+                        if (meta.truncated) emit(JobProgress.Running(0.2f, TRUNCATED_AUDIO_MESSAGE))
                     } else if (looksLikeWav(raw)) {
                         val range = locateWavPcm(raw)
                         sampleRate = range.sampleRateHz
