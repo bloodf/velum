@@ -98,3 +98,26 @@ done
 [[ "$(native_code "$apk_dir/composeApp-universal-release.apk")" == *x86_64* ]] || { echo 'FAIL: universal APK lacks x86_64'; exit 1; }
 [[ "$(native_code "$apk_dir/composeApp-arm64-v8a-release.apk")" != *x86* ]] || { echo 'FAIL: arm64 APK has x86 libs'; exit 1; }
 echo 'PASS: release APK splits'
+
+# F-Droid path: no signing variables plus the explicit property builds an unsigned universal APK.
+env -u VELUM_UPLOAD_STORE_FILE -u VELUM_UPLOAD_STORE_PASSWORD -u VELUM_UPLOAD_KEY_ALIAS \
+    -u VELUM_UPLOAD_KEY_PASSWORD ./gradlew :composeApp:assembleRelease -Pvelum.unsignedRelease=true \
+    --console=plain >"$check_dir/gradle.log" 2>&1 || {
+  echo 'FAIL: unsigned F-Droid release build was rejected'; cat "$check_dir/gradle.log"; exit 1; }
+unsigned_apk="$apk_dir/composeApp-release-unsigned.apk"
+[[ -f "$unsigned_apk" ]] || { echo "FAIL: missing $unsigned_apk"; ls "$apk_dir"; exit 1; }
+[[ "$(version_code "$unsigned_apk")" == "$universal_code" ]] || { echo 'FAIL: unsigned APK versionCode differs from universal'; exit 1; }
+# The property must never combine with real signing variables.
+if with_test_key ./gradlew :composeApp:assembleRelease -Pvelum.unsignedRelease=true --console=plain \
+    >"$check_dir/gradle.log" 2>&1; then
+  echo 'FAIL: unsignedRelease accepted together with signing variables'; exit 1
+fi
+grep -q 'cannot be combined with VELUM_UPLOAD' "$check_dir/gradle.log" || {
+  echo 'FAIL: unsignedRelease+signing failed for another reason'; cat "$check_dir/gradle.log"; exit 1; }
+# F-Droid metadata and fastlane changelogs must follow the universal versionCode.
+grep -q "^    versionCode: $universal_code\$" metadata/dev.velum.app.yml || { echo "FAIL: metadata versionCode != $universal_code"; exit 1; }
+grep -q "^CurrentVersionCode: $universal_code\$" metadata/dev.velum.app.yml || { echo "FAIL: CurrentVersionCode != $universal_code"; exit 1; }
+for lang_dir in fastlane/metadata/android/*/changelogs; do
+  [[ -f "$lang_dir/$universal_code.txt" ]] || { echo "FAIL: missing $lang_dir/$universal_code.txt"; exit 1; }
+done
+echo 'PASS: unsigned F-Droid release path, metadata and changelogs match versionCode'

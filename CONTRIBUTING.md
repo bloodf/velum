@@ -37,9 +37,13 @@ Release APKs: `./gradlew :composeApp:assembleRelease -Pvelum.abiSplits=true` wri
 under `composeApp/build/outputs/apk/release/`. Without the property you get one universal
 `composeApp-release.apk`. Build the Play AAB in a separate invocation without the property
 (`./gradlew :composeApp:bundleRelease`); combining the property with a bundle task fails.
-Release versionCode is `defaultConfig.versionCode * 10 + ABI digit`: universal / AAB `0`,
+Release versionCode is `defaultConfig.versionCode` (a literal multiple of 10) plus an ABI digit: universal / AAB `+0`,
 `armeabi-v7a` `1`, `arm64-v8a` `2`, so a universal install can move to its ABI APK and the
 next release outranks every output of this one.
+
+F-Droid builds the unsigned universal APK with `-Pvelum.unsignedRelease=true` (no upload key; F-Droid
+signs it). The property is refused when `VELUM_UPLOAD_*` variables are set, so a shipping build can
+never come out unsigned by accident. Never distribute that unsigned APK yourself.
 
 To check R8 locally without upload credentials, run
 `./gradlew :composeApp:assembleMinifiedTest`. This explicitly named test variant

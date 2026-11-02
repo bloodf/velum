@@ -22,14 +22,24 @@ val releaseSigningValues = releaseSigningVariables.associateWith {
     providers.environmentVariable(it).orNull?.takeIf(String::isNotBlank)
 }
 val missingReleaseSigningVariables = releaseSigningVariables.filter { releaseSigningValues[it] == null }
+// -Pvelum.unsignedRelease=true is for F-Droid only: it builds the release APK without our upload
+// key and F-Droid signs the result. Never combined with real signing variables, so a misconfigured
+// shipping build cannot silently come out unsigned.
+val unsignedRelease = providers.gradleProperty("velum.unsignedRelease")
+    .map { it.toBooleanStrict() }.getOrElse(false)
 val validateReleaseSigning by tasks.registering {
     group = "verification"
     description = "Require explicit upload-key configuration for shipping release builds."
     val missingVariables = missingReleaseSigningVariables
+    val unsigned = unsignedRelease
     doLast {
-        check(missingVariables.isEmpty()) {
+        check(!unsigned || missingVariables.size == releaseSigningVariables.size) {
+            "-Pvelum.unsignedRelease=true cannot be combined with VELUM_UPLOAD_* variables."
+        }
+        check(unsigned || missingVariables.isEmpty()) {
             "Release signing is not configured. Set ${missingVariables.joinToString()} " +
-                "to build a shipping release. For local/CI R8 checks without release secrets, " +
+                "to build a shipping release, or pass -Pvelum.unsignedRelease=true for an unsigned " +
+                "F-Droid build. For local/CI R8 checks without release secrets, " +
                 "use :composeApp:assembleMinifiedTest (never distribute that test APK)."
         }
     }
@@ -58,10 +68,10 @@ tasks.matching { it.name == "preReleaseBuild" }.configureEach {
 val abiSplitsEnabled = providers.gradleProperty("velum.abiSplits")
     .map { it.toBooleanStrict() }.getOrElse(false)
 
-// Release versionCode = base * 10 + ABI digit. Universal (and the AAB / non-split APK) = 0,
-// so a device on the universal APK can move to its ABI APK of the same release; every
-// output of the next release (base + 1) outranks every output of this one.
-val releaseBaseVersionCode = 100
+// Release versionCode = defaultConfig.versionCode (a literal multiple of 10, so F-Droid can read it)
+// + ABI digit. Universal (and the AAB / non-split APK) = +0, so a device on the universal APK can
+// move to its ABI APK of the same release; every output of the next release (+10) outranks every
+// output of this one.
 val abiVersionCodeDigit = mapOf("armeabi-v7a" to 1, "arm64-v8a" to 2)
 
 // Never combine ABI splits with an App Bundle in one invocation: fail loudly, never fall back.
@@ -211,7 +221,7 @@ android {
         applicationId = "dev.velum.app"
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
-        versionCode = releaseBaseVersionCode
+        versionCode = 1000 // universal; keep a multiple of 10, ABI APKs add 1 (v7a) / 2 (arm64)
         versionName = "1.0.0"
         // Explicit test-APK selection only; the default runner and production app are unchanged.
         testInstrumentationRunner = if (identityPersistenceTestEnabled) "dev.velum.app.identity.IdentityPersistenceTestRunner"
@@ -271,7 +281,8 @@ android {
             isShrinkResources = true
             // Never sign a shipping release with the public debug key (#90).
             // validateReleaseSigning fails release builds if configuration is incomplete.
-            signingConfig = signingConfigs.findByName("release")
+            // Null with -Pvelum.unsignedRelease=true: AGP emits composeApp-release-unsigned.apk.
+            signingConfig = if (unsignedRelease) null else signingConfigs.findByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
@@ -304,11 +315,13 @@ android {
 
 androidComponents {
     onVariants(selector().withBuildType("release")) { variant ->
+        val universal = checkNotNull(android.defaultConfig.versionCode) { "defaultConfig.versionCode missing" }
+        check(universal % 10 == 0) { "defaultConfig.versionCode must be a multiple of 10, was $universal" }
         variant.outputs.forEach { output ->
             val abi = output.filters
                 .find { it.filterType == com.android.build.api.variant.FilterConfiguration.FilterType.ABI }
                 ?.identifier
-            output.versionCode.set(releaseBaseVersionCode * 10 + (abi?.let(abiVersionCodeDigit::getValue) ?: 0))
+            output.versionCode.set(universal + (abi?.let(abiVersionCodeDigit::getValue) ?: 0))
         }
     }
 }

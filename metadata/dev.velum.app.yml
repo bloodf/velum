@@ -17,17 +17,24 @@ RepoType: git
 Repo: https://github.com/bloodf/velum.git
 
 Builds:
-  # Universal APK (no -Pvelum.abiSplits): all ABIs. versionCode = defaultConfig.versionCode * 10
-  # (universal digit 0; see CONTRIBUTING.md). Per-ABI F-Droid builds would add entries with
-  # gradleprops velum.abiSplits=true and versionCode +1 (armeabi-v7a) / +2 (arm64-v8a).
+  # Universal APK (no -Pvelum.abiSplits): all ABIs, versionCode = defaultConfig.versionCode (1000).
+  # Unsigned on purpose (-Pvelum.unsignedRelease=true): F-Droid signs the APK itself.
+  # The v1.0.0 tag does not exist yet; the owner creates it at release time.
   - versionName: 1.0.0
     versionCode: 1000
-    commit: main
+    commit: v1.0.0
     subdir: composeApp
     gradle:
       - yes
+    gradleprops:
+      - velum.unsignedRelease=true
     output: build/outputs/apk/release/composeApp-release-unsigned.apk
-    # Prefer signed AAB from GitHub Release workflow once upload key is configured.
+
+AutoUpdateMode: Version
+UpdateCheckMode: Tags
+UpdateCheckData: composeApp/build.gradle.kts|versionCode\s*=\s*(\d+)|composeApp/build.gradle.kts|versionName\s*=\s*"([^"]+)"
+CurrentVersion: 1.0.0
+CurrentVersionCode: 1000
 
 MaintainerNotes: |
   Local-first; no telemetry. Release signing uses VELUM_UPLOAD_* CI secrets
