@@ -17,7 +17,9 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextReplacement
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import dev.velum.ai.local.ModelStoreDir
@@ -44,7 +46,9 @@ import org.robolectric.annotation.Config
 class DiscoverFiltersUiTest {
     @get:Rule val compose = createEmptyComposeRule()
 
-    private fun shows(text: String) = compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()
+    // Rendered text only: the open search field also carries its typed text and must not count as a result.
+    private fun shows(text: String) =
+        compose.onAllNodes(hasText(text) and hasSetTextAction().not()).fetchSemanticsNodes().isNotEmpty()
     private fun hasTag(tag: String) = compose.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()
 
     private fun await(text: String, present: Boolean = true) = waiting("text '$text' present=$present") {
@@ -147,10 +151,15 @@ class DiscoverFiltersUiTest {
             await("ZQ Alpha", present = false); await("ZQ Beta")
             assertTrue(!shows("ZQ Alpha"))
 
-            // Clear-all keeps the search but drops every facet filter.
+            // Widen the search to every ZQ row: the category still excludes Gamma.
+            compose.onNode(hasSetTextAction()).performTextReplacement("ZQ")
+            await("ZQ Alpha"); await("ZQ Beta")
+            assertTrue(!shows("ZQ Gamma"))
+
+            // Clear-all keeps the search but drops every facet filter, so Gamma returns.
             tap("filters:clear")
             awaitTag("active:category", present = false)
-            await("ZQ Beta"); assertTrue(!shows("ZQ Gamma")); assertTrue(!shows("ZQ Alpha"))
+            await("ZQ Gamma"); assertTrue(!shows("ZQ Delta"))
         } finally {
             activity.pause().stop().destroy()
             container.databaseHandle.driver.close()
@@ -190,6 +199,48 @@ class DiscoverFiltersUiTest {
             assertTrue(hasTag("active:category") && hasTag("active:tag:agenda"), "selections pruned after failed facets load")
         } finally {
             activity.pause().stop().destroy()
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun paging_appends_the_next_page_when_scrolled_to_the_end() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        context.deleteDatabase("velum.db")
+        val root = ModelStoreDir(Files.createTempDirectory("velum-discover-page-test").toString())
+        val container = AppContainer(InMemorySecureStore(), DriverFactory(context), modelStoreRoot = root)
+        runBlocking {
+            container.repository.setMeta(SeedData.META_FULL_TEMPLATES_IMPORTED, "1")
+            // More than one 60-row page, ordered by uses so "PG 000" is first and "PG 099" is on page 2.
+            for (i in 0 until 100) {
+                container.repository.upsertTemplate(
+                    id = "pg-%03d".format(i), name = "PG %03d".format(i), category = "meeting", description = "synthetic",
+                    systemPrompt = "p", builtin = true, featured = true, tags = emptyList(), lang = "en",
+                    uses = 2_000_000L - i,
+                )
+            }
+        }
+        val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup()
+        try {
+            activity.get().setContent {
+                CompositionLocalProvider(LocalStrings provides PtBr) {
+                    VelumTheme(darkTheme = false) { TemplatesScreen(container, onBack = {}, onOpenTemplate = {}) }
+                }
+            }
+            await("PG 000")
+            assertTrue(!shows("PG 099"))
+            // Scrolling to the end composes the sentinel, which loads page 2 (offset 60, not a re-query).
+            compose.onNodeWithTag("templates:grid").performScrollToNode(hasText("PG 059"))
+            waiting("page 2 row PG 099") {
+                runCatching { compose.onNodeWithTag("templates:grid").performScrollToNode(hasText("PG 099")) }
+                shows("PG 099")
+            }
+            // Page 1 rows are still there once page 2 is appended.
+            compose.onNodeWithTag("templates:grid").performScrollToNode(hasText("PG 000"))
+            await("PG 000")
+        } finally {
+            activity.pause().stop().destroy()
+            container.databaseHandle.driver.close()
             root.deleteRecursively()
         }
     }
