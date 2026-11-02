@@ -151,8 +151,8 @@ fun RecordingDetailScreen(
 ) {
     val strings = LocalStrings.current
     val haptics = LocalHaptics.current
-    val recording by container.repository.observeRecording(recordingId).collectAsState(null)
-    val folders by container.repository.observeFolders().collectAsState(emptyList())
+    val recording by remember(container, recordingId) { container.repository.observeRecording(recordingId) }.collectAsState(null)
+    val folders by remember(container) { container.repository.observeFolders() }.collectAsState(emptyList())
     var tab by rememberSaveable(recordingId) { mutableStateOf(initialTab) } // 0 fontes, 1 notas
     var seekSeconds by remember(recordingId, initialSeekSeconds) {
         mutableStateOf(initialSeekSeconds.coerceAtLeast(0))
@@ -184,7 +184,7 @@ fun RecordingDetailScreen(
     var pendingApiOverride by remember { mutableStateOf<ApiModelOverride?>(null) }
     var modelPrompt by remember { mutableStateOf<ModeResolution.NeedLocalModel?>(null) }
     val scope = rememberCoroutineScope()
-    val audioPlayer = remember { createAudioPlayer() }
+    val audioPlayer = remember(recordingId) { createAudioPlayer() }
     DisposableEffect(recordingId) {
         onDispose { audioPlayer.release() }
     }
@@ -635,7 +635,7 @@ fun RecordingDetailScreen(
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
             containerColor = VelumSurface,
         ) {
-            val speakers by container.repository.observeSpeakers(recordingId).collectAsState(emptyList())
+            val speakers by remember(container, recordingId) { container.repository.observeSpeakers(recordingId) }.collectAsState(emptyList())
             SpeakerLabelSheetContent(
                 speakers = speakers.map {
                     SpeakerLabelRow(
@@ -694,7 +694,8 @@ fun RecordingDetailScreen(
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
             containerColor = VelumSurface,
         ) {
-            val catalogTemplates by container.repository.observeTemplates().collectAsState(emptyList())
+            val templatesFlow = remember(container) { container.repository.observeTemplates() }
+            val catalogTemplates by templatesFlow.collectAsState(emptyList())
             val aiSettings by container.settingsRepository.settings.collectAsState()
             GenerateSheetContent(
                 onClose = {
@@ -729,7 +730,7 @@ fun RecordingDetailScreen(
         LaunchedEffect(recordingId) {
             container.repository.ensureBaselineVersion(recordingId)
         }
-        val versions by container.repository.observeSummaryVersions(recordingId)
+        val versions by remember(container, recordingId) { container.repository.observeSummaryVersions(recordingId) }
             .collectAsState(emptyList())
         ModalBottomSheet(
             onDismissRequest = { showSummaryVersions = false },

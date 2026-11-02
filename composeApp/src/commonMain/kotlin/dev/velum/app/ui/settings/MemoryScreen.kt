@@ -54,8 +54,8 @@ fun MemoryScreen(
     onBack: () -> Unit,
 ) {
     val strings = LocalStrings.current
-    val memories by container.repository.observeMemories().collectAsState(emptyList())
-    val glossary by container.repository.observeGlossary().collectAsState(emptyList())
+    val memories by remember(container) { container.repository.observeMemories() }.collectAsState(emptyList())
+    val glossary by remember(container) { container.repository.observeGlossary() }.collectAsState(emptyList())
     var showAddMemory by remember { mutableStateOf(false) }
     var showAddGlossary by remember { mutableStateOf(false) }
     var draft by remember { mutableStateOf("") }
