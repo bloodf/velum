@@ -96,6 +96,13 @@ class ResumableSessionDownload(
             var client: PlaudDeviceClient? = null
             var succeeded = false
             var reachedTransfer = false
+            var storageFailed = false
+            fun <T> storage(block: () -> T): T = try {
+                block()
+            } catch (e: Exception) {
+                storageFailed = true
+                throw e
+            }
             try {
                 val reused = unlocked
                 unlocked = null
@@ -107,7 +114,14 @@ class ResumableSessionDownload(
                     current.handshake()
                 }
                 reachedTransfer = true
-                val deviceCrc = current.downloadSessionTo(sessionId, sizeBytes, store, onProgress, startOffset = before, storedBytes = store::read)
+                val deviceCrc = current.downloadSessionTo(
+                    sessionId,
+                    sizeBytes,
+                    { data -> storage { store.write(data) } },
+                    onProgress,
+                    startOffset = before,
+                    storedBytes = { offset, length -> storage { store.read(offset, length) } },
+                )
                 val crc = crcStatus(deviceCrc, store)
                 if (crc !is CrcStatus.Mismatch || crcPolicy == CrcPolicy.ReportOnly) {
                     succeeded = true
@@ -141,7 +155,8 @@ class ResumableSessionDownload(
                 noProgressPastHandshake = 0
             } else {
                 noProgress++
-                if (reachedTransfer) noProgressPastHandshake++
+                // A full disk isn't a device that won't resume: restarting would throw away the partial for nothing.
+                if (reachedTransfer && !storageFailed) noProgressPastHandshake++
             }
             if (noProgress >= maxNoProgressAttempts) {
                 // Every attempt got through unlock and handshake, so the link works and the device won't resume

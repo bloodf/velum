@@ -357,6 +357,36 @@ class ResumableSessionDownloadTest {
         assertEquals(List(4) { 2_000L }, rig.peripheral.syncStartOffsets)
     }
 
+    @Test fun full_disk_on_every_attempt_keeps_the_partial_and_reports_the_error() = runTest {
+        val file = Random(33).nextBytes(5_000)
+        val rig = rig(file)
+        val base = storeHolding(file.copyOf(2_000))
+        val store = object : PartialTransferStore by base {
+            override fun write(data: ByteArray) = throw IOException("synthetic: no space left on device")
+        }
+        val failure = assertFailsWith<TransferIntegrityException> {
+            downloader(rig, CrcPolicy.Enforce).download(SESSION, file.size.toLong(), store)
+        }
+        assertEquals("synthetic: no space left on device", failure.cause?.message)
+        assertContentEquals(file.copyOf(2_000), base.bytes)
+        assertEquals(List(5) { 2_000L }, rig.peripheral.syncStartOffsets)
+    }
+
+    @Test fun failed_read_of_the_partial_on_every_attempt_keeps_the_partial() = runTest {
+        val file = Random(34).nextBytes(5_000)
+        val rig = rig(file, TransferFaults(ignoreStartOffset = true))
+        val base = storeHolding(file.copyOf(2_000))
+        val store = object : PartialTransferStore by base {
+            override fun read(offset: Long, length: Int) = throw IOException("synthetic read failure")
+        }
+        val failure = assertFailsWith<TransferIntegrityException> {
+            downloader(rig, CrcPolicy.Enforce).download(SESSION, file.size.toLong(), store)
+        }
+        assertEquals("synthetic read failure", failure.cause?.message)
+        assertContentEquals(file.copyOf(2_000), base.bytes)
+        assertEquals(List(5) { 2_000L }, rig.peripheral.syncStartOffsets)
+    }
+
     @Test fun lost_link_right_after_a_resume_keeps_the_partial() = runTest {
         val file = Random(22).nextBytes(5_000)
         val rig = rig(file, TransferFaults(disconnectAt = setOf(2_000)))
