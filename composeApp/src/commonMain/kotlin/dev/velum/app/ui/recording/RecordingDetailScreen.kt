@@ -129,6 +129,7 @@ import dev.velum.core.templates.BuiltinTemplateCatalog
 import dev.velum.core.templates.TemplateTagFilter
 import dev.velum.core.templates.TemplateTagVocabulary
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -178,6 +179,9 @@ fun RecordingDetailScreen(
     var processError by remember { mutableStateOf<String?>(null) }
     var lastFailure by remember { mutableStateOf<String?>(null) }
     var pendingRetranscribe by remember { mutableStateOf<Boolean?>(null) }
+    // The request that hit the missing-model prompt, so switching to API reruns it with the same template/model.
+    var pendingTemplateId by remember { mutableStateOf<String?>(null) }
+    var pendingApiOverride by remember { mutableStateOf<ApiModelOverride?>(null) }
     var modelPrompt by remember { mutableStateOf<ModeResolution.NeedLocalModel?>(null) }
     val scope = rememberCoroutineScope()
     val audioPlayer = remember(recordingId) { createAudioPlayer() }
@@ -224,6 +228,8 @@ fun RecordingDetailScreen(
             when (val resolution = container.aiRouter.resolveModeOrPrompt(task, container.localModelManager)) {
                 is ModeResolution.NeedLocalModel -> {
                     pendingRetranscribe = retranscribe
+                    pendingTemplateId = templateId
+                    pendingApiOverride = apiModelOverride
                     modelPrompt = resolution
                     return
                 }
@@ -788,13 +794,19 @@ fun RecordingDetailScreen(
                     }
                     modelPrompt = null
                     val retranscribe = pendingRetranscribe ?: true
+                    val templateId = pendingTemplateId ?: "velum.meeting"
+                    val apiOverride = pendingApiOverride
                     pendingRetranscribe = null
-                    enqueueAfterGate(retranscribe)
+                    pendingTemplateId = null
+                    pendingApiOverride = null
+                    enqueueAfterGate(retranscribe, templateId, apiOverride)
                 }
             },
             onDismiss = {
                 modelPrompt = null
                 pendingRetranscribe = null
+                pendingTemplateId = null
+                pendingApiOverride = null
             },
         )
     }

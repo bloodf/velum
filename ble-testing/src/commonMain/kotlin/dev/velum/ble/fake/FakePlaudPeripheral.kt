@@ -59,7 +59,7 @@ class FakePlaudPeripheral(
         handshakeFailed = false
     }
 
-    suspend fun onWrite(payload: ByteArray) = mutex.withLock {
+    suspend fun onWrite(payload: ByteArray): Unit = mutex.withLock {
         if (handshakeFailed) {
             error("Handshake already failed — reconnect and send FE10 snSignature")
         }

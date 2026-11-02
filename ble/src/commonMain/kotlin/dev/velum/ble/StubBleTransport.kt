@@ -12,7 +12,7 @@ import kotlinx.coroutines.flow.flowOf
 /**
  * No-op transport for desktop JVM and for UI wiring before permissions/hardware.
  */
-class StubBleTransport(
+internal class StubBleTransport(
     override val isAvailable: Boolean = false,
     private val unavailableReason: String = "BLE is not available on this platform yet",
 ) : BleTransport {

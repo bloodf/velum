@@ -91,6 +91,42 @@ tasks.matching { bundleTaskName.matches(it.name) }.configureEach {
     dependsOn(rejectAbiSplitsWithBundle)
 }
 
+// Test fakes (:ble-testing, #111) must never reach a shipping runtime classpath.
+val shippingClasspaths = listOf("releaseRuntimeClasspath", "minifiedTestRuntimeClasspath", "desktopRuntimeClasspath")
+val verifyNoTestFakesShipped by tasks.registering {
+    group = "verification"
+    // debugRuntimeClasspath is deliberately not checked: debug APKs are never distributed.
+    description = "Fail if :ble-testing is on a release, minifiedTest or desktop runtime classpath " +
+        "(debug is deliberately unchecked: debug APKs are never distributed)."
+    val roots = shippingClasspaths.map { name ->
+        name to configurations.named(name).flatMap { it.incoming.resolutionResult.rootComponent }
+    }
+    doLast {
+        roots.forEach { (name, root) ->
+            val seen = mutableSetOf<org.gradle.api.artifacts.component.ComponentIdentifier>()
+            val queue = ArrayDeque(listOf(root.get()))
+            while (queue.isNotEmpty()) {
+                val component = queue.removeFirst()
+                if (!seen.add(component.id)) continue
+                val id = component.id
+                check(!(id is org.gradle.api.artifacts.component.ProjectComponentIdentifier && id.projectPath == ":ble-testing")) {
+                    ":ble-testing leaked onto $name; depend on it only from test source sets."
+                }
+                component.dependencies
+                    .filterIsInstance<org.gradle.api.artifacts.result.ResolvedDependencyResult>()
+                    .forEach { queue.add(it.selected) }
+            }
+        }
+    }
+}
+// Desktop: create(Release)Distributable and every package(Release)* distribution/installer/uber-jar task.
+val desktopPackaging = Regex("""create(Release)?Distributable|package(Release)?(Distribution\w*|Dmg|Pkg|Msi|Exe|Deb|Rpm|AppImage|UberJar\w*)""")
+tasks.matching {
+    it.name in setOf("preReleaseBuild", "preMinifiedTestBuild", "check") || desktopPackaging.matches(it.name)
+}.configureEach {
+    dependsOn(verifyNoTestFakesShipped)
+}
+
 kotlin {
     androidTarget {
         compilerOptions {
@@ -159,6 +195,7 @@ kotlin {
             kotlin.srcDir("src/jvmSharedTest/kotlin")
             dependencies {
                 implementation(libs.kotlin.test)
+                implementation(project(":ble-testing"))
                 implementation(libs.junit)
                 implementation(libs.androidx.test.ext.junit)
                 implementation(libs.androidx.compose.ui.test.junit4)

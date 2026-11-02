@@ -1,6 +1,7 @@
 package dev.velum.ai.pipeline
 
 import dev.velum.ai.OpenAiCompatibleClient
+import dev.velum.ai.engine.AiTask
 import dev.velum.ai.engine.AiTaskRouter
 import dev.velum.ai.engine.AudioInput
 import dev.velum.ai.engine.DiarizationResult
@@ -11,7 +12,18 @@ import dev.velum.ai.engine.LlmRequest
 import dev.velum.ai.engine.LlmResult
 import dev.velum.ai.engine.Transcriber
 import dev.velum.ai.engine.TranscriptionResult
+import dev.velum.ai.engine.DEFAULT_LOCAL_LLM_MODEL_ID
+import dev.velum.ai.engine.ModeResolution
+import dev.velum.ai.engine.resolveModeOrPrompt
+import dev.velum.ai.local.LocalLlmEngine
+import dev.velum.ai.local.LocalModelKind
+import dev.velum.ai.local.LocalModelManager
+import dev.velum.ai.local.LocalModelSpec
+import dev.velum.ai.local.ModelStoreDir
 import dev.velum.ai.openai.OpenAiLlmEngine
+import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import dev.velum.core.db.VelumDatabase
+import java.io.File
 import dev.velum.core.data.DriverFactory
 import dev.velum.core.data.VelumRepository
 import dev.velum.core.data.createDatabase
@@ -212,12 +224,124 @@ class ChangeTemplateOfflineAndRoutingTest {
     @Test
     fun api_server_error_keeps_the_previous_summary_and_reports_it() = runBlocking<Unit> {
         val net = Network(status = HttpStatusCode.ServiceUnavailable)
-        val r = rig(net) { setApiKey("sk-test-not-real"); setSummaryMode(ComputeMode.Api) }
+        val r = rig(net) { setApiKey("sk-test-not-real"); setSummaryMode(ComputeMode.Local) }
+        assertIs<JobProgress.Succeeded>(r.change("velum.meeting"))
+        val before = r.repo.getRecording("rec")!!.summary_markdown
 
-        assertIs<JobProgress.Failed>(r.change("velum.meeting"))
+        r.settings.setSummaryMode(ComputeMode.Api)
+        assertIs<JobProgress.Failed>(r.change("velum.sales"))
 
-        assertEquals(null, r.repo.getRecording("rec")!!.summary_markdown)
-        assertEquals(0, r.repo.getSummaryVersions("rec").size)
+        assertEquals(1, net.calls.size, "the API was tried once")
+        assertEquals(before, r.repo.getRecording("rec")!!.summary_markdown, "prior summary survives a 503")
+        val versions = r.repo.getSummaryVersions("rec")
+        assertEquals(listOf("velum.meeting"), versions.map { it.template_id })
+        assertEquals(1L, versions.single().is_active)
         assertTrue(r.repo.getProcessingError("rec").orEmpty().isNotBlank())
+    }
+
+    /** Local engine that works first and then behaves like a device without the model. */
+    private class FlakyLocal(val missing: LlmEngine) : LlmEngine {
+        override val engineId = "flaky-local"
+        var modelPresent = true
+        override suspend fun complete(request: LlmRequest, modelId: String): LlmResult =
+            if (modelPresent) LlmResult("## local ok", engineId, modelId) else missing.complete(request, modelId)
+    }
+
+    private fun emptyModelManager(): LocalModelManager {
+        val dir = File.createTempFile("velum-ct103", "").also { it.delete(); it.mkdirs() }
+        return LocalModelManager(
+            storeRoot = ModelStoreDir(dir.absolutePath),
+            httpClient = HttpClient(MockEngine { respond("") }),
+            catalog = listOf(
+                LocalModelSpec(
+                    id = DEFAULT_LOCAL_LLM_MODEL_ID, displayName = "Local LLM", kind = LocalModelKind.Llm,
+                    approxBytes = 1, license = "test", notes = "", languages = "en", downloadUrl = null,
+                ),
+            ),
+        )
+    }
+
+    @Test
+    fun missing_local_model_with_an_api_key_prompts_and_never_calls_the_api() = runBlocking<Unit> {
+        val net = Network()
+        val manager = emptyModelManager()
+        val flaky = FlakyLocal(LocalLlmEngine(manager))
+        val repo = VelumRepository(createDatabase(DriverFactory()))
+        val settings = SettingsRepository(InMemorySecureStore()).also {
+            it.load()
+            it.setSummaryMode(ComputeMode.Local)
+            it.setApiKey("sk-test-not-real") // an API route exists, but Local is what the user chose
+        }
+        val router = AiTaskRouter(
+            settings = settings.settings,
+            localTranscriber = noopAsr, apiTranscriber = noopAsr, localDiarizer = noopDiar, apiDiarizer = noopDiar,
+            localLlm = flaky, apiLlm = OpenAiLlmEngine(net.client, settings),
+        )
+        val processor = RecordingProcessor(router, repo, settings)
+        repo.insertRecording(
+            id = "rec", sessionId = null, folderId = null, title = "t", source = "phone", deviceSerial = null,
+            startedAt = 1, durationSeconds = 60, sizeBytes = 0, localPath = null,
+            transcript = transcript, summaryMarkdown = null, status = "ready",
+        )
+        assertIs<JobProgress.Succeeded>(processor.process("rec", "velum.meeting", retranscribe = false).last())
+        val before = repo.getRecording("rec")!!.summary_markdown
+
+        // UI gate: the Summary task needs the local model, so the screen shows the download prompt.
+        val resolution = resolveModeOrPrompt(AiTask.Summary, settings.settings.value, manager)
+        assertIs<ModeResolution.NeedLocalModel>(resolution)
+        assertEquals(DEFAULT_LOCAL_LLM_MODEL_ID, resolution.modelId)
+
+        // Even if a run starts anyway, it fails with the actionable message and does not fall back to the API.
+        flaky.modelPresent = false
+        assertIs<JobProgress.Failed>(processor.process("rec", "velum.sales", retranscribe = false).last())
+        assertEquals(0, net.calls.size, "a missing local model must not silently use the API")
+        assertEquals(before, repo.getRecording("rec")!!.summary_markdown)
+        assertEquals(1, repo.getSummaryVersions("rec").size)
+        assertTrue(repo.getProcessingError("rec").orEmpty().contains("Model manager"), "actionable: ${repo.getProcessingError("rec")}")
+    }
+
+    @Test
+    fun versions_and_the_active_template_survive_a_cold_restart() = runBlocking<Unit> {
+        val file = File.createTempFile("velum-ct103-restart", ".db").also { it.deleteOnExit() }
+        file.delete()
+        val url = "jdbc:sqlite:${file.absolutePath}"
+        val net = Network()
+        val handle = createDatabase(DriverFactory(url))
+        val repo = VelumRepository(handle)
+        val settings = SettingsRepository(InMemorySecureStore()).also { it.load(); it.setSummaryMode(ComputeMode.Local) }
+        val local = LocalLlm()
+        val router = AiTaskRouter(
+            settings = settings.settings,
+            localTranscriber = noopAsr, apiTranscriber = noopAsr, localDiarizer = noopDiar, apiDiarizer = noopDiar,
+            localLlm = local, apiLlm = OpenAiLlmEngine(net.client, settings),
+        )
+        val processor = RecordingProcessor(router, repo, settings)
+        repo.insertRecording(
+            id = "rec", sessionId = null, folderId = null, title = "t", source = "phone", deviceSerial = null,
+            startedAt = 1, durationSeconds = 60, sizeBytes = 0, localPath = null,
+            transcript = transcript, summaryMarkdown = null, status = "ready",
+        )
+        assertIs<JobProgress.Succeeded>(processor.process("rec", "velum.meeting", retranscribe = false).last())
+        val first = repo.getRecording("rec")!!.summary_markdown!!
+        assertIs<JobProgress.Succeeded>(processor.process("rec", "velum.sales", retranscribe = false).last())
+        val second = repo.getRecording("rec")!!.summary_markdown!!
+        handle.driver.close()
+
+        // New process: a fresh driver and repository on the same file, nothing carried in memory.
+        val reopened = JdbcSqliteDriver(url)
+        try {
+            val repo2 = VelumRepository(VelumDatabase(reopened), reopened)
+            val rec = repo2.getRecording("rec")!!
+            assertEquals(second, rec.summary_markdown)
+            assertEquals(transcript, rec.transcript)
+            val versions = repo2.getSummaryVersions("rec")
+            assertEquals(setOf("velum.meeting", "velum.sales"), versions.map { it.template_id }.toSet())
+            assertEquals(first, versions.single { it.template_id == "velum.meeting" }.markdown, "previous summary kept with its template")
+            assertEquals(0L, versions.single { it.template_id == "velum.meeting" }.is_active)
+            assertEquals("velum.sales", versions.single { it.is_active != 0L }.template_id, "active template survives")
+            assertTrue(versions.all { it.template_name.isNotBlank() })
+        } finally {
+            reopened.close()
+        }
     }
 }

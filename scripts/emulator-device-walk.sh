@@ -9,6 +9,8 @@ mkdir -p "$ARTIFACT_DIR"
 
 echo "=== Device walk ($BUILD_TYPE) ==="
 adb logcat -c || true
+# Timeout dumps (#160) are many 1 KB lines; a bigger ring buffer keeps them until the final logcat -d.
+adb logcat -G 16M || true
 
 GRADLE_PROPS=()
 case "$BUILD_TYPE" in
@@ -52,6 +54,12 @@ fi
 if ls composeApp/build/reports/androidTests/**/* >/dev/null 2>&1; then
   mkdir -p "$ARTIFACT_DIR/reports-${BUILD_TYPE}"
   cp -R composeApp/build/reports/androidTests/. "$ARTIFACT_DIR/reports-${BUILD_TYPE}/" || true
+fi
+# Timeout dumps written to additionalTestOutputDir; AGP pulls these before uninstalling (#160).
+if [ -d composeApp/build/outputs/connected_android_test_additional_output ]; then
+  mkdir -p "$ARTIFACT_DIR/additional-output-${BUILD_TYPE}"
+  cp -R composeApp/build/outputs/connected_android_test_additional_output/. \
+    "$ARTIFACT_DIR/additional-output-${BUILD_TYPE}/" || true
 fi
 
 if grep -E 'FATAL EXCEPTION|StrictMode|AndroidRuntime: FATAL' "$ARTIFACT_DIR/logcat-${BUILD_TYPE}.txt" \
