@@ -1,6 +1,8 @@
 package dev.velum.core.integrations
 
 import dev.velum.core.autoflow.AutoFlowPostAction
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * Catalog of integrations that are safe to show in Settings / AutoFlow.
@@ -24,12 +26,13 @@ class IntegrationRegistry(
     private val exportFolderConfigured: () -> Boolean,
     private val googleCalendarClientConfigured: Boolean = false,
 ) {
+    // The configured-checks read SharedPreferences / the secure store: never run them on the caller's (main) thread.
     /**
      * Integrations with working end-to-end code paths.
      * Google Calendar OAuth is omitted until [googleCalendarClientConfigured] is true
      * (owner registration). Local device calendar remains listed separately.
      */
-    suspend fun listed(): List<IntegrationEntry> = buildList {
+    suspend fun listed(): List<IntegrationEntry> = withContext(Dispatchers.IO) { buildList {
         add(
             IntegrationEntry(
                 id = IntegrationId.LocalCalendar,
@@ -55,14 +58,14 @@ class IntegrationRegistry(
         if (googleCalendarClientConfigured) {
             // Skeleton only; Connect UI ships with AppAuth in a follow-up once registered.
         }
-    }
+    } }
 
     /** Post-actions AutoFlow may offer based on what the user has configured. */
-    suspend fun availablePostActions(): List<AutoFlowPostAction> = buildList {
+    suspend fun availablePostActions(): List<AutoFlowPostAction> = withContext(Dispatchers.IO) { buildList {
         add(AutoFlowPostAction.None)
         add(AutoFlowPostAction.ShareMarkdown)
         add(AutoFlowPostAction.CalendarInsert)
         if (exportFolderConfigured()) add(AutoFlowPostAction.FolderExport)
         if (webhook.isConfigured()) add(AutoFlowPostAction.Webhook)
-    }
+    } }
 }

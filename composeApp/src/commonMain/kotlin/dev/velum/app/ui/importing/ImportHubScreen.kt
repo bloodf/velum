@@ -39,6 +39,11 @@ import dev.velum.app.ui.theme.VelumBg
 import dev.velum.app.ui.theme.VelumInk
 import dev.velum.app.ui.theme.VelumInkSecondary
 import kotlinx.coroutines.launch
+import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 
 /**
  * External recorder import hub: SAF file picker + watched folder (USB/SD/sync).
@@ -59,7 +64,12 @@ fun ImportHubScreen(
     var status by remember { mutableStateOf<String?>(null) }
     var importing by remember { mutableStateOf(false) }
     var confirmClearFolders by remember { mutableStateOf(false) }
-    val folderCount = watchedFolderCount()
+    // SharedPreferences read: refreshed off the main thread whenever the status text or import state changes.
+    var folderCount by remember { mutableStateOf(0) }
+    // Returning from the folder picker resumes this screen, which is when a newly saved folder must show.
+    var resumeTick by remember { mutableStateOf(0) }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { resumeTick++ }
+    LaunchedEffect(status, importing, resumeTick) { folderCount = withContext(Dispatchers.IO) { watchedFolderCount() } }
     val pickFile = rememberAudioImporter { path ->
         scope.launch {
             importing = true
@@ -89,8 +99,10 @@ fun ImportHubScreen(
                     onClick = {
                         haptics.perform(HapticKind.Medium)
                         confirmClearFolders = false
-                        clearWatchedFolders()
-                        status = strings.ux.watchedFoldersCleared
+                        scope.launch {
+                            withContext(Dispatchers.IO) { clearWatchedFolders() }
+                            status = strings.ux.watchedFoldersCleared
+                        }
                     },
                 ) { Text(strings.confirm) }
             },

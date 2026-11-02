@@ -7,10 +7,14 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
 import androidx.documentfile.provider.DocumentFile
 import java.io.File
 import java.io.FileOutputStream
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 data class WatchedFolderEntry(
     val displayName: String,
@@ -85,12 +89,15 @@ object WatchedFolderStore {
 @Composable
 fun rememberWatchedFolderPicker(onPicked: (treeUri: String) -> Unit): () -> Unit {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree(),
     ) { uri: Uri? ->
         if (uri == null) return@rememberLauncherForActivityResult
-        WatchedFolderStore.remember(context, uri)
-        onPicked(uri.toString())
+        scope.launch {
+            withContext(Dispatchers.IO) { WatchedFolderStore.remember(context, uri) }
+            onPicked(uri.toString())
+        }
     }
     return remember(launcher) { { launcher.launch(null) } }
 }
