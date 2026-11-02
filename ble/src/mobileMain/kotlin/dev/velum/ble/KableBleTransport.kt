@@ -115,6 +115,11 @@ class KableBleTransport : BleTransport {
                 _state.value = BleConnectionState.Failed("Unknown device $deviceId — scan first")
                 return
             }
+        // Validate before opening a peripheral so a bad advert never leaks a connection or notify job.
+        val device = adv.toConnectedDevice() ?: run {
+            _state.value = BleConnectionState.Failed("Device $deviceId is not a Plaud recorder")
+            return
+        }
         stopScan()
         _state.value = BleConnectionState.Connecting(deviceId)
         try {
@@ -126,7 +131,6 @@ class KableBleTransport : BleTransport {
             notifyJob = scope.launch {
                 p.observe(notifyCharacteristic).collect { notifyFlow.emit(it) }
             }
-            val device = adv.toConnectedDevice() ?: error("Advertisement is not a Plaud device")
             _state.value = BleConnectionState.Connected(device)
             disconnectWatchJob?.cancel()
             disconnectWatchJob = scope.launch {

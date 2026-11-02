@@ -4,6 +4,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class AdvertisementTest {
     @Test
@@ -56,17 +57,31 @@ class AdvertisementTest {
     }
 
     @Test
-    fun rejects_bad_serial_or_protocol() {
-        assertNull(PlaudAdvertisement.parseManufacturerData(valid(serial = "")), "empty serial")
-        val ctl = valid().also { it[10] = 0x07 }
-        assertNull(PlaudAdvertisement.parseManufacturerData(ctl), "control char in serial")
-        val embeddedNul = valid().also { it[10] = 0 }
-        assertNull(PlaudAdvertisement.parseManufacturerData(embeddedNul), "NUL inside serial")
-        val highBit = valid().also { it[11] = 0xC3.toByte() }
-        assertNull(PlaudAdvertisement.parseManufacturerData(highBit), "non-ASCII serial")
+    fun rejects_bad_protocol_or_model() {
         assertNull(PlaudAdvertisement.parseManufacturerData(valid(protocol = 0)), "protocol 0")
+        assertNull(PlaudAdvertisement.parseManufacturerData(valid(protocol = 256)), "protocol 256")
         assertNull(PlaudAdvertisement.parseManufacturerData(valid(protocol = 0x1234)), "implausible protocol")
         assertNull(PlaudAdvertisement.parseManufacturerData(valid(model = 0)), "model 0")
+    }
+
+    @Test
+    fun binary_or_0xff_serial_is_accepted_and_displayed_as_hex() {
+        val ff = valid().also { for (i in 9..16) it[i] = 0xFF.toByte() }
+        assertEquals("0xFFFFFFFFFFFFFFFF", PlaudAdvertisement.parseManufacturerData(ff)!!.serial)
+        val ctl = valid().also { it[10] = 0x07 }
+        assertEquals("0x38073154455354" + "31", PlaudAdvertisement.parseManufacturerData(ctl)!!.serial)
+        val embeddedNul = valid().also { it[10] = 0 }
+        assertNotNull(PlaudAdvertisement.parseManufacturerData(embeddedNul))
+        // No raw control or non-ASCII char ever reaches the displayed serial.
+        for (b in listOf(0x00, 0x07, 0x1B, 0x7F, 0x80, 0xC3, 0xFF)) {
+            val s = PlaudAdvertisement.parseManufacturerData(valid().also { it[11] = b.toByte() })!!.serial
+            assertTrue(s.all { it.code in 0x20..0x7E }, "b=$b -> $s")
+        }
+    }
+
+    @Test
+    fun empty_serial_is_accepted_when_structure_is_valid() {
+        assertEquals("", PlaudAdvertisement.parseManufacturerData(valid(serial = ""))!!.serial)
     }
 
     @Test

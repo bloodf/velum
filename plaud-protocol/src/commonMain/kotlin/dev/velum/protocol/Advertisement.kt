@@ -48,19 +48,31 @@ data class PlaudAdvertisement(
 
         /**
          * [data] is the payload after the company id. Returns null unless the documented layout is
-         * structurally plausible: at least 20 bytes, non-zero model code, a non-empty printable-ASCII
-         * serial (trailing NUL/space padding allowed) and a protocol version in 1..255.
-         * Models outside [DeviceModel] still parse (as [DeviceModel.Unknown]) when that holds.
+         * structurally plausible: at least 20 bytes, non-zero model code and a protocol version in
+         * 1..255. The serial charset is NOT validated (no real capture is on record, #5); it is
+         * sanitised for display instead. Models outside [DeviceModel] still parse as
+         * [DeviceModel.Unknown] by design.
          */
         fun parseManufacturerData(data: ByteArray): PlaudAdvertisement? {
             if (data.size < 20) return null
             val modelCode = Bytes.readU16Le(data, 1)
             if (modelCode == 0) return null
-            val serial = data.copyOfRange(9, 17).decodeToString().trimEnd('\u0000', ' ')
-            if (serial.isEmpty() || serial.any { it.code !in 0x20..0x7E }) return null
             val protocolVersion = Bytes.readU16Le(data, 18)
             if (protocolVersion !in 1..255) return null
-            return PlaudAdvertisement(modelCode, serial, protocolVersion, data)
+            return PlaudAdvertisement(modelCode, displaySerial(data.copyOfRange(9, 17)), protocolVersion, data)
+        }
+
+        /** Printable ASCII (trailing NUL/space padding trimmed) as text; anything else as `0x`-hex. */
+        private fun displaySerial(raw: ByteArray): String {
+            var end = raw.size
+            while (end > 0 && (raw[end - 1].toInt() == 0 || raw[end - 1].toInt() == 0x20)) end--
+            val bytes = raw.copyOf(end)
+            val printable = bytes.all { (it.toInt() and 0xFF) in 0x20..0x7E }
+            return if (printable) {
+                bytes.decodeToString()
+            } else {
+                "0x" + bytes.joinToString("") { (it.toInt() and 0xFF).toString(16).padStart(2, '0').uppercase() }
+            }
         }
     }
 }
