@@ -26,6 +26,12 @@ class TransferFaults(
     overlapAt: Set<Long> = emptySet(),
     /** Before the chunk, send a chunk carrying another session's id (a stray from an interrupted transfer). */
     strayAt: Set<Long> = emptySet(),
+    /** Before the chunk, send an end marker carrying another session's id. */
+    strayEndAt: Set<Long> = emptySet(),
+    /** From this chunk on, keep sending the previous chunk forever (a device stuck repeating). */
+    internal val endlessRepeatAt: Long? = null,
+    /** Deliver the previous session-list reply's sealed packet again before each new one. */
+    internal val replayStaleListReply: Boolean = false,
 ) {
     private val disconnect = disconnectAt.sorted().toMutableList()
     internal val corrupt = corruptAt.toMutableSet()
@@ -36,6 +42,7 @@ class TransferFaults(
     internal val replay = replayAt.toMutableSet()
     internal val overlap = overlapAt.toMutableSet()
     internal val stray = strayAt.toMutableSet()
+    internal val strayEnd = strayEndAt.toMutableSet()
 
     internal fun takeDisconnect(chunkOffset: Long): Boolean {
         val hit = disconnect.firstOrNull { it <= chunkOffset } ?: return false

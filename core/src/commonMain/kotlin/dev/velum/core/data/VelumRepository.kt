@@ -786,24 +786,28 @@ class VelumRepository(
         trashed: Long = 0,
         createdAt: Long = epochSeconds(),
     ) = withContext(Dispatchers.Default) {
-        q.insertRecording(
-            id = id,
-            session_id = sessionId,
-            folder_id = folderId,
-            title = title,
-            source = source,
-            device_serial = deviceSerial,
-            started_at = startedAt,
-            duration_seconds = durationSeconds,
-            size_bytes = sizeBytes,
-            local_path = localPath,
-            transcript = transcript,
-            summary_markdown = summaryMarkdown,
-            status = status,
-            trashed = trashed,
-            created_at = createdAt,
-        )
-        indexRecording(id, title, transcript, summaryMarkdown)
+        // One transaction: observers (AutoFlow) only see the row once it is indexed, so their own
+        // writes never interleave with this FTS write on a shared connection.
+        db.transaction {
+            q.insertRecording(
+                id = id,
+                session_id = sessionId,
+                folder_id = folderId,
+                title = title,
+                source = source,
+                device_serial = deviceSerial,
+                started_at = startedAt,
+                duration_seconds = durationSeconds,
+                size_bytes = sizeBytes,
+                local_path = localPath,
+                transcript = transcript,
+                summary_markdown = summaryMarkdown,
+                status = status,
+                trashed = trashed,
+                created_at = createdAt,
+            )
+            indexRecording(id, title, transcript, summaryMarkdown)
+        }
     }
 
     /**

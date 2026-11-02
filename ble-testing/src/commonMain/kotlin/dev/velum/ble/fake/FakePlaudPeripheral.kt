@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.yield
 
 /**
  * In-process Note Pro (project 881, protocol 20) that speaks the same framing
@@ -59,6 +60,9 @@ class FakePlaudPeripheral(
 
         /** CRC-16/CCITT-FALSE of the whole session file (assumed algorithm, unconfirmed on hardware). */
         Ccitt,
+
+        /** A value that never matches the file (a device whose CRC differs from ours). */
+        Wrong,
     }
 
     /** How the device answers SYNC_FILE_STOP. */
@@ -85,6 +89,8 @@ class FakePlaudPeripheral(
     private val mutex = Mutex()
     private val emitMutex = Mutex()
     private var streamJob: Job? = null
+    private var lastSealed: ByteArray? = null
+    private var staleListReply: ByteArray? = null
     private val snChunks = mutableListOf<UnlockChunk>()
     private val pubChunks = mutableListOf<UnlockChunk>()
 
@@ -185,12 +191,9 @@ class FakePlaudPeripheral(
             "Expected app prefix, got ${packet.firstOrNull()}"
         }
         require(packet.size >= 2) { "App command too short" }
-        val cmd = if (packet.size >= 3) {
-            Bytes.readU16Le(packet, 1)
-        } else {
-            packet[1].toInt() and 0xFF
-        }
-        val payload = if (packet.size > 3) packet.copyOfRange(3, packet.size) else ByteArray(0)
+        // Framing.encodeCommand trims trailing zero bytes, so pad back what a field read needs.
+        val cmd = Bytes.readU16Le(packet.copyOf(maxOf(packet.size, 3)), 1)
+        val payload = packet.copyOf(maxOf(packet.size, 3 + MAX_COMMAND_PARAM_BYTES)).copyOfRange(3, 3 + MAX_COMMAND_PARAM_BYTES)
         _receivedCommands += cmd
         when (cmd) {
             Commands.HANDSHAKE -> {
@@ -198,7 +201,7 @@ class FakePlaudPeripheral(
                 emitCommand(Commands.HANDSHAKE, hsPayload)
             }
             Commands.GET_SESSIONS -> {
-                val echoed = if (payload.size >= 4) Bytes.readU32Le(payload, 0) else 0L
+                val echoed = Bytes.readU32Le(payload, 0)
                 val entrySize = Sessions.entrySize(20)
                 val entry = ByteArray(entrySize)
                 Bytes.u32Le(sessionId).copyInto(entry, 0)
@@ -209,11 +212,13 @@ class FakePlaudPeripheral(
                     Bytes.u16Le(1) +
                     Bytes.u16Le(0) +
                     entry
+                if (faults.replayStaleListReply) staleListReply?.let { emitRaw(it) }
                 emitCommand(Commands.GET_SESSIONS, listPayload)
+                staleListReply = lastSealed
             }
             Commands.SYNC_FILE_START -> {
                 val sid = Bytes.readU32Le(payload, 0)
-                val startOffset = if (payload.size >= 8) Bytes.readU32Le(payload, 4) else 0L
+                val startOffset = Bytes.readU32Le(payload, 4)
                 _syncStartOffsets += startOffset
                 emitCommand(
                     Commands.SYNC_FILE_START,
@@ -230,6 +235,7 @@ class FakePlaudPeripheral(
                 val crc = when (stopCrc) {
                     StopCrc.NotProvided -> 0xFFFF
                     StopCrc.Ccitt -> Crc16Ccitt.compute(sessionFile)
+                    StopCrc.Wrong -> Crc16Ccitt.compute(sessionFile) xor 0x0101
                 }
                 val replyCmd = when (stopReply) {
                     StopReply.Cmd29 -> Commands.SYNC_FILE_STOP
@@ -259,7 +265,16 @@ class FakePlaudPeripheral(
             val at = offset.toLong()
             // Link lost: nothing more arrives, not even the end marker.
             if (faults.takeDisconnect(at)) return
-            if (faults.stray.remove(at)) emitEncrypted(chunkFrame(sessionId + 1, 0L, ByteArray(10) { 0x77 }))
+            // At the offset the client expects next, so only the session id tells it apart.
+            if (faults.stray.remove(at)) emitEncrypted(chunkFrame(sessionId + 1, at, ByteArray(10) { 0x77 }))
+            if (faults.strayEnd.remove(at)) emitEncrypted(endFrame(sessionId + 1))
+            if (faults.endlessRepeatAt == at) {
+                val previous = chunkFrame(sessionId, at - chunkSize, sessionFile.copyOfRange(offset - chunkSize, offset))
+                while (true) {
+                    emitEncrypted(previous)
+                    yield() // emit may not suspend, and this must stay cancellable
+                }
+            }
             if (faults.overlap.remove(at)) {
                 emitEncrypted(chunkFrame(sessionId, at - 50, sessionFile.copyOfRange(offset - 50, offset + 50)))
                 offset = end
@@ -278,12 +293,14 @@ class FakePlaudPeripheral(
             }
             offset = end
         }
-        val endFrame = byteArrayOf(PacketType.RecordingData.code.toByte()) +
-            Bytes.u32Le(sessionId) +
+        emitEncrypted(endFrame(sessionId))
+    }
+
+    private fun endFrame(sid: Long) =
+        byteArrayOf(PacketType.RecordingData.code.toByte()) +
+            Bytes.u32Le(sid) +
             Bytes.u32Le(0xFFFF_FFFFL) +
             byteArrayOf(0)
-        emitEncrypted(endFrame)
-    }
 
     private fun chunkFrame(sid: Long, offset: Long, data: ByteArray) =
         byteArrayOf(PacketType.RecordingData.code.toByte()) +
@@ -312,6 +329,7 @@ class FakePlaudPeripheral(
         } else {
             val sealed = cipher.sealPacket(sec, deviceSendSeq, frame)
             deviceSendSeq += 1
+            lastSealed = sealed
             // Flip a tag byte: the packet no longer authenticates (radio/link corruption).
             if (garble) sealed[sealed.size - 1] = (sealed[sealed.size - 1].toInt() xor 0x01).toByte()
             if (!lost) emitRaw(sealed)
@@ -321,5 +339,10 @@ class FakePlaudPeripheral(
 
     private suspend fun emitRaw(frame: ByteArray) {
         notifications.emit(frame)
+    }
+
+    private companion object {
+        /** Longest params among the commands this fake handles (SYNC_FILE_START: three u32). */
+        const val MAX_COMMAND_PARAM_BYTES = 12
     }
 }
