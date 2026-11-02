@@ -90,6 +90,7 @@ Phone-only / external (no Plaud required):
 - [x] Glossary + memory tables in `Velum.sq`; CRUD under Personalization / Memory
 - [x] Local JSON/Markdown templates create/edit persist locally (community/cloud templates removed)
 - [x] Built-in catalog: **15 Velum originals** + curated **1,500 Plaud** templates (100×15 categories; unique names within category; lazy classpath asset) + optional Velum PR contributions (`contributor` credit on detail only). Plaud author/official stay in JSONL + `docs/TEMPLATES_CREDITS.md` (not shown in app UI). Discover: category tabs, FTS over name/description/body, popularity sort. Local JSON importer kept (`TemplateJsonImporter`). Sync via `scripts/sync-plaud-templates.sh`
+- [ ] Official-template completeness (#101): **blocked on an owner decision** choosing an authoritative inventory source to check against. Until then `core/src/jvmTest/resources/templates/official_baseline.txt` pins only the 41 rows currently marked official; it is not an authoritative list, and nothing is invented to fill a gap. The Featured floor (100 distinct exact bodies per category, renamed copies counted once) is enforced by `TemplateHygieneCatalogTest`.
 - [x] CalendarProvider read current/next event title to name recordings after sync (permission-denied reported clearly)
 - [x] Runtime READ_CALENDAR permission with rationale (Integrations + AutoFlow blocked path)
 
