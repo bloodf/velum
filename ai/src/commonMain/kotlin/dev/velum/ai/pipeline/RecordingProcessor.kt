@@ -51,8 +51,7 @@ internal fun isOutOfStorage(t: Throwable): Boolean =
 fun sweepOrphanPcmSpill(root: ModelStoreDir = defaultModelStoreRoot()): Int =
     root.resolve("tmp").takeIf { it.isDirectory() }?.listChildren().orEmpty()
         .filter { it.name.startsWith("pcm-") }
-        .onEach { it.deleteRecursively() }
-        .size
+        .count { runCatching { it.deleteRecursively() }; !it.exists() }
 
 /**
  * End-to-end job: decode → transcribe → diarize → markdown transcript → summarize → DB.

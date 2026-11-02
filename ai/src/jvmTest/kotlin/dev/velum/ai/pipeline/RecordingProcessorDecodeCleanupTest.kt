@@ -242,7 +242,11 @@ class RecordingProcessorDecodeCleanupTest {
             }
         }
         val h = Harness({ asrRan = true }, opusDecoder = { decoder })
-        cancelWhileBlocked(gate, "rec-197-ogg", h, tempAudio(".ogg", ByteArray(64)))
+        val srcBytes = ByteArray(64)
+        val src = tempAudio(".ogg", srcBytes)
+        cancelWhileBlocked(gate, "rec-197-ogg", h, src)
+        assertContentEquals(srcBytes, src.readBytes(), "source recording preserved")
+        assertEquals("failed", h.repo.getRecording("rec-197-ogg")!!.status)
         assertFalse(afterCheck, "decode kept going after the job was cancelled")
         assertFalse(asrRan)
         assertFalse(spillDir("rec-197-ogg").exists())
@@ -257,6 +261,7 @@ class RecordingProcessorDecodeCleanupTest {
             override suspend fun awaitCool(onPaused: suspend (message: String) -> Unit) = Unit
         }
         val h = Harness({ error("ASR must not run") }, thermal = thermal)
+        spillDir("rec-197-wav").deleteRecursively() // a leftover from a killed local run would fake growth
         val pcmFile = File(spillDir("rec-197-wav"), "pcm.s16le")
         val maxSeen = java.util.concurrent.atomic.AtomicLong(0)
         val running = java.util.concurrent.atomic.AtomicBoolean(true)
@@ -264,7 +269,11 @@ class RecordingProcessorDecodeCleanupTest {
             while (running.get()) { maxSeen.accumulateAndGet(pcmFile.length()) { x, y -> maxOf(x, y) } }
         }.apply { isDaemon = true; start() }
         try {
-            cancelWhileBlocked(gate, "rec-197-wav", h, tempAudio(".wav", wav(ByteArray(16 shl 20))))
+            val srcBytes = wav(ByteArray(16 shl 20))
+            val src = tempAudio(".wav", srcBytes)
+            cancelWhileBlocked(gate, "rec-197-wav", h, src)
+            assertContentEquals(srcBytes, src.readBytes(), "source recording preserved")
+            assertEquals("failed", h.repo.getRecording("rec-197-wav")!!.status)
         } finally {
             running.set(false)
             sampler.join(5_000)
