@@ -27,11 +27,16 @@ class GattArchitectureTest {
     @Test
     fun insideBle_onlyGuardedLinkBuildsWritesOrCallsWriteRaw() {
         val bleSrc = File(repoRoot(), "ble/src")
-        val offenders = bleSrc.walkTopDown().filter { it.isFile && it.extension == "kt" }
-            .filter { it.name != "GuardedLink.kt" && it.name != "GattArchitectureTest.kt" && it.name !in recordingDoubles }
-            .filter { f -> f.readText().let { "PlainWrite(" in it || "SealedWrite(" in it || ".writeRaw(" in it } }
-            .map { it.name }.toList()
-        assertTrue(offenders.isEmpty(), "Only GuardedLink.kt may build writes or call writeRaw: $offenders")
+        val files = bleSrc.walkTopDown().filter { it.isFile && it.extension == "kt" }
+            .filter { it.name != "GattArchitectureTest.kt" }.toList()
+        // Construction ban has no exceptions except GuardedLink.kt itself.
+        val builders = files.filter { it.name != "GuardedLink.kt" }
+            .filter { f -> f.readText().let { "PlainWrite(" in it || "SealedWrite(" in it } }.map { it.name }
+        assertTrue(builders.isEmpty(), "Only GuardedLink.kt may build writes: $builders")
+        // Forwarding test doubles are exempt from the writeRaw CALL ban by name only.
+        val callers = files.filter { it.name != "GuardedLink.kt" && it.name !in recordingDoubles }
+            .filter { ".writeRaw(" in it.readText() }.map { it.name }
+        assertTrue(callers.isEmpty(), "Only GuardedLink.kt may call writeRaw: $callers")
         val implementers = setOf(
             "Gatt.kt", "GattArchitectureTest.kt", "SimulatedPeripheralScenariosTest.kt", "StubBleTransport.kt", "FakeBleTransport.kt", "KableBleTransport.kt", "GuardedLinkTest.kt",
         )
