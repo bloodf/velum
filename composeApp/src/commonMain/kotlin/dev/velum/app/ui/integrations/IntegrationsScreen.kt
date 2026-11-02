@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.velum.app.di.AppContainer
 import dev.velum.app.i18n.LocalStrings
+import dev.velum.app.i18n.formatTemplate
 import dev.velum.app.platform.AppPermission
 import dev.velum.app.platform.ExportFolderStore
 import dev.velum.app.platform.HapticKind
@@ -367,11 +368,11 @@ fun IntegrationsScreen(
                                             webhookMessageOk = false
                                         }
                                         WebhookTestResult.isHttpSuccess(detail) -> {
-                                            webhookMessage = strings.ux.webhookPostedFormat.format(detail)
+                                            webhookMessage = formatTemplate(strings.ux.webhookPostedFormat, detail)
                                             webhookMessageOk = true
                                         }
                                         else -> {
-                                            webhookMessage = strings.ux.webhookFailedFormat.format(detail)
+                                            webhookMessage = formatTemplate(strings.ux.webhookFailedFormat, detail)
                                             webhookMessageOk = false
                                         }
                                     }

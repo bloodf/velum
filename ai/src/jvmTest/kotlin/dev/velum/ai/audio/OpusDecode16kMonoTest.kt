@@ -22,23 +22,24 @@ class OpusDecode16kMonoTest {
      * One encoder over a phase-continuous tone. SyntheticOgg.audioPacket restarts the tone every
      * packet (8.8 cycles per 20 ms), which reads as 400 Hz and can't prove the output rate.
      */
-    private fun continuousStereoPackets(count: Int): List<ByteArray> {
-        val buf = ByteArray(1275)
+    private fun continuousStereoPackets(count: Int, frame: Int = 960, leftGain: Int = 1): List<ByteArray> {
+        val buf = ByteArray(4000)
         eu.buney.kopus.OpusEncoder(48_000, 2, eu.buney.kopus.OpusApplication.Audio).use { enc ->
             return List(count) { packet ->
-                val pcm = ShortArray(960 * 2) {
-                    val frame = packet * 960 + it / 2
-                    (sin(2 * PI * 440 * frame / 48_000) * 8000).toInt().toShort()
+                val pcm = ShortArray(frame * 2) {
+                    val n = packet * frame + it / 2
+                    val v = (sin(2 * PI * 440 * n / 48_000) * 8000).toInt()
+                    (if (it % 2 == 0) v * leftGain else v).toShort()
                 }
-                buf.copyOf(enc.encode(pcm, 0, 960, buf, 0, buf.size))
+                buf.copyOf(enc.encode(pcm, 0, frame, buf, 0, buf.size))
             }
         }
     }
 
-    private fun stereo48kOgg(packets: Int): ByteArray =
+    private fun stereo48kOgg(packets: Int, frame: Int = 960, leftGain: Int = 1): ByteArray =
         SyntheticOgg.page(listOf(SyntheticOgg.opusHead(2, 48_000)), 0, 2) +
             SyntheticOgg.page(listOf(SyntheticOgg.tags()), 1) +
-            SyntheticOgg.page(continuousStereoPackets(packets), 2, 4)
+            SyntheticOgg.page(continuousStereoPackets(packets, frame, leftGain), 2, 4)
 
     @Test
     fun streamed_48k_stereo_file_decodes_to_16k_mono_with_matching_duration_and_pitch() {
@@ -78,5 +79,78 @@ class OpusDecode16kMonoTest {
         assertEquals(16_000, pcm.sampleRateHz)
         assertEquals(1, pcm.channels)
         assertEquals(10 * 320, pcm.samples.size)
+    }
+
+    @Test
+    fun right_only_tone_is_downmixed_not_dropped() {
+        val pcm = decoder.decodeToPcm(stereo48kOgg(25, leftGain = 0))
+        assertTrue(pcm.samples.drop(1_600).maxOf { abs(it.toInt()) } > 1_000, "right channel survives downmix")
+    }
+
+    @Test
+    fun one_hundred_twenty_ms_packet_fills_buffers_exactly() {
+        val src = Files.createTempFile("velum-120ms", ".ogg")
+        val dest = Files.createTempFile("velum-120ms", ".pcm")
+        try {
+            val ogg = stereo48kOgg(3, frame = 5_760)
+            Files.write(src, ogg)
+            val pcm = decoder.decodeToPcm(ogg)
+            assertEquals(3 * 1_920, pcm.samples.size)
+            val meta = decoder.decodePathToPcmFile(src.toString(), ModelStoreDir(dest.toString()))
+            assertEquals(3L * 1_920 * 2, meta.sizeBytes)
+        } finally {
+            Files.deleteIfExists(src)
+            Files.deleteIfExists(dest)
+        }
+    }
+
+    private fun oggWith(head: ByteArray): ByteArray =
+        SyntheticOgg.page(listOf(head), 0, 2) +
+            SyntheticOgg.page(listOf(SyntheticOgg.tags()), 1) +
+            SyntheticOgg.page(listOf(SyntheticOgg.audioPacket(false)), 2, 4)
+
+    private fun family1(channels: Int, streams: Int, coupled: Int, vararg map: Int) =
+        SyntheticOgg.opusHead(
+            channels, 48_000, family = 1,
+            mapping = byteArrayOf(streams.toByte(), coupled.toByte()) + ByteArray(map.size) { map[it].toByte() },
+        )
+
+    @Test
+    fun single_stream_family1_decodes() {
+        assertEquals(320, decoder.decodeToPcm(oggWith(family1(1, 1, 0, 0))).samples.size)
+        assertEquals(320, decoder.decodeToPcm(oggWith(family1(2, 1, 1, 0, 1))).samples.size)
+    }
+
+    @Test
+    fun multistream_mapping_is_rejected() {
+        val heads = listOf(
+            "6ch family 1" to SyntheticOgg.opusHead(6, 48_000, family = 1),
+            "family 255 stereo" to SyntheticOgg.opusHead(2, 48_000, family = 255),
+            "family 255 mono" to SyntheticOgg.opusHead(1, 48_000, family = 255),
+            "two uncoupled mono streams" to family1(2, 2, 0, 0, 1),
+            "19-byte family 1 head" to SyntheticOgg.opusHead(2, 48_000, family = 1),
+        )
+        for ((name, head) in heads) {
+            val e = kotlin.runCatching { decoder.decodeToPcm(oggWith(head)) }.exceptionOrNull()
+            assertTrue(e is IllegalArgumentException && "multistream" in e.message.orEmpty(), "$name: $e")
+        }
+    }
+
+    @Test
+    fun voip_stereo_silk_packets_decode_to_16k_mono() {
+        val buf = ByteArray(4000)
+        val packets = eu.buney.kopus.OpusEncoder(48_000, 2, eu.buney.kopus.OpusApplication.Voip).use { enc ->
+            List(10) { p ->
+                val pcm = ShortArray(960 * 2) { (sin(2 * PI * 300 * (p * 960 + it / 2) / 48_000) * 8000).toInt().toShort() }
+                buf.copyOf(enc.encode(pcm, 0, 960, buf, 0, buf.size))
+            }
+        }
+        val ogg = SyntheticOgg.page(listOf(SyntheticOgg.opusHead(2, 48_000)), 0, 2) +
+            SyntheticOgg.page(listOf(SyntheticOgg.tags()), 1) + SyntheticOgg.page(packets, 2, 4)
+        val pcm = decoder.decodeToPcm(ogg)
+        assertEquals(16_000, pcm.sampleRateHz)
+        assertEquals(1, pcm.channels)
+        assertEquals(10 * 320, pcm.samples.size)
+        assertTrue(pcm.samples.drop(800).maxOf { abs(it.toInt()) } > 1_000, "voice tone survives")
     }
 }
