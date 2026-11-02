@@ -251,6 +251,10 @@ class VelumRepository(
         }
     }
 
+    /** Single-row observe for the template detail screen (no full-table load). */
+    fun observeTemplate(id: String): Flow<Template?> =
+        q.selectTemplateById(id).asFlow().mapToOneOrNull(Dispatchers.Default)
+
     /** Emits once per template table notification (edits, use counts, imports), not per row count. */
     fun observeTemplateChanges(): Flow<Long> = flow {
         var n = 0L

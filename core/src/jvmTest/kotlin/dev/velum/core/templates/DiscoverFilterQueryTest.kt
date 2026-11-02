@@ -3,6 +3,7 @@ package dev.velum.core.templates
 import dev.velum.core.data.DriverFactory
 import dev.velum.core.data.VelumRepository
 import dev.velum.core.data.createDatabase
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
@@ -141,6 +142,25 @@ class DiscoverFilterQueryTest {
         val rows = r.queryDiscoverTemplates(all.copy(category = "zz102-1"), limit = 1_000_000)
         assertTrue(rows.size >= 4)
         for (row in rows) assertEquals(r.getTemplate(row.id), row)
+    }
+
+    @Test
+    fun observeTemplateTracksOneRowAndMissingIdIsNull() = runBlocking {
+        val r = repo()
+        assertEquals("d102-a", r.observeTemplate("d102-a").first()!!.id)
+        assertEquals(null, r.observeTemplate("d102-nope").first())
+        var seen = 0
+        val names = withTimeout(15_000) {
+            r.observeTemplate("d102-b").onEach {
+                if (++seen == 1) {
+                    r.upsertTemplate(
+                        id = "d102-b", name = "Beta EDITED", category = "zz102-1", description = "",
+                        systemPrompt = "p", builtin = true, featured = true, lang = "pt",
+                    )
+                }
+            }.take(2).toList().map { it!!.name }
+        }
+        assertEquals(listOf("Beta board", "Beta EDITED"), names)
     }
 
     @Test

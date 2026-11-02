@@ -759,8 +759,7 @@ fun TemplateDetailScreen(
     onBack: () -> Unit,
 ) {
     val strings = LocalStrings.current
-    val templates by container.repository.observeTemplates().collectAsState(emptyList())
-    val tpl = templates.firstOrNull { it.id == templateId }
+    val tpl = container.repository.observeTemplate(templateId).collectAsState(null).value
     val contributorCredit = tpl?.let { templateUiCredit(it) }
 
     Column(Modifier.fillMaxSize().background(VelumBg).verticalScroll(rememberScrollState())) {
