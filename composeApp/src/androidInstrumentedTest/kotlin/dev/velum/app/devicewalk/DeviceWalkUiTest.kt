@@ -93,6 +93,7 @@ class DeviceWalkUiTest {
             "first-run-skip", // only when onboarding is still pending at launch
             // Never produced in the last verified 8-cell matrix (#115); steps stay best-effort.
             "recording/versions", "recording/sources", "settings/templates", "ask",
+            "settings/storage-back-pinned", // #118; optional until it holds in all 4 cells and both builds
         )
 
         private val SETTINGS_HUB_ROWS = listOf(
@@ -640,7 +641,17 @@ class DeviceWalkUiTest {
             waitUntil(10_000, "Wipe confirmation dialog did not close") {
                 !composeExistsIgnoreCase(str.settingsUi.wipeAllDataBody)
             }
-            pressNavBack()
+            // #118: scroll the body, then Back must still be on screen and return to the hub in the same activity.
+            val activityBefore = composeRule.activity
+            device.swipe(device.displayWidth / 2, device.displayHeight * 4 / 5, device.displayWidth / 2, device.displayHeight / 5, 20)
+            composeRule.waitForIdle()
+            check(pressNavBack()) { "Back not reachable on Storage & privacy after scrolling (#118)" }
+            waitUntil(10_000, "Back from Storage & privacy did not return to the Settings hub") {
+                !composeExists(str.settingsUi.privacyOnDeviceStatement) && SETTINGS_HUB_ROWS.any { composeExists(it) }
+            }
+            check(composeRule.activity === activityBefore) { "Activity was recreated by Back from Storage & privacy" }
+            assertFirstRunNotVisible("storage back")
+            covered += "settings/storage-back-pinned"
         }
         pressBackToFiles(lang)
     }
