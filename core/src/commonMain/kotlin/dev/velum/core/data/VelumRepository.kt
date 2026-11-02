@@ -41,11 +41,15 @@ class VelumRepository(
     /** False on hosts without SQLite FTS5 (e.g. Robolectric). Search falls back to ListSearch. */
     val ftsAvailable: Boolean
 
+    /** Why FTS is unavailable (exception class only), for platform logging; null when available. */
+    val ftsFailure: String?
+
     constructor(handle: DatabaseHandle) : this(handle.database, handle.driver)
 
     init {
         val fts = FtsIndex.ensureSchema(driver)
         ftsAvailable = fts.available
+        ftsFailure = fts.failure
         val seeded = SeedData.maybeSeed(db)
         reconcileRemovedTemplateDuplicates()
         backfillSummaryVersionsFromRecording()

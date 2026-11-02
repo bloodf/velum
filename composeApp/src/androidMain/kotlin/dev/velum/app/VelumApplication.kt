@@ -75,6 +75,10 @@ class VelumApplication : Application() {
                     thermalPolicy = ThermalMonitor.asPolicy(powerManager),
                 )
                 container = built
+                if (!built.repository.ftsAvailable) {
+                    // Search falls back to a full list scan; class name only, never SQL or user data.
+                    Log.w(TAG, "Full-text search unavailable (${built.repository.ftsFailure})")
+                }
                 AiRuntimeHolder.install(
                     processor = built.recordingProcessor,
                     repository = built.repository,
