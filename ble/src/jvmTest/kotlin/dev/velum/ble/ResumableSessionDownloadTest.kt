@@ -288,7 +288,8 @@ class ResumableSessionDownloadTest {
         val file = Random(27).nextBytes(5_000)
         val rig = rig(file, TransferFaults(ignoreStartOffset = true))
         val store = storeHolding(ByteArray(2_000) { 0x11 })
-        val result = downloader(rig, CrcPolicy.Enforce).download(SESSION, file.size.toLong(), store)
+        // ReportOnly: Enforce would also recover through the CRC, which real devices don't have.
+        val result = downloader(rig, CrcPolicy.ReportOnly).download(SESSION, file.size.toLong(), store)
         assertContentEquals(file, store.bytes)
         assertEquals(listOf(2_000L, 0L), rig.peripheral.syncStartOffsets)
         assertEquals(CrcStatus.Verified, result.crc)
@@ -451,6 +452,7 @@ class ResumableSessionDownloadTest {
         assertContentEquals(file, store.bytes)
         assertEquals(listOf(0L), rig.peripheral.syncStartOffsets)
         assertEquals(CrcStatus.Verified, result.crc)
+        assertEquals(1, result.attempts)
     }
 
     @Test fun enforced_crc_mismatch_gives_up_after_three_complete_transfers() = runTest {

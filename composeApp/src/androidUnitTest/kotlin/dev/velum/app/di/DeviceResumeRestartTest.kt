@@ -18,6 +18,7 @@ import dev.velum.protocol.DeviceIdentityKeys
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.nio.file.Files
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.random.Random
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -213,14 +214,19 @@ class DeviceResumeRestartTest {
 
     @Test fun wipe_deletes_the_partials_even_if_the_download_ignores_cancellation() {
         try {
+            val saving = AtomicBoolean(false)
             val vm = run(
                 peripheral(),
-                persist = { withContext(NonCancellable) { delay(3_000) }; "rec-synthetic" },
+                persist = {
+                    saving.set(true)
+                    withContext(NonCancellable) { delay(3_000) }
+                    "rec-synthetic"
+                },
                 await = false,
                 wipeJoinTimeout = 200.milliseconds,
             )
             runBlocking {
-                withTimeout(20_000) { while (partials.list()!!.none { it.endsWith(".partial") }) delay(5) }
+                withTimeout(20_000) { while (!saving.get()) delay(5) }
                 val waited = measureTime { assertTrue(vm.wipePartialDownloads()) }
                 assertTrue(waited < 2.seconds, "the wipe must not wait for the download: $waited")
             }
