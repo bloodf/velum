@@ -104,14 +104,53 @@ class OpusDecode16kMonoTest {
         }
     }
 
+    private fun oggWith(head: ByteArray): ByteArray =
+        SyntheticOgg.page(listOf(head), 0, 2) +
+            SyntheticOgg.page(listOf(SyntheticOgg.tags()), 1) +
+            SyntheticOgg.page(listOf(SyntheticOgg.audioPacket(false)), 2, 4)
+
+    private fun family1(channels: Int, streams: Int, coupled: Int, vararg map: Int) =
+        SyntheticOgg.opusHead(
+            channels, 48_000, family = 1,
+            mapping = byteArrayOf(streams.toByte(), coupled.toByte()) + ByteArray(map.size) { map[it].toByte() },
+        )
+
+    @Test
+    fun single_stream_family1_decodes() {
+        assertEquals(320, decoder.decodeToPcm(oggWith(family1(1, 1, 0, 0))).samples.size)
+        assertEquals(320, decoder.decodeToPcm(oggWith(family1(2, 1, 1, 0, 1))).samples.size)
+    }
+
     @Test
     fun multistream_mapping_is_rejected() {
-        for ((ch, family) in listOf(6 to 1, 2 to 255, 1 to 255)) {
-            val ogg = SyntheticOgg.page(listOf(SyntheticOgg.opusHead(ch, 48_000, family = family)), 0, 2) +
-                SyntheticOgg.page(listOf(SyntheticOgg.tags()), 1) +
-                SyntheticOgg.page(listOf(SyntheticOgg.audioPacket(false)), 2, 4)
-            val e = kotlin.runCatching { decoder.decodeToPcm(ogg) }.exceptionOrNull()
-            assertTrue(e is IllegalArgumentException && "multistream" in e.message.orEmpty(), "ch=$ch family=$family: $e")
+        val heads = listOf(
+            "6ch family 1" to SyntheticOgg.opusHead(6, 48_000, family = 1),
+            "family 255 stereo" to SyntheticOgg.opusHead(2, 48_000, family = 255),
+            "family 255 mono" to SyntheticOgg.opusHead(1, 48_000, family = 255),
+            "two uncoupled mono streams" to family1(2, 2, 0, 0, 1),
+            "19-byte family 1 head" to SyntheticOgg.opusHead(2, 48_000, family = 1),
+        )
+        for ((name, head) in heads) {
+            val e = kotlin.runCatching { decoder.decodeToPcm(oggWith(head)) }.exceptionOrNull()
+            assertTrue(e is IllegalArgumentException && "multistream" in e.message.orEmpty(), "$name: $e")
         }
+    }
+
+    @Test
+    fun voip_stereo_silk_packets_decode_to_16k_mono() {
+        val buf = ByteArray(4000)
+        val packets = eu.buney.kopus.OpusEncoder(48_000, 2, eu.buney.kopus.OpusApplication.Voip).use { enc ->
+            List(10) { p ->
+                val pcm = ShortArray(960 * 2) { (sin(2 * PI * 300 * (p * 960 + it / 2) / 48_000) * 8000).toInt().toShort() }
+                buf.copyOf(enc.encode(pcm, 0, 960, buf, 0, buf.size))
+            }
+        }
+        val ogg = SyntheticOgg.page(listOf(SyntheticOgg.opusHead(2, 48_000)), 0, 2) +
+            SyntheticOgg.page(listOf(SyntheticOgg.tags()), 1) + SyntheticOgg.page(packets, 2, 4)
+        val pcm = decoder.decodeToPcm(ogg)
+        assertEquals(16_000, pcm.sampleRateHz)
+        assertEquals(1, pcm.channels)
+        assertEquals(10 * 320, pcm.samples.size)
+        assertTrue(pcm.samples.drop(800).maxOf { abs(it.toInt()) } > 1_000, "voice tone survives")
     }
 }

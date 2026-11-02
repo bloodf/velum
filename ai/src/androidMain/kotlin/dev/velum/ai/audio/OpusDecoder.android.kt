@@ -45,9 +45,12 @@ class KopusOpusDecoder : OpusDecoder {
     companion object {
         internal fun decodeInMemory(oggBytes: ByteArray): PcmAudio {
             var decoder: KopusDecoder? = null
+            // libopus decodes any stream at the requested rate/channels: emit the import-path PCM
+            // contract (16 kHz mono) directly, frame by frame, so memory stays bounded (#95).
             val rate = DECODED_PCM_RATE_HZ
             val channels = DECODED_PCM_CHANNELS
-            var frameSize = rate / 50
+            // Opus packets can be up to 120ms; allocate for max frame, not 20ms only.
+            val frameSize = rate / 50 * 6
             var out = ShortArray(0)
             var samples = ShortArray(0)
             var count = 0
@@ -55,10 +58,6 @@ class KopusOpusDecoder : OpusDecoder {
                 val streamMeta = OggOpusDemuxer.demuxForEach(
                     oggBytes = oggBytes,
                     onHeader = { _, _ ->
-                        // libopus decodes any stream at the requested rate/channels: emit the import-path
-                        // PCM contract (16 kHz mono) directly, frame by frame, so memory stays bounded (#95).
-                        // Opus packets can be up to 120ms; allocate for max frame, not 20ms only.
-                        frameSize = rate / 50 * 6
                         out = ShortArray(frameSize * channels)
                         samples = ShortArray(frameSize * channels * 64)
                         decoder = KopusDecoder(sampleRate = rate, channels = channels)
@@ -103,18 +102,18 @@ class KopusOpusDecoder : OpusDecoder {
         ): SpilledPcmMeta {
             dest.writeBytes(ByteArray(0))
             var decoder: KopusDecoder? = null
+            // libopus decodes any stream at the requested rate/channels: emit the import-path PCM
+            // contract (16 kHz mono) directly, frame by frame, so memory stays bounded (#95).
             val rate = DECODED_PCM_RATE_HZ
             val channels = DECODED_PCM_CHANNELS
-            var frameSize = rate / 50
+            // Opus packets can be up to 120ms; allocate for max frame, not 20ms only.
+            val frameSize = rate / 50 * 6
             var out = ShortArray(0)
             var byteChunk = ByteArray(0)
             var sizeBytes = 0L
             try {
                 val streamMeta = demux(
                     { _, _ ->
-                        // libopus decodes any stream at the requested rate/channels: emit the import-path
-                        // PCM contract (16 kHz mono) directly, frame by frame, so memory stays bounded (#95).
-                        frameSize = rate / 50 * 6
                         out = ShortArray(frameSize * channels)
                         byteChunk = ByteArray(frameSize * channels * 2)
                         decoder = KopusDecoder(sampleRate = rate, channels = channels)
