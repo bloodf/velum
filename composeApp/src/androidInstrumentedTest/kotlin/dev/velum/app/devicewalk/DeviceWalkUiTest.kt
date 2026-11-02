@@ -1159,6 +1159,7 @@ class DeviceWalkUiTest {
             composeRule.onRoot(useUnmergedTree = true).printToString()
         }.getOrElse { "Unable to dump Compose tree: $it" }
         File(shotDir, "$failureTag.txt").writeText("$message\n$tree")
+        // Walk steps must only enter synthetic values: these dumps log field text to logcat and CI artifacts.
         // #160: the connected task uninstalls the app before shotDir is pulled. Logcat and
         // AGP's additionalTestOutputDir (pulled before uninstall) keep the evidence.
         val windows = runCatching {
