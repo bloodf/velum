@@ -253,8 +253,9 @@ class PlaudDeviceClient(
      * transfer and is ignored. Absolute offsets come from community protocol notes (docs/protocol) and are
      * unverified on the owner's device (#6).
      *
-     * With [storedBytes] a repeat must match what is stored, which catches a device whose offsets don't mean
-     * what we assume on a resume, such as relative ones, before its bytes land on the expected offset.
+     * On a resume, the first chunk of this session is compared with [storedBytes] if it is a repeat. That
+     * catches a device whose offsets don't mean what we assume, such as relative ones, before any of its
+     * bytes land on the expected offset. It runs once because a durable store's read flushes.
      *
      * [onProgress] reports the absolute byte offset reached. Returns the device's stop CRC, or
      * [NO_DEVICE_CRC] when there is none: the stop reply is best-effort, so a transfer holding all its
@@ -280,6 +281,7 @@ class PlaudDeviceClient(
         var next = startOffset
         var ignoredFrames = 0
         var smallestChunk = Int.MAX_VALUE
+        var resumeCheck = if (startOffset > 0) storedBytes else null
         try {
             while (true) {
                 val before = next
@@ -291,10 +293,13 @@ class PlaudDeviceClient(
                                 val end = data.offset + data.data.size
                                 val ignored = isStray(data.sessionId, sessionId) || end <= next
                                 if (!isStray(data.sessionId, sessionId)) smallestChunk = minOf(smallestChunk, data.data.size)
-                                if (!isStray(data.sessionId, sessionId) && end <= next && storedBytes != null && data.data.isNotEmpty() &&
-                                    !storedBytes(data.offset, data.data.size).contentEquals(data.data)
-                                ) {
-                                    throw TransferIntegrityException("Repeated chunk at offset ${data.offset} differs from the stored bytes")
+                                resumeCheck?.let { stored ->
+                                    if (!isStray(data.sessionId, sessionId) && data.data.isNotEmpty()) {
+                                        resumeCheck = null
+                                        if (end <= next && !stored(data.offset, data.data.size).contentEquals(data.data)) {
+                                            throw TransferIntegrityException("Repeated chunk at offset ${data.offset} differs from the stored bytes")
+                                        }
+                                    }
                                 }
                                 if (!ignored) {
                                     if (data.offset != next) {

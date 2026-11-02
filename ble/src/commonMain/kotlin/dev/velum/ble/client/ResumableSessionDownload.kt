@@ -83,6 +83,7 @@ class ResumableSessionDownload(
         var attempts = 0
         var noProgress = 0
         var crcMismatches = 0
+        var noProgressPastHandshake = 0
         var lastError: Exception? = null
         var unlocked = initialClient
         while (true) {
@@ -94,6 +95,7 @@ class ResumableSessionDownload(
             val before = store.length()
             var client: PlaudDeviceClient? = null
             var succeeded = false
+            var reachedTransfer = false
             try {
                 val reused = unlocked
                 unlocked = null
@@ -104,6 +106,7 @@ class ResumableSessionDownload(
                     current.unlock()
                     current.handshake()
                 }
+                reachedTransfer = true
                 val deviceCrc = current.downloadSessionTo(sessionId, sizeBytes, store, onProgress, startOffset = before, storedBytes = store::read)
                 val crc = crcStatus(deviceCrc, store)
                 if (crc !is CrcStatus.Mismatch || crcPolicy == CrcPolicy.ReportOnly) {
@@ -133,9 +136,22 @@ class ResumableSessionDownload(
             if (crcMismatches >= MAX_CRC_MISMATCHES) {
                 throw TransferIntegrityException("CRC mismatch on $crcMismatches complete transfers", lastError)
             }
-            noProgress = if (store.length() > before) 0 else noProgress + 1
+            if (store.length() > before) {
+                noProgress = 0
+                noProgressPastHandshake = 0
+            } else {
+                noProgress++
+                if (reachedTransfer) noProgressPastHandshake++
+            }
             if (noProgress >= maxNoProgressAttempts) {
-                throw TransferIntegrityException("Session download made no progress in $noProgress attempts", lastError)
+                // Every attempt got through unlock and handshake, so the link works and the device won't resume
+                // (silent or a malformed reply). One failure alone could be the link, which must keep the partial.
+                if (noProgressPastHandshake < noProgress || store.length() == 0L) {
+                    throw TransferIntegrityException("Session download made no progress in $noProgress attempts", lastError)
+                }
+                store.truncate(0)
+                noProgress = 0
+                noProgressPastHandshake = 0
             }
             coroutineContext.ensureActive()
             if (noProgress > 0) delay(backoff(noProgress))

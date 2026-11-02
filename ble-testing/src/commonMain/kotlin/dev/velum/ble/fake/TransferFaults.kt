@@ -36,6 +36,10 @@ class TransferFaults(
     internal val ignoreStartOffset: Boolean = false,
     /** Number chunks from the start offset asked for, not from the start of the file. */
     internal val relativeOffsets: Boolean = false,
+    /** Never answer a SYNC_FILE_START with a non-zero offset. */
+    internal val silentOnNonZeroStart: Boolean = false,
+    /** Answer a SYNC_FILE_START with a non-zero offset with a reply too short to parse. */
+    internal val malformedReplyOnNonZeroStart: Boolean = false,
     /** Refuse any SYNC_FILE_START with a non-zero offset. */
     internal val refuseNonZeroStart: Boolean = false,
     /** Lose the link at this offset once on every pass that starts from 0. */

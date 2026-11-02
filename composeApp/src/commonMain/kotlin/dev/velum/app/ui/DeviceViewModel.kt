@@ -26,6 +26,8 @@ import dev.velum.protocol.DeviceIdentityKeys
 import dev.velum.protocol.PlaudFileCrypto
 import dev.velum.protocol.SessionEntry
 import dev.velum.recorder.RecorderDriverRegistry
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
@@ -42,6 +44,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 data class DeviceSessionUi(
     val batteryPercent: Int? = null,
@@ -86,6 +89,7 @@ class DeviceViewModel(
     private val librarySessionIds: suspend (sessionIds: List<Long>, deviceSerial: String?) -> Set<Long> = { _, _ -> emptySet() },
     private val openPartialTransfer: (sessionId: Long, deviceSerial: String?) -> PartialTransfer? = ::defaultOpenPartialTransfer,
     private val deletePartialTransfers: () -> Unit = ::deleteAllPartialTransfers,
+    private val wipeJoinTimeout: Duration = 15.seconds,
 ) : ViewModel() {
     val connectionState: StateFlow<BleConnectionState> =
         ble.connectionState.stateIn(viewModelScope, SharingStarted.Eagerly, BleConnectionState.Idle)
@@ -164,11 +168,19 @@ class DeviceViewModel(
         }
     }
 
-    /** For "Wipe all data": stops any download first, so it can't write or save anything afterwards. */
-    suspend fun wipePartialDownloads() {
+    /**
+     * For "Wipe all data": stops any download first, so it can't write or save anything afterwards. The wait
+     * is bounded because a BLE write may ignore cancellation. Returns false if a partial could not be deleted.
+     */
+    suspend fun wipePartialDownloads(): Boolean {
         cancelDownload()
-        downloadJob?.join()
-        deletePartialTransfers()
+        withTimeoutOrNull(wipeJoinTimeout) { downloadJob?.join() }
+        return try {
+            deletePartialTransfers()
+            true
+        } catch (_: Exception) {
+            false
+        }
     }
 
     fun downloadSession(sessionId: Long) {

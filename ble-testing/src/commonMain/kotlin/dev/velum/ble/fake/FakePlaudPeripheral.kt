@@ -220,6 +220,13 @@ class FakePlaudPeripheral(
                 val sid = Bytes.readU32Le(payload, 0)
                 val startOffset = Bytes.readU32Le(payload, 4)
                 _syncStartOffsets += startOffset
+                if (startOffset > 0) {
+                    if (faults.silentOnNonZeroStart) return
+                    if (faults.malformedReplyOnNonZeroStart) {
+                        emitCommand(Commands.SYNC_FILE_START, ByteArray(2))
+                        return
+                    }
+                }
                 val refuse = faults.refuseNonZeroStart && startOffset > 0
                 emitCommand(
                     Commands.SYNC_FILE_START,

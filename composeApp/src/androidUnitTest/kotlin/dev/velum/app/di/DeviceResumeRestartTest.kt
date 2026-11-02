@@ -26,7 +26,13 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.measureTime
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
@@ -75,6 +81,8 @@ class DeviceResumeRestartTest {
         },
         open: (Long, String?) -> PartialTransfer? = { id, sn -> PartialTransferFileStore.open(partials, id, sn) },
         await: Boolean = true,
+        deletePartials: () -> Unit = { PartialTransferFileStore.deleteAll(partials) },
+        wipeJoinTimeout: Duration = 15.seconds,
     ): DeviceViewModel = runBlocking {
         Dispatchers.setMain(Dispatchers.Unconfined)
         val vm = DeviceViewModel(
@@ -83,7 +91,8 @@ class DeviceResumeRestartTest {
             persistDownloadedSession = { persist(it) },
             localeTag = { "en" },
             openPartialTransfer = open,
-            deletePartialTransfers = { PartialTransferFileStore.deleteAll(partials) },
+            deletePartialTransfers = deletePartials,
+            wipeJoinTimeout = wipeJoinTimeout,
         )
         owner.put("device", vm)
         vm.connect("fake-note-pro")
@@ -199,6 +208,30 @@ class DeviceResumeRestartTest {
             }
             assertFalse(partials.exists(), "no partial or salt survives a wipe")
             assertEquals(DeviceUiCopy.downloadCancelled("en"), vm.sessionUi.value.statusMessage)
+        } finally { owner.clear(); Dispatchers.resetMain() }
+    }
+
+    @Test fun wipe_deletes_the_partials_even_if_the_download_ignores_cancellation() {
+        try {
+            val vm = run(
+                peripheral(),
+                persist = { withContext(NonCancellable) { delay(3_000) }; "rec-synthetic" },
+                await = false,
+                wipeJoinTimeout = 200.milliseconds,
+            )
+            runBlocking {
+                withTimeout(20_000) { while (partials.list()!!.none { it.endsWith(".partial") }) delay(5) }
+                val waited = measureTime { assertTrue(vm.wipePartialDownloads()) }
+                assertTrue(waited < 2.seconds, "the wipe must not wait for the download: $waited")
+            }
+            assertFalse(partials.exists())
+        } finally { owner.clear(); Dispatchers.resetMain() }
+    }
+
+    @Test fun wipe_reports_partials_it_could_not_delete_instead_of_failing() {
+        try {
+            val vm = run(peripheral(), deletePartials = { error("synthetic delete failure") })
+            assertFalse(runBlocking { vm.wipePartialDownloads() })
         } finally { owner.clear(); Dispatchers.resetMain() }
     }
 

@@ -10,5 +10,6 @@ class WipeDeletesPartialDownloadsSourceTest {
         val partials = source.indexOf("wipePartialDownloads()")
         assertTrue(partials >= 0, "wipe must delete partial downloads")
         assertTrue(partials < source.indexOf("wipeAllUserData"), "a running download must stop before the data goes")
+        assertTrue("wipeAllDataPartialsLeft" in source, "a failed delete must be reported")
     }
 }
