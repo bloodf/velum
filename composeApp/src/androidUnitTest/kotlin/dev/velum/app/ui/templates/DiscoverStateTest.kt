@@ -18,6 +18,7 @@ class DiscoverStateTest {
         assertFalse(showEmptyState(null, fullImportRunning = false))
         assertTrue(showEmptyState(emptyList(), fullImportRunning = false))
         assertFalse(showEmptyState(emptyList(), fullImportRunning = true))
+        assertFalse(showEmptyState(emptyList(), fullImportRunning = false, loadFailed = true))
     }
 
     private fun t(id: String) = dev.velum.core.db.Template(

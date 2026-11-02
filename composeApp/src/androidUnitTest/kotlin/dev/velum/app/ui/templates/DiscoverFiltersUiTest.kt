@@ -17,6 +17,7 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToKey
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
@@ -251,6 +252,46 @@ class DiscoverFiltersUiTest {
             // Page 1 rows outside the top-5 ranking cards survive the append (not replaced by page 2).
             grid().performScrollToKey("pg-010")
             await("PG 010")
+        } finally {
+            activity.pause().stop().destroy()
+            container.databaseHandle.driver.close()
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun every_available_tag_can_be_selected() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        context.deleteDatabase("velum.db")
+        val root = ModelStoreDir(Files.createTempDirectory("velum-discover-tags-test").toString())
+        val container = AppContainer(InMemorySecureStore(), DriverFactory(context), modelStoreRoot = root)
+        // One template per vocabulary tag: more tags than any fixed chip cap, so the last one must still be offered.
+        val slugs = dev.velum.core.templates.TemplateTagVocabulary.All.map { it.slug }.sorted()
+        assertTrue(slugs.size > 24, "fixture needs more than 24 tags")
+        runBlocking {
+            container.repository.setMeta(SeedData.META_FULL_TEMPLATES_IMPORTED, "1")
+            slugs.forEachIndexed { i, slug ->
+                container.repository.upsertTemplate(
+                    id = "tg-$i", name = "TG $i", category = "meeting", description = "synthetic", systemPrompt = "p",
+                    builtin = true, featured = true, tags = listOf(slug), lang = "en", uses = 1_000_000L - i,
+                )
+            }
+        }
+        val last = slugs.last()
+        val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup()
+        try {
+            activity.get().setContent {
+                CompositionLocalProvider(LocalStrings provides PtBr) {
+                    VelumTheme(darkTheme = false) { TemplatesScreen(container, onBack = {}, onOpenTemplate = {}) }
+                }
+            }
+            await("TG 0")
+            awaitTag("tag:$last")
+            compose.onNodeWithTag("tag:$last").performScrollTo()
+            tap("tag:$last")
+            awaitTag("active:tag:$last")
+            await("TG ${slugs.lastIndex}")
+            assertTrue(!shows("TG 0"))
         } finally {
             activity.pause().stop().destroy()
             container.databaseHandle.driver.close()

@@ -396,7 +396,7 @@ fun TemplatesScreen(
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.SemiBold,
                             )
-                            availableTags.take(24).forEach { tag ->
+                            availableTags.forEach { tag ->
                                 CategoryChip(
                                     label = TemplateTagVocabulary.label(tag, languageTag),
                                     selected = tag in selectedTags,
@@ -492,7 +492,7 @@ fun TemplatesScreen(
                     }
                 }
             }
-            if (showEmptyState(visible, fullImportRunning)) {
+            if (showEmptyState(visible, fullImportRunning, loadFailed)) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     Box(
                         Modifier.fillMaxWidth().padding(vertical = 48.dp).testTag("templates:empty"),
