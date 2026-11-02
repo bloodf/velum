@@ -64,6 +64,7 @@ import dev.velum.app.ui.components.SearchSheet
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -181,7 +182,10 @@ fun TemplatesScreen(
         BuiltinTemplateCatalog.CategoryOrder.filter { it in categories } +
             categories.filter { it !in BuiltinTemplateCatalog.CategoryOrder && it != "mine" }
     }
-    val availableTags = facets.tags
+    // Alphabetical by what the user reads, not by slug.
+    val availableTags = remember(facets, languageTag) {
+        facets.tags.sortedBy { TemplateTagVocabulary.label(it, languageTag).lowercase() }
+    }
     val availableLangs = facets.langs
     LaunchedEffect(facets, selectedCategory, canPrune) {
         val kept = pruneSelection(selectedCategory, facets.categories, canPrune)
@@ -392,6 +396,7 @@ fun TemplatesScreen(
                         ) {
                             Text(
                                 strings.templateTags,
+                                modifier = Modifier.semantics { heading() },
                                 color = VelumInkSecondary,
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.SemiBold,

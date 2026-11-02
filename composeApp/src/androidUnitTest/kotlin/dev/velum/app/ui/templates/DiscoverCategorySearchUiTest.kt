@@ -17,6 +17,7 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -66,7 +67,12 @@ class DiscoverCategorySearchUiTest {
     }
 
     // Chips appear once the facets loaded, which is after the first rows: wait for the chip before tapping it.
-    private fun tap(tag: String) { awaitTag(tag); compose.onNodeWithTag(tag).performClick() }
+    private fun tap(tag: String) {
+        awaitTag(tag)
+        // Chips sit in horizontally scrolling rows; bring the target into view first, like a user would.
+        runCatching { compose.onNodeWithTag(tag).performScrollTo() }
+        compose.onNodeWithTag(tag).performClick()
+    }
 
     @Test
     fun category_survives_search_without_hits_and_clears() {

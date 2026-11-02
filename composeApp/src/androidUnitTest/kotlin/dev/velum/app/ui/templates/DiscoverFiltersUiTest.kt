@@ -74,6 +74,8 @@ class DiscoverFiltersUiTest {
     /** Chips come from an async facets load, so wait for the node before tapping it. */
     private fun tap(tag: String) {
         awaitTag(tag)
+        // Chips sit in horizontally scrolling rows; bring the target into view first, like a user would.
+        runCatching { compose.onNodeWithTag(tag).performScrollTo() }
         compose.onNodeWithTag(tag).performClick()
     }
 
@@ -261,7 +263,7 @@ class DiscoverFiltersUiTest {
     }
 
     @Test
-    fun every_available_tag_can_be_selected() {
+    fun last_available_tag_can_be_selected() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         context.deleteDatabase("velum.db")
         val root = ModelStoreDir(Files.createTempDirectory("velum-discover-tags-test").toString())

@@ -25,5 +25,5 @@ internal fun appendPage(shown: List<Template>, next: List<Template>): List<Templ
  * The empty state is only valid once a load has finished: `null` means "not loaded yet". A failed load shows the
  * error line instead, since "no results" would be wrong.
  */
-internal fun showEmptyState(shown: List<Template>?, fullImportRunning: Boolean, loadFailed: Boolean = false): Boolean =
+internal fun showEmptyState(shown: List<Template>?, fullImportRunning: Boolean, loadFailed: Boolean): Boolean =
     shown != null && shown.isEmpty() && !fullImportRunning && !loadFailed
