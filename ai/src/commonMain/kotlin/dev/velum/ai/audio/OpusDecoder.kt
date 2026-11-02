@@ -189,7 +189,7 @@ object OggOpusDemuxer {
                         sawIdHeader = true
                         onHeader(sampleRate, channels)
                     } else if (sawIdHeader && !startsWithOpusTags(packetBuf)) {
-                        audioPackets++
+                        if (packetBuf.isNotEmpty()) audioPackets++
                         onPacket(packetBuf)
                     }
                 }
@@ -209,7 +209,7 @@ object OggOpusDemuxer {
             packetParts.clear()
             truncated = true
             if (!startsWithOpusTags(packetBuf)) {
-                audioPackets++
+                if (packetBuf.isNotEmpty()) audioPackets++
                 onPacket(packetBuf)
             }
         }
