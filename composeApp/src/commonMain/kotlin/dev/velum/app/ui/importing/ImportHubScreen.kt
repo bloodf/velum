@@ -14,6 +14,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -23,6 +24,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import dev.velum.app.di.AppContainer
 import dev.velum.app.i18n.LocalStrings
 import dev.velum.app.importing.AudioImportPipeline
@@ -38,12 +41,9 @@ import dev.velum.app.ui.components.ScreenTopBar
 import dev.velum.app.ui.theme.VelumBg
 import dev.velum.app.ui.theme.VelumInk
 import dev.velum.app.ui.theme.VelumInkSecondary
-import kotlinx.coroutines.launch
-import androidx.compose.runtime.LaunchedEffect
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.compose.LifecycleEventEffect
 
 /**
  * External recorder import hub: SAF file picker + watched folder (USB/SD/sync).
@@ -56,6 +56,8 @@ fun ImportHubScreen(
     onOpenRecording: (String) -> Unit,
     onPickWatchedFolder: (() -> Unit)? = null,
     onSyncWatchedFolder: (suspend () -> List<ImportResult>)? = null,
+    /** Bumped by the caller after the folder picker has saved a folder (the write is async, so ON_RESUME is too early). */
+    watchedFoldersVersion: Int = 0,
 ) {
     val strings = LocalStrings.current
     val haptics = LocalHaptics.current
@@ -69,7 +71,7 @@ fun ImportHubScreen(
     // Returning from the folder picker resumes this screen, which is when a newly saved folder must show.
     var resumeTick by remember { mutableStateOf(0) }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { resumeTick++ }
-    LaunchedEffect(status, importing, resumeTick) { folderCount = withContext(Dispatchers.IO) { watchedFolderCount() } }
+    LaunchedEffect(status, importing, resumeTick, watchedFoldersVersion) { folderCount = withContext(Dispatchers.IO) { watchedFolderCount() } }
     val pickFile = rememberAudioImporter { path ->
         scope.launch {
             importing = true
