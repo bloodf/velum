@@ -18,10 +18,10 @@ class KopusOpusDecoder : OpusDecoder {
             OggOpusDemuxer.demuxForEach(oggBytes, onHeader, onPacket)
         }
 
-    override fun decodePathToPcmFile(path: String, dest: ModelStoreDir): SpilledPcmMeta =
+    override fun decodePathToPcmFile(path: String, dest: ModelStoreDir, checkCancelled: () -> Unit): SpilledPcmMeta =
         RandomAccessFile(path, "r").use { raf ->
             val size = raf.length()
-            decodeStreaming(dest) { onHeader, onPacket ->
+            decodeStreaming(dest, checkCancelled) { onHeader, onPacket ->
                 OggOpusDemuxer.demuxAtForEach(
                     size = size,
                     readAt = { buf, position, length ->
@@ -43,19 +43,19 @@ class KopusOpusDecoder : OpusDecoder {
     companion object {
         internal fun decodeInMemory(oggBytes: ByteArray): PcmAudio {
             var decoder: KopusDecoder? = null
-            var rate = 48_000
-            var channels = 1
-            var frameSize = rate / 50
+            // libopus decodes any stream at the requested rate/channels: emit the import-path PCM
+            // contract (16 kHz mono) directly, frame by frame, so memory stays bounded (#95).
+            val rate = DECODED_PCM_RATE_HZ
+            val channels = DECODED_PCM_CHANNELS
+            // Opus packets can be up to 120ms; allocate for max frame, not 20ms only.
+            val frameSize = rate / 50 * 6
             var out = ShortArray(0)
             var samples = ShortArray(0)
             var count = 0
             try {
                 val streamMeta = OggOpusDemuxer.demuxForEach(
                     oggBytes = oggBytes,
-                    onHeader = { sampleRateHz, ch ->
-                        rate = normalizeRate(sampleRateHz)
-                        channels = ch.coerceIn(1, 2)
-                        frameSize = rate / 50 * 6
+                    onHeader = { _, _ ->
                         out = ShortArray(frameSize * channels)
                         samples = ShortArray(frameSize * channels * 64)
                         decoder = KopusDecoder(sampleRate = rate, channels = channels)
@@ -93,6 +93,7 @@ class KopusOpusDecoder : OpusDecoder {
 
         private fun decodeStreaming(
             dest: ModelStoreDir,
+            checkCancelled: () -> Unit = {},
             demux: (
                 onHeader: (Int, Int) -> Unit,
                 onPacket: (ByteArray) -> Unit,
@@ -100,23 +101,24 @@ class KopusOpusDecoder : OpusDecoder {
         ): SpilledPcmMeta {
             dest.writeBytes(ByteArray(0))
             var decoder: KopusDecoder? = null
-            var rate = 48_000
-            var channels = 1
-            var frameSize = rate / 50
+            // libopus decodes any stream at the requested rate/channels: emit the import-path PCM
+            // contract (16 kHz mono) directly, frame by frame, so memory stays bounded (#95).
+            val rate = DECODED_PCM_RATE_HZ
+            val channels = DECODED_PCM_CHANNELS
+            // Opus packets can be up to 120ms; allocate for max frame, not 20ms only.
+            val frameSize = rate / 50 * 6
             var out = ShortArray(0)
             var byteChunk = ByteArray(0)
             var sizeBytes = 0L
             try {
                 val streamMeta = demux(
-                    { sampleRateHz, ch ->
-                        rate = normalizeRate(sampleRateHz)
-                        channels = ch.coerceIn(1, 2)
-                        frameSize = rate / 50 * 6
+                    { _, _ ->
                         out = ShortArray(frameSize * channels)
                         byteChunk = ByteArray(frameSize * channels * 2)
                         decoder = KopusDecoder(sampleRate = rate, channels = channels)
                     },
                     { packet ->
+                        checkCancelled()
                         val n = decoder!!.decode(
                             inData = packet,
                             len = packet.size,
@@ -145,11 +147,6 @@ class KopusOpusDecoder : OpusDecoder {
             } finally {
                 decoder?.close()
             }
-        }
-
-        private fun normalizeRate(hz: Int): Int = when (hz) {
-            8_000, 12_000, 16_000, 24_000, 48_000 -> hz
-            else -> 48_000
         }
     }
 }

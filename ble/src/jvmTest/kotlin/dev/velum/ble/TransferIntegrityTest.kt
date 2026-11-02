@@ -6,6 +6,7 @@ import dev.velum.ble.client.TransferIntegrityException
 import dev.velum.ble.crypto.createSessionCipher
 import dev.velum.ble.crypto.rsaKeyPairToPem
 import dev.velum.ble.fake.FakeBleTransport
+import dev.velum.ble.gatt.GattWrite
 import dev.velum.ble.fake.FakePlaudPeripheral
 import dev.velum.ble.fake.TransferFaults
 import dev.velum.protocol.Commands
@@ -18,11 +19,12 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.TimeoutCancellationException
-import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -178,14 +180,14 @@ class TransferIntegrityTest {
         client.close()
     }
 
-    /** A real transport's write suspends, and may never return once [hang] is set. */
+    /** A real transport's write suspends, and takes an hour of test time once [hang] is set. */
     private class LinkTransport(private val delegate: BleTransport) : BleTransport by delegate {
         var hang = false
 
-        override suspend fun write(payload: ByteArray, withoutResponse: Boolean) {
+        override suspend fun writeRaw(write: GattWrite) {
             yield()
-            if (hang) awaitCancellation()
-            delegate.write(payload, withoutResponse)
+            if (hang) delay(1.hours)
+            delegate.writeRaw(write)
         }
     }
 
@@ -213,10 +215,12 @@ class TransferIntegrityTest {
     @Test fun complete_transfer_survives_a_stop_write_that_hangs() = runTest(timeout = 30.seconds) {
         val (client, link) = linkClient()
         val sink = Sink()
+        val started = testScheduler.currentTime
         val crc = client.downloadSessionTo(SESSION, file.size.toLong(), {
             sink.write(it)
             link.hang = true
         })
+        assertTrue(testScheduler.currentTime - started <= 5_000, "bounded by the response timeout")
         assertEquals(PlaudDeviceClient.NO_DEVICE_CRC, crc)
         assertContentEquals(file, sink.out.toByteArray())
         client.close()
