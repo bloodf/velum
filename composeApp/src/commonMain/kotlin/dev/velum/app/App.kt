@@ -219,7 +219,10 @@ private fun VelumRoot(container: AppContainer) {
             }
         }
     }
+    var watchedFoldersVersion by remember { mutableStateOf(0) }
     val pickWatchedFolder = rememberImportFolderPicker { _ ->
+        // onPicked runs after the folder write committed, so the Import hub can re-read its count now.
+        watchedFoldersVersion++
         scope.launch {
             snackbar.showSnackbar(strings.ux.folderSavedResync)
         }
@@ -500,6 +503,7 @@ private fun VelumRoot(container: AppContainer) {
                             onOpenRecording = { id -> navController.navigate(Routes.recording(id)) },
                             onPickWatchedFolder = pickWatchedFolder,
                             onSyncWatchedFolder = { syncWatchedFolders(importPipeline) },
+                            watchedFoldersVersion = watchedFoldersVersion,
                         )
                     }
                     composable(Routes.AI_PROCESSING) {

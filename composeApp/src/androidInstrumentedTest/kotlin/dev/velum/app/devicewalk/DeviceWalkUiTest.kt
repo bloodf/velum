@@ -563,12 +563,13 @@ class DeviceWalkUiTest {
             scrollClick(label)
             val str = stringsFor(lang)
             // Positive gate: a node that exists only on the destination screen.
-            waitUntil(15_000, "$cov destination content not visible") { composeExists(destinationMarker(cov, str)) }
+            waitUntil(15_000, "$cov destination content not visible") { composeExistsIgnoreCase(destinationMarker(cov, str)) }
             covered += cov
-            shotWhenReady("10-${cov.replace('/', '-')}-$tag", "$cov content not visible") { composeExists(destinationMarker(cov, str)) }
+            shotWhenReady("10-${cov.replace('/', '-')}-$tag", "$cov content not visible") { composeExistsIgnoreCase(destinationMarker(cov, str)) }
             // Sub-sections: each needs its own node on the destination.
             subSectionMarker(cov, str)?.let { (marker, name) ->
-                waitUntil(10_000, "$name section not visible") { composeExists(marker) }
+                // SectionLabel renders text.uppercase(), so sub-section headers never match case-sensitively.
+                waitUntil(10_000, "$name section not visible") { composeExistsIgnoreCase(marker) }
                 covered += name
             }
             pressNavBack()
@@ -579,12 +580,9 @@ class DeviceWalkUiTest {
     private fun walkDevice(lang: String, tag: String) {
         openSettings()
         scrollClick(if (lang == "en") "Devices" else "Dispositivos")
-        clickTextPrefer(
-            if (lang == "en") "Device" else "Dispositivo",
-            "Note Pro",
-            "Device",
-            "Dispositivo",
-        )
+        // The Devices hub's real entry into DeviceScreen is its "Scan devices" row. Substring labels such
+        // as "Device"/"Dispositivo" hit the non-navigating title and hint text (batch A emulator dump).
+        clickClickableText(stringsFor(lang).scanDevices)
         covered += "device"
         // Positive gate: DeviceScreen's status banner / empty-device copy (DeviceUiCopy) is rendered
         // only there, whichever BLE state the fixture is in. sectionDevices also appears on the hub.
@@ -626,17 +624,17 @@ class DeviceWalkUiTest {
                 composeExists(stringsFor(lang).settingsUi.privacyOnDeviceStatement)
             }
             // Open wipe confirm dialog then cancel — do not destroy mid-matrix state unless last.
-            clickTextPrefer(
-                if (lang == "en") "Wipe all data" else "Apagar todos os dados",
-                "Wipe all data",
-                "Apagar todos os dados",
-            )
+            val str = stringsFor(lang)
+            clickClickableText(str.settingsUi.wipeAllData)
+            // The dialog title repeats the button label, so gate on its body text instead.
+            waitUntil(10_000, "Wipe confirmation dialog did not open") {
+                composeExistsIgnoreCase(str.settingsUi.wipeAllDataBody)
+            }
             covered += "settings/wipe-dialog"
-            clickTextPrefer(
-                if (lang == "en") "Cancel" else "Cancelar",
-                "Cancel",
-                "Cancelar",
-            )
+            clickClickableText(str.cancel)
+            waitUntil(10_000, "Wipe confirmation dialog did not close") {
+                !composeExistsIgnoreCase(str.settingsUi.wipeAllDataBody)
+            }
             pressNavBack()
         }
         pressBackToFiles(lang)
@@ -1125,6 +1123,13 @@ class DeviceWalkUiTest {
         composeRule.onAllNodesWithText(text, substring = true)
             .fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty() ||
             composeRule.onAllNodesWithContentDescription(text, substring = true)
+                .fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty()
+
+    /** For markers that may render through [SectionLabel] (uppercased) or other casing transforms. */
+    private fun composeExistsIgnoreCase(text: String): Boolean =
+        composeRule.onAllNodesWithText(text, substring = true, ignoreCase = true)
+            .fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty() ||
+            composeRule.onAllNodesWithContentDescription(text, substring = true, ignoreCase = true)
                 .fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty()
 
     private fun waitUntil(timeoutMs: Long, condition: () -> Boolean) {
