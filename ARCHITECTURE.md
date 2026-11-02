@@ -16,6 +16,7 @@ Dependencies below describe production source sets; tests may use extra modules.
 | [core](core/) | SQLDelight repository, settings, secure-store contracts, identity import, templates and AutoFlow definitions | plaud-protocol, exported with `api` |
 | [recorder](recorder/) | Recorder driver interfaces and Plaud handshake/session logic | core, plaud-protocol |
 | [ble](ble/) | BLE transport, mobile Kable implementation and transfer adapters | core, plaud-protocol, recorder |
+| [ble-testing](ble-testing/) | Test-only BLE and Wi-Fi fakes (`FakeBleTransport`, `FakePlaudPeripheral`, `FakeWifiSoftApJoiner`, `FakeWifiDeviceClient`); consumed only from test source sets | ble, core, plaud-protocol |
 | [ai](ai/) | Audio decoding, model management, engine routing, processing jobs and AutoFlow execution | core |
 | [composeApp](composeApp/) | Application composition, Compose screens, import/export, microphone capture and platform entry points | All five modules above |
 
