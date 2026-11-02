@@ -31,6 +31,7 @@ kotlin {
         }
         androidMain.dependencies {
             implementation(libs.sqldelight.android)
+            implementation(libs.requery.sqlite.android)
         }
         jvmMain.dependencies {
             implementation(libs.sqldelight.jvm)
