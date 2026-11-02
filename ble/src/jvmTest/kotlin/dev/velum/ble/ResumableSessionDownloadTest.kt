@@ -109,10 +109,11 @@ class ResumableSessionDownloadTest {
 
     @Test fun integrity_failures_resume_without_duplicate_or_missing_bytes() = runTest {
         val file = Random(4).nextBytes(30_000)
-        // The fake emits a whole pass at once, so each fault gets its own peripheral.
+        // The fake streams ahead of the client by up to its buffers, so each fault gets its own peripheral.
         val cases = listOf(
             TransferFaults(garbleAt = setOf(3_000)) to 3_000L,
             TransferFaults(dropAt = setOf(12_000)) to 12_000L,
+            TransferFaults(lostNotificationAt = setOf(18_000)) to 18_000L,
             // The first copy is stored; the second copy is the overlap, so the resume continues after it.
             TransferFaults(duplicateAt = setOf(25_000)) to 25_200L,
         )

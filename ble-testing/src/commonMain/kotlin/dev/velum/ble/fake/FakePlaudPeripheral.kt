@@ -14,7 +14,11 @@ import dev.velum.protocol.Unlock
 import dev.velum.protocol.UnlockChunk
 import dev.velum.protocol.UnlockSecretLayout
 import kotlin.random.Random
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -55,14 +59,15 @@ class FakePlaudPeripheral(
         Ccitt,
     }
 
-    // Unbounded: a whole session is emitted while the client is still inside its SYNC_FILE_START write.
-    val notifications = MutableSharedFlow<ByteArray>(extraBufferCapacity = Int.MAX_VALUE)
+    val notifications = MutableSharedFlow<ByteArray>(extraBufferCapacity = 128)
 
     /** `startOffset` of every SYNC_FILE_START received, in order. */
     val syncStartOffsets: List<Long> get() = _syncStartOffsets.toList()
     private val _syncStartOffsets = mutableListOf<Long>()
 
     private val mutex = Mutex()
+    private val emitMutex = Mutex()
+    private var streamJob: Job? = null
     private val snChunks = mutableListOf<UnlockChunk>()
     private val pubChunks = mutableListOf<UnlockChunk>()
 
@@ -74,6 +79,8 @@ class FakePlaudPeripheral(
 
     /** Clear session state so the next connection requires FE10 again. */
     fun resetUnlock() {
+        streamJob?.cancel()
+        streamJob = null
         snChunks.clear()
         pubChunks.clear()
         secret = null
@@ -194,7 +201,10 @@ class FakePlaudPeripheral(
                     Commands.SYNC_FILE_START,
                     Bytes.u32Le(sid) + byteArrayOf(0),
                 )
-                streamSessionFrom(startOffset.toInt())
+                // Like real GATT, the write completes first and notifications follow under backpressure.
+                // Emitting inside the write would deadlock once the buffers fill (nothing reads yet).
+                streamJob?.cancel()
+                streamJob = CoroutineScope(currentCoroutineContext()).launch { streamSessionFrom(startOffset.toInt()) }
             }
             Commands.SYNC_FILE_STOP -> {
                 val crc = when (stopCrc) {
@@ -233,6 +243,7 @@ class FakePlaudPeripheral(
             when {
                 faults.drop.remove(at) -> Unit
                 faults.garble.remove(at) -> emitEncrypted(frame, garble = true)
+                faults.lostNotification.remove(at) -> emitEncrypted(frame, lost = true)
                 faults.duplicate.remove(at) -> { emitEncrypted(frame); emitEncrypted(frame) }
                 else -> emitEncrypted(frame)
             }
@@ -253,16 +264,20 @@ class FakePlaudPeripheral(
         emitEncrypted(frame)
     }
 
-    private suspend fun emitEncrypted(frame: ByteArray, garble: Boolean = false) {
+    private suspend fun emitEncrypted(
+        frame: ByteArray,
+        garble: Boolean = false,
+        lost: Boolean = false,
+    ) = emitMutex.withLock {
         val sec = secret
         if (sec == null) {
-            emitRaw(frame)
+            if (!lost) emitRaw(frame)
         } else {
             val sealed = cipher.sealPacket(sec, deviceSendSeq, frame)
             deviceSendSeq += 1
             // Flip a tag byte: the packet no longer authenticates (radio/link corruption).
             if (garble) sealed[sealed.size - 1] = (sealed[sealed.size - 1].toInt() xor 0x01).toByte()
-            emitRaw(sealed)
+            if (!lost) emitRaw(sealed)
         }
     }
 

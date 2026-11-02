@@ -62,6 +62,14 @@ class TransferIntegrityTest {
         client.close()
     }
 
+    @Test fun notification_lost_to_a_buffer_overflow_fails_instead_of_gapping() = runTest {
+        val client = clientFor(TransferFaults(lostNotificationAt = setOf(8_000)))
+        val sink = Sink()
+        assertFailsWith<TransferIntegrityException> { client.downloadSessionTo(1_700_000_000L, file.size.toLong(), sink) }
+        assertContentEquals(file.copyOf(8_000), sink.out.toByteArray(), "nothing after the lost packet is kept")
+        client.close()
+    }
+
     @Test fun clean_transfer_is_byte_exact() = runTest {
         val client = clientFor(TransferFaults())
         val sink = Sink()

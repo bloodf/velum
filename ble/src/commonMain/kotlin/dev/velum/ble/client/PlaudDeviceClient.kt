@@ -367,7 +367,7 @@ class PlaudDeviceClient(
                 val frame = if (sec != null) {
                     val opened = cipher.openPacket(sec, recvSeq, raw)
                         ?: if (rejectUnopenable) {
-                            throw TransferIntegrityException("Packet failed authentication at sequence $recvSeq")
+                            throw TransferIntegrityException("Packet failed authentication or sequence check, expected sequence $recvSeq")
                         } else {
                             continue
                         }

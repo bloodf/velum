@@ -42,9 +42,7 @@ class WifiSoftApBleFallbackTest {
         aad = ByteArray(12) { (it + 13).toByte() },
     )
     private val preamble = WifiTransferPreamble.defaultToken("fallback-96")
-    // FakePlaudPeripheral emits every BLE frame inside one write (100 B each) into 128 + 128 buffered slots,
-    // so the fixture must stay under ~25 KB or the simulated download deadlocks before the client reads.
-    private val fixture = ByteArray(16 * 1024) { ((it * 17 + 3) and 0xFF).toByte() }
+    private val fixture = ByteArray(64 * 1024) { ((it * 17 + 3) and 0xFF).toByte() }
     private val wifiChunks = fixture.toList().chunked(4 * 1024).map { it.toByteArray() }
 
     private fun runTest20(block: suspend CoroutineScope.() -> Unit) {
