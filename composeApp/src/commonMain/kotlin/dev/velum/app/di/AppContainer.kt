@@ -216,7 +216,9 @@ class AppContainer(
         // composition-time lookups (template names, AutoFlow library) never hit the disk (StrictMode).
         appScope.launch(Dispatchers.IO) {
             runCatching { dev.velum.core.templates.BuiltinTemplateCatalog.All }
+                .onFailure { println("VelumStartup: builtin template warm-up failed: ${it::class.simpleName}") }
             runCatching { dev.velum.core.autoflow.AutoFlowTemplateCatalog.All }
+                .onFailure { println("VelumStartup: AutoFlow template warm-up failed: ${it::class.simpleName}") }
         }
         appScope.launch {
             settingsRepository.loadState.collect { state ->

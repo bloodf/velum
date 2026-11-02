@@ -128,12 +128,18 @@ import dev.velum.core.settings.ApiModelOverride
 import dev.velum.core.templates.BuiltinTemplateCatalog
 import dev.velum.core.templates.TemplateTagFilter
 import dev.velum.core.templates.TemplateTagVocabulary
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -1136,13 +1142,14 @@ private fun formatSpeedLabel(speed: Float): String {
 }
 
 @Composable
-private fun LiveTranscriptPane(
+internal fun LiveTranscriptPane(
     container: AppContainer,
     recordingId: String,
     title: String,
     initialTranscript: String? = null,
     initialElapsedSeconds: Long = 0L,
     onStoppedAndQueued: () -> Unit = {},
+    openTranscriber: (AppContainer) -> StreamingTranscriber = ::openStreamingTranscriber,
 ) {
     val strings = LocalStrings.current
     val seededTranscript = initialTranscript?.takeIf { it.isNotBlank() }
@@ -1164,14 +1171,9 @@ private fun LiveTranscriptPane(
     var pausedUi by remember { mutableStateOf(container.micCapture.isPaused) }
     val finished = remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
-    // Opening a ready model does File.exists and a native load: never on the main thread.
-    val streamerReady = remember { kotlinx.coroutines.CompletableDeferred<StreamingTranscriber>() }
-    var streamerOrNull by remember { mutableStateOf<StreamingTranscriber?>(null) }
-    LaunchedEffect(Unit) {
-        val opened = withContext(Dispatchers.Default) { openStreamingTranscriber(container) }
-        streamerOrNull = opened
-        streamerReady.complete(opened)
-    }
+    // Capture only ever enqueues, so it never waits for the model or for decoding.
+    val pcmQueue = remember { Channel<ByteArray>(LIVE_PCM_BACKLOG_CHUNKS, BufferOverflow.DROP_OLDEST) }
+    val finalTranscript = remember { CompletableDeferred<String?>() }
     val wavPath = remember(recordingId) {
         "${recordingsDirectoryPath()}/$recordingId.wav"
     }
@@ -1180,10 +1182,31 @@ private fun LiveTranscriptPane(
     // Seeded transcript (Roborazzi / resume) — keep it visible; skip PCM demo overwrite.
     val preserveSeeded = seededTranscript != null
 
-    fun finishOnce(): String {
-        if (finished.value) return partial
+    // The queue closing (Stop or leaving the screen) ends the transcriber coroutine below.
+    suspend fun finishTranscript(): String {
         finished.value = true
-        return runCatching { streamerOrNull?.finish() ?: partial }.getOrDefault(partial)
+        pcmQueue.close()
+        return withTimeoutOrNull(LIVE_FINISH_WAIT_MS) { finalTranscript.await() } ?: partial
+    }
+
+    // Opening a model is a native load: off the main thread. NonCancellable because this coroutine
+    // owns the native handle from open to finish, including when the screen leaves during the load.
+    LaunchedEffect(Unit) {
+        // A seeded transcript is never replaced by streaming, so no model is opened for it.
+        if (preserveSeeded) {
+            finalTranscript.complete(null)
+            return@LaunchedEffect
+        }
+        withContext(NonCancellable + Dispatchers.Default) {
+            finalTranscript.complete(
+                transcribeQueuedPcm(
+                    open = { openTranscriber(container) },
+                    pcm = pcmQueue,
+                    languageHint = container.settingsRepository.settings.value.audioLanguage,
+                    onPartial = { md -> partial = md },
+                ),
+            )
+        }
     }
 
     // Mic start is suspend (no main-thread runBlocking). Wire capture + optional PCM demo here.
@@ -1193,21 +1216,8 @@ private fun LiveTranscriptPane(
         if (usingMic && container.micCapture.isCapturing) {
             return@LaunchedEffect
         }
-        val streamer = streamerReady.await()
-        streamer.onPartial = { md ->
-            if (!preserveSeeded) partial = md
-        }
-        val settingsLang = container.settingsRepository.settings.value.audioLanguage
-        if (!preserveSeeded) {
-            streamer.start(16_000, settingsLang, null)
-        }
-
         val push: (ByteArray) -> Unit = { pcm ->
-            try {
-                streamer.pushPcm(pcm)
-            } catch (t: Throwable) {
-                println("VelumLivePcm: push failed: ${t.message ?: t}")
-            }
+            if (!preserveSeeded) pcmQueue.trySend(pcm)
         }
 
         var useDemo = false
@@ -1238,7 +1248,7 @@ private fun LiveTranscriptPane(
             while (isActive && !finished.value) {
                 val chunk = demoPcmChunk(tick)
                 writer.writePcm(chunk)
-                streamer.pushPcm(chunk)
+                push(chunk)
                 tick++
                 delay(400)
             }
@@ -1248,7 +1258,8 @@ private fun LiveTranscriptPane(
         onDispose {
             pcmSubscription?.close()
             pcmSubscription = null
-            finishOnce()
+            finished.value = true
+            pcmQueue.close()
         }
     }
 
@@ -1402,7 +1413,7 @@ private fun LiveTranscriptPane(
                 scope.launch {
                     val marks = container.micCapture.markers
                     val finalMd = withContext(Dispatchers.Default) {
-                        val base = finishOnce()
+                        val base = finishTranscript()
                         if (marks.isEmpty()) base
                         else buildString {
                             append(base.trimEnd())
@@ -1467,6 +1478,35 @@ private fun LiveTranscriptPane(
             modifier = Modifier.padding(20.dp),
         )
     }
+}
+
+// ponytail: live preview only, the WAV never depends on it. At 40-130 ms per chunk this holds a slow
+// model load (about 40 s or more); older audio is dropped from the preview past that.
+private const val LIVE_PCM_BACKLOG_CHUNKS = 1024
+
+// Stop must not hang on a stuck native load. The queued recording is retranscribed from the WAV anyway.
+private const val LIVE_FINISH_WAIT_MS = 30_000L
+
+/**
+ * Feeds queued PCM to a transcriber opened here and always finishes it once [pcm] closes.
+ * Returns the final transcript, or null when no model could produce one (the WAV is unaffected).
+ */
+private suspend fun transcribeQueuedPcm(
+    open: () -> StreamingTranscriber,
+    pcm: ReceiveChannel<ByteArray>,
+    languageHint: String?,
+    onPartial: (String) -> Unit,
+): String? {
+    fun logFailure(step: String, failure: Throwable) = println("VelumLivePcm: $step failed: ${failure::class.simpleName}")
+    val streamer = runCatching(open).onFailure { logFailure("open", it) }.getOrNull() ?: return null
+    val started = runCatching {
+        streamer.onPartial = onPartial
+        streamer.start(16_000, languageHint, null)
+    }.onFailure { logFailure("start", it) }.isSuccess
+    if (started) {
+        for (chunk in pcm) runCatching { streamer.pushPcm(chunk) }.onFailure { logFailure("push", it) }
+    }
+    return runCatching { streamer.finish() }.onFailure { logFailure("finish", it) }.getOrNull()
 }
 
 private fun openStreamingTranscriber(container: AppContainer): StreamingTranscriber {

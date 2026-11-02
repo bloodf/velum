@@ -236,7 +236,10 @@ fun AutoFlowEditScreen(
         // A failed asset read must not leave the editor blank forever: fall back to "no seed".
         value = SeedLookup(
             runCatching { withContext(Dispatchers.Default) { AutoFlowTemplateCatalog.byId(seedTemplateId) } }
-                .onFailure { if (it is kotlinx.coroutines.CancellationException) throw it }
+                .onFailure {
+                    if (it is kotlinx.coroutines.CancellationException) throw it
+                    println("VelumAutoFlow: seed lookup failed: ${it::class.simpleName}")
+                }
                 .getOrNull(),
         )
     }
