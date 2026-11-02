@@ -154,7 +154,7 @@ Phone-only / external (no Plaud required):
 ## Confirm only on owner’s real Plaud Note Pro
 
 - Live BLE advertise `portVersion` / project 881, unlock with owner keys, battery notify
-- Full multi-hour download resume + CRC
+- Full multi-hour download resume + CRC. **Simulated only** (#94): `ResumableSessionDownloadTest` and `TransferIntegrityTest` (`:ble:jvmTest`) cover a 2-hour synthetic transfer, resume after disconnects and integrity failures, and CRC handling against the fake peripheral. Still unconfirmed on hardware (#6): whether a Note Pro honours a non-zero SYNC_FILE_START offset, which CRC it reports (the only capture shows `0xFFFF`), real transfer time and battery drain. Real-device CRC mismatches are report-only.
 - On-device Parakeet/Whisper/Gemma quality + thermal throttling on physical silicon
 - Whether FE10 alone works with E2EE off (no FE11) after one-time key import
 - Wi-Fi SoftAP against real Note Pro hardware (JVM fake path is green)
