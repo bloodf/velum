@@ -43,7 +43,8 @@ class OrphanRecordingSweepTest {
     @Test fun partials_temps_unknown_names_young_files_and_subdirs_are_never_touched() {
         val kept = listOf(
             file("rec-3-1.wav.partial"),
-            file("rec-3-2.ogg.download-tmp"),
+            file("rec-3-2.ogg.download-tmp", modified = now - 1_000),
+            file("rec-3-5.part"),
             file("notes.txt"),
             file("REC.ogg"),
             file("rec-3-3.ogg", modified = now - 1_000),
@@ -72,5 +73,40 @@ class OrphanRecordingSweepTest {
         assertEquals(OrphanSweepReport(), sweep(at = now + ORPHAN_PURGE_AFTER_MS - 1))
         assertEquals(OrphanSweepReport(purged = 1), sweep(at = now + ORPHAN_PURGE_AFTER_MS))
         assertFalse(quarantined("rec-5-1.ogg").exists())
+    }
+
+    @Test fun id_protection_applies_only_while_the_row_has_no_path_so_a_leaked_old_extension_is_collected() {
+        val current = file("rec-6-1.wav")
+        val leaked = file("rec-6-1.ogg")
+        assertEquals(OrphanSweepReport(quarantined = 1), sweep(listOf("rec-6-1" to current.path)))
+        assertTrue(current.isFile); assertTrue(quarantined("rec-6-1.ogg").isFile); assertFalse(leaked.exists())
+    }
+
+    @Test fun unknown_mtime_is_never_quarantined_or_purged() {
+        val unknown = file("rec-7-1.ogg", modified = 0)
+        assertEquals(OrphanSweepReport(), sweep())
+        assertTrue(unknown.isFile)
+        val q = File(root, ORPHAN_QUARANTINE_DIR).apply { mkdirs() }
+        val inQuarantine = File(q, "rec-7-2.ogg").apply { writeText("synthetic"); setLastModified(0) }
+        assertEquals(OrphanSweepReport(), sweep(at = now + 10 * ORPHAN_PURGE_AFTER_MS))
+        assertTrue(inQuarantine.isFile)
+    }
+
+    @Test fun purge_rechecks_rows_and_restores_a_file_that_became_referenced() {
+        file("rec-8-1.ogg"); sweep()
+        var calls = 0
+        val report = runBlocking {
+            sweepOrphanRecordingAudio(root.path, { if (calls++ == 0) emptyList() else listOf("rec-8-1" to null) }, nowMs = now + ORPHAN_PURGE_AFTER_MS)
+        }
+        assertEquals(OrphanSweepReport(), report)
+        assertTrue(File(root, "rec-8-1.ogg").isFile); assertFalse(quarantined("rec-8-1.ogg").exists())
+    }
+
+    @Test fun own_stale_download_temps_are_deleted_but_young_temps_and_parts_are_kept() {
+        val stale = file("rec-9-1.ogg.download-tmp")
+        val young = file("rec-9-2.ogg.download-tmp", modified = now - 1_000)
+        val part = file("rec-9-3.part")
+        assertEquals(OrphanSweepReport(staleTemps = 1), sweep())
+        assertFalse(stale.exists()); assertTrue(young.isFile); assertTrue(part.isFile)
     }
 }

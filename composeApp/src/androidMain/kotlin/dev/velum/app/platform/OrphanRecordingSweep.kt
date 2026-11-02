@@ -5,7 +5,7 @@ import java.nio.file.Files
 import java.nio.file.LinkOption
 
 /** Counts only: paths and file names carry recording/session identity and must not be logged. */
-data class OrphanSweepReport(val quarantined: Int = 0, val purged: Int = 0)
+data class OrphanSweepReport(val quarantined: Int = 0, val purged: Int = 0, val staleTemps: Int = 0)
 
 /** Quarantine (not delete) lives inside the recordings dir; the sweep never recurses into it. */
 const val ORPHAN_QUARANTINE_DIR = ".orphaned"
@@ -16,14 +16,36 @@ const val ORPHAN_PURGE_AFTER_MS = 7L * 24L * HOUR_MS
 /** Final audio names written by Velum (mic `rec-*.wav`, downloads `rec-*.{ogg,wav,bin}`). */
 private val FINAL_AUDIO_NAME = Regex("^rec-[A-Za-z0-9_-]+\\.(wav|ogg|bin)$", RegexOption.IGNORE_CASE)
 
+/** Temps of Velum's own atomic download write (`writeBytesToPath`). #86 `.part` files are not ours. */
+private val OWN_DOWNLOAD_TEMP_NAME = Regex("^rec-[A-Za-z0-9_-]+\\.(wav|ogg|bin)\\.download-tmp$", RegexOption.IGNORE_CASE)
+
+private class Refs(rows: List<Pair<String, String?>>) {
+    // A base-name match protects only rows whose path is not persisted yet (mic drafts). Once a row has
+    // a path, only that exact file is protected, so a leaked old-extension copy stays collectable.
+    private val pendingIds = rows.filter { it.second == null }.mapTo(HashSet()) { it.first }
+    private val paths = rows.mapNotNullTo(HashSet()) { (_, path) -> path?.let { File(it).canonicalPath } }
+    fun protects(original: File) = original.name.substringBeforeLast('.') in pendingIds || original.canonicalPath in paths
+}
+
+private fun File.isPlainFile() = Files.isRegularFile(toPath(), LinkOption.NOFOLLOW_LINKS)
+
+/** Unknown mtime (0) counts as fresh: never old enough to quarantine, purge or delete. */
+private fun File.olderThan(ageMs: Long, nowMs: Long): Boolean {
+    val modified = lastModified()
+    return modified > 0L && nowMs - modified >= ageMs
+}
+
 /**
- * #122 startup sweep. Moves a top-level file of [recordingsDirPath] to [ORPHAN_QUARANTINE_DIR] only if ALL hold:
- * - its name is a Velum final audio name (never `.partial`, `.download-tmp` or unknown files);
- * - no row (trashed included) has its path as `local_path` or its base name as `id` (covers mic drafts whose
- *   path is not persisted yet);
- * - it was not modified for [minAgeMs] (guards writes whose row is not inserted yet).
- * [fileRefs] failing aborts the sweep before any file is touched. Quarantined files are deleted after
- * [purgeAfterMs] in quarantine.
+ * #122 startup sweep over top-level files of [recordingsDirPath]. A file moves to [ORPHAN_QUARANTINE_DIR]
+ * only if ALL hold:
+ * - its name is a Velum final audio name (never `.partial`, `.part`, `.download-tmp` or unknown files);
+ * - no row (trashed included) references it: its canonical path is a `local_path`, or its base name is the
+ *   id of a row whose `local_path` is still null (mic drafts);
+ * - its mtime is known and older than [minAgeMs] (guards writes whose row is not inserted yet).
+ * [fileRefs] failing aborts the sweep before any file is touched; refs are read again before purging, and a
+ * quarantined file that became referenced is moved back. Quarantined files are deleted after [purgeAfterMs].
+ * Velum's own `*.download-tmp` files older than [minAgeMs] are deleted (an interrupted atomic write never
+ * replaced the final file).
  */
 suspend fun sweepOrphanRecordingAudio(
     recordingsDirPath: String,
@@ -34,30 +56,38 @@ suspend fun sweepOrphanRecordingAudio(
 ): OrphanSweepReport {
     val dir = File(recordingsDirPath).canonicalFile
     if (!dir.isDirectory) return OrphanSweepReport()
-    val refs = fileRefs()
-    val ids = refs.mapTo(HashSet()) { it.first }
-    val paths = refs.mapNotNullTo(HashSet()) { (_, path) -> path?.let { File(it).canonicalPath } }
+    val refs = Refs(fileRefs())
     val quarantine = File(dir, ORPHAN_QUARANTINE_DIR)
     var quarantined = 0
+    var staleTemps = 0
     for (file in dir.listFiles().orEmpty()) {
-        if (!Files.isRegularFile(file.toPath(), LinkOption.NOFOLLOW_LINKS)) continue
-        if (!FINAL_AUDIO_NAME.matches(file.name)) continue
-        if (file.name.substringBeforeLast('.') in ids || file.canonicalPath in paths) continue
-        if (nowMs - file.lastModified() < minAgeMs) continue
+        if (!file.isPlainFile() || !file.olderThan(minAgeMs, nowMs)) continue
+        if (OWN_DOWNLOAD_TEMP_NAME.matches(file.name)) {
+            if (file.delete()) staleTemps++
+            continue
+        }
+        if (!FINAL_AUDIO_NAME.matches(file.name) || refs.protects(file)) continue
         if (!quarantine.isDirectory && !quarantine.mkdirs()) break
         val target = File(quarantine, file.name)
         if (target.exists() || !file.renameTo(target)) continue
-        target.setLastModified(nowMs)
+        // The purge clock is the quarantine mtime; if it cannot be set, undo the move rather than guess.
+        if (!target.setLastModified(nowMs)) { target.renameTo(file); continue }
         quarantined++
     }
+    val purged = purgeQuarantine(dir, quarantine, Refs(fileRefs()), nowMs, purgeAfterMs)
+    return OrphanSweepReport(quarantined, purged, staleTemps)
+}
+
+private fun purgeQuarantine(dir: File, quarantine: File, refs: Refs, nowMs: Long, purgeAfterMs: Long): Int {
     var purged = 0
     for (file in quarantine.listFiles().orEmpty()) {
-        if (Files.isRegularFile(file.toPath(), LinkOption.NOFOLLOW_LINKS) &&
-            nowMs - file.lastModified() >= purgeAfterMs &&
-            file.delete()
-        ) {
-            purged++
+        if (!file.isPlainFile()) continue
+        val original = File(dir, file.name)
+        if (refs.protects(original)) {
+            if (!original.exists()) file.renameTo(original)
+            continue
         }
+        if (file.olderThan(purgeAfterMs, nowMs) && file.delete()) purged++
     }
-    return OrphanSweepReport(quarantined, purged)
+    return purged
 }

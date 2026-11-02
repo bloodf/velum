@@ -36,7 +36,12 @@ class StartupSequenceTest {
         assertEquals(false, published)
     }
 
-    /** Mutation guard: VelumApplication must publish only inside cleanupThenPublish's publish block. */
+    /**
+     * Mutation guard: VelumApplication must publish only inside cleanupThenPublish's publish block.
+     * A source scan, not a behavioural test: onCreate builds the real AppContainer (Keystore-backed
+     * AndroidSecureStore, WorkManager scheduler, real filesDir) with no injection seam, so Robolectric
+     * cannot drive it deterministically. The ordering itself is covered behaviourally above.
+     */
     @Test fun velum_application_publishes_only_after_cleanup() {
         val src = listOf(
             File("src/androidMain/kotlin/dev/velum/app/VelumApplication.kt"),

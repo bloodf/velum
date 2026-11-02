@@ -84,7 +84,7 @@ class VelumApplication : Application() {
                     built = built,
                     cleanup = { c ->
                         val report = sweepOrphanRecordingAudio(recordingsDirectoryPath(), c.repository::getAllRecordingFileRefs)
-                        Log.i(TAG, "Orphan audio sweep: quarantined=${report.quarantined} purged=${report.purged}")
+                        Log.i(TAG, "Orphan audio sweep: quarantined=${report.quarantined} purged=${report.purged} staleTemps=${report.staleTemps}")
                     },
                     publish = { c ->
                         // Complete the deferred before flipping ready so splash dismiss
