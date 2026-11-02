@@ -650,12 +650,11 @@ class DeviceWalkUiTest {
             // #118: in landscape the body must overflow. Scrolling moves the body but not the top bar, then
             // Back must return to the hub in the same activity.
             runCatching { device.setOrientationLeft() }
-            waitUntil(10_000, "Display did not rotate to landscape") { device.displayWidth > device.displayHeight }
             try {
+                waitUntil(10_000, "Display did not rotate to landscape") { device.displayWidth > device.displayHeight }
                 val statement = str.settingsUi.privacyOnDeviceStatement
                 val backLabels = listOf(str.ux.back, "Back", "Voltar")
                 waitUntil(10_000, "Storage & privacy not shown in landscape") { composeExists(statement) && backTop(backLabels) != null }
-                val activityBefore = composeRule.activity // rotation may recreate; capture after it
                 val bodyTop0 = textTop(statement) ?: error("statement node missing")
                 val backTop0 = checkNotNull(backTop(backLabels))
                 device.swipe(device.displayWidth / 2, device.displayHeight * 4 / 5, device.displayWidth / 2, device.displayHeight / 5, 20)
@@ -666,6 +665,7 @@ class DeviceWalkUiTest {
                 check(backTop1 != null && kotlin.math.abs(backTop1 - backTop0) < 1f) {
                     "Back moved while the body scrolled: before=$backTop0 after=$backTop1 (#118)"
                 }
+                val activityBefore = composeRule.activity // captured right before Back, after any rotation recreate
                 check(pressNavBack()) { "Back not reachable on Storage & privacy after scrolling (#118)" }
                 waitUntil(10_000, "Back from Storage & privacy did not return to the Settings hub") {
                     !composeExists(statement) && SETTINGS_HUB_ROWS.any { composeExists(it) }
@@ -675,8 +675,12 @@ class DeviceWalkUiTest {
                 covered += "settings/storage-back-pinned"
             } finally {
                 runCatching { device.setOrientationNatural() }
-                waitUntil(10_000, "Display did not return to portrait") { device.displayHeight > device.displayWidth }
+                runCatching {
+                    waitUntil(10_000, "Display did not return to portrait") { device.displayHeight > device.displayWidth }
+                }
             }
+            // Reached only when the step passed, so a failure above is never masked by this check.
+            check(device.displayHeight > device.displayWidth) { "Display not back in portrait after Storage & privacy step" }
         }
         pressBackToFiles(lang)
     }
