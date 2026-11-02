@@ -10,7 +10,8 @@ import dev.velum.app.i18n.LocalStrings
 fun LocalModelMissingDialog(
     modelDisplayName: String,
     onDownload: () -> Unit,
-    onSwitchToApi: () -> Unit,
+    /** Null hides the button: tasks without an API route (diarization) must not offer a dead action. */
+    onSwitchToApi: (() -> Unit)?,
     onDismiss: () -> Unit,
 ) {
     val strings = LocalStrings.current
@@ -23,8 +24,8 @@ fun LocalModelMissingDialog(
         confirmButton = {
             TextButton(onClick = onDownload) { Text(strings.downloadModel) }
         },
-        dismissButton = {
-            TextButton(onClick = onSwitchToApi) { Text(strings.switchToApi) }
+        dismissButton = onSwitchToApi?.let { switchToApi ->
+            { TextButton(onClick = switchToApi) { Text(strings.switchToApi) } }
         },
     )
 }
