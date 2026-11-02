@@ -1297,12 +1297,12 @@ class DeviceWalkUiTest {
         }
     }
 
+    private var lastAnrCheckMs = 0L
+
     /**
      * A loaded CI emulator can show "<system app> isn't responding" over the app (seen on main CI with the
      * Pixel Launcher). It hides the app from UiAutomator and swallows gestures. Tap Wait, never Close app.
      */
-    private var lastAnrCheckMs = 0L
-
     private fun dismissSystemAnrDialog() {
         // A UiAutomator lookup can take seconds on a busy screen; poll at most every 2 s.
         val now = SystemClock.uptimeMillis()
@@ -1311,7 +1311,7 @@ class DeviceWalkUiTest {
         // The system dialog lives in the "android" package; our own ANR must fail the cell, not be hidden.
         val title = device.findObject(By.pkg("android").textContains("isn't responding"))?.text ?: return
         val appLabel = appContext.applicationInfo.loadLabel(appContext.packageManager).toString()
-        if (title.contains(appLabel)) {
+        if (title.contains(appLabel) || title.contains(appContext.packageName)) {
             val tag = "own-anr-${SystemClock.uptimeMillis()}"
             shot(tag)
             error("The app itself is not responding: \"$title\"; diagnostic: $tag")
