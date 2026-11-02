@@ -26,13 +26,13 @@ class CommonMainPortabilityTest {
         .first { File(it, "settings.gradle.kts").isFile }
 
     private val rules = listOf(
-        Rule("synchronized", Regex("""\bsynchronized\s*\(|@Synchronized\b"""), "kotlinx.coroutines.sync.Mutex, or MutableStateFlow.update for atomic state"),
+        Rule("synchronized", Regex("""\bsynchronized\s*\(|@(\w+:)?Synchronized\b"""), "kotlinx.coroutines.sync.Mutex, or MutableStateFlow.update for atomic state"),
         Rule("string-format", Regex("""\.format\s*\("""), "string templates with padStart/roundToInt, or an expect/actual formatter"),
-        Rule("java-import", Regex("""^\s*import\s+javax?\."""), "move the JVM code to a platform source set behind expect/actual"),
-        Rule("System", Regex("""\bSystem\."""), "kotlin.time (Clock.System, TimeSource) or expect/actual"),
-        Rule("Thread", Regex("""\bThread\."""), "coroutines (delay, Dispatchers)"),
+        Rule("java-import", Regex("""^\s*import\s+javax?\.|(?<![\w.])javax?\.\w+\."""), "move the JVM code to a platform source set behind expect/actual"),
+        Rule("System", Regex("""(?<![.\w])System\."""), "kotlin.time (Clock.System, TimeSource) or expect/actual"),
+        Rule("Thread", Regex("""\bThread(\.|\s*\(|\s*\{)"""), "coroutines (delay, Dispatchers)"),
         Rule("Class.forName", Regex("""\bClass\.forName\b"""), "KClass references or expect/actual"),
-        Rule("class.java", Regex("""::class\.java\b"""), "KClass (::class) or expect/actual"),
+        Rule("class.java", Regex("""::class\.java\b|\.javaClass\b"""), "KClass (::class) or expect/actual"),
         Rule("sorted-collection", Regex("""\b(toSortedMap|sortedMapOf|TreeMap|TreeSet|toSortedSet)\b"""), "sortedBy/sortedWith on a list, then associate/groupBy"),
         Rule("ConcurrentHashMap", Regex("""\bConcurrentHashMap\b"""), "MutableStateFlow<Map> with update, or a Mutex"),
         Rule("java-atomic", Regex("""\bjava\.util\.concurrent\.atomic\b"""), "MutableStateFlow.update or kotlin.concurrent.atomics"),
@@ -47,7 +47,7 @@ class CommonMainPortabilityTest {
     /** `usage` needs an import of `import` (or its package star import) to compile on non-JVM targets. */
     private val requiredImports = listOf(
         Triple(Rule("Dispatchers.IO-import", Regex("""\bDispatchers\.IO\b"""), "add `import kotlinx.coroutines.IO`"), "kotlinx.coroutines", "IO"),
-        Triple(Rule("Volatile-import", Regex("""@Volatile\b"""), "add `import kotlin.concurrent.Volatile`"), "kotlin.concurrent", "Volatile"),
+        Triple(Rule("Volatile-import", Regex("""@(\w+:)?Volatile\b"""), "add `import kotlin.concurrent.Volatile`"), "kotlin.concurrent", "Volatile"),
     )
 
     @Test
@@ -95,9 +95,22 @@ class CommonMainPortabilityTest {
             |val c = '"'
             |val d = "${'$'}{"%.1f".format(x)} KB"
             |val e = Dispatchers.IO
+            |val f = Clock.System.now()
+            |val g = java.util.UUID.randomUUID()
+            |val h = Thread { }
+            |val i = x.javaClass
+            |@field:Volatile var j = 0
+            |@get:Synchronized fun k() {}
+            |val l = System.nanoTime()
         """.trimMargin()
         val hits = scan("x.kt", src).map { "${it.line}:${it.rule.id}" }
-        assertEquals(listOf("7:string-format", "8:Dispatchers.IO-import"), hits)
+        assertEquals(
+            listOf(
+                "7:string-format", "8:Dispatchers.IO-import", "10:java-import", "11:Thread",
+                "12:class.java", "14:synchronized", "15:System", "13:Volatile-import",
+            ).sorted(),
+            hits.sorted(),
+        )
     }
 
     private fun scan(path: String, text: String): List<Offence> {
