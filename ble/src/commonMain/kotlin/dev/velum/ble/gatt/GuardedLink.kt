@@ -1,13 +1,11 @@
 package dev.velum.ble.gatt
 
-import dev.velum.ble.BleTransport
-
 /**
  * The single choke point for every GATT write. The guard for the target characteristic runs on
  * the PLAINTEXT, then [seal] (if any) produces the bytes that go out; sealed bytes are never parsed.
  */
 class GuardedLink(
-    private val transport: BleTransport,
+    private val transport: GattLink,
     private val profile: GattProfile = GattProfiles.Plaud,
 ) {
     suspend fun write(

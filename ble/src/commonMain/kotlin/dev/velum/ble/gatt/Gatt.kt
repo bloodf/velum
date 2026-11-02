@@ -33,9 +33,19 @@ object GattProfiles {
 }
 
 /**
- * A write that already passed its guard. Both constructors are `internal` to `:ble`, so a
- * driver in another module cannot build one, and [dev.velum.ble.BleTransport.writeRaw] is
- * `internal` too: [GuardedLink] is the only path to a characteristic.
+ * Connection-level raw write, implemented by transports and test fakes. Public so a separate
+ * test module can implement it, but only [GattWrite] values can be passed and those can only be
+ * built inside `:ble` (internal constructors) by [GuardedLink] after the guard ran. Drivers and
+ * app code hold [dev.velum.ble.BleTransport] / [GuardedLink] and never call `writeRaw`
+ * (enforced by `GattArchitectureTest`).
+ */
+interface GattLink {
+    suspend fun writeRaw(write: GattWrite)
+}
+
+/**
+ * A write that already passed its guard. Both constructors are `internal` to `:ble`, so only
+ * [GuardedLink] can produce one: it is the only path to a characteristic.
  */
 sealed class GattWrite {
     abstract val char: GattChar
