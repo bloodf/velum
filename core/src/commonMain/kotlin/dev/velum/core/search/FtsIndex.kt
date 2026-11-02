@@ -16,6 +16,8 @@ object FtsIndex {
         val available: Boolean,
         /** True when template_fts was dropped/recreated (caller must rebuild rows). */
         val templateSchemaRecreated: Boolean,
+        /** Exception class when FTS is unavailable (no message: it may echo SQL); null otherwise. */
+        val failure: String? = null,
     )
 
     fun ensureSchema(driver: SqlDriver): EnsureResult {
@@ -82,11 +84,25 @@ object FtsIndex {
                     parameters = 0,
                 )
             }
+            // CREATE ... IF NOT EXISTS succeeds without loading the module when the tables already exist
+            // (e.g. a DB written by the bundled SQLite, opened by framework SQLite). Touch both tables so a
+            // missing module is reported here instead of throwing on first use in VelumRepository.<init>.
+            probe(driver, "recording_fts")
+            probe(driver, "template_fts")
             EnsureResult(available = true, templateSchemaRecreated = needsTagsUpgrade)
-        } catch (_: Exception) {
-            // Robolectric / stripped SQLite: "no such module: fts5"
-            EnsureResult(available = false, templateSchemaRecreated = false)
+        } catch (e: Exception) {
+            // Robolectric / framework SQLite without FTS5: "no such module: fts5"
+            EnsureResult(available = false, templateSchemaRecreated = false, failure = e::class.simpleName ?: "Exception")
         }
+    }
+
+    private fun probe(driver: SqlDriver, table: String) {
+        driver.executeQuery(
+            identifier = null,
+            sql = "SELECT 1 FROM $table LIMIT 0",
+            mapper = { QueryResult.Value(Unit) },
+            parameters = 0,
+        )
     }
 
     /**
@@ -200,13 +216,20 @@ object FtsIndex {
         category: String,
         systemPrompt: String,
         tags: String = "",
+        /**
+         * False only when the table was just cleared (bulk rebuild). `template_id` is UNINDEXED, so each
+         * DELETE scans the whole table: per-row deletes make a 16k-row rebuild quadratic (#100).
+         */
+        replaceExisting: Boolean = true,
     ) {
         inTransaction(driver) {
-            driver.execute(
-                identifier = null,
-                sql = "DELETE FROM template_fts WHERE template_id = ?",
-                parameters = 1,
-            ) { bindString(0, id) }
+            if (replaceExisting) {
+                driver.execute(
+                    identifier = null,
+                    sql = "DELETE FROM template_fts WHERE template_id = ?",
+                    parameters = 1,
+                ) { bindString(0, id) }
+            }
             driver.execute(
                 identifier = null,
                 sql = "INSERT INTO template_fts(template_id, name, description, category, system_prompt, tags) VALUES (?, ?, ?, ?, ?, ?)",

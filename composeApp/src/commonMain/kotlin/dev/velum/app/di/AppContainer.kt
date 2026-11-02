@@ -88,7 +88,13 @@ class AppContainer(
 
     val databaseHandle = createDatabase(driverFactory)
     val database = databaseHandle.database
-    val repository = VelumRepository(databaseHandle)
+    // A failed repository init must not abandon an open database (StrictMode LeakedClosableViolation).
+    val repository = try {
+        VelumRepository(databaseHandle)
+    } catch (t: Throwable) {
+        runCatching { databaseHandle.driver.close() }
+        throw t
+    }
     /**
      * In-memory FirstRun gate. Initial value is read once on the container
      * construction path (Android: [Dispatchers.IO] in VelumApplication) — never
