@@ -176,6 +176,7 @@ fun RecordingDetailScreen(
     var askBusy by remember { mutableStateOf(false) }
     var askError by remember { mutableStateOf<String?>(null) }
     var processError by remember { mutableStateOf<String?>(null) }
+    var lastFailure by remember { mutableStateOf<String?>(null) }
     var pendingRetranscribe by remember { mutableStateOf<Boolean?>(null) }
     var modelPrompt by remember { mutableStateOf<ModeResolution.NeedLocalModel?>(null) }
     val scope = rememberCoroutineScope()
@@ -198,6 +199,9 @@ fun RecordingDetailScreen(
     val isLiveRecording = recording?.status == "recording"
     val pausedThermal = recording?.status == "paused_thermal"
     val isFailed = recording?.status == "failed"
+    LaunchedEffect(recordingId, recording?.status) {
+        lastFailure = if (recording?.status == "failed") container.repository.getProcessingError(recordingId) else null
+    }
     // Only true while a job is actively running — blank notes on a ready recording
     // must show an empty CTA, not the forever "Generating" skeleton.
     val generating = recording != null && !isLiveRecording && (
@@ -210,7 +214,12 @@ fun RecordingDetailScreen(
         apiModelOverride: ApiModelOverride? = null,
     ) {
         processError = null
-        val tasks = listOf(AiTask.Transcription, AiTask.Diarization, AiTask.Summary)
+        // Change template reuses the stored transcript, so only the Summary route must be ready.
+        val tasks = if (retranscribe) {
+            listOf(AiTask.Transcription, AiTask.Diarization, AiTask.Summary)
+        } else {
+            listOf(AiTask.Summary)
+        }
         for (task in tasks) {
             when (val resolution = container.aiRouter.resolveModeOrPrompt(task, container.localModelManager)) {
                 is ModeResolution.NeedLocalModel -> {
@@ -419,6 +428,9 @@ fun RecordingDetailScreen(
                     color = Color(0xFFB45309),
                     fontSize = 14.sp,
                 )
+                lastFailure?.let {
+                    Text(it, color = VelumInkSecondary, fontSize = 12.sp)
+                }
                 Spacer(Modifier.height(8.dp))
                 OutlineButton(
                     text = strings.ux.retryProcessing,

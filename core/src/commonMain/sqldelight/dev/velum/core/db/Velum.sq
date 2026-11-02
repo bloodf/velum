@@ -294,6 +294,12 @@ SELECT value FROM app_meta WHERE key = ?;
 setMeta:
 INSERT OR REPLACE INTO app_meta(key, value) VALUES (?, ?);
 
+deleteMeta:
+DELETE FROM app_meta WHERE key = ?;
+
+deleteMetaWithPrefix:
+DELETE FROM app_meta WHERE key LIKE ? || '%';
+
 selectVersionsForRecording:
 SELECT * FROM summary_version WHERE recording_id = ? ORDER BY created_at DESC;
 
