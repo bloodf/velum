@@ -776,29 +776,33 @@ fun RecordingDetailScreen(
             modelDisplayName = need.displayName,
             onDownload = {
                 modelPrompt = null
+                pendingRetranscribe = null
+                pendingTemplateId = null
+                pendingApiOverride = null
                 onOpenModelManager()
             },
             onSwitchToApi = {
-                scope.launch {
-                    when (need.task) {
-                        AiTask.Transcription ->
-                            container.settingsRepository.setTranscriptionMode(ComputeMode.Api)
-                        AiTask.Diarization -> {
-                            // No API diarization contract — keep Local and open model manager.
-                            modelPrompt = need
-                            return@launch
-                        }
-                        AiTask.Summary ->
-                            container.settingsRepository.setSummaryMode(ComputeMode.Api)
-                    }
-                    modelPrompt = null
+                // Diarization has no API route: keep the prompt (and the pending request) as is.
+                if (need.task != AiTask.Diarization && modelPrompt === need) {
+                    // Take the pending request and close the prompt synchronously, so a second tap that lands
+                    // before recomposition finds nothing to run instead of enqueueing a default-template job.
                     val retranscribe = pendingRetranscribe ?: true
-                    val templateId = pendingTemplateId ?: "velum.meeting"
+                    val templateId = pendingTemplateId
                     val apiOverride = pendingApiOverride
+                    modelPrompt = null
                     pendingRetranscribe = null
                     pendingTemplateId = null
                     pendingApiOverride = null
-                    enqueueAfterGate(retranscribe, templateId, apiOverride)
+                    scope.launch {
+                        when (need.task) {
+                            AiTask.Transcription ->
+                                container.settingsRepository.setTranscriptionMode(ComputeMode.Api)
+                            AiTask.Summary ->
+                                container.settingsRepository.setSummaryMode(ComputeMode.Api)
+                            AiTask.Diarization -> Unit
+                        }
+                        enqueueAfterGate(retranscribe, templateId, apiOverride)
+                    }
                 }
             },
             onDismiss = {
