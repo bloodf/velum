@@ -56,6 +56,8 @@ class PlaudDeviceClient(
     private val keys: DeviceIdentityKeys,
     private val responseTimeout: Duration = 10.seconds,
     private val protocolVersionHint: Int = 20,
+    /** Where notifications are collected. Defaults to the first caller's scope, which then waits for [close]. */
+    private val notificationScope: CoroutineScope? = null,
 ) {
     private val inbound = Channel<ByteArray>(capacity = 128)
     private val writeMutex = Mutex()
@@ -71,7 +73,7 @@ class PlaudDeviceClient(
 
     suspend fun start() {
         if (notifyJob != null) return
-        val scope = CoroutineScope(coroutineContext)
+        val scope = notificationScope ?: CoroutineScope(coroutineContext)
         notifyJob = scope.launch(start = CoroutineStart.UNDISPATCHED) {
             ble.notifications().collect { inbound.send(it) }
         }

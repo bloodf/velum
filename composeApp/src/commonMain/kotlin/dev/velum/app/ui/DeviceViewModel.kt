@@ -2,15 +2,18 @@ package dev.velum.app.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import dev.velum.ai.local.ModelStoreDir
 import dev.velum.app.i18n.DeviceUiCopy
 import dev.velum.app.platform.DownloadNotifyKind
 import dev.velum.app.platform.DownloadProgressNotifier
+import dev.velum.app.platform.PartialTransfer
+import dev.velum.app.platform.openPartialTransfer as defaultOpenPartialTransfer
 import dev.velum.app.platform.systemLanguageTag
 import dev.velum.ble.BleConnectionState
 import dev.velum.ble.BleTransport
+import dev.velum.ble.client.CrcPolicy
+import dev.velum.ble.client.CrcStatus
 import dev.velum.ble.client.PlaudDeviceClient
-import dev.velum.ble.client.createTempSessionFile
+import dev.velum.ble.client.ResumableSessionDownload
 import dev.velum.ble.crypto.createFileDecryptor
 import dev.velum.ble.crypto.createSessionCipher
 import dev.velum.core.model.ConnectedDevice
@@ -18,6 +21,7 @@ import dev.velum.core.security.DeviceKeyImporter
 import dev.velum.core.security.SecureStoreUnavailableException
 import dev.velum.protocol.DeviceCapabilities
 import dev.velum.protocol.DeviceCapabilityRegistry
+import dev.velum.protocol.DeviceIdentityKeys
 import dev.velum.protocol.PlaudFileCrypto
 import dev.velum.protocol.SessionEntry
 import dev.velum.recorder.RecorderDriverRegistry
@@ -78,6 +82,7 @@ class DeviceViewModel(
     },
     private val localeTag: () -> String = { systemLanguageTag() },
     private val librarySessionIds: suspend (sessionIds: List<Long>, deviceSerial: String?) -> Set<Long> = { _, _ -> emptySet() },
+    private val openPartialTransfer: (sessionId: Long, deviceSerial: String?) -> PartialTransfer? = ::defaultOpenPartialTransfer,
 ) : ViewModel() {
     val connectionState: StateFlow<BleConnectionState> =
         ble.connectionState.stateIn(viewModelScope, SharingStarted.Eagerly, BleConnectionState.Idle)
@@ -90,6 +95,7 @@ class DeviceViewModel(
 
     private var client: PlaudDeviceClient? = null
     private var connectedSerial: String? = null
+    private var connectedDeviceId: String? = null
     private var downloadJob: Job? = null
     private val downloadMutex = Mutex()
 
@@ -120,6 +126,7 @@ class DeviceViewModel(
     fun connect(deviceId: String) {
         viewModelScope.launch {
             try {
+                connectedDeviceId = deviceId
                 ble.connect(deviceId)
                 runProtocolIfKeysPresent()
             } catch (cancelled: CancellationException) {
@@ -187,8 +194,9 @@ class DeviceViewModel(
             _sessionUi.value = _sessionUi.value.copy(statusMessage = DeviceUiCopy.sessionNotFound(locale))
             return
         }
+        // No client is fine while the link is up (an earlier attempt closed it): the download reconnects.
         val c = client
-        if (c == null) {
+        if (c == null && connectionState.value !is BleConnectionState.Connected) {
             _sessionUi.value = _sessionUi.value.copy(statusMessage = DeviceUiCopy.notConnected(locale))
             return
         }
@@ -213,27 +221,37 @@ class DeviceViewModel(
             progress = 0f,
             cancelLabel = DeviceUiCopy.cancel(locale),
         )
+        val serial = dedupDeviceSerial(keys.serialNumber, connectedSerial)
         try {
-            val recordingId = withContext(Dispatchers.IO) {
+            client = null // the download owns it now: it may close it and reconnect
+            val outcome = withContext(Dispatchers.IO) {
                 assembleDecryptAndPersist(
-                    client = c,
+                    initialClient = c,
+                    keys = keys,
                     sessionId = sessionId,
                     sizeBytes = entry.sizeBytes,
                     totalBytes = totalBytes,
-                    privateKeyPem = keys.privateKeyPem,
-                    deviceSerial = dedupDeviceSerial(keys.serialNumber, connectedSerial),
+                    deviceSerial = serial,
                     startedAtEpochSeconds = sessionId.coerceAtLeast(0L),
                 )
             }
-            val sessions = c.listSessions()
-            val inLibrary = loadLibrarySessionIds(sessions.entries.map { it.sessionId }, dedupDeviceSerial(keys.serialNumber, connectedSerial))
+            client = outcome.client
+            connectedSerial = connectedSerial ?: serial
+            // The recording is saved: a failed refresh must not report the download as failed.
+            val sessions = try { outcome.client?.listSessions()?.entries } catch (cancelled: CancellationException) { throw cancelled } catch (_: Exception) { null }
+                ?: _sessionUi.value.sessions
+            val inLibrary = loadLibrarySessionIds(sessions.map { it.sessionId }, serial)
             _sessionUi.value = _sessionUi.value.copy(
-                sessions = sessions.entries,
+                sessions = sessions,
                 librarySessionIds = inLibrary,
                 downloadingSessionId = null,
                 downloadProgress = null,
-                lastDownloadedRecordingId = recordingId,
-                statusMessage = DeviceUiCopy.downloadedSession(localeTag(), sessionId),
+                lastDownloadedRecordingId = outcome.recordingId,
+                statusMessage = if (outcome.crc is CrcStatus.Mismatch) {
+                    DeviceUiCopy.downloadedSessionCrcMismatch(localeTag(), sessionId)
+                } else {
+                    DeviceUiCopy.downloadedSession(localeTag(), sessionId)
+                },
             )
         } catch (e: CancellationException) {
             _sessionUi.value = _sessionUi.value.copy(
@@ -252,14 +270,14 @@ class DeviceViewModel(
     }
 
     private suspend fun assembleDecryptAndPersist(
-        client: PlaudDeviceClient,
+        initialClient: PlaudDeviceClient?,
+        keys: DeviceIdentityKeys,
         sessionId: Long,
         sizeBytes: Long,
         totalBytes: Long,
-        privateKeyPem: String,
         deviceSerial: String?,
         startedAtEpochSeconds: Long,
-    ): String {
+    ): DownloadOutcome {
         fun onProgress(received: Long) {
             val progress = (received.toDouble() / totalBytes.toDouble()).toFloat().coerceIn(0f, 0.99f)
             _sessionUi.value = _sessionUi.value.copy(downloadProgress = progress)
@@ -267,38 +285,64 @@ class DeviceViewModel(
         }
         val job = currentCoroutineContext()[Job]
         val decryptor = createFileDecryptor()
-        val temp = createTempSessionFile()
-        try {
-            val size: Long
-            val readAt: (Long, Int) -> ByteArray
-            if (temp != null) {
-                client.downloadSessionTo(sessionId, sizeBytes, temp, ::onProgress)
-                val source = ModelStoreDir(temp.absolutePath())
-                size = temp.size()
-                readAt = { position, length -> source.readRange(position, length) }
-            } else {
-                val encrypted = client.downloadSession(sessionId, sizeBytes, ::onProgress)
-                size = encrypted.size.toLong()
-                readAt = { position, length ->
-                    encrypted.copyOfRange(position.toInt(), position.toInt() + length)
+        fun persist(size: Long, readAt: (Long, Int) -> ByteArray) = DownloadedSessionAudio(
+            sessionId = sessionId,
+            deviceSerial = deviceSerial,
+            startedAtEpochSeconds = startedAtEpochSeconds,
+            writeDecryptedAudio = { sink ->
+                PlaudFileCrypto.decryptStream(size, readAt, keys.privateKeyPem, decryptor) {
+                    job?.ensureActive()
+                    sink(it)
                 }
-            }
-            return persistDownloadedSession(
-                DownloadedSessionAudio(
-                    sessionId = sessionId,
-                    deviceSerial = deviceSerial,
-                    startedAtEpochSeconds = startedAtEpochSeconds,
-                    writeDecryptedAudio = { sink ->
-                        PlaudFileCrypto.decryptStream(size, readAt, privateKeyPem, decryptor) {
-                            job?.ensureActive()
-                            sink(it)
-                        }
-                    },
-                ),
+            },
+        )
+        val partial = openPartialTransfer(sessionId, deviceSerial)
+        if (partial == null) {
+            val c = initialClient ?: throw IllegalStateException("Not connected")
+            val encrypted = c.downloadSession(sessionId, sizeBytes, ::onProgress)
+            val recordingId = persistDownloadedSession(
+                persist(encrypted.size.toLong()) { position, length ->
+                    encrypted.copyOfRange(position.toInt(), position.toInt() + length)
+                },
             )
-        } finally {
-            temp?.delete()
+            return DownloadOutcome(recordingId, c, CrcStatus.NotProvided)
         }
+        // A transfer failure or cancellation keeps the partial for the next attempt.
+        var finished = initialClient
+        val result = try {
+            ResumableSessionDownload(
+                connect = { reconnect(keys) },
+                crcPolicy = CrcPolicy.ReportOnly,
+                initialClient = initialClient,
+                onSuccess = { finished = it },
+            ).download(sessionId, sizeBytes, partial, ::onProgress)
+        } catch (e: Throwable) {
+            partial.close()
+            throw e
+        }
+        val recordingId = try {
+            persistDownloadedSession(persist(partial.length()) { position, length -> partial.read(position, length) })
+        } catch (cancelled: CancellationException) {
+            partial.close()
+            throw cancelled
+        } catch (e: Exception) {
+            // Complete bytes that cannot be decrypted or saved: the next attempt starts over.
+            partial.delete()
+            throw e
+        }
+        partial.delete()
+        return DownloadOutcome(recordingId, finished, result.crc)
+    }
+
+    private class DownloadOutcome(val recordingId: String, val client: PlaudDeviceClient?, val crc: CrcStatus)
+
+    /** New link and client for a resume attempt; [ResumableSessionDownload] unlocks it. */
+    private suspend fun reconnect(keys: DeviceIdentityKeys): PlaudDeviceClient {
+        val deviceId = checkNotNull(connectedDeviceId) { "No device to reconnect to" }
+        ble.disconnect()
+        ble.connect(deviceId)
+        // It outlives the download's withContext block, so it must not collect in that scope.
+        return PlaudDeviceClient(ble, createSessionCipher(), keys, notificationScope = viewModelScope)
     }
 
     /** Library marking is best-effort: a lookup failure must not break the session list. */

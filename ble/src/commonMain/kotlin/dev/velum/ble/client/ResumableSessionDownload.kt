@@ -52,9 +52,10 @@ data class ResumableDownloadResult(val sizeBytes: Long, val crc: CrcStatus, val 
  * attempts that store no new bytes count against [maxNoProgressAttempts], with a growing delay between
  * them, so a multi-hour transfer cannot run out of retries while it is progressing.
  *
- * [connect] brings the link up and returns a new client; this class unlocks it, runs the handshake and
- * closes it after the attempt. A store already holding all the bytes is returned without connecting,
- * with [CrcStatus.NotProvided]. Cancellation of the caller is never retried.
+ * The first attempt may use [initialClient], already unlocked. Otherwise [connect] brings the link up
+ * and returns a new client, which this class unlocks and handshakes. A client is closed when its attempt
+ * fails and passed to [onSuccess] otherwise. A store already holding all the bytes is returned without
+ * connecting, with [CrcStatus.NotProvided]. Cancellation of the caller is never retried.
  *
  * Simulated only: whether a real Note Pro honours a non-zero start offset is unverified (#6).
  */
@@ -62,6 +63,8 @@ class ResumableSessionDownload(
     private val connect: suspend () -> PlaudDeviceClient,
     private val crcPolicy: CrcPolicy,
     private val maxNoProgressAttempts: Int = 5,
+    private val initialClient: PlaudDeviceClient? = null,
+    private val onSuccess: (PlaudDeviceClient) -> Unit = { it.close() },
 ) {
     init {
         require(maxNoProgressAttempts >= 1)
@@ -77,6 +80,7 @@ class ResumableSessionDownload(
         var attempts = 0
         var noProgress = 0
         var lastError: Exception? = null
+        var unlocked = initialClient
         while (true) {
             coroutineContext.ensureActive()
             if (sizeBytes > 0 && store.length() == sizeBytes) {
@@ -85,13 +89,20 @@ class ResumableSessionDownload(
             attempts++
             val before = store.length()
             var client: PlaudDeviceClient? = null
+            var succeeded = false
             try {
-                client = connect()
-                client.unlock()
-                client.handshake()
+                val reused = unlocked
+                unlocked = null
+                client = reused ?: connect()
+                if (reused == null) {
+                    client.unlock()
+                    client.handshake()
+                }
                 val deviceCrc = client.downloadSessionTo(sessionId, sizeBytes, store, onProgress, startOffset = before)
                 val crc = crcStatus(deviceCrc, store)
                 if (crc !is CrcStatus.Mismatch || crcPolicy == CrcPolicy.ReportOnly) {
+                    succeeded = true
+                    onSuccess(client)
                     return ResumableDownloadResult(store.length(), crc, attempts)
                 }
                 store.truncate(0)
@@ -104,7 +115,7 @@ class ResumableSessionDownload(
             } catch (e: Exception) {
                 lastError = e
             } finally {
-                client?.close()
+                if (!succeeded) client?.close()
             }
             noProgress = if (store.length() > before) 0 else noProgress + 1
             if (noProgress >= maxNoProgressAttempts) {
