@@ -20,7 +20,11 @@ expect class ModelStoreDir(absolutePath: String) {
     fun deleteRecursively()
     fun listChildren(): List<ModelStoreDir>
     fun length(): Long
-    /** Atomic-ish publish: rename this path onto [dest] (replacing it). */
+    /**
+     * Publish this path onto [dest], replacing it. JVM/Android: atomic for a file target on
+     * the same filesystem (ATOMIC_MOVE; plain replace where unsupported); an existing
+     * directory target is deleted first. iOS: delete-then-move, not atomic.
+     */
     fun renameTo(dest: ModelStoreDir): Boolean
 }
 

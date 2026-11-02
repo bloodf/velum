@@ -71,7 +71,12 @@ class PersistDownloadedSessionDedupTest {
         val id = container.persistDownloadedSession(session(ogg(1)))
         val before = row(id)
         assertFailsWith<IOException> {
-            container.persistDownloadedSession(session(ogg(2))) { _, _ -> throw IOException("synthetic write failure") }
+            container.persistDownloadedSession(
+                DownloadedSessionAudio(1_700_000_000, "SYNTH-SN-1", 1_700_000_000) { sink ->
+                    sink(ogg(2)) // part of the new audio streams before the failure
+                    throw IOException("synthetic write failure")
+                },
+            )
         }
         assertEquals(before, row(id))
         assertContentEquals(ogg(1), File(before.local_path!!).readBytes())
@@ -143,7 +148,7 @@ class PersistDownloadedSessionDedupTest {
     private fun ogg(n: Int) = byteArrayOf('O'.code.toByte(), 'g'.code.toByte(), 'g'.code.toByte(), 'S'.code.toByte(), n.toByte())
     private fun wav() = "RIFF\u0000\u0000\u0000\u0000WAVE".encodeToByteArray()
     private fun session(bytes: ByteArray, sessionId: Long = 1_700_000_000, serial: String? = "SYNTH-SN-1") =
-        DownloadedSessionAudio(sessionId, serial, sessionId, bytes.size.toLong(), bytes)
+        DownloadedSessionAudio(sessionId, serial, sessionId) { sink -> sink(bytes); bytes.size.toLong() }
 
     private fun fixture(disableAutoflows: Boolean = true, block: suspend Fixture.() -> Unit) = runBlocking {
         withTimeout(20_000) {
