@@ -289,139 +289,6 @@ fun TemplatesScreen(
         }
         Spacer(Modifier.height(8.dp))
 
-        if (tab == 1) {
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                CategoryChip(
-                    label = strings.templatesFeatured,
-                    selected = discoverFeaturedOnly,
-                    testTag = "tier:featured",
-                ) { discoverFeaturedOnly = true }
-                CategoryChip(
-                    label = strings.templatesAll,
-                    selected = !discoverFeaturedOnly,
-                    testTag = "tier:all",
-                ) { discoverFeaturedOnly = false }
-            }
-        }
-
-        if (tab == 1 && categoryTabs.isNotEmpty()) {
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                CategoryChip(
-                    label = strings.templatesAll,
-                    selected = selectedCategory == null,
-                    testTag = "category:all",
-                ) { selectedCategory = null }
-                categoryTabs.forEach { cat ->
-                    CategoryChip(
-                        label = BuiltinTemplateCatalog.categoryLabel(cat, languageTag),
-                        selected = selectedCategory == cat,
-                        testTag = "category:$cat",
-                    ) { selectedCategory = cat }
-                }
-            }
-        }
-
-        if (tab == 1 && availableTags.isNotEmpty()) {
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    strings.templateTags,
-                    color = VelumInkSecondary,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                availableTags.take(24).forEach { tag ->
-                    CategoryChip(
-                        label = TemplateTagVocabulary.label(tag, languageTag),
-                        selected = tag in selectedTags,
-                        testTag = "tag:$tag",
-                    ) {
-                        selectedTags = if (tag in selectedTags) selectedTags - tag else selectedTags + tag
-                    }
-                }
-            }
-        }
-
-        if (tab == 1 && availableLangs.isNotEmpty()) {
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    strings.templateLangFilter,
-                    color = VelumInkSecondary,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                CategoryChip(
-                    label = strings.templatesAll,
-                    selected = selectedLang == null,
-                    testTag = "lang:all",
-                ) { selectedLang = null }
-                availableLangs.forEach { lang ->
-                    CategoryChip(
-                        label = templateLangLabel(lang, languageTag),
-                        selected = selectedLang == lang,
-                        testTag = "lang:$lang",
-                    ) { selectedLang = lang }
-                }
-            }
-        }
-
-        if (tab == 1 && filter.hasFacetSelection) {
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    strings.templatesActiveFilters,
-                    color = VelumInkSecondary,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                val removeFormat = strings.templatesRemoveFilterFormat
-                selectedCategory?.let { cat ->
-                    val label = BuiltinTemplateCatalog.categoryLabel(cat, languageTag)
-                    ActiveFilterChip(label, removeFormat.replace("%s", label), "active:category") { selectedCategory = null }
-                }
-                selectedTags.sorted().forEach { tag ->
-                    val label = TemplateTagVocabulary.label(tag, languageTag)
-                    ActiveFilterChip(label, removeFormat.replace("%s", label), "active:tag:$tag") { selectedTags = selectedTags - tag }
-                }
-                selectedLang?.let { lang ->
-                    val label = templateLangLabel(lang, languageTag)
-                    ActiveFilterChip(label, removeFormat.replace("%s", label), "active:lang") { selectedLang = null }
-                }
-                CategoryChip(label = strings.templatesClearFilters, selected = false, testTag = "filters:clear") { clearFilters() }
-            }
-        }
-
         LazyVerticalGrid(
             columns = GridCells.Fixed(2),
             modifier = Modifier.weight(1f).fillMaxWidth(),
@@ -429,6 +296,144 @@ fun TemplatesScreen(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            // Filter rows scroll with the results so short screens / the keyboard never squeeze the grid to 0 height.
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                Column {
+                    if (tab == 1) {
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState())
+                                .padding(vertical = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            CategoryChip(
+                                label = strings.templatesFeatured,
+                                selected = discoverFeaturedOnly,
+                                testTag = "tier:featured",
+                            ) { discoverFeaturedOnly = true }
+                            CategoryChip(
+                                label = strings.templatesAll,
+                                selected = !discoverFeaturedOnly,
+                                testTag = "tier:all",
+                            ) { discoverFeaturedOnly = false }
+                        }
+                    }
+
+                    if (tab == 1 && categoryTabs.isNotEmpty()) {
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState())
+                                .padding(vertical = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            CategoryChip(
+                                label = strings.templatesAll,
+                                selected = selectedCategory == null,
+                                testTag = "category:all",
+                            ) { selectedCategory = null }
+                            categoryTabs.forEach { cat ->
+                                CategoryChip(
+                                    label = BuiltinTemplateCatalog.categoryLabel(cat, languageTag),
+                                    selected = selectedCategory == cat,
+                                    testTag = "category:$cat",
+                                ) { selectedCategory = cat }
+                            }
+                        }
+                    }
+
+                    if (tab == 1 && availableTags.isNotEmpty()) {
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState())
+                                .padding(vertical = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                strings.templateTags,
+                                color = VelumInkSecondary,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            availableTags.take(24).forEach { tag ->
+                                CategoryChip(
+                                    label = TemplateTagVocabulary.label(tag, languageTag),
+                                    selected = tag in selectedTags,
+                                    testTag = "tag:$tag",
+                                ) {
+                                    selectedTags = if (tag in selectedTags) selectedTags - tag else selectedTags + tag
+                                }
+                            }
+                        }
+                    }
+
+                    if (tab == 1 && availableLangs.isNotEmpty()) {
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState())
+                                .padding(vertical = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                strings.templateLangFilter,
+                                color = VelumInkSecondary,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            CategoryChip(
+                                label = strings.templatesAll,
+                                selected = selectedLang == null,
+                                testTag = "lang:all",
+                            ) { selectedLang = null }
+                            availableLangs.forEach { lang ->
+                                CategoryChip(
+                                    label = templateLangLabel(lang, languageTag),
+                                    selected = selectedLang == lang,
+                                    testTag = "lang:$lang",
+                                ) { selectedLang = lang }
+                            }
+                        }
+                    }
+
+                    if (tab == 1 && filter.hasFacetSelection) {
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState())
+                                .padding(vertical = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                strings.templatesActiveFilters,
+                                color = VelumInkSecondary,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            val removeFormat = strings.templatesRemoveFilterFormat
+                            selectedCategory?.let { cat ->
+                                val label = BuiltinTemplateCatalog.categoryLabel(cat, languageTag)
+                                ActiveFilterChip(label, removeFormat.replace("%s", label), "active:category") { selectedCategory = null }
+                            }
+                            selectedTags.sorted().forEach { tag ->
+                                val label = TemplateTagVocabulary.label(tag, languageTag)
+                                ActiveFilterChip(label, removeFormat.replace("%s", label), "active:tag:$tag") { selectedTags = selectedTags - tag }
+                            }
+                            selectedLang?.let { lang ->
+                                val label = templateLangLabel(lang, languageTag)
+                                ActiveFilterChip(label, removeFormat.replace("%s", label), "active:lang") { selectedLang = null }
+                            }
+                            CategoryChip(label = strings.templatesClearFilters, selected = false, testTag = "filters:clear") { clearFilters() }
+                        }
+                    }
+
+                }
+            }
             if (tab == 1 && discoverFeaturedOnly && ranking.isNotEmpty() && searchQuery.isBlank() &&
                 selectedCategory == null && selectedTags.isEmpty() && selectedLang == null
             ) {

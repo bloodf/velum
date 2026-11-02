@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasTestTag
@@ -38,8 +39,8 @@ import org.robolectric.annotation.Config
 
 /** #102: Discover tier, category/tag/language filters, search composition and clearing, on a tiny offline fixture. */
 @RunWith(AndroidJUnit4::class)
-// Tall viewport: four chip rows would otherwise leave the grid with no visible height.
-@Config(application = android.app.Application::class, sdk = [34], qualifiers = "w360dp-h1800dp-xxhdpi")
+// Short phone viewport: filter rows live inside the grid, so results must still be reachable.
+@Config(application = android.app.Application::class, sdk = [34], qualifiers = "w360dp-h640dp-xxhdpi")
 class DiscoverFiltersUiTest {
     @get:Rule val compose = createEmptyComposeRule()
 
@@ -105,6 +106,8 @@ class DiscoverFiltersUiTest {
             await("ZQ Gamma", present = false)
             assertTrue(shows("ZQ Alpha") && shows("ZQ Beta"))
             awaitTag("active:category")
+            // A result card is actually on screen on a short phone, not just in the tree.
+            compose.onAllNodesWithText("ZQ Beta")[0].assertIsDisplayed()
 
             // Tag filter composes with the category; removing it individually restores the row.
             tap("tag:agenda")

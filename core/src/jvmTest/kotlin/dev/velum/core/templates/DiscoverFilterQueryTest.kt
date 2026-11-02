@@ -15,8 +15,9 @@ import kotlin.test.assertTrue
 
 /** #102: composed Discover filters run in SQL; ids are unique (`d102-*`) and categories private (`zz102-*`). */
 class DiscoverFilterQueryTest {
-    private suspend fun repo(): VelumRepository {
-        val r = VelumRepository(createDatabase(DriverFactory()))
+    private suspend fun repo(dropFts: Boolean = false): VelumRepository {
+        val handle = createDatabase(DriverFactory())
+        val r = VelumRepository(handle)
         suspend fun add(
             id: String, cat: String, tags: List<String>, lang: String,
             featured: Boolean = true, builtin: Boolean = true, name: String = id, desc: String = "",
@@ -33,6 +34,8 @@ class DiscoverFilterQueryTest {
         add("d102-q", "zz102-1", emptyList(), "pt", name = "ÁGUA TÔNICA")
         add("d102-w", "zz102-3", emptyList(), "en", name = "Sale 50% off_now", desc = "C:\\temp\\path")
         add("d102-m", "zz102-1", listOf("agenda"), "en", builtin = false, featured = false, name = "Mine")
+        // Simulates a host without FTS: the probe fails and every search runs in substring mode.
+        if (dropFts) handle.driver.execute(null, "DROP TABLE template_fts", 0)
         return r
     }
 
@@ -134,6 +137,21 @@ class DiscoverFilterQueryTest {
         assertEquals(listOf("d102-q"), r.ids(all.copy(search = "água tônica")))
         // Partial word: FTS has no hit, so the substring fallback applies.
         assertTrue("d102-p" in r.ids(all.copy(search = "inera")))
+    }
+
+    @Test
+    fun substringFallbackIsAccentCaseTolerantAndTokenCapped() = runBlocking {
+        val r = repo(dropFts = true)
+        for (q in listOf("água", "ÁGUA", "Água")) {
+            assertEquals(setOf("d102-p", "d102-q"), r.ids(all.copy(search = q)).toSet(), q)
+        }
+        assertEquals(listOf("d102-q"), r.ids(all.copy(search = "água tônica")))
+        assertEquals(listOf("d102-q"), r.ids(all.copy(search = "ônic")))
+        assertEquals(listOf("d102-w"), r.ids(all.copy(search = "%")))
+        // 40 tokens must not exceed SQLite's bound-parameter limit; only the first 10 are used.
+        val many = "água " + (1..39).joinToString(" ") { "t$it" }
+        r.queryDiscoverTemplates(all.copy(search = many), 10)
+        assertEquals(0L, r.countDiscoverTemplates(all.copy(search = many)))
     }
 
     @Test

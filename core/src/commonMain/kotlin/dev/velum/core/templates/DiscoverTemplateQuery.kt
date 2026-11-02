@@ -34,6 +34,9 @@ enum class DiscoverSearchMode { Fts, Like }
 
 /** Builds parameterized SQL so tier, search, category, tags and language are all pushed down to SQLite. */
 object DiscoverTemplateQuery {
+    /** Stays far below SQLite's 999 bound-parameter limit (6 columns x 4 case variants per token). */
+    const val MAX_TOKENS = 10
+
     class Built(val sql: String, val args: List<String>)
 
     fun tierClause(tier: DiscoverTier): String = when (tier) {
@@ -67,7 +70,7 @@ object DiscoverTemplateQuery {
     ): Pair<String, List<String>> {
         val clauses = mutableListOf(tierClause(filter.tier))
         val args = mutableListOf<String>()
-        val tokens = filter.search.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }
+        val tokens = filter.search.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }.take(MAX_TOKENS)
         if (tokens.isNotEmpty()) {
             if (mode == DiscoverSearchMode.Fts && ftsMatch != null) {
                 clauses += "id IN (SELECT template_id FROM template_fts WHERE template_fts MATCH ?)"

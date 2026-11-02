@@ -228,7 +228,8 @@ class VelumRepository(
 
     /**
      * Same search semantics as before: FTS hits (ranked) when FTS yields any, else substring
-     * fallback. A SQL error in the FTS path retries once in substring mode instead of failing.
+     * fallback. A MATCH that SQLite rejects (or a missing FTS table) is detected by a probe query
+     * with a trivial mapper and falls back to substring mode; later query errors are not swallowed.
      */
     private fun <T> discoverQuery(filter: DiscoverFilter, run: (DiscoverSearchMode?, String?) -> T): T {
         val match = if (ftsAvailable && filter.search.isNotBlank()) FtsQuery.fromUserInput(filter.search) else null
@@ -244,11 +245,8 @@ class VelumRepository(
             false
         }
         if (!ftsHasHits) return run(DiscoverSearchMode.Like, null)
-        return try {
-            run(DiscoverSearchMode.Fts, match)
-        } catch (_: Exception) {
-            run(DiscoverSearchMode.Like, null)
-        }
+        // MATCH syntax was validated above, so errors from here on are real bugs and must surface.
+        return run(DiscoverSearchMode.Fts, match)
     }
 
     /** Single-row observe for the template detail screen (no full-table load). */
