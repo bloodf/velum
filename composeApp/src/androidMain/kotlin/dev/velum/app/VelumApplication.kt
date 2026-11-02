@@ -9,6 +9,7 @@ import dev.velum.ai.local.ModelStoreDir
 import dev.velum.ai.pipeline.AiRuntimeHolder
 import dev.velum.ai.pipeline.ThermalMonitor
 import dev.velum.ai.pipeline.createWorkManagerRecordingJobScheduler
+import dev.velum.ai.pipeline.sweepOrphanPcmSpill
 import dev.velum.app.di.AppContainer
 import dev.velum.app.platform.DownloadProgressNotifier
 import dev.velum.app.platform.MicRecordingService
@@ -66,6 +67,12 @@ class VelumApplication : Application() {
             try {
                 // filesDir / models path are disk reads — stay on Dispatchers.IO.
                 installRecordingFilesDir(filesDir.absolutePath)
+                // Before AiRuntimeHolder.install: WorkManager can re-run a killed job as soon as the
+                // holder is set, and it would race this sweep for its own tmp/pcm-<id> (#197).
+                runCatching {
+                    val spills = sweepOrphanPcmSpill()
+                    if (spills > 0) Log.i(TAG, "Removed $spills orphaned PCM spill dir(s)")
+                }.onFailure { t -> Log.w(TAG, "PCM spill sweep failed (${t::class.simpleName})") }
                 val modelsDir = File(filesDir, "models")
                 val built = AppContainer(
                     secureStore = AndroidSecureStore(appContext),
