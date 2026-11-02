@@ -2,6 +2,7 @@ package dev.velum.recorder.plaud
 
 import dev.velum.protocol.DeviceAudioFormat
 import dev.velum.protocol.DeviceCapabilityRegistry
+import dev.velum.protocol.PlaudAdvertisement
 import dev.velum.protocol.PlaudUuids
 import dev.velum.recorder.RecorderAudioCodec
 import dev.velum.recorder.RecorderCapabilities
@@ -29,7 +30,8 @@ object PlaudRecorderDriver : RecorderDriver {
         if (services.any { it.contains("1910") || it == PlaudUuids.SERVICE.lowercase().replace("-", "") }) {
             return true
         }
-        if (manufacturerId == PlaudUuids.MANUFACTURER_ID) return true
+        // Manufacturer-data path uses the one shared parser (company id + structure + offsets).
+        if (PlaudAdvertisement.parse(manufacturerId, manufacturerPayload ?: ByteArray(0)) != null) return true
         val n = name?.lowercase().orEmpty()
         return n.contains("plaud") || n.contains("notepin") || n.contains("note pro") ||
             n.startsWith("note ") || Regex("""^note\d""", RegexOption.IGNORE_CASE).containsMatchIn(n)
@@ -39,11 +41,10 @@ object PlaudRecorderDriver : RecorderDriver {
         name: String?,
         manufacturerPayload: ByteArray?,
     ): RecorderCapabilities {
-        val productCode = manufacturerPayload?.let { payload ->
-            if (payload.size >= 2) {
-                (payload[0].toInt() and 0xff) or ((payload[1].toInt() and 0xff) shl 8)
-            } else null
-        }
+        // Payload is the manufacturer data after the company id; same offsets as PlaudAdvertisement.
+        val productCode = manufacturerPayload
+            ?.let { PlaudAdvertisement.parseManufacturerData(it) }
+            ?.modelCode
         val caps = DeviceCapabilityRegistry.detect(
             productCode = productCode,
             advertisedName = name,
