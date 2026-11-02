@@ -9,16 +9,23 @@ import java.nio.file.StandardOpenOption
 
 private var filesDirPath: String? = null
 
+// The recordings dir is created once per install: after that the path is returned without touching
+// the disk, so composition (e.g. the live recording screen) never does a main-thread File.exists.
+@Volatile
+private var recordingsDir: String? = null
+
 fun installRecordingFilesDir(path: String) {
     filesDirPath = path
+    recordingsDir = null
 }
 
 actual fun recordingsDirectoryPath(): String {
+    recordingsDir?.let { return it }
     val base = filesDirPath
         ?: throw IllegalStateException("Recording files dir not installed")
     val dir = File(base, "recordings")
     if (!dir.exists()) dir.mkdirs()
-    return dir.absolutePath
+    return dir.absolutePath.also { recordingsDir = it }
 }
 
 /**
