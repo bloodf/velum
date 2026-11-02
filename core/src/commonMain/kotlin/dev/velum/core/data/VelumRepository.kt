@@ -2,9 +2,7 @@ package dev.velum.core.data
 
 import app.cash.sqldelight.coroutines.asFlow
 import app.cash.sqldelight.coroutines.mapToList
-import app.cash.sqldelight.coroutines.mapToOne
 import app.cash.sqldelight.coroutines.mapToOneOrNull
-import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
 import dev.velum.core.autoflow.AutoFlowMatcher
 import dev.velum.core.autoflow.AutoFlowResolve
@@ -16,10 +14,6 @@ import dev.velum.core.db.Summary_version
 import dev.velum.core.db.Template
 import dev.velum.core.db.VelumDatabase
 import dev.velum.core.search.FtsIndex
-import dev.velum.core.search.FtsQuery
-import dev.velum.core.templates.DiscoverFacets
-import dev.velum.core.templates.DiscoverFilter
-import dev.velum.core.templates.DiscoverTemplateQuery
 import dev.velum.core.templates.PlaudFullTemplateAsset
 import dev.velum.core.templates.PlaudTemplateCatalog
 import dev.velum.core.templates.TemplateTagVocabulary
@@ -27,6 +21,13 @@ import kotlin.random.Random
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
+import app.cash.sqldelight.db.QueryResult
+import dev.velum.core.search.FtsQuery
+import dev.velum.core.templates.DiscoverFacets
+import dev.velum.core.templates.DiscoverFilter
+import dev.velum.core.templates.DiscoverSearchMode
+import dev.velum.core.templates.DiscoverTemplateQuery
+import kotlinx.coroutines.flow.flow
 
 class VelumRepository(
     private val db: VelumDatabase,
@@ -144,6 +145,117 @@ class VelumRepository(
         withContext(Dispatchers.Default) {
             if (!ftsAvailable) emptyList() else FtsIndex.searchTemplateIds(driver, matchQuery)
         }
+
+    // ---- Discover filters (#102): SQL pushdown, separate from the template CRUD ----
+
+    suspend fun queryDiscoverTemplates(
+        filter: DiscoverFilter,
+        limit: Int,
+        offset: Int = 0,
+    ): List<Template> = withContext(Dispatchers.Default) {
+        discoverQuery(filter) { mode, match ->
+            val built = DiscoverTemplateQuery.page(filter, mode, match)
+            driver.executeQuery(
+                identifier = null,
+                sql = built.sql,
+                mapper = { c ->
+                    val rows = mutableListOf<Template>()
+                    while (c.next().value) {
+                        rows += Template(
+                            id = c.getString(0)!!,
+                            name = c.getString(1)!!,
+                            category = c.getString(2)!!,
+                            description = c.getString(3)!!,
+                            author = c.getString(4)!!,
+                            system_prompt = c.getString(5)!!,
+                            uses = c.getLong(6)!!,
+                            builtin = c.getLong(7)!!,
+                            created_at = c.getLong(8)!!,
+                            featured = c.getLong(9)!!,
+                            tags = c.getString(10)!!,
+                            lang = c.getString(11)!!,
+                            preferred_model = c.getString(12),
+                            preferred_endpoint_profile_id = c.getString(13),
+                        )
+                    }
+                    QueryResult.Value(rows)
+                },
+                parameters = built.args.size + 2,
+            ) {
+                built.args.forEachIndexed { i, a -> bindString(i, a) }
+                bindLong(built.args.size, limit.toLong())
+                bindLong(built.args.size + 1, offset.toLong())
+            }.value
+        }
+    }
+
+    suspend fun countDiscoverTemplates(filter: DiscoverFilter): Long = withContext(Dispatchers.Default) {
+        discoverQuery(filter) { mode, match ->
+            val built = DiscoverTemplateQuery.count(filter, mode, match)
+            driver.executeQuery(
+                identifier = null,
+                sql = built.sql,
+                mapper = { c ->
+                    c.next()
+                    QueryResult.Value(c.getLong(0) ?: 0L)
+                },
+                parameters = built.args.size,
+            ) { built.args.forEachIndexed { i, a -> bindString(i, a) } }.value
+        }
+    }
+
+    suspend fun discoverFacets(filter: DiscoverFilter): DiscoverFacets = withContext(Dispatchers.Default) {
+        fun column(built: DiscoverTemplateQuery.Built): List<String> = driver.executeQuery(
+            identifier = null,
+            sql = built.sql,
+            mapper = { c ->
+                val out = mutableListOf<String>()
+                while (c.next().value) c.getString(0)?.let { out += it }
+                QueryResult.Value(out)
+            },
+            parameters = built.args.size,
+        ) { built.args.forEachIndexed { i, a -> bindString(i, a) } }.value
+        discoverQuery(filter) { mode, match ->
+            DiscoverFacets(
+                categories = column(DiscoverTemplateQuery.categories(filter, mode, match)),
+                tags = column(DiscoverTemplateQuery.tagColumns(filter, mode, match))
+                    .flatMap { TemplateTagVocabulary.decode(it) }.distinct().sorted(),
+                langs = column(DiscoverTemplateQuery.langs(filter, mode, match))
+                    .filter { it.isNotBlank() && it != "und" }.distinct().sorted(),
+            )
+        }
+    }
+
+    /**
+     * Same search semantics as before: FTS hits (ranked) when FTS yields any, else substring
+     * fallback. A SQL error in the FTS path retries once in substring mode instead of failing.
+     */
+    private fun <T> discoverQuery(filter: DiscoverFilter, run: (DiscoverSearchMode?, String?) -> T): T {
+        val match = if (ftsAvailable && filter.search.isNotBlank()) FtsQuery.fromUserInput(filter.search) else null
+        if (match == null) return run(DiscoverSearchMode.Like, null)
+        val ftsHasHits = try {
+            driver.executeQuery(
+                identifier = null,
+                sql = "SELECT COUNT(*) FROM template_fts WHERE template_fts MATCH ?",
+                mapper = { c -> c.next(); QueryResult.Value((c.getLong(0) ?: 0L) > 0L) },
+                parameters = 1,
+            ) { bindString(0, match) }.value
+        } catch (_: Exception) {
+            false
+        }
+        if (!ftsHasHits) return run(DiscoverSearchMode.Like, null)
+        return try {
+            run(DiscoverSearchMode.Fts, match)
+        } catch (_: Exception) {
+            run(DiscoverSearchMode.Like, null)
+        }
+    }
+
+    /** Emits once per template table notification (edits, use counts, imports), not per row count. */
+    fun observeTemplateChanges(): Flow<Long> = flow {
+        var n = 0L
+        q.countTemplates().asFlow().collect { emit(++n) }
+    }
 
     suspend fun setAutoflowEnabled(id: String, enabled: Boolean) = withContext(Dispatchers.Default) {
         q.updateAutoflowEnabled(if (enabled) 1 else 0, id)
@@ -823,88 +935,6 @@ class VelumRepository(
     companion object {
         const val META_FIRST_RUN_DONE = "first_run_done"
     }
-
-    // ---- Discover filters (#102): SQL pushdown, kept apart from the template CRUD above ----
-
-    suspend fun queryDiscoverTemplates(
-        filter: DiscoverFilter,
-        limit: Int,
-        offset: Int = 0,
-    ): List<Template> = withContext(Dispatchers.Default) {
-        val built = DiscoverTemplateQuery.page(filter, discoverFtsMatch(filter))
-        driver.executeQuery(
-            identifier = null,
-            sql = built.sql,
-            mapper = { c ->
-                val rows = mutableListOf<Template>()
-                while (c.next().value) {
-                    rows += Template(
-                        id = c.getString(0)!!,
-                        name = c.getString(1)!!,
-                        category = c.getString(2)!!,
-                        description = c.getString(3)!!,
-                        author = c.getString(4)!!,
-                        system_prompt = c.getString(5)!!,
-                        uses = c.getLong(6)!!,
-                        builtin = c.getLong(7)!!,
-                        created_at = c.getLong(8)!!,
-                        featured = c.getLong(9)!!,
-                        tags = c.getString(10)!!,
-                        lang = c.getString(11)!!,
-                        preferred_model = c.getString(12),
-                        preferred_endpoint_profile_id = c.getString(13),
-                    )
-                }
-                QueryResult.Value(rows)
-            },
-            parameters = built.args.size + 2,
-        ) {
-            built.args.forEachIndexed { i, a -> bindString(i, a) }
-            bindLong(built.args.size, limit.toLong())
-            bindLong(built.args.size + 1, offset.toLong())
-        }.value
-    }
-
-    suspend fun countDiscoverTemplates(filter: DiscoverFilter): Long = withContext(Dispatchers.Default) {
-        val built = DiscoverTemplateQuery.count(filter, discoverFtsMatch(filter))
-        driver.executeQuery(
-            identifier = null,
-            sql = built.sql,
-            mapper = { c ->
-                c.next()
-                QueryResult.Value(c.getLong(0) ?: 0L)
-            },
-            parameters = built.args.size,
-        ) { built.args.forEachIndexed { i, a -> bindString(i, a) } }.value
-    }
-
-    suspend fun discoverFacets(filter: DiscoverFilter): DiscoverFacets = withContext(Dispatchers.Default) {
-        val match = discoverFtsMatch(filter)
-        fun column(built: DiscoverTemplateQuery.Built): List<String> = driver.executeQuery(
-            identifier = null,
-            sql = built.sql,
-            mapper = { c ->
-                val out = mutableListOf<String>()
-                while (c.next().value) c.getString(0)?.let { out += it }
-                QueryResult.Value(out)
-            },
-            parameters = built.args.size,
-        ) { built.args.forEachIndexed { i, a -> bindString(i, a) } }.value
-        DiscoverFacets(
-            categories = column(DiscoverTemplateQuery.categories(filter, match)),
-            tags = column(DiscoverTemplateQuery.tagColumns(filter, match))
-                .flatMap { TemplateTagVocabulary.decode(it) }.distinct().sorted(),
-            langs = column(DiscoverTemplateQuery.langs(filter, match))
-                .filter { it.isNotBlank() && it != "und" }.distinct().sorted(),
-        )
-    }
-
-    private fun discoverFtsMatch(filter: DiscoverFilter): String? =
-        if (ftsAvailable) FtsQuery.fromUserInput(filter.search) else null
-
-    /** Emits on every template table change; collectors re-run [queryDiscoverTemplates]. */
-    fun observeTemplateChanges(): Flow<Long> =
-        q.countTemplates().asFlow().mapToOne(Dispatchers.Default)
 }
 
 

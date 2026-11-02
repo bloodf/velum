@@ -3,7 +3,11 @@ package dev.velum.core.templates
 import dev.velum.core.data.DriverFactory
 import dev.velum.core.data.VelumRepository
 import dev.velum.core.data.createDatabase
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.take
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -24,6 +28,9 @@ class DiscoverFilterQueryTest {
         add("d102-c", "zz102-2", listOf("agenda", "decisions"), "en", featured = false, name = "Gamma")
         add("d102-d", "zz102-2", emptyList(), "und", name = "Delta")
         add("d102-e", "zz102-2", listOf("risks"), "EN ", name = "Epsilon")
+        add("d102-p", "zz102-1", emptyList(), "pt", name = "Água Mineral")
+        add("d102-q", "zz102-1", emptyList(), "pt", name = "ÁGUA TÔNICA")
+        add("d102-w", "zz102-3", emptyList(), "en", name = "Sale 50% off_now", desc = "C:\\temp\\path")
         add("d102-m", "zz102-1", listOf("agenda"), "en", builtin = false, featured = false, name = "Mine")
         return r
     }
@@ -36,17 +43,17 @@ class DiscoverFilterQueryTest {
     @Test
     fun tiersSeparateFeaturedAllAndMine() = runBlocking {
         val r = repo()
-        assertEquals(setOf("d102-a", "d102-b", "d102-d", "d102-e"), r.ids(DiscoverFilter(DiscoverTier.Featured)).toSet())
-        assertEquals(setOf("d102-a", "d102-b", "d102-c", "d102-d", "d102-e"), r.ids(all).toSet())
+        assertEquals(setOf("d102-a", "d102-b", "d102-d", "d102-e", "d102-p", "d102-q", "d102-w"), r.ids(DiscoverFilter(DiscoverTier.Featured)).toSet())
+        assertEquals(setOf("d102-a", "d102-b", "d102-c", "d102-d", "d102-e", "d102-p", "d102-q", "d102-w"), r.ids(all).toSet())
         assertEquals(listOf("d102-m"), r.ids(DiscoverFilter(DiscoverTier.Mine)))
     }
 
     @Test
     fun eachFilterAlone() = runBlocking {
         val r = repo()
-        assertEquals(setOf("d102-a", "d102-b"), r.ids(all.copy(category = "zz102-1")).toSet())
+        assertEquals(setOf("d102-a", "d102-b", "d102-p", "d102-q"), r.ids(all.copy(category = "zz102-1")).toSet())
         assertEquals(setOf("d102-a", "d102-b", "d102-c"), r.ids(all.copy(tags = setOf("agenda"))).toSet())
-        assertEquals(setOf("d102-a", "d102-c", "d102-e"), r.ids(all.copy(lang = "en")).toSet())
+        assertEquals(setOf("d102-a", "d102-c", "d102-e", "d102-w"), r.ids(all.copy(lang = "en")).toSet())
         assertEquals(setOf("d102-a"), r.ids(all.copy(search = "roadmap")).toSet())
     }
 
@@ -109,9 +116,49 @@ class DiscoverFilterQueryTest {
     }
 
     @Test
-    fun likeWildcardsInSearchAreLiteral() = runBlocking {
+    fun likeWildcardsAndBackslashAreLiteral() = runBlocking {
         val r = repo()
-        assertEquals(emptyList(), r.ids(all.copy(search = "%")))
-        assertEquals(emptyList(), r.ids(all.copy(search = "_")))
+        assertEquals(listOf("d102-w"), r.ids(all.copy(search = "%")))
+        assertEquals(listOf("d102-w"), r.ids(all.copy(search = "_")))
+        assertEquals(listOf("d102-w"), r.ids(all.copy(search = "\\")))
+        assertEquals(listOf("d102-w"), r.ids(all.copy(search = "50% off_now")))
+    }
+
+    @Test
+    fun searchIsCaseInsensitiveForAccentsAndAndsTokens() = runBlocking {
+        val r = repo()
+        for (q in listOf("água", "ÁGUA", "Água")) {
+            assertEquals(setOf("d102-p", "d102-q"), r.ids(all.copy(search = q)).toSet(), q)
+        }
+        assertEquals(listOf("d102-q"), r.ids(all.copy(search = "água tônica")))
+        // Partial word: FTS has no hit, so the substring fallback applies.
+        assertTrue("d102-p" in r.ids(all.copy(search = "inera")))
+    }
+
+    @Test
+    fun discoverRowsMatchSelectTemplateById() = runBlocking {
+        val r = repo()
+        val rows = r.queryDiscoverTemplates(all.copy(category = "zz102-1"), limit = 1_000_000)
+        assertTrue(rows.size >= 4)
+        for (row in rows) assertEquals(r.getTemplate(row.id), row)
+    }
+
+    @Test
+    fun changeFlowEmitsOnEditEvenWhenRowCountIsUnchanged() = runBlocking {
+        val r = repo()
+        var seen = 0
+        val emissions = withTimeout(15_000) {
+            r.observeTemplateChanges().onEach {
+                if (++seen == 1) {
+                    r.upsertTemplate(
+                        id = "d102-a", name = "Alpha EDITED", category = "zz102-1", description = "",
+                        systemPrompt = "p", builtin = true, featured = true, tags = listOf("agenda"), lang = "en",
+                    )
+                }
+            }.take(2).toList()
+        }
+        assertEquals(2, emissions.size)
+        assertTrue(emissions[1] > emissions[0])
+        assertEquals("Alpha EDITED", r.queryDiscoverTemplates(all.copy(category = "zz102-1"), 1_000_000).first { it.id == "d102-a" }.name)
     }
 }

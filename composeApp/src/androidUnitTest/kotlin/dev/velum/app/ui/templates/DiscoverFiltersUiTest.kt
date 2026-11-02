@@ -3,21 +3,29 @@ package dev.velum.app.ui.templates
 import android.content.Context
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.printToString
 import androidx.compose.ui.test.onAllNodesWithText
-import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import dev.velum.ai.local.ModelStoreDir
 import dev.velum.app.di.AppContainer
-import androidx.compose.runtime.CompositionLocalProvider
 import dev.velum.app.i18n.LocalStrings
 import dev.velum.app.i18n.PtBr
 import dev.velum.app.ui.theme.VelumTheme
 import dev.velum.core.data.DriverFactory
+import dev.velum.core.data.SeedData
 import dev.velum.core.security.InMemorySecureStore
 import java.nio.file.Files
 import kotlin.test.assertTrue
@@ -27,26 +35,46 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.annotation.Config
-import dev.velum.ai.local.ModelStoreDir
 
-/** #102: Discover category/tag/language filters, search composition and clearing, on bundled offline data. */
+/** #102: Discover tier, category/tag/language filters, search composition and clearing, on a tiny offline fixture. */
 @RunWith(AndroidJUnit4::class)
-@Config(application = android.app.Application::class, sdk = [34])
+// Tall viewport: four chip rows would otherwise leave the grid with no visible height.
+@Config(application = android.app.Application::class, sdk = [34], qualifiers = "w360dp-h1800dp-xxhdpi")
 class DiscoverFiltersUiTest {
     @get:Rule val compose = createEmptyComposeRule()
 
     private fun shows(text: String) = compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()
+    private fun hasTag(tag: String) = compose.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()
 
-    private fun await(text: String, present: Boolean = true) =
-        compose.waitUntil(10_000) { shows(text) == present }
+    private fun await(text: String, present: Boolean = true) = waiting("text '$text' present=$present") {
+        shows(text) == present
+    }
+
+    private fun awaitTag(tag: String, present: Boolean = true) = waiting("tag '$tag' present=$present") {
+        hasTag(tag) == present
+    }
+
+    /** waitUntil that fails with the semantics tree so a timeout is diagnosable. */
+    private fun waiting(what: String, condition: () -> Boolean) {
+        try {
+            compose.waitUntil(10_000, condition)
+        } catch (e: androidx.compose.ui.test.ComposeTimeoutException) {
+            val tree = compose.onRoot().printToString(maxDepth = 12).take(6000)
+            throw AssertionError("Timed out waiting for $what\n$tree", e)
+        }
+    }
+
+    private fun tap(tag: String) = compose.onNodeWithTag(tag).performClick()
 
     @Test
-    fun filters_compose_with_search_and_clear() {
+    fun tier_filters_search_and_clear_compose() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         context.deleteDatabase("velum.db")
         val root = ModelStoreDir(Files.createTempDirectory("velum-discover-ui-test").toString())
         val container = AppContainer(InMemorySecureStore(), DriverFactory(context), modelStoreRoot = root)
         runBlocking {
+            // Skip the ~29 MB full-catalog import: the All tier is exercised with this tiny fixture.
+            container.repository.setMeta(SeedData.META_FULL_TEMPLATES_IMPORTED, "1")
             suspend fun add(id: String, name: String, cat: String, tags: List<String>, lang: String, featured: Boolean = true) =
                 container.repository.upsertTemplate(
                     id = id, name = name, category = cat, description = "synthetic", systemPrompt = "p",
@@ -64,37 +92,54 @@ class DiscoverFiltersUiTest {
                     VelumTheme(darkTheme = false) { TemplatesScreen(container, onBack = {}, onOpenTemplate = {}) }
                 }
             }
-            // Featured tier, no filters: featured rows only.
+            // Featured tier: featured rows only.
             await("ZQ Alpha"); await("ZQ Beta"); await("ZQ Gamma")
             assertTrue(!shows("ZQ Delta"))
 
-            // Category filter.
-            compose.onAllNodesWithText("Reunião").onFirst().performClick()
+            // Tier switching: All adds the non-featured row, Featured removes it again.
+            tap("tier:all"); await("ZQ Delta")
+            tap("tier:featured"); await("ZQ Delta", present = false)
+
+            // Category filter, with the selected state exposed.
+            tap("category:meeting")
             await("ZQ Gamma", present = false)
             assertTrue(shows("ZQ Alpha") && shows("ZQ Beta"))
+            awaitTag("active:category")
 
-            // Tag filter composes with the category.
-            compose.onAllNodesWithText("Pauta").onFirst().performClick()
+            // Tag filter composes with the category; removing it individually restores the row.
+            tap("tag:agenda")
             await("ZQ Beta", present = false)
             assertTrue(shows("ZQ Alpha"))
-
-            // Individual clear via the active-filter chip restores the category-only result.
-            compose.onNodeWithContentDescription(PtBr.templatesRemoveFilterFormat.replace("%s", "Pauta")).performClick()
+            tap("active:tag:agenda")
             await("ZQ Beta")
 
+            // Language filter composes; a combination with no match shows the clearable empty state.
+            tap("tag:agenda")
+            await("ZQ Beta", present = false)
+            tap("lang:en"); await("ZQ Alpha")
+            tap("lang:pt")
+            awaitTag("templates:empty")
+            assertTrue(!shows("ZQ Alpha"))
+            compose.onNode(
+                hasText(PtBr.templatesClearFilters) and hasAnyAncestor(hasTestTag("templates:empty")),
+            ).performClick()
+            awaitTag("active:category", present = false)
+            await("ZQ Alpha"); await("ZQ Beta"); await("ZQ Gamma")
+
             // Search composes with the category filter.
+            tap("category:meeting")
             compose.onNodeWithContentDescription(PtBr.search).performClick()
             compose.onNode(hasSetTextAction()).performTextInput("ZQ Beta")
             await("ZQ Alpha", present = false)
             assertTrue(shows("ZQ Beta"))
 
-            // Clear all restores filters; search still applies, so the no-match state offers a way out.
-            compose.onNode(hasSetTextAction()).performTextInput(" nothing-matches-this")
-            await("ZQ Beta", present = false)
-            compose.onAllNodesWithText(PtBr.templatesClearFilters).onFirst().performClick()
-            assertTrue(!shows(PtBr.templatesActiveFilters))
+            // Clear-all keeps the search but drops every facet filter.
+            tap("filters:clear")
+            awaitTag("active:category", present = false)
+            assertTrue(shows("ZQ Beta") && !shows("ZQ Gamma"))
         } finally {
             activity.pause().stop().destroy()
+            container.databaseHandle.driver.close()
             root.deleteRecursively()
         }
     }

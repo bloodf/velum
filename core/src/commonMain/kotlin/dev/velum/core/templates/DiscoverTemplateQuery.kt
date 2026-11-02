@@ -29,6 +29,9 @@ data class DiscoverFacets(
     val langs: List<String>,
 )
 
+/** How a non-blank search is evaluated: FTS hits (ranked), or substring fallback when FTS is unavailable/empty/failed. */
+enum class DiscoverSearchMode { Fts, Like }
+
 /** Builds parameterized SQL so tier, search, category, tags and language are all pushed down to SQLite. */
 object DiscoverTemplateQuery {
     class Built(val sql: String, val args: List<String>)
@@ -42,8 +45,21 @@ object DiscoverTemplateQuery {
     private fun like(raw: String): String =
         "%" + raw.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
 
+    /**
+     * SQLite LIKE/lower() fold ASCII case only, so for each token also try its lower, upper and
+     * capitalized forms (covers "água", "ÁGUA", "Água"). ponytail: mixed-case non-ASCII words
+     * stored in odd casing can still miss; upgrade path is a normalized shadow column.
+     */
+    internal fun tokenVariants(token: String): List<String> {
+        val lower = token.lowercase()
+        return listOf(token, lower, token.uppercase(), lower.replaceFirstChar { it.uppercase() }).distinct()
+    }
+
+    private val searchColumns = listOf("name", "description", "category", "author", "system_prompt", "tags")
+
     private fun where(
         filter: DiscoverFilter,
+        mode: DiscoverSearchMode?,
         ftsMatch: String?,
         includeCategory: Boolean,
         includeTags: Boolean,
@@ -51,18 +67,24 @@ object DiscoverTemplateQuery {
     ): Pair<String, List<String>> {
         val clauses = mutableListOf(tierClause(filter.tier))
         val args = mutableListOf<String>()
-        val q = filter.search.trim()
-        if (q.isNotEmpty()) {
-            val parts = mutableListOf<String>()
-            if (ftsMatch != null) {
-                parts += "id IN (SELECT template_id FROM template_fts WHERE template_fts MATCH ?)"
+        val tokens = filter.search.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }
+        if (tokens.isNotEmpty()) {
+            if (mode == DiscoverSearchMode.Fts && ftsMatch != null) {
+                clauses += "id IN (SELECT template_id FROM template_fts WHERE template_fts MATCH ?)"
                 args += ftsMatch
+            } else {
+                // AND across tokens, OR across columns and case variants.
+                for (token in tokens) {
+                    val variants = tokenVariants(token)
+                    val parts = searchColumns.flatMap { col ->
+                        variants.map { v ->
+                            args += like(v)
+                            "$col LIKE ? ESCAPE '\\'"
+                        }
+                    }
+                    clauses += parts.joinToString(" OR ", "(", ")")
+                }
             }
-            for (col in listOf("name", "description", "category", "author", "system_prompt", "tags")) {
-                parts += "$col LIKE ? ESCAPE '\\'"
-                args += like(q)
-            }
-            clauses += parts.joinToString(" OR ", "(", ")")
         }
         val cat = filter.category?.trim()?.takeIf { it.isNotEmpty() }
         if (includeCategory && cat != null) {
@@ -83,35 +105,51 @@ object DiscoverTemplateQuery {
         return clauses.joinToString(" AND ") to args
     }
 
-    /** Page of templates, most used first; ties broken by name then id so pages never overlap. */
-    fun page(filter: DiscoverFilter, ftsMatch: String?): Built {
-        val (w, args) = where(filter, ftsMatch, true, true, true)
-        return Built(
-            "SELECT id, name, category, description, author, system_prompt, uses, builtin, created_at, " +
-                "featured, tags, lang, preferred_model, preferred_endpoint_profile_id FROM template " +
-                "WHERE $w ORDER BY uses DESC, name ASC, id ASC LIMIT ? OFFSET ?",
-            args,
-        )
+    /**
+     * Page of templates, most used first; in Fts mode ties follow FTS relevance, then name and id
+     * so pages never overlap.
+     */
+    fun page(filter: DiscoverFilter, mode: DiscoverSearchMode?, ftsMatch: String?): Built {
+        val (w, whereArgs) = where(filter, mode, ftsMatch, true, true, true)
+        val ranked = mode == DiscoverSearchMode.Fts && ftsMatch != null && filter.search.isNotBlank()
+        val cols = "template.id, template.name, template.category, template.description, template.author, " +
+            "template.system_prompt, template.uses, template.builtin, template.created_at, " +
+            "template.featured, template.tags, template.lang, template.preferred_model, " +
+            "template.preferred_endpoint_profile_id"
+        return if (ranked) {
+            Built(
+                "SELECT $cols FROM template LEFT JOIN (SELECT template_id, rank AS r FROM template_fts " +
+                    "WHERE template_fts MATCH ?) f ON f.template_id = template.id " +
+                    "WHERE $w ORDER BY template.uses DESC, f.r ASC, template.name ASC, template.id ASC LIMIT ? OFFSET ?",
+                listOf(ftsMatch!!) + whereArgs,
+            )
+        } else {
+            Built(
+                "SELECT $cols FROM template WHERE $w " +
+                    "ORDER BY template.uses DESC, template.name ASC, template.id ASC LIMIT ? OFFSET ?",
+                whereArgs,
+            )
+        }
     }
 
-    fun count(filter: DiscoverFilter, ftsMatch: String?): Built {
-        val (w, args) = where(filter, ftsMatch, true, true, true)
+    fun count(filter: DiscoverFilter, mode: DiscoverSearchMode?, ftsMatch: String?): Built {
+        val (w, args) = where(filter, mode, ftsMatch, true, true, true)
         return Built("SELECT COUNT(*) FROM template WHERE $w", args)
     }
 
-    fun categories(filter: DiscoverFilter, ftsMatch: String?): Built {
-        val (w, args) = where(filter, ftsMatch, false, false, false)
+    fun categories(filter: DiscoverFilter, mode: DiscoverSearchMode?, ftsMatch: String?): Built {
+        val (w, args) = where(filter, mode, ftsMatch, false, false, false)
         return Built("SELECT DISTINCT category FROM template WHERE $w", args)
     }
 
     /** Distinct raw `tags` column values within the category scope (decoded by the caller). */
-    fun tagColumns(filter: DiscoverFilter, ftsMatch: String?): Built {
-        val (w, args) = where(filter, ftsMatch, true, false, false)
+    fun tagColumns(filter: DiscoverFilter, mode: DiscoverSearchMode?, ftsMatch: String?): Built {
+        val (w, args) = where(filter, mode, ftsMatch, true, false, false)
         return Built("SELECT DISTINCT tags FROM template WHERE $w AND tags <> ''", args)
     }
 
-    fun langs(filter: DiscoverFilter, ftsMatch: String?): Built {
-        val (w, args) = where(filter, ftsMatch, true, false, false)
+    fun langs(filter: DiscoverFilter, mode: DiscoverSearchMode?, ftsMatch: String?): Built {
+        val (w, args) = where(filter, mode, ftsMatch, true, false, false)
         return Built("SELECT DISTINCT lower(trim(lang)) FROM template WHERE $w", args)
     }
 }

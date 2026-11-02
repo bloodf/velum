@@ -61,6 +61,7 @@ import dev.velum.app.ui.components.BlackButton
 import dev.velum.app.ui.components.DisplayTitle
 import dev.velum.app.ui.components.EmptyState
 import dev.velum.app.ui.components.SearchSheet
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
@@ -81,6 +82,7 @@ import dev.velum.core.templates.DiscoverFilter
 import dev.velum.core.templates.DiscoverTier
 import dev.velum.core.templates.TemplateJsonImporter
 import dev.velum.core.templates.TemplateTagVocabulary
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlin.random.Random
 
@@ -149,9 +151,13 @@ fun TemplatesScreen(
     // Facet values come from catalog metadata for the current tier + search (+ category for tags/langs).
     var facets by remember { mutableStateOf(DiscoverFacets(emptyList(), emptyList(), emptyList())) }
     LaunchedEffect(tier, searchQuery, selectedCategory, templateTick) {
-        facets = runCatching {
+        facets = try {
             container.repository.discoverFacets(DiscoverFilter(tier, searchQuery, selectedCategory))
-        }.getOrDefault(facets)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            DiscoverFacets(emptyList(), emptyList(), emptyList())
+        }
     }
     val categoryTabs = remember(facets) {
         BuiltinTemplateCatalog.CategoryOrder.filter { it in facets.categories } +
@@ -184,18 +190,33 @@ fun TemplatesScreen(
     var pages by remember(filter) { mutableStateOf(1) }
     var shown by remember { mutableStateOf<List<Template>>(emptyList()) }
     var totalMatches by remember { mutableStateOf(0L) }
+    var loadFailed by remember { mutableStateOf(false) }
     LaunchedEffect(filter, pages, templateTick) {
-        runCatching {
-            shown = container.repository.queryDiscoverTemplates(filter, limit = PAGE_SIZE * pages)
-            totalMatches = container.repository.countDiscoverTemplates(filter)
+        try {
+            val rows = container.repository.queryDiscoverTemplates(filter, limit = PAGE_SIZE * pages)
+            val total = container.repository.countDiscoverTemplates(filter)
+            shown = rows
+            totalMatches = total
+            loadFailed = false
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            // Never keep the previous filter's rows on screen after a failed load.
+            shown = emptyList()
+            totalMatches = 0
+            loadFailed = true
         }
     }
     // Weekly ranking uses Featured builtins only.
     var ranking by remember { mutableStateOf<List<Template>>(emptyList()) }
     LaunchedEffect(templateTick) {
-        ranking = runCatching {
+        ranking = try {
             container.repository.queryDiscoverTemplates(DiscoverFilter(DiscoverTier.Featured), limit = 5)
-        }.getOrDefault(emptyList())
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            emptyList()
+        }
     }
     fun clearFilters() {
         selectedCategory = null
@@ -250,6 +271,7 @@ fun TemplatesScreen(
         }
         val statusLine = when {
             fullImportRunning -> strings.templatesImportingFull
+            loadFailed -> strings.ux.genericError
             else -> importStatus
         }
         statusLine?.let { status ->
@@ -278,10 +300,12 @@ fun TemplatesScreen(
                 CategoryChip(
                     label = strings.templatesFeatured,
                     selected = discoverFeaturedOnly,
+                    testTag = "tier:featured",
                 ) { discoverFeaturedOnly = true }
                 CategoryChip(
                     label = strings.templatesAll,
                     selected = !discoverFeaturedOnly,
+                    testTag = "tier:all",
                 ) { discoverFeaturedOnly = false }
             }
         }
@@ -297,11 +321,13 @@ fun TemplatesScreen(
                 CategoryChip(
                     label = strings.templatesAll,
                     selected = selectedCategory == null,
+                    testTag = "category:all",
                 ) { selectedCategory = null }
                 categoryTabs.forEach { cat ->
                     CategoryChip(
                         label = BuiltinTemplateCatalog.categoryLabel(cat, languageTag),
                         selected = selectedCategory == cat,
+                        testTag = "category:$cat",
                     ) { selectedCategory = cat }
                 }
             }
@@ -326,6 +352,7 @@ fun TemplatesScreen(
                     CategoryChip(
                         label = TemplateTagVocabulary.label(tag, languageTag),
                         selected = tag in selectedTags,
+                        testTag = "tag:$tag",
                     ) {
                         selectedTags = if (tag in selectedTags) selectedTags - tag else selectedTags + tag
                     }
@@ -351,11 +378,13 @@ fun TemplatesScreen(
                 CategoryChip(
                     label = strings.templatesAll,
                     selected = selectedLang == null,
+                    testTag = "lang:all",
                 ) { selectedLang = null }
                 availableLangs.forEach { lang ->
                     CategoryChip(
                         label = templateLangLabel(lang, languageTag),
                         selected = selectedLang == lang,
+                        testTag = "lang:$lang",
                     ) { selectedLang = lang }
                 }
             }
@@ -379,17 +408,17 @@ fun TemplatesScreen(
                 val removeFormat = strings.templatesRemoveFilterFormat
                 selectedCategory?.let { cat ->
                     val label = BuiltinTemplateCatalog.categoryLabel(cat, languageTag)
-                    ActiveFilterChip(label, removeFormat.replace("%s", label)) { selectedCategory = null }
+                    ActiveFilterChip(label, removeFormat.replace("%s", label), "active:category") { selectedCategory = null }
                 }
                 selectedTags.sorted().forEach { tag ->
                     val label = TemplateTagVocabulary.label(tag, languageTag)
-                    ActiveFilterChip(label, removeFormat.replace("%s", label)) { selectedTags = selectedTags - tag }
+                    ActiveFilterChip(label, removeFormat.replace("%s", label), "active:tag:$tag") { selectedTags = selectedTags - tag }
                 }
                 selectedLang?.let { lang ->
                     val label = templateLangLabel(lang, languageTag)
-                    ActiveFilterChip(label, removeFormat.replace("%s", label)) { selectedLang = null }
+                    ActiveFilterChip(label, removeFormat.replace("%s", label), "active:lang") { selectedLang = null }
                 }
-                CategoryChip(label = strings.templatesClearFilters, selected = false) { clearFilters() }
+                CategoryChip(label = strings.templatesClearFilters, selected = false, testTag = "filters:clear") { clearFilters() }
             }
         }
 
@@ -423,7 +452,7 @@ fun TemplatesScreen(
             if (shown.isEmpty() && !fullImportRunning) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     Box(
-                        Modifier.fillMaxWidth().padding(vertical = 48.dp),
+                        Modifier.fillMaxWidth().padding(vertical = 48.dp).testTag("templates:empty"),
                         contentAlignment = Alignment.Center,
                     ) {
                         if (filter.hasFacetSelection) {
@@ -561,7 +590,7 @@ fun TemplatesScreen(
 private const val PAGE_SIZE = 60
 
 @Composable
-private fun CategoryChip(label: String, selected: Boolean, onClick: () -> Unit) {
+private fun CategoryChip(label: String, selected: Boolean, testTag: String, onClick: () -> Unit) {
     val selectedState = LocalStrings.current.templatesFilterSelected
     Text(
         label,
@@ -571,6 +600,7 @@ private fun CategoryChip(label: String, selected: Boolean, onClick: () -> Unit) 
         modifier = Modifier
             .clip(RoundedCornerShape(8.dp))
             .background(if (selected) VelumBlack else VelumSurface)
+            .testTag(testTag)
             .semantics {
                 this.selected = selected
                 role = Role.Button
@@ -582,11 +612,12 @@ private fun CategoryChip(label: String, selected: Boolean, onClick: () -> Unit) 
 }
 
 @Composable
-private fun ActiveFilterChip(label: String, removeDescription: String, onRemove: () -> Unit) {
+private fun ActiveFilterChip(label: String, removeDescription: String, testTag: String, onRemove: () -> Unit) {
     Row(
         Modifier
             .clip(RoundedCornerShape(8.dp))
             .background(VelumBlack)
+            .testTag(testTag)
             .semantics { contentDescription = removeDescription; role = Role.Button }
             .clickable(onClick = onRemove)
             .padding(horizontal = 12.dp, vertical = 8.dp),
