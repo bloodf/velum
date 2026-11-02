@@ -23,6 +23,22 @@ class GattArchitectureTest {
     }
 
     @Test
+    fun insideBle_onlyGuardedLinkBuildsWritesOrCallsWriteRaw() {
+        val bleSrc = File(repoRoot(), "ble/src")
+        val offenders = bleSrc.walkTopDown().filter { it.isFile && it.extension == "kt" }
+            .filter { it.name != "GuardedLink.kt" && it.name != "GattArchitectureTest.kt" }
+            .filter { f -> f.readText().let { "PlainWrite(" in it || "SealedWrite(" in it || ".writeRaw(" in it } }
+            .map { it.name }.toList()
+        assertTrue(offenders.isEmpty(), "Only GuardedLink.kt may build writes or call writeRaw: $offenders")
+        val implementers = setOf(
+            "Gatt.kt", "GattArchitectureTest.kt", "StubBleTransport.kt", "FakeBleTransport.kt", "KableBleTransport.kt", "GuardedLinkTest.kt",
+        )
+        val overriders = bleSrc.walkTopDown().filter { it.isFile && it.extension == "kt" }
+            .filter { "fun writeRaw" in it.readText() && it.name !in implementers }.map { it.name }.toList()
+        assertTrue(overriders.isEmpty(), "writeRaw implemented outside transports: $overriders")
+    }
+
+    @Test
     fun nothingOutsideBleReferencesRawGattWrites() {
         val root = repoRoot()
         val offenders = root.listFiles { f -> f.isDirectory }.orEmpty()

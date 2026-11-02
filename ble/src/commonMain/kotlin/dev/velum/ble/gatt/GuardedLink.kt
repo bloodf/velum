@@ -19,9 +19,9 @@ class GuardedLink(
         }
         guard.check(plaintext)
         val write = if (seal == null) {
-            PlainWrite(char, plaintext, withoutResponse)
+            PlainWrite(char, plaintext.copyOf(), withoutResponse)
         } else {
-            SealedWrite(char, seal(plaintext), withoutResponse)
+            SealedWrite(char, seal(plaintext.copyOf()).copyOf(), withoutResponse)
         }
         transport.writeRaw(write)
     }

@@ -40,6 +40,7 @@ object GattProfiles {
  * (enforced by `GattArchitectureTest`).
  */
 interface GattLink {
+    /** Do not call: use [GuardedLink], which runs the write guard first. Implement only in transports/fakes. */
     suspend fun writeRaw(write: GattWrite)
 }
 

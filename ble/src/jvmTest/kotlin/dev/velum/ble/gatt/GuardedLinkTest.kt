@@ -119,4 +119,42 @@ class GuardedLinkTest {
         assertEquals("00002bb0-0000-1000-8000-00805f9b34fb", GattProfiles.PLAUD_NOTIFY.characteristic)
         assertEquals(setOf(GattProfiles.PLAUD_WRITE), GattProfiles.Plaud.writes.keys)
     }
+
+    @Test
+    fun trimmedSingleByteOpcodes_areRejected_asEncodeCommandWouldSendThem() = runTest {
+        val (t, link) = rig()
+        // Framing.encodeCommand trims trailing zeros: cmd 5 / 104 / 128 / 143 go out as [01, cmd].
+        val handBuilt = listOf(0x05, 0x68, 0x80, 0x8F).map { byteArrayOf(Framing.APP_PREFIX, it.toByte()) }
+        for (packet in handBuilt) {
+            assertFailsWith<IllegalArgumentException>("trimmed ${packet.toList()}") {
+                link.write(char, packet, withoutResponse = false)
+            }
+            assertFailsWith<IllegalArgumentException>("trimmed sealed ${packet.toList()}") {
+                link.write(char, packet, withoutResponse = false) { it }
+            }
+        }
+        // Same shape produced by the real encoder for every single-byte forbidden opcode: the encoder
+        // itself refuses forbidden opcodes, so prove the wire shape with an allowed neighbour instead.
+        val wire = Framing.encodeCommand(0x40)
+        assertContentEquals(byteArrayOf(Framing.APP_PREFIX, 0x40), wire)
+        assertEquals(0, t.writes.size)
+    }
+
+    @Test
+    fun trimmedSingleByteOpcodes_allowedCounterparts_pass() = runTest {
+        val (t, link) = rig()
+        for (op in listOf(0x04, 0x67, 0x7F, 0x8E, 0x40)) {
+            link.write(char, byteArrayOf(Framing.APP_PREFIX, op.toByte()), withoutResponse = false)
+        }
+        assertEquals(5, t.writes.size)
+    }
+
+    @Test
+    fun unlockChunkShapes_stillPass() = runTest {
+        val (t, link) = rig()
+        for (chunk in dev.velum.protocol.Unlock.encodeSnSignatureChunks(ByteArray(256) { 1 })) {
+            link.write(char, chunk, withoutResponse = true)
+        }
+        assertEquals(true, t.writes.isNotEmpty())
+    }
 }

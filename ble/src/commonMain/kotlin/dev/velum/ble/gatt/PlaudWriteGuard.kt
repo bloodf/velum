@@ -16,6 +16,10 @@ object PlaudWriteGuard : WriteGuard {
         val hasAppPrefix = plaintext[0] == Framing.APP_PREFIX && plaintext.size >= 3
         val opcode = if (hasAppPrefix) {
             Bytes.readU16Le(plaintext, 1)
+        } else if (plaintext[0] == Framing.APP_PREFIX && plaintext.size == 2) {
+            // Framing.encodeCommand trims trailing zeros, so a param-less single-byte opcode
+            // (5 / 104 / 128 / 143 ...) is sent as [APP_PREFIX, cmd]; the device reads it as cmd, not u16le.
+            plaintext[1].toInt() and 0xFF
         } else {
             Bytes.readU16Le(plaintext, 0)
         }
