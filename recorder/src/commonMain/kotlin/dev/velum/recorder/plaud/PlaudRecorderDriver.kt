@@ -32,9 +32,7 @@ object PlaudRecorderDriver : RecorderDriver {
         }
         // Manufacturer-data path uses the one shared parser (company id + structure + offsets).
         if (PlaudAdvertisement.parse(manufacturerId, manufacturerPayload ?: ByteArray(0)) != null) return true
-        val n = name?.lowercase().orEmpty()
-        return n.contains("plaud") || n.contains("notepin") || n.contains("note pro") ||
-            n.startsWith("note ") || Regex("""^note\d""", RegexOption.IGNORE_CASE).containsMatchIn(n)
+        return PlaudAdvertisement.nameLooksPlaud(name)
     }
 
     override fun capabilitiesForAdvertisement(

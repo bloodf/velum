@@ -106,4 +106,27 @@ class AdvertisementTest {
         // NUL-padded shorter serial (trailing padding only) is fine.
         assertEquals("881", PlaudAdvertisement.parseManufacturerData(valid(serial = "881"))!!.serial)
     }
+
+    @Test
+    fun shouldList_strictParseFailureWithPlaudNameIsStillListed() {
+        val bad = ByteArray(20) // fails strict parse (model 0)
+        assertTrue(PlaudAdvertisement.shouldList(false, bad, "PLAUD NOTE PRO"))
+        assertTrue(PlaudAdvertisement.shouldList(false, bad, "NotePin-ABC"))
+        assertTrue(PlaudAdvertisement.shouldList(false, bad, "Note Pro"))
+        assertTrue(PlaudAdvertisement.shouldList(false, ByteArray(3), "plaud"))
+    }
+
+    @Test
+    fun shouldList_foreignNameOrNoManufacturerDataIsDropped() {
+        val bad = ByteArray(20)
+        assertTrue(!PlaudAdvertisement.shouldList(false, bad, "JBL Flip 6"))
+        assertTrue(!PlaudAdvertisement.shouldList(false, bad, null))
+        assertTrue(!PlaudAdvertisement.shouldList(false, null, "PLAUD NOTE PRO"))
+    }
+
+    @Test
+    fun shouldList_validDataOrServiceNeedsNoName() {
+        assertTrue(PlaudAdvertisement.shouldList(false, valid(), null))
+        assertTrue(PlaudAdvertisement.shouldList(true, null, null))
+    }
 }

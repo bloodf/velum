@@ -62,6 +62,24 @@ data class PlaudAdvertisement(
             return PlaudAdvertisement(modelCode, displaySerial(data.copyOfRange(9, 17)), protocolVersion, data)
         }
 
+        /** Name heuristic shared by discovery and the recorder driver (name-based discovery only). */
+        fun nameLooksPlaud(name: String?): Boolean {
+            val n = name?.lowercase().orEmpty()
+            return n.contains("plaud") || n.contains("notepin") || n.contains("note pro") ||
+                n.startsWith("note ") || Regex("""^note\d""").containsMatchIn(n)
+        }
+
+        /**
+         * Should a scan result be listed? Yes for the Plaud GATT service, for strictly valid 0x005D
+         * data, or (fallback) for any 0x005D data when the name looks like Plaud: 0x005D may be the
+         * chip vendor's id and the real layout is unconfirmed (#5), so a Plaud-named device is never
+         * hidden by a failed strict parse. [manufacturerData] is the payload for company id 0x005D, or null.
+         */
+        fun shouldList(hasPlaudService: Boolean, manufacturerData: ByteArray?, name: String?): Boolean =
+            hasPlaudService ||
+                (manufacturerData != null &&
+                    (parse(PlaudUuids.MANUFACTURER_ID, manufacturerData) != null || nameLooksPlaud(name)))
+
         /** Printable ASCII (trailing NUL/space padding trimmed) as text; anything else as `0x`-hex. */
         private fun displaySerial(raw: ByteArray): String {
             var end = raw.size

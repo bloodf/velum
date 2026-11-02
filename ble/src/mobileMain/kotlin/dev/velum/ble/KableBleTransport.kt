@@ -170,12 +170,13 @@ class KableBleTransport : BleTransport {
 
     override fun notifications(): Flow<ByteArray> = notifyFlow.asSharedFlow()
 
-    /** Null when the advert is neither a Plaud GATT service advert nor valid Plaud manufacturer data. */
+    /** Null when the advert is not a Plaud service advert, not valid 0x005D data, and not Plaud-named 0x005D data. */
     private fun Advertisement.toConnectedDevice(): ConnectedDevice? {
-        val parsed = manufacturerData(PlaudUuids.MANUFACTURER_ID)
-            ?.let { PlaudAdvertisement.parse(PlaudUuids.MANUFACTURER_ID, it) }
+        val mfg = manufacturerData(PlaudUuids.MANUFACTURER_ID)
+        val parsed = mfg?.let { PlaudAdvertisement.parse(PlaudUuids.MANUFACTURER_ID, it) }
         val hasPlaudService = uuids.contains(Uuid.parse(PlaudUuids.SERVICE))
-        if (parsed == null && !hasPlaudService) return null
+        // Strict parse failures with a Plaud-looking name are still listed (model/serial null).
+        if (!PlaudAdvertisement.shouldList(hasPlaudService, mfg, name ?: peripheralName)) return null
         return ConnectedDevice(
             id = identifier.toString(),
             name = name ?: peripheralName,
