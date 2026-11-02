@@ -12,7 +12,14 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        maven { url = uri("https://jitpack.io") }
+        // JitPack only for the two groups published there (no signing/ownership checks on JitPack).
+        exclusiveContent {
+            forRepository { maven("https://jitpack.io") }
+            filter {
+                includeGroup("com.github.requery")
+                includeGroup("com.github.k2-fsa.sherpa-onnx")
+            }
+        }
     }
 }
 

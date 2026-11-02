@@ -172,6 +172,7 @@ class DeviceWalkUiTest {
         // FirstRun Skip sits below the fold — scroll while welcome chrome is up.
         // Never markFirstRunDone / recreate here — a missed Skip must fail (#115).
         waitUntil(90_000) {
+            dismissSystemAnrDialog()
             val shellReady = onFilesShellReady()
             val skipVisible = firstRunSkipVisible()
             val firstRunVisible = firstRunChromeVisible()
@@ -598,8 +599,11 @@ class DeviceWalkUiTest {
         run {
             // Required in both locales; click only a node that has a click action so the
             // empty-state hint text ("... toque em Buscar") is never the click target.
+            // The button reads "Scanning…"/"Buscando…" when an earlier cell in the same process left
+            // BLE scanning (shared container); accept both labels (CI runs all cells in one process).
             clickClickableText(
                 stringsFor(lang).ux.scan,
+                stringsFor(lang).ux.scanning,
                 "Connect",
                 "Conectar",
                 "Scan",
@@ -1244,7 +1248,19 @@ class DeviceWalkUiTest {
         }
     }
 
+    /**
+     * A loaded CI emulator can show "<system app> isn't responding" over the app (seen on main CI with the
+     * Pixel Launcher). It hides the app from UiAutomator and swallows gestures. Tap Wait, never Close app.
+     */
+    private fun dismissSystemAnrDialog() {
+        if (device.hasObject(By.textContains("isn't responding"))) {
+            device.findObject(By.text("Wait"))?.click()
+            SystemClock.sleep(500)
+        }
+    }
+
     private fun dismissSystemPermissionDialogs() {
+        dismissSystemAnrDialog()
         repeat(4) {
             val allow = device.findObject(By.text("Allow"))
                 ?: device.findObject(By.text("ALLOW"))

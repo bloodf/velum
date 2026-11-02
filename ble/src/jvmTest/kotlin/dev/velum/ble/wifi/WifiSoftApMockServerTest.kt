@@ -119,6 +119,7 @@ class WifiSoftApMockServerTest {
             val seconds = (System.nanoTime() - started) / 1e9
             device.join()
             assertIs<WifiTransferCoordinator.Outcome.Wifi>(outcome)
+            assertEquals(1, joiner.joinCount, "SoftAP must have been joined before it was left")
             assertTrue(!joiner.joined, "$mode SoftAP must be left after success")
             assertContentEquals(fixture, outcome.bytes)
             assertEquals(crc(fixture), crc(outcome.bytes))
@@ -287,6 +288,7 @@ class WifiSoftApMockServerTest {
         device.join()
         assertIs<WifiTransferCoordinator.Outcome.BleFallback>(outcome)
         assertEquals("wifi_frame_rejected", outcome.reason)
+        assertEquals(1, joiner.joinCount, "SoftAP must have been joined before it was left")
         assertTrue(!joiner.joined, "SoftAP must be left after failure")
         assertEquals(crc(fixture), crc(outcome.bytes))
         assertContentEquals(fixture, outcome.bytes) // BLE result is whole: no partial Wi-Fi bytes mixed in
@@ -311,6 +313,7 @@ class WifiSoftApMockServerTest {
         device.join()
         assertIs<WifiTransferCoordinator.Outcome.BleFallback>(outcome)
         assertTrue(outcome.reason.startsWith("wifi_timeout"), outcome.reason)
+        assertEquals(1, joiner.joinCount, "SoftAP must have been joined before it was left")
         assertTrue(!joiner.joined, "SoftAP must be left after failure")
         assertEquals(crc(fixture), crc(outcome.bytes))
         assertPortReleased(port)
@@ -323,13 +326,15 @@ class WifiSoftApMockServerTest {
         val outcome = WifiTransferCoordinator(
             sessionFactory = { session(WifiPayloadCipher.AesGcm, joiner = joiner) },
             bleDownload = { fixture },
-            wifiTimeout = 300.milliseconds,
+            // Long enough that start() (server bind + join) always completes first, even under load.
+            wifiTimeout = 1_000.milliseconds,
         ).transferOrFallback(
             "PLAUD-FAKE", "password12", port = port, preamble = preamble, bindHost = "127.0.0.1",
             assemble = { assembleExact(it, fixture.size, CompletableDeferred()) },
         )
         assertIs<WifiTransferCoordinator.Outcome.BleFallback>(outcome)
         assertTrue(outcome.reason.startsWith("wifi_timeout"), outcome.reason)
+        assertEquals(1, joiner.joinCount, "SoftAP must have been joined before it was left")
         assertTrue(!joiner.joined, "SoftAP must be left after failure")
         assertContentEquals(fixture, outcome.bytes)
         assertPortReleased(port)

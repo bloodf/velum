@@ -39,6 +39,7 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -73,11 +74,14 @@ import dev.velum.app.ui.theme.VelumInkSecondary
 import dev.velum.app.ui.theme.VelumOnBlack
 import dev.velum.app.ui.theme.VelumSurface
 import dev.velum.core.autoflow.AutoFlowPostAction
+import dev.velum.core.autoflow.AutoFlowTemplate
 import dev.velum.core.autoflow.AutoFlowTemplateCatalog
 import dev.velum.core.autoflow.AutoFlowTemplateSetup
 import dev.velum.core.data.epochSecondsNow
 import dev.velum.core.integrations.IntegrationId
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 fun AutoFlowListScreen(
@@ -87,7 +91,7 @@ fun AutoFlowListScreen(
     onBrowseTemplates: () -> Unit,
 ) {
     val strings = LocalStrings.current
-    val flows by container.repository.observeAutoflows().collectAsState(emptyList())
+    val flows by remember(container) { container.repository.observeAutoflows() }.collectAsState(emptyList())
     val prefs by container.settingsRepository.preferences.collectAsState()
     val scope = rememberCoroutineScope()
 
@@ -211,7 +215,9 @@ fun AutoFlowListScreen(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** Result of resolving [AutoFlowEditScreen]'s seed template; [template] is null when the id is unknown. */
+private class SeedLookup(val template: AutoFlowTemplate?)
+
 @Composable
 fun AutoFlowEditScreen(
     container: AppContainer,
@@ -220,12 +226,36 @@ fun AutoFlowEditScreen(
     seedTemplateId: String? = null,
     onOpenIntegrations: () -> Unit = {},
 ) {
-    val strings = LocalStrings.current
-    val flows by container.repository.observeAutoflows().collectAsState(emptyList())
-    val templates by container.repository.observeTemplates().collectAsState(emptyList())
-    val seed = remember(seedTemplateId) {
-        seedTemplateId?.let { AutoFlowTemplateCatalog.byId(it) }
+    if (seedTemplateId == null) {
+        AutoFlowEditContent(container, flowId, onBack, null, onOpenIntegrations)
+        return
     }
+    // The catalog lazily reads a packaged asset on first use: resolve the seed off the main thread
+    // (StrictMode) and compose the editor only once it is known, so its remembered state starts right.
+    val lookup by produceState<SeedLookup?>(null, seedTemplateId) {
+        value = SeedLookup(withContext(Dispatchers.Default) { AutoFlowTemplateCatalog.byId(seedTemplateId) })
+    }
+    val resolved = lookup
+    if (resolved == null) {
+        Box(Modifier.fillMaxSize().background(VelumBg))
+    } else {
+        AutoFlowEditContent(container, flowId, onBack, resolved.template, onOpenIntegrations)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AutoFlowEditContent(
+    container: AppContainer,
+    flowId: String,
+    onBack: () -> Unit,
+    seed: AutoFlowTemplate?,
+    onOpenIntegrations: () -> Unit,
+) {
+    val strings = LocalStrings.current
+    val flows by remember(container) { container.repository.observeAutoflows() }.collectAsState(emptyList())
+    val templatesFlow = remember(container) { container.repository.observeTemplates() }
+    val templates by templatesFlow.collectAsState(emptyList())
     val isNew = flowId == "new" || seed != null
     val flow = flows.firstOrNull { it.id == flowId }
     val locale = strings.localeTag
