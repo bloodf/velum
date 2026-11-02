@@ -38,6 +38,7 @@ import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.flow.MutableStateFlow
 
 /**
@@ -133,13 +134,20 @@ class RecordingProcessorDecodeCleanupTest {
 
     @Test
     fun corrupt_ogg_fails_explicitly_cleans_temp_pcm_and_keeps_source() = runBlocking {
-        val bytes = "OggS".toByteArray() + ByteArray(40) + "XggS".toByteArray() + ByteArray(40)
-        val h = Harness({ error("ASR must not run on undecodable audio") })
+        // Valid header + one page of audio, then a page with a bad magic: PCM is written before the failure.
+        val packet = dev.velum.ai.audio.SyntheticOgg.audioPacket(stereo = false)
+        val bytes = dev.velum.ai.audio.SyntheticOgg.page(listOf(dev.velum.ai.audio.SyntheticOgg.opusHead(1, 48_000)), 0, 2) +
+            dev.velum.ai.audio.SyntheticOgg.page(listOf(dev.velum.ai.audio.SyntheticOgg.tags()), 1) +
+            dev.velum.ai.audio.SyntheticOgg.page(List(50) { packet }, 2) +
+            "XggS".toByteArray() + ByteArray(40)
+        var asrRan = false
+        val h = Harness({ asrRan = true })
         val src = tempAudio(".ogg", bytes)
         h.insert("rec-86-corrupt", src)
         val events = h.processor.process("rec-86-corrupt", templateId = "velum.meeting", apiModelOverride = API).toList()
         val failed = events.last() as JobProgress.Failed
-        assertTrue(failed.message.isNotBlank())
+        assertTrue(failed.message.contains("Invalid Ogg page magic"), "message=${failed.message}")
+        assertFalse(asrRan, "ASR must not run on undecodable audio")
         assertEquals("failed", h.repo.getRecording("rec-86-corrupt")!!.status)
         assertFalse(spillDir("rec-86-corrupt").exists())
         assertContentEquals(bytes, src.readBytes(), "source recording preserved")
@@ -153,7 +161,7 @@ class RecordingProcessorDecodeCleanupTest {
         val src = tempAudio(".wav", bytes)
         h.insert("rec-86-cancel", src)
         val job = launch(Dispatchers.Default) { h.processor.process("rec-86-cancel", templateId = "velum.meeting", apiModelOverride = API).toList() }
-        entered.await()
+        withTimeout(30_000) { entered.await() }
         assertTrue(File(spillDir("rec-86-cancel"), "pcm.s16le").isFile, "decode wrote temp PCM before cancel")
         job.cancelAndJoin()
         assertFalse(spillDir("rec-86-cancel").exists(), "temp PCM removed on cancellation")
