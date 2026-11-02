@@ -151,15 +151,23 @@ fun TemplatesScreen(
     }
     // Facet values come from catalog metadata for the current tier + search (+ category for tags/langs).
     var facets by remember { mutableStateOf(DiscoverFacets(emptyList(), emptyList(), emptyList())) }
+    // The search the current facets were loaded for. Selections are only pruned against facets that were loaded
+    // without a search: a search that narrows the facets must leave the filters selected (empty result, clearable)
+    // instead of silently dropping them (#102).
+    var facetsSearch by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(tier, searchQuery, selectedCategory, templateTick) {
         facets = try {
-            container.repository.discoverFacets(DiscoverFilter(tier, searchQuery, selectedCategory))
+            container.repository.discoverFacets(DiscoverFilter(tier, searchQuery, selectedCategory)).also {
+                facetsSearch = searchQuery
+            }
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
+            facetsSearch = null
             DiscoverFacets(emptyList(), emptyList(), emptyList())
         }
     }
+    val canPrune = facetsSearch?.isBlank() == true
     // The selected category stays listed even when the current search has no hit in it: the screen then shows the
     // clearable no-match state instead of silently dropping the filter (#102).
     val categoryTabs = remember(facets, selectedCategory) {
@@ -169,14 +177,15 @@ fun TemplatesScreen(
     }
     val availableTags = facets.tags
     val availableLangs = facets.langs
-    LaunchedEffect(availableTags, selectedTags) {
-        val pruned = selectedTags.filter { it in availableTags }.toSet()
-        if (pruned != selectedTags) selectedTags = pruned
+    LaunchedEffect(facets, selectedCategory, canPrune) {
+        if (canPrune && selectedCategory != null && selectedCategory !in facets.categories) selectedCategory = null
     }
-    LaunchedEffect(availableLangs, selectedLang) {
-        if (selectedLang != null && selectedLang !in availableLangs) {
-            selectedLang = null
-        }
+    LaunchedEffect(availableTags, selectedTags, canPrune) {
+        val pruned = selectedTags.filter { it in availableTags }.toSet()
+        if (canPrune && pruned != selectedTags) selectedTags = pruned
+    }
+    LaunchedEffect(availableLangs, selectedLang, canPrune) {
+        if (canPrune && selectedLang != null && selectedLang !in availableLangs) selectedLang = null
     }
     val filter = DiscoverFilter(
         tier = tier,

@@ -113,4 +113,62 @@ class DiscoverCategorySearchUiTest {
             root.deleteRecursively()
         }
     }
+
+    private fun withScreen(block: () -> Unit) {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        context.deleteDatabase("velum.db")
+        val root = ModelStoreDir(Files.createTempDirectory("velum-discover-facet-search").toString())
+        val container = AppContainer(InMemorySecureStore(), DriverFactory(context), modelStoreRoot = root)
+        runBlocking {
+            container.repository.setMeta(SeedData.META_FULL_TEMPLATES_IMPORTED, "1")
+            suspend fun add(id: String, name: String, cat: String, tags: List<String>, lang: String) =
+                container.repository.upsertTemplate(
+                    id = id, name = name, category = cat, description = "synthetic", systemPrompt = "p",
+                    builtin = true, featured = true, tags = tags, lang = lang, uses = 1_000_000,
+                )
+            add("fs-a", "ZQ Alpha", "meeting", listOf("agenda"), "en")
+            add("fs-b", "ZQ Beta", "meeting", listOf("summary"), "pt")
+        }
+        val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup()
+        try {
+            activity.get().setContent {
+                CompositionLocalProvider(LocalStrings provides PtBr) {
+                    VelumTheme(darkTheme = false) { TemplatesScreen(container, onBack = {}, onOpenTemplate = {}) }
+                }
+            }
+            await("ZQ Alpha"); await("ZQ Beta")
+            block()
+        } finally {
+            activity.pause().stop().destroy()
+            container.databaseHandle.driver.close()
+            root.deleteRecursively()
+        }
+    }
+
+    private fun searchThenExpectNoMatch(query: String, activeTag: String) {
+        compose.onNodeWithContentDescription(PtBr.search).performClick()
+        compose.onNode(hasSetTextAction()).performTextInput(query)
+        awaitTag("templates:empty")
+        // Facets reload asynchronously after the search; the filter must still be selected once they landed.
+        Thread.sleep(1500)
+        compose.waitForIdle()
+        assertTrue(hasTag("templates:empty") && hasTag(activeTag))
+        tap(activeTag)
+        await(query)
+        awaitTag("templates:empty", present = false)
+    }
+
+    @Test
+    fun tag_survives_search_without_hits_and_clears() = withScreen {
+        tap("tag:agenda") // only ZQ Alpha
+        await("ZQ Beta", present = false)
+        searchThenExpectNoMatch("ZQ Beta", "active:tag:agenda")
+    }
+
+    @Test
+    fun language_survives_search_without_hits_and_clears() = withScreen {
+        tap("lang:en") // only ZQ Alpha
+        await("ZQ Beta", present = false)
+        searchThenExpectNoMatch("ZQ Beta", "active:lang")
+    }
 }
