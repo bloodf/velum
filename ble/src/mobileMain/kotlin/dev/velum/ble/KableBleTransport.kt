@@ -86,7 +86,8 @@ class KableBleTransport : BleTransport {
         scanJob = scope.launch {
             try {
                 scanner.advertisements.collect { adv ->
-                    val device = adv.toConnectedDevice()
+                    // The scanner also matches on company id alone; drop those whose payload is not Plaud.
+                    val device = adv.toConnectedDevice() ?: return@collect
                     seen[device.id] = adv
                     _devices.update { current ->
                         val without = current.filterNot { it.id == device.id }
@@ -125,7 +126,7 @@ class KableBleTransport : BleTransport {
             notifyJob = scope.launch {
                 p.observe(notifyCharacteristic).collect { notifyFlow.emit(it) }
             }
-            val device = adv.toConnectedDevice()
+            val device = adv.toConnectedDevice() ?: error("Advertisement is not a Plaud device")
             _state.value = BleConnectionState.Connected(device)
             disconnectWatchJob?.cancel()
             disconnectWatchJob = scope.launch {
@@ -165,10 +166,12 @@ class KableBleTransport : BleTransport {
 
     override fun notifications(): Flow<ByteArray> = notifyFlow.asSharedFlow()
 
-    private fun Advertisement.toConnectedDevice(): ConnectedDevice {
-        val mfg = manufacturerData(PlaudUuids.MANUFACTURER_ID)
-            ?: manufacturerData?.data
-        val parsed = mfg?.let { PlaudAdvertisement.parseManufacturerData(it) }
+    /** Null when the advert is neither a Plaud GATT service advert nor valid Plaud manufacturer data. */
+    private fun Advertisement.toConnectedDevice(): ConnectedDevice? {
+        val parsed = manufacturerData(PlaudUuids.MANUFACTURER_ID)
+            ?.let { PlaudAdvertisement.parse(PlaudUuids.MANUFACTURER_ID, it) }
+        val hasPlaudService = uuids.contains(Uuid.parse(PlaudUuids.SERVICE))
+        if (parsed == null && !hasPlaudService) return null
         return ConnectedDevice(
             id = identifier.toString(),
             name = name ?: peripheralName,

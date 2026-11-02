@@ -39,12 +39,27 @@ data class PlaudAdvertisement(
     }
 
     companion object {
+        /**
+         * Parse manufacturer data only when it came from Plaud's company id
+         * ([PlaudUuids.MANUFACTURER_ID]); anything else (or an unknown id) is not a Plaud device.
+         */
+        fun parse(manufacturerId: Int?, data: ByteArray): PlaudAdvertisement? =
+            if (manufacturerId == PlaudUuids.MANUFACTURER_ID) parseManufacturerData(data) else null
+
+        /**
+         * [data] is the payload after the company id. Returns null unless the documented layout is
+         * structurally plausible: at least 20 bytes, non-zero model code, a non-empty printable-ASCII
+         * serial (trailing NUL/space padding allowed) and a protocol version in 1..255.
+         * Models outside [DeviceModel] still parse (as [DeviceModel.Unknown]) when that holds.
+         */
         fun parseManufacturerData(data: ByteArray): PlaudAdvertisement? {
             if (data.size < 20) return null
             val modelCode = Bytes.readU16Le(data, 1)
-            val serialBytes = data.copyOfRange(9, 17)
-            val serial = serialBytes.decodeToString().trimEnd('\u0000', ' ')
+            if (modelCode == 0) return null
+            val serial = data.copyOfRange(9, 17).decodeToString().trimEnd('\u0000', ' ')
+            if (serial.isEmpty() || serial.any { it.code !in 0x20..0x7E }) return null
             val protocolVersion = Bytes.readU16Le(data, 18)
+            if (protocolVersion !in 1..255) return null
             return PlaudAdvertisement(modelCode, serial, protocolVersion, data)
         }
     }
