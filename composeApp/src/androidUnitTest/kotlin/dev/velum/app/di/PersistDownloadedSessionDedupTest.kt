@@ -107,6 +107,7 @@ class PersistDownloadedSessionDedupTest {
     }
 
     @Test fun stream_write_failure_keeps_previous_file() = fixture {
+        File(dir()).mkdirs() // The path lookup is disk-free; write sites create the directory.
         val target = File(dir(), "rec-atomic.ogg").apply { writeBytes(ogg(1)) }
         // A non-empty directory at the part path makes the streamed write fail.
         val part = File(dir(), "rec-atomic.part").apply { mkdirs(); File(this, "x").writeText("x") }

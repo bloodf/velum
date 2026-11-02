@@ -4,16 +4,16 @@ import java.io.File
 
 private var filesDirPath: String? = null
 
-fun installRecordingFilesDir(path: String) {
+fun installRecordingFilesDir(path: String?) {
     filesDirPath = path
 }
 
 actual fun recordingsDirectoryPath(): String {
     val base = filesDirPath
         ?: throw IllegalStateException("Recording files dir not installed")
-    val dir = File(base, "recordings")
-    if (!dir.exists()) dir.mkdirs()
-    return dir.absolutePath
+    // Disk-free on purpose: this is called from composition. A wipe/purge may delete the directory, so
+    // every write site creates it (streamToFileAtomically, WavWriter, MicRecordingService do mkdirs).
+    return File(base, "recordings").absolutePath
 }
 
 actual fun deleteFileAtPath(absolutePath: String): Boolean =

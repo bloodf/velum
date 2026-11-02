@@ -5,6 +5,20 @@ import dev.velum.ai.engine.TranscriptSegment
 import dev.velum.ai.engine.TranscriptionResult
 
 object TranscriptFormatter {
+    const val MARKERS_HEADING = "## Markers"
+
+    /**
+     * Separates spoken text from the trailing section of live-capture markers. Markers are the user's
+     * notes, not speech: they survive retranscribing and are never summarized.
+     */
+    fun splitMarkers(markdown: String): Pair<String, String?> {
+        val start = if (markdown.startsWith("$MARKERS_HEADING\n")) 0 else markdown.lastIndexOf("\n$MARKERS_HEADING\n") + 1
+        if (start == 0 && !markdown.startsWith("$MARKERS_HEADING\n")) return markdown to null
+        val section = markdown.substring(start)
+        if (!section.lines().drop(1).all { it.isBlank() || it.startsWith("- **") }) return markdown to null
+        return markdown.substring(0, start).trimEnd() to section.trimEnd()
+    }
+
     fun toMarkdown(
         transcription: TranscriptionResult,
         diarization: DiarizationResult? = null,

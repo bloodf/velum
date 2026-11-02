@@ -213,6 +213,14 @@ class AppContainer(
     val activeMicRecordingId: String? get() = micRecordings.owner.value?.recordingId
 
     init {
+        // Template catalogs lazily read packaged assets; warm them off the main thread so the
+        // composition-time lookups (template names, AutoFlow library) never hit the disk (StrictMode).
+        appScope.launch(Dispatchers.IO) {
+            runCatching { dev.velum.core.templates.BuiltinTemplateCatalog.All }
+                .onFailure { println("VelumStartup: builtin template warm-up failed: ${it::class.simpleName}") }
+            runCatching { dev.velum.core.autoflow.AutoFlowTemplateCatalog.All }
+                .onFailure { println("VelumStartup: AutoFlow template warm-up failed: ${it::class.simpleName}") }
+        }
         appScope.launch {
             settingsRepository.loadState.collect { state ->
                 when (state) {

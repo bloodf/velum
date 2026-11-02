@@ -3,9 +3,20 @@ package dev.velum.ai.pipeline
 import dev.velum.ai.engine.TranscriptSegment
 import dev.velum.ai.engine.TranscriptionResult
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class TranscriptFormatterTest {
+    @Test
+    fun split_markers_separates_only_a_trailing_section_of_marker_bullets() {
+        val markers = "## Markers\n- **0:05**\n- **1:05** Synthetic note"
+        assertEquals("Synthetic words" to markers, TranscriptFormatter.splitMarkers("Synthetic words\n\n$markers\n"))
+        assertEquals("" to markers, TranscriptFormatter.splitMarkers("$markers\n"))
+        assertEquals("Synthetic words" to null, TranscriptFormatter.splitMarkers("Synthetic words"))
+        val spoken = "## Markers\nSynthetic words after a heading"
+        assertEquals(spoken to null, TranscriptFormatter.splitMarkers(spoken))
+    }
+
     @Test
     fun promotes_speaker_lines_to_bold_markdown() {
         val md = TranscriptFormatter.toMarkdown(
