@@ -6,6 +6,7 @@ import dev.velum.app.i18n.DeviceUiCopy
 import dev.velum.app.platform.DownloadNotifyKind
 import dev.velum.app.platform.DownloadProgressNotifier
 import dev.velum.app.platform.PartialTransfer
+import dev.velum.app.platform.deleteAllPartialTransfers
 import dev.velum.app.platform.openPartialTransfer as defaultOpenPartialTransfer
 import dev.velum.app.platform.systemLanguageTag
 import dev.velum.ble.BleConnectionState
@@ -29,6 +30,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -83,6 +85,7 @@ class DeviceViewModel(
     private val localeTag: () -> String = { systemLanguageTag() },
     private val librarySessionIds: suspend (sessionIds: List<Long>, deviceSerial: String?) -> Set<Long> = { _, _ -> emptySet() },
     private val openPartialTransfer: (sessionId: Long, deviceSerial: String?) -> PartialTransfer? = ::defaultOpenPartialTransfer,
+    private val deletePartialTransfers: () -> Unit = ::deleteAllPartialTransfers,
 ) : ViewModel() {
     val connectionState: StateFlow<BleConnectionState> =
         ble.connectionState.stateIn(viewModelScope, SharingStarted.Eagerly, BleConnectionState.Idle)
@@ -159,6 +162,13 @@ class DeviceViewModel(
                 statusMessage = DeviceUiCopy.downloadCancelled(locale),
             )
         }
+    }
+
+    /** For "Wipe all data": stops any download first, so it can't write or save anything afterwards. */
+    suspend fun wipePartialDownloads() {
+        cancelDownload()
+        downloadJob?.join()
+        deletePartialTransfers()
     }
 
     fun downloadSession(sessionId: Long) {
@@ -284,14 +294,27 @@ class DeviceViewModel(
         }
         val job = currentCoroutineContext()[Job]
         val decryptor = createFileDecryptor()
+        var saveFailed = false
+        var undecryptable = false
+        val deviceId = connectedDeviceId
         fun persist(size: Long, readAt: (Long, Int) -> ByteArray) = DownloadedSessionAudio(
             sessionId = sessionId,
             deviceSerial = deviceSerial,
             startedAtEpochSeconds = startedAtEpochSeconds,
             writeDecryptedAudio = { sink ->
-                PlaudFileCrypto.decryptStream(size, readAt, keys.privateKeyPem, decryptor) {
-                    job?.ensureActive()
-                    sink(it)
+                try {
+                    PlaudFileCrypto.decryptStream(size, readAt, keys.privateKeyPem, decryptor) {
+                        job?.ensureActive()
+                        try {
+                            sink(it)
+                        } catch (e: Exception) {
+                            saveFailed = true
+                            throw e
+                        }
+                    }
+                } catch (e: Exception) {
+                    if (!saveFailed && e !is CancellationException) undecryptable = true
+                    throw e
                 }
             },
         )
@@ -311,7 +334,7 @@ class DeviceViewModel(
         var finished = initialClient
         val result = try {
             ResumableSessionDownload(
-                connect = { reconnect(keys) },
+                connect = { reconnect(keys, deviceId) },
                 crcPolicy = CrcPolicy.ReportOnly,
                 initialClient = initialClient,
                 onSuccess = { finished = it },
@@ -322,12 +345,10 @@ class DeviceViewModel(
         }
         val recordingId = try {
             persistDownloadedSession(persist(partial.length()) { position, length -> partial.read(position, length) })
-        } catch (cancelled: CancellationException) {
-            partial.close()
-            throw cancelled
-        } catch (e: Exception) {
-            // Complete bytes that cannot be decrypted or saved: the next attempt starts over.
-            partial.delete()
+        } catch (e: Throwable) {
+            client = finished
+            // Only bytes that can't be decrypted are useless. A full disk or database error can be retried.
+            if (undecryptable) partial.delete() else partial.close()
             throw e
         }
         partial.delete()
@@ -337,12 +358,19 @@ class DeviceViewModel(
     private class DownloadOutcome(val recordingId: String, val client: PlaudDeviceClient?, val crc: CrcStatus)
 
     /** New link and client for a resume attempt; [ResumableSessionDownload] unlocks it. */
-    private suspend fun reconnect(keys: DeviceIdentityKeys): PlaudDeviceClient {
-        val deviceId = checkNotNull(connectedDeviceId) { "No device to reconnect to" }
+    private suspend fun reconnect(keys: DeviceIdentityKeys, deviceId: String?): PlaudDeviceClient {
+        checkNotNull(deviceId) { "No device to reconnect to" }
         ble.disconnect()
         ble.connect(deviceId)
         // It outlives the download's withContext block, so it must not collect in that scope.
         return PlaudDeviceClient(ble, createSessionCipher(), keys, notificationScope = viewModelScope)
+    }
+
+    private fun showUnlockFailed() {
+        _sessionUi.value = DeviceSessionUi(
+            recorderDriverId = "plaud",
+            statusMessage = DeviceUiCopy.unlockFailed(localeTag()),
+        )
     }
 
     /** Library marking is best-effort: a lookup failure must not break the session list. */
@@ -435,12 +463,12 @@ class DeviceViewModel(
                 ),
             )
         } catch (cancelled: CancellationException) {
-            throw cancelled
+            // A hung link's timeout must not leave the screen on "unlocking".
+            if (cancelled !is TimeoutCancellationException) throw cancelled
+            currentCoroutineContext().ensureActive()
+            showUnlockFailed()
         } catch (_: Exception) {
-            _sessionUi.value = DeviceSessionUi(
-                recorderDriverId = "plaud",
-                statusMessage = DeviceUiCopy.unlockFailed(localeTag()),
-            )
+            showUnlockFailed()
         }
     }
 }

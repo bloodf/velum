@@ -22,3 +22,6 @@ expect fun openPartialTransfer(sessionId: Long, deviceSerial: String?): PartialT
 
 /** Removes partial downloads last touched at least [STALE_PARTIAL_TRANSFER_MS] ago; returns the file count. */
 expect fun sweepStalePartialTransfers(nowEpochMs: Long): Int
+
+/** Removes every partial download and the salt of their file names. Throws if anything remains. */
+expect fun deleteAllPartialTransfers()

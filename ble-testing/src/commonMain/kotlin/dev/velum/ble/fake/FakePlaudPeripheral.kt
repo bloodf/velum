@@ -220,10 +220,12 @@ class FakePlaudPeripheral(
                 val sid = Bytes.readU32Le(payload, 0)
                 val startOffset = Bytes.readU32Le(payload, 4)
                 _syncStartOffsets += startOffset
+                val refuse = faults.refuseNonZeroStart && startOffset > 0
                 emitCommand(
                     Commands.SYNC_FILE_START,
-                    Bytes.u32Le(sid) + byteArrayOf(0),
+                    Bytes.u32Le(sid) + byteArrayOf(if (refuse) 1 else 0),
                 )
+                if (refuse) return
                 // Like real GATT, the write completes first and notifications follow under backpressure.
                 // Emitting inside the write would deadlock once the buffers fill (nothing reads yet).
                 streamJob?.cancel()

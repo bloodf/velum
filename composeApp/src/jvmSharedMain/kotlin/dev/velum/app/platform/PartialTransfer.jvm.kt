@@ -17,6 +17,8 @@ actual fun openPartialTransfer(sessionId: Long, deviceSerial: String?): PartialT
 actual fun sweepStalePartialTransfers(nowEpochMs: Long): Int =
     PartialTransferFileStore.sweepStale(partialTransfersDir(), nowEpochMs)
 
+actual fun deleteAllPartialTransfers() = PartialTransferFileStore.deleteAll(partialTransfersDir())
+
 /**
  * `<key>.partial` holds the bytes and `<key>.offset` the last durable length, replaced atomically after
  * an fsync. On open the file is cut back to that length: bytes past it may be torn or missing after a
@@ -131,11 +133,15 @@ internal class PartialTransferFileStore private constructor(
             return salt
         }
 
+        fun deleteAll(dir: File) {
+            check(dir.deleteRecursively() || !dir.exists()) { "Could not delete partial downloads" }
+        }
+
         fun sweepStale(dir: File, nowEpochMs: Long): Int =
             dir.listFiles().orEmpty().count { file ->
                 val modified = file.lastModified()
                 file.isFile &&
-                    (file.name.endsWith(DATA_SUFFIX) || file.name.endsWith(CHECKPOINT_SUFFIX)) &&
+                    (file.name.endsWith(DATA_SUFFIX) || file.name.endsWith(CHECKPOINT_SUFFIX) || file.name.endsWith("$CHECKPOINT_SUFFIX.tmp")) &&
                     modified > 0L && nowEpochMs - modified >= STALE_PARTIAL_TRANSFER_MS &&
                     file.delete()
             }

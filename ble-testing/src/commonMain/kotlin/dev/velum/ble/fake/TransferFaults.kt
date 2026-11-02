@@ -34,6 +34,8 @@ class TransferFaults(
     repeatBurstAt: Map<Long, Int> = emptyMap(),
     /** Stream from 0 whatever start offset is asked for. */
     internal val ignoreStartOffset: Boolean = false,
+    /** Refuse any SYNC_FILE_START with a non-zero offset. */
+    internal val refuseNonZeroStart: Boolean = false,
     /** Lose the link at this offset once on every pass that starts from 0. */
     internal val disconnectEveryPassAt: Long? = null,
     /** Deliver the previous session-list reply's sealed packet again before each new one. */

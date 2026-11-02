@@ -232,6 +232,74 @@ class ResumableSessionDownloadTest {
         assertEquals(2, result.attempts)
     }
 
+    private fun storeHolding(bytes: ByteArray) = MemoryStore().apply { write(bytes) }
+
+    @Test fun device_ignoring_the_offset_catches_up_past_one_mib() = runTest {
+        val file = Random(19).nextBytes(1_200_000)
+        val rig = rig(file, TransferFaults(ignoreStartOffset = true))
+        val store = BigStore(file.size).apply { write(file.copyOf(1_100_000)) }
+        val result = downloader(rig, CrcPolicy.Enforce).download(SESSION, file.size.toLong(), store)
+        assertContentEquals(file, store.snapshot())
+        assertEquals(listOf(1_100_000L), rig.peripheral.syncStartOffsets)
+        assertEquals(1, result.attempts)
+    }
+
+    @Test fun device_refusing_a_resume_restarts_from_zero() = runTest {
+        val file = Random(20).nextBytes(5_000)
+        val rig = rig(file, TransferFaults(refuseNonZeroStart = true))
+        val store = storeHolding(file.copyOf(2_000))
+        val result = downloader(rig, CrcPolicy.Enforce).download(SESSION, file.size.toLong(), store)
+        assertContentEquals(file, store.bytes)
+        assertEquals(listOf(2_000L, 0L), rig.peripheral.syncStartOffsets)
+        assertEquals(CrcStatus.Verified, result.crc)
+    }
+
+    @Test fun unaligned_restart_on_resume_restarts_from_zero() = runTest {
+        val file = Random(21).nextBytes(5_000)
+        val rig = rig(file, TransferFaults(ignoreStartOffset = true))
+        val store = storeHolding(file.copyOf(1_050)) // chunks of 200 overlap this partially
+        val result = downloader(rig, CrcPolicy.Enforce).download(SESSION, file.size.toLong(), store)
+        assertContentEquals(file, store.bytes)
+        assertEquals(listOf(1_050L, 0L), rig.peripheral.syncStartOffsets)
+        assertEquals(CrcStatus.Verified, result.crc)
+    }
+
+    @Test fun lost_link_right_after_a_resume_keeps_the_partial() = runTest {
+        val file = Random(22).nextBytes(5_000)
+        val rig = rig(file, TransferFaults(disconnectAt = setOf(2_000)))
+        val store = storeHolding(file.copyOf(2_000))
+        downloader(rig, CrcPolicy.Enforce).download(SESSION, file.size.toLong(), store)
+        assertContentEquals(file, store.bytes)
+        assertEquals(listOf(2_000L, 2_000L), rig.peripheral.syncStartOffsets)
+    }
+
+    @Test fun failed_connect_keeps_the_partial() = runTest {
+        val file = Random(23).nextBytes(5_000)
+        val rig = rig(file)
+        var calls = 0
+        val download = ResumableSessionDownload(
+            connect = {
+                if (++calls == 1) throw IOException("synthetic")
+                rig.ble.connect("fake-note-pro")
+                PlaudDeviceClient(rig.ble, cipher, keys, responseTimeout = 5.seconds)
+            },
+            crcPolicy = CrcPolicy.Enforce,
+        )
+        val store = storeHolding(file.copyOf(2_000))
+        download.download(SESSION, file.size.toLong(), store)
+        assertContentEquals(file, store.bytes)
+        assertEquals(listOf(2_000L), rig.peripheral.syncStartOffsets)
+    }
+
+    @Test fun integrity_failure_after_new_bytes_keeps_the_partial() = runTest {
+        val file = Random(24).nextBytes(5_000)
+        val rig = rig(file, TransferFaults(dropAt = setOf(3_000)))
+        val store = storeHolding(file.copyOf(2_000))
+        downloader(rig, CrcPolicy.Enforce).download(SESSION, file.size.toLong(), store)
+        assertContentEquals(file, store.bytes)
+        assertEquals(listOf(2_000L, 3_000L), rig.peripheral.syncStartOffsets)
+    }
+
     @Test fun attempts_without_progress_back_off_and_then_give_up() = runTest {
         var calls = 0
         val download = ResumableSessionDownload(connect = { calls++; throw IOException("synthetic") }, crcPolicy = CrcPolicy.Enforce)

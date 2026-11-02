@@ -27,6 +27,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
@@ -66,13 +67,14 @@ class DeviceResumeRestartTest {
 
     private fun run(
         peripheral: FakePlaudPeripheral,
-        persist: (DownloadedSessionAudio) -> String = { audio ->
+        persist: suspend (DownloadedSessionAudio) -> String = { audio ->
             val out = ByteArrayOutputStream()
             audio.writeDecryptedAudio { out.write(it) }
             saved = out.toByteArray()
             "rec-synthetic"
         },
         open: (Long, String?) -> PartialTransfer? = { id, sn -> PartialTransferFileStore.open(partials, id, sn) },
+        await: Boolean = true,
     ): DeviceViewModel = runBlocking {
         Dispatchers.setMain(Dispatchers.Unconfined)
         val vm = DeviceViewModel(
@@ -81,15 +83,20 @@ class DeviceResumeRestartTest {
             persistDownloadedSession = { persist(it) },
             localeTag = { "en" },
             openPartialTransfer = open,
+            deletePartialTransfers = { PartialTransferFileStore.deleteAll(partials) },
         )
         owner.put("device", vm)
         vm.connect("fake-note-pro")
         withTimeout(20_000) { while (vm.sessionUi.value.sessions.isEmpty()) delay(5) }
         vm.downloadSession(session)
+        if (await) awaitOutcome(vm)
+        vm
+    }
+
+    private fun awaitOutcome(vm: DeviceViewModel) = runBlocking {
         withTimeout(60_000) {
             while (vm.sessionUi.value.lastDownloadedRecordingId == null && vm.sessionUi.value.statusMessage != DeviceUiCopy.downloadFailed("en")) delay(5)
         }
-        vm
     }
 
     private var saved: ByteArray? = null
@@ -98,7 +105,8 @@ class DeviceResumeRestartTest {
     private fun peripheral(
         faults: TransferFaults = TransferFaults(),
         stopCrc: FakePlaudPeripheral.StopCrc = FakePlaudPeripheral.StopCrc.NotProvided,
-    ) = FakePlaudPeripheral(createSessionCipher(), keys, encrypted, sessionId = session, requirePublicKey = false, chunkSize = 200, faults = faults, stopCrc = stopCrc)
+        file: ByteArray = encrypted,
+    ) = FakePlaudPeripheral(createSessionCipher(), keys, file, sessionId = session, requirePublicKey = false, chunkSize = 200, faults = faults, stopCrc = stopCrc)
 
     @Test fun restart_continues_from_the_checkpoint_and_clears_the_partial() {
         try {
@@ -152,19 +160,66 @@ class DeviceResumeRestartTest {
             assertEquals(DeviceUiCopy.downloadFailed("en"), vm.sessionUi.value.statusMessage)
             failing = false
             vm.downloadSession(session)
-            runBlocking {
-                withTimeout(60_000) {
-                    while (vm.sessionUi.value.lastDownloadedRecordingId == null && vm.sessionUi.value.statusMessage != DeviceUiCopy.downloadFailed("en")) delay(5)
-                }
-            }
+            awaitOutcome(vm)
             assertEquals("rec-synthetic", vm.sessionUi.value.lastDownloadedRecordingId)
             assertContentEquals(plaintext, assertNotNull(saved))
         } finally { owner.clear(); Dispatchers.resetMain() }
     }
 
+    @Test fun failed_save_keeps_the_complete_partial_and_a_retry_needs_no_new_transfer() {
+        try {
+            var failing = true
+            val fake = peripheral()
+            val vm = run(fake, persist = { audio ->
+                val out = ByteArrayOutputStream()
+                audio.writeDecryptedAudio {
+                    check(!failing) { "synthetic full disk" }
+                    out.write(it)
+                }
+                saved = out.toByteArray()
+                "rec-synthetic"
+            })
+            assertEquals(DeviceUiCopy.downloadFailed("en"), vm.sessionUi.value.statusMessage)
+            assertTrue(partials.list()!!.any { it.endsWith(".partial") }, "the transfer is kept")
+            failing = false
+            vm.downloadSession(session)
+            awaitOutcome(vm)
+            assertEquals("rec-synthetic", vm.sessionUi.value.lastDownloadedRecordingId)
+            assertContentEquals(plaintext, assertNotNull(saved))
+            assertEquals(listOf(0L), fake.syncStartOffsets, "nothing is transferred again")
+        } finally { owner.clear(); Dispatchers.resetMain() }
+    }
+
+    @Test fun wipe_stops_a_running_download_and_deletes_the_partials() {
+        try {
+            val vm = run(peripheral(), persist = { awaitCancellation() }, await = false)
+            runBlocking {
+                withTimeout(20_000) { while (partials.list()!!.none { it.endsWith(".partial") }) delay(5) }
+                vm.wipePartialDownloads()
+            }
+            assertFalse(partials.exists(), "no partial or salt survives a wipe")
+            assertEquals(DeviceUiCopy.downloadCancelled("en"), vm.sessionUi.value.statusMessage)
+        } finally { owner.clear(); Dispatchers.resetMain() }
+    }
+
+    @Test fun first_unlock_on_a_hung_link_ends_in_a_failure_status() {
+        try {
+            runBlocking {
+                Dispatchers.setMain(Dispatchers.Unconfined)
+                val ble = FakeBleTransport(peripheral()).apply { beforeWrite = { awaitCancellation() } }
+                val vm = DeviceViewModel(ble, Importer(keys), localeTag = { "en" })
+                owner.put("device", vm)
+                vm.connect("fake-note-pro")
+                withTimeout(30_000) {
+                    while (vm.sessionUi.value.statusMessage != DeviceUiCopy.unlockFailed("en")) delay(50)
+                }
+            }
+        } finally { owner.clear(); Dispatchers.resetMain() }
+    }
+
     @Test fun undecryptable_download_clears_the_partial_so_a_retry_starts_over() {
         try {
-            val vm = run(peripheral(), persist = { error("synthetic decrypt failure") })
+            val vm = run(peripheral(file = ByteArray(encrypted.size) { 0x5A }))
             assertEquals(DeviceUiCopy.downloadFailed("en"), vm.sessionUi.value.statusMessage)
             assertTrue(partials.list()!!.none { it.endsWith(".partial") || it.endsWith(".offset") })
         } finally { owner.clear(); Dispatchers.resetMain() }

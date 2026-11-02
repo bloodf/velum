@@ -64,6 +64,7 @@ fun StoragePrivacyScreen(
                     onClick = {
                         confirmWipe = false
                         container.settingsViewModel.runStorageAction {
+                            container.deviceViewModel.wipePartialDownloads()
                             container.repository.wipeAllUserData { path ->
                                 deleteFileAtPath(path)
                             }

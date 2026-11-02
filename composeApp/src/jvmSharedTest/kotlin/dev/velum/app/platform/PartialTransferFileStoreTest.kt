@@ -86,6 +86,17 @@ class PartialTransferFileStoreTest {
         assertFalse(otherNames.any { it in first }, "another install's salt gives another key")
     }
 
+    @Test fun delete_all_removes_partials_and_salt_so_nothing_resumes() {
+        open().apply { write(ByteArray(5)); length(); close() }
+        assertTrue(File(root, "serial-key.salt").isFile)
+        PartialTransferFileStore.deleteAll(root)
+        assertFalse(root.exists())
+        PartialTransferFileStore.deleteAll(root) // nothing there is fine
+        val reopened = open()
+        assertEquals(0L, reopened.length())
+        reopened.close()
+    }
+
     @Test fun without_a_real_serial_there_is_no_resume() {
         val a = open(serial = null)
         a.write(ByteArray(5)); assertEquals(5L, a.length()); a.close()

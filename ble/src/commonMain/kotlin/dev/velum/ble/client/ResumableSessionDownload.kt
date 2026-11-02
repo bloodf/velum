@@ -119,6 +119,11 @@ class ResumableSessionDownload(
                 lastError = e
             } catch (e: CancellationException) {
                 throw e
+            } catch (e: TransferIntegrityException) {
+                lastError = e
+                // The device may not support resuming (#6): refused it, or sent what can't be joined to the
+                // partial. Restart from 0. A lost link or timeout doesn't get here, so it keeps the partial.
+                if (before > 0 && store.length() == before) store.truncate(0)
             } catch (e: Exception) {
                 lastError = e
             } finally {

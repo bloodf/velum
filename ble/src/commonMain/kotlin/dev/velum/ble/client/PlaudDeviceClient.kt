@@ -34,6 +34,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.ClosedSendChannelException
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -74,7 +75,11 @@ class PlaudDeviceClient(
         if (notifyJob != null) return
         val scope = notificationScope ?: CoroutineScope(coroutineContext)
         notifyJob = scope.launch(start = CoroutineStart.UNDISPATCHED) {
-            ble.notifications().collect { inbound.send(it) }
+            try {
+                ble.notifications().collect { inbound.send(it) }
+            } catch (_: ClosedSendChannelException) {
+                // close() may run on another thread between cancelling this job and closing the channel.
+            }
         }
     }
 
@@ -266,7 +271,7 @@ class PlaudDeviceClient(
         val start = Sessions.encodeSyncStart(sessionId, startOffset, sizeBytes)
         val startPayload = transactCommand(Commands.SYNC_FILE_START, start)
         val startRsp = Sessions.parseSyncStartResponse(startPayload)
-        require(!startRsp.refused) { "Sync start refused status=${startRsp.status}" }
+        if (startRsp.refused) throw TransferIntegrityException("Sync start refused status=${startRsp.status}")
 
         var next = startOffset
         var ignoredFrames = 0
