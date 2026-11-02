@@ -183,8 +183,6 @@ kotlin {
                 implementation(libs.androidx.compose.ui.test.junit4)
                 implementation(libs.androidx.compose.ui.test.manifest)
                 implementation("androidx.tracing:tracing:1.2.0")
-                // #100 catalog test opens its own database file, never the app's velum.db.
-                implementation(libs.sqldelight.android)
             }
         }
         desktopMain.dependencies {

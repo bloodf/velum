@@ -4,7 +4,8 @@ import android.os.Bundle
 import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import app.cash.sqldelight.driver.android.AndroidSqliteDriver
+import app.cash.sqldelight.db.SqlDriver
+import dev.velum.core.data.DriverFactory
 import dev.velum.core.data.VelumRepository
 import dev.velum.core.db.VelumDatabase
 import dev.velum.core.search.FtsQuery
@@ -24,11 +25,14 @@ import org.junit.runner.RunWith
 
 /**
  * #100 on-device check of the full bundled "All" catalog: import, restart, paging order and search
- * latency against the real Android SQLite. Uses its own database file (never the app's velum.db) and
- * needs no network. Expected rows are read from the bundled asset, so the test is count-agnostic.
+ * latency through the shipping DriverFactory (bundled SQLite with FTS5). Uses its own database file
+ * (never the app's velum.db) and needs no network. Expected rows are read from the bundled asset, so the test is count-agnostic.
  *
- * Budgets are deliberately loose until measured on the reference emulator; the measured values are
- * reported as instrumentation status (key `velum.catalog`) and in logcat (tag `VelumCatalog100`).
+ * Measured values are reported as instrumentation status (key `velum.catalog`) and in logcat (tag
+ * `VelumCatalog100`). Reference measurement (2026-11-02, emulator-5554 API 34, debug build of #153 on
+ * integration batch A, 16,128 rows, bundled SQLite FTS5, macOS host load 500-900): import 7,171 ms,
+ * search p50 4 ms / p95 16 ms over 20 alternating accented/unaccented queries. Budgets keep a wide
+ * margin for slow CI emulators and low-end devices: import 30 s, search p95 250 ms.
  *
  * Run: adb shell am instrument -w -e class dev.velum.app.templates.FullCatalogDeviceTest \
  *   -e velumDeviceWalk false dev.velum.app.test/dev.velum.app.devicewalk.DeviceWalkTestRunner
@@ -36,12 +40,12 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class FullCatalogDeviceTest {
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
-    private lateinit var driver: AndroidSqliteDriver
+    private lateinit var driver: SqlDriver
     private lateinit var repo: VelumRepository
 
     @Before fun open() {
         context.deleteDatabase(DB_NAME)
-        driver = AndroidSqliteDriver(VelumDatabase.Schema, context, DB_NAME)
+        driver = DriverFactory(context, DB_NAME).createDriver()
         repo = VelumRepository(VelumDatabase(driver), driver)
     }
 
@@ -57,7 +61,7 @@ class FullCatalogDeviceTest {
 
         // Restart: a second repository on the same file keeps every row and the index.
         driver.close()
-        driver = AndroidSqliteDriver(VelumDatabase.Schema, context, DB_NAME)
+        driver = DriverFactory(context, DB_NAME).createDriver()
         repo = VelumRepository(VelumDatabase(driver), driver)
         assertEquals(0, repo.ensureFullTemplatesImported())
 
@@ -90,6 +94,8 @@ class FullCatalogDeviceTest {
             "searchP95Ms=$p95 fts=${repo.ftsAvailable} sdk=${android.os.Build.VERSION.SDK_INT}"
         Log.i(TAG, report)
         InstrumentationRegistry.getInstrumentation().sendStatus(0, Bundle().apply { putString("velum.catalog", report) })
+        // Android framework SQLite lacks FTS5; the bundled SQLite must make the index available.
+        assertTrue("FTS must be available on Android", repo.ftsAvailable)
         assertTrue("import ${importMs}ms > budget", importMs <= IMPORT_BUDGET_MS)
         assertTrue("search p95 ${p95}ms > budget", p95 <= SEARCH_P95_BUDGET_MS)
     }
@@ -136,8 +142,8 @@ class FullCatalogDeviceTest {
         const val TAG = "VelumCatalog100"
         const val PAGE = 50
         const val SEARCH_RUNS = 20
-        // Provisional ceilings; tighten to measured value plus margin after the first emulator run.
-        const val IMPORT_BUDGET_MS = 90_000L
-        const val SEARCH_P95_BUDGET_MS = 1_500L
+        // Measured 7.2 s import / 16 ms search p95 (see KDoc); ~4x and ~15x headroom.
+        const val IMPORT_BUDGET_MS = 30_000L
+        const val SEARCH_P95_BUDGET_MS = 250L
     }
 }
