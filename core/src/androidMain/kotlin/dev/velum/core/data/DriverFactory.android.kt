@@ -2,12 +2,18 @@ package dev.velum.core.data
 
 import android.content.Context
 import android.os.Build
+import android.util.Log
 import androidx.sqlite.db.SupportSQLiteOpenHelper
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.driver.android.AndroidSqliteDriver
 import dev.velum.core.db.VelumDatabase
 import io.requery.android.database.sqlite.RequerySQLiteOpenHelperFactory
 
+/**
+ * The only way to open velum.db. Opening the same file through another SQLite copy (e.g. a raw
+ * framework SQLiteOpenHelper next to the bundled one) means two SQLite libraries with separate
+ * locking on one file, which can corrupt it.
+ */
 actual class DriverFactory(
     private val context: Context,
     private val name: String = "velum.db",
@@ -33,13 +39,19 @@ internal object BundledSqlite {
     fun factoryOrNull(
         isRobolectric: Boolean = Build.FINGERPRINT == "robolectric",
         load: () -> Unit = { System.loadLibrary(LIBRARY) },
+        onFallback: (reason: String) -> Unit = { reason ->
+            Log.w(TAG, "Bundled SQLite unavailable ($reason); using framework SQLite without FTS5")
+        },
     ): SupportSQLiteOpenHelper.Factory? {
         if (isRobolectric) return null
         return try {
             load()
             RequerySQLiteOpenHelperFactory()
-        } catch (_: UnsatisfiedLinkError) {
+        } catch (e: UnsatisfiedLinkError) {
+            onFallback(e::class.simpleName ?: "UnsatisfiedLinkError")
             null
         }
     }
+
+    private const val TAG = "VelumSqlite"
 }
