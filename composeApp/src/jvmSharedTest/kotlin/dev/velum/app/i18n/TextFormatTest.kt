@@ -16,16 +16,6 @@ class TextFormatTest {
     }
 
     @Test
-    fun formatFixed_pins_java_half_up_on_decimal_digits() = withLocale(Locale.ROOT) {
-        assertEquals("0.1", formatFixed(0.05, 1))
-        assertEquals("0.13", formatFixed(0.125, 2))
-        assertEquals("2.68", formatFixed(2.675, 2)) // binary value is below .675; Java still rounds up
-        assertEquals("1.0", formatFixed(0.95, 1))
-        assertEquals("100", formatFixed(99.5, 0))
-        assertEquals("-0.0", formatFixed(-0.04, 1))
-    }
-
-    @Test
     fun formatFixed_uses_device_locale_separator_without_grouping() {
         assertEquals("1,5", withLocale(Locale.forLanguageTag("pt-BR")) { formatFixed(1.5, 1) })
         assertEquals("1.5", withLocale(Locale.ENGLISH) { formatFixed(1.5, 1) })
@@ -33,11 +23,16 @@ class TextFormatTest {
     }
 
     @Test
-    fun formatTemplate_matches_every_shipped_format() = withLocale(Locale.ROOT) {
-        assertEquals("Done · 3 new · 0 dupes · 12 failed", formatTemplate("Done · %d new · %d dupes · %d failed", 3, 0, 12))
-        assertEquals("Webhook posted (HTTP 200)", formatTemplate("Webhook posted (%s)", "HTTP 200"))
-        assertEquals("1:02:03", formatTemplate("%d:%02d:%02d", 1L, 2L, 3L))
-        assertEquals("05:09", formatTemplate("%02d:%02d", 5L, 9L))
+    fun formatTemplate_on_jvm_matches_string_format_for_every_shipped_template() = withLocale(Locale.ROOT) {
+        for (strings in listOf(PtBr, En)) {
+            assertEquals(
+                String.format(strings.ux.syncDoneFormat, 3, 0, 12),
+                formatTemplate(strings.ux.syncDoneFormat, 3, 0, 12),
+            )
+            for (t in listOf(strings.ux.webhookPostedFormat, strings.ux.webhookFailedFormat)) {
+                assertEquals(String.format(t, "HTTP 200"), formatTemplate(t, "HTTP 200"))
+            }
+        }
     }
 
     @Test

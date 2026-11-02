@@ -3,6 +3,9 @@ package dev.velum.app.i18n
 /**
  * Same output as `"%.<decimals>f".format(value)` on the JVM: device-locale separator, no
  * grouping, HALF_UP on the shortest decimal digits (2.675 -> "2.68" at 2 decimals).
+ *
+ * Not identical everywhere: iOS always emits ASCII digits, whereas the JVM localizes digits for
+ * locales such as ar and fa; and exact parity with the JVM breaks at or above about 1e14.
  */
 expect fun formatFixed(value: Double, decimals: Int): String
 
