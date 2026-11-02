@@ -1,0 +1,171 @@
+package dev.velum.app.ui.recording
+
+import android.content.Context
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isRoot
+import androidx.compose.ui.test.printToString
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.test.core.app.ApplicationProvider
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import dev.velum.ai.local.ModelStoreDir
+import dev.velum.app.devicewalk.DeviceWalkMode
+import dev.velum.app.di.AppContainer
+import dev.velum.app.i18n.LocalStrings
+import dev.velum.app.i18n.PtBr
+import dev.velum.app.ui.theme.VelumTheme
+import dev.velum.core.data.DriverFactory
+import dev.velum.core.model.ComputeMode
+import dev.velum.core.security.InMemorySecureStore
+import java.nio.file.Files
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+import kotlinx.coroutines.runBlocking
+import org.junit.After
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.Robolectric
+import org.robolectric.annotation.Config
+
+/**
+ * #103 at the screen: Change template on a recording with an existing summary, driven through the real
+ * RecordingDetailScreen, container, job scheduler and RecordingProcessor. The container swaps its
+ * engines for the device-walk fakes (DeviceWalkMode), so the "model" is a fake that writes the
+ * template's own headings; real HTTP and real local models are not involved.
+ */
+@RunWith(AndroidJUnit4::class)
+@Config(application = android.app.Application::class, sdk = [34], qualifiers = "w360dp-h1800dp-xxhdpi")
+class ChangeTemplateUiTest {
+    @get:Rule val compose = createEmptyComposeRule()
+
+    @After fun resetWalkMode() { DeviceWalkMode.enabled = false }
+
+    // Buttons expose their label as a content description (clearAndSetSemantics); chips and cards as text.
+    private fun nodes(label: String) = compose.onAllNodesWithText(label).fetchSemanticsNodes().size +
+        compose.onAllNodesWithContentDescription(label).fetchSemanticsNodes().size
+    private fun shows(label: String) = nodes(label) > 0
+    private fun awaitCond(what: String, cond: () -> Boolean) {
+        try {
+            compose.waitUntil(20_000, cond)
+        } catch (e: androidx.compose.ui.test.ComposeTimeoutException) {
+            val roots = compose.onAllNodes(isRoot())
+            throw AssertionError(
+                "Timed out waiting for $what\n" +
+                    roots.fetchSemanticsNodes().indices.drop(1).joinToString("\n====\n") { roots[it].printToString(maxDepth = 14) }.take(9000),
+                e,
+            )
+        }
+    }
+    private fun await(label: String) = awaitCond("'$label'") { shows(label) }
+    // Pointer injection does not reach nodes low in the tall dialog window under Robolectric, so click via semantics.
+    private fun click(node: androidx.compose.ui.test.SemanticsNodeInteraction) {
+        node.performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick) { it() }
+    }
+    private fun tap(label: String) {
+        if (compose.onAllNodesWithText(label).fetchSemanticsNodes().isNotEmpty()) {
+            click(compose.onAllNodesWithText(label)[0])
+        } else {
+            click(compose.onAllNodesWithContentDescription(label)[0])
+        }
+    }
+
+    private fun fixture(summaryMode: ComputeMode, block: (AppContainer) -> Unit) {
+        DeviceWalkMode.enabled = true
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        context.deleteDatabase("velum.db")
+        val root = ModelStoreDir(Files.createTempDirectory("velum-ct-ui-test").toString())
+        val container = AppContainer(InMemorySecureStore(), DriverFactory(context), modelStoreRoot = root)
+        runBlocking {
+            container.settingsRepository.load()
+            container.settingsRepository.setSummaryMode(summaryMode)
+            container.settingsRepository.setApiKey("sk-test-not-real") // configured, but only used when Summary is on API
+            container.repository.upsertTemplate(
+                // Category "aaa" sorts first, so the picker (a 220dp list) shows this row without scrolling.
+                id = "ui103-target", name = "ZQ Change Target", category = "aaa", description = "target",
+                systemPrompt = "## ZQ Heading Alpha\n- point", builtin = true, featured = true, uses = 1_000_000,
+            )
+            container.repository.insertRecording(
+                id = "rec", sessionId = null, folderId = null, title = "Weekly", source = "phone", deviceSerial = null,
+                startedAt = 1, durationSeconds = 60, sizeBytes = 0, localPath = null,
+                transcript = "Speaker 1: ship on Friday.", summaryMarkdown = "## Prior heading\n- prior point", status = "ready",
+            )
+        }
+        val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup()
+        try {
+            activity.get().setContent {
+                CompositionLocalProvider(LocalStrings provides PtBr) {
+                    VelumTheme(darkTheme = false) {
+                        RecordingDetailScreen(container, recordingId = "rec", onBack = {}, initialTab = 1)
+                    }
+                }
+            }
+            await("Prior heading")
+            block(container)
+        } finally {
+            activity.pause().stop().destroy()
+            container.databaseHandle.driver.close()
+            root.deleteRecursively()
+        }
+    }
+
+    private fun pickTemplateAndApply() {
+        await(PtBr.changeTemplate)
+        tap(PtBr.changeTemplate)
+        // The sheet's mode chip is a text node; the Notes pane has a same-named button (content description only).
+        awaitCond("sheet chip") { compose.onAllNodesWithText(PtBr.generateCustom).fetchSemanticsNodes().isNotEmpty() }
+        val chip = compose.onAllNodes(hasText(PtBr.generateCustom) and hasClickAction())
+        click(chip[chip.fetchSemanticsNodes().lastIndex])
+        // Custom mode swaps the sheet heading to the same word, so a second text node appears.
+        awaitCond("custom mode heading") { compose.onAllNodesWithText(PtBr.generateCustom).fetchSemanticsNodes().size >= 2 }
+        await("ZQ Change Target")
+        tap("ZQ Change Target")
+        tap(PtBr.apply)
+    }
+
+    @Test
+    fun change_template_regenerates_the_summary_with_the_picked_template_on_the_api_route() =
+        fixture(ComputeMode.Api) { container ->
+            pickTemplateAndApply()
+
+            await("ZQ Heading Alpha") // the regenerated summary is on screen
+            val rec = runBlocking { container.repository.getRecording("rec")!! }
+            assertTrue(rec.summary_markdown.orEmpty().contains("ZQ Heading Alpha"))
+            val versions = runBlocking { container.repository.getSummaryVersions("rec") }
+            assertEquals("ui103-target", versions.single { it.is_active != 0L }.template_id)
+            assertEquals("ready", rec.status)
+        }
+
+    @Test
+    fun local_route_without_the_model_shows_the_prompt_and_changes_nothing() =
+        fixture(ComputeMode.Local) { container ->
+            pickTemplateAndApply()
+
+            await(PtBr.localModelMissingTitle)
+            assertTrue(shows(PtBr.switchToApi), "the prompt offers an API route instead of silently using one")
+            val rec = runBlocking { container.repository.getRecording("rec")!! }
+            assertEquals("## Prior heading\n- prior point", rec.summary_markdown, "previous summary untouched")
+            assertEquals(0, runBlocking { container.repository.getSummaryVersions("rec") }.count { it.template_id == "ui103-target" })
+            assertEquals("ready", rec.status)
+        }
+
+    @Test
+    fun switching_to_api_from_the_missing_model_prompt_keeps_the_picked_template() =
+        fixture(ComputeMode.Local) { container ->
+            pickTemplateAndApply()
+            await(PtBr.localModelMissingTitle)
+
+            tap(PtBr.switchToApi)
+
+            // Wait for the regeneration to finish, then see which template it actually used.
+            compose.waitUntil(30_000) { runBlocking { container.repository.getSummaryVersions("rec") }.any { it.is_active != 0L } }
+            val versions = runBlocking { container.repository.getSummaryVersions("rec") }
+            assertEquals("ui103-target", versions.single { it.is_active != 0L }.template_id)
+        }
+}

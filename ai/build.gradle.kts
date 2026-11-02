@@ -35,6 +35,8 @@ kotlin {
                 implementation(libs.kotlin.test)
                 implementation(libs.kotlinx.coroutines.test)
                 implementation(libs.ktor.client.mock)
+                implementation(libs.sqldelight.jvm)
+                implementation(libs.sqldelight.runtime)
                 implementation(project(":ble"))
                 implementation(project(":plaud-protocol"))
             }
