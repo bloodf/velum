@@ -45,7 +45,13 @@ data class DeviceSessionUi(
     val downloadingSessionId: Long? = null,
     val downloadProgress: Float? = null,
     val lastDownloadedRecordingId: String? = null,
+    /** Device sessions already in the library (#113); their action re-downloads into the same row. */
+    val librarySessionIds: Set<Long> = emptySet(),
 )
+
+/** Real device serial for the #113 dedup key, or null (dedup off) when none is known. */
+internal fun dedupDeviceSerial(keySerial: String?, advertisedSerial: String?): String? =
+    keySerial?.takeIf { it.isNotBlank() } ?: advertisedSerial?.takeIf { it.isNotBlank() }
 
 data class DownloadedSessionAudio(
     val sessionId: Long,
@@ -64,6 +70,7 @@ class DeviceViewModel(
         error("persistDownloadedSession not configured")
     },
     private val localeTag: () -> String = { systemLanguageTag() },
+    private val librarySessionIds: suspend (sessionIds: List<Long>, deviceSerial: String?) -> Set<Long> = { _, _ -> emptySet() },
 ) : ViewModel() {
     val connectionState: StateFlow<BleConnectionState> =
         ble.connectionState.stateIn(viewModelScope, SharingStarted.Eagerly, BleConnectionState.Idle)
@@ -207,13 +214,15 @@ class DeviceViewModel(
                     sizeBytes = entry.sizeBytes,
                     totalBytes = totalBytes,
                     privateKeyPem = keys.privateKeyPem,
-                    deviceSerial = keys.serialNumber.ifBlank { connectedSerial },
+                    deviceSerial = dedupDeviceSerial(keys.serialNumber, connectedSerial),
                     startedAtEpochSeconds = sessionId.coerceAtLeast(0L),
                 )
             }
             val sessions = c.listSessions()
+            val inLibrary = loadLibrarySessionIds(sessions.entries.map { it.sessionId }, dedupDeviceSerial(keys.serialNumber, connectedSerial))
             _sessionUi.value = _sessionUi.value.copy(
                 sessions = sessions.entries,
+                librarySessionIds = inLibrary,
                 downloadingSessionId = null,
                 downloadProgress = null,
                 lastDownloadedRecordingId = recordingId,
@@ -272,6 +281,16 @@ class DeviceViewModel(
         )
     }
 
+    /** Library marking is best-effort: a lookup failure must not break the session list. */
+    private suspend fun loadLibrarySessionIds(ids: List<Long>, serial: String?): Set<Long> =
+        try {
+            librarySessionIds(ids, serial)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            emptySet()
+        }
+
     private fun closeClient() {
         client?.close()
         client = null
@@ -281,7 +300,7 @@ class DeviceViewModel(
     private suspend fun runProtocolIfKeysPresent() {
         val locale = localeTag()
         val connected = (connectionState.value as? BleConnectionState.Connected)?.device
-        connectedSerial = connected?.serial ?: connected?.name
+        connectedSerial = connected?.serial // never the BLE name: it is not a stable device identity (#113)
         val scanMatch = RecorderDriverRegistry.matchAdvertisement(
             name = connected?.name,
             manufacturerPayload = null,
@@ -333,9 +352,11 @@ class DeviceViewModel(
             val sessions = c.listSessions()
             val battery = c.readBattery()
             val wifiCapable = DeviceCapabilityRegistry.supportsWifiFastPath(caps)
+            val inLibrary = loadLibrarySessionIds(sessions.entries.map { it.sessionId }, dedupDeviceSerial(keys.serialNumber, connectedSerial))
             _sessionUi.value = DeviceSessionUi(
                 batteryPercent = battery.percent,
                 sessions = sessions.entries,
+                librarySessionIds = inLibrary,
                 protocolVersion = hs.protocolVersion,
                 modelDisplayName = caps.displayName,
                 wifiFastPath = false,

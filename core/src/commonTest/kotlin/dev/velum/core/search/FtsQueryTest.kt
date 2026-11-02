@@ -46,6 +46,7 @@ class RecordingSearchTest {
                 status = "ready",
                 trashed = 0,
                 created_at = 1,
+                processing_warning = null,
             ),
         )
         val result = RecordingSearch.recordings(items, "BLE", emptyList())
@@ -85,6 +86,7 @@ class RecordingSearchTest {
         status = "ready",
         trashed = 0,
         created_at = 1,
+        processing_warning = null,
     )
 
     private fun template(id: String, name: String, tags: String) = dev.velum.core.db.Template(

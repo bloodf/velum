@@ -40,41 +40,47 @@ fun RecordingSettingsScreen(
         Modifier
             .fillMaxSize()
             .background(VelumSurface)
-            .verticalScroll(rememberScrollState()),
     ) {
         ScreenTopBar(strings.settingsUi.recording, onBack = onBack)
-        Text(
-            strings.settingsUi.recordingHint,
-            color = VelumInkSecondary,
-            fontSize = 13.sp,
-            lineHeight = 18.sp,
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-        )
-        SectionLabel(strings.recordingSource)
-        MicInputSource.entries.forEach { src ->
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .clickable {
-                        container.settingsViewModel.runStorageAction { container.settingsRepository.setDefaultMicInput(src.name) }
+        Column(
+            Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState()),
+        ) {
+            Text(
+                strings.settingsUi.recordingHint,
+                color = VelumInkSecondary,
+                fontSize = 13.sp,
+                lineHeight = 18.sp,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+            )
+            SectionLabel(strings.recordingSource)
+            MicInputSource.entries.forEach { src ->
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            container.settingsViewModel.runStorageAction { container.settingsRepository.setDefaultMicInput(src.name) }
+                        }
+                        .padding(horizontal = 20.dp, vertical = 14.dp),
+                ) {
+                    Text(src.localizedLabel(strings), color = VelumInk, fontSize = 16.sp)
+                    if (src.name == current) {
+                        Text("✓", color = VelumInkSecondary, fontSize = 13.sp)
                     }
-                    .padding(horizontal = 20.dp, vertical = 14.dp),
-            ) {
-                Text(src.localizedLabel(strings), color = VelumInk, fontSize = 16.sp)
-                if (src.name == current) {
-                    Text("✓", color = VelumInkSecondary, fontSize = 13.sp)
                 }
             }
+            Spacer(Modifier.height(12.dp))
+            SectionLabel(strings.settingsUi.recordingNotes)
+            Text(
+                strings.settingsUi.recordingNotesBody,
+                color = VelumInkSecondary,
+                fontSize = 13.sp,
+                lineHeight = 18.sp,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+            )
+            Spacer(Modifier.height(40.dp))
         }
-        Spacer(Modifier.height(12.dp))
-        SectionLabel(strings.settingsUi.recordingNotes)
-        Text(
-            strings.settingsUi.recordingNotesBody,
-            color = VelumInkSecondary,
-            fontSize = 13.sp,
-            lineHeight = 18.sp,
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-        )
-        Spacer(Modifier.height(40.dp))
     }
 }

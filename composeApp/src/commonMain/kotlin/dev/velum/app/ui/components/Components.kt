@@ -36,6 +36,7 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -104,6 +105,8 @@ fun OutlineButton(
     modifier: Modifier = Modifier,
     leading: ImageVector? = null,
     enabled: Boolean = true,
+    /** Non-null marks a choice in a single-select group: true draws the active style and sets semantics `selected`. */
+    selected: Boolean? = null,
 ) {
     val haptics = LocalHaptics.current
     Row(
@@ -111,7 +114,11 @@ fun OutlineButton(
             .fillMaxWidth()
             .height(52.dp)
             .clip(RoundedCornerShape(12.dp))
-            .border(1.dp, VelumDivider, RoundedCornerShape(12.dp))
+            .border(
+                if (selected == true) 2.dp else 1.dp,
+                if (selected == true) VelumInk else VelumDivider,
+                RoundedCornerShape(12.dp),
+            )
             .background(VelumSurface)
             .clickable(
                 enabled = enabled,
@@ -124,6 +131,7 @@ fun OutlineButton(
             .clearAndSetSemantics {
                 contentDescription = text
                 role = Role.Button
+                if (selected != null) this.selected = selected
                 if (enabled) {
                     onClick {
                         onClick()
