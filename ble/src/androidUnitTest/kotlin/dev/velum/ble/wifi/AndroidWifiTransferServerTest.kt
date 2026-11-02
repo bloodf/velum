@@ -251,6 +251,38 @@ class AndroidWifiTransferServerTest {
     }
 
     @Test
+    fun strayClientConnectingAndClosing_doesNotRevokeTheAuthenticatedDevice() = runTest {
+        val port = freePort()
+        val server = AndroidWifiTransferServer()
+        server.start(port, "127.0.0.1", preamble)
+        try {
+            @Suppress("UNCHECKED_CAST")
+            val frames = server.incomingEncryptedFrames() as SharedFlow<ByteArray>
+            val received = java.util.concurrent.ConcurrentLinkedQueue<Byte>()
+            val subscribed = CompletableDeferred<Unit>()
+            val collector = launch(start = CoroutineStart.UNDISPATCHED) {
+                frames.onSubscription { subscribed.complete(Unit) }.collect { received += it[0] }
+            }
+            subscribed.await()
+            val device = connectDevice(port)
+            withContext(Dispatchers.IO) { device.send(preamble) }
+            val stray = connectDevice(port)
+            withContext(Dispatchers.IO) { stray.close() }
+            // Keep sending across the window in which the server observes the stray close; none may be lost.
+            repeat(20) { i ->
+                withContext(Dispatchers.IO) { device.send(byteArrayOf(i.toByte())) }
+                delay(50)
+            }
+            withTimeout(30_000) { while (received.size < 20) delay(10) }
+            assertEquals((0 until 20).map { it.toByte() }, received.toList())
+            collector.cancel()
+            device.close()
+        } finally {
+            server.stop()
+        }
+    }
+
+    @Test
     fun completeTransfer_matchesFixtureAndCrc_andReleasesEverything() = runTest {
         for (mode in WifiPayloadCipher.entries) {
             val port = freePort()

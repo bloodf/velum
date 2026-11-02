@@ -55,8 +55,9 @@ class WifiSoftApMockServerTest {
 
     /**
      * Connect-retry (no fixed sleeps): the server may not be bound yet. The per-attempt timeout is long
-     * because an attempt abandoned under load can still be accepted late and then reset the shared
-     * preamble state when it closes, which fails the next attempt.
+     * because an attempt abandoned under load can still be accepted late by the server. Preamble state is
+     * per connection (PreamblePerConnectionTest), so a late stray cannot revoke the next attempt, but it
+     * still wastes the retry window.
      */
     private suspend fun connectDevice(port: Int): FakeWifiDeviceClient {
         val deadline = System.nanoTime() + 30_000_000_000L
