@@ -172,18 +172,15 @@ class SimulatedPeripheralScenariosTest {
         for (n in 1..19) assertNull(PlaudAdvertisement.parseManufacturerData(ByteArray(n) { 0x71 }), "len=$n")
     }
 
-    /**
-     * Pins the parser's actual (weak) behaviour: any 20+ byte blob parses and is only classified
-     * as Unknown. There is no company-id or model validation, so callers must filter on
-     * DeviceModel.Unknown. Reported on #93; not fixed here.
-     */
+    /** Garbage 20+ byte blobs are not Plaud adverts: null from the parser and not listed. */
     @Test
-    fun advertising_20_byte_garbage_parses_as_unknown_model_without_crashing() {
-        val zero = PlaudAdvertisement.parseManufacturerData(ByteArray(20))!!
-        assertEquals(DeviceModel.Unknown, zero.model)
-        assertEquals("", zero.serial)
-        val junk = PlaudAdvertisement.parseManufacturerData(ByteArray(24) { 0xFF.toByte() })!!
-        assertEquals(DeviceModel.Unknown, junk.model)
+    fun advertising_20_byte_garbage_is_rejected_and_not_listed() {
+        for (blob in listOf(ByteArray(20), ByteArray(24) { 0xFF.toByte() })) {
+            assertNull(PlaudAdvertisement.parseManufacturerData(blob))
+            assertNull(PlaudAdvertisement.parse(0x005D, blob))
+            assertFalse(PlaudAdvertisement.shouldList(false, blob, null))
+            assertFalse(PlaudAdvertisement.shouldList(false, blob, "JBL Flip 6"))
+        }
     }
 
     // ---- #93 unlock -------------------------------------------------------

@@ -39,13 +39,58 @@ data class PlaudAdvertisement(
     }
 
     companion object {
+        /**
+         * Parse manufacturer data only when it came from Plaud's company id
+         * ([PlaudUuids.MANUFACTURER_ID]); anything else (or an unknown id) is not a Plaud device.
+         */
+        fun parse(manufacturerId: Int?, data: ByteArray): PlaudAdvertisement? =
+            if (manufacturerId == PlaudUuids.MANUFACTURER_ID) parseManufacturerData(data) else null
+
+        /**
+         * [data] is the payload after the company id. Returns null unless the documented layout is
+         * structurally plausible: at least 20 bytes, non-zero model code and a protocol version in
+         * 1..255. The serial charset is NOT validated (no real capture is on record, #5); it is
+         * sanitised for display instead. Models outside [DeviceModel] still parse as
+         * [DeviceModel.Unknown] by design.
+         */
         fun parseManufacturerData(data: ByteArray): PlaudAdvertisement? {
             if (data.size < 20) return null
             val modelCode = Bytes.readU16Le(data, 1)
-            val serialBytes = data.copyOfRange(9, 17)
-            val serial = serialBytes.decodeToString().trimEnd('\u0000', ' ')
+            if (modelCode == 0) return null
             val protocolVersion = Bytes.readU16Le(data, 18)
-            return PlaudAdvertisement(modelCode, serial, protocolVersion, data)
+            if (protocolVersion !in 1..255) return null
+            return PlaudAdvertisement(modelCode, displaySerial(data.copyOfRange(9, 17)), protocolVersion, data)
+        }
+
+        /** Name heuristic shared by discovery and the recorder driver (name-based discovery only). */
+        fun nameLooksPlaud(name: String?): Boolean {
+            val n = name?.lowercase().orEmpty()
+            return n.contains("plaud") || n.contains("notepin") || n.contains("note pro") ||
+                n.startsWith("note ") || Regex("""^note\d""").containsMatchIn(n)
+        }
+
+        /**
+         * Should a scan result be listed? Yes for the Plaud GATT service, for strictly valid 0x005D
+         * data, or (fallback) for any 0x005D data when the name looks like Plaud: 0x005D may be the
+         * chip vendor's id and the real layout is unconfirmed (#5), so a Plaud-named device is never
+         * hidden by a failed strict parse. [manufacturerData] is the payload for company id 0x005D, or null.
+         */
+        fun shouldList(hasPlaudService: Boolean, manufacturerData: ByteArray?, name: String?): Boolean =
+            hasPlaudService ||
+                (manufacturerData != null &&
+                    (parse(PlaudUuids.MANUFACTURER_ID, manufacturerData) != null || nameLooksPlaud(name)))
+
+        /** Printable ASCII (trailing NUL/space padding trimmed) as text; anything else as `0x`-hex. */
+        private fun displaySerial(raw: ByteArray): String {
+            var end = raw.size
+            while (end > 0 && (raw[end - 1].toInt() == 0 || raw[end - 1].toInt() == 0x20)) end--
+            val bytes = raw.copyOf(end)
+            val printable = bytes.all { (it.toInt() and 0xFF) in 0x20..0x7E }
+            return if (printable) {
+                bytes.decodeToString()
+            } else {
+                "0x" + bytes.joinToString("") { (it.toInt() and 0xFF).toString(16).padStart(2, '0').uppercase() }
+            }
         }
     }
 }
