@@ -81,10 +81,11 @@ Each driver exposes: scan filter, identify, connect/auth, list/download (if any)
 
 All GATT writes go through `dev.velum.ble.gatt.GuardedLink`: it looks up the `WriteGuard` declared for the target
 characteristic in the `GattProfile` (Plaud: 2BB1 -> `PlaudWriteGuard`, forbidden opcodes 5/104/128/0xFE20/143 and
-settings 4/26), runs it on the **plaintext**, then optionally seals. `BleTransport.writeRaw`, `PlainWrite` and
-`SealedWrite` are `internal` to `:ble`, so drivers in other modules (`:recorder`, `:composeApp`) cannot reach a
-characteristic any other way. To verify: add `transport.writeRaw(...)` or `SealedWrite(...)` to any file outside `:ble`;
-`./gradlew :recorder:compileKotlinJvm` must fail with "Cannot access ... it is internal". Omi/Pocket/Limitless profiles
+settings 4/26), runs it on the **plaintext**, then optionally seals. `GattLink.writeRaw` is public so test fakes in
+`:ble-testing` can implement it, but it only accepts `GattWrite` values whose constructors are `internal` to `:ble`,
+so only `GuardedLink` can produce one. Drivers and app code hold `BleTransport` / `GuardedLink` only.
+`GattArchitectureTest` fails if any module other than `ble` / `ble-testing` mentions `writeRaw`, `GattWrite`,
+`PlainWrite(` or `SealedWrite(`. Omi/Pocket/Limitless profiles
 arrive with #15, each declaring its own guard.
 
 ---
