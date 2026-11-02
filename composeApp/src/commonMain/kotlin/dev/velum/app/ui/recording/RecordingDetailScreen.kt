@@ -688,7 +688,8 @@ fun RecordingDetailScreen(
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
             containerColor = VelumSurface,
         ) {
-            val catalogTemplates by container.repository.observeTemplates().collectAsState(emptyList())
+            val templatesFlow = remember(container) { container.repository.observeTemplates() }
+            val catalogTemplates by templatesFlow.collectAsState(emptyList())
             val aiSettings by container.settingsRepository.settings.collectAsState()
             GenerateSheetContent(
                 onClose = {

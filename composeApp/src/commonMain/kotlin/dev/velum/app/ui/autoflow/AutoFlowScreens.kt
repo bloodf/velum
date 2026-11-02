@@ -222,7 +222,8 @@ fun AutoFlowEditScreen(
 ) {
     val strings = LocalStrings.current
     val flows by container.repository.observeAutoflows().collectAsState(emptyList())
-    val templates by container.repository.observeTemplates().collectAsState(emptyList())
+    val templatesFlow = remember(container) { container.repository.observeTemplates() }
+    val templates by templatesFlow.collectAsState(emptyList())
     val seed = remember(seedTemplateId) {
         seedTemplateId?.let { AutoFlowTemplateCatalog.byId(it) }
     }
