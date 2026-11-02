@@ -27,14 +27,20 @@ import dev.velum.ble.wifi.WifiTransferServer
 import kotlin.coroutines.coroutineContext
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Protocol-20 client over [BleTransport].
@@ -231,22 +237,37 @@ class PlaudDeviceClient(
         return buffer.toByteArray()
     }
 
-    /** Stream session bytes into [sink] without retaining the full payload in a Byte list. */
+    /**
+     * Stream session bytes from [startOffset] into [sink] without retaining the full payload.
+     *
+     * Chunks must be contiguous, because decryption is positional and a gapped file is useless: a forward
+     * gap, a partial overlap, an overrun of [sizeBytes] or a short transfer throws
+     * [TransferIntegrityException] (nothing past the failure is written). A chunk entirely below the next
+     * offset is a repeat and is skipped; a chunk with another session's id is a stray from an interrupted
+     * transfer and is ignored. Absolute offsets come from community protocol notes (docs/protocol) and are
+     * unverified on the owner's device (#6).
+     *
+     * [onProgress] reports the absolute byte offset reached. Returns the device's stop CRC, or
+     * [NO_DEVICE_CRC] when there is none: the stop reply is best-effort, so a transfer holding all its
+     * bytes is never lost to a missing tail. Verifying the CRC is the caller's job.
+     */
     suspend fun downloadSessionTo(
         sessionId: Long,
         sizeBytes: Long,
         sink: SessionByteSink,
         onProgress: ((receivedBytes: Long) -> Unit)? = null,
-    ) {
+        startOffset: Long = 0L,
+    ): Int {
         require(sizeBytes in 0..MAX_SESSION_DOWNLOAD_BYTES) {
             "Session sizeBytes=$sizeBytes exceeds cap of $MAX_SESSION_DOWNLOAD_BYTES"
         }
-        val start = Sessions.encodeSyncStart(sessionId, 0, sizeBytes)
+        require(startOffset >= 0 && (sizeBytes == 0L || startOffset <= sizeBytes)) { "startOffset=$startOffset out of range" }
+        val start = Sessions.encodeSyncStart(sessionId, startOffset, sizeBytes)
         val startPayload = transactCommand(Commands.SYNC_FILE_START, start)
         val startRsp = Sessions.parseSyncStartResponse(startPayload)
         require(!startRsp.refused) { "Sync start refused status=${startRsp.status}" }
 
-        var written = 0L
+        var next = startOffset
         try {
             while (true) {
                 val raw = awaitDecryptedFrame(responseTimeout) { true }
@@ -254,31 +275,71 @@ class PlaudDeviceClient(
                     is InboundPacket.RecordingData -> {
                         when (val data = Sessions.parseRecordingData(raw, protocolVersion)) {
                             is RecordingDataPacket.Chunk -> {
-                                require(written + data.data.size <= MAX_SESSION_DOWNLOAD_BYTES) {
-                                    "Session download exceeded ${MAX_SESSION_DOWNLOAD_BYTES}-byte cap"
+                                val end = data.offset + data.data.size
+                                val ignored = isStray(data.sessionId, sessionId) || end <= next
+                                if (!ignored) {
+                                    if (data.offset != next) {
+                                        throw TransferIntegrityException("Chunk at offset ${data.offset}, expected $next")
+                                    }
+                                    if (sizeBytes > 0 && end > sizeBytes) {
+                                        throw TransferIntegrityException("Chunk ending at $end overruns size $sizeBytes")
+                                    }
+                                    require(end <= MAX_SESSION_DOWNLOAD_BYTES) {
+                                        "Session download exceeded ${MAX_SESSION_DOWNLOAD_BYTES}-byte cap"
+                                    }
+                                    sink.write(data.data)
+                                    next = end
+                                    onProgress?.invoke(next)
                                 }
-                                sink.write(data.data)
-                                written += data.data.size
-                                onProgress?.invoke(written)
                             }
-                            is RecordingDataPacket.End -> break
+                            is RecordingDataPacket.End -> if (!isStray(data.sessionId, sessionId)) break
                         }
                     }
                     is InboundPacket.CommandResponse -> {
-                        if (inboundPacket.cmd == Commands.SYNC_FILE_STOP) break
+                        if (isStopReply(inboundPacket.cmd)) break
                     }
                     else -> Unit
                 }
-                if (sizeBytes > 0 && written >= sizeBytes) break
+                if (sizeBytes > 0 && next >= sizeBytes) break
             }
-
-            val stopPayload = transactCommand(Commands.SYNC_FILE_STOP, Sessions.encodeSyncStop())
-            Sessions.parseSyncStopResponse(stopPayload)
-        } catch (e: kotlinx.coroutines.CancellationException) {
-            runCatching {
-                transactCommand(Commands.SYNC_FILE_STOP, Sessions.encodeSyncStop())
+            if (sizeBytes > 0 && next != sizeBytes) {
+                throw TransferIntegrityException("Transfer ended at offset $next of $sizeBytes")
             }
+        } catch (e: Exception) {
+            sendStopBestEffort()
             throw e
+        }
+        return stopCrcBestEffort()
+    }
+
+    private fun isStray(packetSessionId: Long?, sessionId: Long) = packetSessionId != null && packetSessionId != sessionId
+
+    /** Receive-only: a device may answer a stop as 30. Velum must never SEND 30, which is delete in our docs. */
+    private fun isStopReply(cmd: Int) = cmd == Commands.SYNC_FILE_STOP || cmd == Commands.DELETE_FILE
+
+    /** All bytes are stored, so nothing here may fail the transfer, except the caller's own cancellation. */
+    private suspend fun stopCrcBestEffort(): Int = try {
+        writeOutbound(Sessions.encodeSyncStop())
+        val raw = awaitDecryptedFrame(responseTimeout) { frame ->
+            val decoded = runCatching { Framing.decodeInbound(frame) }.getOrNull()
+            decoded is InboundPacket.CommandResponse && isStopReply(decoded.cmd)
+        }
+        val reply = Framing.decodeInbound(raw) as InboundPacket.CommandResponse
+        if (reply.cmd == Commands.SYNC_FILE_STOP) Sessions.parseSyncStopResponse(reply.payload).crc else NO_DEVICE_CRC
+    } catch (_: TimeoutCancellationException) {
+        // Our own timeout leaves this job active; an enclosing timeout or cancellation does not.
+        coroutineContext.ensureActive()
+        NO_DEVICE_CRC
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Exception) {
+        NO_DEVICE_CRC
+    }
+
+    /** Ask the device to stop streaming when a transfer is abandoned; no reply is awaited. */
+    private suspend fun sendStopBestEffort() {
+        withContext(NonCancellable) {
+            runCatching { withTimeoutOrNull(responseTimeout) { writeOutbound(Sessions.encodeSyncStop()) } }
         }
     }
 
@@ -346,18 +407,27 @@ class PlaudDeviceClient(
         return withTimeout(timeout) {
             while (true) {
                 val raw = inbound.receive()
-                val frame = if (sec != null) {
-                    val opened = cipher.openPacket(sec, recvSeq, raw) ?: continue
-                    recvSeq = opened.first + 1
-                    opened.second
-                } else {
-                    raw
-                }
+                val frame = if (sec != null) openInOrder(sec, raw) ?: continue else raw
                 if (predicate(frame)) return@withTimeout frame
             }
             @Suppress("UNREACHABLE_CODE")
             error("unreachable")
         }
+    }
+
+    /**
+     * Receiver rule for the BLE link (see [SessionCipher.openPacket]): drop packets that do not
+     * authenticate and replays (seq below the next expected), and accept any later seq. Requiring the exact
+     * next seq would stall everything after one lost packet; a lost data packet then shows up as an offset
+     * gap in [downloadSessionTo]. The Wi-Fi path keeps [SessionCipher.openPacket]'s exact match on purpose.
+     */
+    private fun openInOrder(sec: Protocol20SessionSecret, raw: ByteArray): ByteArray? {
+        val plain = cipher.chacha20Poly1305Open(sec.key, sec.nonce, sec.aad, raw) ?: return null
+        if (plain.size < 4) return null
+        val seq = Bytes.readU32Le(plain, 0)
+        if (seq < recvSeq) return null
+        recvSeq = seq + 1
+        return plain.copyOfRange(4, plain.size)
     }
 
     private suspend fun awaitRaw(
@@ -373,6 +443,9 @@ class PlaudDeviceClient(
     }
 
     companion object {
+        /** Stop CRC value meaning "none", as in the only real capture (docs/protocol/README.md). */
+        const val NO_DEVICE_CRC: Int = 0xFFFF
+
         /** Hard cap for a single session download (512 MiB). */
         const val MAX_SESSION_DOWNLOAD_BYTES: Long = 512L * 1024 * 1024
 

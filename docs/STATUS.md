@@ -90,7 +90,8 @@ Phone-only / external (no Plaud required):
 - [x] Glossary + memory tables in `Velum.sq`; CRUD under Personalization / Memory
 - [x] Local JSON/Markdown templates create/edit persist locally (community/cloud templates removed)
 - [x] Built-in catalog: **15 Velum originals** + curated **1,500 Plaud** templates (100×15 categories; unique names within category; lazy classpath asset) + optional Velum PR contributions (`contributor` credit on detail only). Plaud author/official stay in JSONL + `docs/TEMPLATES_CREDITS.md` (not shown in app UI). Discover: category tabs, FTS over name/description/body, popularity sort. Local JSON importer kept (`TemplateJsonImporter`). Sync via `scripts/sync-plaud-templates.sh`
-- [x] Official-template completeness (#101): the 41-row official baseline (`core/src/jvmTest/resources/templates/official_baseline.txt`) is the current official set and is enforced by `TemplateHygieneCatalogTest`. Checking it against an authoritative external inventory is **blocked**: no citable source exists given the Plaud branding rules (owner decision, #101). Nothing is invented to fill a gap. The Featured floor (100 distinct exact bodies per category, renamed copies counted once) is enforced by `TemplateHygieneCatalogTest`.
+- [x] Official-template baseline (#101): the 41-row official baseline (`core/src/jvmTest/resources/templates/official_baseline.txt`) is the current official set and is enforced by `TemplateHygieneCatalogTest`. The Featured floor (100 distinct exact bodies per category, renamed copies counted once) is enforced by the same test.
+- [ ] Official-template external inventory check (#101): **blocked (#101 owner decision)**. No citable authoritative inventory exists given the Plaud branding rules, so the baseline is not checked against one. Nothing is invented to fill a gap.
 - [x] CalendarProvider read current/next event title to name recordings after sync (permission-denied reported clearly)
 - [x] Runtime READ_CALENDAR permission with rationale (Integrations + AutoFlow blocked path)
 
@@ -155,7 +156,7 @@ Phone-only / external (no Plaud required):
 ## Confirm only on owner’s real Plaud Note Pro
 
 - Live BLE advertise `portVersion` / project 881, unlock with owner keys, battery notify
-- Full multi-hour download resume + CRC
+- Full multi-hour download resume + CRC. **Simulated only** (#94): `ResumableSessionDownloadTest` and `TransferIntegrityTest` (`:ble:jvmTest`) cover a 2-hour synthetic transfer, resume after disconnects and integrity failures, and CRC handling against the fake peripheral. Still unconfirmed on hardware (#6): whether a Note Pro honours a non-zero SYNC_FILE_START offset, whether chunk offsets are absolute (community protocol notes say so), how it answers SYNC_FILE_STOP and which CRC it reports (the only capture shows `0xFFFF`), real transfer time and battery drain. Offset gaps and short transfers are hard failures everywhere, because decryption is positional; real-device CRC mismatches are report-only. One real download under #6 should check the stop reply and the Ogg page CRCs of the result.
 - On-device Parakeet/Whisper/Gemma quality + thermal throttling on physical silicon
 - Whether FE10 alone works with E2EE off (no FE11) after one-time key import
 - Wi-Fi SoftAP against real Note Pro hardware (JVM fake path is green)
