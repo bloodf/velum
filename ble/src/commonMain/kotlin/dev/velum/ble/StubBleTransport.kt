@@ -1,5 +1,6 @@
 package dev.velum.ble
 
+import dev.velum.ble.gatt.GattWrite
 import dev.velum.core.model.ConnectedDevice
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -41,7 +42,7 @@ internal class StubBleTransport(
         _state.value = BleConnectionState.Idle
     }
 
-    override suspend fun write(payload: ByteArray, withoutResponse: Boolean) {
+    override suspend fun writeRaw(write: GattWrite) {
         error(unavailableReason)
     }
 

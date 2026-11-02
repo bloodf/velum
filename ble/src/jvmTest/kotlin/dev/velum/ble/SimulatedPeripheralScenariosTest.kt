@@ -6,6 +6,7 @@ import dev.velum.ble.crypto.createFileDecryptor
 import dev.velum.ble.crypto.createSessionCipher
 import dev.velum.ble.crypto.rsaKeyPairToPem
 import dev.velum.ble.fake.FakeBleTransport
+import dev.velum.ble.gatt.GattWrite
 import dev.velum.ble.fake.FakePlaudPeripheral
 import dev.velum.protocol.Bytes
 import dev.velum.protocol.Commands
@@ -64,9 +65,9 @@ class SimulatedPeripheralScenariosTest {
             inner.connect(deviceId)
         }
 
-        override suspend fun write(payload: ByteArray, withoutResponse: Boolean) {
-            segments.last() += payload.copyOf()
-            if (!swallowWrites) inner.write(payload, withoutResponse)
+        override suspend fun writeRaw(write: GattWrite) {
+            segments.last() += write.bytes.copyOf()
+            if (!swallowWrites) inner.writeRaw(write)
         }
     }
 

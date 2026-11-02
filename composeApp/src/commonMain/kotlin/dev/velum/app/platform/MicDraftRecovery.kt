@@ -4,6 +4,7 @@ import dev.velum.app.di.AppContainer
 import dev.velum.core.data.RecordingIds
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive

@@ -129,6 +129,7 @@ import dev.velum.core.templates.BuiltinTemplateCatalog
 import dev.velum.core.templates.TemplateTagFilter
 import dev.velum.core.templates.TemplateTagVocabulary
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -150,8 +151,8 @@ fun RecordingDetailScreen(
 ) {
     val strings = LocalStrings.current
     val haptics = LocalHaptics.current
-    val recording by container.repository.observeRecording(recordingId).collectAsState(null)
-    val folders by container.repository.observeFolders().collectAsState(emptyList())
+    val recording by remember(container, recordingId) { container.repository.observeRecording(recordingId) }.collectAsState(null)
+    val folders by remember(container) { container.repository.observeFolders() }.collectAsState(emptyList())
     var tab by rememberSaveable(recordingId) { mutableStateOf(initialTab) } // 0 fontes, 1 notas
     var seekSeconds by remember(recordingId, initialSeekSeconds) {
         mutableStateOf(initialSeekSeconds.coerceAtLeast(0))
@@ -183,7 +184,7 @@ fun RecordingDetailScreen(
     var pendingApiOverride by remember { mutableStateOf<ApiModelOverride?>(null) }
     var modelPrompt by remember { mutableStateOf<ModeResolution.NeedLocalModel?>(null) }
     val scope = rememberCoroutineScope()
-    val audioPlayer = remember { createAudioPlayer() }
+    val audioPlayer = remember(recordingId) { createAudioPlayer() }
     DisposableEffect(recordingId) {
         onDispose { audioPlayer.release() }
     }
@@ -634,7 +635,7 @@ fun RecordingDetailScreen(
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
             containerColor = VelumSurface,
         ) {
-            val speakers by container.repository.observeSpeakers(recordingId).collectAsState(emptyList())
+            val speakers by remember(container, recordingId) { container.repository.observeSpeakers(recordingId) }.collectAsState(emptyList())
             SpeakerLabelSheetContent(
                 speakers = speakers.map {
                     SpeakerLabelRow(
@@ -693,7 +694,8 @@ fun RecordingDetailScreen(
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
             containerColor = VelumSurface,
         ) {
-            val catalogTemplates by container.repository.observeTemplates().collectAsState(emptyList())
+            val templatesFlow = remember(container) { container.repository.observeTemplates() }
+            val catalogTemplates by templatesFlow.collectAsState(emptyList())
             val aiSettings by container.settingsRepository.settings.collectAsState()
             GenerateSheetContent(
                 onClose = {
@@ -728,7 +730,7 @@ fun RecordingDetailScreen(
         LaunchedEffect(recordingId) {
             container.repository.ensureBaselineVersion(recordingId)
         }
-        val versions by container.repository.observeSummaryVersions(recordingId)
+        val versions by remember(container, recordingId) { container.repository.observeSummaryVersions(recordingId) }
             .collectAsState(emptyList())
         ModalBottomSheet(
             onDismissRequest = { showSummaryVersions = false },
@@ -775,29 +777,43 @@ fun RecordingDetailScreen(
             modelDisplayName = need.displayName,
             onDownload = {
                 modelPrompt = null
+                pendingRetranscribe = null
+                pendingTemplateId = null
+                pendingApiOverride = null
                 onOpenModelManager()
             },
-            onSwitchToApi = {
-                scope.launch {
-                    when (need.task) {
-                        AiTask.Transcription ->
-                            container.settingsRepository.setTranscriptionMode(ComputeMode.Api)
-                        AiTask.Diarization -> {
-                            // No API diarization contract — keep Local and open model manager.
-                            modelPrompt = need
-                            return@launch
+            // Diarization has no API route, so its prompt has no such button.
+            onSwitchToApi = if (need.task == AiTask.Diarization) null else {
+                {
+                    if (modelPrompt === need) {
+                        // Take the pending request and close the prompt synchronously, so a second tap that lands
+                        // before recomposition finds nothing to run instead of enqueueing a default-template job.
+                        val retranscribe = pendingRetranscribe ?: true
+                        val templateId = pendingTemplateId
+                        val apiOverride = pendingApiOverride
+                        modelPrompt = null
+                        pendingRetranscribe = null
+                        pendingTemplateId = null
+                        pendingApiOverride = null
+                        scope.launch {
+                            // A storage failure is reported like on the other settings screens and nothing is enqueued.
+                            val switched = container.settingsViewModel.handleStorageFailure {
+                                when (need.task) {
+                                    AiTask.Transcription ->
+                                        container.settingsRepository.setTranscriptionMode(ComputeMode.Api)
+                                    AiTask.Summary ->
+                                        container.settingsRepository.setSummaryMode(ComputeMode.Api)
+                                    AiTask.Diarization -> Unit
+                                }
+                            }
+                            if (switched) {
+                                enqueueAfterGate(retranscribe, templateId, apiOverride)
+                            } else {
+                                // Visible on this screen even when the app-level storage notice was already shown.
+                                processError = strings.ux.secureStorageUnavailable
+                            }
                         }
-                        AiTask.Summary ->
-                            container.settingsRepository.setSummaryMode(ComputeMode.Api)
                     }
-                    modelPrompt = null
-                    val retranscribe = pendingRetranscribe ?: true
-                    val templateId = pendingTemplateId ?: "velum.meeting"
-                    val apiOverride = pendingApiOverride
-                    pendingRetranscribe = null
-                    pendingTemplateId = null
-                    pendingApiOverride = null
-                    enqueueAfterGate(retranscribe, templateId, apiOverride)
                 }
             },
             onDismiss = {
