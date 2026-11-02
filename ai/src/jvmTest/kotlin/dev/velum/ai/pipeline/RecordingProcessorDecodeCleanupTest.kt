@@ -148,6 +148,13 @@ class RecordingProcessorDecodeCleanupTest {
         val failed = events.last() as JobProgress.Failed
         assertTrue(failed.message.contains("Invalid Ogg page magic"), "message=${failed.message}")
         assertFalse(asrRan, "ASR must not run on undecodable audio")
+        // The same input through the decoder alone: one full page of 20 ms packets is on disk before the throw.
+        val pcm = File.createTempFile("velum-86-corrupt", ".s16le").apply { deleteOnExit() }
+        val ex = kotlin.runCatching {
+            dev.velum.ai.audio.KopusOpusDecoder().decodePathToPcmFile(src.path, ModelStoreDir(pcm.path))
+        }.exceptionOrNull()
+        assertTrue(ex != null && ex.message.orEmpty().contains("Invalid Ogg page magic"), "ex=$ex")
+        assertEquals(50L * 640, pcm.length(), "PCM from the valid page was written before the failure")
         assertEquals("failed", h.repo.getRecording("rec-86-corrupt")!!.status)
         assertFalse(spillDir("rec-86-corrupt").exists())
         assertContentEquals(bytes, src.readBytes(), "source recording preserved")

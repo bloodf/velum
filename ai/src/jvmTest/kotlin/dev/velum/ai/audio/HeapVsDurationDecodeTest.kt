@@ -63,7 +63,7 @@ class HeapVsDurationDecodeTest {
         val short = peakHeapDecoding(5 * 60)
         val long = peakHeapDecoding(40 * 60) // ~73 MiB of 16 kHz mono PCM on disk
         println("opus-decode heap delta: 5min=${short shr 10}KiB 40min=${long shr 10}KiB")
-        assertTrue(long < 32L shl 20, "40 min decode retained ${long shr 20} MiB (PCM on disk is ~73 MiB)")
-        assertTrue(long - short < 32L shl 20, "heap grew with duration: $short -> $long")
+        assertTrue(long < 8L shl 20, "40 min decode retained ${long shr 20} MiB (PCM on disk is ~73 MiB)")
+        assertTrue(long - short < 8L shl 20, "heap grew with duration: $short -> $long")
     }
 }
