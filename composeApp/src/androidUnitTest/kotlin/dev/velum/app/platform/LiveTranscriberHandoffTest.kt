@@ -30,6 +30,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -305,6 +306,16 @@ class LiveTranscriberHandoffTest {
 
         compose.waitUntil(10_000) { queued == 1 }
         assertEquals("## Markers\n- **1:05** Synthetic note\n", recordingRow().transcript)
+    }
+
+    @Test fun saving_markers_again_replaces_the_section_instead_of_adding_a_second() = runBlocking {
+        val path = File(recordingsDirectoryPath(), "$recordingId.wav").path
+        val session = assertIs<MicStartResult.Started>(container.micRecordings.startOrAttach(recordingId, path)).session
+        container.repository.updateTranscript(recordingId, "Synthetic words\n\n## Markers\n- **0:01** Old\n")
+
+        assertIs<MicStopResult.Stopped>(finalizeMicRecording(container, recordingId, path, session, markers = listOf(MicMarker(1_000, "Old"), MicMarker(2_000, "New"))))
+
+        assertEquals("Synthetic words\n\n## Markers\n- **0:01** Old\n- **0:02** New\n", recordingRow().transcript)
     }
 
     @Test fun a_failed_stop_reported_by_the_failure_observer_keeps_status_and_markers() {

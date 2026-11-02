@@ -56,7 +56,8 @@ private suspend fun saveLiveText(container: AppContainer, recordingId: String, t
         transcript?.let { container.repository.updateTranscript(recordingId, it) }
         return
     }
-    val text = transcript ?: container.repository.getRecording(recordingId)?.transcript
+    // Split first: a retried or repeated write replaces the section instead of adding a second one.
+    val text = (transcript ?: container.repository.getRecording(recordingId)?.transcript)?.let { TranscriptFormatter.splitMarkers(it).first }
     val section = buildString {
         appendLine(TranscriptFormatter.MARKERS_HEADING)
         markers.forEach { marker ->
