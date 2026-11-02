@@ -1,0 +1,768 @@
+[
+  {
+    "name": "identical_bodies_with_different_names_collapse_to_one",
+    "note": "",
+    "rows": [
+      {
+        "id": "b",
+        "categoryId": "cat_meeting",
+        "category": "meeting",
+        "name": "Beta",
+        "author": "Velum",
+        "official": false,
+        "usageCount": 0,
+        "description": "",
+        "bodyType": "prompt",
+        "body": "## Summary\n- Key points discussed in the meeting\n- Action items with owners",
+        "lang": "en",
+        "tags": [
+          "meeting-minutes"
+        ],
+        "source": "Velum template catalog",
+        "attribution": "Community template (cleaned for Velum)",
+        "sourceTemplateId": null
+      },
+      {
+        "id": "a",
+        "categoryId": "cat_meeting",
+        "category": "meeting",
+        "name": "Alpha",
+        "author": "Velum",
+        "official": false,
+        "usageCount": 0,
+        "description": "",
+        "bodyType": "prompt",
+        "body": "## Summary\n- Key points discussed in the meeting\n- Action items with owners",
+        "lang": "en",
+        "tags": [
+          "meeting-minutes"
+        ],
+        "source": "Velum template catalog",
+        "attribution": "Community template (cleaned for Velum)",
+        "sourceTemplateId": null
+      },
+      {
+        "id": "c",
+        "categoryId": "cat_meeting",
+        "category": "meeting",
+        "name": "Gamma",
+        "author": "Velum",
+        "official": false,
+        "usageCount": 0,
+        "description": "",
+        "bodyType": "prompt",
+        "body": "## Summary\n- Key points discussed in the meeting\n- Action items with owners",
+        "lang": "en",
+        "tags": [
+          "meeting-minutes"
+        ],
+        "source": "Velum template catalog",
+        "attribution": "Community template (cleaned for Velum)",
+        "sourceTemplateId": null
+      }
+    ],
+    "featured_ids": [],
+    "expected_survivor_ids": [
+      "a"
+    ],
+    "expected_aliases": {
+      "b": "a",
+      "c": "a"
+    }
+  },
+  {
+    "name": "official_beats_featured_beats_name",
+    "note": "",
+    "rows": [
+      {
+        "id": "a",
+        "categoryId": "cat_meeting",
+        "category": "meeting",
+        "name": "Alpha",
+        "author": "Velum",
+        "official": false,
+        "usageCount": 0,
+        "description": "",
+        "bodyType": "prompt",
+        "body": "## Summary\n- Key points discussed in the meeting\n- Action items with owners",
+        "lang": "en",
+        "tags": [
+          "meeting-minutes"
+        ],
+        "source": "Velum template catalog",
+        "attribution": "Community template (cleaned for Velum)",
+        "sourceTemplateId": null
+      },
+      {
+        "id": "f",
+        "categoryId": "cat_meeting",
+        "category": "meeting",
+        "name": "Zeta",
+        "author": "Velum",
+        "official": false,
+        "usageCount": 0,
+        "description": "",
+        "bodyType": "prompt",
+        "body": "## Summary\n- Key points discussed in the meeting\n- Action items with owners",
+        "lang": "en",
+        "tags": [
+          "meeting-minutes"
+        ],
+        "source": "Velum template catalog",
+        "attribution": "Community template (cleaned for Velum)",
+        "sourceTemplateId": null,
+        "featured": true
+      },
+      {
+        "id": "o",
+        "categoryId": "cat_meeting",
+        "category": "meeting",
+        "name": "Zulu",
+        "author": "Velum",
+        "official": true,
+        "usageCount": 0,
+        "description": "",
+        "bodyType": "prompt",
+        "body": "## Summary\n- Key points discussed in the meeting\n- Action items with owners",
+        "lang": "en",
+        "tags": [
+          "meeting-minutes"
+        ],
+        "source": "Velum template catalog",
+        "attribution": "Community template (cleaned for Velum)",
+        "sourceTemplateId": null
+      }
+    ],
+    "featured_ids": [],
+    "expected_survivor_ids": [
+      "o"
+    ],
+    "expected_aliases": {
+      "a": "o",
+      "f": "o"
+    }
+  },
+  {
+    "name": "featured_beats_name_via_row_flag",
+    "note": "",
+    "rows": [
+      {
+        "id": "a",
+        "categoryId": "cat_meeting",
+        "category": "meeting",
+        "name": "Alpha",
+        "author": "Velum",
+        "official": false,
+        "usageCount": 0,
+        "description": "",
+        "bodyType": "prompt",
+        "body": "## Summary\n- Key points discussed in the meeting\n- Action items with owners",
+        "lang": "en",
+        "tags": [
+          "meeting-minutes"
+        ],
+        "source": "Velum template catalog",
+        "attribution": "Community template (cleaned for Velum)",
+        "sourceTemplateId": null
+      },
+      {
+        "id": "f",
+        "categoryId": "cat_meeting",
+        "category": "meeting",
+        "name": "Zeta",
+        "author": "Velum",
+        "official": false,
+        "usageCount": 0,
+        "description": "",
+        "bodyType": "prompt",
+        "body": "## Summary\n- Key points discussed in the meeting\n- Action items with owners",
+        "lang": "en",
+        "tags": [
+          "meeting-minutes"
+        ],
+        "source": "Velum template catalog",
+        "attribution": "Community template (cleaned for Velum)",
+        "sourceTemplateId": null,
+        "featured": true
+      }
+    ],
+    "featured_ids": [],
+    "expected_survivor_ids": [
+      "f"
+    ],
+    "expected_aliases": {
+      "a": "f"
+    }
+  },
+  {
+    "name": "featured_beats_name_via_featured_id_set",
+    "note": "",
+    "rows": [
+      {
+        "id": "a",
+        "categoryId": "cat_meeting",
+        "category": "meeting",
+        "name": "Alpha",
+        "author": "Velum",
+        "official": false,
+        "usageCount": 0,
+        "description": "",
+        "bodyType": "prompt",
+        "body": "## Summary\n- Key points discussed in the meeting\n- Action items with owners",
+        "lang": "en",
+        "tags": [
+          "meeting-minutes"
+        ],
+        "source": "Velum template catalog",
+        "attribution": "Community template (cleaned for Velum)",
+        "sourceTemplateId": null
+      },
+      {
+        "id": "z",
+        "categoryId": "cat_meeting",
+        "category": "meeting",
+        "name": "Zeta",
+        "author": "Velum",
+        "official": false,
+        "usageCount": 0,
+        "description": "",
+        "bodyType": "prompt",
+        "body": "## Summary\n- Key points discussed in the meeting\n- Action items with owners",
+        "lang": "en",
+        "tags": [
+          "meeting-minutes"
+        ],
+        "source": "Velum template catalog",
+        "attribution": "Community template (cleaned for Velum)",
+        "sourceTemplateId": null
+      }
+    ],
+    "featured_ids": [
+      "z"
+    ],
+    "expected_survivor_ids": [
+      "z"
+    ],
+    "expected_aliases": {
+      "a": "z"
+    }
+  },
+  {
+    "name": "official_status_is_kept_on_survivor_when_a_collapsed_row_had_it",
+    "note": "",
+    "rows": [
+      {
+        "id": "a",
+        "categoryId": "cat_meeting",
+        "category": "meeting",
+        "name": "Alpha",
+        "author": "Velum",
+        "official": false,
+        "usageCount": 0,
+        "description": "",
+        "bodyType": "prompt",
+        "body": "## Summary\n- Key points discussed in the meeting\n- Action items with owners",
+        "lang": "en",
+        "tags": [
+          "meeting-minutes"
+        ],
+        "source": "Velum template catalog",
+        "attribution": "Community template (cleaned for Velum)",
+        "sourceTemplateId": null
+      },
+      {
+        "id": "o",
+        "categoryId": "cat_meeting",
+        "category": "meeting",
+        "name": "Omega",
+        "author": "Velum",
+        "official": true,
+        "usageCount": 0,
+        "description": "",
+        "bodyType": "prompt",
+        "body": "## Summary\n- Key points discussed in the meeting\n- Action items with owners",
+        "lang": "en",
+        "tags": [
+          "meeting-minutes"
+        ],
+        "source": "Velum template catalog",
+        "attribution": "Community template (cleaned for Velum)",
+        "sourceTemplateId": null
+      }
+    ],
+    "featured_ids": [],
+    "expected_survivor_ids": [
+      "o"
+    ],
+    "expected_aliases": {
+      "a": "o"
+    },
+    "expected_flags": {
+      "o": {
+        "official": true
+      }
+    }
+  },
+  {
+    "name": "featured_is_carried_to_the_survivor_only_when_its_row_has_a_featured_key",
+    "note": "clean.py copies Featured from collapsed rows only `if \"featured\" in best`",
+    "rows": [
+      {
+        "id": "o",
+        "categoryId": "cat_meeting",
+        "category": "meeting",
+        "name": "Omega",
+        "author": "Velum",
+        "official": true,
+        "usageCount": 0,
+        "description": "",
+        "bodyType": "prompt",
+        "body": "## Summary\n- Key points discussed in the meeting\n- Action items with owners",
+        "lang": "en",
+        "tags": [
+          "meeting-minutes"
+        ],
+        "source": "Velum template catalog",
+        "attribution": "Community template (cleaned for Velum)",
+        "sourceTemplateId": null,
+        "featured": false
+      },
+      {
+        "id": "f",
+        "categoryId": "cat_meeting",
+        "category": "meeting",
+        "name": "Alpha",
+        "author": "Velum",
+        "official": false,
+        "usageCount": 0,
+        "description": "",
+        "bodyType": "prompt",
+        "body": "## Summary\n- Key points discussed in the meeting\n- Action items with owners",
+        "lang": "en",
+        "tags": [
+          "meeting-minutes"
+        ],
+        "source": "Velum template catalog",
+        "attribution": "Community template (cleaned for Velum)",
+        "sourceTemplateId": null,
+        "featured": true
+      }
+    ],
+    "featured_ids": [],
+    "expected_survivor_ids": [
+      "o"
+    ],
+    "expected_aliases": {
+      "f": "o"
+    },
+    "expected_flags": {
+      "o": {
+        "official": true,
+        "featured": true
+      }
+    }
+  },
+  {
+    "name": "featured_is_not_added_when_the_survivor_row_has_no_featured_key",
+    "note": "pipeline gap: a survivor without a featured key never gains one from a collapsed Featured row",
+    "rows": [
+      {
+        "id": "o",
+        "categoryId": "cat_meeting",
+        "category": "meeting",
+        "name": "Omega",
+        "author": "Velum",
+        "official": true,
+        "usageCount": 0,
+        "description": "",
+        "bodyType": "prompt",
+        "body": "## Summary\n- Key points discussed in the meeting\n- Action items with owners",
+        "lang": "en",
+        "tags": [
+          "meeting-minutes"
+        ],
+        "source": "Velum template catalog",
+        "attribution": "Community template (cleaned for Velum)",
+        "sourceTemplateId": null
+      },
+      {
+        "id": "f",
+        "categoryId": "cat_meeting",
+        "category": "meeting",
+        "name": "Alpha",
+        "author": "Velum",
+        "official": false,
+        "usageCount": 0,
+        "description": "",
+        "bodyType": "prompt",
+        "body": "## Summary\n- Key points discussed in the meeting\n- Action items with owners",
+        "lang": "en",
+        "tags": [
+          "meeting-minutes"
+        ],
+        "source": "Velum template catalog",
+        "attribution": "Community template (cleaned for Velum)",
+        "sourceTemplateId": null,
+        "featured": true
+      }
+    ],
+    "featured_ids": [],
+    "expected_survivor_ids": [
+      "o"
+    ],
+    "expected_aliases": {
+      "f": "o"
+    },
+    "expected_flags": {
+      "o": {
+        "official": true,
+        "featured": null
+      }
+    }
+  },
+  {
+    "name": "name_order_is_code_point_order_upper_before_lower",
+    "note": "",
+    "rows": [
+      {
+        "id": "lower",
+        "categoryId": "cat_meeting",
+        "category": "meeting",
+        "name": "alpha",
+        "author": "Velum",
+        "official": false,
+        "usageCount": 0,
+        "description": "",
+        "bodyType": "prompt",
+        "body": "## Summary\n- Key points discussed in the meeting\n- Action items with owners",
+        "lang": "en",
+        "tags": [
+          "meeting-minutes"
+        ],
+        "source": "Velum template catalog",
+        "attribution": "Community template (cleaned for Velum)",
+        "sourceTemplateId": null
+      },
+      {
+        "id": "upper",
+        "categoryId": "cat_meeting",
+        "category": "meeting",
+        "name": "Beta",
+        "author": "Velum",
+        "official": false,
+        "usageCount": 0,
+        "description": "",
+        "bodyType": "prompt",
+        "body": "## Summary\n- Key points discussed in the meeting\n- Action items with owners",
+        "lang": "en",
+        "tags": [
+          "meeting-minutes"
+        ],
+        "source": "Velum template catalog",
+        "attribution": "Community template (cleaned for Velum)",
+        "sourceTemplateId": null
+      }
+    ],
+    "featured_ids": [],
+    "expected_survivor_ids": [
+      "upper"
+    ],
+    "expected_aliases": {
+      "lower": "upper"
+    }
+  },
+  {
+    "name": "name_order_is_code_point_order_not_utf16",
+    "note": "U+FF5E (BMP) sorts before U+1F600 by code point; UTF-16 order would reverse them",
+    "rows": [
+      {
+        "id": "astral",
+        "categoryId": "cat_meeting",
+        "category": "meeting",
+        "name": "😀 smile",
+        "author": "Velum",
+        "official": false,
+        "usageCount": 0,
+        "description": "",
+        "bodyType": "prompt",
+        "body": "## Summary\n- Key points discussed in the meeting\n- Action items with owners",
+        "lang": "en",
+        "tags": [
+          "meeting-minutes"
+        ],
+        "source": "Velum template catalog",
+        "attribution": "Community template (cleaned for Velum)",
+        "sourceTemplateId": null
+      },
+      {
+        "id": "bmp",
+        "categoryId": "cat_meeting",
+        "category": "meeting",
+        "name": "～ tilde",
+        "author": "Velum",
+        "official": false,
+        "usageCount": 0,
+        "description": "",
+        "bodyType": "prompt",
+        "body": "## Summary\n- Key points discussed in the meeting\n- Action items with owners",
+        "lang": "en",
+        "tags": [
+          "meeting-minutes"
+        ],
+        "source": "Velum template catalog",
+        "attribution": "Community template (cleaned for Velum)",
+        "sourceTemplateId": null
+      }
+    ],
+    "featured_ids": [],
+    "expected_survivor_ids": [
+      "bmp"
+    ],
+    "expected_aliases": {
+      "astral": "bmp"
+    }
+  },
+  {
+    "name": "same_name_tie_breaks_on_canonical_row_json",
+    "note": "canonical = sorted-keys JSON, so id decides before usageCount",
+    "rows": [
+      {
+        "id": "y",
+        "categoryId": "cat_meeting",
+        "category": "meeting",
+        "name": "Same",
+        "author": "Velum",
+        "official": false,
+        "usageCount": 5,
+        "description": "",
+        "bodyType": "prompt",
+        "body": "## Summary\n- Key points discussed in the meeting\n- Action items with owners",
+        "lang": "en",
+        "tags": [
+          "meeting-minutes"
+        ],
+        "source": "Velum template catalog",
+        "attribution": "Community template (cleaned for Velum)",
+        "sourceTemplateId": null
+      },
+      {
+        "id": "x",
+        "categoryId": "cat_meeting",
+        "category": "meeting",
+        "name": "Same",
+        "author": "Velum",
+        "official": false,
+        "usageCount": 9,
+        "description": "",
+        "bodyType": "prompt",
+        "body": "## Summary\n- Key points discussed in the meeting\n- Action items with owners",
+        "lang": "en",
+        "tags": [
+          "meeting-minutes"
+        ],
+        "source": "Velum template catalog",
+        "attribution": "Community template (cleaned for Velum)",
+        "sourceTemplateId": null
+      }
+    ],
+    "featured_ids": [],
+    "expected_survivor_ids": [
+      "x"
+    ],
+    "expected_aliases": {
+      "y": "x"
+    }
+  },
+  {
+    "name": "bodytype_only_difference_decides_before_the_id",
+    "note": "bodyType sorts before id in the canonical JSON, so 'outline' wins although its id is larger",
+    "rows": [
+      {
+        "id": "a",
+        "categoryId": "cat_meeting",
+        "category": "meeting",
+        "name": "Same",
+        "author": "Velum",
+        "official": false,
+        "usageCount": 0,
+        "description": "",
+        "bodyType": "prompt",
+        "body": "## Summary\n- Key points discussed in the meeting\n- Action items with owners",
+        "lang": "en",
+        "tags": [
+          "meeting-minutes"
+        ],
+        "source": "Velum template catalog",
+        "attribution": "Community template (cleaned for Velum)",
+        "sourceTemplateId": null
+      },
+      {
+        "id": "b",
+        "categoryId": "cat_meeting",
+        "category": "meeting",
+        "name": "Same",
+        "author": "Velum",
+        "official": false,
+        "usageCount": 0,
+        "description": "",
+        "bodyType": "outline",
+        "body": "## Summary\n- Key points discussed in the meeting\n- Action items with owners",
+        "lang": "en",
+        "tags": [
+          "meeting-minutes"
+        ],
+        "source": "Velum template catalog",
+        "attribution": "Community template (cleaned for Velum)",
+        "sourceTemplateId": null
+      }
+    ],
+    "featured_ids": [],
+    "expected_survivor_ids": [
+      "b"
+    ],
+    "expected_aliases": {
+      "a": "b"
+    }
+  },
+  {
+    "name": "canonical_id_tie_x_vs_x_bang",
+    "note": "after id value x the next canonical char is '\"' (0x22) vs '!' (0x21), so \"x!\" sorts first although \"x\" < \"x!\" as plain ids",
+    "rows": [
+      {
+        "id": "x",
+        "categoryId": "cat_meeting",
+        "category": "meeting",
+        "name": "Same",
+        "author": "Velum",
+        "official": false,
+        "usageCount": 0,
+        "description": "",
+        "bodyType": "prompt",
+        "body": "## Summary\n- Key points discussed in the meeting\n- Action items with owners",
+        "lang": "en",
+        "tags": [
+          "meeting-minutes"
+        ],
+        "source": "Velum template catalog",
+        "attribution": "Community template (cleaned for Velum)",
+        "sourceTemplateId": null
+      },
+      {
+        "id": "x!",
+        "categoryId": "cat_meeting",
+        "category": "meeting",
+        "name": "Same",
+        "author": "Velum",
+        "official": false,
+        "usageCount": 0,
+        "description": "",
+        "bodyType": "prompt",
+        "body": "## Summary\n- Key points discussed in the meeting\n- Action items with owners",
+        "lang": "en",
+        "tags": [
+          "meeting-minutes"
+        ],
+        "source": "Velum template catalog",
+        "attribution": "Community template (cleaned for Velum)",
+        "sourceTemplateId": null
+      }
+    ],
+    "featured_ids": [],
+    "expected_survivor_ids": [
+      "x!"
+    ],
+    "expected_aliases": {
+      "x": "x!"
+    }
+  },
+  {
+    "name": "bodies_differing_only_in_whitespace_or_case_stay_distinct",
+    "note": "",
+    "rows": [
+      {
+        "id": "a",
+        "categoryId": "cat_meeting",
+        "category": "meeting",
+        "name": "A",
+        "author": "Velum",
+        "official": false,
+        "usageCount": 0,
+        "description": "",
+        "bodyType": "prompt",
+        "body": "## Summary\n- Key points discussed in the meeting\n- Action items with owners",
+        "lang": "en",
+        "tags": [
+          "meeting-minutes"
+        ],
+        "source": "Velum template catalog",
+        "attribution": "Community template (cleaned for Velum)",
+        "sourceTemplateId": null
+      },
+      {
+        "id": "b",
+        "categoryId": "cat_meeting",
+        "category": "meeting",
+        "name": "B",
+        "author": "Velum",
+        "official": false,
+        "usageCount": 0,
+        "description": "",
+        "bodyType": "prompt",
+        "body": "## Summary\n- Key points discussed in the meeting\n- Action items with owners ",
+        "lang": "en",
+        "tags": [
+          "meeting-minutes"
+        ],
+        "source": "Velum template catalog",
+        "attribution": "Community template (cleaned for Velum)",
+        "sourceTemplateId": null
+      },
+      {
+        "id": "c",
+        "categoryId": "cat_meeting",
+        "category": "meeting",
+        "name": "C",
+        "author": "Velum",
+        "official": false,
+        "usageCount": 0,
+        "description": "",
+        "bodyType": "prompt",
+        "body": "## SUMMARY\n- KEY POINTS DISCUSSED IN THE MEETING\n- ACTION ITEMS WITH OWNERS",
+        "lang": "en",
+        "tags": [
+          "meeting-minutes"
+        ],
+        "source": "Velum template catalog",
+        "attribution": "Community template (cleaned for Velum)",
+        "sourceTemplateId": null
+      },
+      {
+        "id": "d",
+        "categoryId": "cat_meeting",
+        "category": "meeting",
+        "name": "D",
+        "author": "Velum",
+        "official": false,
+        "usageCount": 0,
+        "description": "",
+        "bodyType": "prompt",
+        "body": "## Summary\r\n- Key points discussed in the meeting\r\n- Action items with owners",
+        "lang": "en",
+        "tags": [
+          "meeting-minutes"
+        ],
+        "source": "Velum template catalog",
+        "attribution": "Community template (cleaned for Velum)",
+        "sourceTemplateId": null
+      }
+    ],
+    "featured_ids": [],
+    "expected_survivor_ids": [
+      "a",
+      "b",
+      "c",
+      "d"
+    ],
+    "expected_aliases": {}
+  }
+]
