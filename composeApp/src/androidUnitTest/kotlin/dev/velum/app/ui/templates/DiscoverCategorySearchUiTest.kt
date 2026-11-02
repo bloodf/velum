@@ -65,7 +65,8 @@ class DiscoverCategorySearchUiTest {
         }
     }
 
-    private fun tap(tag: String) = compose.onNodeWithTag(tag).performClick()
+    // Chips appear once the facets loaded, which is after the first rows: wait for the chip before tapping it.
+    private fun tap(tag: String) { awaitTag(tag); compose.onNodeWithTag(tag).performClick() }
 
     @Test
     fun category_survives_search_without_hits_and_clears() {
