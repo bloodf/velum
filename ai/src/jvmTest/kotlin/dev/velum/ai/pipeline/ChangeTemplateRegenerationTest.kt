@@ -163,6 +163,32 @@ class ChangeTemplateRegenerationTest {
     }
 
     @Test
+    fun markersOnlyTranscript_countsAsNoTextAndIsNeverSummarized() = runBlocking<Unit> {
+        val r = rig()
+        val markers = "## Markers\n- **1:05** Synthetic note\n"
+        r.repo.seed("rec", text = markers)
+
+        assertIs<JobProgress.Failed>(r.processor.process("rec", "velum.sales", retranscribe = false).last())
+
+        assertTrue(r.local.requests.isEmpty(), "no summary from markers alone")
+        assertEquals(markers, r.repo.getRecording("rec")!!.transcript)
+    }
+
+    @Test
+    fun markersAreLeftOutOfTheSummaryPrompt() = runBlocking<Unit> {
+        val r = rig()
+        val stored = "$transcript\n\n## Markers\n- **1:05** Synthetic note\n"
+        r.repo.seed("rec", text = stored)
+
+        assertIs<JobProgress.Succeeded>(r.processor.process("rec", "velum.sales", retranscribe = false).last())
+
+        val prompt = r.local.requests.last().userPrompt
+        assertTrue(prompt.contains("release notes"))
+        assertTrue(!prompt.contains("Synthetic note"))
+        assertEquals(stored, r.repo.getRecording("rec")!!.transcript)
+    }
+
+    @Test
     fun cancellation_keepsPreviousSummary_andDoesNotLeaveRecordingGenerating() = runBlocking<Unit> {
         val r = rig()
         r.repo.seed("rec")

@@ -1155,7 +1155,7 @@ internal fun LiveTranscriptPane(
     initialTranscript: String? = null,
     initialElapsedSeconds: Long = 0L,
     onStoppedAndQueued: () -> Unit = {},
-    openTranscriber: (AppContainer) -> StreamingTranscriber? = ::openStreamingTranscriber,
+    openTranscriber: (AppContainer) -> StreamingTranscriber = ::openStreamingTranscriber,
     finishWaitMs: Long = LIVE_FINISH_WAIT_MS,
 ) {
     val strings = LocalStrings.current
@@ -1434,34 +1434,12 @@ internal fun LiveTranscriptPane(
                         runCatching { container.micCapture.stop(requested) }
                             .onFailure { println("VelumLivePcm: stop failed: ${it::class.simpleName}") }
                     }
-                    val finalMd = withContext(Dispatchers.Default) {
-                        val base = finishTranscript()
-                        if (base == null || marks.isEmpty()) base
-                        else buildString {
-                            append(base.trimEnd())
-                            append("\n\n## Markers\n")
-                            marks.forEach { m ->
-                                val sec = m.offsetMs / 1000
-                                val mm = sec / 60
-                                val ss = sec % 60
-                                append("- **")
-                                append(mm)
-                                append(':')
-                                append(ss.toString().padStart(2, '0'))
-                                append("**")
-                                if (m.label.isNotBlank()) {
-                                    append(' ')
-                                    append(m.label)
-                                }
-                                append('\n')
-                            }
-                        }
-                    }
+                    val finalMd = withContext(Dispatchers.Default) { finishTranscript() }
                     when {
                         // The asynchronous transcript finish may outlive ownership. The finalizer
                         // rechecks the captured identity under its lock before any database write.
                         container.micCapture.isSupported -> {
-                            when (val stopped = finalizeMicRecording(container, recordingId, wavPath, requested, transcript = finalMd)) {
+                            when (val stopped = finalizeMicRecording(container, recordingId, wavPath, requested, transcript = finalMd, markers = marks)) {
                                 is MicStopResult.Stopped -> Unit // Finalizer queued the verified audio.
                                 is MicStopResult.Failed -> {
                                     usingMic = false
@@ -1524,7 +1502,7 @@ internal fun savableLiveTranscript(markdown: String): String? {
  * Audio captured before the screen attaches never reaches this queue, only the WAV.
  */
 private suspend fun transcribeQueuedPcm(
-    open: () -> StreamingTranscriber?,
+    open: () -> StreamingTranscriber,
     pcm: ReceiveChannel<ByteArray>,
     languageHint: String?,
     onPartial: (String) -> Unit,
@@ -1542,7 +1520,7 @@ private suspend fun transcribeQueuedPcm(
     return runCatching { streamer.finish() }.onFailure { logFailure("finish", it) }.getOrNull()
 }
 
-internal fun openStreamingTranscriber(container: AppContainer): StreamingTranscriber? {
+private fun openStreamingTranscriber(container: AppContainer): StreamingTranscriber {
     val lang = container.settingsRepository.settings.value.audioLanguage
     val offlineId = LocalAsrRouter.chooseModelId(lang)
     val preferredIds = listOf(
@@ -1563,8 +1541,7 @@ internal fun openStreamingTranscriber(container: AppContainer): StreamingTranscr
         val created = runCatching { createStreamingTranscriber(path, modelId) }.getOrNull()
         if (created != null) return created
     }
-    // The fake's "chunk 1280B" lines are for the desktop/iOS demo only, never a real recording's transcript.
-    return if (container.micCapture.isSupported) null else FakeStreamingTranscriber()
+    return FakeStreamingTranscriber()
 }
 
 /** Synthetic PCM16 mono chunk (~640 ms) for offline streaming demos. */

@@ -3,7 +3,6 @@ package dev.velum.app.platform
 import java.io.File
 import java.nio.file.Files
 import kotlin.test.Test
-import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -21,7 +20,7 @@ class RecordingsDirAfterWipeTest {
             assertFalse(File(dir).exists(), "path lookup must not create the directory")
 
             val first = "$dir/a.wav"
-            writeBytesToPath(first, byteArrayOf(1, 2))
+            WavWriter(first).apply { writePcm(byteArrayOf(1, 2)) }.finish()
             assertTrue(File(first).exists())
 
             // "Wipe all data" / storage purge removes the directory at runtime.
@@ -29,8 +28,8 @@ class RecordingsDirAfterWipeTest {
             assertEquals(dir, recordingsDirectoryPath())
 
             val second = "$dir/b.wav"
-            writeBytesToPath(second, byteArrayOf(3, 4))
-            assertContentEquals(byteArrayOf(3, 4), File(second).readBytes())
+            WavWriter(second).apply { writePcm(byteArrayOf(3, 4)) }.finish()
+            assertTrue(File(second).exists())
         } finally {
             installRecordingFilesDir(previous)
             base.deleteRecursively()

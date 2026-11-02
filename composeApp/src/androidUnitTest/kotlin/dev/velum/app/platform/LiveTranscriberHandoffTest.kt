@@ -5,6 +5,7 @@ import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -18,7 +19,6 @@ import dev.velum.app.i18n.LocalStrings
 import dev.velum.app.i18n.PtBr
 import dev.velum.app.ui.recording.LIVE_PCM_BACKLOG_CHUNKS
 import dev.velum.app.ui.recording.LiveTranscriptPane
-import dev.velum.app.ui.recording.openStreamingTranscriber
 import dev.velum.app.ui.recording.savableLiveTranscript
 import dev.velum.app.ui.theme.VelumTheme
 import dev.velum.core.data.DriverFactory
@@ -75,7 +75,8 @@ class LiveTranscriberHandoffTest {
 
     private fun showPane(
         finishWaitMs: Long = 30_000,
-        open: (AppContainer) -> StreamingTranscriber? = {
+        reportedFailures: MutableList<String>? = null,
+        open: (AppContainer) -> StreamingTranscriber = {
             assertTrue(modelLoad.await(30, TimeUnit.SECONDS), "Synthetic model load was never released")
             check(!modelMissing) { "Synthetic model failure" }
             transcriber
@@ -86,6 +87,8 @@ class LiveTranscriberHandoffTest {
         activity.get().setContent {
             CompositionLocalProvider(LocalStrings provides PtBr) {
                 VelumTheme(darkTheme = false) {
+                    // As in App: the failure observer lives in the composition.
+                    if (reportedFailures != null) LaunchedEffect(Unit) { observeMicFailures(container) { reportedFailures += it } }
                     LiveTranscriptPane(container, recordingId, title = "", openTranscriber = open, finishWaitMs = finishWaitMs)
                 }
             }
@@ -253,14 +256,46 @@ class LiveTranscriberHandoffTest {
         assertEquals(0, mic.stops)
     }
 
-    @Test fun no_ready_model_on_a_real_mic_saves_no_fake_transcript() {
-        showPane(open = ::openStreamingTranscriber)
-        mic.onPcmChunk!!.invoke(ByteArray(32))
-
+    @Test fun markers_are_kept_when_nothing_was_transcribed() {
+        mic.currentMarkers = listOf(MicMarker(offsetMs = 65_000, label = "Synthetic note"))
+        showPane()
         compose.onNodeWithContentDescription(PtBr.stopRecording).performClick()
+        modelMissing = true
+        modelLoad.countDown()
 
         compose.waitUntil(10_000) { queued == 1 }
-        assertEquals(null, recordingRow().transcript)
+        assertEquals("## Markers\n- **1:05** Synthetic note\n", recordingRow().transcript)
+    }
+
+    @Test fun a_failed_stop_reported_by_the_failure_observer_keeps_status_and_markers() {
+        mic.stopFailure = "Synthetic stop failure"
+        mic.currentMarkers = listOf(MicMarker(offsetMs = 1_000, label = ""))
+        val reported = mutableListOf<String>()
+        showPane(reportedFailures = reported)
+        compose.onNodeWithContentDescription(PtBr.stopRecording).performClick()
+        compose.waitUntil(10_000) { reported.isNotEmpty() }
+        modelLoad.countDown()
+        assertTrue(transcriber.finished.await(10, TimeUnit.SECONDS), "Transcriber was never finished")
+
+        compose.waitUntil(10_000) { container.activeMicRecordingId == null }
+        assertEquals(listOf("Synthetic stop failure"), reported)
+        assertEquals("failed", recordingRow().status)
+        assertEquals(0, queued)
+        assertTrue(recordingRow().transcript.orEmpty().contains("- **0:01**"))
+    }
+
+    @Test fun a_failed_stop_reaching_the_finalizer_first_shows_the_error_and_saves_the_transcript() {
+        mic.stopFailure = "Synthetic stop failure"
+        showPane()
+        compose.onNodeWithContentDescription(PtBr.stopRecording).performClick()
+        modelLoad.countDown()
+
+        compose.waitUntil(10_000) { compose.onAllNodesWithText("Synthetic stop failure").fetchSemanticsNodes().isNotEmpty() }
+        val row = recordingRow()
+        assertEquals("failed", row.status)
+        assertEquals(SyntheticTranscriber.FINAL, row.transcript)
+        assertEquals(null, container.activeMicRecordingId)
+        assertEquals(0, queued)
     }
 
     @Test fun only_real_text_is_savable_and_never_with_the_preview_header() {
@@ -317,7 +352,9 @@ class LiveTranscriberHandoffTest {
         override val isSupported = true
         override val isCapturing get() = sessions.value is MicSessionState.Recording
         override val isPaused = false
-        override val markers = emptyList<MicMarker>()
+        override val markers get() = currentMarkers
+        @Volatile var currentMarkers = emptyList<MicMarker>()
+        @Volatile var stopFailure: String? = null
         override var onPcmChunk: ((ByteArray) -> Unit)? = null
         @Volatile var starts = 0
         @Volatile var stops = 0
@@ -331,6 +368,10 @@ class LiveTranscriberHandoffTest {
         }
         override suspend fun stop(): MicStopResult {
             val current = session!!
+            stopFailure?.let { message ->
+                sessions.value = MicSessionState.Failed(message, session = current)
+                return MicStopResult.Failed(message)
+            }
             // Like the platform: a repeated stop returns the retained terminal state.
             if (sessions.value !is MicSessionState.Stopped) stops++
             sessions.value = MicSessionState.Stopped(current.absolutePath, 1, 64, current.token)

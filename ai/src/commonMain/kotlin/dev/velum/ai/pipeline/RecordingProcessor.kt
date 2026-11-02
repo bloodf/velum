@@ -168,7 +168,8 @@ class RecordingProcessor(
                 includeMemory = prefs.useSavedMemory,
             )
 
-            var transcriptMarkdown = recording.transcript.orEmpty()
+            val (storedTranscript, storedMarkers) = TranscriptFormatter.splitMarkers(recording.transcript.orEmpty())
+            var transcriptMarkdown = storedTranscript
             if (!retranscribe && transcriptMarkdown.isBlank()) {
                 throw IllegalStateException("This recording has no transcript to summarize.")
             }
@@ -256,7 +257,7 @@ class RecordingProcessor(
                     }
                     val withSpeakers = transcription.copy(segments = mergedSegments)
                     transcriptMarkdown = TranscriptFormatter.toMarkdown(withSpeakers, diarization)
-                    repository.updateTranscript(recordingId, transcriptMarkdown)
+                    repository.updateTranscript(recordingId, listOfNotNull(transcriptMarkdown, storedMarkers).joinToString("\n\n"))
 
                     if (diarization != null && diarization.spans.isNotEmpty()) {
                         val bySpeaker = diarization.spans.groupBy { it.speakerId }
