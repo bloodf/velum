@@ -28,7 +28,9 @@ import dev.velum.app.devicewalk.DeviceWalkTranscriber
 import dev.velum.app.platform.ExportFolderStore
 import dev.velum.app.platform.MicCapture
 import dev.velum.app.platform.createMicCapture
+import dev.velum.app.platform.DOWNLOAD_PART_SUFFIX
 import dev.velum.app.platform.recordingsDirectoryPath
+import dev.velum.app.platform.streamToFileAtomically
 import dev.velum.app.platform.systemLanguageTag
 import dev.velum.app.ui.DeviceViewModel
 import dev.velum.app.ui.DownloadedSessionAudio
@@ -61,6 +63,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 
 class AppContainer(
     val secureStore: SecureStore,
@@ -246,32 +249,21 @@ class AppContainer(
     suspend fun persistDownloadedSession(session: DownloadedSessionAudio): String {
         val id = RecordingIds.newId()
         val dir = recordingsDirectoryPath()
-        // Stream to a .part file and rename once complete, so a crash, cancellation or
-        // full disk never leaves a truncated recording under its final name.
-        val part = ModelStoreDir("$dir/$id.part")
-        val head = ByteArray(12)
-        var headLen = 0
-        val sizeBytes: Long
-        val path: String
-        try {
-            part.writeBytes(ByteArray(0))
-            sizeBytes = session.writeDecryptedAudio { chunk ->
-                val n = minOf(head.size - headLen, chunk.size)
-                chunk.copyInto(head, headLen, 0, n)
-                headLen += n
-                part.appendBytes(chunk)
-            }
-            val sniff = head.copyOf(headLen)
-            val ext = when {
-                looksLikeOgg(sniff) -> "ogg"
-                looksLikeWav(sniff) -> "wav"
-                else -> "bin"
-            }
-            path = "$dir/$id.$ext"
-            check(part.renameTo(ModelStoreDir(path))) { "Could not finalize downloaded recording" }
-        } catch (t: Throwable) {
-            part.deleteFile()
-            throw t
+        // Stream into a fsynced .part and atomically rename once complete, so a crash,
+        // cancellation or full disk never leaves a truncated recording under its final name.
+        val (path, sizeBytes) = withContext(Dispatchers.IO) {
+            streamToFileAtomically(
+                partPath = "$dir/$id$DOWNLOAD_PART_SUFFIX",
+                headBytes = 12,
+                finalPathFor = { head ->
+                    val ext = when {
+                        looksLikeOgg(head) -> "ogg"
+                        looksLikeWav(head) -> "wav"
+                        else -> "bin"
+                    }
+                    "$dir/$id.$ext"
+                },
+            ) { sink -> session.writeDecryptedAudio(sink) }
         }
         val started = if (session.startedAtEpochSeconds > 1_000_000_000L) {
             session.startedAtEpochSeconds

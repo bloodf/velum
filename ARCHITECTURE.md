@@ -48,7 +48,9 @@ There are three input paths:
    pieces into `<id>.part`, which `AppContainer.persistDownloadedSession` renames
    to its final name before inserting a recording and queuing processing. JVM tests
    bound the pieces and heap; multi-hour hardware captures are still unvalidated
-   (#86, #6). Session deduplication remains #113.
+   (#86, #6). On iOS `createTempSessionFile()` returns null, so the encrypted
+   session is still held whole in memory before chunked decrypt; iOS recorder
+   import is not a supported target. Session deduplication remains #113.
 2. File import starts in
    [AudioImportPipeline](composeApp/src/commonMain/kotlin/dev/velum/app/importing/AudioImportPipeline.kt).
    It hashes the source, normalizes audio using the platform `AudioNormalizer`,

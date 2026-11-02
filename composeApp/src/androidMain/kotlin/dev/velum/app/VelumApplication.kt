@@ -15,7 +15,9 @@ import dev.velum.app.platform.MicRecordingService
 import dev.velum.app.platform.ShareTextHolder
 import dev.velum.app.platform.installAppContext
 import dev.velum.app.platform.installMicCaptureContext
+import dev.velum.app.platform.STALE_DOWNLOAD_PART_AGE_MS
 import dev.velum.app.platform.installRecordingFilesDir
+import dev.velum.app.platform.sweepStaleDownloadParts
 import dev.velum.app.platform.recoverPartialMicRecordings
 import dev.velum.app.platform.recordingsDirectoryPath
 import dev.velum.core.calendar.installCalendarContext
@@ -62,6 +64,13 @@ class VelumApplication : Application() {
             try {
                 // filesDir / models path are disk reads — stay on Dispatchers.IO.
                 installRecordingFilesDir(filesDir.absolutePath)
+                // No download can be in flight before the container exists (#86).
+                runCatching {
+                    sweepStaleDownloadParts(
+                        recordingsDirectoryPath(),
+                        System.currentTimeMillis() - STALE_DOWNLOAD_PART_AGE_MS,
+                    )
+                }.onFailure { t -> Log.e(TAG, "Stale download sweep failed", t) }
                 val modelsDir = File(filesDir, "models")
                 val built = AppContainer(
                     secureStore = AndroidSecureStore(appContext),

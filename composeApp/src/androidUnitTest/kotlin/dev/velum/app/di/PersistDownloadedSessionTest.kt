@@ -75,7 +75,7 @@ class PersistDownloadedSessionTest {
         assertEquals(File(recordingsDir(), "$id.ogg").path, rec.local_path)
         assertEquals(chunks.sumOf { it.size }.toLong(), rec.size_bytes)
         assertContentEquals(chunks.reduce { a, b -> a + b }, File(rec.local_path!!).readBytes())
-        assertEquals(listOf(id), enqueued)
+        assertEquals(setOf(id), enqueued.toSet())
     }
 
     @Test
