@@ -1,5 +1,6 @@
 package dev.velum.ai.pipeline
 
+import dev.velum.ai.audio.createOpusDecoder
 import dev.velum.ai.engine.AiTaskRouter
 import dev.velum.ai.engine.AudioInput
 import dev.velum.ai.engine.DiarizationResult
@@ -46,7 +47,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
  * and decode failure, cancellation and a full disk leave no temp PCM and keep the recording file.
  */
 class RecordingProcessorDecodeCleanupTest {
-    private class Harness(val transcribe: suspend (AudioInput) -> Unit, readFileBytes: ((String) -> ByteArray)? = null) {
+    private class Harness(val transcribe: suspend (AudioInput) -> Unit, readFileBytes: ((String) -> ByteArray)? = null,
+        thermal: ThermalPolicy = NoOpThermalPolicy,
+        opusDecoder: (() -> dev.velum.ai.audio.OpusDecoder)? = null,
+    ) {
         val repo = VelumRepository(createDatabase(DriverFactory()))
         val settings = SettingsRepository(InMemorySecureStore()).also {
             runBlocking {
@@ -85,6 +89,8 @@ class RecordingProcessorDecodeCleanupTest {
             repo,
             settings,
             readFileBytes = readFileBytes ?: { path -> ModelStoreDir(path).readBytes() },
+            thermal = thermal,
+            opusDecoder = opusDecoder ?: ::createOpusDecoder,
         )
 
         suspend fun insert(id: String, file: File) = repo.insertRecording(
@@ -198,6 +204,94 @@ class RecordingProcessorDecodeCleanupTest {
         org.junit.Assume.assumeTrue("Linux-only: needs /dev/full", devFull.exists())
         val e = kotlin.runCatching { ModelStoreDir(devFull.path).appendBytes(ByteArray(4096)) }.exceptionOrNull()
         assertTrue(e != null && isOutOfStorage(e), "real write failure: $e")
+    }
+
+    /** Blocks the worker thread inside the first call until the test has cancelled the job. */
+    private class Gate {
+        val entered = CompletableDeferred<Unit>()
+        val release = java.util.concurrent.CountDownLatch(1)
+        fun pause() { entered.complete(Unit); check(release.await(30, java.util.concurrent.TimeUnit.SECONDS)) }
+    }
+
+    private suspend fun cancelWhileBlocked(gate: Gate, id: String, h: Harness, src: File) {
+        h.insert(id, src)
+        val job = kotlinx.coroutines.GlobalScope.launch(Dispatchers.Default) {
+            h.processor.process(id, templateId = "velum.meeting", apiModelOverride = API).toList()
+        }
+        withTimeout(30_000) { gate.entered.await() }
+        job.cancel()
+        gate.release.countDown()
+        withTimeout(30_000) { job.join() }
+    }
+
+    @Test
+    fun processor_cancel_during_ogg_decode_stops_before_asr() = runBlocking {
+        val gate = Gate()
+        var afterCheck = false
+        var asrRan = false
+        val decoder = object : dev.velum.ai.audio.OpusDecoder {
+            override fun decodeToPcm(oggBytes: ByteArray) = error("unused")
+            override fun decodeToPcmFile(oggBytes: ByteArray, dest: ModelStoreDir) = error("unused")
+            override fun decodePathToPcmFile(path: String, dest: ModelStoreDir, checkCancelled: () -> Unit): dev.velum.ai.audio.SpilledPcmMeta {
+                dest.writeBytes(ByteArray(640))
+                gate.pause()
+                checkCancelled() // the processor's callback must throw once the job is cancelled
+                afterCheck = true
+                return dev.velum.ai.audio.SpilledPcmMeta(sampleRateHz = 16_000, channels = 1, sizeBytes = 640)
+            }
+        }
+        val h = Harness({ asrRan = true }, opusDecoder = { decoder })
+        cancelWhileBlocked(gate, "rec-197-ogg", h, tempAudio(".ogg", ByteArray(64)))
+        assertFalse(afterCheck, "decode kept going after the job was cancelled")
+        assertFalse(asrRan)
+        assertFalse(spillDir("rec-197-ogg").exists())
+    }
+
+    @Test
+    fun processor_cancel_before_wav_copy_writes_no_pcm() = runBlocking {
+        val gate = Gate()
+        // 16 MiB = 64 copy slices. The thermal check runs right before decode and holds the worker.
+        val thermal = object : ThermalPolicy {
+            override fun isHot(): Boolean { gate.pause(); return false }
+            override suspend fun awaitCool(onPaused: suspend (message: String) -> Unit) = Unit
+        }
+        val h = Harness({ error("ASR must not run") }, thermal = thermal)
+        val pcmFile = File(spillDir("rec-197-wav"), "pcm.s16le")
+        val maxSeen = java.util.concurrent.atomic.AtomicLong(0)
+        val running = java.util.concurrent.atomic.AtomicBoolean(true)
+        val sampler = Thread {
+            while (running.get()) { maxSeen.accumulateAndGet(pcmFile.length()) { x, y -> maxOf(x, y) } }
+        }.apply { isDaemon = true; start() }
+        try {
+            cancelWhileBlocked(gate, "rec-197-wav", h, tempAudio(".wav", wav(ByteArray(16 shl 20))))
+        } finally {
+            running.set(false)
+            sampler.join(5_000)
+        }
+        assertEquals(0L, maxSeen.get(), "PCM was copied after the job was cancelled")
+        assertFalse(spillDir("rec-197-wav").exists())
+    }
+
+    @Test
+    fun sweep_removes_orphan_pcm_spill_dirs_only() {
+        val root = java.nio.file.Files.createTempDirectory("velum-197-root").toFile()
+        try {
+            File(root, "tmp/pcm-a").apply { mkdirs(); File(this, "pcm.s16le").writeBytes(ByteArray(8)) }
+            File(root, "tmp/pcm-b").mkdirs()
+            File(root, "tmp/keep").mkdirs()
+            assertEquals(2, sweepOrphanPcmSpill(ModelStoreDir(root.path)))
+            assertFalse(File(root, "tmp/pcm-a").exists())
+            assertTrue(File(root, "tmp/keep").isDirectory)
+            assertEquals(0, sweepOrphanPcmSpill(ModelStoreDir(File(root, "absent").path)))
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun provider_error_text_is_not_reported_as_local_storage() {
+        assertFalse(isOutOfStorage(dev.velum.ai.AiApiException(507, "No space left on device")))
+        assertTrue(isOutOfStorage(IOException("write failed: ENOSPC")))
     }
 
     @Test

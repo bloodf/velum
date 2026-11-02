@@ -2,6 +2,8 @@ package dev.velum.ai.pipeline
 
 import dev.velum.ai.ApiErrorSanitizer
 import dev.velum.ai.MissingApiKeyException
+import dev.velum.ai.AiApiException
+import dev.velum.ai.audio.OpusDecoder
 import dev.velum.ai.audio.createOpusDecoder
 import dev.velum.ai.engine.AiTask
 import dev.velum.ai.engine.AiTaskRouter
@@ -39,10 +41,18 @@ const val INSUFFICIENT_STORAGE_MESSAGE =
 
 /** True when [t] or a cause reports a full disk (ENOSPC); message text is all common code can see. */
 internal fun isOutOfStorage(t: Throwable): Boolean =
-    generateSequence(t) { it.cause }.take(8).any { e ->
+    // AiApiException messages come from a remote provider, not this device's disk.
+    generateSequence(t) { it.cause }.take(8).filter { it !is AiApiException }.any { e ->
         val m = e.message.orEmpty()
         m.contains("ENOSPC") || m.contains("No space left", ignoreCase = true) || m.contains("disk is full", ignoreCase = true)
     }
+
+/** Removes spilled PCM dirs (`tmp/pcm-*`) left by a process death mid-decode. Run only when no job is active. */
+fun sweepOrphanPcmSpill(root: ModelStoreDir = defaultModelStoreRoot()): Int =
+    root.resolve("tmp").takeIf { it.isDirectory() }?.listChildren().orEmpty()
+        .filter { it.name.startsWith("pcm-") }
+        .onEach { it.deleteRecursively() }
+        .size
 
 /**
  * End-to-end job: decode → transcribe → diarize → markdown transcript → summarize → DB.
@@ -56,6 +66,7 @@ class RecordingProcessor(
         runCatching { ModelStoreDir(path).deleteRecursively() }
     },
     private val thermal: ThermalPolicy = NoOpThermalPolicy,
+    private val opusDecoder: () -> OpusDecoder = ::createOpusDecoder,
 ) {
     fun process(
         recordingId: String,
@@ -94,7 +105,7 @@ class RecordingProcessor(
                     filename.endsWith(".opus", ignoreCase = true)
                 if (oggByExt) {
                     // Stream Ogg pages from disk — never hold full Ogg or PCM on the heap.
-                    val meta = createOpusDecoder().decodePathToPcmFile(localPath, pcmFile) { job?.ensureActive() }
+                    val meta = opusDecoder().decodePathToPcmFile(localPath, pcmFile) { job?.ensureActive() }
                     sampleRate = meta.sampleRateHz
                     pcmBuffer = PcmAudioBuffer.fromExistingFile(pcmFile, meta.sizeBytes)
                     if (meta.truncated) {
@@ -125,7 +136,7 @@ class RecordingProcessor(
                 } else {
                     val raw = readFileBytes(localPath)
                     if (looksLikeOgg(raw)) {
-                        val meta = createOpusDecoder().decodeToPcmFile(raw, pcmFile)
+                        val meta = opusDecoder().decodeToPcmFile(raw, pcmFile)
                         sampleRate = meta.sampleRateHz
                         pcmBuffer = PcmAudioBuffer.fromExistingFile(pcmFile, meta.sizeBytes)
                         if (meta.truncated) {

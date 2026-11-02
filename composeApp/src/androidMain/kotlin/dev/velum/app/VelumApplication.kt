@@ -9,6 +9,7 @@ import dev.velum.ai.local.ModelStoreDir
 import dev.velum.ai.pipeline.AiRuntimeHolder
 import dev.velum.ai.pipeline.ThermalMonitor
 import dev.velum.ai.pipeline.createWorkManagerRecordingJobScheduler
+import dev.velum.ai.pipeline.sweepOrphanPcmSpill
 import dev.velum.app.di.AppContainer
 import dev.velum.app.platform.DownloadProgressNotifier
 import dev.velum.app.platform.MicRecordingService
@@ -97,6 +98,10 @@ class VelumApplication : Application() {
                             )
                             if (swept.isNotEmpty()) Log.i(TAG, "Removed ${swept.size} stale download part(s)")
                         }.onFailure { t -> Log.w(TAG, "Stale download sweep failed (${t::class.simpleName})") }
+                        runCatching {
+                            val spills = sweepOrphanPcmSpill()
+                            if (spills > 0) Log.i(TAG, "Removed $spills orphaned PCM spill dir(s)")
+                        }.onFailure { t -> Log.w(TAG, "PCM spill sweep failed (${t::class.simpleName})") }
                         val report = sweepOrphanRecordingAudio(recordingsDirectoryPath(), c.repository::getAllRecordingFileRefs)
                         Log.i(TAG, "Orphan audio sweep: quarantined=${report.quarantined} purged=${report.purged} staleTemps=${report.staleTemps} failedMoves=${report.failedMoves}")
                     },
