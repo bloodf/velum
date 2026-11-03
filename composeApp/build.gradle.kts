@@ -395,3 +395,5 @@ compose.desktop {
     }
 }
 
+
+apply(from = rootProject.file("gradle/robolectric-offline.gradle.kts"))
