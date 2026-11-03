@@ -110,3 +110,9 @@ private fun topViewController(): UIViewController? {
     while (top?.presentedViewController != null) top = top.presentedViewController
     return top
 }
+
+@OptIn(ExperimentalForeignApi::class)
+actual fun deleteImportCopies() {
+    val caches = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, true).firstOrNull() as? String ?: return
+    NSFileManager.defaultManager.removeItemAtPath("$caches/imports", error = null)
+}

@@ -729,7 +729,11 @@ class VelumRepository(
         q.deleteAllAutoflows()
         q.deleteAllMemories()
         q.deleteAllGlossary()
+        // By table, not per recording: a job that finished after its recording was deleted leaves orphans.
+        q.deleteAllSpeakers()
+        q.deleteAllSummaryVersions()
         q.deleteMetaWithPrefix(PROCESSING_ERROR_PREFIX)
+        q.deleteMetaWithPrefix(IMPORT_HASH_PREFIX)
         // Clear seed marker so maybeSeed re-inserts default AutoFlow + builtins.
         SeedData.clearSeedMarker(db)
         SeedData.maybeSeed(db)
@@ -1091,6 +1095,8 @@ class VelumRepository(
         const val META_TEMPLATE_ALIASES_RECONCILED = "template_aliases_reconciled"
         const val META_FTS_DIRTY = "fts_dirty"
         private const val PROCESSING_ERROR_PREFIX = "processing_error:"
+        // Written by audio import as import_sha256_<hash>.
+        private const val IMPORT_HASH_PREFIX = "import_sha256_"
     }
 }
 

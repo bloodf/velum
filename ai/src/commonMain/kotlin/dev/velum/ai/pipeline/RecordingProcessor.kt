@@ -19,6 +19,7 @@ import dev.velum.ai.local.ModelStoreDir
 import dev.velum.ai.local.defaultModelStoreRoot
 import dev.velum.ai.local.walkFiles
 import dev.velum.core.data.VelumRepository
+import dev.velum.core.data.WipeGate
 import dev.velum.core.model.ProcessingWarning
 import dev.velum.core.model.ComputeMode
 import dev.velum.core.settings.AiApiTask
@@ -31,6 +32,9 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.buffer
+import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.withContext
 
@@ -86,15 +90,32 @@ class RecordingProcessor(
     },
     private val thermal: ThermalPolicy = NoOpThermalPolicy,
     private val opusDecoder: () -> OpusDecoder = ::createOpusDecoder,
+    private val wipeGate: WipeGate = WipeGate(),
 ) {
+    /** A wipe cancels the run and refuses new ones, so nothing is written while the data goes. */
     fun process(
         recordingId: String,
         templateId: String? = null,
         retranscribe: Boolean = true,
         apiModelOverride: ApiModelOverride? = null,
+    ): Flow<JobProgress> = channelFlow {
+        wipeGate.guard {
+            runProcess(recordingId, templateId, retranscribe, apiModelOverride).collect { send(it) }
+        }
+    }.buffer(Channel.RENDEZVOUS)
+
+    private fun runProcess(
+        recordingId: String,
+        templateId: String?,
+        retranscribe: Boolean,
+        apiModelOverride: ApiModelOverride?,
     ): Flow<JobProgress> = flow {
         emit(JobProgress.Running(0.05f, "Starting"))
-        val priorStatus = repository.getRecording(recordingId)?.status
+        // A job queued before a wipe can run after it: with the row gone, record nothing about it.
+        val priorStatus = repository.getRecording(recordingId)?.status ?: run {
+            emit(JobProgress.Failed("Recording not found: $recordingId"))
+            return@flow
+        }
         repository.setProcessingError(recordingId, null)
         repository.updateStatus(recordingId, "generating")
 

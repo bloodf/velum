@@ -41,3 +41,8 @@ actual fun rememberAudioImporter(onPicked: (path: String) -> Unit): () -> Unit {
         }
     }
 }
+
+actual fun deleteImportCopies() {
+    val context = appContextOrNull() ?: return
+    File(context.cacheDir, "imports").deleteRecursively()
+}

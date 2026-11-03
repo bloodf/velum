@@ -26,6 +26,15 @@ class AudioImportPipeline(
         source: String = "import",
         titleHint: String? = null,
         startedAtEpochSeconds: Long? = null,
+    ): ImportResult = container.wipeGate.guard { importNow(absolutePath, source, titleHint, startedAtEpochSeconds) }
+        // A wipe in progress refuses or stops the import before it creates a recording.
+        ?: ImportResult.Failed("wipe_in_progress")
+
+    private suspend fun importNow(
+        absolutePath: String,
+        source: String,
+        titleHint: String?,
+        startedAtEpochSeconds: Long?,
     ): ImportResult = withContext(Dispatchers.Default) {
         runCatching {
             val name = absolutePath.substringAfterLast('/')

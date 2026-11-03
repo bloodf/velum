@@ -3,6 +3,7 @@ package dev.velum.ai.integrations
 import dev.velum.ai.createAiHttpClient
 import dev.velum.ai.pipeline.TranscriptFormatter
 import dev.velum.core.data.VelumRepository
+import dev.velum.core.data.WipeGate
 import dev.velum.core.integrations.WebhookPayload
 import dev.velum.core.integrations.WebhookSettingsStore
 import dev.velum.core.integrations.WebhookSigner
@@ -25,11 +26,15 @@ class WebhookDispatcher(
     private val settings: WebhookSettingsStore,
     private val httpClient: HttpClient = createAiHttpClient(),
     private val maxAttempts: Int = 3,
+    private val wipeGate: WipeGate = WipeGate(),
 ) {
     /**
-     * @return short success message, or null on failure (caller shows localized fallback).
+     * @return short success message, or null on failure (caller shows localized fallback). A wipe stops a
+     * delivery and its retries, and none starts while it runs.
      */
-    suspend fun dispatch(recordingId: String): String? {
+    suspend fun dispatch(recordingId: String): String? = wipeGate.guard { dispatchNow(recordingId) }
+
+    private suspend fun dispatchNow(recordingId: String): String? {
         val url = settings.getUrl() ?: return null
         val rec = repository.getRecording(recordingId) ?: return null
         val speakers = repository.getSpeakers(recordingId)

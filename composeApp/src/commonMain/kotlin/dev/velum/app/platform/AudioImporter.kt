@@ -8,3 +8,6 @@ import androidx.compose.runtime.Composable
  */
 @Composable
 expect fun rememberAudioImporter(onPicked: (path: String) -> Unit): () -> Unit
+
+/** Deletes the app's copies of picked or shared audio (kept in the cache until imported). */
+expect fun deleteImportCopies()

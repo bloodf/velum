@@ -19,3 +19,6 @@ actual fun rememberAudioImporter(onPicked: (path: String) -> Unit): () -> Unit {
         }
     }
 }
+
+/** Desktop imports read the picked file in place; there are no copies. */
+actual fun deleteImportCopies() = Unit

@@ -25,7 +25,12 @@ import dev.velum.app.devicewalk.DeviceWalkDiarizer
 import dev.velum.app.devicewalk.DeviceWalkLlm
 import dev.velum.app.devicewalk.DeviceWalkMode
 import dev.velum.app.devicewalk.DeviceWalkTranscriber
+import dev.velum.app.platform.ExportFolderResult
 import dev.velum.app.platform.ExportFolderStore
+import dev.velum.app.platform.clearWatchedFolders
+import dev.velum.app.platform.deleteImportCopies
+import dev.velum.app.platform.writeMarkdownToExportFolder
+import dev.velum.core.integrations.MarkdownNoteExport
 import dev.velum.app.platform.MicCapture
 import dev.velum.app.platform.createMicCapture
 import dev.velum.app.platform.DOWNLOAD_PART_SUFFIX
@@ -47,6 +52,7 @@ import dev.velum.core.calendar.createCalendarEventProvider
 import dev.velum.core.data.DriverFactory
 import dev.velum.core.data.RecordingIds
 import dev.velum.core.data.VelumRepository
+import dev.velum.core.data.WipeGate
 import dev.velum.core.data.createDatabase
 import dev.velum.core.db.Recording
 import dev.velum.core.data.epochSecondsNow
@@ -73,6 +79,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlin.time.Duration.Companion.seconds
 
 class AppContainer(
     val secureStore: SecureStore,
@@ -89,6 +96,9 @@ class AppContainer(
     thermalPolicy: ThermalPolicy = NoOpThermalPolicy,
 ) {
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    /** Stops background work that writes user data during "Wipe all data"; see [wipeAllData]. */
+    val wipeGate = WipeGate()
 
     val databaseHandle = createDatabase(driverFactory)
     val database = databaseHandle.database
@@ -146,6 +156,7 @@ class AppContainer(
     val webhookDispatcher = WebhookDispatcher(
         repository = repository,
         settings = webhookSettings,
+        wipeGate = wipeGate,
     )
 
     val localModelManager = createLocalModelManager(storeRoot = modelStoreRoot)
@@ -184,6 +195,7 @@ class AppContainer(
         repository = repository,
         settings = settingsRepository,
         thermal = thermalPolicy,
+        wipeGate = wipeGate,
     )
 
     val recordingJobs: RecordingJobScheduler =
@@ -211,7 +223,7 @@ class AppContainer(
     )
 
     val micRecordings = dev.velum.app.platform.MicRecordingController(micCapture) { id ->
-        repository.getRecording(id)?.let { it.source == "phone" && it.status == "recording" } == true
+        !wipeGate.isWiping && repository.getRecording(id)?.let { it.source == "phone" && it.status == "recording" } == true
     }
     val activeMicRecordingId: String? get() = micRecordings.owner.value?.recordingId
 
@@ -274,23 +286,63 @@ class AppContainer(
     private val downloadPersistMutex = Mutex()
 
     /**
+     * "Wipe all data". Work that writes user data (downloads, processing, imports, exports, webhooks, the mic)
+     * is stopped first and can't start again until the wipe ends, including when a step fails. The device keys
+     * go as soon as the downloads stop, so a step that fails later can't leave them for a download to use.
+     */
+    internal suspend fun wipeAllData(device: DeviceViewModel = deviceViewModel): DownloadWipeResult =
+        wipeGate.wiping(WIPE_JOIN_TIMEOUT) { workStopped ->
+            device.holdingDownloads {
+                val downloads = device.wipePartialDownloads()
+                deviceKeyImporter.clearKeys()
+                stopMicCapture()
+                repository.wipeAllUserData { path -> deleteFileAtPath(path) }
+                withContext(Dispatchers.IO) {
+                    voiceProfileStore.wipeAll()
+                    clearWatchedFolders()
+                    deleteImportCopies()
+                    ExportFolderStore.clear()
+                }
+                settingsRepository.clearAllApiKeys()
+                webhookSettings.clear()
+                integrationAuth.clearTokens()
+                if (workStopped) downloads else DownloadWipeResult.StillRunning
+            }
+        }
+
+    /** Ends a mic recording in progress and deletes its file, which may not be on a recording row yet. */
+    private suspend fun stopMicCapture() {
+        val session = micCapture.sessions.value.session ?: return
+        if (micCapture.isCapturing) micCapture.stop(session)
+        withContext(Dispatchers.IO) { deleteFileAtPath(session.absolutePath) }
+    }
+
+    /** AutoFlow's export to folder. Null when the recording is gone; a wipe stops or refuses it. */
+    suspend fun exportRecordingToFolder(
+        recordingId: String,
+        write: (filename: String, markdown: String) -> ExportFolderResult = ::writeMarkdownToExportFolder,
+    ): ExportFolderResult? = wipeGate.guard {
+        val rec = repository.getRecording(recordingId) ?: return@guard null
+        val speakers = repository.getSpeakers(recordingId).mapNotNull { it.display_name ?: it.label }
+        val note = MarkdownNoteExport.Note(
+            title = rec.title,
+            startedAtEpochSeconds = rec.started_at,
+            durationSeconds = rec.duration_seconds,
+            source = rec.source,
+            speakers = speakers,
+            tags = listOf("velum"),
+            summaryMarkdown = rec.summary_markdown,
+            transcriptMarkdown = rec.transcript,
+        )
+        val markdown = MarkdownNoteExport.render(note)
+        withContext(Dispatchers.IO) { write(MarkdownNoteExport.filename(rec.title, rec.started_at), markdown) }
+    }
+
+    /**
      * One library row per device session (#113). A re-download atomically replaces the existing
      * row's audio and keeps its id, title, transcript, summary and template; a failed write leaves
      * the existing row and file untouched.
      */
-    /** "Wipe all data": downloads stay off until the keys are gone, including when a step fails. */
-    internal suspend fun wipeAllData(device: DeviceViewModel = deviceViewModel): DownloadWipeResult =
-        device.holdingDownloads {
-            val downloads = device.wipePartialDownloads()
-            repository.wipeAllUserData { path -> deleteFileAtPath(path) }
-            withContext(Dispatchers.IO) { voiceProfileStore.wipeAll() }
-            settingsRepository.clearAllApiKeys()
-            deviceKeyImporter.clearKeys()
-            webhookSettings.clear()
-            integrationAuth.clearTokens()
-            downloads
-        }
-
     suspend fun persistDownloadedSession(
         session: DownloadedSessionAudio,
     ): String = downloadPersistMutex.withLock {
@@ -412,3 +464,6 @@ class AppContainer(
         return VelumDateTime.formatFriendlyTitle(epochSeconds, locale)
     }
 }
+
+/** How long a wipe waits for background work to stop before going ahead and reporting it. */
+private val WIPE_JOIN_TIMEOUT = 15.seconds

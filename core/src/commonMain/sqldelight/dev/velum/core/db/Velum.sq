@@ -232,6 +232,12 @@ DELETE FROM memory_item;
 deleteAllGlossary:
 DELETE FROM glossary_term;
 
+deleteAllSpeakers:
+DELETE FROM speaker;
+
+deleteAllSummaryVersions:
+DELETE FROM summary_version;
+
 selectAllRecordingIds:
 SELECT id FROM recording;
 
