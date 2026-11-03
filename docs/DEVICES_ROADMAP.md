@@ -17,8 +17,8 @@ Research date: 2026-10-27. Goal: support other famous Bluetooth AI note-takers /
 | 5 | **OpenGlass / OmiGlass** ([OpenGlass](https://github.com/BasedHardware/OpenGlass) → omi) | MIT firmware; audio PR uses Omi-like BLE | **MIT** | Yes (Opus BLE) | Opus | Same family as Omi | Use **Omi driver** / alias | Via Omi UUIDs |
 | 6 | **DIY XIAO / ESP32 wearing Friend firmware** | Omi open firmware | MIT | Yes | Opus/PCM | Same as Omi | **Same as Omi** | Matches Omi scan filter |
 | 7 | **whistle-esp32** ([andrisgauracs/whistle-esp32](https://github.com/andrisgauracs/whistle-esp32)) | On-device Whistle ASR demo | **Apache-2.0** | N/A — **no phone BLE audio transfer** | Local ASR only | N/A | **Not a RecorderDriver** | Documented only |
-| 8 | **Bee (Amazon)** | bee-cli / API proxy; BLE opaque | Proprietary / closed BLE | App/API path, not open BLE | Encrypted streams (community reports) | Pairing + Amazon stack | Low until open HAL | Watch |
-| 9 | **Soundcore Work** | None found | Proprietary | Vendor app | Unknown | Vendor | Low | — |
+| 8 | **Bee (Amazon)** | bee-cli / API proxy; BLE opaque | Proprietary / closed BLE | App/API path, not open BLE | Encrypted streams (community reports) | Pairing + Amazon stack | Low until open HAL | Watch (no-go, see #20 section) |
+| 9 | **Soundcore Work** | None found | Proprietary | Vendor app | Unknown | Vendor | Low | No-go (#20 section below) |
 | 10 | **Viaim / Mobvoi TicNote / Sandbar / iFlytek·Dingtalk A1** | Marketing only | Proprietary | Vendor cloud typical | Unknown | Vendor | Low | Brazil/Asia market watch |
 | 11 | **Rewind / Limitless cloud apps** | Not device BLE OSS | Proprietary | Cloud-first | — | Account | Out of scope | — |
 | 12 | **Compass** (wearable note brands) | No public GATT docs found | Proprietary | Unknown | Unknown | Vendor | Low | Revisit if RE appears |
@@ -65,6 +65,25 @@ Research date: 2026-10-27. Goal: support other famous Bluetooth AI note-takers /
 - Bee post-Amazon: developer CLI/API; BLE reportedly encrypted on newer firmware — not driver-ready.
 
 ---
+
+## Closed note-takers: feasibility re-check (#20, 2026-11-03)
+
+Public sources only: vendor pages, press, package registries and public repositories. Nothing here was captured,
+decompiled or probed by Velum. "Go" would mean a documented or openly licensed protocol that a driver could be built
+on without depending on reverse-engineering of closed software; no device reached it.
+
+| Device | What public sources show | Decision |
+| --- | --- | --- |
+| **Bee (Amazon)** | Official developer path is a cloud one: Bee CLI exports conversations, facts and tasks to Markdown and runs as an MCP server, and needs the Bee app with Developer Mode and an account login ([Bee CLI README as hosted by Plaud](https://download.plaud.ai/bee-computer/bee-cli); hosting is odd, so check the `@beeai/cli` npm package before relying on it). A community repo, [cewinharhar/bee_local](https://github.com/cewinharhar/bee_local) (MIT, 3 commits), drives the Bee Pioneer over BLE and documents a protocol; its README lists an `archive/` of "APK decompilation" research artifacts, so the spec comes from the closed app, is single-source and unverified. Earlier notes report encrypted streams on newer firmware; not re-verified. | **No-go.** The cloud path needs an account (outside the product rules); the BLE path rests on decompiled app work from one small repo. Revisit if a vendor-documented or independently verified BLE spec appears. |
+| **Soundcore Work** (Anker) | Product pages and press only. Wi-Fi and Bluetooth transfer, Apple MFi on iOS ([audioXpress](https://audioxpress.com/news/soundcore-launches-ai-voice-recorder-for-instant-transcription-and-summarization)); vendor claims TLS on the Bluetooth and app link ([Soundcore DE](https://www.soundcore.com/de/collections/ai-voice-recorder)) and AES-256 at rest ([UDN](https://udn.com/news/story/7270/9280641)). No repository, protocol write-up or SDK found. | **No-go.** Nothing public to build on; vendor-claimed encryption. |
+| **Viaim** (RecDot, OpenNote, NoteKit) | App Store listing, retailer and press pages only ([App Store](https://apps.apple.com/app/id6468928677), [SoundGuys](https://www.soundguys.com/viaim-makes-ai-earbuds-for-people-who-actually-work-for-a-living-156720/)). No API, SDK, protocol or community work found. Their site (viaim.ai) was not checked. | **No-go.** |
+| **TicNote** (Mobvoi) | The launch material lists a TicNote API for AI assistants, Notion/Obsidian export, and "bring your own model" keys ([TechNode](https://technode.global/prnasia/mobvoi-announces-ticnote-watch-the-ai-note-taker-that-captures-your-day-from-your-wrist/)); no API reference, auth documentation or BLE information was found. These are cloud features behind a vendor account. | **No-go** for a BLE driver; the cloud API is outside the product rules. Check ticnote.ai for developer docs if this is revisited. |
+| **Sandbar Stream ring** | Notes sync to the Stream app over Bluetooth; shipping planned summer 2026 with a closed beta, iOS first; no SDK or public API ([The Decoder](https://the-decoder.com/sandbar-claims-its-finger-worn-ai-device-is-the-new-mouse-for-voice/), [ChannelNews](https://www.channelnews.com.au/ai-powered-stream-ring-records-voice-notes-on-the-go/)). | **No-go** (not shipping, nothing documented). |
+| **iFlytek / DingTalk A1** | Product and review pages for the iFlytek P1, P1 Pro and S6 describe Bluetooth plus the vendor app and web platform, with no SDK or developer program ([Notebookcheck P1](https://www.notebookcheck.net/iFLYTEK-AI-Recorder-P1-An-AI-assistant-as-a-wearable-device.1335699.0.html), [iFlytek S6](https://uk.iflytek.com/products/iflytek-ai-recorder-s6)). Nothing at all was found for the DingTalk A1, and iFlytek's and DingTalk's own developer portals (largely Chinese-language) were not searched. | **No-go on current evidence**, with that search gap stated. |
+| **Limitless Pendant** (feeds #18) | Two public clients exist and both derive from the closed Limitless Android app. [MAkcanca/pendant-cli](https://github.com/MAkcanca/pendant-cli) is MIT and says it was "built from static analysis of the official Android app and the firmware v1.1.20 image", tested against a real pendant on that firmware. [sdelcore/pendant-cli](https://github.com/sdelcore/pendant-cli) has no formal license and says "for personal/research use only; the protocol was reverse-engineered from proprietary software" (protobuf over two characteristics, ChaCha20-Poly1305 audio with user keys). The rows above call pendant-cli MIT; that holds for the MAkcanca repo only. Both clients send commands (start/stop recording, clear storage, factory reset, set key), so this profile has writes. | **Not decided here.** Whether to build on RE-derived work is an owner decision; any driver needs its own write guard designed first (see #18). |
+
+Result: no device is marked go, so no driver task was opened from #20. Gaps worth a future pass: Viaim's own site, TicNote
+developer docs, iFlytek and DingTalk developer portals.
 
 ## Driver architecture
 
