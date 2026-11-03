@@ -2,6 +2,7 @@ package dev.velum.ble.gatt
 
 import dev.velum.protocol.PlaudUuids
 import dev.velum.recorder.omi.OmiUuids
+import dev.velum.recorder.pocket.PocketUuids
 
 /** A GATT characteristic address (128-bit UUID strings, as in [PlaudUuids]). */
 data class GattChar(val service: String, val characteristic: String)
@@ -47,6 +48,23 @@ object GattProfiles {
         notify = listOf(OMI_AUDIO_DATA, OMI_BATTERY_LEVEL),
         writes = emptyMap(),
         reads = listOf(OMI_AUDIO_CODEC),
+    )
+
+    val POCKET_AUDIO_DATA = GattChar(PocketUuids.AUDIO_SERVICE, PocketUuids.AUDIO_DATA)
+    val POCKET_REPLIES = GattChar(PocketUuids.AUDIO_SERVICE, PocketUuids.AUDIO_META)
+    val POCKET_BATTERY_LEVEL = GattChar(PocketUuids.BATTERY_SERVICE, PocketUuids.BATTERY_LEVEL)
+
+    /**
+     * Pocket / OpenPocket (pocket-libre PROTOCOL.md, MIT): MP3 audio, `MCU&` replies and battery notifications only.
+     * It declares NO writable characteristic, so the `APP&` command channel (001120A2/A3) is unreachable, including
+     * `APP&SK&`, which pairs the device. Commands need their own allow-list guard first (not designed yet). Whether
+     * notifications alone are enough to receive audio from a real device is unverified; the published protocol has the
+     * app start streaming with a command.
+     */
+    val Pocket = GattProfile(
+        id = "pocket",
+        notify = listOf(POCKET_AUDIO_DATA, POCKET_REPLIES, POCKET_BATTERY_LEVEL),
+        writes = emptyMap(),
     )
 }
 
