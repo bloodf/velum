@@ -33,7 +33,9 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -109,7 +111,8 @@ class DeviceViewModel(
     private var connectedSerial: String? = null
     private var connectedDeviceId: String? = null
     private var downloadJob: Job? = null
-    private var cancelledJob: Job? = null
+    // Parent of every unfinished download: a cancelled one can still be unwinding after a newer one replaced downloadJob.
+    private val downloads = SupervisorJob(viewModelScope.coroutineContext[Job])
     private val downloadMutex = Mutex()
 
     init {
@@ -144,8 +147,7 @@ class DeviceViewModel(
             // A cancelled download may still be unwinding (a BLE write can ignore cancellation) and a queued one may
             // start right behind it; both use the client, so connect only after them, with the same bound as a wipe.
             val settled = withTimeoutOrNull(wipeJoinTimeout) {
-                cancelledJob?.join()
-                downloadJob?.join()
+                awaitDownloads()
                 true
             }
             if (settled == null) {
@@ -167,7 +169,7 @@ class DeviceViewModel(
     fun disconnect() {
         viewModelScope.launch {
             cancelDownload()
-            downloadJob?.join()
+            awaitDownloads()
             closeClient()
             connectedSerial = null // an explicit disconnect forgets the device; a link drop does not
             _sessionUi.value = DeviceSessionUi()
@@ -175,9 +177,13 @@ class DeviceViewModel(
         }
     }
 
+    internal suspend fun awaitDownloads() {
+        downloads.children.toList().forEach { it.join() }
+    }
+
     fun cancelDownload() {
         val locale = localeTag()
-        downloadJob?.let { it.cancel(); cancelledJob = it }
+        downloads.cancelChildren()
         DownloadProgressNotifier.dismiss(DownloadNotifyKind.DeviceSession)
         DownloadProgressNotifier.setCancelHandler(DownloadNotifyKind.DeviceSession, null)
         if (_sessionUi.value.downloadingSessionId != null) {
@@ -195,7 +201,7 @@ class DeviceViewModel(
      */
     suspend fun wipePartialDownloads(): Boolean {
         cancelDownload()
-        withTimeoutOrNull(wipeJoinTimeout) { downloadJob?.join() }
+        withTimeoutOrNull(wipeJoinTimeout) { awaitDownloads() }
         return try {
             withContext(Dispatchers.IO) { deletePartialTransfers() }
             true
@@ -207,7 +213,7 @@ class DeviceViewModel(
     fun downloadSession(sessionId: Long) {
         if (downloadJob?.isActive == true && _sessionUi.value.downloadingSessionId != null) return
         val previous = downloadJob
-        val started = viewModelScope.launch {
+        val started = viewModelScope.launch(downloads) {
             previous?.join()
             try {
                 downloadMutex.withLock {

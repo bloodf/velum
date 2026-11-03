@@ -47,7 +47,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.yield
 
 /**
@@ -419,6 +421,87 @@ class DeviceResumeRestartTest {
                 assertEquals(DeviceUiCopy.connectBusy("en"), vm.sessionUi.value.statusMessage)
             }
             assertEquals(1, probe!!.connects.get(), "no second connect while the download is still unwinding")
+        } finally { owner.clear(); Dispatchers.resetMain() }
+    }
+
+    /** Starts a download held in NonCancellable saving, cancels it, then queues and cancels a second behind it. */
+    private fun cancelledTwice(
+        hold: suspend () -> Unit,
+        wipeJoinTimeout: Duration = 15.seconds,
+        transport: (FakePlaudPeripheral) -> BleTransport = { FakeBleTransport(it) },
+    ): DeviceViewModel {
+        val saving = CompletableDeferred<Unit>()
+        val vm = run(
+            peripheral(),
+            persist = {
+                saving.complete(Unit)
+                withContext(NonCancellable) { hold() }
+                "rec-synthetic"
+            },
+            await = false,
+            wipeJoinTimeout = wipeJoinTimeout,
+            transport = transport,
+        )
+        runBlocking { withTimeout(20_000) { saving.await() } }
+        vm.cancelDownload()
+        vm.downloadSession(session)
+        vm.cancelDownload()
+        return vm
+    }
+
+    @Test fun wipe_waits_for_a_download_cancelled_before_a_queued_one() {
+        try {
+            val finished = AtomicBoolean(false)
+            val vm = cancelledTwice(hold = { delay(1_000); finished.set(true) })
+            runBlocking { assertTrue(vm.wipePartialDownloads()) }
+            assertTrue(finished.get(), "the wipe finished while the first download was still saving")
+        } finally { owner.clear(); Dispatchers.resetMain() }
+    }
+
+    @Test fun connect_waits_for_a_download_cancelled_before_a_queued_one() {
+        try {
+            val release = CompletableDeferred<Unit>()
+            var probe: ConnectProbe? = null
+            val vm = cancelledTwice(
+                hold = { release.await() },
+                wipeJoinTimeout = 200.milliseconds,
+                transport = { p -> ConnectProbe(FakeBleTransport(p)).also { probe = it } },
+            )
+            vm.connect("fake-note-pro")
+            runBlocking {
+                delay(600)
+                assertEquals(DeviceUiCopy.connectBusy("en"), vm.sessionUi.value.statusMessage)
+                assertEquals(1, probe!!.connects.get(), "no second connect while the first download is still saving")
+                release.complete(Unit)
+                withTimeout(30_000) { vm.awaitDownloads() }
+            }
+        } finally { owner.clear(); Dispatchers.resetMain() }
+    }
+
+    @Test fun cancel_stops_every_queued_download() {
+        try {
+            val saving = CompletableDeferred<Unit>()
+            val release = CompletableDeferred<Unit>()
+            val vm = run(
+                peripheral(),
+                persist = {
+                    saving.complete(Unit)
+                    withContext(NonCancellable) { release.await() }
+                    "rec-synthetic"
+                },
+                await = false,
+            )
+            runBlocking {
+                withTimeout(20_000) { saving.await() }
+                vm.cancelDownload()
+                vm.downloadSession(session)
+                vm.downloadSession(session)
+                vm.cancelDownload()
+                release.complete(Unit)
+                withTimeout(30_000) { vm.awaitDownloads() }
+                val restarted = withTimeoutOrNull(1_500) { vm.sessionUi.first { it.downloadingSessionId != null } }
+                assertEquals(null, restarted, "a cancelled queued download started anyway")
+            }
         } finally { owner.clear(); Dispatchers.resetMain() }
     }
 
