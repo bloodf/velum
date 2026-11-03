@@ -12,6 +12,7 @@ import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.file.Files
+import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlinx.coroutines.runBlocking
@@ -53,6 +54,21 @@ class ReimportAfterDeleteTest {
         assertIs<ImportResult.Created>(pipeline.importFile(wav.path))
         container.repository.wipeAllUserData()
         assertIs<ImportResult.Created>(pipeline.importFile(wav.path))
+    }
+
+    @Test fun a_watched_folder_does_not_bring_back_a_deleted_recording() = withPipeline { container, pipeline, wav ->
+        val first = assertIs<ImportResult.Created>(pipeline.importFile(wav.path, source = "watched"))
+        container.repository.deleteRecordingHard(first.recordingId)
+        assertIs<ImportResult.Deleted>(pipeline.importFile(wav.path, source = "watched"))
+        assertEquals(0, container.repository.storageUsage().recordingCount, "the deleted recording came back")
+    }
+
+    @Test fun a_manual_import_of_a_deleted_file_works_and_clears_its_tombstone() = withPipeline { container, pipeline, wav ->
+        val first = assertIs<ImportResult.Created>(pipeline.importFile(wav.path, source = "watched"))
+        container.repository.deleteRecordingHard(first.recordingId)
+        val again = assertIs<ImportResult.Created>(pipeline.importFile(wav.path, source = "import"))
+        // The file is live again, so the watched folder sees it as already imported.
+        assertEquals(again.recordingId, assertIs<ImportResult.Duplicate>(pipeline.importFile(wav.path, source = "watched")).existingRecordingId)
     }
 
     private fun silentWav(file: File, sampleRate: Int = 16_000, durationMs: Int = 200): File {

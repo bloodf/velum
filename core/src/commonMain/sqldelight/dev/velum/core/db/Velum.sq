@@ -298,11 +298,15 @@ INSERT OR REPLACE INTO app_meta(key, value) VALUES (?, ?);
 deleteMeta:
 DELETE FROM app_meta WHERE key = ?;
 
+-- GLOB, not LIKE: LIKE treats `_` as a wildcard and ignores case. Patterns come from VelumRepository.globPrefix.
 deleteMetaWithPrefix:
-DELETE FROM app_meta WHERE key LIKE ? || '%';
+DELETE FROM app_meta WHERE key GLOB :pattern;
 
 deleteMetaWithPrefixAndValue:
-DELETE FROM app_meta WHERE key LIKE ? || '%' AND value = ?;
+DELETE FROM app_meta WHERE key GLOB :pattern AND value = :value;
+
+selectMetaKeysWithPrefixAndValue:
+SELECT key FROM app_meta WHERE key GLOB :pattern AND value = :value;
 
 selectVersionsForRecording:
 SELECT * FROM summary_version WHERE recording_id = ? ORDER BY created_at DESC;

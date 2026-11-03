@@ -88,6 +88,7 @@ fun ImportHubScreen(
                     onOpenRecording(r.existingRecordingId)
                 }
                 is ImportResult.Failed -> status = strings.ux.genericError
+                is ImportResult.Deleted -> Unit // watched-folder sync only
             }
             importing = false
         }

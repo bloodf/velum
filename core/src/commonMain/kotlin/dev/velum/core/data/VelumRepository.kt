@@ -571,6 +571,10 @@ class VelumRepository(
         q.setMeta(key, value)
     }
 
+    suspend fun deleteMeta(key: String) = withContext(dbContext) {
+        q.deleteMeta(key)
+    }
+
     /** Last processing failure for [recordingId] (already sanitized), or null. Previous notes are never touched. */
     suspend fun getProcessingError(recordingId: String): String? =
         getMeta(processingErrorKey(recordingId))?.takeIf { it.isNotBlank() }
@@ -713,8 +717,12 @@ class VelumRepository(
         q.deleteRecordingHard(id)
         q.deleteMeta(processingErrorKey(id))
         q.deleteMeta("$UNPROMOTED_RUN_PREFIX$id")
-        // Import dedupe keys (import_sha256_<hash> -> id): the file can be imported again (#327).
-        q.deleteMetaWithPrefixAndValue("import_sha256_", id)
+        // Import dedupe keys (import_sha256_<hash> -> id) become tombstones: a manual import of the file works
+        // again, but a watched folder does not bring the deleted recording back (#327).
+        q.selectMetaKeysWithPrefixAndValue(globPrefix(IMPORT_HASH_PREFIX), id).executeAsList().forEach { key ->
+            q.setMeta(IMPORT_DELETED_PREFIX + key.removePrefix(IMPORT_HASH_PREFIX), "1")
+            q.deleteMeta(key)
+        }
         tryIndex { if (ftsAvailable) FtsIndex.deleteRecording(driver, id) }
     }
 
@@ -743,8 +751,9 @@ class VelumRepository(
         q.deleteAllAutoflows()
         q.deleteAllMemories()
         q.deleteAllGlossary()
-        q.deleteMetaWithPrefix(PROCESSING_ERROR_PREFIX)
-        q.deleteMetaWithPrefix(UNPROMOTED_RUN_PREFIX)
+        q.deleteMetaWithPrefix(globPrefix(PROCESSING_ERROR_PREFIX))
+        q.deleteMetaWithPrefix(globPrefix(UNPROMOTED_RUN_PREFIX))
+        q.deleteMetaWithPrefix(globPrefix(IMPORT_DELETED_PREFIX))
         // Clear seed marker so maybeSeed re-inserts default AutoFlow + builtins.
         SeedData.clearSeedMarker(db)
         SeedData.maybeSeed(db)
@@ -1107,6 +1116,14 @@ class VelumRepository(
         const val META_FTS_DIRTY = "fts_dirty"
         private const val PROCESSING_ERROR_PREFIX = "processing_error:"
         private const val UNPROMOTED_RUN_PREFIX = "unpromoted_run:"
+        /** Audio import dedupe: import_sha256_<hash> -> recording id. */
+        const val IMPORT_HASH_PREFIX = "import_sha256_"
+
+        /** A GLOB pattern matching keys that start with [prefix] (case-sensitive; GLOB metacharacters escaped). */
+        internal fun globPrefix(prefix: String): String =
+            prefix.map { if (it == '*' || it == '?' || it == '[') "[$it]" else it.toString() }.joinToString("") + "*"
+        /** import_deleted_<hash>: that file's recording was permanently deleted; watched folders skip it. */
+        const val IMPORT_DELETED_PREFIX = "import_deleted_"
     }
 }
 
