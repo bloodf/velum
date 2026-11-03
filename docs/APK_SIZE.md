@@ -36,7 +36,7 @@ Native libraries dominate (about 76%). They are stored uncompressed on purpose (
 
 Proposed baseline for the arm64-v8a release APK: 77,139,223 bytes, the size measured above
 (`scripts/apk-size-baseline.txt`). No owner has agreed a target yet; the owner decides the number. The check
-fails above baseline + 10% and below half the baseline (empty or truncated file):
+fails above baseline + 10%, below half the baseline (truncated file), when the APK holds anything but arm64-v8a native libs (wrong ABI or universal), or when the baseline file is not a single positive integer:
 
 ```
 scripts/check-apk-size.sh composeApp/build/outputs/apk/release/composeApp-arm64-v8a-release-unsigned.apk
