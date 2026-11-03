@@ -216,7 +216,10 @@ class FileDecryptDeviceTest {
     }
 
     @Test fun throughput_for_the_log() {
-        val plain = Random(3).nextBytes(16 * 1024 * 1024)
+        // Only for the log: the plaintext and the encrypted copy are both held, so size them to the heap
+        // (a 48 MB AVD heap cannot hold 2 x 16 MiB plus the decryptor's buffers).
+        val size = (Runtime.getRuntime().maxMemory() / 8).coerceIn(1L * 1024 * 1024, 16L * 1024 * 1024).toInt()
+        val plain = Random(3).nextBytes(size)
         val file = plaudFile(plain)
         val started = System.nanoTime()
         var written = 0L

@@ -61,7 +61,9 @@ class PreamblePerConnectionTest {
         @Suppress("UNCHECKED_CAST")
         val flow = server.incomingEncryptedFrames() as SharedFlow<ByteArray>
         launch(start = CoroutineStart.UNDISPATCHED) {
-            flow.onSubscription { subscribed.complete(Unit) }.collect { recorder.frames += it.toList() }
+            flow.onSubscription { subscribed.complete(Unit) }.collect {
+                if (it !== WifiTransferServer.PEER_CLOSED_FRAME) recorder.frames += it.toList()
+            }
         }
         subscribed.await()
         return recorder

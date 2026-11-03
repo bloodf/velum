@@ -150,7 +150,7 @@ insertDeviceSessionRecording:
 INSERT INTO recording VALUES ?;
 
 replaceDeviceSessionAudio:
-UPDATE recording SET local_path = ?, size_bytes = ?, trashed = 0, processing_warning = NULL WHERE id = ?;
+UPDATE recording SET local_path = ?, size_bytes = ?, trashed = 0, processing_warning = ? WHERE id = ?;
 
 selectAllRecordingFileRefs:
 SELECT id, local_path FROM recording;

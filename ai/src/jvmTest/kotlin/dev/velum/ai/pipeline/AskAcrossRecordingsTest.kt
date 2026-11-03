@@ -107,4 +107,43 @@ class AskAcrossRecordingsTest {
         assertTrue(answer.citations.any { it.title.contains("budget", ignoreCase = true) })
         assertTrue(answer.citations.first().timestampLabel.isNotBlank())
     }
+
+    // #205: marker notes must not reach the model's prompt or drive retrieval.
+    @Test
+    fun markers_never_reach_the_prompt_or_retrieval() = runBlocking {
+        val repo = VelumRepository(createDatabase(DriverFactory()))
+        val settings = SettingsRepository(InMemorySecureStore())
+        settings.load()
+        settings.setSummaryMode(ComputeMode.Local)
+        repo.insertRecording(
+            id = "rec-m", sessionId = null, folderId = null, title = "Sync", source = "phone", deviceSerial = null,
+            startedAt = 1_700_000_100L, durationSeconds = 60, sizeBytes = 0, localPath = null,
+            transcript = "We discussed the roadmap.\n\n## Markers\n- **0:20** secretzebramarker",
+            summaryMarkdown = null, status = "ready",
+        )
+        val prompts = mutableListOf<String>()
+        val llm = object : LlmEngine {
+            override val engineId = "fake"
+            override suspend fun complete(request: LlmRequest, modelId: String): LlmResult {
+                prompts += request.systemPrompt + "\n" + request.userPrompt
+                return LlmResult(text = "ok", engineId = engineId, modelId = modelId)
+            }
+        }
+        val asr = object : Transcriber {
+            override val engineId = "noop"
+            override suspend fun transcribe(input: AudioInput, modelId: String) =
+                TranscriptionResult(text = "", segments = emptyList(), engineId = engineId, modelId = modelId)
+        }
+        val diar = object : Diarizer {
+            override val engineId = "noop"
+            override suspend fun diarize(input: AudioInput, modelId: String) =
+                DiarizationResult(spans = emptyList(), namedSpeakers = emptyMap(), engineId = engineId, modelId = modelId)
+        }
+        val router = AiTaskRouter(MutableStateFlow(settings.settings.value), asr, asr, diar, diar, llm, llm)
+        AskAcrossRecordings(router, repo, settings).ask("What did we discuss about the roadmap?")
+        AskAiChat(router, repo, settings).ask("rec-m", "What was discussed?")
+        assertTrue(prompts.isNotEmpty())
+        assertTrue(prompts.none { it.contains("secretzebramarker") }, prompts.toString())
+        assertTrue(prompts.any { it.contains("roadmap") })
+    }
 }
