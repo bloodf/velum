@@ -68,7 +68,15 @@ fun BenchReport.requireValid(expectedModels: Set<String>) {
         require(r.peakRamBytes > 0) { "$who: peak RAM missing" }
         require(r.outputChars > 0) { "$who: empty output" }
     }
+    // Another run can only reproduce this one if the exact inputs are identified, not just their paths.
+    if (results.any { it.task == BenchTask.Transcription }) requireSha256("audioSha256")
+    if (results.any { it.task == BenchTask.Summary }) requireSha256("summaryTranscriptSha256")
     require(environment.device.isNotBlank() && environment.abi.isNotBlank() && environment.sdkInt > 0) {
         "environment fields missing"
     }
+}
+
+private fun BenchReport.requireSha256(key: String) {
+    val value = environment.settings[key]
+    require(value != null && Regex("[0-9a-f]{64}").matches(value)) { "settings.$key must be a lowercase SHA-256 of the fixed input" }
 }
