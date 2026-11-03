@@ -133,16 +133,3 @@ sealed class MicStopResult {
 }
 
 expect fun createMicCapture(): MicCapture
-
-/**
- * Synthetic PCM demo is only for platforms that report [MicStartResult.Unsupported]
- * (desktop/iOS). Android Failed/PermissionRequired must never fall through to demo PCM —
- * that would write fake audio as a real capture.
- */
-fun shouldUseDemoPcm(result: MicStartResult): Boolean = when (result) {
-    MicStartResult.Unsupported -> true
-    is MicStartResult.Started,
-    MicStartResult.PermissionRequired,
-    is MicStartResult.Failed,
-    -> false
-}

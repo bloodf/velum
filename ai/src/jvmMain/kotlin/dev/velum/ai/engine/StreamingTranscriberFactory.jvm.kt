@@ -1,9 +1,9 @@
 package dev.velum.ai.engine
 
-/**
- * JVM ships the fake streamer only (CI test double). Production streaming is Android.
- */
+/** Streaming transcription ships on Android only; JVM has no engine and must not fake one. */
 actual fun createStreamingTranscriber(
     modelPath: String?,
     modelId: String,
-): StreamingTranscriber = FakeStreamingTranscriber()
+): StreamingTranscriber {
+    throw UnsupportedOperationException("StreamingTranscriber is Android-only. modelId=$modelId")
+}
