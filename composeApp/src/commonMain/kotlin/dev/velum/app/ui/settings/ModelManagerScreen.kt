@@ -49,6 +49,7 @@ import dev.velum.app.ui.theme.VelumBg
 import dev.velum.app.ui.theme.VelumInk
 import dev.velum.app.ui.theme.VelumInkSecondary
 import dev.velum.app.ui.theme.VelumSurface
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
@@ -133,7 +134,7 @@ fun ModelManagerScreen(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        scope.launch { container.localModelManager.delete(modelId) }
+                        scope.launch(start = CoroutineStart.UNDISPATCHED) { container.localModelManager.delete(modelId) }
                         pendingDeleteId = null
                     },
                 ) { Text(strings.delete) }

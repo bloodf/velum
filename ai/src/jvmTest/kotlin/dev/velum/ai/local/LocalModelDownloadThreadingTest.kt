@@ -10,7 +10,9 @@ import io.ktor.http.headersOf
 import io.ktor.utils.io.ByteChannel
 import io.ktor.utils.io.writeFully
 import java.io.File
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.coroutines.CoroutineContext
 import kotlin.test.AfterTest
@@ -23,6 +25,9 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -48,7 +53,7 @@ class LocalModelDownloadThreadingTest {
     }
 
     private fun spec(sha: String) = LocalModelSpec(
-        id = "tiny", displayName = "Tiny", kind = LocalModelKind.Asr, approxBytes = 5, license = "MIT", notes = "test",
+        id = "tiny", displayName = "Tiny", kind = LocalModelKind.Llm, approxBytes = 5, license = "MIT", notes = "test",
         languages = "en", downloadUrl = "https://example.test/tiny.bin", archiveFileName = "tiny.bin", sha256 = sha,
     )
 
@@ -105,6 +110,126 @@ class LocalModelDownloadThreadingTest {
         val client = HttpClient(MockEngine { respond("nope", HttpStatusCode.InternalServerError) })
         val states = manager(client).download("tiny").toList()
         assertEquals(LocalModelStatus.Failed, states.last().status)
+    }
+
+    private fun archiveManager(client: HttpClient, extract: (ModelStoreDir, ModelStoreDir) -> Unit) = LocalModelManager(
+        root,
+        client,
+        listOf(spec(sha256Hex(payload)).copy(archiveFileName = "tiny.tar.gz")),
+        io.asCoroutineDispatcher(),
+        extract,
+    )
+
+    @Test fun cancel_during_extraction_leaves_nothing_a_refresh_could_call_ready() = runBlocking {
+        val client = HttpClient(MockEngine {
+            respond(payload, HttpStatusCode.OK, headersOf(HttpHeaders.ContentLength, payload.size.toString()))
+        })
+        val extracting = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val manager = archiveManager(client) { _, dir ->
+            dir.resolve("weights.litertlm").writeBytes(ByteArray(2048))
+            extracting.countDown()
+            // Extraction can't be interrupted: like the real one, this finishes whatever cancel does.
+            assertTrue(release.await(10, TimeUnit.SECONDS))
+        }
+        val job = CoroutineScope(caller.asCoroutineDispatcher()).launch { manager.download("tiny").collect() }
+        assertTrue(extracting.await(10, TimeUnit.SECONDS))
+
+        manager.cancelDownload("tiny")
+        release.countDown()
+        withTimeout(10_000) { job.join() }
+
+        assertTrue(job.isCancelled)
+        assertEquals(LocalModelStatus.NotDownloaded, manager.stateFor("tiny")?.status)
+        assertFalse(root.resolve("tiny").exists(), "archive and extracted files must not survive a cancel")
+        manager.refreshFromDisk()
+        assertEquals(LocalModelStatus.NotDownloaded, manager.stateFor("tiny")?.status)
+    }
+
+    @Test fun cancel_during_a_transfer_keeps_a_model_already_on_disk() = runBlocking {
+        root.resolve("tiny").createDirectories()
+        root.resolve("tiny").resolve("old.litertlm").writeBytes(ByteArray(2048))
+        val body = ByteChannel(autoFlush = true)
+        val client = HttpClient(MockEngine { respond(body, HttpStatusCode.OK, headersOf(HttpHeaders.ContentLength, "1000")) })
+        val manager = manager(client)
+        val midTransfer = CompletableDeferred<Unit>()
+        val job = CoroutineScope(caller.asCoroutineDispatcher()).launch {
+            manager.download("tiny").collect { if (it.progress > 0f) midTransfer.complete(Unit) }
+        }
+        body.writeFully(payload)
+        withTimeout(10_000) { midTransfer.await() }
+        manager.cancelDownload("tiny")
+        withTimeout(10_000) { job.join() }
+        assertTrue(root.resolve("tiny").resolve("old.litertlm").exists())
+        body.close()
+    }
+
+    @Test fun delete_finishes_even_if_the_caller_is_cancelled_first() = runBlocking {
+        val client = HttpClient(MockEngine { respond("") })
+        val held = CountDownLatch(1)
+        val gate = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) {
+                io.execute { held.await(10, TimeUnit.SECONDS); block.run() }
+            }
+        }
+        val manager = manager(client, gate)
+        root.resolve("tiny").createDirectories()
+        root.resolve("tiny").resolve("tiny.bin").writeBytes(ByteArray(2048))
+        manager.refreshFromDisk()
+        assertEquals(LocalModelStatus.Ready, manager.stateFor("tiny")?.status)
+
+        val job = CoroutineScope(caller.asCoroutineDispatcher()).launch(start = CoroutineStart.UNDISPATCHED) { manager.delete("tiny") }
+        job.cancel()
+        held.countDown()
+        withTimeout(10_000) { while (manager.stateFor("tiny")?.status == LocalModelStatus.Ready || root.resolve("tiny").exists()) delay(5) }
+
+        assertEquals(LocalModelStatus.NotDownloaded, manager.stateFor("tiny")?.status)
+        assertFalse(root.resolve("tiny").exists())
+    }
+
+    @Test fun a_second_download_of_the_same_model_follows_the_first_and_never_starts_another_transfer() = runBlocking {
+        val requests = AtomicInteger()
+        val body = ByteChannel(autoFlush = true)
+        val client = HttpClient(MockEngine {
+            requests.incrementAndGet()
+            respond(body, HttpStatusCode.OK, headersOf(HttpHeaders.ContentLength, payload.size.toString()))
+        })
+        val manager = manager(client)
+        val started = CompletableDeferred<Unit>()
+        val first = CoroutineScope(caller.asCoroutineDispatcher()).launch {
+            manager.download("tiny").collect { started.complete(Unit) }
+        }
+        withTimeout(10_000) { started.await(); while (requests.get() == 0) delay(5) }
+        var followerLast: LocalModelState? = null
+        val follower = CoroutineScope(caller.asCoroutineDispatcher()).launch {
+            manager.download("tiny").collect { followerLast = it }
+        }
+        withTimeout(10_000) { while (followerLast == null) delay(5) }
+        assertFalse(follower.isCompleted, "the follower waits for the running download")
+
+        body.writeFully(payload)
+        body.close()
+        withTimeout(10_000) { first.join(); follower.join() }
+
+        assertEquals(1, requests.get())
+        assertEquals(LocalModelStatus.Ready, followerLast?.status)
+    }
+
+    @Test fun cancelling_a_follower_leaves_the_running_download_alone() = runBlocking {
+        val body = ByteChannel(autoFlush = true)
+        val client = HttpClient(MockEngine { respond(body, HttpStatusCode.OK, headersOf(HttpHeaders.ContentLength, payload.size.toString())) })
+        val manager = manager(client)
+        val started = CompletableDeferred<Unit>()
+        val first = CoroutineScope(caller.asCoroutineDispatcher()).launch { manager.download("tiny").collect { started.complete(Unit) } }
+        withTimeout(10_000) { started.await() }
+        val follower = CoroutineScope(caller.asCoroutineDispatcher()).launch { manager.download("tiny").collect() }
+        delay(50)
+        follower.cancelAndJoin()
+        assertFalse(first.isCancelled)
+        body.writeFully(payload)
+        body.close()
+        withTimeout(10_000) { first.join() }
+        assertEquals(LocalModelStatus.Ready, manager.stateFor("tiny")?.status)
     }
 
     @Test fun delete_runs_on_the_io_dispatcher() = runBlocking {
