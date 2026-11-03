@@ -49,8 +49,9 @@ class TransferIntegrityTest {
         faults: TransferFaults,
         stopReply: FakePlaudPeripheral.StopReply = FakePlaudPeripheral.StopReply.Cmd29,
         sessionFile: ByteArray = file,
+        chunk: Int = 200,
     ): PlaudDeviceClient {
-        val fake = FakePlaudPeripheral(cipher, keys, sessionFile, chunkSize = 200, faults = faults, stopReply = stopReply)
+        val fake = FakePlaudPeripheral(cipher, keys, sessionFile, chunkSize = chunk, faults = faults, stopReply = stopReply)
         peripheral = fake
         val ble = FakeBleTransport(fake)
         ble.connect("fake-note-pro")
@@ -177,6 +178,19 @@ class TransferIntegrityTest {
         val sink = Sink()
         assertFailsWith<TransferIntegrityException> { client.downloadSessionTo(SESSION, file.size.toLong(), sink) }
         assertContentEquals(file.copyOf(2_000), sink.out.toByteArray())
+        client.close()
+    }
+
+    @Test fun device_stuck_repeating_at_a_high_offset_with_tiny_chunks_stops_after_the_frame_limit() = runTest(timeout = 120.seconds) {
+        // The limit used to scale as offset / smallest chunk: 100,001 frames here. A repeat never advances the
+        // offset, so it must stop after the same 4,096 frames at any offset or chunk size (#212).
+        val big = Random(9).nextBytes(130_000)
+        val client = clientFor(TransferFaults(endlessRepeatAt = 100_001), sessionFile = big, chunk = 1)
+        val sink = Sink()
+        assertFailsWith<TransferIntegrityException> {
+            client.downloadSessionTo(SESSION, big.size.toLong(), sink, startOffset = 100_000L)
+        }
+        assertTrue(peripheral!!.framesSent < 6_000, "frames sent: ${peripheral!!.framesSent}")
         client.close()
     }
 

@@ -280,11 +280,13 @@ class PlaudDeviceClient(
 
         var next = startOffset
         var ignoredFrames = 0
-        var smallestChunk = Int.MAX_VALUE
+        var ignoredBytes = 0L
+        var lastIgnoredOffset = -1L
         var resumeCheck = if (startOffset > 0) storedBytes else null
         try {
             while (true) {
                 val before = next
+                var replayingPrefix = false
                 val raw = awaitDecryptedFrame(responseTimeout) { true }
                 when (val inboundPacket = Framing.decodeInbound(raw)) {
                     is InboundPacket.RecordingData -> {
@@ -292,7 +294,12 @@ class PlaudDeviceClient(
                             is RecordingDataPacket.Chunk -> {
                                 val end = data.offset + data.data.size
                                 val ignored = isStray(data.sessionId, sessionId) || end <= next
-                                if (!isStray(data.sessionId, sessionId)) smallestChunk = minOf(smallestChunk, data.data.size)
+                                if (!isStray(data.sessionId, sessionId) && end <= next) {
+                                    // A device ignoring the start offset resends the stored prefix once, offsets rising.
+                                    replayingPrefix = data.offset > lastIgnoredOffset
+                                    lastIgnoredOffset = data.offset
+                                    ignoredBytes += data.data.size
+                                }
                                 resumeCheck?.let { stored ->
                                     if (!isStray(data.sessionId, sessionId) && data.data.isNotEmpty()) {
                                         resumeCheck = null
@@ -327,9 +334,14 @@ class PlaudDeviceClient(
                 if (sizeBytes > 0 && next >= sizeBytes) break
                 // Every frame restarts the response timeout, so a device stuck repeating needs its own limit.
                 ignoredFrames = if (next != before) 0 else ignoredFrames + 1
-                // A device ignoring the start offset resends from 0, so the limit must allow a full catch-up.
-                // Rising offsets alone don't reset the count: a device looping through the file must still stop.
-                val limit = maxOf(MAX_CONSECUTIVE_IGNORED_FRAMES.toLong(), next / smallestChunk.coerceAtLeast(1))
+                // A device ignoring the start offset resends the stored prefix from 0: rising offsets, at most
+                // `next` bytes. That may take many frames, so it is exempt from the frame limit. Anything else
+                // (a repeat, a loop back, more than the prefix) stops after the limit, at any offset or chunk size.
+                if (next != before) {
+                    ignoredBytes = 0L
+                    lastIgnoredOffset = -1L
+                }
+                val limit = if (replayingPrefix && ignoredBytes <= next) Long.MAX_VALUE else MAX_CONSECUTIVE_IGNORED_FRAMES.toLong()
                 if (ignoredFrames > limit) {
                     throw TransferIntegrityException("No new data in $ignoredFrames frames at offset $next")
                 }
