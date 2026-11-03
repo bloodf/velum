@@ -591,6 +591,14 @@ class VelumRepository(
         if (workId != null) q.setMeta("$UNPROMOTED_RUN_PREFIX$recordingId", workId) else q.deleteMeta("$UNPROMOTED_RUN_PREFIX$recordingId")
     }
 
+    /** Clears the flag only if [workId] still owns it, so a newer run's flag is never removed by an older one. */
+    suspend fun clearUnpromotedRunIfOwner(recordingId: String, workId: String) = withContext(dbContext) {
+        val key = "$UNPROMOTED_RUN_PREFIX$recordingId"
+        db.transaction {
+            if (q.getMeta(key).executeAsOneOrNull() == workId) q.deleteMeta(key)
+        }
+    }
+
     private fun processingErrorKey(recordingId: String) = "$PROCESSING_ERROR_PREFIX$recordingId"
 
     suspend fun isFirstRunDone(): Boolean = getMeta(META_FIRST_RUN_DONE) == "1"

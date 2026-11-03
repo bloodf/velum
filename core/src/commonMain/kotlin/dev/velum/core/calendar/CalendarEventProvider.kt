@@ -7,7 +7,18 @@ data class CalendarEventSummary(
     val title: String,
     val beginEpochMs: Long,
     val endEpochMs: Long,
-)
+) {
+    /**
+     * True when the event is on at [epochMs]: it began (or begins within [graceMs] after) and has not ended. The end
+     * is exclusive, so back-to-back meetings do not both claim the boundary instant.
+     */
+    fun isOnAt(epochMs: Long, graceMs: Long = DEFAULT_GRACE_MS): Boolean =
+        beginEpochMs - graceMs <= epochMs && epochMs < endEpochMs
+
+    companion object {
+        const val DEFAULT_GRACE_MS = 5 * 60_000L
+    }
+}
 
 sealed class CalendarLookupResult {
     data class Ok(val currentOrNext: CalendarEventSummary?) : CalendarLookupResult()
