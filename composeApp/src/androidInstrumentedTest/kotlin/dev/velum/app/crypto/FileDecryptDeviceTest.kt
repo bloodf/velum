@@ -23,6 +23,7 @@ import javax.crypto.spec.SecretKeySpec
 import kotlin.random.Random
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -143,6 +144,11 @@ class FileDecryptDeviceTest {
             """,
         )
         val cipher = JcaSessionCipher()
+        Log.i(TAG, "api=${Build.VERSION.SDK_INT} ChaCha20-Poly1305 usesPlatformChaCha=${cipher.usesPlatformChaCha}")
+        // Documented from API 28; on 26 and 27 the Kotlin path is expected and the line above records it.
+        if (Build.VERSION.SDK_INT >= 28) {
+            assertTrue("API ${Build.VERSION.SDK_INT} should use the platform ChaCha20-Poly1305", cipher.usesPlatformChaCha)
+        }
         assertArrayEquals(sealed, cipher.chacha20Poly1305Seal(aeadKey, aeadNonce, aad, plain))
         assertArrayEquals(plain, cipher.chacha20Poly1305Open(aeadKey, aeadNonce, aad, sealed))
     }
@@ -210,7 +216,10 @@ class FileDecryptDeviceTest {
     }
 
     @Test fun throughput_for_the_log() {
-        val plain = Random(3).nextBytes(16 * 1024 * 1024)
+        // Only for the log: the plaintext and the encrypted copy are both held, so size them to the heap
+        // (a 48 MB AVD heap cannot hold 2 x 16 MiB plus the decryptor's buffers).
+        val size = (Runtime.getRuntime().maxMemory() / 8).coerceIn(1L * 1024 * 1024, 16L * 1024 * 1024).toInt()
+        val plain = Random(3).nextBytes(size)
         val file = plaudFile(plain)
         val started = System.nanoTime()
         var written = 0L

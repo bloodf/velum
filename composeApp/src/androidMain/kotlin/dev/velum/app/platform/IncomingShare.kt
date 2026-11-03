@@ -22,7 +22,7 @@ object IncomingShare {
             Intent.ACTION_VIEW -> intent.data
             else -> intent.data
         } ?: return
-        val name = sanitizeImportFileName(displayNameOf(context, uri))
+        val name = sanitizeImportFileName(displayNameOf(context, uri), "${java.util.UUID.randomUUID()}.audio")
         if (!ImportAudioFormats.isSupportedFileName(name) &&
             intent.type?.startsWith("audio/") != true &&
             intent.type != "application/ogg"

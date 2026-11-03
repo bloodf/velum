@@ -24,7 +24,7 @@ actual fun rememberAudioImporter(onPicked: (path: String) -> Unit): () -> Unit {
         if (uri == null) return@rememberLauncherForActivityResult
         scope.launch {
             val path = withContext(Dispatchers.IO) {
-                val name = sanitizeImportFileName(displayNameOf(context, uri))
+                val name = sanitizeImportFileName(displayNameOf(context, uri), "${UUID.randomUUID()}.audio")
                 val dest = File(context.cacheDir, "imports").apply { mkdirs() }
                 val outFile = File(dest, "${System.currentTimeMillis()}_$name")
                 context.contentResolver.openInputStream(uri)?.use { input ->
@@ -49,18 +49,3 @@ internal fun displayNameOf(context: android.content.Context, uri: Uri): String? 
             if (c.moveToFirst()) c.getString(0) else null
         }
     }.getOrNull()?.takeIf { it.isNotBlank() } ?: uri.lastPathSegment
-
-internal fun sanitizeImportFileName(raw: String?): String {
-    val base = raw
-        ?.substringAfterLast('/')
-        ?.substringAfterLast('\\')
-        ?.trim()
-        ?.replace(' ', '_')
-        .orEmpty()
-    val cleaned = base
-        .replace("..", "")
-        .replace(Regex("[\\\\/]"), "")
-        .filter { it.isLetterOrDigit() || it == '.' || it == '_' || it == '-' }
-        .take(120)
-    return cleaned.ifBlank { "${UUID.randomUUID()}.audio" }
-}

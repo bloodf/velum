@@ -92,6 +92,7 @@ import dev.velum.app.platform.createAudioPlayer
 import dev.velum.app.platform.MicStopResult
 import dev.velum.app.i18n.processingWarningText
 import dev.velum.app.platform.finalizeMicRecording
+import dev.velum.app.platform.persistLiveMarkers
 import dev.velum.app.platform.localizedLabel
 import dev.velum.app.platform.HapticKind
 import dev.velum.app.platform.LocalHaptics
@@ -467,7 +468,8 @@ fun RecordingDetailScreen(
                     container = container,
                     recordingId = recordingId,
                     title = recording?.title.orEmpty(),
-                    initialTranscript = recording?.transcript,
+                    // Markers are not speech: a markers-only transcript must not count as a seeded one.
+                    initialTranscript = dev.velum.core.data.TranscriptMarkers.spoken(recording?.transcript),
                     initialElapsedSeconds = recording?.duration_seconds ?: 0L,
                     onStoppedAndQueued = { /* status observed via Flow */ },
                 )
@@ -478,7 +480,7 @@ fun RecordingDetailScreen(
                 transcript = recording?.transcript,
                 durationSeconds = recording?.duration_seconds ?: 0,
                 hasLocalAudio = !recording?.local_path.isNullOrBlank(),
-                generating = generating && recording?.transcript.isNullOrBlank(),
+                generating = generating && dev.velum.core.data.TranscriptMarkers.spoken(recording?.transcript).isNullOrBlank(),
                 transportMessage = processError?.takeIf { it.startsWith("playback:") }?.removePrefix("playback:"),
                 onGenerate = { showGenerate = true },
                 onAskAi = { showAskAi = true },
@@ -561,12 +563,15 @@ fun RecordingDetailScreen(
                 ExportOption(strings.ux.exportDocx) {
                     showExport = false
                     val safe = title.replace(Regex("[^a-zA-Z0-9._-]"), "_").ifBlank { "velum" }
-                    shareBytes("$safe.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", RecordingExport.docxMinimal(md))
+                    scope.launch {
+                        val docx = withContext(Dispatchers.Default) { RecordingExport.docxMinimal(md) }
+                        shareBytes("$safe.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", docx)
+                    }
                 }
                 if (canExportPdf()) {
                     ExportOption(strings.ux.exportPdf) {
                         showExport = false
-                        sharePdf(title, RecordingExport.plainText(md))
+                        scope.launch { sharePdf(title, RecordingExport.plainText(md)) }
                     }
                 }
                 ExportOption(strings.ux.copyTranscript) {
@@ -1285,6 +1290,11 @@ internal fun LiveTranscriptPane(
             if (container.micCapture.isCapturing) micErrorState = MicError.StartFailed
         }
     }
+    // Publish the savable live text so a Stop from the notification, with this pane open or not, keeps it.
+    val publishedGap = previewHasGap.value
+    LaunchedEffect(partial, publishedGap) {
+        container.micRecordings.publishLiveText(recordingId, if (publishedGap) null else savableLiveTranscript(partial))
+    }
     DisposableEffect(recordingId) {
         onDispose {
             pcmSubscription?.close()
@@ -1384,8 +1394,12 @@ internal fun LiveTranscriptPane(
                     {
                         scope.launch {
                             when (ownedSession?.let { container.micCapture.addMarker(it) }) {
-                                is MicMarkerResult.Ok ->
+                                is MicMarkerResult.Ok -> {
                                     markerCount = container.micCapture.markers.size
+                                    // Markers have no other copy: save now, not only at Stop (process death loses them).
+                                    runCatching { persistLiveMarkers(container, recordingId) }
+                                        .onFailure { println("VelumLivePcm: marker save failed: ${it::class.simpleName}") }
+                                }
                                 else -> Unit
                             }
                         }
@@ -1459,6 +1473,7 @@ internal fun LiveTranscriptPane(
                     return@BlackButton
                 }
                 stopping = true
+                container.micRecordings.beginUiStop(recordingId)
                 // Undispatched and NonCancellable: leaving the screen must not abandon a Stop in progress.
                 scope.launch(start = CoroutineStart.UNDISPATCHED) { withContext(NonCancellable) {
                     val marks = container.micCapture.markers

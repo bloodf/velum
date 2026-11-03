@@ -67,7 +67,7 @@ Status legend: `Open` · `Fixed` · `Deferred (owner/hardware)` · `Accepted ris
 ### H11 — Demo seed left on — **Fixed** (`0a34d9b`, `SEED_DEMO_DATA = false`; templates always seed)
 ### H12 — Explore Conta / dark contrast — **Fixed** (`b851722`, `VelumOnBlack` + localized settings copy)
 ### H13 — Voice Profiles hardcoded English — **Fixed** (`1b33ae3`, EN + pt-BR via `Strings.ux`; #87 addressed in code — owner can verify on device)
-### H14 — No BLE transfer FGS — **Deferred (owner/hardware)** — download works in-process; add `connectedDevice` FGS after hardware timing measurements (#85)
+### H14 — No BLE transfer FGS — **Code added, hardware pending** — `SessionDownloadService` holds a `connectedDevice` (or `dataSync`) FGS during session downloads; background and Doze behaviour on real hardware is still unverified (#85)
 
 ---
 

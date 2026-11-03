@@ -1,6 +1,9 @@
 package dev.velum.app.ui.templates
 
+import dev.velum.core.data.VelumRepository
 import dev.velum.core.db.Template
+import dev.velum.core.templates.DiscoverFacets
+import dev.velum.core.templates.DiscoverFilter
 
 /** Search keystrokes settle for this long before the Discover queries re-run. */
 internal const val SEARCH_DEBOUNCE_MS = 200L
@@ -41,3 +44,26 @@ internal fun showPagingSentinel(shownTick: Long, currentTick: Long, rowCount: In
 
 /** A spinner stands in for the grid until the first page of the current filter has loaded (or failed). */
 internal fun showLoadingState(shown: List<Template>?, loadFailed: Boolean): Boolean = shown == null && !loadFailed
+
+/** The three Discover queries as a seam: production delegates to the repository, tests count, fail or hold them. */
+internal class DiscoverQueries(
+    val page: suspend (DiscoverFilter, Int, Int) -> List<Template>,
+    val count: suspend (DiscoverFilter) -> Long,
+    val facets: suspend (DiscoverFilter) -> DiscoverFacets,
+)
+
+internal fun VelumRepository.discoverQueries() = DiscoverQueries(
+    page = { filter, limit, offset -> queryDiscoverTemplates(filter, limit = limit, offset = offset) },
+    count = { filter -> countDiscoverTemplates(filter) },
+    facets = { filter -> discoverFacets(filter) },
+)
+
+/**
+ * Rows to request for a load. A reload of the same filter at page one (a catalog tick) keeps the rows already
+ * paged in, so a deep scroll does not collapse back to one page.
+ */
+internal fun reloadLimit(pages: Int, sameFilterRowCount: Int, pageSize: Int): Int =
+    if (pages == 1) minOf(maxOf(pageSize, sameFilterRowCount), pageSize * MAX_RELOAD_PAGES) else pageSize
+
+/** Upper bound on a single tick reload, so a very deep scroll of the ~16k catalog never re-queries thousands of rows. */
+internal const val MAX_RELOAD_PAGES = 10

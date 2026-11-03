@@ -12,3 +12,6 @@ xcodebuild -project iosApp.xcodeproj -scheme iosApp -sdk iphonesimulator \
 
 The pre-build phase runs `./gradlew :composeApp:embedAndSignAppleFrameworkForXcode` (JDK 17 on `PATH` or
 `JAVA_HOME`). Running on a device needs an Apple developer team and signing, which are not configured here.
+
+`scripts/check-ios-plist.sh` fails if the generated Info.plist lacks `CADisableMinimumFrameDurationOnPhone`, which Compose Multiplatform requires at launch (a missing key aborts the app).
+Verified on a cloned iPhone simulator at f902dd2: the build succeeds, the app launches and stays alive for 25 s with no crash report. Not verified: any UI (a screenshot attempt failed), the Files picker, anything on a device.
