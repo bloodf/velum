@@ -12,12 +12,13 @@ import dev.velum.protocol.SessionCipher
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.test.runTest
 
 /**
  * #19 (QA probes, re-run on main): bytes that reach the radio must be the bytes the guard checked, even when the
- * [SessionCipher] handed to the client is not the real one, and a closed client must not write on a later connection.
+ * [SessionCipher] handed to the client is broken or seals something else, and a closed client must not write on a later connection.
  * Synthetic keys only.
  */
 class SealedWriteTrustTest {
@@ -46,25 +47,58 @@ class SealedWriteTrustTest {
         return client to Wire(ble)
     }
 
-    /** A cipher that seals as the real one but returns [chosen] instead (a broken or hostile implementation). */
-    private fun cipherReturning(chosen: ByteArray): SessionCipher = object : SessionCipher by real {
-        override fun sealPacket(secret: Protocol20SessionSecret, sequence: Long, packet: ByteArray) =
-            if (sequence >= FIRST_COMMAND_SEQ) chosen else real.sealPacket(secret, sequence, packet)
-    }
+    /**
+     * A cipher whose seal is valid for the session (right key, nonce and sequence) but carries [other] instead of the
+     * packet the guard checked: the case a length or tag check cannot catch.
+     */
+    private fun cipherSealing(other: ByteArray, onSeal: (Long) -> Unit = {}, only: Int? = null): SessionCipher =
+        object : SessionCipher by real {
+            var calls = 0
+            override fun sealPacket(secret: Protocol20SessionSecret, sequence: Long, packet: ByteArray): ByteArray {
+                onSeal(sequence)
+                val use = sequence >= FIRST_COMMAND_SEQ && (only == null || calls++ < only)
+                return real.sealPacket(secret, sequence, if (use) other else packet)
+            }
+        }
 
-    @Test fun a_cipher_that_returns_other_bytes_cannot_put_them_on_the_write_characteristic() = runTest {
+    @Test fun a_validly_sealed_forbidden_packet_cannot_reach_the_wire() = runTest {
         val forbidden = listOf(
-            "FE20 little endian" to byteArrayOf(0x01, 0x20, 0xFE.toByte(), 0x00),
+            "FE20 little endian" to byteArrayOf(0x01, 0x20, 0xFE.toByte()),
             "write to setting 4" to byteArrayOf(0x01, 0x08, 0x00, 0x04, 0x01),
             "write to setting 26" to byteArrayOf(0x01, 0x08, 0x00, 0x1A, 0x01),
+            "opcode 5" to byteArrayOf(0x01, 0x05),
         )
-        for ((name, chosen) in forbidden) {
-            val (client, wire) = connected(cipherReturning(chosen))
+        for ((name, other) in forbidden) {
+            val (client, wire) = connected(cipherSealing(other))
             val before = wire.writes
             assertFailsWith<IllegalStateException>(name) { client.writeCommandForTest(Commands.BATTERY_LIKELY) }
             assertEquals(before, wire.writes, "$name must not reach the wire")
             client.close()
         }
+    }
+
+    @Test fun a_cipher_returning_garbage_is_refused_too() = runTest {
+        val garbage = object : SessionCipher by real {
+            override fun sealPacket(secret: Protocol20SessionSecret, sequence: Long, packet: ByteArray) =
+                if (sequence >= FIRST_COMMAND_SEQ) byteArrayOf(1, 32, -2, 0) else real.sealPacket(secret, sequence, packet)
+        }
+        val (client, wire) = connected(garbage)
+        val before = wire.writes
+        assertFailsWith<IllegalStateException> { client.writeCommandForTest(Commands.BATTERY_LIKELY) }
+        assertEquals(before, wire.writes)
+        client.close()
+    }
+
+    @Test fun a_refused_seal_does_not_advance_the_counter() = runTest {
+        val seen = mutableListOf<Long>()
+        // Only the first sealed command is swapped for a forbidden one; the second is sealed honestly.
+        val (client, wire) = connected(cipherSealing(byteArrayOf(0x01, 0x20, 0xFE.toByte()), { seen += it }, only = 1))
+        val before = wire.writes
+        assertFailsWith<IllegalStateException> { client.writeCommandForTest(Commands.BATTERY_LIKELY) }
+        client.writeCommandForTest(Commands.BATTERY_LIKELY)
+        assertEquals(before + 1, wire.writes, "only the second write reaches the wire")
+        assertEquals(listOf(FIRST_COMMAND_SEQ, FIRST_COMMAND_SEQ), seen.takeLast(2), "the second seal reuses the same counter")
+        client.close()
     }
 
     @Test fun the_real_cipher_still_writes_allowed_commands() = runTest {
@@ -83,6 +117,18 @@ class SealedWriteTrustTest {
         val before = wire.writes
         assertFailsWith<IllegalStateException> { client.writeCommandForTest(Commands.BATTERY_LIKELY) }
         assertEquals(before, wire.writes, "a stale session wrote ${wire.writes - before} packet(s)")
+    }
+
+    @Test fun a_closed_client_cannot_unlock_again_and_hides_its_secret() = runTest {
+        val (client, wire) = connected(real)
+        assertTrue(client.sessionSecret != null)
+        client.close()
+        assertEquals(null, client.sessionSecret)
+        wire.ble.disconnect()
+        wire.ble.connect("fake-note-pro")
+        val before = wire.writes
+        assertFailsWith<IllegalStateException> { client.unlock() }
+        assertEquals(before, wire.writes, "unlock after close must write nothing")
     }
 
     private companion object {

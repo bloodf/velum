@@ -6,6 +6,7 @@ import dev.velum.ble.gatt.GuardedLink
 import dev.velum.protocol.Battery
 import dev.velum.protocol.BatteryReading
 import dev.velum.protocol.Bytes
+import dev.velum.protocol.ChaCha20Poly1305
 import dev.velum.protocol.Commands
 import dev.velum.protocol.DeviceIdentityKeys
 import dev.velum.protocol.Framing
@@ -24,6 +25,7 @@ import dev.velum.ble.wifi.WifiFastTransferSession
 import dev.velum.ble.wifi.WifiTransferCoordinator
 import dev.velum.ble.wifi.WifiTransferPreamble
 import dev.velum.ble.wifi.WifiTransferServer
+import kotlin.concurrent.Volatile
 import kotlin.coroutines.coroutineContext
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
@@ -69,7 +71,8 @@ class PlaudDeviceClient(
     private var recvSeq: Long = 0
     private var protocolVersion: Int = 20
 
-    val sessionSecret: Protocol20SessionSecret? get() = secret
+    /** Null once the client is closed; the secret itself is kept so a write already past the check cannot go out in plain. */
+    val sessionSecret: Protocol20SessionSecret? get() = if (closed) null else secret
     val linkProtocolVersion: Int get() = protocolVersion
 
     suspend fun start() {
@@ -101,6 +104,7 @@ class PlaudDeviceClient(
      * on every call (every connect). Missing / empty signature fails clearly.
      */
     suspend fun unlock() {
+        check(!closed) { "Client is closed" }
         start()
         writeMutex.withLock {
             if (protocolVersionHint >= 20) {
@@ -441,8 +445,10 @@ class PlaudDeviceClient(
         return decoded.payload
     }
 
-    private suspend fun writePlain(packet: ByteArray, withoutResponse: Boolean) =
+    private suspend fun writePlain(packet: ByteArray, withoutResponse: Boolean) {
+        check(!closed) { "Client is closed" }
         withTimeout(responseTimeout) { link.write(GattProfiles.PLAUD_WRITE, packet, withoutResponse) }
+    }
 
     private suspend fun writeOutbound(packet: ByteArray) {
         writeMutex.withLock {
@@ -459,10 +465,12 @@ class PlaudDeviceClient(
                         val sealed = cipher.sealPacket(sec, sendSeq, it)
                         // The guard checked [it]. The cipher is a separate component: the bytes that go out must open
                         // to exactly that plaintext, or nothing is written (sealed bytes are never parsed as opcodes).
-                        val opened = cipher.openPacket(sec, sendSeq, sealed)
-                        check(opened != null && opened.second.contentEquals(it)) {
-                            "Sealed packet does not match the checked plaintext"
-                        }
+                        // Opened with the protocol's own AEAD, not the injected cipher, so a cipher cannot vouch for itself.
+                        val plain = ChaCha20Poly1305.open(sec.key, sec.nonce, sec.aad, sealed)
+                        check(
+                            plain != null && plain.size >= 4 && Bytes.readU32Le(plain, 0) == sendSeq &&
+                                plain.copyOfRange(4, plain.size).contentEquals(it),
+                        ) { "Sealed packet does not match the checked plaintext" }
                         sendSeq += 1
                         sealed
                     }
