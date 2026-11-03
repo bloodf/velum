@@ -24,6 +24,7 @@ import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.printToString
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
@@ -101,6 +102,9 @@ class DeviceWalkUiTest {
             // Never produced in the last verified 8-cell matrix (#115); steps stay best-effort.
             "recording/versions", "recording/sources", "settings/templates", "ask",
         )
+
+        /** Swipes tried on Storage & privacy in landscape (#118) before declaring "no overflow". */
+        private const val SCROLL_ATTEMPTS = 3
 
         private val SETTINGS_HUB_ROWS = listOf(
             "Phone recording", "Gravação no telefone", "AI processing", "Processamento de IA",
@@ -655,11 +659,23 @@ class DeviceWalkUiTest {
                 val statement = str.settingsUi.privacyOnDeviceStatement
                 val backLabels = listOf(str.ux.back, "Back", "Voltar")
                 waitUntil(10_000, "Storage & privacy not shown in landscape") { composeExists(statement) && backTop(backLabels) != null }
-                val bodyTop0 = textTop(statement) ?: error("statement node missing")
+                // The display reports landscape before the activity has finished its configuration change, so a swipe
+                // sent then can hit the old window. Wait until Compose itself is landscape and the body has stopped moving.
+                awaitLandscapeLayoutSettled(statement)
                 val backTop0 = checkNotNull(backTop(backLabels))
-                device.swipe(device.displayWidth / 2, device.displayHeight * 4 / 5, device.displayWidth / 2, device.displayHeight / 5, 20)
-                waitUntil(5_000, "Storage & privacy body did not scroll in landscape (no overflow, or top bar moved with it): top was $bodyTop0") {
-                    (textTop(statement) ?: bodyTop0) < bodyTop0 - 1f
+                var scrolled = false
+                var bodyTop0 = Float.NaN
+                for (attempt in 1..SCROLL_ATTEMPTS) {
+                    bodyTop0 = textTop(statement) ?: error("statement node missing")
+                    device.swipe(device.displayWidth / 2, device.displayHeight * 4 / 5, device.displayWidth / 2, device.displayHeight / 5, 20)
+                    scrolled = runCatching {
+                        waitUntil(3_000, "scroll attempt $attempt") { (textTop(statement) ?: bodyTop0) < bodyTop0 - 1f }
+                    }.isSuccess
+                    if (scrolled) break
+                }
+                check(scrolled) {
+                    "Storage & privacy body did not scroll in landscape after $SCROLL_ATTEMPTS swipes " +
+                        "(no overflow, or top bar moved with it): top was $bodyTop0; ${landscapeScrollDiagnostics()}"
                 }
                 val backTop1 = backTop(backLabels)
                 check(backTop1 != null && kotlin.math.abs(backTop1 - backTop0) < 1f) {
@@ -683,6 +699,40 @@ class DeviceWalkUiTest {
             check(device.displayHeight > device.displayWidth) { "Display not back in portrait after Storage & privacy step" }
         }
         pressBackToFiles(lang)
+    }
+
+    /** Compose is landscape (root and activity configuration) and [statement]'s top has been constant for 500 ms. */
+    private fun awaitLandscapeLayoutSettled(statement: String) {
+        var last = Float.NaN
+        var since = 0L
+        waitUntil(10_000, "Storage & privacy layout did not settle in landscape: ${landscapeScrollDiagnostics()}") {
+            val root = composeRule.onRoot().fetchSemanticsNode().size
+            val landscape = root.width > root.height &&
+                composeRule.activity.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+            val top = textTop(statement)
+            val now = SystemClock.uptimeMillis()
+            if (!landscape || top == null) {
+                last = Float.NaN
+                false
+            } else {
+                if (top != last) {
+                    last = top
+                    since = now
+                }
+                now - since >= 500
+            }
+        }
+    }
+
+    /** Root size and the first vertical scroll container's value/max: tells "no overflow" from "swipe lost". */
+    private fun landscapeScrollDiagnostics(): String {
+        val root = runCatching { composeRule.onRoot().fetchSemanticsNode().size }.getOrNull()
+        val range = runCatching {
+            composeRule.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.VerticalScrollAxisRange))
+                .fetchSemanticsNodes(atLeastOneRootRequired = false).firstOrNull()
+                ?.config?.get(SemanticsProperties.VerticalScrollAxisRange)?.let { "value=${it.value()} max=${it.maxValue()}" }
+        }.getOrNull()
+        return "root=$root scrollRange=${range ?: "none"} display=${device.displayWidth}x${device.displayHeight}"
     }
 
     /** Unclipped top (px) of the first node showing [text], or null. */
