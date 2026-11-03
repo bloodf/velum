@@ -9,6 +9,9 @@ import kotlinx.coroutines.withTimeout
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
+/** A Wi-Fi path failure whose fixed [code] is safe to show in a fallback reason (never put identity data in it). */
+class WifiTransferFailure(val code: String) : IllegalStateException(code)
+
 /**
  * Tries SoftAP + WebSocket :8081 fast transfer; on any failure falls back to [bleDownload].
  *
@@ -76,13 +79,14 @@ class WifiTransferCoordinator(
         } catch (t: CancellationException) {
             if (t is TimeoutCancellationException) {
                 val ble = bleDownload()
-                Outcome.BleFallback(ble, "wifi_timeout: ${t.message}")
+                Outcome.BleFallback(ble, "wifi_timeout")
             } else {
                 throw t
             }
         } catch (t: Throwable) {
             val ble = bleDownload()
-            Outcome.BleFallback(ble, t.message ?: t::class.simpleName ?: "wifi_failed")
+            // Only a WifiTransferFailure's fixed code is surfaced; any other message could carry sensitive data.
+            Outcome.BleFallback(ble, (t as? WifiTransferFailure)?.code ?: t::class.simpleName ?: "wifi_failed")
         } finally {
             runCatching { session.stop() }
         }
