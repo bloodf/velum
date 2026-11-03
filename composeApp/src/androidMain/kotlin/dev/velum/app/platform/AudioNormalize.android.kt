@@ -47,21 +47,18 @@ actual class AudioNormalizer actual constructor() {
         val outDir = File(source.parentFile, "normalized").apply { mkdirs() }
         val outFile = File(outDir, "${source.nameWithoutExtension}_$targetSampleRateHz.wav")
 
-        // Only a file this call started writing may be deleted on failure: an earlier good import of the same
-        // name must survive a failure that happens before the writer exists (e.g. an unreadable header).
-        var writerCreated = false
+        // Fast path: PCM16 mono WAV at the target rate is streamed through, never read whole (#319). The header is
+        // read before anything is created, so a failure here can never touch an earlier import of the same name.
+        val fast = if (source.extension.equals("wav", true) || source.extension.equals("wave", true)) {
+            readWavHeader(source)
+        } else {
+            null
+        }
+        val usesFastPath = fast != null && fast.sampleRateHz == targetSampleRateHz && fast.channels == 1
+        // From here the output belongs to this call: report it (for a late cancel) and delete it on any failure.
+        onOutput(outFile)
         try {
-            // Fast path: PCM16 mono WAV at the target rate is streamed through, never read whole (#319).
-            val fast = if (source.extension.equals("wav", true) || source.extension.equals("wave", true)) {
-                readWavHeader(source)
-            } else {
-                null
-            }
-            val usesFastPath = fast != null && fast.bitsPerSample == 16 &&
-                fast.sampleRateHz == targetSampleRateHz && fast.channels == 1
             val pcmBytes = MonoPcmWavWriter(outFile, targetSampleRateHz).use { writer ->
-                writerCreated = true
-                onOutput(outFile)
                 if (usesFastPath && fast != null) {
                     writer.setFormat(fast.sampleRateHz, fast.channels)
                     streamWavData(source, fast, writer, checkCancelled)
@@ -84,7 +81,7 @@ actual class AudioNormalizer actual constructor() {
                 contentSha256 = hash,
             )
         } catch (t: Throwable) {
-            if (writerCreated) outFile.delete() // never leave a half-written WAV that a later import could trust
+            outFile.delete() // never leave a half-written WAV that a later import could trust
             throw t
         }
     }
@@ -222,15 +219,14 @@ private const val WAV_SLICE_BYTES = 256 * 1024
 internal data class WavHeader(
     val sampleRateHz: Int,
     val channels: Int,
-    val bitsPerSample: Int,
     val dataOffset: Long,
     val dataSize: Long,
 )
 
 /**
- * Walks the RIFF chunks with seeks (no full read). Null when the file is not RIFF/WAVE or has no data chunk, so
- * another decoder gets it. The caller streams only 16-bit mono at the target rate; other depths fall back to the
- * decoder instead of failing (#319).
+ * Walks the RIFF chunks with seeks (no full read). Null when the file is not RIFF/WAVE, has no data chunk or
+ * is not 16-bit, so the decoder gets it instead of the import failing (#319). The caller streams only mono at the
+ * target rate.
  */
 internal fun readWavHeader(file: File): WavHeader? = RandomAccessFile(file, "r").use { raf ->
     val length = raf.length()
@@ -268,8 +264,8 @@ internal fun readWavHeader(file: File): WavHeader? = RandomAccessFile(file, "r")
         offset += 8 + size + (size and 1L)
     }
     // No data chunk: nothing to stream here; the decoder gets the file and reports what is wrong with it.
-    if (dataOffset < 0) return null
-    WavHeader(sampleRate, channels, bits, dataOffset, dataSize)
+    if (dataOffset < 0 || bits != 16) return null
+    WavHeader(sampleRate, channels, dataOffset, dataSize)
 }
 
 private fun guessMime(name: String): String? {

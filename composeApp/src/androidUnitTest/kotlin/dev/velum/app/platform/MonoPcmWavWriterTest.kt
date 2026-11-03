@@ -143,12 +143,12 @@ class MonoPcmWavWriterTest {
         File("composeApp/src/androidMain/kotlin/dev/velum/app/platform/$name"),
     ).first { it.isFile }.readText()
 
-    /** Source guard (the decode loop needs a codec, which no JVM test has): nothing may accumulate or read whole. */
-    @Test fun a_failure_before_the_writer_exists_must_not_delete_an_earlier_output_and_the_retriever_is_released() {
+    @Test fun a_header_failure_cannot_touch_an_earlier_output_and_the_retriever_is_released() {
         val src = androidSource("AudioNormalize.android.kt")
         val body = src.substringAfter("private fun normalizeBlocking").substringBefore("private fun durationHintMs")
-        assertTrue(body.contains("var writerCreated = false") && body.contains("if (writerCreated) outFile.delete()"))
-        assertTrue(body.indexOf("writerCreated = true") < body.indexOf("onOutput(outFile)"), "report the output only once the writer owns it")
+        assertTrue(body.indexOf("readWavHeader(source)") < body.indexOf("onOutput(outFile)"), "header read before anything is created")
+        assertTrue(body.indexOf("onOutput(outFile)") < body.indexOf("try {"), "the try starts where the output begins")
+        assertTrue(body.indexOf("try {") < body.indexOf("MonoPcmWavWriter(outFile"), "and wraps the writer")
         val hint = src.substringAfter("private fun durationHintMs").substringBefore("private fun decodeWithMediaCodec")
         assertTrue(hint.contains("} finally {") && hint.contains("r.release()"), "MediaMetadataRetriever released in finally")
     }
@@ -160,6 +160,7 @@ class MonoPcmWavWriterTest {
         assertTrue(src.contains("catch (c: CancellationException)") && src.contains("outFile?.delete()"), "late cancellation")
     }
 
+    /** Source guard (the decode loop needs a codec, which no JVM test has): nothing may accumulate or read whole. */
     @Test fun normalizer_never_accumulates_chunks_or_reads_the_source_whole_and_always_releases() {
         val src = androidSource("AudioNormalize.android.kt")
         assertTrue(!src.contains(".fold("), "decoded chunks must be written as they arrive")
@@ -186,6 +187,14 @@ class MonoPcmWavWriterTest {
         assertEquals(44L, h.dataOffset)
         assertEquals(null, readWavHeader(File(dir, "n.txt").apply { writeText("not a wav file at all") }))
         assertEquals(null, readWavHeader(wav(withData = false)), "no data chunk: the decoder reports it")
-        assertEquals(8, readWavHeader(wav(fmtBits = 8))!!.bitsPerSample, "8-bit is reported, not rejected")
+        assertEquals(null, readWavHeader(wav(fmtBits = 8)), "8-bit goes to the decoder instead of failing")
+    }
+
+    @Test fun import_pipeline_lets_a_cancellation_through_instead_of_reporting_failure() {
+        val pipeline = listOf(
+            File("src/commonMain/kotlin/dev/velum/app/importing/AudioImportPipeline.kt"),
+            File("composeApp/src/commonMain/kotlin/dev/velum/app/importing/AudioImportPipeline.kt"),
+        ).first { it.isFile }.readText()
+        assertTrue(pipeline.contains("if (it is kotlinx.coroutines.CancellationException) throw it"))
     }
 }

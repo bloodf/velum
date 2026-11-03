@@ -9,6 +9,7 @@ import dev.velum.app.platform.sha256File
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -85,6 +86,39 @@ class AudioNormalizeFixturesTest {
         }
         assertTrue("a half-written WAV must not remain", !File(dir, "normalized/bad_16000.wav").exists())
         assertEquals("an earlier import", other.readText())
+    }
+
+    @Test
+    fun cancelling_mid_copy_of_a_large_wav_throws_and_leaves_no_output() = runBlocking {
+        val big = File(dir, "huge.wav")
+        val dataBytes = 128L * 1024 * 1024
+        java.io.RandomAccessFile(big, "rw").use { raf ->
+            val h = ByteBuffer.allocate(44).order(ByteOrder.LITTLE_ENDIAN)
+            h.put("RIFF".toByteArray()).putInt((36 + dataBytes).toInt()).put("WAVE".toByteArray()).put("fmt ".toByteArray()).putInt(16)
+            h.putShort(1).putShort(1).putInt(16_000).putInt(32_000).putShort(2).putShort(16)
+            h.put("data".toByteArray()).putInt(dataBytes.toInt())
+            raf.write(h.array())
+            raf.setLength(44 + dataBytes) // zero PCM, no disk used for the source
+        }
+        val out = File(dir, "normalized/huge_16000.wav")
+        val job = this.async(kotlinx.coroutines.Dispatchers.Default) {
+            AudioNormalizer().normalizeToWav(big.absolutePath, 16_000)
+        }
+        // The copy has started once the output holds bytes; cancel while it is still going.
+        kotlinx.coroutines.withTimeout(60_000) { while (!(out.isFile && out.length() > 0L)) kotlinx.coroutines.delay(1) }
+        var largest = 0L
+        val watcher = Thread { while (!job.isCompleted) { largest = maxOf(largest, out.length()); Thread.sleep(0, 200_000) } }
+        watcher.start()
+        job.cancel()
+        try {
+            job.await()
+            org.junit.Assert.fail("the import should have been cancelled")
+        } catch (_: kotlinx.coroutines.CancellationException) {
+        }
+        watcher.join(10_000)
+        assertTrue("a cancelled import must not leave its WAV", !out.exists())
+        // It stopped at the next slice instead of copying everything and noticing afterwards.
+        assertTrue("the copy ran on after the cancel ($largest of $dataBytes bytes written)", largest < dataBytes / 2)
     }
 
     @Test
