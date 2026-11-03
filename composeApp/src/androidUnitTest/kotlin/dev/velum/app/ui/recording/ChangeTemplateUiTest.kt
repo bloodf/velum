@@ -154,6 +154,21 @@ class ChangeTemplateUiTest {
         }
 
     @Test
+    fun a_failed_generation_shows_the_failure_the_reason_and_retry_while_the_prior_summary_stays() =
+        fixture(
+            ComputeMode.Api,
+            status = "failed",
+            setup = { it.repository.setProcessingError("rec", "The API could not be reached. Check the connection.") },
+        ) { container ->
+            await(PtBr.ux.failedProcessing)
+            await("The API could not be reached. Check the connection.")
+            await(PtBr.ux.retryProcessing)
+            assertTrue(shows("Prior heading"), "the previous summary must stay on screen")
+            val rec = runBlocking { container.repository.getRecording("rec")!! }
+            assertEquals("## Prior heading\n- prior point", rec.summary_markdown)
+        }
+
+    @Test
     fun local_route_without_the_model_shows_the_prompt_and_changes_nothing() =
         fixture(ComputeMode.Local) { container ->
             pickTemplateAndApply()

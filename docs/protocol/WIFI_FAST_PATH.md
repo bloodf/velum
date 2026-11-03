@@ -9,7 +9,7 @@
 | SoftAP | Phone joins device SoftAP via `WifiNetworkSpecifier` (WPA2) |
 | Transport | Phone runs **WebSocket server on `:8081`** (`org.java_websocket`, same as Plaud) |
 | Crypto | Same BLE session **key / nonce / aad**; ChaCha20-Poly1305, or **AES-GCM** when cmd 138 bit `0x08` |
-| Nonce | **Fixed for the whole session** — **required** for Note Pro; do not rotate. **Accepted risk (review S13):** rotating per-message would break Plaud SoftAP parity; BLE session isolation + SoftAP preamble + BLE fallback mitigate exposure. Revisit only after owner hardware SoftAP confirms a compatible alternative. |
+| Nonce | **Fixed for the whole session** — **required** for Note Pro; do not rotate. **Review S13: Open, pending owner decision: BLE, files and Wi-Fi. An earlier document called the Wi-Fi case accepted on 2026-10-27; no owner decision is on record.** Rotating per-message would break Plaud SoftAP parity. The SoftAP preamble limits who can connect on Wi-Fi, but it doesn't protect the frames. BLE uses the same fixed nonce, and BLE fallback isn't a mitigation. Revisit only after owner hardware SoftAP confirms a compatible alternative. |
 | Seq | Each WS binary frame uses its own seq (`seq ‖ packet` plaintext) |
 | BLE | Active BLE session required; Wi-Fi is an acceleration path |
 

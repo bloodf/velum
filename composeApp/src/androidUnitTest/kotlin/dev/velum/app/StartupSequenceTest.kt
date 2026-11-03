@@ -67,7 +67,7 @@ class StartupSequenceTest {
             File("src/androidMain/kotlin/dev/velum/app/VelumApplication.kt"),
             File("composeApp/src/androidMain/kotlin/dev/velum/app/VelumApplication.kt"),
         ).first { it.isFile }.readText()
-        val sweep = src.indexOf("sweepOrphanPcmSpill()")
+        val sweep = src.indexOf("sweepOrphanPcmSpill(")
         val install = src.indexOf("AiRuntimeHolder.install(")
         assertTrue(sweep in 0 until install, "sweepOrphanPcmSpill must precede AiRuntimeHolder.install")
     }

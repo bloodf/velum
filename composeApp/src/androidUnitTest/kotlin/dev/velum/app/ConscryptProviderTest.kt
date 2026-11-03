@@ -3,6 +3,9 @@ package dev.velum.app
 import dev.velum.ble.crypto.JcaFileDecryptor
 import dev.velum.ble.crypto.JcaSessionCipher
 import dev.velum.ble.crypto.rsaKeyPairToPem
+import dev.velum.ble.wifi.WifiPayloadCipher
+import dev.velum.ble.wifi.createWifiFrameCipher
+import dev.velum.protocol.Protocol20SessionSecret
 import java.security.Security
 import javax.crypto.Cipher
 import javax.crypto.spec.ChaCha20ParameterSpec
@@ -12,6 +15,7 @@ import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.runner.RunWith
@@ -83,6 +87,35 @@ class ConscryptProviderTest {
         val session = JcaSessionCipher()
         assertContentEquals(sealed, session.chacha20Poly1305Seal(key, nonce, aad, sunscreen))
         assertContentEquals(sunscreen, session.chacha20Poly1305Open(key, nonce, aad, sealed))
+    }
+
+    @Test fun session_cipher_fails_closed_under_conscrypt() = withConscryptFirst {
+        val key = ByteArray(32) { it.toByte() }
+        val nonce = ByteArray(12) { (it + 1).toByte() }
+        val aad = ByteArray(12) { (it + 2).toByte() }
+        val session = JcaSessionCipher()
+        val sealed = session.chacha20Poly1305Seal(key, nonce, aad, ByteArray(40))
+        val badTag = sealed.copyOf().also { it[it.size - 1] = (it[it.size - 1].toInt() xor 1).toByte() }
+        assertNull(session.chacha20Poly1305Open(key, nonce, aad, badTag), "bad tag")
+        assertNull(session.chacha20Poly1305Open(key, nonce, ByteArray(12), sealed), "wrong aad")
+        assertNull(session.chacha20Poly1305Open(ByteArray(32), nonce, aad, sealed), "wrong key")
+        assertNull(session.chacha20Poly1305Open(key, nonce, aad, ByteArray(0)), "empty")
+        assertNull(session.chacha20Poly1305Open(key, nonce, aad, ByteArray(1)), "one byte")
+        assertNull(session.chacha20Poly1305Open(key, nonce, aad, ByteArray(15)), "shorter than a tag")
+        assertNull(session.chacha20Poly1305Open(key, nonce, aad, ByteArray(16)), "exactly a tag, wrong")
+    }
+
+    @Test fun wifi_cipher_fails_closed_under_conscrypt() = withConscryptFirst {
+        val secret = Protocol20SessionSecret(ByteArray(32) { 1 }, ByteArray(12) { 2 }, ByteArray(12) { 3 })
+        val wifi = createWifiFrameCipher(JcaSessionCipher(), secret, WifiPayloadCipher.AesGcm)
+        val sealed = wifi.seal(7, byteArrayOf(1, 2, 3))
+        assertContentEquals(byteArrayOf(1, 2, 3), wifi.open(7, sealed)!!.second)
+        val badTag = sealed.copyOf().also { it[it.size - 1] = (it[it.size - 1].toInt() xor 1).toByte() }
+        assertNull(wifi.open(7, badTag), "bad tag")
+        assertNull(wifi.open(7, ByteArray(0)), "empty")
+        assertNull(wifi.open(7, ByteArray(1)), "one byte")
+        assertNull(wifi.open(7, ByteArray(15)), "shorter than a tag")
+        assertNull(wifi.open(7, ByteArray(16)), "exactly a tag, wrong")
     }
 
     @Test fun aes_gcm_and_rsa_work_under_conscrypt() = withConscryptFirst {
