@@ -102,8 +102,12 @@ class RecordingProcessorDecodeCleanupTest {
 
     private val API = ApiModelOverride(profileId = "work", modelId = "whisper-custom")
 
-    private fun spillDir(id: String) =
-        File(ModelStoreDir(defaultModelStoreRoot().absolutePath).resolve("tmp").resolve("pcm-$id").absolutePath)
+    /** The run-scoped spill dir (`pcm-<id>-<run>`) if one exists, otherwise a path that does not. */
+    private fun spillDir(id: String): File {
+        val tmp = File(ModelStoreDir(defaultModelStoreRoot().absolutePath).resolve("tmp").absolutePath)
+        return tmp.listFiles { f -> f.isDirectory && f.name.startsWith("pcm-$id-") }?.firstOrNull()
+            ?: File(tmp, "pcm-$id-none")
+    }
 
     private fun tempAudio(suffix: String, bytes: ByteArray) =
         File.createTempFile("velum-86-decode", suffix).apply { writeBytes(bytes); deleteOnExit() }

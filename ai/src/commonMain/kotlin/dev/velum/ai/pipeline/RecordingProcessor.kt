@@ -31,6 +31,8 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.updateAndGet
@@ -92,6 +94,7 @@ class RecordingProcessor(
 ) {
     private val nextRun = MutableStateFlow(0L)
     private val activeRuns = MutableStateFlow<Map<String, Long>>(emptyMap())
+    private val statusLock = Mutex()
 
     fun process(
         recordingId: String,
@@ -103,11 +106,14 @@ class RecordingProcessor(
         val priorStatus = repository.getRecording(recordingId)?.status
         // Per-run token: only the newest run of a recording may restore its status when cancelled (see the handler).
         val run = nextRun.updateAndGet { it + 1 }
-        activeRuns.update { it + (recordingId to run) }
-        repository.setProcessingError(recordingId, null)
-        repository.updateStatus(recordingId, "generating")
 
         try {
+            // Token and "generating" are published together, under the lock every status write of a run takes.
+            statusLock.withLock {
+                activeRuns.update { it + (recordingId to run) }
+                repository.setProcessingError(recordingId, null)
+                repository.updateStatus(recordingId, "generating")
+            }
             val recording = repository.getRecording(recordingId)
                 ?: throw IllegalArgumentException("Recording not found: $recordingId")
             val cfg = settings.settings.value
@@ -118,7 +124,7 @@ class RecordingProcessor(
             val job = currentCoroutineContext()[Job]
             val spillRoot = ModelStoreDir(defaultModelStoreRoot().absolutePath)
                 .resolve("tmp")
-                .resolve("pcm-$recordingId")
+                .resolve("pcm-$recordingId-$run")
             var pcmBuffer: PcmAudioBuffer = PcmAudioBuffer.Memory(ByteArray(0))
             var truncatedAudio = false
             try {
@@ -392,9 +398,16 @@ class RecordingProcessor(
                 templateId = resolvedTemplateId,
                 templateName = templateName,
             )
-            repository.updateStatus(recordingId, "ready")
-            repository.setProcessingError(recordingId, null)
-            if (settings.preferences.value.deleteAudioAfterProcessing &&
+            // A replaced run saved its version but must not touch the row's status or audio: the newer run owns them.
+            val newest = statusLock.withLock {
+                (activeRuns.value[recordingId] == run).also {
+                    if (it) {
+                        repository.updateStatus(recordingId, "ready")
+                        repository.setProcessingError(recordingId, null)
+                    }
+                }
+            }
+            if (newest && settings.preferences.value.deleteAudioAfterProcessing &&
                 !localPath.isNullOrBlank()
             ) {
                 emit(JobProgress.Running(0.95f, "Removing local audio"))
@@ -417,14 +430,16 @@ class RecordingProcessor(
                 // Cancelled work never saved a version; restore the status so notes stay usable.
                 withContext(NonCancellable) {
                     // A replacement run (AutoFlow's REPLACE) may start before this one unwinds and already own the
-                    // row's "generating"; restoring here would write a false "failed" over it.
-                    if (activeRuns.value[recordingId] != run) return@withContext
+                    // row's "generating"; restoring here would write a false "failed" over it. Check and write are one
+                    // step under the lock, so the replacement cannot publish between them.
+                    statusLock.withLock {
+                    if (activeRuns.value[recordingId] != run) return@withLock
                     activeRuns.update { it - recordingId }
                     val current = repository.getRecording(recordingId)
                     // This job set "generating" when it started. "queued" now means a replacing enqueue (AutoFlow's
                     // REPLACE) already took over the row; writing here would race its status and hand its runner a
                     // false terminal "failed".
-                    if (current?.status == "queued") return@withContext
+                    if (current?.status == "queued") return@withLock
                     // A pre-run "generating"/"queued" state is not restorable: it would look stuck forever.
                     val restore = when (priorStatus) {
                         null, "generating", "queued" ->
@@ -432,14 +447,22 @@ class RecordingProcessor(
                         else -> priorStatus
                     }
                     repository.updateStatus(recordingId, restore)
+                    }
                 }
                 throw t
             }
             // The previous summary and versions are untouched; surface the reason in the UI.
             val reason = if (isOutOfStorage(t)) INSUFFICIENT_STORAGE_MESSAGE else t.message ?: t.toString()
-            repository.setProcessingError(recordingId, ApiErrorSanitizer.sanitize(reason))
-            repository.updateStatus(recordingId, "failed")
+            statusLock.withLock {
+                if (activeRuns.value[recordingId] == run) {
+                    repository.setProcessingError(recordingId, ApiErrorSanitizer.sanitize(reason))
+                    repository.updateStatus(recordingId, "failed")
+                }
+            }
             emit(JobProgress.Failed(reason))
+        } finally {
+            // Only this run's own token; a newer run's must survive.
+            activeRuns.update { if (it[recordingId] == run) it - recordingId else it }
         }
     }
 

@@ -24,6 +24,7 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -131,7 +132,25 @@ class RecordingJobSchedulerTest {
     }
 
     @Test
-    fun micFinalizeThenAutoFlowReplace_firesThePostActionOnceAndEndsReady() = runBlocking {
+    fun micFinalizeThenAutoFlowReplace_firesThePostActionOnceAndEndsReady() =
+        micFinalizeScenario { processor, scope -> createCoroutineRecordingJobScheduler(processor, scope) }
+
+    /** WorkManager REPLACE order: the replacement is started first, then the old job is cancelled and unwinds. */
+    @Test
+    fun micFinalizeThenAutoFlowReplace_whenTheReplacementStartsBeforeTheOldJobUnwinds() =
+        micFinalizeScenario { processor, scope ->
+            val jobs = MutableStateFlow<Map<String, kotlinx.coroutines.Job>>(emptyMap())
+            RecordingJobScheduler { id, template, retranscribe, override ->
+                val next = scope.launch { processor.process(id, template, retranscribe, override).collect { } }
+                val previous = jobs.value[id]
+                jobs.value = jobs.value + (id to next)
+                previous?.cancel()
+            }
+        }
+
+    private fun micFinalizeScenario(
+        makeScheduler: (RecordingProcessor, CoroutineScope) -> RecordingJobScheduler,
+    ) = runBlocking {
         val repo = VelumRepository(createDatabase(DriverFactory()))
         val settings = SettingsRepository(InMemorySecureStore()).also {
             it.load()
@@ -176,7 +195,7 @@ class RecordingJobSchedulerTest {
         )
         val processor = RecordingProcessor(router, repo, settings)
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        val scheduler = createCoroutineRecordingJobScheduler(processor, scope)
+        val scheduler = makeScheduler(processor, scope)
         val runner = AutoFlowRunner(
             repo, processor, scope,
             calendar = object : dev.velum.core.calendar.CalendarEventProvider {
@@ -186,28 +205,33 @@ class RecordingJobSchedulerTest {
         )
         val shares = java.util.concurrent.atomic.AtomicInteger()
         val collector = scope.launch { runner.actions.collect { if (it is AutoFlowUiAction.ShareMarkdown) shares.incrementAndGet() } }
-        repo.insertRecording(
-            id = "rec-mic", sessionId = null, folderId = null, title = "Mic", source = "phone", deviceSerial = null,
-            startedAt = 1, durationSeconds = 1, sizeBytes = wav.size.toLong(), localPath = path,
-            transcript = null, summaryMarkdown = null, status = "imported",
-        )
-        // MicFinalize's enqueue (template velum.meeting) is mid-ASR when the runner first sees the row.
-        scheduler.enqueue("rec-mic", "velum.meeting", true, null)
-        withTimeout(5_000) { firstStarted.await() }
-        runner.start()
-        delay(300) // the first pass only seeds
-        repo.updateRecordingTitle("rec-mic", "Mic 2") // a row change wakes the runner while the first job runs
         try {
-            withTimeout(20_000) { while (repo.getRecording("rec-mic")?.status != "ready") delay(50) }
-        } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
-            val r = repo.getRecording("rec-mic")
-            throw AssertionError("not ready: status=${r?.status} err=${r?.processing_warning} asrCalls=${asrCalls.get()} shares=${shares.get()} running=${runner.isRunning} pass=${runner.passIndex.value}", e)
+            repo.insertRecording(
+                id = "rec-mic", sessionId = null, folderId = null, title = "Mic", source = "phone", deviceSerial = null,
+                startedAt = 1, durationSeconds = 1, sizeBytes = wav.size.toLong(), localPath = path,
+                transcript = null, summaryMarkdown = null, status = "imported",
+            )
+            // MicFinalize's enqueue (template velum.meeting) is mid-ASR when the runner first sees the row.
+            scheduler.enqueue("rec-mic", "velum.meeting", true, null)
+            withTimeout(5_000) { firstStarted.await() }
+            runner.start()
+            delay(300) // the first pass only seeds
+            repo.updateRecordingTitle("rec-mic", "Mic 2") // a row change wakes the runner while the first job runs
+            try {
+                withTimeout(20_000) { while (repo.getRecording("rec-mic")?.status != "ready") delay(50) }
+            } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+                val r = repo.getRecording("rec-mic")
+                throw AssertionError("not ready: status=${r?.status} err=${r?.processing_warning} asrCalls=${asrCalls.get()} shares=${shares.get()} running=${runner.isRunning} pass=${runner.passIndex.value}", e)
+            }
+            delay(1_000) // any late second post-action or status overwrite would show up here
+            assertEquals("ready", repo.getRecording("rec-mic")?.status)
+            assertEquals(1, shares.get(), "post-action must fire exactly once")
+            assertEquals(2, asrCalls.get(), "the first job was replaced, and only once")
+        } finally {
+            collector.cancel()
+            runner.stop()
+            scope.cancel()
         }
-        delay(1_000) // any late second post-action or status overwrite would show up here
-        assertEquals("ready", repo.getRecording("rec-mic")?.status)
-        assertEquals(1, shares.get(), "post-action must fire exactly once")
-        collector.cancel()
-        runner.stop()
     }
 
     private fun tinyWav(): ByteArray {
