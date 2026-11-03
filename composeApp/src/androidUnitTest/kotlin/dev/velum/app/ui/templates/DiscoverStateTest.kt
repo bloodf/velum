@@ -57,4 +57,18 @@ class DiscoverStateTest {
         assertEquals(60 * MAX_RELOAD_PAGES, reloadLimit(pages = 1, sameFilterRowCount = 16_000, pageSize = 60))
         assertEquals(60, reloadLimit(pages = 2, sameFilterRowCount = 120, pageSize = 60))
     }
+
+    @Test fun facets_are_labelled_with_the_search_they_were_loaded_for() = kotlinx.coroutines.runBlocking {
+        val narrow = dev.velum.core.templates.DiscoverFacets(listOf("meeting"), emptyList(), listOf("pt"))
+        var liveSearch = "foo"
+        val queries = DiscoverQueries(
+            page = { _, _, _ -> emptyList() }, count = { 0L },
+            // The live search is cleared while this query for "foo" is still running.
+            facets = { liveSearch = ""; narrow },
+        )
+        val loaded = loadFacets(queries, dev.velum.core.templates.DiscoverFilter(dev.velum.core.templates.DiscoverTier.All, "foo"))
+        assertEquals("foo", loaded.search)
+        assertEquals(liveSearch, "")
+        assertEquals(LoadedFacets(narrow, "foo"), loaded)
+    }
 }

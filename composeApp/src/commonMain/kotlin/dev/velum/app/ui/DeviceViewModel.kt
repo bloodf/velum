@@ -59,6 +59,8 @@ data class DeviceSessionUi(
     val downloadingSessionId: Long? = null,
     val downloadProgress: Float? = null,
     val lastDownloadedRecordingId: String? = null,
+    /** CRC result of the last download's final transfer; null until one completes. A resumed save can report a kept mismatch in its status message instead. */
+    val lastDownloadCrc: CrcStatus? = null,
     /** Device sessions already in the library (#113); their action re-downloads into the same row. */
     val librarySessionIds: Set<Long> = emptySet(),
 )
@@ -256,6 +258,7 @@ class DeviceViewModel(
             downloadProgress = 0f,
             statusMessage = DeviceUiCopy.downloadingSession(locale, sessionId),
             lastDownloadedRecordingId = null,
+            lastDownloadCrc = null,
         )
         DownloadProgressNotifier.ensureChannel()
         DownloadProgressNotifier.setCancelHandler(DownloadNotifyKind.DeviceSession) { cancelDownload() }
@@ -291,6 +294,7 @@ class DeviceViewModel(
                 downloadingSessionId = null,
                 downloadProgress = null,
                 lastDownloadedRecordingId = outcome.recordingId,
+                lastDownloadCrc = outcome.crc,
                 statusMessage = if (outcome.crcMismatch) {
                     DeviceUiCopy.downloadedSessionCrcMismatch(localeTag(), sessionId)
                 } else {
@@ -375,7 +379,7 @@ class DeviceViewModel(
                     encrypted.copyOfRange(position.toInt(), position.toInt() + length)
                 },
             )
-            return DownloadOutcome(recordingId, c, crcMismatch = false)
+            return DownloadOutcome(recordingId, c, crcMismatch = false, crc = CrcStatus.NotProvided)
         }
         // A transfer failure or cancellation keeps the partial for the next attempt.
         client = null // the download owns it now: it may close it and reconnect
@@ -409,10 +413,10 @@ class DeviceViewModel(
             throw e
         }
         partial.delete()
-        return DownloadOutcome(recordingId, finished, crcMismatch)
+        return DownloadOutcome(recordingId, finished, crcMismatch, result.crc)
     }
 
-    private class DownloadOutcome(val recordingId: String, val client: PlaudDeviceClient?, val crcMismatch: Boolean)
+    private class DownloadOutcome(val recordingId: String, val client: PlaudDeviceClient?, val crcMismatch: Boolean, val crc: CrcStatus)
 
     /** New link and client for a resume attempt; [ResumableSessionDownload] unlocks it. */
     private suspend fun reconnect(keys: DeviceIdentityKeys, deviceId: String?): PlaudDeviceClient {

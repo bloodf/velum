@@ -37,6 +37,9 @@ import kotlinx.coroutines.withContext
 
 /** Progress message when the Ogg source ended mid-page; only the decodable part is processed. */
 const val TRUNCATED_AUDIO_MESSAGE = "Audio file is truncated; processing the part that could be decoded"
+/** Bytes read to tell an Ogg or WAV file apart when the file name does not say. */
+private const val SNIFF_BYTES = 16
+
 const val INSUFFICIENT_STORAGE_MESSAGE =
     "Not enough free storage to process this recording. Free up space and try again."
 
@@ -79,7 +82,6 @@ class RecordingProcessor(
     private val aiRouter: AiTaskRouter,
     private val repository: VelumRepository,
     private val settings: SettingsRepository,
-    private val readFileBytes: (String) -> ByteArray = { path -> ModelStoreDir(path).readBytes() },
     private val deleteFile: (String) -> Unit = { path ->
         runCatching { ModelStoreDir(path).deleteRecursively() }
     },
@@ -121,7 +123,18 @@ class RecordingProcessor(
                 val pcmFile = spillRoot.resolve("pcm.s16le")
                 val oggByExt = filename.endsWith(".ogg", ignoreCase = true) ||
                     filename.endsWith(".opus", ignoreCase = true)
-                if (oggByExt) {
+                val wavByExt = filename.endsWith(".wav", ignoreCase = true)
+                val src = ModelStoreDir(localPath)
+                val fileLen = src.length()
+                // An unknown extension is sniffed from its first bytes, never read whole: the container decides.
+                val sniffed = if (oggByExt || wavByExt) {
+                    ByteArray(0)
+                } else {
+                    src.readRange(0, fileLen.coerceAtMost(SNIFF_BYTES.toLong()).toInt())
+                }
+                val isOgg = oggByExt || (!wavByExt && looksLikeOgg(sniffed))
+                val isWav = !isOgg && (wavByExt || looksLikeWav(sniffed))
+                if (isOgg) {
                     // Stream Ogg pages from disk — never hold full Ogg or PCM on the heap.
                     val meta = opusDecoder().decodePathToPcmFile(localPath, pcmFile) { job?.ensureActive() }
                     sampleRate = meta.sampleRateHz
@@ -130,10 +143,8 @@ class RecordingProcessor(
                         truncatedAudio = true
                         emit(JobProgress.Running(0.2f, TRUNCATED_AUDIO_MESSAGE))
                     }
-                } else if (filename.endsWith(".wav", ignoreCase = true)) {
+                } else if (isWav) {
                     // Stream WAV from disk — probe header only, then copy PCM slices.
-                    val src = ModelStoreDir(localPath)
-                    val fileLen = src.length()
                     val probeLen = fileLen.coerceAtMost(256L * 1024L).toInt()
                     val probe = if (probeLen > 0) src.readRange(0, probeLen) else ByteArray(0)
                     require(looksLikeWav(probe)) { "Not a WAV file: $localPath" }
@@ -149,37 +160,15 @@ class RecordingProcessor(
                     } else {
                         (fileLen - pcmStart).coerceAtLeast(0L)
                     }
+                    requireSpillable(pcmLen) // before copying: a too-large file must not fill the disk first
                     copyFileRangeToPcm(src, pcmStart, pcmLen, pcmFile) { job?.ensureActive() }
                     pcmBuffer = PcmAudioBuffer.fromExistingFile(pcmFile, pcmLen)
                 } else {
-                    val raw = readFileBytes(localPath)
-                    if (looksLikeOgg(raw)) {
-                        val meta = opusDecoder().decodeToPcmFile(raw, pcmFile)
-                        sampleRate = meta.sampleRateHz
-                        pcmBuffer = PcmAudioBuffer.fromExistingFile(pcmFile, meta.sizeBytes)
-                        if (meta.truncated) {
-                            truncatedAudio = true
-                            emit(JobProgress.Running(0.2f, TRUNCATED_AUDIO_MESSAGE))
-                        }
-                    } else if (looksLikeWav(raw)) {
-                        val range = locateWavPcm(raw)
-                        sampleRate = range.sampleRateHz
-                        val pcmLen = (range.endExclusive - range.start).toLong()
-                        pcmBuffer = if (pcmLen > PcmAudioBuffer.IN_MEMORY_BUDGET_BYTES) {
-                            appendRangeToFile(raw, range.start, range.endExclusive, pcmFile)
-                            PcmAudioBuffer.fromExistingFile(pcmFile, pcmLen)
-                        } else {
-                            val pcm = if (pcmLen == 0L) {
-                                ByteArray(0)
-                            } else {
-                                raw.copyOfRange(range.start, range.endExclusive)
-                            }
-                            PcmAudioBuffer.fromPcmBytes(pcm, spillRoot)
-                        }
-                    } else {
-                        sampleRate = 16_000
-                        pcmBuffer = PcmAudioBuffer.fromPcmBytes(raw, spillRoot)
-                    }
+                    // Neither container: raw 16 kHz mono PCM, copied in slices like the WAV data.
+                    sampleRate = 16_000
+                    requireSpillable(fileLen)
+                    copyFileRangeToPcm(src, 0L, fileLen, pcmFile) { job?.ensureActive() }
+                    pcmBuffer = PcmAudioBuffer.fromExistingFile(pcmFile, fileLen)
                 }
                 // Persist (or clear) the stable warning code so the UI can show it after the job ends.
                 // A device CRC mismatch recorded at download time cannot be rederived, so it is never cleared here.
@@ -567,7 +556,6 @@ class RecordingProcessor(
             bytes[10] == 'V'.code.toByte() &&
             bytes[11] == 'E'.code.toByte()
 
-    private data class WavPcmRange(val start: Int, val endExclusive: Int, val sampleRateHz: Int)
 
     private data class WavPcmHeader(
         val dataStart: Int,
@@ -577,7 +565,7 @@ class RecordingProcessor(
     )
 
     /**
-     * Parse WAV fmt/data from a header probe. Unlike [locateWavPcm], does **not** clamp
+     * Parse WAV fmt/data from a header probe. Does **not** clamp
      * dataSize to the probe length — callers stream the full payload from disk.
      */
     private fun locateWavPcmHeader(probe: ByteArray, fileLength: Long): WavPcmHeader {
@@ -609,32 +597,10 @@ class RecordingProcessor(
         return WavPcmHeader(-1, -1, sampleRate)
     }
 
-    /** Locate PCM payload bounds without copying (for in-memory buffers). */
-    private fun locateWavPcm(bytes: ByteArray): WavPcmRange {
-        val header = locateWavPcmHeader(bytes, bytes.size.toLong())
-        if (header.dataStart < 0) {
-            val start = if (bytes.size > 44) 44 else bytes.size
-            return WavPcmRange(start, bytes.size, header.sampleRateHz)
+    private fun requireSpillable(pcmBytes: Long) =
+        require(pcmBytes <= PcmAudioBuffer.MAX_SPILL_BYTES) {
+            "Audio is too large to process: $pcmBytes bytes exceeds ${PcmAudioBuffer.MAX_SPILL_BYTES}"
         }
-        val end = (header.dataStart + header.dataSize).coerceAtMost(bytes.size)
-        return WavPcmRange(header.dataStart, end, header.sampleRateHz)
-    }
-
-    private fun appendRangeToFile(
-        bytes: ByteArray,
-        start: Int,
-        endExclusive: Int,
-        dest: ModelStoreDir,
-    ) {
-        dest.writeBytes(ByteArray(0))
-        var offset = start
-        val chunk = 256 * 1024
-        while (offset < endExclusive) {
-            val end = (offset + chunk).coerceAtMost(endExclusive)
-            dest.appendBytes(bytes.copyOfRange(offset, end))
-            offset = end
-        }
-    }
 
     /** Copy [length] bytes from [src] starting at [start] into [dest] in 256 KiB slices. */
     private fun copyFileRangeToPcm(
