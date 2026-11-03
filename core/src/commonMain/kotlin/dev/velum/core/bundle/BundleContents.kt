@@ -7,6 +7,7 @@ package dev.velum.core.bundle
  */
 class BundleContents(val sections: Map<String, ByteArray>) {
     fun encode(): ByteArray {
+        require(sections.size <= MAX_SECTIONS) { "at most $MAX_SECTIONS sections" }
         var out = u32(sections.size)
         for ((name, data) in sections.entries.sortedBy { it.key }.map { it.key to it.value }) {
             val n = name.encodeToByteArray()
@@ -21,7 +22,7 @@ class BundleContents(val sections: Map<String, ByteArray>) {
 
         fun decode(bytes: ByteArray): BundleContents {
             var pos = 0
-            fun need(n: Int) { if (n < 0 || pos + n > bytes.size) throw BundleUnreadableException() }
+            fun need(n: Int) { if (n < 0 || n > bytes.size - pos) throw BundleUnreadableException() }
             fun u32(): Int { need(4); return ((bytes[pos].toInt() and 0xFF) shl 24 or ((bytes[pos + 1].toInt() and 0xFF) shl 16) or ((bytes[pos + 2].toInt() and 0xFF) shl 8) or (bytes[pos + 3].toInt() and 0xFF)).also { pos += 4 } }
             val count = u32()
             if (count !in 0..MAX_SECTIONS) throw BundleUnreadableException()
@@ -54,13 +55,13 @@ object BundleImporter {
     /**
      * Opens [sealed] and applies it all-or-nothing: the bundle must authenticate, every section must have an importer,
      * and every [SectionImporter.prepare] must succeed before any commit runs. Commits then run in sorted section order;
-     * wrap them in one database transaction via [atomically] so a commit failure also rolls back.
+     * [atomically] is REQUIRED (no default): pass one database transaction around the commits so a commit failure also rolls back.
      */
     fun import(
         passphrase: String,
         sealed: ByteArray,
         importers: Map<String, SectionImporter>,
-        atomically: (() -> Unit) -> Unit = { it() },
+        atomically: (() -> Unit) -> Unit,
     ) {
         val contents = BundleContents.decode(SealedBundle.open(passphrase, sealed))
         val unknown = contents.sections.keys - importers.keys

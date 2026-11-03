@@ -14,6 +14,8 @@ class SealedBundleTest {
 
     private fun seal(p: String = "correct horse", data: ByteArray = plain) = SealedBundle.seal(p, data, ::rnd, fast)
 
+    private val atomically: (() -> Unit) -> Unit = { it() }
+
     private fun hex(b: ByteArray) = b.joinToString("") { (it.toInt() and 0xFF).toString(16).padStart(2, '0') }
 
     @Test fun platform_pbkdf2_matches_known_vectors() {
@@ -32,6 +34,42 @@ class SealedBundleTest {
             t[6] = (count ushr 24).toByte(); t[7] = (count ushr 16).toByte(); t[8] = (count ushr 8).toByte(); t[9] = count.toByte()
             assertFailsWith<BundleUnreadableException>("count $count") { SealedBundle.open("pw", t) }
         }
+    }
+
+    @Test fun nfc_vector_and_equivalent_unicode_forms_open_the_same_bundle() {
+        // "café" (NFC), salt "salt", 1000 iterations.
+        assertEquals("5396cb973d99ae225f9113732d095024ed7f033f3b1b47bcd3b58b3f7ed5f73d", hex(pbkdf2HmacSha256("caf\u00e9", "salt".encodeToByteArray(), 1000, 32)))
+        assertEquals("caf\u00e9", normalizeNfc("cafe\u0301"))
+        val s = seal("caf\u00e9")
+        assertContentEquals(plain, SealedBundle.open("cafe\u0301", s)) // NFD typed on another platform
+    }
+
+    @Test fun lone_surrogates_are_rejected() {
+        assertFailsWith<IllegalArgumentException> { seal("bad\uD800pass") }
+        assertFailsWith<IllegalArgumentException> { seal("bad\uDC00pass") }
+        assertFailsWith<BundleUnreadableException> { SealedBundle.open("bad\uD800pass", seal()) }
+        seal("emoji \uD83D\uDE00 ok") // a valid pair is fine
+    }
+
+    @Test fun oversized_bundles_are_refused_before_any_work() {
+        assertFailsWith<BundleUnreadableException> { SealedBundle.open("pw", ByteArray(SealedBundle.MAX_BUNDLE_BYTES + 1)) }
+        assertFailsWith<IllegalArgumentException> { SealedBundle.seal("pw", ByteArray(SealedBundle.MAX_BUNDLE_BYTES), ::rnd, fast) }
+    }
+
+    @Test fun secure_random_returns_requested_distinct_bytes() {
+        val a = secureRandomBytes(16)
+        val b = secureRandomBytes(16)
+        assertEquals(16, a.size)
+        assertTrue(!a.contentEquals(b) && a.any { it.toInt() != 0 })
+    }
+
+    @Test fun hostile_section_length_and_too_many_sections_fail_cleanly() {
+        // count=1, nameLen=1, name "a", dataLen=Int.MAX_VALUE with no data: pos + n would overflow without the guard.
+        val hostile = byteArrayOf(0, 0, 0, 1, 1, 'a'.code.toByte(), 0x7F, -1, -1, -1)
+        assertFailsWith<BundleUnreadableException> { BundleContents.decode(hostile) }
+        val nearMax = byteArrayOf(0, 0, 0, 1, 1, 'a'.code.toByte(), 0x7F, -1, -1, -5) // length near Int.MAX with few bytes left
+        assertFailsWith<BundleUnreadableException> { BundleContents.decode(nearMax) }
+        assertFailsWith<IllegalArgumentException> { BundleContents((0..BundleContents.MAX_SECTIONS).associate { "s$it" to ByteArray(0) }).encode() }
     }
 
     @Test fun round_trip_and_header_fields() {
@@ -90,7 +128,7 @@ class SealedBundleTest {
             "a" to SectionImporter { { applied += "a" } },
             "b" to SectionImporter { error("bad b") },
         )
-        assertFailsWith<IllegalStateException> { BundleImporter.import("pw", sealed, importers) }
+        assertFailsWith<IllegalStateException> { BundleImporter.import("pw", sealed, importers, atomically) }
         assertEquals(emptyList(), applied)
     }
 
@@ -98,8 +136,8 @@ class SealedBundleTest {
         val sealed = SealedBundle.seal("pw", BundleContents(mapOf("a" to byteArrayOf(1), "zzz" to byteArrayOf(2))).encode(), ::rnd, fast)
         val applied = mutableListOf<String>()
         val importers = mapOf("a" to SectionImporter { { applied += "a" } })
-        assertFailsWith<BundleUnreadableException> { BundleImporter.import("nope", sealed, importers) }
-        assertFailsWith<BundleUnreadableException> { BundleImporter.import("pw", sealed, importers) }
+        assertFailsWith<BundleUnreadableException> { BundleImporter.import("nope", sealed, importers, atomically) }
+        assertFailsWith<BundleUnreadableException> { BundleImporter.import("pw", sealed, importers, atomically) }
         assertEquals(emptyList(), applied)
     }
 
@@ -107,14 +145,14 @@ class SealedBundleTest {
         val sealed = SealedBundle.seal("pw", BundleContents(mapOf("b" to byteArrayOf(2), "a" to byteArrayOf(1))).encode(), ::rnd, fast)
         val applied = mutableListOf<String>()
         val importers = mapOf("a" to SectionImporter { d -> { applied += "a${d[0]}" } }, "b" to SectionImporter { d -> { applied += "b${d[0]}" } })
-        BundleImporter.import("pw", sealed, importers)
+        BundleImporter.import("pw", sealed, importers, atomically)
         assertEquals(listOf("a1", "b2"), applied)
     }
 }
 
 class SealedBundleDefaultsTest {
     @Test fun default_iterations_round_trip() {
-        val s = SealedBundle.seal("pw", byteArrayOf(1, 2, 3), { ByteArray(it) { i -> i.toByte() } })
+        val s = SealedBundle.seal("pw", byteArrayOf(1, 2, 3)) // public path: platform CSPRNG, default iterations
         assertEquals(SealedBundle.DEFAULT_ITERATIONS, ((s[6].toInt() and 0xFF) shl 24) or ((s[7].toInt() and 0xFF) shl 16) or ((s[8].toInt() and 0xFF) shl 8) or (s[9].toInt() and 0xFF))
         assertContentEquals(byteArrayOf(1, 2, 3), SealedBundle.open("pw", s))
     }
