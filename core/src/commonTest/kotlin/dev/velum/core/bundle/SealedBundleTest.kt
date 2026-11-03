@@ -9,17 +9,29 @@ import kotlin.test.assertTrue
 class SealedBundleTest {
     private var counter = 0
     private fun rnd(n: Int) = ByteArray(n) { (counter++ * 31 + 7).toByte() }
-    private val fast = 1_000
+    private val fast = SealedBundle.MIN_ITERATIONS
     private val plain = "synthetic transcript: hello".encodeToByteArray()
 
     private fun seal(p: String = "correct horse", data: ByteArray = plain) = SealedBundle.seal(p, data, ::rnd, fast)
 
-    @Test fun pbkdf2_matches_rfc7914_style_known_vector() {
-        // PBKDF2-HMAC-SHA256("password", "salt", c=1) first 32 bytes (RFC 6070-style vector for SHA-256).
-        val out = SealedBundle.pbkdf2("password".encodeToByteArray(), "salt".encodeToByteArray(), 1)
-        assertEquals("120fb6cffcf8b32c43e7225256c4f837a86548c92ccc35480805987cb70be17b", out.joinToString("") { (it.toInt() and 0xFF).toString(16).padStart(2, '0') })
-        val out2 = SealedBundle.pbkdf2("password".encodeToByteArray(), "salt".encodeToByteArray(), 4096)
-        assertEquals("c5e478d59288c841aa530db6845c4c8d962893a001ce4e11a4963873aa98134a", out2.joinToString("") { (it.toInt() and 0xFF).toString(16).padStart(2, '0') })
+    private fun hex(b: ByteArray) = b.joinToString("") { (it.toInt() and 0xFF).toString(16).padStart(2, '0') }
+
+    @Test fun platform_pbkdf2_matches_known_vectors() {
+        // PBKDF2-HMAC-SHA256, P="password", S="salt", dkLen=32.
+        assertEquals("120fb6cffcf8b32c43e7225256c4f837a86548c92ccc35480805987cb70be17b", hex(pbkdf2HmacSha256("password", "salt".encodeToByteArray(), 1, 32)))
+        assertEquals("c5e478d59288c841aa530db6845c4c8d962893a001ce4e11a4963873aa98134a", hex(pbkdf2HmacSha256("password", "salt".encodeToByteArray(), 4096, 32)))
+    }
+
+    @Test fun iteration_bounds_are_enforced_before_any_key_derivation() {
+        assertFailsWith<IllegalArgumentException> { SealedBundle.seal("pw", plain, ::rnd, SealedBundle.MIN_ITERATIONS - 1) }
+        assertFailsWith<IllegalArgumentException> { SealedBundle.seal("pw", plain, ::rnd, SealedBundle.MAX_ITERATIONS + 1) }
+        val s = seal("pw")
+        // Tampered counts: 1 (trivially weak), above the ceiling, and Int.MAX (would run for minutes if derived first).
+        for (count in listOf(1, SealedBundle.MIN_ITERATIONS - 1, SealedBundle.MAX_ITERATIONS + 1, Int.MAX_VALUE, -1)) {
+            val t = s.copyOf()
+            t[6] = (count ushr 24).toByte(); t[7] = (count ushr 16).toByte(); t[8] = (count ushr 8).toByte(); t[9] = count.toByte()
+            assertFailsWith<BundleUnreadableException>("count $count") { SealedBundle.open("pw", t) }
+        }
     }
 
     @Test fun round_trip_and_header_fields() {
@@ -39,9 +51,11 @@ class SealedBundleTest {
         assertFailsWith<BundleUnreadableException> { SealedBundle.open("", seal()) }
     }
 
-    @Test fun every_single_byte_flip_is_rejected() {
+    @Test fun header_and_sampled_body_and_tag_byte_flips_are_rejected() {
         val s = seal()
-        for (i in s.indices) {
+        // Only salt/nonce/body/tag flips reach the KDF (about a second each), so sample those; magic, version, kdf and
+        // iteration bytes are rejected before it and are all covered.
+        for (i in (0 until 10) + listOf(10, 25, 37, 38, s.size / 2, s.size - 17, s.size - 16, s.size - 1)) {
             val t = s.copyOf().also { it[i] = (it[i].toInt() xor 1).toByte() }
             assertFailsWith<BundleUnreadableException>("byte $i") { SealedBundle.open("correct horse", t) }
         }
