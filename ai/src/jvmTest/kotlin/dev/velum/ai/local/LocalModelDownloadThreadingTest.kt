@@ -122,6 +122,19 @@ class LocalModelDownloadThreadingTest {
         extract,
     )
 
+    @Test fun extraction_runs_on_the_io_dispatcher_not_the_collectors_thread() = runBlocking {
+        val client = HttpClient(MockEngine {
+            respond(payload, HttpStatusCode.OK, headersOf(HttpHeaders.ContentLength, payload.size.toString()))
+        })
+        var extractThread = ""
+        val manager = archiveManager(client) { _, dir ->
+            extractThread = Thread.currentThread().name
+            dir.resolve("weights.litertlm").writeBytes(ByteArray(2048))
+        }
+        CoroutineScope(caller.asCoroutineDispatcher()).launch { manager.download("tiny").collect() }.join()
+        assertTrue(extractThread.startsWith("model-io"), "extraction ran on '$extractThread'")
+    }
+
     @Test fun cancel_during_extraction_leaves_nothing_a_refresh_could_call_ready() = runBlocking {
         val client = HttpClient(MockEngine {
             respond(payload, HttpStatusCode.OK, headersOf(HttpHeaders.ContentLength, payload.size.toString()))
