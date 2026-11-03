@@ -29,7 +29,7 @@ class ZRepeatCloseOrderTest {
             }
         }
         workers.forEach { it.join() }
-        val summary = "close-order repeat: ${failures.values.sumOf { it.size }} of ${total.get()} failed " +
+        val summary = "close-order repeat: ports ${ZPortLog.handedOut()}, cross-thread collisions ${ZPortLog.collisions()}; ${failures.values.sumOf { it.size }} of ${total.get()} failed " +
             runs.joinToString { "${it.first}=${failures[it.first]?.size ?: 0}" } +
             failures.entries.joinToString("") { (k, v) -> "\n  $k first: ${v.first()}" }
         println(summary)

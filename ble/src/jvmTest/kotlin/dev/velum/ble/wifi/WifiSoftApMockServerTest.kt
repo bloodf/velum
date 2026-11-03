@@ -51,7 +51,7 @@ class WifiSoftApMockServerTest {
         runBlocking { withTimeout(90_000) { block() } }
     }
 
-    private fun freePort(): Int = ServerSocket(0, 1, InetAddress.getByName("127.0.0.1")).use { it.localPort }
+    private fun freePort(): Int = ServerSocket(0, 1, InetAddress.getByName("127.0.0.1")).use { it.localPort }.also { ZPortLog.record(it) }
 
     private fun crc(bytes: ByteArray): Long = CRC32().also { it.update(bytes) }.value
 
