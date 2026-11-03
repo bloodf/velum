@@ -59,6 +59,12 @@ class SessionCipherNoPlatformChaChaTest {
     }
 
     @Test
+    fun theKnownAnswerProbeAcceptsAWorkingPlatformCipherAndRejectsAMissingOne() {
+        assertTrue(JcaSessionCipher().usesPlatformChaCha, "a working platform cipher must pass the probe")
+        withoutPlatformChaCha { assertTrue(!JcaSessionCipher().usesPlatformChaCha) }
+    }
+
+    @Test
     fun sealsAndOpensTheRfcVectorWithoutAPlatformCipher() = withoutPlatformChaCha {
         val cipher = JcaSessionCipher()
         assertContentEquals(sealed, cipher.chacha20Poly1305Seal(key, nonce, aad, plain))

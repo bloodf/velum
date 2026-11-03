@@ -17,6 +17,7 @@ import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
 import kotlin.random.Random
 import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -137,6 +138,11 @@ class FileDecryptDeviceTest {
             """,
         )
         val cipher = JcaSessionCipher()
+        Log.i(TAG, "api=${Build.VERSION.SDK_INT} ChaCha20-Poly1305 usesPlatformChaCha=${cipher.usesPlatformChaCha}")
+        // Documented from API 28; on 26 and 27 the Kotlin path is expected and the line above records it.
+        if (Build.VERSION.SDK_INT >= 28) {
+            assertTrue("API ${Build.VERSION.SDK_INT} should use the platform ChaCha20-Poly1305", cipher.usesPlatformChaCha)
+        }
         assertArrayEquals(sealed, cipher.chacha20Poly1305Seal(aeadKey, aeadNonce, aad, plain))
         assertArrayEquals(plain, cipher.chacha20Poly1305Open(aeadKey, aeadNonce, aad, sealed))
     }

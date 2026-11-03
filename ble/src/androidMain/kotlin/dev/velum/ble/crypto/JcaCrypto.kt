@@ -9,6 +9,7 @@ import dev.velum.protocol.SessionCipher
 import java.security.KeyFactory
 import java.security.PrivateKey
 import java.security.GeneralSecurityException
+import java.security.ProviderException
 import java.security.PublicKey
 import java.security.spec.PKCS8EncodedKeySpec
 import java.security.spec.X509EncodedKeySpec
@@ -27,22 +28,22 @@ actual fun createFileDecryptor(): FileDecryptor = JcaFileDecryptor()
 class JcaSessionCipher : SessionCipher {
     /**
      * Android documents ChaCha20/Poly1305 from API 28, and minSdk is 26 (#226). Without a usable platform cipher,
-     * use the Kotlin AEAD, which has the same output. Probed per instance, not cached globally. The probe seals a
-     * fixed synthetic message and compares it with the Kotlin result: a provider that lists the cipher but throws,
-     * or ignores the IV, gets the Kotlin path instead of failing every real call. Not logged here (plain JUnit
-     * tests build this class and `android.util.Log` is not mocked); read [usesPlatformChaCha] to see the path.
+     * use the Kotlin AEAD, which has the same output. Probed per instance, not cached globally. The probe seals the
+     * RFC 8439 section 2.8.2 message with the platform cipher and compares it with the fixed sealed bytes (not with
+     * the Kotlin code, so a bug there cannot discard a correct platform cipher). A provider that is missing, throws
+     * (any [GeneralSecurityException] or [ProviderException]) or ignores the IV gets the Kotlin path instead of
+     * failing every real call. Not logged here (plain JUnit tests build this class and `android.util.Log` is not
+     * mocked); read [usesPlatformChaCha] to see the path.
      */
     val usesPlatformChaCha: Boolean = try {
-        val key = ByteArray(32) { it.toByte() }
-        val nonce = ByteArray(12) { (it + 1).toByte() }
-        val aad = ByteArray(12) { (it + 2).toByte() }
-        val plain = ByteArray(40) { (it * 3).toByte() }
         val cipher = Cipher.getInstance("ChaCha20-Poly1305")
-        cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "ChaCha20"), IvParameterSpec(nonce))
-        cipher.updateAAD(aad)
-        cipher.doFinal(plain).contentEquals(ChaCha20Poly1305.seal(key, nonce, aad, plain))
+        cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(PROBE_KEY, "ChaCha20"), IvParameterSpec(PROBE_NONCE))
+        cipher.updateAAD(PROBE_AAD)
+        cipher.doFinal(PROBE_PLAIN).contentEquals(PROBE_SEALED)
     } catch (_: GeneralSecurityException) {
-        // NoSuchAlgorithm / NoSuchPadding / InvalidKey / InvalidAlgorithmParameter / AEADBadTag: no usable cipher.
+        // NoSuchAlgorithm / NoSuchPadding / InvalidKey / InvalidAlgorithmParameter: no usable cipher.
+        false
+    } catch (_: ProviderException) {
         false
     }
 
@@ -271,3 +272,23 @@ fun encodePem(label: String, der: ByteArray): String {
     val b64 = Base64.getMimeEncoder(64, "\n".toByteArray()).encodeToString(der)
     return "-----BEGIN $label-----\n$b64\n-----END $label-----"
 }
+
+private fun hexBytes(s: String): ByteArray {
+    val h = s.filter { !it.isWhitespace() }
+    return ByteArray(h.length / 2) { h.substring(it * 2, it * 2 + 2).toInt(16).toByte() }
+}
+
+// RFC 8439 section 2.8.2, used as the known-answer probe for the platform cipher.
+private val PROBE_KEY = ByteArray(32) { (0x80 + it).toByte() }
+private val PROBE_NONCE = hexBytes("070000004041424344454647")
+private val PROBE_AAD = hexBytes("50515253c0c1c2c3c4c5c6c7")
+private val PROBE_PLAIN = (
+    "Ladies and Gentlemen of the class of '99: If I could offer you only one tip " +
+        "for the future, sunscreen would be it."
+    ).encodeToByteArray()
+private val PROBE_SEALED = hexBytes(
+    "d31a8d34648e60db7b86afbc53ef7ec2a4aded51296e08fea9e2b5a736ee62d6" +
+        "3dbea45e8ca9671282fafb69da92728b1a71de0a9e060b2905d6a5b67ecd3b36" +
+        "92ddbd7f2d778b8c9803aee328091b58fab324e4fad675945585808b4831d7bc" +
+        "3ff4def08e4b7a9de576d26586cec64b61161ae10b594f09e26a7e902ecbd0600691",
+)
