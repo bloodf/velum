@@ -1,7 +1,9 @@
 package dev.velum.app.devicewalk
 
+import android.os.Looper
 import android.os.Process
 import android.util.Log
+import android.util.StringBuilderPrinter
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
@@ -15,7 +17,8 @@ import org.junit.runners.model.Statement
  * Not org.junit.rules.Timeout: that runs the whole inner statement (ActivityScenario launch, the compose
  * test environment, Espresso) on a second thread, and on expiry throws without waiting for it, so teardown
  * would race the next cell. This rule keeps the test on the instrumentation thread and watches from a
- * daemon thread. On expiry it writes every thread's stack to logcat (chunked under the ~4 KB entry limit)
+ * daemon thread. On expiry it writes every thread's stack and the main looper's message queue (a test thread
+ * waiting on an idle main needs the queue to explain it, #202) to logcat (chunked under the ~4 KB entry limit)
  * and to additionalTestOutputDir (AGP pulls it before the uninstall that removes [stackDir], #160),
  * interrupts the test thread (Espresso.onIdle's FutureTask.get is interruptible), and kills the process
  * if the thread is still stuck after [KILL_GRACE_MS] so the run still ends with a crash report.
@@ -82,6 +85,13 @@ class CellWatchdog(private val stackDir: () -> File) : TestRule {
             sb.append('"').append(entry.key.name).append("\" ").append(entry.key.state).append('\n')
             for (frame in entry.value) sb.append("    at ").append(frame).append('\n')
             sb.append('\n')
+        }
+        // After the stacks and guarded, so a failing queue dump costs neither them nor the kill path.
+        try {
+            sb.append("Main looper:\n")
+            Looper.getMainLooper().dump(StringBuilderPrinter(sb), "    ")
+        } catch (t: Throwable) {
+            sb.append("Main looper dump failed: ").append(t).append('\n')
         }
         val dump = sb.toString()
         Log.e(TAG, "$name exceeded ${limitMs / 1000}s; thread stacks follow")
