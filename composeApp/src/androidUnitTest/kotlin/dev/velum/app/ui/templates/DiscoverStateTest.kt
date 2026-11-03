@@ -14,6 +14,12 @@ class DiscoverStateTest {
         assertNull(pruneSelection("x", listOf("y"), facetsLoaded = true))
     }
 
+    @Test fun loading_state_until_first_page_lands_or_fails() {
+        assertTrue(showLoadingState(null, loadFailed = false))
+        assertFalse(showLoadingState(null, loadFailed = true))
+        assertFalse(showLoadingState(emptyList(), loadFailed = false))
+    }
+
     @Test fun empty_state_only_after_load() {
         assertFalse(showEmptyState(null, fullImportRunning = false, loadFailed = false))
         assertTrue(showEmptyState(emptyList(), fullImportRunning = false, loadFailed = false))
