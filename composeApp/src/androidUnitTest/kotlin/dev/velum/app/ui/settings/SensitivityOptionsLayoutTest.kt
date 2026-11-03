@@ -36,14 +36,14 @@ import org.robolectric.annotation.GraphicsMode
 /**
  * #87: a sensitivity label must never break inside a word ("Balance/d", "Rigoros/a").
  *
- * Proves: at 400dp width and font scales 1.0 / 1.3 / 2.0, in EN and PT-BR, every button has at least as much
+ * Proves: at 280dp width (the w320dp of the locale test minus its page padding) and font scales 1.0 / 1.3 / 2.0, in EN and PT-BR, every button has at least as much
  * text width (button width minus its 16dp side padding) as the widest single word of its label measured with the
- * button's text style. Text can only break inside a word when a word is wider than that, so this rules it out.
+ * button's text style (15sp Medium, copied from OutlineButton: keep in sync). Text can only break inside a word when a word is wider than that, so this rules it out.
  * Does not prove: real-device font metrics (Robolectric native graphics uses the host font stack), row height at 2.0x, or other screens.
  */
 @RunWith(AndroidJUnit4::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(application = android.app.Application::class, sdk = [34], qualifiers = "w400dp-h800dp-xxhdpi")
+@Config(application = android.app.Application::class, sdk = [34], qualifiers = "w320dp-h800dp-xxhdpi")
 class SensitivityOptionsLayoutTest {
     @get:Rule val compose = createEmptyComposeRule()
 
@@ -63,7 +63,7 @@ class SensitivityOptionsLayoutTest {
                 ) {
                     measurer = rememberTextMeasurer()
                     VelumTheme(darkTheme = false) {
-                        Box(Modifier.width(400.dp)) { SensitivityOptions(strings, 0.55f) {} }
+                        Box(Modifier.width(280.dp)) { SensitivityOptions(strings, 0.55f) {} }
                     }
                 }
             }

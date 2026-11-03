@@ -3,6 +3,8 @@ package dev.velum.app
 import dev.velum.app.i18n.En
 import dev.velum.app.i18n.PtBr
 import dev.velum.app.i18n.Strings
+import dev.velum.app.ui.settings.importedStatus
+import dev.velum.app.ui.settings.sampleCountLabel
 import dev.velum.app.ui.settings.thresholdOptions
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -22,10 +24,23 @@ class VoiceProfilesLocalizationTest {
         s.ux.voiceProfilesExportReady, s.ux.voiceProfilesImportTitle, s.ux.voiceProfilesImport,
         s.ux.voiceProfilesImportedFormat, s.ux.voiceProfilesWipe, s.ux.voiceProfilesWiped,
         s.ux.voiceProfilesThreshold, s.ux.voiceProfilesThresholdSet, s.ux.voiceProfilesEnrollHint,
-        s.ux.voiceProfilesSamplesFormat, s.ux.voiceProfilesSensitivityFlexible,
+        s.ux.voiceProfilesSamplesFormat, s.ux.voiceProfilesSampleOne, s.ux.voiceProfilesImportedOne, s.ux.voiceProfilesSensitivityFlexible,
         s.ux.voiceProfilesSensitivityBalanced, s.ux.voiceProfilesSensitivityStrict,
         s.ux.voiceProfilesSensitivityVeryStrict,
     )
+
+    @Test
+    fun countsUseSingularAndPlural() {
+        assertEquals("1 sample", sampleCountLabel(En, 1))
+        assertEquals("2 samples", sampleCountLabel(En, 2))
+        assertEquals("0 samples", sampleCountLabel(En, 0))
+        assertEquals("1 amostra", sampleCountLabel(PtBr, 1))
+        assertEquals("3 amostras", sampleCountLabel(PtBr, 3))
+        assertEquals("Imported 1 profile", importedStatus(En, 1))
+        assertEquals("Imported 2 profiles", importedStatus(En, 2))
+        assertEquals("1 perfil importado", importedStatus(PtBr, 1))
+        assertEquals("2 perfis importados", importedStatus(PtBr, 2))
+    }
 
     @Test
     fun bothLocalesHaveDistinctNonBlankCopy() {

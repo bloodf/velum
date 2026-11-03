@@ -175,11 +175,7 @@ fun VoiceProfilesScreen(
                             Text(
                                 buildString {
                                     append(
-                                        if (p.sampleCount == 1) {
-                                            strings.ux.voiceProfilesSampleOne
-                                        } else {
-                                            strings.ux.voiceProfilesSamplesFormat.replace("%d", p.sampleCount.toString())
-                                        },
+                                        sampleCountLabel(strings, p.sampleCount),
                                     )
                                     if (p.role.isNotBlank()) append(" · ${p.role}")
                                     if (p.company.isNotBlank()) append(" · ${p.company}")
@@ -280,7 +276,7 @@ fun VoiceProfilesScreen(
                         launchAction {
                             val n = container.voiceProfileStore.withReady { importEncrypted(draft) }
                             refresh()
-                            status = strings.ux.voiceProfilesImportedFormat.replace("%d", n.toString())
+                            status = importedStatus(strings, n)
                             importDraft = ""
                         }
                     },
@@ -391,6 +387,12 @@ fun VoiceProfilesScreen(
         )
     }
 }
+
+internal fun sampleCountLabel(strings: Strings, n: Int): String =
+    if (n == 1) strings.ux.voiceProfilesSampleOne else strings.ux.voiceProfilesSamplesFormat.replace("%d", n.toString())
+
+internal fun importedStatus(strings: Strings, n: Int): String =
+    if (n == 1) strings.ux.voiceProfilesImportedOne else strings.ux.voiceProfilesImportedFormat.replace("%d", n.toString())
 
 internal fun thresholdOptions(strings: Strings): List<Pair<Float, String>> = listOf(
     0.45f to strings.ux.voiceProfilesSensitivityFlexible,
