@@ -44,6 +44,8 @@ class TransferFaults(
     internal val refuseNonZeroStart: Boolean = false,
     /** Lose the link at this offset once on every pass that starts from 0. */
     internal val disconnectEveryPassAt: Long? = null,
+    /** Never send the chunk at these offsets, on any pass (a persistent gap). */
+    internal val dropAlwaysAt: Set<Long> = emptySet(),
     /** Deliver the previous session-list reply's sealed packet again before each new one. */
     internal val replayStaleListReply: Boolean = false,
 ) {
