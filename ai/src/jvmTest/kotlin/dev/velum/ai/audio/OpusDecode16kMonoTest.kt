@@ -153,4 +153,34 @@ class OpusDecode16kMonoTest {
         assertEquals(10 * 320, pcm.samples.size)
         assertTrue(pcm.samples.drop(800).maxOf { abs(it.toInt()) } > 1_000, "voice tone survives")
     }
+
+    @Test
+    fun pre_skip_warmup_is_dropped_at_the_output_rate() {
+        // RFC 7845: pre-skip 312 samples at 48 kHz = 104 at 16 kHz are decoder warm-up, not audio.
+        val head = SyntheticOgg.opusHead(2, 48_000, preSkip = 312)
+        val ogg = SyntheticOgg.page(listOf(head), 0, 2) +
+            SyntheticOgg.page(listOf(SyntheticOgg.tags()), 1) +
+            SyntheticOgg.page(continuousStereoPackets(10), 2, 4)
+        assertEquals(10 * 320 - 104, decoder.decodeToPcm(ogg).samples.size)
+        val src = Files.createTempFile("velum-preskip", ".ogg")
+        val dest = Files.createTempFile("velum-preskip", ".pcm")
+        try {
+            Files.write(src, ogg)
+            val meta = decoder.decodePathToPcmFile(src.toString(), ModelStoreDir(dest.toString()))
+            assertEquals((10 * 320 - 104) * 2L, meta.sizeBytes)
+            assertEquals(meta.sizeBytes, Files.size(dest))
+        } finally {
+            Files.deleteIfExists(src)
+            Files.deleteIfExists(dest)
+        }
+    }
+
+    @Test
+    fun pre_skip_longer_than_first_packet_spans_packets() {
+        val head = SyntheticOgg.opusHead(2, 48_000, preSkip = 3_000) // 1000 samples at 16 kHz, 3.1 packets
+        val ogg = SyntheticOgg.page(listOf(head), 0, 2) +
+            SyntheticOgg.page(listOf(SyntheticOgg.tags()), 1) +
+            SyntheticOgg.page(continuousStereoPackets(10), 2, 4)
+        assertEquals(10 * 320 - 1_000, decoder.decodeToPcm(ogg).samples.size)
+    }
 }

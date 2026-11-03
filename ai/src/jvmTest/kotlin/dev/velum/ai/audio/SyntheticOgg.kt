@@ -2,13 +2,15 @@ package dev.velum.ai.audio
 
 /** Deterministic synthetic Ogg Opus pieces shared by tests (no real audio). */
 object SyntheticOgg {
-    fun opusHead(channels: Int, rate: Int, version: Int = 1, family: Int = 0, mapping: ByteArray? = null): ByteArray {
+    fun opusHead(channels: Int, rate: Int, version: Int = 1, family: Int = 0, mapping: ByteArray? = null, preSkip: Int = 0): ByteArray {
         val h = ByteArray(19 + (mapping?.size ?: 0))
         mapping?.copyInto(h, 19)
         "OpusHead".encodeToByteArray().copyInto(h)
         h[8] = version.toByte()
         h[9] = channels.toByte()
         h[18] = family.toByte()
+        h[10] = (preSkip and 0xff).toByte()
+        h[11] = ((preSkip shr 8) and 0xff).toByte()
         h[12] = (rate and 0xff).toByte()
         h[13] = ((rate shr 8) and 0xff).toByte()
         h[14] = ((rate shr 16) and 0xff).toByte()
