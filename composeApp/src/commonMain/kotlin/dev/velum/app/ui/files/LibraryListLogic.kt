@@ -27,6 +27,15 @@ object LibraryListLogic {
         }
     }
 
+    enum class SourceIcon { NotePro, Import, Phone }
+
+    /** Which icon the library row draws for a recording source. */
+    fun sourceIcon(source: String): SourceIcon = when (source) {
+        "note_pro" -> SourceIcon.NotePro
+        "import", "share" -> SourceIcon.Import
+        else -> SourceIcon.Phone
+    }
+
     /** Accessibility name of the source icon; imports and shares are not "headphones audio". */
     fun sourceA11y(source: String, strings: dev.velum.app.i18n.Strings): String = when (source) {
         "note_pro" -> strings.ux.noteProMicA11y

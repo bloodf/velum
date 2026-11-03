@@ -129,4 +129,45 @@ class LocalModelManagerTest {
         assertEquals(LocalModelStatus.Failed, states.last().status)
         assertTrue(states.last().error?.contains("https://") == true)
     }
+
+    @Test
+    fun a_failed_download_never_stores_the_signed_url_in_its_error() = runTest {
+        val root = ModelStoreDir(File.createTempFile("velum-models", "").also { it.delete(); it.mkdirs() }.absolutePath)
+        val signed = "https://objects.example.test/tiny.bin?X-Amz-Signature=deadbeef&X-Amz-Expires=300"
+        val payload = byteArrayOf(1)
+        val manager = LocalModelManager(
+            storeRoot = root,
+            httpClient = HttpClient(MockEngine { throw java.io.IOException("Connection reset while reading $signed") }),
+            catalog = listOf(
+                LocalModelSpec(
+                    id = "tiny", displayName = "Tiny", kind = LocalModelKind.Asr, approxBytes = 1, license = "MIT",
+                    notes = "test", languages = "en", downloadUrl = signed, archiveFileName = "tiny.bin",
+                    sha256 = sha256Hex(payload),
+                ),
+            ),
+        )
+        val last = manager.download("tiny").toList().last()
+        assertEquals(LocalModelStatus.Failed, last.status)
+        assertEquals(LocalModelErrors.DownloadFailed, last.error)
+        assertTrue(manager.stateFor("tiny")?.error?.contains("Signature") != true)
+    }
+
+    @Test
+    fun the_https_refusal_does_not_echo_the_url() = runTest {
+        val root = ModelStoreDir(File.createTempFile("velum-models", "").also { it.delete(); it.mkdirs() }.absolutePath)
+        val url = "http://example.test/x.bin?token=secret"
+        val manager = LocalModelManager(
+            storeRoot = root,
+            httpClient = HttpClient(MockEngine { respond(byteArrayOf(1)) }),
+            catalog = listOf(
+                LocalModelSpec(
+                    id = "h", displayName = "H", kind = LocalModelKind.Asr, approxBytes = 1, license = "MIT",
+                    notes = "test", languages = "en", downloadUrl = url, archiveFileName = "x.bin",
+                    sha256 = sha256Hex(byteArrayOf(1)),
+                ),
+            ),
+        )
+        val error = manager.download("h").toList().last().error.orEmpty()
+        assertTrue(error.contains("https://") && !error.contains("secret") && !error.contains("example.test"), error)
+    }
 }
