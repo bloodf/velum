@@ -164,6 +164,16 @@ object ModelCatalogUi {
         ).distinct()
     }
 
+    /** "1.2 GB" / "465 MB", for download sizes and free space. */
+    fun formatBytes(bytes: Long): String {
+        val mb = bytes / (1024.0 * 1024.0)
+        return if (mb >= 1024) "${(mb / 1024.0 * 10).toInt() / 10.0} GB" else "${mb.toInt()} MB"
+    }
+
+    /** Fills a "%1 ... %2" template. */
+    fun fill(template: String, first: String, second: String): String =
+        template.replace("%1", first).replace("%2", second)
+
     fun recommendedAsrDisplayName(languageHint: String?, deviceClass: DeviceComputeClass): String {
         val id = LocalAsrRouter.chooseModelId(languageHint = languageHint, deviceClass = deviceClass)
         return DefaultLocalCatalog.firstOrNull { it.id == id }?.displayName ?: id

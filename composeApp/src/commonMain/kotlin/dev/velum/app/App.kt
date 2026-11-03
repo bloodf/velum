@@ -144,6 +144,8 @@ private fun VelumRoot(container: AppContainer) {
     // recompose until idle — latch hides FirstRun on the same frame (#106).
     val firstRunPending by container.firstRunPending.collectAsState()
     var firstRunDismissed by remember { mutableStateOf(false) }
+    // (needed, free) bytes when the recommended pack does not fit; resolved to copy at render so a language change applies.
+    var firstRunShort by remember { mutableStateOf<Pair<Long, Long>?>(null) }
     val showFirstRun = firstRunPending && !firstRunDismissed
     fun dismissFirstRun() {
         firstRunDismissed = true
@@ -696,12 +698,21 @@ private fun VelumRoot(container: AppContainer) {
                     dismissFirstRun()
                     navController.navigate(Routes.MODEL_MANAGER)
                 },
+                notice = firstRunShort?.let { (needed, free) ->
+                    ModelCatalogUi.fill(strings.firstRun.notEnoughSpaceFormat, ModelCatalogUi.formatBytes(needed), ModelCatalogUi.formatBytes(free))
+                },
                 onDownloadRecommended = {
+                    val ids = ModelCatalogUi.recommendedModelIds(
+                        languageHint = strings.localeTag,
+                    )
+                    val needed = container.localModelManager.bytesNeededFor(ids)
+                    val free = container.localModelManager.freeSpaceBytes()
+                    if (free != null && free < needed) {
+                        firstRunShort = needed to free
+                        return@FirstRunScreen
+                    }
                     dismissFirstRun()
                     scope.launch {
-                        val ids = ModelCatalogUi.recommendedModelIds(
-                            languageHint = strings.localeTag,
-                        )
                         ids.forEach { id ->
                             runCatching {
                                 container.localModelManager.download(id).collect()
