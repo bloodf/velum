@@ -107,7 +107,7 @@ Status legend: `Open` · `Fixed` · `Deferred (owner/hardware)` · `Accepted ris
 | L7 Decorative Mic/Sync icons | Fixed (`b851722`) | Removed |
 | L8 Seek contentDescriptions | Fixed (`1b33ae3`) | `seekBack15` / `seekForward15` |
 | L9 Integrations HMAC label | Fixed (`1b33ae3`) | User-facing `webhookSigned` (EN/pt-BR) |
-| L10 Fixed SoftAP AEAD nonce | Accepted on Wi-Fi only (S13) | BLE and files are open, pending owner decision |
+| L10 Fixed AEAD nonce (S13) | Open, pending owner decision | BLE, files and Wi-Fi. An earlier document called the Wi-Fi case accepted on 2026-10-27; no owner decision is on record. |
 
 ---
 

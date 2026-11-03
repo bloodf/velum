@@ -134,7 +134,7 @@ Phone-only / external (no Plaud required):
 - [x] Tag workflow `.github/workflows/release.yml` builds signed AAB when secrets present
 - [x] R8/ProGuard minify + shrink on release; crash-free process start (Keystore/`VoiceProfileStore` guarded)
 - [x] Privacy policy `docs/PRIVACY.md` + About link (pt-BR + en); Play/F-Droid metadata under `fastlane/metadata/` + `metadata/dev.velum.app.yml`
-- [x] OSV CI job (`osv-scan`); SoftAP fixed AEAD nonce **accepted on Wi-Fi only**; the same nonce on BLE and segment keystream reuse are open, pending owner decision (S13) — see `docs/REVIEW_2026-10.md`
+- [x] OSV CI job (`osv-scan`); fixed AEAD nonce and segment keystream reuse (S13): Open, pending owner decision: BLE, files and Wi-Fi. An earlier document called the Wi-Fi case accepted on 2026-10-27; no owner decision is on record. See `docs/REVIEW_2026-10.md`
 - [ ] Owner: create upload keystore, set GitHub secrets, push `v*` tag, complete Play Console data-safety + internal track
 - [ ] Owner: decide Renovate PR #2; open F-Droid `fdroiddata` PR from `metadata/dev.velum.app.yml`
 
