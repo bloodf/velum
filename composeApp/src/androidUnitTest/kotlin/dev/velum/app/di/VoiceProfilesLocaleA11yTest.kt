@@ -91,6 +91,7 @@ class VoiceProfilesLocaleA11yTest {
     private val UNREACHED = mapOf(
         "VoiceProfilesFileUnavailable" to "needs a profile file that cannot be read (I/O error)",
         "VoiceProfilesFilesChanged" to "needs files repaired while the removal dialog is open",
+        "VoiceProfilesImportedFormat" to "needs importing 2+ profiles; plural text is covered in VoiceProfilesLocalizationTest",
         "VoiceProfilesChangeBlocked" to "needs saving a profile that turned unreadable",
     )
 
@@ -159,7 +160,15 @@ class VoiceProfilesLocaleA11yTest {
                 "$name: '$label' is clipped: ${n.boundsInRoot} in width $width",
             )
         }
-        for ((key, text) in ownKeys) if (appearsIn(text, labels) || exact(text, labels)) seen += key
+        // Sample counts are short ("1 sample", "2 samples"), below appearsIn's length floor: match the whole
+        // first segment of the row (the row is merged with the profile name before it), so "1 samples" cannot pass for "1 sample".
+        fun sampleRow(text: String) = labels.any { l -> l.split(" · ").first().let { it == text || it.endsWith(" $text") } }
+        val sampleRows = mapOf("VoiceProfilesSampleOne" to own.ux.voiceProfilesSampleOne, "VoiceProfilesSamplesFormat" to own.ux.voiceProfilesSamplesFormat.replace("%d", "2"))
+        for ((key, text) in sampleRows) if (sampleRow(text)) seen += key
+        val otherRows = listOf(other.ux.voiceProfilesSampleOne, other.ux.voiceProfilesSamplesFormat.replace("%d", "2"), other.ux.voiceProfilesSamplesFormat.replace("%d", "1"))
+        for (text in otherRows) assertTrue(!sampleRow(text), "$name: ${other.localeTag} sample copy on screen: '$text'")
+        // ImportedFormat shares the word "Imported" with the singular status, so its literal would match falsely.
+        for ((key, text) in ownKeys) if (key != "VoiceProfilesImportedFormat" && (appearsIn(text, labels) || exact(text, labels))) seen += key
     }
 
     // ---- driving ------------------------------------------------------------
@@ -253,6 +262,8 @@ class VoiceProfilesLocaleA11yTest {
         newRoot().let { root ->
             val memory = InMemorySecureStore()
             withProfile(root, memory)
+            // Two samples, so the plural copy shows next to the singular one.
+            runBlocking { VoiceProfileStore(root, memory).withReady { repeat(2) { upsert("Synthetic Pair", floatArrayOf(0f, 1f), id = "pair") } } }
             screen(s, scale, memory, root) {
                 awaitLabel("Synthetic Healthy")
                 assertState("$tag list", s, other, seen)
@@ -313,7 +324,7 @@ class VoiceProfilesLocaleA11yTest {
                     awaitLabel(s.ux.voiceProfilesEmpty)
                     compose.onNodeWithContentDescription(s.ux.voiceProfilesImportTitle).performScrollTo().performTextInput(export)
                     tap(s.ux.voiceProfilesImport)
-                    awaitLabel(s.ux.voiceProfilesImportedFormat.replace("%d", "1"))
+                    awaitLabel(s.ux.voiceProfilesImportedOne)
                     assertState("$tag imported", s, other, seen)
                 }
                 root.deleteRecursively()
