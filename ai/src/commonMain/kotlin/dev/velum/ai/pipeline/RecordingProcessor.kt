@@ -190,8 +190,11 @@ class RecordingProcessor(
                         val wideLen = fileLen.coerceAtMost(2L * 1024 * 1024).toInt()
                         header = locateWavPcmHeader(src.readRange(0, wideLen), fileLen)
                     }
+                    // No data chunk in the first 2 MiB: reading the file from byte 44 as PCM would give a noise
+                    // transcript and a "successful" job.
+                    require(header.dataStart >= 0) { WAV_NO_DATA_MESSAGE }
                     sampleRate = header.sampleRateHz
-                    val pcmStart = if (header.dataStart >= 0) header.dataStart.toLong() else 44L
+                    val pcmStart = header.dataStart.toLong()
                     val pcmLen = if (header.dataSize >= 0) {
                         header.dataSize.toLong().coerceAtMost(fileLen - pcmStart)
                     } else {
@@ -292,6 +295,7 @@ class RecordingProcessor(
                             ?: pcmBuffer.slice(
                                 0,
                                 WindowedAsr.pcmWindowBytes(sampleRate, 30 * 60)
+                                    .coerceAtMost(DIARIZATION_MAX_BYTES)
                                     .coerceAtMost(pcmBuffer.sizeBytes.toInt()),
                             )
                         diar.diarize(
@@ -759,6 +763,17 @@ class RecordingProcessor(
         }
     }
 }
+
+/** The WAV file has a RIFF/WAVE header but no `data` chunk where one can be read, so it holds no audio to decode. */
+internal const val WAV_NO_DATA_MESSAGE =
+    "Unsupported audio format (WAV without audio data). The file looks damaged, so it was not transcribed; " +
+        "re-download it from the device or convert it to WAV or Ogg Opus."
+
+/**
+ * Upper bound, in bytes, of the one heap array diarization receives: 30 minutes of 16 kHz mono PCM. Seconds alone
+ * would let a 48 kHz recording ask for 172.8 MB.
+ */
+internal const val DIARIZATION_MAX_BYTES: Int = 30 * 60 * 16_000 * 2
 
 /** Plain error for audio whose container is recognised but not decoded by this path. */
 internal fun unsupportedAudioMessage(container: String) =
