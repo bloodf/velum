@@ -31,6 +31,7 @@ import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
@@ -161,7 +162,7 @@ fun TemplatesScreen(
     var debouncedQuery by remember { mutableStateOf(searchQuery) }
     LaunchedEffect(searchQuery) {
         // Clearing the search applies at once; only typing is debounced.
-        if (searchQuery.isNotEmpty() && searchQuery != debouncedQuery) delay(SEARCH_DEBOUNCE_MS)
+        delay(searchApplyDelayMs(searchQuery, debouncedQuery))
         debouncedQuery = searchQuery
     }
     LaunchedEffect(tier, debouncedQuery, selectedCategory, templateTick) {
@@ -221,6 +222,8 @@ fun TemplatesScreen(
         // A different filter must not keep the previous filter's rows (or its paging sentinel) on screen.
         if (shownFilter != filter) {
             shown = null
+            // The previous filter's failure must not hide this filter's spinner.
+            loadFailed = false
         }
         try {
             val current = shown.orEmpty()
@@ -497,6 +500,13 @@ fun TemplatesScreen(
                     }
                 }
             }
+            if (showLoadingState(visible, loadFailed)) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Box(Modifier.fillMaxWidth().padding(vertical = 48.dp).testTag("templates:loading"), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
+                    }
+                }
+            }
             if (showEmptyState(visible, fullImportRunning, loadFailed)) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     Box(
@@ -530,7 +540,7 @@ fun TemplatesScreen(
                     modifier = Modifier.fillMaxWidth(),
                 ) { onOpenTemplate(tpl.id) }
             }
-            if (shownTick == templateTick && rows.size >= PAGE_SIZE * pages && rows.size < totalMatches) {
+            if (showPagingSentinel(shownTick, templateTick, rows.size, PAGE_SIZE * pages, totalMatches)) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     // Composed only when scrolled to the end: load the next page.
                     LaunchedEffect(rows.size) { pages += 1 }

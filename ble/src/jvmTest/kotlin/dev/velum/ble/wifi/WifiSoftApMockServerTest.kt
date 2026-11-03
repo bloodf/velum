@@ -3,6 +3,7 @@ package dev.velum.ble.wifi
 import dev.velum.ble.crypto.createSessionCipher
 import dev.velum.protocol.Protocol20SessionSecret
 import java.io.ByteArrayOutputStream
+import java.net.InetAddress
 import java.net.ServerSocket
 import java.util.zip.CRC32
 import kotlin.test.Test
@@ -300,7 +301,7 @@ class WifiSoftApMockServerTest {
     }
 
     @Test
-    fun disconnectMidTransfer_timesOutAndFallsBackToBle_thenReleasesPort() = runBoundedTest {
+    fun disconnectMidTransfer_fallsBackToBleAtOnce_thenReleasesPort() = runBoundedTest {
         val port = freePort()
         val server = JavaWebsocketTransferServer()
         val subscribed = CompletableDeferred<Unit>()
@@ -310,18 +311,56 @@ class WifiSoftApMockServerTest {
         val outcome = WifiTransferCoordinator(
             sessionFactory = { session(WifiPayloadCipher.ChaCha20Poly1305, server, joiner) },
             bleDownload = { fixture },
-            wifiTimeout = 1_500.milliseconds,
+            wifiTimeout = 60_000.milliseconds, // far above the test's runtime: only peer-close detection can end it
         ).transferOrFallback(
             "PLAUD-FAKE", "password12", port = port, preamble = preamble, bindHost = "127.0.0.1",
             assemble = { assembleExact(it, fixture.size, subscribed) },
         )
         device.join()
         assertIs<WifiTransferCoordinator.Outcome.BleFallback>(outcome)
-        assertTrue(outcome.reason.startsWith("wifi_timeout"), outcome.reason)
+        assertEquals(WifiTransferServer.FAILURE_PEER_CLOSED, outcome.reason)
         assertEquals(1, joiner.joinCount, "SoftAP must have been joined before it was left")
         assertTrue(!joiner.joined, "SoftAP must be left after failure")
         assertEquals(crc(fixture), crc(outcome.bytes))
         assertPortReleased(port)
+    }
+
+    @Test
+    fun slowConsumer_overflowsTheBuffer_failsThePathAndFallsBackToBle() = runBoundedTest {
+        val port = freePort()
+        val joiner = FakeWifiSoftApJoiner()
+        val subscribed = CompletableDeferred<Unit>()
+        val many = List(400) { byteArrayOf(it.toByte()) }
+        val device = launch(Dispatchers.IO) {
+            val d = connectDevice(port)
+            try {
+                subscribed.await()
+                // The server closes the socket on overflow, so later sends may fail: expected.
+                runCatching { sendChunks(d, cipher(WifiPayloadCipher.ChaCha20Poly1305), many) }
+            } finally {
+                d.close()
+            }
+        }
+        val outcome = WifiTransferCoordinator(
+            sessionFactory = { session(WifiPayloadCipher.ChaCha20Poly1305, joiner = joiner) },
+            bleDownload = { fixture },
+            wifiTimeout = 60_000.milliseconds,
+        ).transferOrFallback(
+            "PLAUD-FAKE", "password12", port = port, preamble = preamble, bindHost = "127.0.0.1",
+            assemble = { s ->
+                // Stalls on the first frame: the 64-frame buffer fills and a frame is dropped.
+                @Suppress("UNCHECKED_CAST")
+                (s.server.incomingEncryptedFrames() as SharedFlow<ByteArray>)
+                    .onSubscription { subscribed.complete(Unit) }
+                    .collect { delay(60_000) } // a collector stuck on its first frame keeps its subscription
+                ByteArray(0)
+            },
+        )
+        device.join()
+        assertIs<WifiTransferCoordinator.Outcome.BleFallback>(outcome)
+        assertEquals(WifiTransferServer.FAILURE_FRAME_OVERFLOW, outcome.reason)
+        assertContentEquals(fixture, outcome.bytes)
+        assertTrue(!joiner.joined)
     }
 
     @Test
@@ -385,5 +424,26 @@ class WifiSoftApMockServerTest {
 
     private companion object {
         const val CHUNK = 16 * 1024
+    }
+
+    @Test
+    fun portInUse_failsAtOnceAndFallsBackToBle_withoutJoiningSoftAp() = runBoundedTest {
+        ServerSocket(0, 50, InetAddress.getByName("127.0.0.1")).use { occupied ->
+            val joiner = FakeWifiSoftApJoiner()
+            val started = System.nanoTime()
+            val outcome = WifiTransferCoordinator(
+                sessionFactory = { session(WifiPayloadCipher.ChaCha20Poly1305, JavaWebsocketTransferServer(), joiner) },
+                bleDownload = { fixture },
+                wifiTimeout = 600_000.milliseconds, // far above the test's limit: only the bind failure can end this
+            ).transferOrFallback(
+                "PLAUD-FAKE", "password12", port = occupied.localPort, preamble = preamble, bindHost = "127.0.0.1",
+                assemble = { error("the transfer must not start") },
+            )
+            assertIs<WifiTransferCoordinator.Outcome.BleFallback>(outcome)
+            assertEquals(JavaWebsocketTransferServer.BIND_FAILURE_CODE, outcome.reason)
+            assertEquals(0, joiner.joinCount, "SoftAP must not be joined without a listener")
+            // 5 s is the server's limit for a wait that went wrong: the listener's own error must end it sooner.
+            assertTrue(System.nanoTime() - started < 5_000_000_000L, "the bind failure must be noticed, not waited out")
+        }
     }
 }

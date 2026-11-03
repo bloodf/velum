@@ -58,7 +58,7 @@ class PlaudDeviceClient(
     /** Where notifications are collected. Defaults to the first caller's scope, which then waits for [close]. */
     private val notificationScope: CoroutineScope? = null,
 ) {
-    private val link = GuardedLink(ble)
+    private val link = GuardedLink(ble, GattProfiles.Plaud)
     private val inbound = Channel<ByteArray>(capacity = 128)
     private val writeMutex = Mutex()
     private var notifyJob: Job? = null

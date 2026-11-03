@@ -16,7 +16,7 @@ Thanks for helping build a local-first, subscription-free recorder companion.
 - JDK 17+
 - Android Studio / SDK 35 for Android
 
-**Android-first:** prefer changes that ship on Android. iOS source sets may exist for shared code, but there is no Xcode project or iOS CI yet.
+**Android-first:** prefer changes that ship on Android. iOS source sets may exist for shared code, and the Xcode project is generated from `iosApp/project.yml` (see `iosApp/README.md`); there is no iOS CI yet.
 
 ```bash
 ./gradlew :plaud-protocol:jvmTest :ai:jvmTest
@@ -45,6 +45,8 @@ Play gets only the AAB (versionCode `base * 10`, e.g. 1000); never upload the pe
 APKs (1001 / 1002) alongside it. `check-release-signing.sh --package` also requires
 `fastlane/metadata/android/*/changelogs/<universal versionCode>.txt` and the F-Droid draft
 `versionCode` to match the universal APK.
+
+APK size target and the 10% growth check: `docs/APK_SIZE.md`, `scripts/check-apk-size.sh`.
 
 F-Droid builds the unsigned universal APK with `-Pvelum.unsignedRelease=true` (no upload key; F-Droid
 signs it). The property is refused when `VELUM_UPLOAD_*` variables are set, so a shipping build can

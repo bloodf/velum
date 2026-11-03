@@ -103,4 +103,13 @@ tasks.matching { it.name == "jvmTest" }.configureEach {
     ).withPathSensitivity(PathSensitivity.RELATIVE).withPropertyName("sourceGuardScanSources")
 }
 
+// CI prints only the failing line otherwise, and its test reports aren't kept: a rare failure's message is lost.
+tasks.withType<Test>().configureEach {
+    testLogging {
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+        // A test that skipped, like the :8081 one when the port is taken, must not look like a pass.
+        events("skipped")
+    }
+}
+
 apply(from = rootProject.file("gradle/robolectric-offline.gradle.kts"))
