@@ -34,7 +34,7 @@ class GuardedLinkTest {
     private fun bare(opcode: Int, params: ByteArray = ByteArray(0)): ByteArray =
         Bytes.u16Le(opcode) + params
 
-    private fun rig() = RecordingTransport().let { it to GuardedLink(it) }
+    private fun rig() = RecordingTransport().let { it to GuardedLink(it, GattProfiles.Plaud) }
 
     @Test
     fun forbiddenOpcodes_rejectedPlain_prefixedAndBare_neverReachTransport() = runTest {

@@ -9,15 +9,21 @@ import io.ktor.http.isSuccess
 import io.ktor.utils.io.ByteReadChannel
 import io.ktor.utils.io.readAvailable
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.job
+import kotlinx.coroutines.withContext
 
 enum class LocalModelKind {
     Asr,
@@ -270,6 +276,7 @@ class LocalModelManager(
     private val storeRoot: ModelStoreDir = defaultModelStoreRoot(),
     private val httpClient: HttpClient,
     catalog: List<LocalModelSpec> = DefaultLocalCatalog,
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
     private val _states = MutableStateFlow(
         catalog.map { initialState(it) },
@@ -303,149 +310,157 @@ class LocalModelManager(
         job?.cancel()
     }
 
+    /**
+     * Safe to collect on any dispatcher: the transfer, hashing, rename and extraction run on [ioDispatcher] (#237).
+     * The collector's job stays registered, so [cancelDownload] still ends the caller's coroutine.
+     */
     fun download(id: String): Flow<LocalModelState> = flow {
         val collectorJob = currentCoroutineContext().job
         downloadJobs.update { it + (id to collectorJob) }
         cancelRequested.update { it - id }
         try {
-            val current = stateFor(id) ?: return@flow
-            val url = current.spec.downloadUrl
-            if (url.isNullOrBlank()) {
-                update(id) {
-                    it.copy(
-                        status = LocalModelStatus.BlockedOnUrl,
-                        progress = 0f,
-                        error = "No download URL for ${it.spec.id}. Blocked until a release URL is set.",
-                    )
-                }
-                emit(requireNotNull(stateFor(id)))
-                return@flow
-            }
-            if (!url.startsWith("https://")) {
-                update(id) {
-                    it.copy(
-                        status = LocalModelStatus.Failed,
-                        progress = 0f,
-                        error = "Model download URL must use https:// (got: $url)",
-                    )
-                }
-                emit(requireNotNull(stateFor(id)))
-                return@flow
-            }
-            val expectedSha = current.spec.sha256?.trim().orEmpty()
-            if (expectedSha.isEmpty()) {
-                update(id) {
-                    it.copy(
-                        status = LocalModelStatus.BlockedOnUrl,
-                        progress = 0f,
-                        error = "SHA-256 required before download for ${it.spec.id}. Blocked until checksum is pinned.",
-                    )
-                }
-                emit(requireNotNull(stateFor(id)))
-                return@flow
-            }
-
-            update(id) { it.copy(status = LocalModelStatus.Downloading, progress = 0f, error = null) }
-            emit(requireNotNull(stateFor(id)))
-
-            val dir = storeRoot.resolve(id)
-            dir.createDirectories()
-            val dest = dir.resolve(current.spec.archiveFileName)
-            val partial = dir.resolve("${current.spec.archiveFileName}.partial")
-            if (partial.exists()) partial.deleteRecursively()
-
-            try {
-                val digest = createSha256Digest()
-                httpClient.prepareGet(url).execute { response ->
-                    if (!response.status.isSuccess()) {
-                        throw IllegalStateException("Download failed: HTTP ${response.status.value}")
-                    }
-                    val total = response.contentLength() ?: current.spec.approxBytes.coerceAtLeast(1L)
-                    val channel: ByteReadChannel = response.bodyAsChannel()
-                    val buffer = ByteArray(64 * 1024)
-                    var written = 0L
-                    while (!channel.isClosedForRead) {
-                        if (id in cancelRequested.value) {
-                            throw CancellationException("Download cancelled")
-                        }
-                        val n = channel.readAvailable(buffer, 0, buffer.size)
-                        if (n <= 0) break
-                        digest.update(buffer, 0, n)
-                        partial.appendBytes(buffer.copyOf(n))
-                        written += n
-                        val progress = (written.toDouble() / total.toDouble()).toFloat().coerceIn(0f, 0.99f)
-                        update(id) { it.copy(status = LocalModelStatus.Downloading, progress = progress) }
-                        emit(requireNotNull(stateFor(id)))
-                    }
-                }
-
-                if (id in cancelRequested.value) {
-                    throw CancellationException("Download cancelled")
-                }
-
-                val actual = digest.digestHex()
-                if (!actual.equals(expectedSha, ignoreCase = true)) {
-                    partial.deleteRecursively()
-                    throw IllegalStateException("SHA-256 mismatch for $id")
-                }
-
-                // renameTo replaces a file target atomically and an existing directory by delete+move.
-                if (!partial.renameTo(dest)) {
-                    // Never load multi-hundred-MB archives fully into heap on rename failure.
-                    streamCopyModelFile(partial, dest)
-                    partial.deleteRecursively()
-                }
-
-                if (ModelArchiveExtractor.isArchive(current.spec.archiveFileName)) {
-                    update(id) {
-                        it.copy(status = LocalModelStatus.Downloading, progress = 0.99f, error = null)
-                    }
-                    emit(requireNotNull(stateFor(id)))
-                    ModelArchiveExtractor.extract(dest, dir)
-                }
-
-                val missing = ModelReadiness.missingRequirements(current.spec, dir)
-                if (missing.isNotEmpty()) {
-                    throw IllegalStateException(
-                        "Model '$id' downloaded but not Ready — missing ${missing.joinToString(", ")}. " +
-                            "Expected layout: ${ModelReadiness.layoutFor(current.spec).describe()}",
-                    )
-                }
-
-                update(id) { it.copy(status = LocalModelStatus.Ready, progress = 1f, error = null) }
-                emit(requireNotNull(stateFor(id)))
-            } catch (t: CancellationException) {
-                runCatching { partial.deleteRecursively() }
-                update(id) {
-                    it.copy(
-                        status = statusForMissingUrl(it.spec),
-                        progress = 0f,
-                        error = null,
-                    )
-                }
-                emit(requireNotNull(stateFor(id)))
-                throw t
-            } catch (t: Throwable) {
-                runCatching { partial.deleteRecursively() }
-                update(id) {
-                    it.copy(
-                        status = LocalModelStatus.Failed,
-                        progress = 0f,
-                        error = t.message ?: t.toString(),
-                    )
-                }
-                emit(requireNotNull(stateFor(id)))
-            }
+            emitAll(downloadBody(id).flowOn(ioDispatcher))
         } finally {
             downloadJobs.update { if (it[id] === collectorJob) it - id else it }
             cancelRequested.update { it - id }
         }
     }
 
-    fun delete(id: String) {
+    private fun downloadBody(id: String): Flow<LocalModelState> = flow {
+        val current = stateFor(id) ?: return@flow
+        val url = current.spec.downloadUrl
+        if (url.isNullOrBlank()) {
+            update(id) {
+                it.copy(
+                    status = LocalModelStatus.BlockedOnUrl,
+                    progress = 0f,
+                    error = "No download URL for ${it.spec.id}. Blocked until a release URL is set.",
+                )
+            }
+            emit(requireNotNull(stateFor(id)))
+            return@flow
+        }
+        if (!url.startsWith("https://")) {
+            update(id) {
+                it.copy(
+                    status = LocalModelStatus.Failed,
+                    progress = 0f,
+                    error = "Model download URL must use https:// (got: $url)",
+                )
+            }
+            emit(requireNotNull(stateFor(id)))
+            return@flow
+        }
+        val expectedSha = current.spec.sha256?.trim().orEmpty()
+        if (expectedSha.isEmpty()) {
+            update(id) {
+                it.copy(
+                    status = LocalModelStatus.BlockedOnUrl,
+                    progress = 0f,
+                    error = "SHA-256 required before download for ${it.spec.id}. Blocked until checksum is pinned.",
+                )
+            }
+            emit(requireNotNull(stateFor(id)))
+            return@flow
+        }
+
+        update(id) { it.copy(status = LocalModelStatus.Downloading, progress = 0f, error = null) }
+        emit(requireNotNull(stateFor(id)))
+
+        val dir = storeRoot.resolve(id)
+        dir.createDirectories()
+        val dest = dir.resolve(current.spec.archiveFileName)
+        val partial = dir.resolve("${current.spec.archiveFileName}.partial")
+        if (partial.exists()) partial.deleteRecursively()
+
+        try {
+            val digest = createSha256Digest()
+            httpClient.prepareGet(url).execute { response ->
+                if (!response.status.isSuccess()) {
+                    throw IllegalStateException("Download failed: HTTP ${response.status.value}")
+                }
+                val total = response.contentLength() ?: current.spec.approxBytes.coerceAtLeast(1L)
+                val channel: ByteReadChannel = response.bodyAsChannel()
+                val buffer = ByteArray(64 * 1024)
+                var written = 0L
+                while (!channel.isClosedForRead) {
+                    if (id in cancelRequested.value) {
+                        throw CancellationException("Download cancelled")
+                    }
+                    val n = channel.readAvailable(buffer, 0, buffer.size)
+                    if (n <= 0) break
+                    digest.update(buffer, 0, n)
+                    partial.appendBytes(buffer.copyOf(n))
+                    written += n
+                    val progress = (written.toDouble() / total.toDouble()).toFloat().coerceIn(0f, 0.99f)
+                    update(id) { it.copy(status = LocalModelStatus.Downloading, progress = progress) }
+                    emit(requireNotNull(stateFor(id)))
+                }
+            }
+
+            if (id in cancelRequested.value) {
+                throw CancellationException("Download cancelled")
+            }
+
+            val actual = digest.digestHex()
+            if (!actual.equals(expectedSha, ignoreCase = true)) {
+                partial.deleteRecursively()
+                throw IllegalStateException("SHA-256 mismatch for $id")
+            }
+
+            // renameTo replaces a file target atomically and an existing directory by delete+move.
+            if (!partial.renameTo(dest)) {
+                // Never load multi-hundred-MB archives fully into heap on rename failure.
+                streamCopyModelFile(partial, dest)
+                partial.deleteRecursively()
+            }
+
+            if (ModelArchiveExtractor.isArchive(current.spec.archiveFileName)) {
+                update(id) {
+                    it.copy(status = LocalModelStatus.Downloading, progress = 0.99f, error = null)
+                }
+                emit(requireNotNull(stateFor(id)))
+                ModelArchiveExtractor.extract(dest, dir)
+            }
+
+            val missing = ModelReadiness.missingRequirements(current.spec, dir)
+            if (missing.isNotEmpty()) {
+                throw IllegalStateException(
+                    "Model '$id' downloaded but not Ready — missing ${missing.joinToString(", ")}. " +
+                        "Expected layout: ${ModelReadiness.layoutFor(current.spec).describe()}",
+                )
+            }
+
+            update(id) { it.copy(status = LocalModelStatus.Ready, progress = 1f, error = null) }
+            emit(requireNotNull(stateFor(id)))
+        } catch (t: CancellationException) {
+            runCatching { partial.deleteRecursively() }
+            update(id) {
+                it.copy(
+                    status = statusForMissingUrl(it.spec),
+                    progress = 0f,
+                    error = null,
+                )
+            }
+            emit(requireNotNull(stateFor(id)))
+            throw t
+        } catch (t: Throwable) {
+            runCatching { partial.deleteRecursively() }
+            update(id) {
+                it.copy(
+                    status = LocalModelStatus.Failed,
+                    progress = 0f,
+                    error = t.message ?: t.toString(),
+                )
+            }
+            emit(requireNotNull(stateFor(id)))
+        }
+    }
+
+    suspend fun delete(id: String) {
         cancelDownload(id)
         val dir = storeRoot.resolve(id)
-        if (dir.exists()) dir.deleteRecursively()
+        withContext(ioDispatcher) { if (dir.exists()) dir.deleteRecursively() }
         update(id) { initialState(it.spec).copy(status = statusForMissingUrl(it.spec)) }
     }
 

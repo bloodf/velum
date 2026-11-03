@@ -94,9 +94,12 @@ import dev.velum.app.ui.templates.TemplateDetailScreen
 import dev.velum.app.ui.templates.TemplatesScreen
 import dev.velum.app.ui.theme.VelumTheme
 import dev.velum.core.model.ComputeMode
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 fun App(
@@ -267,7 +270,7 @@ private fun VelumRoot(container: AppContainer) {
                         )
                         val md = MarkdownNoteExport.render(note)
                         val name = MarkdownNoteExport.filename(rec.title, rec.started_at)
-                        when (val result = writeMarkdownToExportFolder(name, md)) {
+                        when (val result = withContext(Dispatchers.IO) { writeMarkdownToExportFolder(name, md) }) {
                             is ExportFolderResult.Ok ->
                                 snackbar.showSnackbar(
                                     strings.ux.folderExportOkFormat.replace("%s", result.displayPath),

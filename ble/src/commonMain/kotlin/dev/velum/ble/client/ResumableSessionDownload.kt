@@ -171,6 +171,8 @@ class ResumableSessionDownload(
                 noProgressPastHandshake = 0
                 storageStalls = 0
                 retriedGapAt = -1L
+                // A resumed attempt that adds bytes shows the device does resume: restarts are counted per stretch.
+                if (before > 0) restarts = 0
             } else {
                 noProgress++
                 if (writeFailed && ++storageStalls >= MAX_STORAGE_STALLS) {
