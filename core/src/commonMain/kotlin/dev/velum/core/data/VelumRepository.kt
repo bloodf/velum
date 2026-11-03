@@ -226,8 +226,8 @@ class VelumRepository(
     }
 
     /** Point an existing device-session row at re-downloaded audio; title/transcript/summary are kept. */
-    suspend fun replaceDeviceSessionAudio(id: String, localPath: String, sizeBytes: Long) =
-        withContext(dbContext) { q.replaceDeviceSessionAudio(localPath, sizeBytes, id) }
+    suspend fun replaceDeviceSessionAudio(id: String, localPath: String, sizeBytes: Long, processingWarning: String? = null) =
+        withContext(dbContext) { q.replaceDeviceSessionAudio(localPath, sizeBytes, processingWarning, id) }
 
     /** Every row (trashed included) as (id, local_path) for orphan-file reconciliation. */
     suspend fun getAllRecordingFileRefs(): List<Pair<String, String?>> = withContext(dbContext) {
