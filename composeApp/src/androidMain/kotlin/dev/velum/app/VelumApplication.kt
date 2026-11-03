@@ -9,6 +9,7 @@ import dev.velum.ai.local.ModelStoreDir
 import dev.velum.ai.pipeline.AiRuntimeHolder
 import dev.velum.ai.pipeline.ThermalMonitor
 import dev.velum.ai.pipeline.createWorkManagerRecordingJobScheduler
+import dev.velum.ai.pipeline.STALE_PCM_SPILL_AGE_MS
 import dev.velum.ai.pipeline.sweepOrphanPcmSpill
 import dev.velum.app.di.AppContainer
 import dev.velum.app.platform.DownloadProgressNotifier
@@ -70,7 +71,7 @@ class VelumApplication : Application() {
                 // Before AiRuntimeHolder.install: WorkManager can re-run a killed job as soon as the
                 // holder is set, and it would race this sweep for its own tmp/pcm-<id> (#197).
                 runCatching {
-                    val spills = sweepOrphanPcmSpill()
+                    val spills = sweepOrphanPcmSpill(System.currentTimeMillis() - STALE_PCM_SPILL_AGE_MS)
                     if (spills > 0) Log.i(TAG, "Removed $spills orphaned PCM spill dir(s)")
                 }.onFailure { t -> Log.w(TAG, "PCM spill sweep failed (${t::class.simpleName})") }
                 val modelsDir = File(filesDir, "models")
@@ -89,6 +90,7 @@ class VelumApplication : Application() {
                     // Search falls back to a full list scan; class name only, never SQL or user data.
                     Log.w(TAG, "Full-text search unavailable (${built.repository.ftsFailure})")
                 }
+                built.repository.onIndexFailure = { cls -> Log.w(TAG, "FTS index write failed, index flagged stale ($cls)") }
                 built.repository.ftsRebuildFailure?.let { Log.w(TAG, "FTS rebuild failed, index stale ($it)") }
                 AiRuntimeHolder.install(
                     processor = built.recordingProcessor,

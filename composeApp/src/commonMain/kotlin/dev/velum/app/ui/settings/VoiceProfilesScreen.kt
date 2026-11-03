@@ -33,7 +33,9 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.velum.ai.local.InvalidVoiceProfileBackupException
 import dev.velum.ai.local.ProfileCipherUnavailableException
+import dev.velum.ai.local.ProfileCiphertextUnreadableException
 import dev.velum.ai.local.UnreadableVoiceProfile
 import dev.velum.ai.local.UnreadableVoiceProfileException
 import dev.velum.ai.local.VoiceProfileKeyUnavailableException
@@ -240,8 +242,13 @@ fun VoiceProfilesScreen(
                     strings.ux.voiceProfilesExport,
                     {
                         launchAction {
-                            exportText = container.voiceProfileStore.withReady { exportEncrypted() }
-                            status = strings.ux.voiceProfilesExportReady
+                            if (profiles.isEmpty()) {
+                                exportText = null
+                                status = strings.ux.voiceProfilesExportEmpty
+                            } else {
+                                exportText = container.voiceProfileStore.withReady { exportEncrypted() }
+                                status = strings.ux.voiceProfilesExportReady
+                            }
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
@@ -274,7 +281,15 @@ fun VoiceProfilesScreen(
                     {
                         val draft = importDraft
                         launchAction {
-                            val n = container.voiceProfileStore.withReady { importEncrypted(draft) }
+                            val n = try {
+                                container.voiceProfileStore.withReady { importEncrypted(draft) }
+                            } catch (bad: InvalidVoiceProfileBackupException) {
+                                status = strings.ux.voiceProfilesImportInvalid
+                                return@launchAction
+                            } catch (bad: ProfileCiphertextUnreadableException) {
+                                status = strings.ux.voiceProfilesImportWrongKey
+                                return@launchAction
+                            }
                             refresh()
                             status = importedStatus(strings, n)
                             importDraft = ""

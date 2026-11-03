@@ -2,6 +2,7 @@ package dev.velum.protocol
 
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
+import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 
 /** Published vectors from RFC 8439. */
@@ -54,6 +55,21 @@ class ChaCha20Test {
             """,
         )
         assertContentEquals(cipher, ChaCha20.xor(key, nonce, 42L, plain))
+    }
+
+    @Test fun counter_may_reach_the_last_block_but_not_wrap() {
+        val key = ByteArray(32)
+        val nonce = ByteArray(12)
+        val last = 0xFFFF_FFFFL
+        // Exactly the last valid block, whole and in part.
+        assertEquals(64, ChaCha20.xor(key, nonce, last, ByteArray(64)).size)
+        assertEquals(1, ChaCha20.xor(key, nonce, last, ByteArray(1)).size)
+        assertEquals(128, ChaCha20.xor(key, nonce, last - 1, ByteArray(128)).size)
+        assertEquals(0, ChaCha20.xor(key, nonce, last, ByteArray(0)).size)
+        // One byte more needs a block past it, which would reuse block 0's keystream.
+        assertFailsWith<IllegalArgumentException> { ChaCha20.xor(key, nonce, last, ByteArray(65)) }
+        assertFailsWith<IllegalArgumentException> { ChaCha20.xor(key, nonce, last - 1, ByteArray(129)) }
+        assertFailsWith<IllegalArgumentException> { ChaCha20.xor(key, nonce, last + 1, ByteArray(0)) }
     }
 
     @Test fun rejects_wrong_sizes_and_counters() {

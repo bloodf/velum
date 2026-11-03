@@ -1,5 +1,6 @@
 package dev.velum.ble.wifi
 
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -19,7 +20,9 @@ import java.util.concurrent.atomic.AtomicReference
  */
 class JavaWebsocketTransferServer : WifiTransferServer {
     private val incoming = MutableSharedFlow<ByteArray>(extraBufferCapacity = 64)
+    private val failures = MutableSharedFlow<String>(extraBufferCapacity = 8)
     private val running = AtomicBoolean(false)
+    private val bindFailed = AtomicBoolean(false)
     private val serverRef = AtomicReference<WebSocketServer?>(null)
     private val clientRef = AtomicReference<WebSocket?>(null)
     private val expectedPreamble = AtomicReference(WifiTransferPreamble.defaultToken())
@@ -30,6 +33,7 @@ class JavaWebsocketTransferServer : WifiTransferServer {
         preamble: ByteArray,
     ) {
         stop()
+        bindFailed.set(false)
         expectedPreamble.set(preamble)
         val host = bindHost ?: "127.0.0.1"
         val address = InetSocketAddress(host, port)
@@ -39,7 +43,10 @@ class JavaWebsocketTransferServer : WifiTransferServer {
             }
 
             override fun onClose(conn: WebSocket, code: Int, reason: String, remote: Boolean) {
-                clientRef.compareAndSet(conn, null)
+                // Only the authenticated peer counts; a superseded or unauthenticated close changes nothing.
+                if (clientRef.compareAndSet(conn, null) && running.get()) {
+                    failures.tryEmit(WifiTransferServer.FAILURE_PEER_CLOSED)
+                }
             }
 
             override fun onMessage(conn: WebSocket, message: String) {
@@ -63,11 +70,17 @@ class JavaWebsocketTransferServer : WifiTransferServer {
                     conn.close(1009, "frame_too_large")
                     return
                 }
-                incoming.tryEmit(bytes)
+                if (!incoming.tryEmit(bytes)) {
+                    // The consumer fell behind: a frame is lost, so the sequence has a gap. Fail the path.
+                    failures.tryEmit(WifiTransferServer.FAILURE_FRAME_OVERFLOW)
+                    conn.close(1013, "overloaded")
+                }
             }
 
             override fun onError(conn: WebSocket?, ex: Exception) {
-                // Closed during stop() or accept cancelled.
+                // A null connection before onStart means the listener never came up, such as a port in use.
+                // Otherwise: closed during stop() or accept cancelled.
+                if (conn == null && !running.get()) bindFailed.set(true)
             }
 
             override fun onStart() {
@@ -77,11 +90,15 @@ class JavaWebsocketTransferServer : WifiTransferServer {
         serverRef.set(server)
         server.isReuseAddr = true
         server.start()
-        // Brief wait for bind
-        var spins = 0
-        while (!running.get() && spins < 50) {
-            Thread.sleep(10)
-            spins++
+        // onStart or onError(null) always follows a bind attempt. The limit only ends a wait that went wrong.
+        var waits = 0
+        while (!running.get() && !bindFailed.get() && waits < BIND_MAX_WAITS) {
+            delay(BIND_WAIT_MS)
+            waits++
+        }
+        if (!running.get()) {
+            stop()
+            throw WifiTransferFailure(BIND_FAILURE_CODE)
         }
     }
 
@@ -95,6 +112,8 @@ class JavaWebsocketTransferServer : WifiTransferServer {
 
     override fun incomingEncryptedFrames(): Flow<ByteArray> = incoming.asSharedFlow()
 
+    override fun pathFailures(): Flow<String> = failures.asSharedFlow()
+
     override suspend fun sendEncryptedFrame(bytes: ByteArray) {
         val client = clientRef.get()
             ?: error("No authenticated Wi-Fi WebSocket client on :${WifiTransferServer.DEFAULT_PORT}")
@@ -106,5 +125,8 @@ class JavaWebsocketTransferServer : WifiTransferServer {
 
     companion object {
         const val MAX_FRAME_BYTES: Int = 8 * 1024 * 1024
+        const val BIND_FAILURE_CODE: String = "wifi_bind_failed"
+        private const val BIND_WAIT_MS = 10L
+        private const val BIND_MAX_WAITS = 500
     }
 }

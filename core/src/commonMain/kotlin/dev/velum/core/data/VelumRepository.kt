@@ -39,11 +39,27 @@ class VelumRepository(
 ) {
     private val q get() = db.velumQueries
 
+    /**
+     * Every suspend call runs here, one at a time. The JVM in-memory driver has a single connection and a
+     * single shared Transaction object: two threads in a transaction (or a raw BEGIN against another
+     * thread's transaction) fail with "cannot start a transaction within a transaction" or a
+     * ConcurrentModificationException (#208). Serializing also means an observer reacting to a new row
+     * runs only after the insert call, including its index attempt, has returned. Reads share this
+     * dispatcher too, so they no longer run in parallel.
+     */
+    private val dbContext = Dispatchers.Default.limitedParallelism(1)
+
     /** False on hosts without SQLite FTS5 (e.g. Robolectric). Search falls back to ListSearch. */
     val ftsAvailable: Boolean
 
     /** Why FTS is unavailable (exception class only), for platform logging; null when available. */
     val ftsFailure: String?
+
+    /**
+     * Called with the exception class name (never row text) when an index write fails after its row was
+     * committed. The index is then flagged stale and rebuilt on the next FTS launch.
+     */
+    var onIndexFailure: ((String) -> Unit)? = null
 
     /** Exception class of a failed fts_dirty rebuild (index stays stale, flag kept, retried next open); else null. */
     var ftsRebuildFailure: String? = null
@@ -129,7 +145,7 @@ class VelumRepository(
     fun observeAutoflows() =
         q.selectAutoflows().asFlow().mapToList(Dispatchers.Default)
 
-    suspend fun listAutoflows(): List<Autoflow> = withContext(Dispatchers.Default) {
+    suspend fun listAutoflows(): List<Autoflow> = withContext(dbContext) {
         q.selectAutoflows().executeAsList()
     }
 
@@ -142,7 +158,7 @@ class VelumRepository(
         durationSeconds: Long,
         title: String = "",
         transcript: String? = null,
-    ): Autoflow? = withContext(Dispatchers.Default) {
+    ): Autoflow? = withContext(dbContext) {
         AutoFlowResolve.firstMatch(
             flows = q.selectAutoflows().executeAsList(),
             candidate = AutoFlowMatcher.Candidate(
@@ -163,12 +179,12 @@ class VelumRepository(
     fun observeGlossary(): Flow<List<Glossary_term>> =
         q.selectGlossary().asFlow().mapToList(Dispatchers.Default)
 
-    suspend fun getRecording(id: String): Recording? = withContext(Dispatchers.Default) {
+    suspend fun getRecording(id: String): Recording? = withContext(dbContext) {
         q.selectRecordingById(id).executeAsOneOrNull()
     }
 
     /** Compare the complete snapshot in one transaction; never overwrite an advanced job/import. */
-    suspend fun failInterruptedPhoneDraft(expected: Recording): Boolean = withContext(Dispatchers.Default) {
+    suspend fun failInterruptedPhoneDraft(expected: Recording): Boolean = withContext(dbContext) {
         db.transactionWithResult {
             val current = q.selectRecordingById(expected.id).executeAsOneOrNull()
             if (current == null || current != expected || current.source != "phone" || current.status != "recording" ||
@@ -178,7 +194,7 @@ class VelumRepository(
         }
     }
 
-    suspend fun getAllRecordings(): List<Recording> = withContext(Dispatchers.Default) {
+    suspend fun getAllRecordings(): List<Recording> = withContext(dbContext) {
         q.selectAllRecordings().executeAsList()
     }
 
@@ -187,14 +203,14 @@ class VelumRepository(
      * dedup is off (returns null), so sessions from different devices can never merge.
      */
     suspend fun findDeviceSessionRecording(sessionId: Long, deviceSerial: String?): Recording? =
-        withContext(Dispatchers.Default) {
+        withContext(dbContext) {
             val serial = deviceSerial?.takeIf { it.isNotBlank() } ?: return@withContext null
             q.selectRecordingByDeviceSession(sessionId, serial).executeAsOneOrNull()
         }
 
     /** Subset of [sessionIds] already in the library for this device (one query; empty without a serial). */
     suspend fun librarySessionIds(sessionIds: List<Long>, deviceSerial: String?): Set<Long> =
-        withContext(Dispatchers.Default) {
+        withContext(dbContext) {
             val serial = deviceSerial?.takeIf { it.isNotBlank() }
             if (serial == null || sessionIds.isEmpty()) return@withContext emptySet()
             // SQLite's default host-parameter limit is 999 on API 26-29: chunk the IN list.
@@ -204,31 +220,31 @@ class VelumRepository(
         }
 
     /** Fails (never replaces) when the device session already has a row. */
-    suspend fun insertDeviceSessionRecording(row: Recording) = withContext(Dispatchers.Default) {
+    suspend fun insertDeviceSessionRecording(row: Recording) = withContext(dbContext) {
         q.insertDeviceSessionRecording(row)
-        indexRecording(row.id, row.title, row.transcript, row.summary_markdown)
+        tryIndex { indexRecording(row.id, row.title, row.transcript, row.summary_markdown) }
     }
 
     /** Point an existing device-session row at re-downloaded audio; title/transcript/summary are kept. */
     suspend fun replaceDeviceSessionAudio(id: String, localPath: String, sizeBytes: Long) =
-        withContext(Dispatchers.Default) { q.replaceDeviceSessionAudio(localPath, sizeBytes, id) }
+        withContext(dbContext) { q.replaceDeviceSessionAudio(localPath, sizeBytes, id) }
 
     /** Every row (trashed included) as (id, local_path) for orphan-file reconciliation. */
-    suspend fun getAllRecordingFileRefs(): List<Pair<String, String?>> = withContext(Dispatchers.Default) {
+    suspend fun getAllRecordingFileRefs(): List<Pair<String, String?>> = withContext(dbContext) {
         q.selectAllRecordingFileRefs().executeAsList().map { it.id to it.local_path }
     }
 
-    suspend fun getTemplate(id: String): Template? = withContext(Dispatchers.Default) {
+    suspend fun getTemplate(id: String): Template? = withContext(dbContext) {
         q.selectTemplateById(id).executeAsOneOrNull()
     }
 
     suspend fun searchRecordingIdsFts(matchQuery: String): List<String> =
-        withContext(Dispatchers.Default) {
+        withContext(dbContext) {
             if (!ftsAvailable) emptyList() else FtsIndex.searchRecordingIds(driver, matchQuery)
         }
 
     suspend fun searchTemplateIdsFts(matchQuery: String): List<String> =
-        withContext(Dispatchers.Default) {
+        withContext(dbContext) {
             if (!ftsAvailable) emptyList() else FtsIndex.searchTemplateIds(driver, matchQuery)
         }
 
@@ -238,7 +254,7 @@ class VelumRepository(
         filter: DiscoverFilter,
         limit: Int,
         offset: Int = 0,
-    ): List<Template> = withContext(Dispatchers.Default) {
+    ): List<Template> = withContext(dbContext) {
         discoverQuery(filter) { mode, match ->
             val built = DiscoverTemplateQuery.page(filter, mode, match)
             driver.executeQuery(
@@ -275,7 +291,7 @@ class VelumRepository(
         }
     }
 
-    suspend fun countDiscoverTemplates(filter: DiscoverFilter): Long = withContext(Dispatchers.Default) {
+    suspend fun countDiscoverTemplates(filter: DiscoverFilter): Long = withContext(dbContext) {
         discoverQuery(filter) { mode, match ->
             val built = DiscoverTemplateQuery.count(filter, mode, match)
             driver.executeQuery(
@@ -290,7 +306,7 @@ class VelumRepository(
         }
     }
 
-    suspend fun discoverFacets(filter: DiscoverFilter): DiscoverFacets = withContext(Dispatchers.Default) {
+    suspend fun discoverFacets(filter: DiscoverFilter): DiscoverFacets = withContext(dbContext) {
         fun column(built: DiscoverTemplateQuery.Built): List<String> = driver.executeQuery(
             identifier = null,
             sql = built.sql,
@@ -345,11 +361,11 @@ class VelumRepository(
         q.countTemplates().asFlow().collect { emit(++n) }
     }
 
-    suspend fun setAutoflowEnabled(id: String, enabled: Boolean) = withContext(Dispatchers.Default) {
+    suspend fun setAutoflowEnabled(id: String, enabled: Boolean) = withContext(dbContext) {
         q.updateAutoflowEnabled(if (enabled) 1 else 0, id)
     }
 
-    suspend fun setAutoflowNotify(id: String, notify: Boolean) = withContext(Dispatchers.Default) {
+    suspend fun setAutoflowNotify(id: String, notify: Boolean) = withContext(dbContext) {
         q.updateAutoflowNotify(if (notify) 1 else 0, id)
     }
 
@@ -368,7 +384,7 @@ class VelumRepository(
         postAction: String? = null,
         modelId: String? = null,
         endpointProfileId: String? = null,
-    ) = withContext(Dispatchers.Default) {
+    ) = withContext(dbContext) {
         q.updateAutoflow(
             name = name,
             enabled = if (enabled) 1 else 0,
@@ -402,7 +418,7 @@ class VelumRepository(
         postAction: String? = null,
         modelId: String? = null,
         endpointProfileId: String? = null,
-    ) = withContext(Dispatchers.Default) {
+    ) = withContext(dbContext) {
         q.insertAutoflow(
             id = id,
             name = name,
@@ -421,51 +437,51 @@ class VelumRepository(
         )
     }
 
-    suspend fun deleteAutoflow(id: String) = withContext(Dispatchers.Default) {
+    suspend fun deleteAutoflow(id: String) = withContext(dbContext) {
         q.deleteAutoflow(id)
     }
 
-    suspend fun trashRecording(id: String) = withContext(Dispatchers.Default) {
+    suspend fun trashRecording(id: String) = withContext(dbContext) {
         q.trashRecording(id)
     }
 
-    suspend fun restoreRecording(id: String) = withContext(Dispatchers.Default) {
+    suspend fun restoreRecording(id: String) = withContext(dbContext) {
         q.restoreRecording(id)
     }
 
-    suspend fun moveRecordingToFolder(id: String, folderId: String?) = withContext(Dispatchers.Default) {
+    suspend fun moveRecordingToFolder(id: String, folderId: String?) = withContext(dbContext) {
         q.updateRecordingFolder(folderId, id)
     }
 
-    suspend fun updateRecordingTitle(id: String, title: String) = withContext(Dispatchers.Default) {
+    suspend fun updateRecordingTitle(id: String, title: String) = withContext(dbContext) {
         q.updateRecordingTitle(title, id)
-        reindexRecording(id)
+        tryIndex { reindexRecording(id) }
     }
 
-    suspend fun addMemory(id: String, content: String) = withContext(Dispatchers.Default) {
+    suspend fun addMemory(id: String, content: String) = withContext(dbContext) {
         q.insertMemory(id, content, epochSeconds())
     }
 
-    suspend fun deleteMemory(id: String) = withContext(Dispatchers.Default) {
+    suspend fun deleteMemory(id: String) = withContext(dbContext) {
         q.deleteMemory(id)
     }
 
-    suspend fun listMemories(): List<String> = withContext(Dispatchers.Default) {
+    suspend fun listMemories(): List<String> = withContext(dbContext) {
         q.selectMemories().executeAsList().map { it.content }
     }
 
-    suspend fun listGlossaryTerms(): List<GlossaryTerm> = withContext(Dispatchers.Default) {
+    suspend fun listGlossaryTerms(): List<GlossaryTerm> = withContext(dbContext) {
         q.selectGlossary().executeAsList().map {
             GlossaryTerm(id = it.id, term = it.term, definition = it.definition)
         }
     }
 
     suspend fun addGlossaryTerm(id: String, term: String, definition: String = "") =
-        withContext(Dispatchers.Default) {
+        withContext(dbContext) {
             q.insertGlossary(id, term.trim(), definition.trim(), epochSeconds())
         }
 
-    suspend fun deleteGlossaryTerm(id: String) = withContext(Dispatchers.Default) {
+    suspend fun deleteGlossaryTerm(id: String) = withContext(dbContext) {
         q.deleteGlossary(id)
     }
 
@@ -474,7 +490,7 @@ class VelumRepository(
      * Glossary terms first, then memory facts when [includeMemory] is true.
      */
     suspend fun personalizationPromptFragment(includeMemory: Boolean): String =
-        withContext(Dispatchers.Default) {
+        withContext(dbContext) {
             buildString {
                 val glossary = q.selectGlossary().executeAsList()
                 if (glossary.isNotEmpty()) {
@@ -494,26 +510,26 @@ class VelumRepository(
             }.trim()
         }
 
-    suspend fun recordingCount(): Long = withContext(Dispatchers.Default) {
+    suspend fun recordingCount(): Long = withContext(dbContext) {
         q.countRecordings().executeAsOne()
     }
 
-    suspend fun updateTranscript(id: String, transcript: String) = withContext(Dispatchers.Default) {
+    suspend fun updateTranscript(id: String, transcript: String) = withContext(dbContext) {
         q.updateTranscript(transcript, id)
-        reindexRecording(id)
+        tryIndex { reindexRecording(id) }
     }
 
-    suspend fun updateSummary(id: String, summaryMarkdown: String) = withContext(Dispatchers.Default) {
+    suspend fun updateSummary(id: String, summaryMarkdown: String) = withContext(dbContext) {
         q.updateSummary(summaryMarkdown, id)
-        reindexRecording(id)
+        tryIndex { reindexRecording(id) }
     }
 
-    suspend fun updateStatus(id: String, status: String) = withContext(Dispatchers.Default) {
+    suspend fun updateStatus(id: String, status: String) = withContext(dbContext) {
         q.updateStatus(status, id)
     }
 
     /** [code] is a [dev.velum.core.model.ProcessingWarning] constant, or null to clear. */
-    suspend fun setProcessingWarning(id: String, code: String?) = withContext(Dispatchers.Default) {
+    suspend fun setProcessingWarning(id: String, code: String?) = withContext(dbContext) {
         q.updateProcessingWarning(code, id)
     }
 
@@ -522,7 +538,7 @@ class VelumRepository(
         localPath: String,
         durationSeconds: Long,
         sizeBytes: Long,
-    ) = withContext(Dispatchers.Default) {
+    ) = withContext(dbContext) {
         q.updateLocalPath(localPath, durationSeconds, sizeBytes, id)
     }
 
@@ -535,21 +551,22 @@ class VelumRepository(
         status: String,
         transcript: String? = null,
         summaryMarkdown: String? = null,
-    ) = withContext(Dispatchers.Default) {
-        db.transaction {
-            val current = q.selectRecordingById(id).executeAsOneOrNull() ?: return@transaction
+    ) = withContext(dbContext) {
+        val changed = db.transactionWithResult {
+            val current = q.selectRecordingById(id).executeAsOneOrNull() ?: return@transactionWithResult false
             val nextTranscript = transcript ?: current.transcript
             val nextSummary = summaryMarkdown ?: current.summary_markdown
             q.updateProcessingCheckpoint(status, nextTranscript, nextSummary, id)
-            reindexRecording(id)
+            true
         }
+        if (changed) tryIndex { reindexRecording(id) }
     }
 
-    suspend fun getMeta(key: String): String? = withContext(Dispatchers.Default) {
+    suspend fun getMeta(key: String): String? = withContext(dbContext) {
         q.getMeta(key).executeAsOneOrNull()
     }
 
-    suspend fun setMeta(key: String, value: String) = withContext(Dispatchers.Default) {
+    suspend fun setMeta(key: String, value: String) = withContext(dbContext) {
         q.setMeta(key, value)
     }
 
@@ -558,7 +575,7 @@ class VelumRepository(
         getMeta(processingErrorKey(recordingId))?.takeIf { it.isNotBlank() }
 
     /** Null removes the row; provider error text must not outlive the recording or a wipe. */
-    suspend fun setProcessingError(recordingId: String, message: String?) = withContext(Dispatchers.Default) {
+    suspend fun setProcessingError(recordingId: String, message: String?) = withContext(dbContext) {
         if (message == null) q.deleteMeta(processingErrorKey(recordingId)) else q.setMeta(processingErrorKey(recordingId), message)
     }
 
@@ -587,7 +604,7 @@ class VelumRepository(
         lang: String = "und",
         preferredModel: String? = null,
         preferredEndpointProfileId: String? = null,
-    ) = withContext(Dispatchers.Default) {
+    ) = withContext(dbContext) {
         val n = name.trim()
         val c = category.trim().ifBlank { "General" }
         val d = description.trim()
@@ -609,7 +626,7 @@ class VelumRepository(
             preferred_endpoint_profile_id = preferredEndpointProfileId?.takeIf { it.isNotBlank() },
             created_at = epochSeconds(),
         )
-        indexTemplate(id, n, d, c, systemPrompt, tagsEncoded)
+        tryIndex { indexTemplate(id, n, d, c, systemPrompt, tagsEncoded) }
     }
 
     /**
@@ -623,7 +640,7 @@ class VelumRepository(
      * builtin (same id, builtin = 0) is never overwritten by a re-import (#100).
      * @return number of rows upserted, or 0 if already imported / asset empty.
      */
-    suspend fun ensureFullTemplatesImported(): Int = withContext(Dispatchers.Default) {
+    suspend fun ensureFullTemplatesImported(): Int = withContext(dbContext) {
         if (q.getMeta(SeedData.META_FULL_TEMPLATES_IMPORTED).executeAsOneOrNull() == "1") {
             return@withContext 0
         }
@@ -673,17 +690,17 @@ class VelumRepository(
         upserted
     }
 
-    suspend fun deleteTemplate(id: String) = withContext(Dispatchers.Default) {
+    suspend fun deleteTemplate(id: String) = withContext(dbContext) {
         q.deleteTemplate(id)
-        if (ftsAvailable) FtsIndex.deleteTemplate(driver, id)
+        tryIndex { if (ftsAvailable) FtsIndex.deleteTemplate(driver, id) }
     }
 
-    suspend fun deleteRecordingHard(id: String) = withContext(Dispatchers.Default) {
+    suspend fun deleteRecordingHard(id: String) = withContext(dbContext) {
         q.deleteVersionsForRecording(id)
         q.deleteSpeakersForRecording(id)
         q.deleteRecordingHard(id)
         q.deleteMeta(processingErrorKey(id))
-        if (ftsAvailable) FtsIndex.deleteRecording(driver, id)
+        tryIndex { if (ftsAvailable) FtsIndex.deleteRecording(driver, id) }
     }
 
     /**
@@ -692,7 +709,7 @@ class VelumRepository(
      */
     suspend fun wipeAllUserData(
         deleteLocalFile: (absolutePath: String) -> Unit = {},
-    ) = withContext(Dispatchers.Default) {
+    ) = withContext(dbContext) {
         val audioPaths = q.selectAllRecordingIds().executeAsList().mapNotNull { id ->
             q.selectRecordingById(id).executeAsOneOrNull()?.local_path?.takeIf { it.isNotBlank() }
         }
@@ -705,7 +722,7 @@ class VelumRepository(
             q.deleteVersionsForRecording(id)
             q.deleteSpeakersForRecording(id)
             q.deleteRecordingHard(id)
-            if (ftsAvailable) FtsIndex.deleteRecording(driver, id)
+            tryIndex { if (ftsAvailable) FtsIndex.deleteRecording(driver, id) }
         }
         q.deleteAllCustomTemplates()
         q.deleteAllAutoflows()
@@ -715,7 +732,7 @@ class VelumRepository(
         // Clear seed marker so maybeSeed re-inserts default AutoFlow + builtins.
         SeedData.clearSeedMarker(db)
         SeedData.maybeSeed(db)
-        if (ftsAvailable) rebuildFtsIndex()
+        tryIndex { if (ftsAvailable) rebuildFtsIndex() }
         audioPaths.forEach { path ->
             runCatching { deleteLocalFile(path) }
         }
@@ -727,7 +744,7 @@ class VelumRepository(
     )
 
     /** Sum of recording `size_bytes` for non-trashed rows (library claim, not free disk). */
-    suspend fun storageUsage(): StorageUsage = withContext(Dispatchers.Default) {
+    suspend fun storageUsage(): StorageUsage = withContext(dbContext) {
         val rows = q.selectAllRecordings().executeAsList()
         StorageUsage(
             recordingCount = rows.size.toLong(),
@@ -736,13 +753,13 @@ class VelumRepository(
     }
 
     /** Clear local audio path after optional file delete (keeps transcript/summary). */
-    suspend fun clearLocalAudioPath(id: String) = withContext(Dispatchers.Default) {
+    suspend fun clearLocalAudioPath(id: String) = withContext(dbContext) {
         val rec = q.selectRecordingById(id).executeAsOneOrNull() ?: return@withContext
         q.updateLocalPath(null, rec.duration_seconds, 0, id)
     }
 
     /** Plain-text backup of local library metadata + notes (no audio blobs). */
-    suspend fun exportLibraryBackupText(): String = withContext(Dispatchers.Default) {
+    suspend fun exportLibraryBackupText(): String = withContext(dbContext) {
         val recordings = q.selectAllRecordings().executeAsList()
         buildString {
             appendLine("# Velum local backup")
@@ -785,29 +802,26 @@ class VelumRepository(
         status: String,
         trashed: Long = 0,
         createdAt: Long = epochSeconds(),
-    ) = withContext(Dispatchers.Default) {
-        // One transaction: observers (AutoFlow) only see the row once it is indexed, so their own
-        // writes never interleave with this FTS write on a shared connection.
-        db.transaction {
-            q.insertRecording(
-                id = id,
-                session_id = sessionId,
-                folder_id = folderId,
-                title = title,
-                source = source,
-                device_serial = deviceSerial,
-                started_at = startedAt,
-                duration_seconds = durationSeconds,
-                size_bytes = sizeBytes,
-                local_path = localPath,
-                transcript = transcript,
-                summary_markdown = summaryMarkdown,
-                status = status,
-                trashed = trashed,
-                created_at = createdAt,
-            )
-            indexRecording(id, title, transcript, summaryMarkdown)
-        }
+    ) = withContext(dbContext) {
+        // Commit the row first; a failed index write must not undo it (see tryIndex).
+        q.insertRecording(
+            id = id,
+            session_id = sessionId,
+            folder_id = folderId,
+            title = title,
+            source = source,
+            device_serial = deviceSerial,
+            started_at = startedAt,
+            duration_seconds = durationSeconds,
+            size_bytes = sizeBytes,
+            local_path = localPath,
+            transcript = transcript,
+            summary_markdown = summaryMarkdown,
+            status = status,
+            trashed = trashed,
+            created_at = createdAt,
+        )
+        tryIndex { indexRecording(id, title, transcript, summaryMarkdown) }
     }
 
     /**
@@ -846,6 +860,22 @@ class VelumRepository(
         }
     }
 
+    /**
+     * For index writes made after their row was committed (outside any transaction). The row is the
+     * only copy of the user's data, so an index failure must not roll it back or fail the caller: flag
+     * the index stale instead, so the next FTS launch rebuilds it.
+     */
+    private fun tryIndex(block: () -> Unit) {
+        try {
+            block()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            q.setMeta(META_FTS_DIRTY, "1")
+            onIndexFailure?.invoke(e::class.simpleName ?: "Exception")
+        }
+    }
+
     private fun reindexRecording(id: String) {
         if (!ftsAvailable) return
         val r = q.selectRecordingById(id).executeAsOneOrNull() ?: return
@@ -859,7 +889,7 @@ class VelumRepository(
         summaryMarkdown: String?,
     ) {
         if (!ftsAvailable) return
-        FtsIndex.upsertRecording(driver, id, title, transcript, summaryMarkdown)
+        db.transaction { FtsIndex.upsertRecording(driver, id, title, transcript, summaryMarkdown) }
     }
 
     private fun indexTemplate(
@@ -871,7 +901,7 @@ class VelumRepository(
         tags: String = "",
     ) {
         if (!ftsAvailable) return
-        FtsIndex.upsertTemplate(driver, id, name, description, category, systemPrompt, tags)
+        db.transaction { FtsIndex.upsertTemplate(driver, id, name, description, category, systemPrompt, tags) }
     }
 
     data class SpeakerUpsert(
@@ -894,7 +924,7 @@ class VelumRepository(
         q.selectVersionsForRecording(recordingId).asFlow().mapToList(Dispatchers.Default)
 
     suspend fun getSummaryVersions(recordingId: String): List<Summary_version> =
-        withContext(Dispatchers.Default) {
+        withContext(dbContext) {
             q.selectVersionsForRecording(recordingId).executeAsList()
         }
 
@@ -910,9 +940,9 @@ class VelumRepository(
         templateName: String,
         versionId: String? = null,
         createdAt: Long = epochSeconds(),
-    ): String = withContext(Dispatchers.Default) {
+    ): String = withContext(dbContext) {
         val resolvedVersionId = versionId ?: newSummaryVersionId(recordingId)
-        db.transactionWithResult {
+        val saved = db.transactionWithResult {
             ensureBaselineVersionLocked(recordingId)
             q.clearActiveVersionsForRecording(recordingId)
             q.insertSummaryVersion(
@@ -925,31 +955,33 @@ class VelumRepository(
                 is_active = 1,
             )
             q.updateSummary(markdown, recordingId)
-            reindexRecording(recordingId)
             resolvedVersionId
         }
+        tryIndex { reindexRecording(recordingId) }
+        saved
     }
 
     suspend fun activateSummaryVersion(recordingId: String, versionId: String) =
-        withContext(Dispatchers.Default) {
-            db.transaction {
+        withContext(dbContext) {
+            val changed = db.transactionWithResult {
                 val version = q.getSummaryVersionById(versionId, recordingId).executeAsOneOrNull()
-                    ?: return@transaction
+                    ?: return@transactionWithResult false
                 q.clearActiveVersionsForRecording(recordingId)
                 q.setVersionActive(versionId, recordingId)
                 q.updateSummary(version.markdown, recordingId)
-                reindexRecording(recordingId)
+                true
             }
+            if (changed) tryIndex { reindexRecording(recordingId) }
         }
 
     suspend fun deleteSummaryVersion(recordingId: String, versionId: String) =
-        withContext(Dispatchers.Default) {
-            db.transaction {
+        withContext(dbContext) {
+            val summaryChanged = db.transactionWithResult {
                 val version = q.getSummaryVersionById(versionId, recordingId).executeAsOneOrNull()
-                    ?: return@transaction
+                    ?: return@transactionWithResult false
                 val wasActive = version.is_active != 0L
                 q.deleteSummaryVersion(versionId, recordingId)
-                if (!wasActive) return@transaction
+                if (!wasActive) return@transactionWithResult false
                 val remaining = q.selectVersionsForRecording(recordingId).executeAsList()
                 val fallback = remaining.firstOrNull()
                 if (fallback != null) {
@@ -959,12 +991,13 @@ class VelumRepository(
                 } else {
                     q.updateSummary(null, recordingId)
                 }
-                reindexRecording(recordingId)
+                true
             }
+            if (summaryChanged) tryIndex { reindexRecording(recordingId) }
         }
 
     /** Snapshot current [Recording.summary_markdown] if non-blank and no versions exist yet. */
-    suspend fun ensureBaselineVersion(recordingId: String) = withContext(Dispatchers.Default) {
+    suspend fun ensureBaselineVersion(recordingId: String) = withContext(dbContext) {
         db.transaction {
             ensureBaselineVersionLocked(recordingId)
         }
@@ -1007,12 +1040,12 @@ class VelumRepository(
     private fun newSummaryVersionId(recordingId: String): String =
         "sv-$recordingId-${epochSeconds()}-${Random.nextInt(100_000, 999_999)}"
 
-    suspend fun getSpeakers(recordingId: String): List<Speaker> = withContext(Dispatchers.Default) {
+    suspend fun getSpeakers(recordingId: String): List<Speaker> = withContext(dbContext) {
         q.selectSpeakersForRecording(recordingId).executeAsList()
     }
 
     suspend fun updateSpeakers(recordingId: String, speakers: List<SpeakerUpsert>) =
-        withContext(Dispatchers.Default) {
+        withContext(dbContext) {
             db.transaction {
                 q.deleteSpeakersForRecording(recordingId)
                 speakers.forEach { s ->
@@ -1031,7 +1064,7 @@ class VelumRepository(
         recordingId: String,
         speakerId: String,
         displayName: String,
-    ) = withContext(Dispatchers.Default) {
+    ) = withContext(dbContext) {
         val speakers = q.selectSpeakersForRecording(recordingId).executeAsList()
         val target = speakers.firstOrNull { it.id == speakerId } ?: return@withContext
         val previous = target.display_name?.takeIf { it.isNotBlank() }

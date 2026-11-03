@@ -133,7 +133,7 @@ fun ModelManagerScreen(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        container.localModelManager.delete(modelId)
+                        scope.launch { container.localModelManager.delete(modelId) }
                         pendingDeleteId = null
                     },
                 ) { Text(strings.delete) }

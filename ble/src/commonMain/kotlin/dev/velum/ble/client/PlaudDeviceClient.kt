@@ -58,7 +58,7 @@ class PlaudDeviceClient(
     /** Where notifications are collected. Defaults to the first caller's scope, which then waits for [close]. */
     private val notificationScope: CoroutineScope? = null,
 ) {
-    private val link = GuardedLink(ble)
+    private val link = GuardedLink(ble, GattProfiles.Plaud)
     private val inbound = Channel<ByteArray>(capacity = 128)
     private val writeMutex = Mutex()
     private var notifyJob: Job? = null
@@ -313,7 +313,7 @@ class PlaudDeviceClient(
                                     // Skipped: a chunk that fits nowhere and cannot be attributed to another session.
                                 } else if (!ignored) {
                                     if (data.offset != next) {
-                                        throw TransferIntegrityException("Chunk at offset ${data.offset}, expected $next")
+                                        throw TransferIntegrityException("Chunk at offset ${data.offset}, expected $next", transient = data.offset > next)
                                     }
                                     if (sizeBytes > 0 && end > sizeBytes) {
                                         throw TransferIntegrityException("Chunk ending at $end overruns size $sizeBytes")
@@ -345,7 +345,7 @@ class PlaudDeviceClient(
                 }
             }
             if (sizeBytes > 0 && next != sizeBytes) {
-                throw TransferIntegrityException("Transfer ended at offset $next of $sizeBytes")
+                throw TransferIntegrityException("Transfer ended at offset $next of $sizeBytes", transient = true)
             }
         } catch (e: Exception) {
             sendStopBestEffort()

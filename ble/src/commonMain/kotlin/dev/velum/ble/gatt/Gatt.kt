@@ -1,6 +1,8 @@
 package dev.velum.ble.gatt
 
 import dev.velum.protocol.PlaudUuids
+import dev.velum.recorder.omi.OmiUuids
+import dev.velum.recorder.pocket.PocketUuids
 
 /** A GATT characteristic address (128-bit UUID strings, as in [PlaudUuids]). */
 data class GattChar(val service: String, val characteristic: String)
@@ -18,6 +20,8 @@ data class GattProfile(
     val id: String,
     val notify: List<GattChar>,
     val writes: Map<GattChar, WriteGuard>,
+    /** Characteristics read once (not subscribed), e.g. a codec descriptor. */
+    val reads: List<GattChar> = emptyList(),
 )
 
 object GattProfiles {
@@ -29,6 +33,38 @@ object GattProfiles {
         id = "plaud",
         notify = listOf(PLAUD_NOTIFY),
         writes = mapOf(PLAUD_WRITE to PlaudWriteGuard),
+    )
+
+    val OMI_AUDIO_DATA = GattChar(OmiUuids.SERVICE, OmiUuids.AUDIO_DATA)
+    val OMI_AUDIO_CODEC = GattChar(OmiUuids.SERVICE, OmiUuids.AUDIO_CODEC)
+    val OMI_BATTERY_LEVEL = GattChar(OmiUuids.BATTERY_SERVICE, OmiUuids.BATTERY_LEVEL)
+
+    /**
+     * Omi / Friend (BasedHardware/omi, MIT): audio notifications and battery level only. It declares NO writable
+     * characteristic, so [GuardedLink] rejects every write made under this profile, including to Plaud's 2BB1.
+     */
+    val Omi = GattProfile(
+        id = "omi",
+        notify = listOf(OMI_AUDIO_DATA, OMI_BATTERY_LEVEL),
+        writes = emptyMap(),
+        reads = listOf(OMI_AUDIO_CODEC),
+    )
+
+    val POCKET_AUDIO_DATA = GattChar(PocketUuids.AUDIO_SERVICE, PocketUuids.AUDIO_DATA)
+    val POCKET_REPLIES = GattChar(PocketUuids.AUDIO_SERVICE, PocketUuids.AUDIO_META)
+    val POCKET_BATTERY_LEVEL = GattChar(PocketUuids.BATTERY_SERVICE, PocketUuids.BATTERY_LEVEL)
+
+    /**
+     * Pocket / OpenPocket (pocket-libre PROTOCOL.md, MIT): MP3 audio, `MCU&` replies and battery notifications only.
+     * It declares NO writable characteristic, so the `APP&` command channel (001120A2/A3) is unreachable, including
+     * `APP&SK&`, which pairs the device. Commands need their own allow-list guard first (not designed yet). Whether
+     * notifications alone are enough to receive audio from a real device is unverified; the published protocol has the
+     * app start streaming with a command.
+     */
+    val Pocket = GattProfile(
+        id = "pocket",
+        notify = listOf(POCKET_AUDIO_DATA, POCKET_REPLIES, POCKET_BATTERY_LEVEL),
+        writes = emptyMap(),
     )
 }
 

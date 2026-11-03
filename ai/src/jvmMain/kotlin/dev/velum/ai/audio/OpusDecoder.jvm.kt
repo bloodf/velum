@@ -43,6 +43,7 @@ class KopusOpusDecoder : OpusDecoder {
     companion object {
         internal fun decodeInMemory(oggBytes: ByteArray): PcmAudio {
             var decoder: KopusDecoder? = null
+            var skip = 0 // leading samples (pre-skip at the output rate) still to drop
             // libopus decodes any stream at the requested rate/channels: emit the import-path PCM
             // contract (16 kHz mono) directly, frame by frame, so memory stays bounded (#95).
             val rate = DECODED_PCM_RATE_HZ
@@ -55,7 +56,8 @@ class KopusOpusDecoder : OpusDecoder {
             try {
                 val streamMeta = OggOpusDemuxer.demuxForEach(
                     oggBytes = oggBytes,
-                    onHeader = { _, _ ->
+                    onHeader = { _, _, preSkip ->
+                        skip = preSkip * rate / 48_000
                         out = ShortArray(frameSize * channels)
                         samples = ShortArray(frameSize * channels * 64)
                         decoder = KopusDecoder(sampleRate = rate, channels = channels)
@@ -68,14 +70,17 @@ class KopusOpusDecoder : OpusDecoder {
                             frameSize = frameSize,
                         )
                         if (n > 0) {
-                            val need = n * channels
+                            val drop = minOf(skip, n)
+                            skip -= drop
+                            val first = drop * channels
+                            val need = n * channels - first
                             if (count + need > samples.size) {
                                 samples = samples.copyOf(
                                     (samples.size + need).coerceAtLeast(samples.size * 2),
                                 )
                             }
                             for (i in 0 until need) {
-                                samples[count++] = out[i]
+                                samples[count++] = out[first + i]
                             }
                         }
                     },
@@ -95,12 +100,13 @@ class KopusOpusDecoder : OpusDecoder {
             dest: ModelStoreDir,
             checkCancelled: () -> Unit = {},
             demux: (
-                onHeader: (Int, Int) -> Unit,
+                onHeader: (Int, Int, Int) -> Unit,
                 onPacket: (ByteArray) -> Unit,
             ) -> OpusStreamMeta,
         ): SpilledPcmMeta {
             dest.writeBytes(ByteArray(0))
             var decoder: KopusDecoder? = null
+            var skip = 0 // leading samples (pre-skip at the output rate) still to drop
             // libopus decodes any stream at the requested rate/channels: emit the import-path PCM
             // contract (16 kHz mono) directly, frame by frame, so memory stays bounded (#95).
             val rate = DECODED_PCM_RATE_HZ
@@ -112,7 +118,8 @@ class KopusOpusDecoder : OpusDecoder {
             var sizeBytes = 0L
             try {
                 val streamMeta = demux(
-                    { _, _ ->
+                    { _, _, preSkip ->
+                        skip = preSkip * rate / 48_000
                         out = ShortArray(frameSize * channels)
                         byteChunk = ByteArray(frameSize * channels * 2)
                         decoder = KopusDecoder(sampleRate = rate, channels = channels)
@@ -126,9 +133,12 @@ class KopusOpusDecoder : OpusDecoder {
                             frameSize = frameSize,
                         )
                         if (n > 0) {
+                            val drop = minOf(skip, n)
+                            skip -= drop
+                            val first = drop * channels
                             val sampleCount = n * channels
                             var bi = 0
-                            for (i in 0 until sampleCount) {
+                            for (i in first until sampleCount) {
                                 val s = out[i].toInt()
                                 byteChunk[bi++] = (s and 0xff).toByte()
                                 byteChunk[bi++] = ((s shr 8) and 0xff).toByte()
