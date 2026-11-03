@@ -45,7 +45,7 @@ import kotlinx.coroutines.withTimeout
 /**
  * Protocol-20 client over [BleTransport].
  *
- * Never sends forbidden opcodes (5 / 104 / 128 / 0xFE20 / 143). Outbound frames
+ * Never sends forbidden opcodes (5 / 30 / 104 / 128 / 0xFE20 / 143). Outbound frames
  * are checked before every write. For protocol ≥ 20, FE10 snSignature from the
  * imported keys is sent on every [unlock] / connect.
  */

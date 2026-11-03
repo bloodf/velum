@@ -3,6 +3,8 @@ package dev.velum.app.ui.settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.semantics.Role
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -40,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.velum.app.di.AppContainer
 import dev.velum.app.i18n.LocalStrings
+import dev.velum.app.i18n.countText
 import dev.velum.app.ui.components.BlackButton
 import dev.velum.app.ui.components.ChevronRow
 import dev.velum.app.ui.components.OutlineButton
@@ -311,7 +314,7 @@ fun ApiSettingsScreen(
                 ui.message?.startsWith("loaded:") == true -> {
                     val count = ui.message!!.removePrefix("loaded:")
                     Text(
-                        strings.settingsUi.modelsLoadedFormat.replace("%d", count),
+                        countText(count.toIntOrNull() ?: 0, strings.settingsUi.modelsLoadedFormatOne, strings.settingsUi.modelsLoadedFormat),
                         color = VelumInk,
                         modifier = Modifier.padding(20.dp, 8.dp),
                     )
@@ -429,7 +432,7 @@ private fun TaskBindingEditor(
 }
 
 @Composable
-private fun TaskModelPicker(
+internal fun TaskModelPicker(
     title: String,
     selectedId: String?,
     models: List<AiModelInfo>,
@@ -446,7 +449,7 @@ private fun TaskModelPicker(
                     .clip(RoundedCornerShape(10.dp))
                     .background(if (selected) VelumSurface else VelumBg)
                     .border(1.dp, if (selected) VelumBlack else VelumDivider, RoundedCornerShape(10.dp))
-                    .clickable { onSelect(model.id) }
+                    .selectable(selected = selected, role = Role.RadioButton) { onSelect(model.id) }
                     .padding(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {

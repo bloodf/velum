@@ -264,16 +264,7 @@ class AutoFlowRunner internal constructor(
         when (AutoFlowPostAction.fromStored(flow.post_action)) {
             AutoFlowPostAction.None -> Unit
             AutoFlowPostAction.ShareMarkdown -> {
-                val body = buildString {
-                    append("# ").append(recording.title).append("\n\n")
-                    if (!recording.summary_markdown.isNullOrBlank()) {
-                        append(recording.summary_markdown).append("\n\n")
-                    }
-                    // A markers-only transcript has no spoken text: no empty "Transcript" section (#205).
-                    if (!TranscriptMarkers.spoken(recording.transcript).isNullOrBlank()) {
-                        append("## Transcript\n\n").append(recording.transcript)
-                    }
-                }
+                val body = shareMarkdownBody(recording.title, recording.summary_markdown, recording.transcript)
                 _actions.emit(AutoFlowUiAction.ShareMarkdown(recording.title, body))
             }
             AutoFlowPostAction.CalendarInsert -> {
@@ -359,3 +350,19 @@ sealed class AutoFlowUiAction {
 }
 
 expect fun epochMsNow(): Long
+
+/**
+ * Body of the "share as Markdown" post action. Live-capture markers (the user's notes) stay in the body
+ * under their own heading; the "Transcript" heading appears only when there is spoken text.
+ */
+internal fun shareMarkdownBody(title: String, summary: String?, transcript: String?): String = buildString {
+    append("# ").append(title).append("\n\n")
+    if (!summary.isNullOrBlank()) append(summary).append("\n\n")
+    if (transcript.isNullOrBlank()) return@buildString
+    val (spoken, markers) = TranscriptFormatter.splitMarkers(transcript)
+    if (spoken.isNotBlank()) append("## Transcript\n\n").append(spoken)
+    if (markers != null) {
+        if (spoken.isNotBlank()) append("\n\n")
+        append(markers)
+    }
+}
