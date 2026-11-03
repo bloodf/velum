@@ -43,20 +43,21 @@ internal suspend fun importPickedDocument(
     uri: Uri,
     onFailed: () -> Unit,
     onPicked: (path: String) -> Unit,
+    openStream: () -> java.io.InputStream? = { context.contentResolver.openInputStream(uri) },
 ) {
     var outFile: File? = null
+    var displayName: String? = null
     val path = try {
         withContext(Dispatchers.IO) {
-            val displayName = displayNameOf(context, uri)
+            displayName = displayNameOf(context, uri)
             val name = sanitizeImportFileName(displayName, "${UUID.randomUUID()}.audio")
             val dest = File(context.cacheDir, "imports").apply { mkdirs() }
             val target = File(dest, "${System.currentTimeMillis()}_$name").also { outFile = it }
-            val copied = copyToCache({ context.contentResolver.openInputStream(uri) }, target) {
+            val copied = copyToCache(openStream, target) {
                 // Class name only: the message and path can carry the user's file names.
                 android.util.Log.w(TAG, "Import copy failed (${it::class.java.simpleName})")
             }
             if (copied) {
-                dev.velum.app.importing.ImportDisplayNames.put(target.absolutePath, displayName)
                 target.absolutePath
             } else {
                 null
@@ -66,7 +67,13 @@ internal suspend fun importPickedDocument(
         outFile?.delete()
         throw cancelled
     }
-    if (path != null) onPicked(path) else onFailed()
+    if (path != null) {
+        // Only for a copy that survived: a cancelled or failed import must not leave a registry entry.
+        dev.velum.app.importing.ImportDisplayNames.put(path, displayName)
+        onPicked(path)
+    } else {
+        onFailed()
+    }
 }
 
 /**

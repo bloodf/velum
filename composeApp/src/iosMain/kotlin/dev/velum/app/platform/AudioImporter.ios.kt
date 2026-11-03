@@ -40,7 +40,11 @@ private val importScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 private class AudioPickerDelegate(val onPicked: (String) -> Unit, val onFailed: () -> Unit) : NSObject(), UIDocumentPickerDelegateProtocol {
     override fun documentPicker(controller: UIDocumentPickerViewController, didPickDocumentsAtURLs: List<*>) {
         activeDelegate = null
-        val url = didPickDocumentsAtURLs.firstOrNull() as? NSURL ?: return
+        val url = didPickDocumentsAtURLs.firstOrNull() as? NSURL
+        if (url == null) {
+            onFailed()
+            return
+        }
         importScope.launch {
             val path = withContext(Dispatchers.IO) { moveIntoImports(url) }
             if (path != null) onPicked(path) else onFailed()
@@ -86,11 +90,11 @@ private fun moveIntoImports(source: NSURL): String? {
     return memScoped {
         val error = alloc<ObjCObjectVar<NSError?>>()
         if (!files.createDirectoryAtPath(dir, withIntermediateDirectories = true, attributes = null, error = error.ptr)) {
-            NSLog("Velum import: cannot create imports directory: ${error.value?.localizedDescription}")
+            NSLog("Velum import: cannot create imports directory (${errorCode(error.value)})")
             return@memScoped null
         }
         if (!files.moveItemAtURL(source, NSURL.fileURLWithPath(dest), error = error.ptr)) {
-            NSLog("Velum import: cannot move picked file: ${error.value?.localizedDescription}")
+            NSLog("Velum import: cannot move picked file (${errorCode(error.value)})")
             return@memScoped null
         }
         val size = (files.attributesOfItemAtPath(dest, error = null)?.get(NSFileSize) as? NSNumber)?.longLongValue ?: 0L
@@ -102,6 +106,9 @@ private fun moveIntoImports(source: NSURL): String? {
         dest
     }
 }
+
+/** Domain and code only: the description can carry the user's file name. */
+private fun errorCode(error: NSError?): String = "${error?.domain}:${error?.code}"
 
 private fun topViewController(): UIViewController? {
     val window: UIWindow = UIApplication.sharedApplication.windows.filterIsInstance<UIWindow>()
