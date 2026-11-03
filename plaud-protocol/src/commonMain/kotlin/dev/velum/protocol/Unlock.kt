@@ -195,7 +195,7 @@ interface SessionCipher {
     /** RSA PKCS#1 v1.5 encrypt (device → app unlock secret, tests / fake peripheral). */
     fun rsaEncryptPkcs1(publicKeyPem: String, plaintext: ByteArray): ByteArray
 
-    /** ChaCha20-Poly1305 open; returns plaintext or null on auth failure. */
+    /** ChaCha20-Poly1305 open; returns plaintext, or null on auth failure. Other failures throw. */
     fun chacha20Poly1305Open(
         key: ByteArray,
         nonce: ByteArray,

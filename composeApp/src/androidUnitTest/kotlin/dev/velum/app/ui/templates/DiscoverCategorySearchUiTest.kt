@@ -17,7 +17,9 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -71,7 +73,9 @@ class DiscoverCategorySearchUiTest {
         awaitTag(tag)
         // Chips sit in horizontally scrolling rows; bring the target into view first, like a user would.
         runCatching { compose.onNodeWithTag(tag).performScrollTo() }
-        compose.onNodeWithTag(tag).performClick()
+        // By node identity, not coordinates: a facets reload can reorder the chips between scroll and tap, and a
+        // coordinate click then lands on a neighbour (seen in CI: tapped tag:report instead of tag:agenda).
+        compose.onNodeWithTag(tag).performSemanticsAction(SemanticsActions.OnClick)
     }
 
     @Test

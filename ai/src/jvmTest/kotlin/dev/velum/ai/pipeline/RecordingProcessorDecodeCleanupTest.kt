@@ -316,16 +316,27 @@ class RecordingProcessorDecodeCleanupTest {
     }
 
     @Test
-    fun sweep_removes_orphan_pcm_spill_dirs_only() {
-        val root = java.nio.file.Files.createTempDirectory("velum-197-root").toFile()
+    fun sweep_removes_only_stale_spill_dirs_and_keeps_a_running_jobs_file() {
+        val root = java.nio.file.Files.createTempDirectory("velum-198-root").toFile()
         try {
-            File(root, "tmp/pcm-a").apply { mkdirs(); File(this, "pcm.s16le").writeBytes(ByteArray(8)) }
-            File(root, "tmp/pcm-b").mkdirs()
-            File(root, "tmp/keep").mkdirs()
-            assertEquals(2, sweepOrphanPcmSpill(ModelStoreDir(root.path)))
-            assertFalse(File(root, "tmp/pcm-a").exists())
+            val now = 1_000_000_000_000L
+            val cutoff = now - STALE_PCM_SPILL_AGE_MS
+            val old = cutoff - 60_000
+            fun spill(name: String, fileMtime: Long, dirMtime: Long) = File(root, "tmp/$name").also { dir ->
+                dir.mkdirs()
+                File(dir, "pcm.s16le").apply { writeBytes(ByteArray(8)); setLastModified(fileMtime) }
+                dir.setLastModified(dirMtime)
+            }
+            spill("pcm-stale", old, old)
+            spill("pcm-running", fileMtime = now, dirMtime = old) // old dir, file still being appended to
+            spill("pcm-fresh", now, now)
+            File(root, "tmp/keep").apply { mkdirs(); setLastModified(old) } // not a spill dir
+            assertEquals(1, sweepOrphanPcmSpill(cutoff, ModelStoreDir(root.path)))
+            assertFalse(File(root, "tmp/pcm-stale").exists(), "stale spill removed")
+            assertTrue(File(root, "tmp/pcm-running/pcm.s16le").isFile, "a running job's file is kept")
+            assertTrue(File(root, "tmp/pcm-fresh").isDirectory)
             assertTrue(File(root, "tmp/keep").isDirectory)
-            assertEquals(0, sweepOrphanPcmSpill(ModelStoreDir(File(root, "absent").path)))
+            assertEquals(0, sweepOrphanPcmSpill(cutoff, ModelStoreDir(File(root, "absent").path)))
         } finally {
             root.deleteRecursively()
         }

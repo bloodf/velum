@@ -56,62 +56,6 @@ object OmiAudioPackets {
     }
 }
 
-/**
- * Reassembles fragments the way Friend.swift does: on fragment index 0, flush
- * the previous packet; append payload bytes to the current packet number.
- */
-class OmiPacketReassembler(private val maxFrameBytes: Int = OmiLimits.MAX_FRAME_BYTES) {
-    private val counter = BleAudioPacketCounter()
-
-    /** Frames dropped because a peer never started a new frame and the pending bytes hit [maxFrameBytes]. */
-    var overflowDrops: Long = 0
-        private set
-    private var currentNumber: Int? = null
-    private val current = ArrayList<Byte>()
-
-    /**
-     * @return completed packet payload when a new packet (index 0) starts after
-     * a previous one, or null while still accumulating.
-     */
-    fun push(fragment: OmiAudioFragment): ByteArray? {
-        val notification = ByteArray(3 + fragment.payload.size)
-        notification[0] = (fragment.packetNumber and 0xff).toByte()
-        notification[1] = ((fragment.packetNumber ushr 8) and 0xff).toByte()
-        notification[2] = (fragment.fragmentIndex and 0xff).toByte()
-        fragment.payload.copyInto(notification, 3)
-        counter.record(notification)
-
-        var flushed: ByteArray? = null
-        if (fragment.fragmentIndex == 0) {
-            if (current.isNotEmpty()) {
-                flushed = current.toByteArray()
-                current.clear()
-            }
-            currentNumber = fragment.packetNumber
-        }
-        if (currentNumber == null) {
-            currentNumber = fragment.packetNumber
-        }
-        if (current.size + fragment.payload.size > maxFrameBytes) {
-            current.clear()
-            overflowDrops++
-            return flushed
-        }
-        current.addAll(fragment.payload.toList())
-        return flushed
-    }
-
-    fun flush(): ByteArray? {
-        if (current.isEmpty()) return null
-        val out = current.toByteArray()
-        current.clear()
-        currentNumber = null
-        return out
-    }
-
-    fun stats(): Pair<Long, Long> = counter.snapshot()
-}
-
 object OmiLimits {
     /** Upper bound for one reassembled frame (an Opus frame is at most 1275 bytes; BLE payloads are far smaller). */
     const val MAX_FRAME_BYTES: Int = 4096
@@ -121,7 +65,7 @@ object OmiLimits {
  * Frame reassembly as upstream does it (BasedHardware/omi `app/lib/utils/audio/wav_bytes.dart`, `storeFramePacket`):
  * each notification carries a 16-bit packet index that must advance by exactly one, and a fragment id that is 0 for
  * the first fragment of a frame and then counts up. A gap in either, or a frame that would exceed [maxFrameBytes],
- * drops the pending frame, counts it in [lostFrames] and waits for the next fragment 0.
+ * drops the pending frame, counts a sync loss in [syncLosses] and waits for the next fragment 0.
  * Deviation from upstream: the 16-bit packet index wraps (65535 then 0) without counting a loss.
  */
 class OmiFrameAssembler(private val maxFrameBytes: Int = OmiLimits.MAX_FRAME_BYTES) {
@@ -129,7 +73,7 @@ class OmiFrameAssembler(private val maxFrameBytes: Int = OmiLimits.MAX_FRAME_BYT
     private var lastFragmentId = -1
     private var pending = ByteArray(0)
 
-    var lostFrames: Long = 0
+    var syncLosses: Long = 0
         private set
 
     /** The previous frame when [notification] starts a new one in sequence, else null. */
@@ -163,13 +107,13 @@ class OmiFrameAssembler(private val maxFrameBytes: Int = OmiLimits.MAX_FRAME_BYT
     }
 
     private fun start(f: OmiAudioFragment) {
-        pending = if (f.payload.size > maxFrameBytes) { lostFrames++; reset(); return } else f.payload
+        pending = if (f.payload.size > maxFrameBytes) { syncLosses++; reset(); return } else f.payload
         lastPacketIndex = f.packetNumber
         lastFragmentId = 0
     }
 
     private fun lose(): ByteArray? {
-        lostFrames++
+        syncLosses++
         reset()
         return null
     }
