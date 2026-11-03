@@ -85,7 +85,8 @@ class RecordingProcessWorker(
             setFlag = { on -> runCatching { repository.setUnpromotedRun(recordingId, if (on) workId else null) } },
         )
         if (mustFail) {
-            val message = applicationContext.getString(R.string.velum_processing_stopped_message)
+            // A stable text: the UI shows it in the app's language, which the system language may not match (#348).
+            val message = PROCESSING_STOPPED_MESSAGE
             // Status first: it is what ends the `queued` state; each write is independent.
             runCatching { repository.updateStatus(recordingId, "failed") }
             runCatching { repository.setProcessingError(recordingId, message) }
