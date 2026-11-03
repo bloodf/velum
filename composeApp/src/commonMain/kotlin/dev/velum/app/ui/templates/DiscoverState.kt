@@ -27,3 +27,14 @@ internal fun appendPage(shown: List<Template>, next: List<Template>): List<Templ
  */
 internal fun showEmptyState(shown: List<Template>?, fullImportRunning: Boolean, loadFailed: Boolean): Boolean =
     shown != null && shown.isEmpty() && !fullImportRunning && !loadFailed
+
+/** Typing waits for the debounce; clearing the search (or an unchanged query) applies at once. */
+internal fun searchApplyDelayMs(query: String, applied: String): Long =
+    if (query.isNotEmpty() && query != applied) SEARCH_DEBOUNCE_MS else 0L
+
+/**
+ * The next page is requested only when the rows on screen were loaded at the current catalog tick (so stale rows
+ * cannot trigger an append), the last page came back full, and more matches exist.
+ */
+internal fun showPagingSentinel(shownTick: Long, currentTick: Long, rowCount: Int, loadedTarget: Int, totalMatches: Long): Boolean =
+    shownTick == currentTick && rowCount >= loadedTarget && rowCount < totalMatches
