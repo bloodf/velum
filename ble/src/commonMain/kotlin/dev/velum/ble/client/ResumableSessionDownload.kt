@@ -162,6 +162,8 @@ class ResumableSessionDownload(
             if (store.length() > before) {
                 noProgress = 0
                 noProgressPastHandshake = 0
+                // A resumed attempt that adds bytes shows the device does resume: restarts are counted per stretch.
+                if (before > 0) restarts = 0
             } else {
                 noProgress++
                 // A full disk isn't a device that won't resume: restarting would throw away the partial for nothing.
