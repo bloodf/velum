@@ -71,12 +71,12 @@ data class DownloadedSessionAudio(
     val sessionId: Long,
     val deviceSerial: String?,
     val startedAtEpochSeconds: Long,
+    /** A [dev.velum.core.model.ProcessingWarning] code stored on the recording, or null. Before the lambda so callers can pass it trailing. */
+    val processingWarning: String? = null,
     /**
      * Streams decrypted audio into the sink in bounded chunks (never the whole file at
      * once) and returns the total byte count. Throws on decrypt failure or cancellation.
      */
-    /** A [dev.velum.core.model.ProcessingWarning] code stored on the recording, or null. Before the lambda so callers can pass it trailing. */
-    val processingWarning: String? = null,
     val writeDecryptedAudio: (sink: (ByteArray) -> Unit) -> Long,
 )
 
@@ -373,8 +373,9 @@ class DeviceViewModel(
         }
         // Verified clears an old mark; NotProvided (nothing was transferred this time) keeps it.
         when (result.crc) {
-            is CrcStatus.Mismatch -> { crcMismatch = true; partial.setCrcMismatch(true) }
-            is CrcStatus.Verified -> { crcMismatch = false; partial.setCrcMismatch(false) }
+            // The in-memory verdict is set first: a failure to write the mark only costs the retry-after-failed-save case.
+            is CrcStatus.Mismatch -> { crcMismatch = true; runCatching { partial.setCrcMismatch(true) } }
+            is CrcStatus.Verified -> { crcMismatch = false; runCatching { partial.setCrcMismatch(false) } }
             else -> Unit
         }
         val recordingId = try {

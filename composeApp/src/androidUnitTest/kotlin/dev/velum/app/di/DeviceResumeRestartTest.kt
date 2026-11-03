@@ -190,6 +190,26 @@ class DeviceResumeRestartTest {
         } finally { owner.clear(); Dispatchers.resetMain() }
     }
 
+    @Test fun a_failing_mark_write_is_not_fatal_and_the_warning_is_still_stored() {
+        try {
+            val warnings = mutableListOf<String?>()
+            run(
+                peripheral(stopCrc = FakePlaudPeripheral.StopCrc.Wrong),
+                persist = { audio ->
+                    warnings += audio.processingWarning
+                    val out = ByteArrayOutputStream(); audio.writeDecryptedAudio { out.write(it) }; saved = out.toByteArray(); "rec-synthetic"
+                },
+                open = { id, sn ->
+                    val store = PartialTransferFileStore.open(partials, id, sn)
+                    object : PartialTransfer by store {
+                        override fun setCrcMismatch(mismatch: Boolean) = throw IOException("synthetic: cannot write the mark")
+                    }
+                },
+            )
+            assertEquals(listOf<String?>(ProcessingWarning.DEVICE_CRC_MISMATCH), warnings)
+        } finally { owner.clear(); Dispatchers.resetMain() }
+    }
+
     @Test fun a_verified_transfer_stores_no_warning() {
         try {
             val warnings = mutableListOf<String?>()

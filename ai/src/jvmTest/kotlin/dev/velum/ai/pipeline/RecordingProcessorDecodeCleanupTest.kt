@@ -152,6 +152,27 @@ class RecordingProcessorDecodeCleanupTest {
     }
 
     @Test
+    fun a_crc_mismatch_written_while_the_job_runs_is_not_overwritten() = runBlocking {
+        val src = tempAudio(".wav", wav(ByteArray(16_000 * 2)))
+        lateinit var h: Harness
+        // The thermal check runs after the job read its row and before it writes the warning.
+        var first = true // only the first check precedes the warning write; later stages must not rewrite it
+        val thermal = object : ThermalPolicy {
+            override fun isHot(): Boolean {
+                if (first) runBlocking { h.repo.setProcessingWarning("rec-212-late", dev.velum.core.model.ProcessingWarning.DEVICE_CRC_MISMATCH) }
+                first = false
+                return false
+            }
+            override suspend fun awaitCool(onPaused: suspend (message: String) -> Unit) = Unit
+        }
+        h = Harness({ }, thermal = thermal)
+        h.insert("rec-212-late", src)
+        val events = h.processor.process("rec-212-late", templateId = "velum.meeting", apiModelOverride = API).toList()
+        assertTrue(events.last() is JobProgress.Succeeded, "last=${events.last()}")
+        assertEquals(dev.velum.core.model.ProcessingWarning.DEVICE_CRC_MISMATCH, h.repo.getRecording("rec-212-late")!!.processing_warning)
+    }
+
+    @Test
     fun corrupt_ogg_fails_explicitly_cleans_temp_pcm_and_keeps_source() = runBlocking {
         // Valid header + one page of audio, then a page with a bad magic: PCM is written before the failure.
         val packet = dev.velum.ai.audio.SyntheticOgg.audioPacket(stereo = false)

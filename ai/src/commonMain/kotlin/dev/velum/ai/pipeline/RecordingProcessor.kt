@@ -168,8 +168,10 @@ class RecordingProcessor(
                 }
                 // Persist (or clear) the stable warning code so the UI can show it after the job ends.
                 // A device CRC mismatch recorded at download time cannot be rederived, so it is never cleared here.
+                // Re-read: the row may have changed since the snapshot taken when the job started.
+                val currentWarning = repository.getRecording(recordingId)?.processing_warning
                 val warning = when {
-                    recording.processing_warning == ProcessingWarning.DEVICE_CRC_MISMATCH -> ProcessingWarning.DEVICE_CRC_MISMATCH
+                    currentWarning == ProcessingWarning.DEVICE_CRC_MISMATCH -> ProcessingWarning.DEVICE_CRC_MISMATCH
                     truncatedAudio -> ProcessingWarning.TRUNCATED_AUDIO
                     else -> null
                 }

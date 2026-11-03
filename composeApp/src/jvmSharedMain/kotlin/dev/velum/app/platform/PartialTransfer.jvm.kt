@@ -37,6 +37,7 @@ internal class PartialTransferFileStore private constructor(
     init {
         val durable = checkpoint.takeIf { it.isFile }?.readText()?.trim()?.toLongOrNull()
         val length = durable?.takeIf { it in 0..file.length() } ?: 0L
+        if (length == 0L) mismatchMark.delete() // data restarts from zero: an old verdict would label fresh bytes
         file.setLength(length)
         file.seek(length)
     }
