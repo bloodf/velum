@@ -382,6 +382,10 @@ data class UxStrings(
     val modelKindLlm: String,
     /** Shown instead of a raw storage error when a model download runs out of space. */
     val modelStorageFull: String,
+    /** %s = model name. Shown outside Model manager when a download fails. */
+    val modelDownloadFailedFormat: String,
+    /** Row status for a model waiting behind the one that is downloading. */
+    val modelQueued: String,
     val mindMapEmpty: String,
     val noRecordingsHint: String,
     val searchUnavailable: String,
@@ -951,6 +955,8 @@ val PtBr = Strings(
         modelKindEmbedding = "Perfis de voz",
         modelKindLlm = "Resumo e perguntas",
         modelStorageFull = "Sem espaço suficiente no aparelho para este modelo. Libere espaço e tente de novo.",
+        modelDownloadFailedFormat = "Não foi possível baixar %s. Abra o Gerenciador de modelos para ver o motivo.",
+        modelQueued = "Na fila",
         mindMapEmpty = "Nenhum heading H2 no resumo.",
         noRecordingsHint = "Toque em gravar para capturar áudio no aparelho, ou importe um arquivo.",
         searchUnavailable = "A busca avançada falhou — mostrando resultados básicos.",
@@ -1519,6 +1525,8 @@ val En = Strings(
         modelKindEmbedding = "Voice profiles",
         modelKindLlm = "Summary & Ask",
         modelStorageFull = "Not enough free space on this device for this model. Free up space and try again.",
+        modelDownloadFailedFormat = "Could not download %s. Open Model manager to see why.",
+        modelQueued = "Queued",
         mindMapEmpty = "No H2 headings in the summary.",
         noRecordingsHint = "Tap record to capture on-device audio, or import a file.",
         searchUnavailable = "Advanced search failed — showing basic results.",

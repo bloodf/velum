@@ -30,6 +30,7 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.flow.MutableStateFlow
 import dev.velum.app.platform.PartialTransferFileStore
 import dev.velum.app.platform.installRecordingFilesDir
+import dev.velum.ai.pipeline.RecordingJobScheduler
 import dev.velum.app.ui.DeviceViewModel
 import dev.velum.app.ui.DownloadWipeResult
 import dev.velum.ble.crypto.JcaFileDecryptor
@@ -94,7 +95,11 @@ class WipeAllDataTest {
         val partials = Files.createTempDirectory("velum-wipe-partials").toFile()
         val files = Files.createTempDirectory("velum-wipe-files").toFile()
         installRecordingFilesDir(files.path)
-        val container = AppContainer(InMemorySecureStore(), DriverFactory(context), modelStoreRoot = root)
+        // No processing: a job left running would write to the database after this test closes it.
+        val container = AppContainer(
+            InMemorySecureStore(), DriverFactory(context), modelStoreRoot = root,
+            recordingJobSchedulerFactory = { _, _ -> RecordingJobScheduler { _, _, _, _ -> } },
+        )
         val owner = ViewModelStore()
         val saving = CompletableDeferred<Unit>()
         val saved = CompletableDeferred<String>()
