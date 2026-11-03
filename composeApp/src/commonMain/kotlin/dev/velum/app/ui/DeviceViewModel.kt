@@ -67,6 +67,9 @@ data class DeviceSessionUi(
 internal fun dedupDeviceSerial(keySerial: String?, advertisedSerial: String?): String? =
     keySerial?.takeIf { it.isNotBlank() } ?: advertisedSerial?.takeIf { it.isNotBlank() }
 
+/** A complete partial that cannot be read back this many times in a row is discarded and downloaded again (#212). */
+internal const val MAX_READ_FAILURES = 2
+
 data class DownloadedSessionAudio(
     val sessionId: Long,
     val deviceSerial: String?,
@@ -382,8 +385,21 @@ class DeviceViewModel(
             persistDownloadedSession(persist(partial.length()) { position, length -> partial.read(position, length) })
         } catch (e: Throwable) {
             client = finished
-            // Only bytes that can't be decrypted are useless. A read error, full disk or database error can be retried.
-            if (undecryptable) partial.delete() else partial.close()
+            // Only bytes that can't be decrypted are useless. A read error, full disk or database error can be retried,
+            // but a read error that repeats would make every Re-download fail the same way until the 7-day sweep.
+            when {
+                undecryptable -> partial.delete()
+                readFailed -> {
+                    val failures = runCatching { partial.readFailures() }.getOrDefault(0) + 1
+                    if (failures >= MAX_READ_FAILURES) {
+                        partial.delete()
+                    } else {
+                        runCatching { partial.setReadFailures(failures) }
+                        partial.close()
+                    }
+                }
+                else -> partial.close()
+            }
             throw e
         }
         partial.delete()

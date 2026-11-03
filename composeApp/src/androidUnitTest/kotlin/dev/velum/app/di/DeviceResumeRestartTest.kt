@@ -358,6 +358,34 @@ class DeviceResumeRestartTest {
         } finally { owner.clear(); Dispatchers.resetMain() }
     }
 
+    @Test fun a_read_error_that_repeats_discards_the_partial_and_the_next_download_starts_fresh() {
+        try {
+            var failing = true
+            val fake = peripheral()
+            val vm = run(fake, open = { id, sn ->
+                val store = PartialTransferFileStore.open(partials, id, sn)
+                object : PartialTransfer by store {
+                    override fun read(offset: Long, length: Int): ByteArray {
+                        if (failing) throw IOException("synthetic permanent read failure")
+                        return store.read(offset, length)
+                    }
+                }
+            })
+            assertEquals(DeviceUiCopy.downloadFailed("en"), vm.sessionUi.value.statusMessage)
+            assertTrue(partials.list()!!.any { it.endsWith(".partial") }, "the first failure keeps the transfer")
+            assertTrue(partials.list()!!.any { it.endsWith(".readfail") }, "and counts it")
+            vm.downloadSession(session)
+            runBlocking { withTimeout(20_000) { while (partials.list()!!.any { it.endsWith(".partial") }) delay(5) } }
+            assertTrue(partials.list()!!.none { it.endsWith(".readfail") }, "the count goes with the partial")
+            failing = false
+            vm.downloadSession(session)
+            awaitOutcome(vm)
+            assertEquals("rec-synthetic", vm.sessionUi.value.lastDownloadedRecordingId)
+            assertContentEquals(plaintext, assertNotNull(saved))
+            assertEquals(listOf(0L, 0L), fake.syncStartOffsets, "the second failure discarded it, so the file came again")
+        } finally { owner.clear(); Dispatchers.resetMain() }
+    }
+
     @Test fun cancel_during_decrypt_keeps_the_partial_and_a_retry_needs_no_new_transfer() {
         try {
             // More than one decrypt chunk: the cancellation surfaces at the check before the next one.
