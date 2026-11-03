@@ -9,6 +9,7 @@ import androidx.work.WorkerParameters
 import androidx.work.impl.utils.futures.SettableFuture
 import androidx.work.testing.TestListenableWorkerBuilder
 import com.google.common.util.concurrent.ListenableFuture
+import dev.velum.ai.R
 import dev.velum.ai.engine.AiTaskRouter
 import dev.velum.ai.engine.AudioInput
 import dev.velum.ai.engine.DiarizationResult
@@ -43,12 +44,22 @@ import org.robolectric.annotation.Config
 class RecordingProcessWorkerForegroundTest {
     private val context: Context = ApplicationProvider.getApplicationContext()
 
+    private val graphs = mutableListOf<Graph>()
+
     @After fun reset() {
         AiRuntimeHolder.processor = null
         AiRuntimeHolder.repository = null
+        AiRuntimeHolder.settings = null
+        graphs.forEach { it.close() }
+        graphs.clear()
     }
 
-    private fun worker(attempt: Int, refuse: Boolean = true, id: UUID = UUID.randomUUID(), recording: String = "rec-synthetic"): RecordingProcessWorker =
+    private fun worker(
+        attempt: Int,
+        refuse: Boolean = true,
+        id: UUID = UUID.randomUUID(),
+        recording: String = "rec-synthetic",
+    ): RecordingProcessWorker =
         TestListenableWorkerBuilder<RecordingProcessWorker>(context)
             .setId(id)
             .setInputData(
@@ -60,7 +71,11 @@ class RecordingProcessWorkerForegroundTest {
             .setRunAttemptCount(attempt)
             .setForegroundUpdater { _, _: UUID, _: ForegroundInfo ->
                 SettableFuture.create<Void>().also {
-                    if (refuse) it.setException(IllegalStateException("startForegroundService not allowed (synthetic)")) else it.set(null)
+                    if (refuse) {
+                        it.setException(IllegalStateException("startForegroundService not allowed (synthetic)"))
+                    } else {
+                        it.set(null)
+                    }
                 }
             }
             .build()
@@ -79,7 +94,8 @@ class RecordingProcessWorkerForegroundTest {
     // --- Worker level, with a real repository and processor (fake engines), foreground start refused ---
 
     private class Graph(context: Context, val onSummarize: suspend (VelumRepository) -> Unit = {}) {
-        val repo = VelumRepository(createDatabase(DriverFactory(context)))
+        private val handle = createDatabase(DriverFactory(context))
+        val repo = VelumRepository(handle)
         val settings = SettingsRepository(InMemorySecureStore()).also { runBlocking { it.load() } }
         private val asr = object : Transcriber {
             override val engineId = "asr"
@@ -108,6 +124,8 @@ class RecordingProcessWorkerForegroundTest {
             settings,
         )
 
+        fun close() = handle.driver.close()
+
         fun install() {
             AiRuntimeHolder.processor = processor
             AiRuntimeHolder.repository = repo
@@ -123,7 +141,7 @@ class RecordingProcessWorkerForegroundTest {
 
     @Test fun a_refused_start_sets_the_flag_while_processing_and_clears_it_when_the_job_ends() {
         var seenDuring: String? = null
-        val graph = Graph(context) { repo -> seenDuring = repo.unpromotedRunOwner("rec-w") }
+        val graph = Graph(context) { repo -> seenDuring = repo.unpromotedRunOwner("rec-w") }.also { graphs += it }
         runBlocking { graph.insert("rec-w") }
         graph.install()
         val id = UUID.randomUUID()
@@ -137,7 +155,7 @@ class RecordingProcessWorkerForegroundTest {
     }
 
     @Test fun a_rerun_of_the_same_stopped_unpromoted_work_fails_the_row_with_a_message() {
-        val graph = Graph(context)
+        val graph = Graph(context).also { graphs += it }
         runBlocking { graph.insert("rec-w") }
         graph.install()
         val id = UUID.randomUUID()
@@ -146,17 +164,34 @@ class RecordingProcessWorkerForegroundTest {
         assertTrue(result is ListenableWorker.Result.Failure, "got $result")
         runBlocking {
             assertEquals("failed", graph.repo.getRecording("rec-w")?.status)
-            assertTrue(graph.repo.getProcessingError("rec-w").orEmpty().contains("foreground"))
+            assertEquals(
+                context.getString(R.string.velum_processing_stopped_message),
+                graph.repo.getProcessingError("rec-w"),
+            )
         }
     }
 
     @Test fun a_replacing_enqueue_with_a_new_work_id_is_not_a_rerun() {
-        val graph = Graph(context)
+        val graph = Graph(context).also { graphs += it }
         runBlocking { graph.insert("rec-w") }
         graph.install()
         runBlocking { graph.repo.setUnpromotedRun("rec-w", UUID.randomUUID().toString()) } // the cancelled predecessor
         val result = runBlocking { worker(attempt = 0, recording = "rec-w").doWork() }
         assertEquals(ListenableWorker.Result.success(), result)
-        runBlocking { assertEquals("ready", graph.repo.getRecording("rec-w")?.status) }
+        runBlocking {
+            assertEquals("ready", graph.repo.getRecording("rec-w")?.status)
+            assertEquals(null, graph.repo.unpromotedRunOwner("rec-w"), "the replacement cleared its own flag")
+        }
+    }
+
+    @Test fun a_run_never_clears_a_flag_a_newer_run_took_over() {
+        val newer = UUID.randomUUID().toString()
+        // While this run summarizes, a newer unpromoted run records itself under its own work id.
+        val graph = Graph(context) { repo -> repo.setUnpromotedRun("rec-w", newer) }.also { graphs += it }
+        runBlocking { graph.insert("rec-w") }
+        graph.install()
+        val result = runBlocking { worker(attempt = 0, recording = "rec-w").doWork() }
+        assertEquals(ListenableWorker.Result.success(), result)
+        runBlocking { assertEquals(newer, graph.repo.unpromotedRunOwner("rec-w")) }
     }
 }
