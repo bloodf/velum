@@ -136,7 +136,10 @@ class DiscoverFiltersUiTest {
             // Tier switching: All adds the non-featured row, Featured removes it again.
             tap("tier:all"); await("ZQ Delta")
             tap("tier:featured"); await("ZQ Alpha"); await("ZQ Delta", present = false)
+            // A result row, not the weekly-ranking card that can also show "ZQ Alpha".
+            waiting("row ui102-a") { runCatching { compose.onNodeWithTag("templates:grid").performScrollToKey("ui102-a") }.isSuccess }
             assertTrue(!shows("ZQ Delta"))
+            compose.onNodeWithTag("templates:grid").performScrollToIndex(0)
 
             // Category filter, with the selected state exposed.
             tap("category:meeting")
@@ -360,6 +363,45 @@ class DiscoverFiltersUiTest {
         } finally {
             activity.pause().stop().destroy()
             container.databaseHandle.driver.close()
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun failed_page_two_keeps_page_one_rows_and_shows_the_error() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        context.deleteDatabase("velum.db")
+        val root = ModelStoreDir(Files.createTempDirectory("velum-discover-page-fail-test").toString())
+        val container = AppContainer(InMemorySecureStore(), DriverFactory(context), modelStoreRoot = root)
+        runBlocking {
+            container.repository.setMeta(SeedData.META_FULL_TEMPLATES_IMPORTED, "1")
+            for (i in 0 until 100) {
+                container.repository.upsertTemplate(
+                    id = "pg-%03d".format(i), name = "PG %03d".format(i), category = "meeting", description = "synthetic",
+                    systemPrompt = "p", builtin = true, featured = true, tags = emptyList(), lang = "en",
+                    uses = 2_000_000L - i,
+                )
+            }
+        }
+        val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup()
+        try {
+            activity.get().setContent {
+                CompositionLocalProvider(LocalStrings provides PtBr) {
+                    VelumTheme(darkTheme = false) { TemplatesScreen(container, onBack = {}, onOpenTemplate = {}) }
+                }
+            }
+            val grid = { compose.onNodeWithTag("templates:grid") }
+            waiting("first page") { runCatching { grid().performScrollToKey("pg-000") }.isSuccess }
+            awaitTag("templates:loading", present = false)
+            // Every later query fails: scrolling to the end asks for page 2, which must not wipe page 1.
+            container.databaseHandle.driver.close()
+            grid().performScrollToKey("pg-059")
+            await(PtBr.ux.genericError)
+            repeat(5) { Thread.sleep(100); compose.waitForIdle() }
+            assertTrue(runCatching { grid().performScrollToKey("pg-030") }.isSuccess, "page 1 rows were wiped by the failed page")
+            assertTrue(!hasTag("templates:empty"), "empty state shown beside the error")
+        } finally {
+            activity.pause().stop().destroy()
             root.deleteRecursively()
         }
     }
