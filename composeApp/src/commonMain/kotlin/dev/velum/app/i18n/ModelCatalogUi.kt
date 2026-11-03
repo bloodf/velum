@@ -222,7 +222,7 @@ private val MODEL_FILES_MISSING = Regex(
         "incomplete|Whistle weights missing|Diarization segmentation ONNX missing|Speaker embedding ONNX missing|" +
         "Local LLM weights missing)",
 )
-private val MODEL_PRODUCED_NO_TEXT = Regex("^(Sherpa OfflineRecognizer returned empty text|Whistle returned empty transcript|LiteRT-LM returned empty text)")
+private val MODEL_PRODUCED_NO_TEXT = Regex("^[\\w -]{1,40} returned empty (text|transcript)\\b")
 private val LOCAL_ENGINE_FAILED = Regex("^(Needle whistle transcription failed|needle_load failed|Whistle/Needle requires 16 kHz)")
 
 /** What the worker saved before #348, in the system language. */
