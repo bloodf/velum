@@ -17,8 +17,10 @@ import java.util.concurrent.atomic.AtomicReference
  * Phone-side **WebSocket** server on **:8081** — Plaud APK parity (`org.java_websocket`).
  *
  * Prefer [bindHost] = SoftAP link address from [AndroidWifiSoftApJoiner.softApHostAddress].
- * When a SoftAP [Network] is provided, accepted client sockets are bound with
- * [Network.bindSocket] (socket-level only — never process-wide bind).
+ * When a SoftAP [Network] is provided, [Network.bindSocket] is attempted on each accepted client
+ * socket (socket-level only — never process-wide bind). On real Android that call is expected to
+ * throw for an already connected socket, so it is best effort and failures go to [onBindFailure];
+ * see docs/protocol/WIFI_FAST_PATH.md.
  */
 class AndroidWifiTransferServer(
     private val softApNetwork: () -> Network? = { null },
@@ -115,7 +117,9 @@ class AndroidWifiTransferServer(
             }
             val channel = method?.invoke(conn) as? java.nio.channels.ByteChannel
             val socket = (channel as? java.nio.channels.SocketChannel)?.socket()
-            if (socket != null) {
+            if (socket == null) {
+                onBindFailure(IllegalStateException("accepted socket not reachable"))
+            } else {
                 network.bindSocket(socket)
             }
         } catch (t: Throwable) {

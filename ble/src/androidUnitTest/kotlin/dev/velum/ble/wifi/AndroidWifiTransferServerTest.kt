@@ -203,7 +203,6 @@ class AndroidWifiTransferServerTest {
     @Test
     fun noNetwork_noBinding_serverStillDeliversFrames() = runTest {
         val port = freePort()
-        val untouched = RecordingNetwork() // never handed to the server: must stay unbound
         val failures = mutableListOf<Throwable>()
         val server = AndroidWifiTransferServer(onBindFailure = { failures += it })
         server.start(port, "127.0.0.1", preamble)
@@ -219,7 +218,6 @@ class AndroidWifiTransferServerTest {
             withContext(Dispatchers.IO) { d.send(preamble); d.send(byteArrayOf(5)) }
             assertContentEquals(byteArrayOf(5), first.await())
             d.close()
-            assertEquals(0, untouched.boundCount)
             assertTrue(failures.isEmpty(), "no network, so nothing to bind or report")
         } finally {
             server.stop()
@@ -334,11 +332,12 @@ class AndroidWifiTransferServerTest {
         val outcome = WifiTransferCoordinator(
             sessionFactory = { session(WifiPayloadCipher.ChaCha20Poly1305, server, joiner) },
             bleDownload = { fixture },
-            wifiTimeout = 3_000.milliseconds,
+            wifiTimeout = 10_000.milliseconds,
         ).transferOrFallback(
             "PLAUD-FAKE", "password12", port = port, preamble = preamble, bindHost = "127.0.0.1",
             assemble = { assembleExact(it, fixture.size, subscribed) },
         )
+        subscribed.complete(Unit) // never leave the device waiting if the timeout fired before subscription
         device.join()
         assertIs<WifiTransferCoordinator.Outcome.BleFallback>(outcome)
         assertTrue(outcome.reason.startsWith("wifi_timeout"), outcome.reason)

@@ -49,7 +49,7 @@ ephemeral loopback port (`ServerSocket(0)`, connect-retry, no fixed ports) with 
   per-socket bind does not take effect there; the failure is reported through `onBindFailure` (logged by class only) and
   the connection is still served. The Robolectric tests only prove the call is made and the failure is reported, not that
   traffic is routed over the SoftAP network. Whoever wires Wi-Fi into the app must bind the listening side instead
-  (SoftAP host address via `bindHost`, or `Network.socketFactory`) and confirm on a real Note Pro.
+  (SoftAP host address via `bindHost`) and confirm on a real Note Pro that traffic uses the SoftAP network; an address bind is not proven to be a network bind.
 - **Not covered (stays in #8):** real SoftAP join, `Network.bindSocket` on a real `Network`, normal-network
   restoration, hardware throughput.
 - **Nonce (#28):** `wifiFrameSealing_isDeterministicPerSecretAndSeq` characterizes sealing as deterministic per

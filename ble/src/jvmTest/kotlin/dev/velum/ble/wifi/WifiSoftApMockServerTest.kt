@@ -44,8 +44,8 @@ class WifiSoftApMockServerTest {
 
     private fun cipher(mode: WifiPayloadCipher) = createWifiFrameCipher(createSessionCipher(), secret, mode)
 
-    /** Bounds every test so a lost frame fails fast instead of hanging for the 45 s wifiTimeout. */
-    private fun runTest20(block: suspend kotlinx.coroutines.CoroutineScope.() -> Unit) {
+    /** Bounds every test (generously, for loaded machines) so a lost frame cannot hang the suite. */
+    private fun runBoundedTest(block: suspend kotlinx.coroutines.CoroutineScope.() -> Unit) {
         runBlocking { withTimeout(90_000) { block() } }
     }
 
@@ -108,7 +108,7 @@ class WifiSoftApMockServerTest {
     }
 
     @Test
-    fun completeTransfer_matchesFixtureAndCrc_bothCiphers() = runTest20 {
+    fun completeTransfer_matchesFixtureAndCrc_bothCiphers() = runBoundedTest {
         for (mode in WifiPayloadCipher.entries) {
             val port = freePort()
             val joiner = FakeWifiSoftApJoiner()
@@ -184,7 +184,7 @@ class WifiSoftApMockServerTest {
     }
 
     @Test
-    fun preambleMismatch_dropsFramesAndConnection() = runTest20 {
+    fun preambleMismatch_dropsFramesAndConnection() = runBoundedTest {
         assertBadInputDropped(WifiPayloadCipher.ChaCha20Poly1305) { d ->
             d.sendPreamble(WifiTransferPreamble.defaultToken("wrong"))
             d.sendBinary(cipher(WifiPayloadCipher.ChaCha20Poly1305).seal(0, byteArrayOf(1)))
@@ -192,7 +192,7 @@ class WifiSoftApMockServerTest {
     }
 
     @Test
-    fun frameBeforePreamble_isTreatedAsPreambleAndRejected() = runTest20 {
+    fun frameBeforePreamble_isTreatedAsPreambleAndRejected() = runBoundedTest {
         assertBadInputDropped(WifiPayloadCipher.AesGcm) { d ->
             d.sendBinary(cipher(WifiPayloadCipher.AesGcm).seal(0, byteArrayOf(1)))
         }
@@ -232,7 +232,7 @@ class WifiSoftApMockServerTest {
     }
 
     @Test
-    fun seqOrdering_outOfOrderAndReplay_areRejected() = runTest20 {
+    fun seqOrdering_outOfOrderAndReplay_areRejected() = runBoundedTest {
         for (mode in WifiPayloadCipher.entries) {
             val port = freePort()
             val (s, raw) = receiveRaw(port, mode, 3) { d, c ->
@@ -251,7 +251,7 @@ class WifiSoftApMockServerTest {
     }
 
     @Test
-    fun aeadFailure_tamperedFrameRejected() = runTest20 {
+    fun aeadFailure_tamperedFrameRejected() = runBoundedTest {
         for (mode in WifiPayloadCipher.entries) {
             val port = freePort()
             val (s, raw) = receiveRaw(port, mode, 1) { d, c ->
@@ -268,7 +268,7 @@ class WifiSoftApMockServerTest {
     }
 
     @Test
-    fun aeadFailure_midTransfer_fallsBackToBleWithExactBytes() = runTest20 {
+    fun aeadFailure_midTransfer_fallsBackToBleWithExactBytes() = runBoundedTest {
         val port = freePort()
         val subscribed = CompletableDeferred<Unit>()
         val chunks = fixture.toList().chunked(CHUNK).map { it.toByteArray() }
@@ -300,7 +300,7 @@ class WifiSoftApMockServerTest {
     }
 
     @Test
-    fun disconnectMidTransfer_timesOutAndFallsBackToBle_thenReleasesPort() = runTest20 {
+    fun disconnectMidTransfer_timesOutAndFallsBackToBle_thenReleasesPort() = runBoundedTest {
         val port = freePort()
         val server = JavaWebsocketTransferServer()
         val subscribed = CompletableDeferred<Unit>()
@@ -325,7 +325,7 @@ class WifiSoftApMockServerTest {
     }
 
     @Test
-    fun deviceNeverJoins_timeoutFallsBackToBle() = runTest20 {
+    fun deviceNeverJoins_timeoutFallsBackToBle() = runBoundedTest {
         val port = freePort()
         val joiner = FakeWifiSoftApJoiner()
         val outcome = WifiTransferCoordinator(
@@ -346,7 +346,7 @@ class WifiSoftApMockServerTest {
     }
 
     @Test
-    fun serverStop_releasesPort_afterSuccess() = runTest20 {
+    fun serverStop_releasesPort_afterSuccess() = runBoundedTest {
         val port = freePort()
         val s = session(WifiPayloadCipher.ChaCha20Poly1305)
         s.start("PLAUD-FAKE", "password12", port, preamble = preamble, bindHost = "127.0.0.1")
