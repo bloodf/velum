@@ -93,7 +93,9 @@ class MainScreenshotsTest {
     @get:Rule
     val composeRule = createEmptyComposeRule()
 
-    private lateinit var container: AppContainer
+    // Resume Discover queries on the UI thread, as in production (see QueryLog); unchanged rendering.
+private val templatesQueryLog = dev.velum.app.ui.templates.QueryLog()
+private lateinit var container: AppContainer
     private lateinit var modelRoot: dev.velum.ai.local.ModelStoreDir
 
     @Before
@@ -217,7 +219,7 @@ class MainScreenshotsTest {
 
     @Test
     fun templates() = capture("11-template-picker") {
-        TemplatesScreen(container, onBack = {}, onOpenTemplate = {})
+        TemplatesScreen(container, onBack = {}, onOpenTemplate = {}, queries = templatesQueryLog.wrap(container))
     }
 
     @Test
@@ -487,7 +489,7 @@ class MainScreenshotsTest {
 
     @Test
     fun darkTemplates() = capture("dark-10-templates", dark = true) {
-        TemplatesScreen(container, onBack = {}, onOpenTemplate = {})
+        TemplatesScreen(container, onBack = {}, onOpenTemplate = {}, queries = templatesQueryLog.wrap(container))
     }
 
     @Test

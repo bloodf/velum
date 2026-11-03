@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.velum.app.di.AppContainer
 import dev.velum.app.i18n.LocalStrings
+import dev.velum.app.i18n.countText
 import dev.velum.app.i18n.formatFixed
 import dev.velum.app.ui.DownloadWipeResult
 import dev.velum.app.platform.shareText
@@ -50,9 +51,8 @@ fun StoragePrivacyScreen(
 
     LaunchedEffect(container) {
         val usage = container.repository.storageUsage()
-        usageLabel = strings.settingsUi.storageUsageFormat
-            .replace("%d", usage.recordingCount.toString())
-                .replace("%s", formatStorageBytes(usage.bytesClaimed))
+        usageLabel = countText(usage.recordingCount, strings.settingsUi.storageUsageFormatOne, strings.settingsUi.storageUsageFormat)
+            .replace("%s", formatStorageBytes(usage.bytesClaimed))
     }
 
     if (confirmWipe) {
@@ -71,8 +71,7 @@ fun StoragePrivacyScreen(
                                 DownloadWipeResult.StillRunning -> strings.settingsUi.wipeAllDataDownloadRunning
                             }
                             val usage = container.repository.storageUsage()
-                            usageLabel = strings.settingsUi.storageUsageFormat
-                                .replace("%d", usage.recordingCount.toString())
+                            usageLabel = countText(usage.recordingCount, strings.settingsUi.storageUsageFormatOne, strings.settingsUi.storageUsageFormat)
                                 .replace("%s", formatStorageBytes(usage.bytesClaimed))
                         }
                     },

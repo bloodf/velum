@@ -36,6 +36,8 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 /**
@@ -103,6 +105,14 @@ class VelumApplication : Application() {
                     repository = built.repository,
                     settings = built.settingsRepository,
                 )
+                // Channel names are stored by the system; re-publish them when the in-app language changes.
+                appScope.launch {
+                    built.settingsRepository.preferences.map { it.appLanguage }.distinctUntilChanged().collect {
+                        MicRecordingService.ensureNotificationChannel(appContext)
+                        DownloadProgressNotifier.ensureChannel()
+                        dev.velum.ai.pipeline.RecordingProcessWorker.ensureProcessingChannel(appContext)
+                    }
+                }
                 cleanupThenPublish(
                     built = built,
                     cleanup = { c ->
