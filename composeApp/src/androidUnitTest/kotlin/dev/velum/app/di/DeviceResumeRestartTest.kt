@@ -570,8 +570,9 @@ class DeviceResumeRestartTest {
             awaitReadFailCount(2)
             vm.downloadSession(session) // the third failure in a row
             runBlocking { withTimeout(20_000) { while (partials.list()!!.any { it.endsWith(".partial") }) delay(5) } }
-            assertNull(readFailCount(), "the count goes with the partial")
             runBlocking { withTimeout(20_000) { while (vm.sessionUi.value.statusMessage != DeviceUiCopy.savedDownloadUnreadable("en")) delay(5) } }
+            // After the status, which is set once the delete has finished: .partial goes first, so it says nothing.
+            assertNull(readFailCount(), "the count goes with the partial")
             failing = false
             vm.downloadSession(session)
             awaitOutcome(vm)
