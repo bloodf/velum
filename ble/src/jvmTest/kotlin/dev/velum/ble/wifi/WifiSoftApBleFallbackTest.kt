@@ -171,9 +171,11 @@ class WifiSoftApBleFallbackTest {
 
     @Test
     fun aeadFailureMidTransfer_fallsBackToRealBleDownload_withExactBytes() = runBoundedTest {
+        val started = System.nanoTime()
         val (outcome, ble, joiner) = transfer(wifiTimeoutMs = 10_000, good = 2, corruptNext = true)
         assertIs<WifiTransferCoordinator.Outcome.BleFallback>(outcome)
-        assertEquals("wifi_frame_rejected", outcome.reason)
+        // Failed once on CI with an unknown reason; the time tells a timeout from an early failure.
+        assertEquals("wifi_frame_rejected", outcome.reason, "after ${(System.nanoTime() - started) / 1_000_000} ms")
         assertTrue(ble.frames > 0, "BLE path must actually have run")
         assertEquals(1, joiner.joinCount, "SoftAP must have been joined before it was left")
         assertTrue(!joiner.joined, "SoftAP must be left after failure")
