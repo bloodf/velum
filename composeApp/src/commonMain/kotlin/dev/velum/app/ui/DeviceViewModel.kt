@@ -173,6 +173,10 @@ class DeviceViewModel(
         }
     }
 
+    internal suspend fun awaitDownloadEnd() {
+        downloadJob?.join()
+    }
+
     fun cancelDownload() {
         val locale = localeTag()
         downloadJob?.let { it.cancel(); cancelledJob = it }
