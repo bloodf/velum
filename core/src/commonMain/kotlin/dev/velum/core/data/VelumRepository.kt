@@ -552,13 +552,14 @@ class VelumRepository(
         transcript: String? = null,
         summaryMarkdown: String? = null,
     ) = withContext(dbContext) {
-        db.transaction {
-            val current = q.selectRecordingById(id).executeAsOneOrNull() ?: return@transaction
+        val changed = db.transactionWithResult {
+            val current = q.selectRecordingById(id).executeAsOneOrNull() ?: return@transactionWithResult false
             val nextTranscript = transcript ?: current.transcript
             val nextSummary = summaryMarkdown ?: current.summary_markdown
             q.updateProcessingCheckpoint(status, nextTranscript, nextSummary, id)
-            reindexRecording(id)
+            true
         }
+        if (changed) tryIndex { reindexRecording(id) }
     }
 
     suspend fun getMeta(key: String): String? = withContext(dbContext) {
@@ -721,7 +722,7 @@ class VelumRepository(
             q.deleteVersionsForRecording(id)
             q.deleteSpeakersForRecording(id)
             q.deleteRecordingHard(id)
-            if (ftsAvailable) FtsIndex.deleteRecording(driver, id)
+            tryIndex { if (ftsAvailable) FtsIndex.deleteRecording(driver, id) }
         }
         q.deleteAllCustomTemplates()
         q.deleteAllAutoflows()
@@ -731,7 +732,7 @@ class VelumRepository(
         // Clear seed marker so maybeSeed re-inserts default AutoFlow + builtins.
         SeedData.clearSeedMarker(db)
         SeedData.maybeSeed(db)
-        if (ftsAvailable) rebuildFtsIndex()
+        tryIndex { if (ftsAvailable) rebuildFtsIndex() }
         audioPaths.forEach { path ->
             runCatching { deleteLocalFile(path) }
         }
@@ -941,7 +942,7 @@ class VelumRepository(
         createdAt: Long = epochSeconds(),
     ): String = withContext(dbContext) {
         val resolvedVersionId = versionId ?: newSummaryVersionId(recordingId)
-        db.transactionWithResult {
+        val saved = db.transactionWithResult {
             ensureBaselineVersionLocked(recordingId)
             q.clearActiveVersionsForRecording(recordingId)
             q.insertSummaryVersion(
@@ -954,31 +955,33 @@ class VelumRepository(
                 is_active = 1,
             )
             q.updateSummary(markdown, recordingId)
-            reindexRecording(recordingId)
             resolvedVersionId
         }
+        tryIndex { reindexRecording(recordingId) }
+        saved
     }
 
     suspend fun activateSummaryVersion(recordingId: String, versionId: String) =
         withContext(dbContext) {
-            db.transaction {
+            val changed = db.transactionWithResult {
                 val version = q.getSummaryVersionById(versionId, recordingId).executeAsOneOrNull()
-                    ?: return@transaction
+                    ?: return@transactionWithResult false
                 q.clearActiveVersionsForRecording(recordingId)
                 q.setVersionActive(versionId, recordingId)
                 q.updateSummary(version.markdown, recordingId)
-                reindexRecording(recordingId)
+                true
             }
+            if (changed) tryIndex { reindexRecording(recordingId) }
         }
 
     suspend fun deleteSummaryVersion(recordingId: String, versionId: String) =
         withContext(dbContext) {
-            db.transaction {
+            val summaryChanged = db.transactionWithResult {
                 val version = q.getSummaryVersionById(versionId, recordingId).executeAsOneOrNull()
-                    ?: return@transaction
+                    ?: return@transactionWithResult false
                 val wasActive = version.is_active != 0L
                 q.deleteSummaryVersion(versionId, recordingId)
-                if (!wasActive) return@transaction
+                if (!wasActive) return@transactionWithResult false
                 val remaining = q.selectVersionsForRecording(recordingId).executeAsList()
                 val fallback = remaining.firstOrNull()
                 if (fallback != null) {
@@ -988,8 +991,9 @@ class VelumRepository(
                 } else {
                     q.updateSummary(null, recordingId)
                 }
-                reindexRecording(recordingId)
+                true
             }
+            if (summaryChanged) tryIndex { reindexRecording(recordingId) }
         }
 
     /** Snapshot current [Recording.summary_markdown] if non-blank and no versions exist yet. */

@@ -174,6 +174,7 @@ object FtsIndex {
         driver.execute(identifier = null, sql = "DELETE FROM template_fts", parameters = 0)
     }
 
+    /** Delete + insert, not atomic by itself: VelumRepository wraps the pair in db.transaction. */
     fun upsertRecording(
         driver: SqlDriver,
         id: String,
@@ -181,22 +182,20 @@ object FtsIndex {
         transcript: String?,
         summaryMarkdown: String?,
     ) {
-        run {
-            driver.execute(
-                identifier = null,
-                sql = "DELETE FROM recording_fts WHERE recording_id = ?",
-                parameters = 1,
-            ) { bindString(0, id) }
-            driver.execute(
-                identifier = null,
-                sql = "INSERT INTO recording_fts(recording_id, title, transcript, summary_markdown) VALUES (?, ?, ?, ?)",
-                parameters = 4,
-            ) {
-                bindString(0, id)
-                bindString(1, title)
-                bindString(2, transcript.orEmpty())
-                bindString(3, summaryMarkdown.orEmpty())
-            }
+        driver.execute(
+            identifier = null,
+            sql = "DELETE FROM recording_fts WHERE recording_id = ?",
+            parameters = 1,
+        ) { bindString(0, id) }
+        driver.execute(
+            identifier = null,
+            sql = "INSERT INTO recording_fts(recording_id, title, transcript, summary_markdown) VALUES (?, ?, ?, ?)",
+            parameters = 4,
+        ) {
+            bindString(0, id)
+            bindString(1, title)
+            bindString(2, transcript.orEmpty())
+            bindString(3, summaryMarkdown.orEmpty())
         }
     }
 
@@ -222,26 +221,24 @@ object FtsIndex {
          */
         replaceExisting: Boolean = true,
     ) {
-        run {
-            if (replaceExisting) {
-                driver.execute(
-                    identifier = null,
-                    sql = "DELETE FROM template_fts WHERE template_id = ?",
-                    parameters = 1,
-                ) { bindString(0, id) }
-            }
+        if (replaceExisting) {
             driver.execute(
                 identifier = null,
-                sql = "INSERT INTO template_fts(template_id, name, description, category, system_prompt, tags) VALUES (?, ?, ?, ?, ?, ?)",
-                parameters = 6,
-            ) {
-                bindString(0, id)
-                bindString(1, name)
-                bindString(2, description)
-                bindString(3, category)
-                bindString(4, systemPrompt)
-                bindString(5, tags)
-            }
+                sql = "DELETE FROM template_fts WHERE template_id = ?",
+                parameters = 1,
+            ) { bindString(0, id) }
+        }
+        driver.execute(
+            identifier = null,
+            sql = "INSERT INTO template_fts(template_id, name, description, category, system_prompt, tags) VALUES (?, ?, ?, ?, ?, ?)",
+            parameters = 6,
+        ) {
+            bindString(0, id)
+            bindString(1, name)
+            bindString(2, description)
+            bindString(3, category)
+            bindString(4, systemPrompt)
+            bindString(5, tags)
         }
     }
 

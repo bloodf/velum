@@ -90,4 +90,40 @@ class DeviceSessionIndexFailureTest {
             real.close()
         }
     }
+
+    /** Generated summaries, version switches/deletes, processing checkpoints and a wipe all commit even if the index fails. */
+    @Test
+    fun summaryVersions_checkpoints_andWipe_survivedAFailingIndex() = runBlocking {
+        val real = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        VelumDatabase.Schema.create(real)
+        var failIndex = false
+        val driver = object : SqlDriver by real {
+            override fun execute(identifier: Int?, sql: String, parameters: Int, binders: (SqlPreparedStatement.() -> Unit)?): QueryResult<Long> {
+                if (failIndex && (sql.contains("recording_fts") || sql.contains("template_fts"))) throw IllegalStateException("index write failed")
+                return real.execute(identifier, sql, parameters, binders)
+            }
+        }
+        try {
+            val repo = VelumRepository(VelumDatabase(driver), driver)
+            repo.insertDeviceSessionRecording(recording("rec-1"))
+            failIndex = true
+
+            val v1 = repo.saveSummaryVersion("rec-1", "## first", null, "")
+            val v2 = repo.saveSummaryVersion("rec-1", "## second", null, "")
+            assertEquals("## second", repo.getRecording("rec-1")?.summary_markdown)
+            repo.activateSummaryVersion("rec-1", v1)
+            assertEquals("## first", repo.getRecording("rec-1")?.summary_markdown)
+            repo.deleteSummaryVersion("rec-1", v1)
+            assertEquals("## second", repo.getRecording("rec-1")?.summary_markdown)
+            assertEquals(listOf(v2), repo.getSummaryVersions("rec-1").map { it.id }.filter { it == v2 })
+            repo.updateProcessingCheckpoint("rec-1", "ready", transcript = "final text")
+            assertEquals("final text", repo.getRecording("rec-1")?.transcript)
+            assertEquals("1", repo.getMeta(VelumRepository.META_FTS_DIRTY))
+
+            repo.wipeAllUserData()
+            assertNull(repo.getRecording("rec-1"))
+        } finally {
+            real.close()
+        }
+    }
 }
