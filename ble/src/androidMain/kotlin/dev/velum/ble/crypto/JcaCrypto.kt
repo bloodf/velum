@@ -2,11 +2,14 @@ package dev.velum.ble.crypto
 
 import dev.velum.protocol.Bytes
 import dev.velum.protocol.ChaCha20
+import dev.velum.protocol.ChaCha20Poly1305
 import dev.velum.protocol.FileDecryptor
 import dev.velum.protocol.Protocol20SessionSecret
 import dev.velum.protocol.SessionCipher
 import java.security.KeyFactory
 import java.security.PrivateKey
+import java.security.GeneralSecurityException
+import java.security.ProviderException
 import java.security.PublicKey
 import java.security.spec.PKCS8EncodedKeySpec
 import java.security.spec.X509EncodedKeySpec
@@ -24,6 +27,27 @@ actual fun createFileDecryptor(): FileDecryptor = JcaFileDecryptor()
  * JCA-backed protocol-20 crypto (ChaCha20-Poly1305 + RSA PKCS#1 v1.5).
  */
 class JcaSessionCipher : SessionCipher {
+    /**
+     * Android documents ChaCha20/Poly1305 from API 28, and minSdk is 26 (#226). Without a usable platform cipher,
+     * use the Kotlin AEAD, which has the same output. Probed per instance, not cached globally. The probe seals the
+     * RFC 8439 section 2.8.2 message with the platform cipher and compares it with the fixed sealed bytes (not with
+     * the Kotlin code, so a bug there cannot discard a correct platform cipher). A provider that is missing, throws
+     * (any [GeneralSecurityException] or [ProviderException]) or ignores the IV gets the Kotlin path instead of
+     * failing every real call. Not logged here (plain JUnit tests build this class and `android.util.Log` is not
+     * mocked); read [usesPlatformChaCha] to see the path.
+     */
+    val usesPlatformChaCha: Boolean = try {
+        val cipher = Cipher.getInstance("ChaCha20-Poly1305")
+        cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(PROBE_KEY, "ChaCha20"), IvParameterSpec(PROBE_NONCE))
+        cipher.updateAAD(PROBE_AAD)
+        cipher.doFinal(PROBE_PLAIN).contentEquals(PROBE_SEALED)
+    } catch (_: GeneralSecurityException) {
+        // NoSuchAlgorithm / NoSuchPadding / InvalidKey / InvalidAlgorithmParameter: no usable cipher.
+        false
+    } catch (_: ProviderException) {
+        false
+    }
+
     override fun rsaDecryptPkcs1(privateKeyPem: String, ciphertext: ByteArray): ByteArray {
         val cipher = Cipher.getInstance("RSA/ECB/PKCS1Padding")
         cipher.init(Cipher.DECRYPT_MODE, parsePrivateKey(privateKeyPem))
@@ -44,6 +68,7 @@ class JcaSessionCipher : SessionCipher {
     ): ByteArray? {
         // Not left to the provider: what it throws for this differs (see AesGcmWifiFrameCipher.open).
         if (ciphertextAndTag.size < AEAD_TAG_BYTES) return null
+        if (!usesPlatformChaCha) return ChaCha20Poly1305.open(key, nonce, aad, ciphertextAndTag)
         return try {
             val cipher = Cipher.getInstance("ChaCha20-Poly1305")
             cipher.init(
@@ -65,6 +90,7 @@ class JcaSessionCipher : SessionCipher {
         aad: ByteArray,
         plaintext: ByteArray,
     ): ByteArray {
+        if (!usesPlatformChaCha) return ChaCha20Poly1305.seal(key, nonce, aad, plaintext)
         val cipher = Cipher.getInstance("ChaCha20-Poly1305")
         cipher.init(
             Cipher.ENCRYPT_MODE,
@@ -250,5 +276,25 @@ fun encodePem(label: String, der: ByteArray): String {
     val b64 = Base64.getMimeEncoder(64, "\n".toByteArray()).encodeToString(der)
     return "-----BEGIN $label-----\n$b64\n-----END $label-----"
 }
+
+private fun hexBytes(s: String): ByteArray {
+    val h = s.filter { !it.isWhitespace() }
+    return ByteArray(h.length / 2) { h.substring(it * 2, it * 2 + 2).toInt(16).toByte() }
+}
+
+// RFC 8439 section 2.8.2, used as the known-answer probe for the platform cipher.
+private val PROBE_KEY = ByteArray(32) { (0x80 + it).toByte() }
+private val PROBE_NONCE = hexBytes("070000004041424344454647")
+private val PROBE_AAD = hexBytes("50515253c0c1c2c3c4c5c6c7")
+private val PROBE_PLAIN = (
+    "Ladies and Gentlemen of the class of '99: If I could offer you only one tip " +
+        "for the future, sunscreen would be it."
+    ).encodeToByteArray()
+private val PROBE_SEALED = hexBytes(
+    "d31a8d34648e60db7b86afbc53ef7ec2a4aded51296e08fea9e2b5a736ee62d6" +
+        "3dbea45e8ca9671282fafb69da92728b1a71de0a9e060b2905d6a5b67ecd3b36" +
+        "92ddbd7f2d778b8c9803aee328091b58fab324e4fad675945585808b4831d7bc" +
+        "3ff4def08e4b7a9de576d26586cec64b61161ae10b594f09e26a7e902ecbd0600691",
+)
 
 private const val AEAD_TAG_BYTES = 16
