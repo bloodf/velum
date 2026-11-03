@@ -94,7 +94,7 @@ Transcriber  ── LocalTranscriber (sherpa-onnx OfflineRecognizer on Android)
              └─ OpenAiTranscriber (MissingApiKeyException when key absent)
 
 Streaming    ── OnlineRecognizer when streaming pack detected; else overlapping Offline windows
-             └─ FakeStreamingTranscriber on JVM (tests / live demo without models)
+             └─ none on JVM/iOS (no fake; live pane says no model)
 
 Diarizer     ── LocalDiarizer (OfflineSpeakerDiarization + VoiceProfileStore cosine match)
              └─ OpenAiDiarizer (UnsupportedOperationException — Local required)
