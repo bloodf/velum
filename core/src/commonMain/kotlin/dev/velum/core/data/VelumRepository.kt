@@ -44,7 +44,8 @@ class VelumRepository(
      * single shared Transaction object: two threads in a transaction (or a raw BEGIN against another
      * thread's transaction) fail with "cannot start a transaction within a transaction" or a
      * ConcurrentModificationException (#208). Serializing also means an observer reacting to a new row
-     * runs only after the insert and its index write completed.
+     * runs only after the insert call, including its index attempt, has returned. Reads share this
+     * dispatcher too, so they no longer run in parallel.
      */
     private val dbContext = Dispatchers.Default.limitedParallelism(1)
 
@@ -53,6 +54,12 @@ class VelumRepository(
 
     /** Why FTS is unavailable (exception class only), for platform logging; null when available. */
     val ftsFailure: String?
+
+    /**
+     * Called with the exception class name (never row text) when an index write fails after its row was
+     * committed. The index is then flagged stale and rebuilt on the next FTS launch.
+     */
+    var onIndexFailure: ((String) -> Unit)? = null
 
     /** Exception class of a failed fts_dirty rebuild (index stays stale, flag kept, retried next open); else null. */
     var ftsRebuildFailure: String? = null
@@ -215,15 +222,7 @@ class VelumRepository(
     /** Fails (never replaces) when the device session already has a row. */
     suspend fun insertDeviceSessionRecording(row: Recording) = withContext(dbContext) {
         q.insertDeviceSessionRecording(row)
-        // The row stays even if indexing fails (its audio file is already on disk): flag the index
-        // stale so the next FTS launch rebuilds it.
-        try {
-            indexRecording(row.id, row.title, row.transcript, row.summary_markdown)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            q.setMeta(META_FTS_DIRTY, "1")
-        }
+        tryIndex { indexRecording(row.id, row.title, row.transcript, row.summary_markdown) }
     }
 
     /** Point an existing device-session row at re-downloaded audio; title/transcript/summary are kept. */
@@ -456,7 +455,7 @@ class VelumRepository(
 
     suspend fun updateRecordingTitle(id: String, title: String) = withContext(dbContext) {
         q.updateRecordingTitle(title, id)
-        reindexRecording(id)
+        tryIndex { reindexRecording(id) }
     }
 
     suspend fun addMemory(id: String, content: String) = withContext(dbContext) {
@@ -516,17 +515,13 @@ class VelumRepository(
     }
 
     suspend fun updateTranscript(id: String, transcript: String) = withContext(dbContext) {
-        db.transaction {
-            q.updateTranscript(transcript, id)
-            reindexRecording(id)
-        }
+        q.updateTranscript(transcript, id)
+        tryIndex { reindexRecording(id) }
     }
 
     suspend fun updateSummary(id: String, summaryMarkdown: String) = withContext(dbContext) {
-        db.transaction {
-            q.updateSummary(summaryMarkdown, id)
-            reindexRecording(id)
-        }
+        q.updateSummary(summaryMarkdown, id)
+        tryIndex { reindexRecording(id) }
     }
 
     suspend fun updateStatus(id: String, status: String) = withContext(dbContext) {
@@ -630,7 +625,7 @@ class VelumRepository(
             preferred_endpoint_profile_id = preferredEndpointProfileId?.takeIf { it.isNotBlank() },
             created_at = epochSeconds(),
         )
-        indexTemplate(id, n, d, c, systemPrompt, tagsEncoded)
+        tryIndex { indexTemplate(id, n, d, c, systemPrompt, tagsEncoded) }
     }
 
     /**
@@ -696,7 +691,7 @@ class VelumRepository(
 
     suspend fun deleteTemplate(id: String) = withContext(dbContext) {
         q.deleteTemplate(id)
-        if (ftsAvailable) FtsIndex.deleteTemplate(driver, id)
+        tryIndex { if (ftsAvailable) FtsIndex.deleteTemplate(driver, id) }
     }
 
     suspend fun deleteRecordingHard(id: String) = withContext(dbContext) {
@@ -704,7 +699,7 @@ class VelumRepository(
         q.deleteSpeakersForRecording(id)
         q.deleteRecordingHard(id)
         q.deleteMeta(processingErrorKey(id))
-        if (ftsAvailable) FtsIndex.deleteRecording(driver, id)
+        tryIndex { if (ftsAvailable) FtsIndex.deleteRecording(driver, id) }
     }
 
     /**
@@ -807,28 +802,25 @@ class VelumRepository(
         trashed: Long = 0,
         createdAt: Long = epochSeconds(),
     ) = withContext(dbContext) {
-        // One transaction: observers (AutoFlow) only see the row once it is indexed, so their own
-        // writes never interleave with this FTS write on a shared connection.
-        db.transaction {
-            q.insertRecording(
-                id = id,
-                session_id = sessionId,
-                folder_id = folderId,
-                title = title,
-                source = source,
-                device_serial = deviceSerial,
-                started_at = startedAt,
-                duration_seconds = durationSeconds,
-                size_bytes = sizeBytes,
-                local_path = localPath,
-                transcript = transcript,
-                summary_markdown = summaryMarkdown,
-                status = status,
-                trashed = trashed,
-                created_at = createdAt,
-            )
-            indexRecording(id, title, transcript, summaryMarkdown)
-        }
+        // Commit the row first; a failed index write must not undo it (see tryIndex).
+        q.insertRecording(
+            id = id,
+            session_id = sessionId,
+            folder_id = folderId,
+            title = title,
+            source = source,
+            device_serial = deviceSerial,
+            started_at = startedAt,
+            duration_seconds = durationSeconds,
+            size_bytes = sizeBytes,
+            local_path = localPath,
+            transcript = transcript,
+            summary_markdown = summaryMarkdown,
+            status = status,
+            trashed = trashed,
+            created_at = createdAt,
+        )
+        tryIndex { indexRecording(id, title, transcript, summaryMarkdown) }
     }
 
     /**
@@ -864,6 +856,22 @@ class VelumRepository(
                     )
                 }
             }
+        }
+    }
+
+    /**
+     * For index writes made after their row was committed (outside any transaction). The row is the
+     * only copy of the user's data, so an index failure must not roll it back or fail the caller: flag
+     * the index stale instead, so the next FTS launch rebuilds it.
+     */
+    private fun tryIndex(block: () -> Unit) {
+        try {
+            block()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            q.setMeta(META_FTS_DIRTY, "1")
+            onIndexFailure?.invoke(e::class.simpleName ?: "Exception")
         }
     }
 

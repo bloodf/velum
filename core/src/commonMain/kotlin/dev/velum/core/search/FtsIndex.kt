@@ -181,7 +181,7 @@ object FtsIndex {
         transcript: String?,
         summaryMarkdown: String?,
     ) {
-        inTransaction(driver) {
+        run {
             driver.execute(
                 identifier = null,
                 sql = "DELETE FROM recording_fts WHERE recording_id = ?",
@@ -222,7 +222,7 @@ object FtsIndex {
          */
         replaceExisting: Boolean = true,
     ) {
-        inTransaction(driver) {
+        run {
             if (replaceExisting) {
                 driver.execute(
                     identifier = null,
@@ -284,12 +284,4 @@ object FtsIndex {
         ) {
             bindString(0, matchQuery)
         }.value
-
-    /**
-     * Runs the delete+insert pair. It issues no BEGIN/COMMIT of its own: on the single shared JDBC
-     * connection a raw BEGIN collides with any other transaction ("cannot start a transaction within a
-     * transaction", #208). Callers that need the pair atomic wrap it in the database's Transacter
-     * (VelumRepository does).
-     */
-    private inline fun inTransaction(@Suppress("UNUSED_PARAMETER") driver: SqlDriver, block: () -> Unit) = block()
 }

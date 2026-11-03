@@ -53,4 +53,12 @@ class FtsConcurrentWritesTest {
             handle.driver.close()
         }
     }
+
+    /** Every repository call must stay on the serial dispatcher; a stray Dispatchers.Default call would bring the races back. */
+    @Test
+    fun repositoryNeverSwitchesToAParallelDispatcher() {
+        val source = java.io.File("src/commonMain/kotlin/dev/velum/core/data/VelumRepository.kt").readText()
+        assertTrue(source.length > 1000, "VelumRepository.kt not found from ${java.io.File("").absolutePath}")
+        assertTrue(!source.contains("withContext(Dispatchers"), "use withContext(dbContext)")
+    }
 }
