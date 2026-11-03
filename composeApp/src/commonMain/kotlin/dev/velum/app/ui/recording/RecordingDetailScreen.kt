@@ -88,7 +88,6 @@ import dev.velum.app.platform.AudioPlayer
 import dev.velum.app.platform.MicInputSource
 import dev.velum.app.platform.MicMarkerResult
 import dev.velum.app.platform.MicStartResult
-import dev.velum.app.platform.persistLiveMarkers
 import dev.velum.app.platform.createAudioPlayer
 import dev.velum.app.platform.MicStopResult
 import dev.velum.app.i18n.processingWarningText
@@ -1276,6 +1275,11 @@ internal fun LiveTranscriptPane(
             usingMic = false
             if (container.micCapture.isCapturing) micErrorState = MicError.StartFailed
         }
+    }
+    // Publish the savable live text so a Stop from the notification, with this pane open or not, keeps it.
+    val publishedGap = previewHasGap.value
+    LaunchedEffect(partial, publishedGap) {
+        container.micRecordings.publishLiveText(recordingId, if (publishedGap) null else savableLiveTranscript(partial))
     }
     DisposableEffect(recordingId) {
         onDispose {

@@ -83,6 +83,15 @@ class MicRecordingController(private val capture: MicCapture, private val canSta
 
     internal suspend fun <T> inspectInterruptedDrafts(action: suspend () -> T): T = mutex.withLock { action() }
 
+    @kotlin.concurrent.Volatile private var live: Pair<String, String?>? = null
+
+    /** Latest savable live transcript the pane holds, kept after the pane is left so a notification stop can save it. */
+    fun publishLiveText(recordingId: String, text: String?) { live = recordingId to text }
+    fun liveText(recordingId: String): String? = live?.takeIf { it.first == recordingId }?.second
+
+    /** Runs [action] under the same lock as finalize, so a write cannot interleave with Stop. */
+    internal suspend fun <T> underLock(action: suspend () -> T): T = mutex.withLock { action() }
+
     @kotlin.concurrent.Volatile private var uiStopId: String? = null
 
     /** The in-app Stop is about to finalize this recording itself (with the live text). */
@@ -90,6 +99,9 @@ class MicRecordingController(private val capture: MicCapture, private val canSta
     fun isUiStopping(recordingId: String): Boolean = uiStopId == recordingId
 
     internal fun release(owned: OwnedMicRecording) {
-        if (_owner.compareAndSet(owned, null) && uiStopId == owned.recordingId) uiStopId = null
+        if (_owner.compareAndSet(owned, null)) {
+            if (uiStopId == owned.recordingId) uiStopId = null
+            if (live?.first == owned.recordingId) live = null
+        }
     }
 }

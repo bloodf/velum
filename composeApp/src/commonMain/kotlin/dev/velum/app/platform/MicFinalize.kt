@@ -50,13 +50,20 @@ suspend fun finalizeMicRecording(
     }
 }
 
-/** Markers have no other copy, so they are saved even when nothing was transcribed. */
-/** Saves the current markers into the transcript right away; safe to repeat (the section is replaced). */
+/**
+ * Saves the current markers into the transcript right away; safe to repeat (the section is replaced).
+ * Runs under the finalize lock and only while the recording is still owned, so it can neither interleave
+ * with Stop nor overwrite the final live text after it.
+ */
 suspend fun persistLiveMarkers(container: AppContainer, recordingId: String) {
-    val markers = container.micCapture.markers
-    if (markers.isNotEmpty()) saveLiveText(container, recordingId, null, markers)
+    container.micRecordings.underLock {
+        if (container.micRecordings.owner.value?.recordingId != recordingId) return@underLock
+        val markers = container.micCapture.markers
+        if (markers.isNotEmpty()) saveLiveText(container, recordingId, null, markers)
+    }
 }
 
+/** Markers have no other copy, so they are saved even when nothing was transcribed. */
 private suspend fun saveLiveText(container: AppContainer, recordingId: String, transcript: String?, markers: List<MicMarker>) {
     if (markers.isEmpty()) {
         transcript?.let { container.repository.updateTranscript(recordingId, it) }
@@ -88,7 +95,10 @@ suspend fun observeMicFailures(container: AppContainer, onFailure: suspend (Stri
                 // A Stop pressed in the app finalizes itself with the live text, so leave that one alone.
                 is MicSessionState.Stopped ->
                     if (state.session == owned.session && !container.micRecordings.isUiStopping(owned.recordingId)) {
-                        val stopped = finalizeMicRecording(container, owned.recordingId, owned.session.absolutePath, owned.session)
+                        val stopped = finalizeMicRecording(
+                            container, owned.recordingId, owned.session.absolutePath, owned.session,
+                            transcript = container.micRecordings.liveText(owned.recordingId),
+                        )
                         if (stopped is MicStopResult.Failed && stopped.message.isNotBlank()) onFailure(stopped.message)
                     }
                 else -> Unit

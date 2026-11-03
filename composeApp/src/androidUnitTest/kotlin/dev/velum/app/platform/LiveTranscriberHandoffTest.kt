@@ -361,6 +361,30 @@ class LiveTranscriberHandoffTest {
     }
 
     // The in-app Stop keeps finalizing itself with the live text; the observer must not pre-empt it.
+    // The live text the pane holds is kept when the notification stops the mic.
+    @Test fun a_notification_stop_keeps_the_live_text_the_pane_holds() {
+        showPane(reportedFailures = mutableListOf())
+        modelLoad.countDown()
+        compose.waitUntil(10_000) { transcriber.starts.get() == 1 }
+        transcriber.onPartial("Words heard live")
+        compose.waitUntil(10_000) { container.micRecordings.liveText(recordingId) == "Words heard live" }
+        mic.sessions.value = MicSessionState.Stopped(File(recordingsDirectoryPath(), "$recordingId.wav").path, 1, 64, mic.starts.toLong())
+        waitOnMainLooper { queued == 1 }
+        assertEquals("Words heard live", recordingRow().transcript)
+    }
+
+    // A marker dropped just before Stop must not overwrite the final live text.
+    @Test fun a_marker_write_after_finalize_does_not_overwrite_the_final_text() {
+        showPane()
+        compose.onNodeWithContentDescription(PtBr.stopRecording).performClick()
+        modelLoad.countDown()
+        compose.waitUntil(10_000) { queued == 1 }
+        val finalText = recordingRow().transcript
+        mic.currentMarkers = mic.currentMarkers + MicMarker(offsetMs = 90_000, label = "late marker")
+        runBlocking { persistLiveMarkers(container, recordingId) }
+        assertEquals(finalText, recordingRow().transcript)
+    }
+
     @Test fun the_in_app_stop_is_not_pre_empted_by_the_stop_observer() {
         showPane(reportedFailures = mutableListOf())
         compose.onNodeWithContentDescription(PtBr.stopRecording).performClick()
