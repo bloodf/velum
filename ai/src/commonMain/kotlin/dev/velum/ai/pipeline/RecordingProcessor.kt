@@ -160,11 +160,13 @@ class RecordingProcessor(
                     } else {
                         (fileLen - pcmStart).coerceAtLeast(0L)
                     }
+                    requireSpillable(pcmLen) // before copying: a too-large file must not fill the disk first
                     copyFileRangeToPcm(src, pcmStart, pcmLen, pcmFile) { job?.ensureActive() }
                     pcmBuffer = PcmAudioBuffer.fromExistingFile(pcmFile, pcmLen)
                 } else {
                     // Neither container: raw 16 kHz mono PCM, copied in slices like the WAV data.
                     sampleRate = 16_000
+                    requireSpillable(fileLen)
                     copyFileRangeToPcm(src, 0L, fileLen, pcmFile) { job?.ensureActive() }
                     pcmBuffer = PcmAudioBuffer.fromExistingFile(pcmFile, fileLen)
                 }
@@ -594,6 +596,11 @@ class RecordingProcessor(
         }
         return WavPcmHeader(-1, -1, sampleRate)
     }
+
+    private fun requireSpillable(pcmBytes: Long) =
+        require(pcmBytes <= PcmAudioBuffer.MAX_SPILL_BYTES) {
+            "Audio is too large to process: $pcmBytes bytes exceeds ${PcmAudioBuffer.MAX_SPILL_BYTES}"
+        }
 
     /** Copy [length] bytes from [src] starting at [start] into [dest] in 256 KiB slices. */
     private fun copyFileRangeToPcm(

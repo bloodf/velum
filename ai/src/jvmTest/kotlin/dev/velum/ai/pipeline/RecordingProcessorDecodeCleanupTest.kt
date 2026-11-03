@@ -208,7 +208,7 @@ class RecordingProcessorDecodeCleanupTest {
     }
 
     @Test
-    fun unknown_extension_with_no_container_is_raw_16k_pcm_and_a_huge_file_is_never_read_whole() = runBlocking {
+    fun unknown_extension_with_no_container_is_copied_as_raw_16k_pcm_across_slices() = runBlocking {
         val raw = ByteArray(300_000) { (it % 97).toByte() } // more than one 256 KiB slice
         val captured = mutableListOf<AudioInput>()
         val h = Harness({ captured += it })
@@ -218,6 +218,23 @@ class RecordingProcessorDecodeCleanupTest {
         assertTrue(events.last() is JobProgress.Succeeded, "last=${events.last()}")
         assertContentEquals(raw, captured.single().bytes)
         assertEquals(16_000, captured.single().sampleRateHz)
+    }
+
+    @Test
+    fun a_file_over_the_spill_limit_fails_before_any_pcm_is_written() = runBlocking {
+        // Sparse: setLength reserves no disk. The size check must reject it before the slice copy starts.
+        val huge = File.createTempFile("velum-86-huge", ".bin").apply {
+            deleteOnExit()
+            java.io.RandomAccessFile(this, "rw").use { it.setLength(PcmAudioBuffer.MAX_SPILL_BYTES + 1) }
+        }
+        val h = Harness({ error("ASR must not run") })
+        h.insert("rec-86-huge", huge)
+        val events = h.processor.process("rec-86-huge", templateId = "velum.meeting", apiModelOverride = API).toList()
+        val failed = events.last() as JobProgress.Failed
+        assertTrue(failed.message.contains("too large"), failed.message)
+        assertFalse(File(spillDir("rec-86-huge"), "pcm.s16le").exists() && File(spillDir("rec-86-huge"), "pcm.s16le").length() > 0)
+        assertFalse(spillDir("rec-86-huge").exists())
+        assertTrue(huge.isFile, "source recording preserved")
     }
 
     @Test
