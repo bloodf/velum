@@ -9,6 +9,7 @@ import dev.velum.ble.fake.FakePlaudPeripheral
 import dev.velum.protocol.DeviceIdentityKeys
 import dev.velum.protocol.Protocol20SessionSecret
 import java.io.ByteArrayOutputStream
+import java.net.InetAddress
 import java.net.ServerSocket
 import java.util.zip.CRC32
 import kotlin.test.Test
@@ -52,7 +53,8 @@ class WifiSoftApBleFallbackTest {
     }
 
     private fun wifiCipher() = createWifiFrameCipher(createSessionCipher(), wifiSecret, WifiPayloadCipher.ChaCha20Poly1305)
-    private fun freePort(): Int = ServerSocket(0).use { it.localPort }
+    // On the address the server binds: on macOS a wildcard bind succeeds beside another process's loopback listener.
+    private fun freePort(): Int = ServerSocket(0, 1, InetAddress.getByName("127.0.0.1")).use { it.localPort }
     private fun crc(bytes: ByteArray): Long = CRC32().also { it.update(bytes) }.value
 
     /** Counts frames from the simulated peripheral, which only answers real client writes: the BLE path really ran. */
