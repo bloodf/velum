@@ -9,12 +9,19 @@ package dev.velum.protocol
  */
 object ChaCha20 {
     private const val BLOCK_BYTES = 64
+    private const val MAX_COUNTER = 0xFFFF_FFFFL
 
-    /** Encrypts or decrypts [data], starting at block [counter]. */
+    /**
+     * Encrypts or decrypts [data], starting at block [counter]. The 32-bit counter must not wrap inside [data]:
+     * that would reuse keystream, so it is rejected.
+     *
+     * This has no nonce guard. Never encrypt twice with the same [key] and [nonce], which reuses keystream too.
+     */
     fun xor(key: ByteArray, nonce: ByteArray, counter: Long, data: ByteArray): ByteArray {
         require(key.size == 32) { "ChaCha20 key must be 32 bytes" }
         require(nonce.size == 12) { "ChaCha20 nonce must be 12 bytes" }
-        require(counter in 0..0xFFFF_FFFFL) { "ChaCha20 counter out of range" }
+        val blocks = (data.size + BLOCK_BYTES - 1L) / BLOCK_BYTES
+        require(counter in 0..MAX_COUNTER && counter + blocks - 1 <= MAX_COUNTER) { "ChaCha20 counter out of range" }
         val state = IntArray(16)
         state[0] = 0x61707865
         state[1] = 0x3320646e

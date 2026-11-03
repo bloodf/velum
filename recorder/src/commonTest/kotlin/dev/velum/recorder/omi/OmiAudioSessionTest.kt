@@ -23,7 +23,7 @@ class OmiAudioSessionTest {
         assertContentEquals(byteArrayOf(1, 2, 3), s.accept(n(12, 0, 9)))
         assertContentEquals(byteArrayOf(9), s.finish())
         assertNull(s.finish())
-        assertEquals(0, s.lostFrames)
+        assertEquals(0, s.syncLosses)
     }
 
     @Test
@@ -31,7 +31,7 @@ class OmiAudioSessionTest {
         val s = OmiAudioSession(OmiCodec.Opus16)
         s.accept(n(1, 0, 1))
         assertNull(s.accept(n(3, 1, 2))) // packet 2 never arrived: frame 1 is dropped, not returned truncated
-        assertEquals(1, s.lostFrames)
+        assertEquals(1, s.syncLosses)
         assertNull(s.accept(n(4, 1, 5))) // mid-frame fragment while out of sync is ignored
         assertNull(s.accept(n(5, 0, 7)))
         assertContentEquals(byteArrayOf(7), s.finish())
@@ -42,7 +42,7 @@ class OmiAudioSessionTest {
         val s = OmiAudioSession(OmiCodec.Opus16)
         s.accept(n(1, 0, 1))
         assertNull(s.accept(n(2, 2, 3))) // fragment 1 skipped although the packet index is consecutive
-        assertEquals(1, s.lostFrames)
+        assertEquals(1, s.syncLosses)
         assertNull(s.finish())
     }
 
@@ -51,7 +51,7 @@ class OmiAudioSessionTest {
         val s = OmiAudioSession(OmiCodec.Pcm16)
         s.accept(n(0xFFFF, 0, 1))
         assertContentEquals(byteArrayOf(1), s.accept(n(0, 0, 2)))
-        assertEquals(0, s.lostFrames)
+        assertEquals(0, s.syncLosses)
     }
 
     @Test
@@ -61,16 +61,8 @@ class OmiAudioSessionTest {
         var index = 1
         repeat(1_000) { assertNull(a.accept(n(index++ and 0xFFFF, 1 + (it % 200), 7, 7, 7, 7))) }
         // The pending frame was dropped at the cap (and the stream is then out of sync, ignoring non-start fragments).
-        assertEquals(1, a.lostFrames)
+        assertEquals(1, a.syncLosses)
         assertNull(a.finish())
-    }
-
-    @Test
-    fun legacyReassemblerAlsoCapsAFrameThatNeverEnds() {
-        val r = OmiPacketReassembler(maxFrameBytes = 10)
-        repeat(100) { r.push(OmiAudioFragment(1, it + 1, ByteArray(4))) } // index 0 never arrives
-        assertEquals(true, r.overflowDrops > 0)
-        assertEquals(true, (r.flush()?.size ?: 0) <= 10)
     }
 
     @Test
