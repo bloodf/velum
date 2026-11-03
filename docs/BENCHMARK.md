@@ -55,7 +55,7 @@ and `whisper-tiny`; `whisper-tiny` is the default "standard" Whisper until the o
   by `BenchmarkReportTest`).
 - **peak RAM**: process peak resident set (`VmHWM` in `/proc/self/status`), reset before each model by writing `5` to
   `/proc/self/clear_refs`; the run fails if the reset does not take. It is process-wide (app and test): app startup memory still resident at the reset is part of the first model's peak, so run a small warm-up model first or compare later models.
-- Report fields: device, Android release/SDK, ABI, emulator flag, models, workload, audio path, window sizes, core count.
+- Report fields: device, Android release/SDK, ABI, emulator flag, models, workload, audio path, window sizes, core count, and the SHA-256 of the exact PCM clip (`audioSha256`) and of the fixed transcript (`summaryTranscriptSha256`). A run is only reproducible with the same hashes; the report is rejected without them.
 
 ## CI
 The pure parts (RTF, required fields, failure on missing data) run in `:ai:jvmTest`. Running the models in CI needs the

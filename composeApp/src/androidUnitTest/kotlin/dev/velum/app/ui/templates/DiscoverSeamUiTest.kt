@@ -6,16 +6,21 @@ import androidx.activity.compose.setContent
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.isEnabled
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.test.performScrollToKey
 import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.test.performTextClearance
+import androidx.compose.ui.test.performTextReplacement
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import dev.velum.ai.local.ModelStoreDir
@@ -96,6 +101,39 @@ class DiscoverSeamUiTest {
     }
 
     private data class PageCall(val limit: Int, val offset: Int)
+
+    @Test
+    fun typing_waits_for_the_debounce_and_clearing_the_search_applies_at_once() {
+        val (container, root) = seeded()
+        val searches = CopyOnWriteArrayList<String>()
+        val real = container.repository.discoverQueries()
+        val queries = DiscoverQueries(
+            page = { f, limit, offset -> searches += f.search; real.page(f, limit, offset) },
+            count = real.count, facets = real.facets,
+        )
+        try {
+            show(container, queries)
+            waiting("first page") { reaches("pg-000") }
+            compose.onNodeWithContentDescription(PtBr.search).performClick()
+            waiting("search field") { compose.onAllNodes(hasSetTextAction()).fetchSemanticsNodes().isNotEmpty() }
+            val field = compose.onNode(hasSetTextAction())
+
+            compose.mainClock.autoAdvance = false
+            field.performTextReplacement("PG 001")
+            compose.mainClock.advanceTimeBy(SEARCH_DEBOUNCE_MS / 2)
+            assertTrue("PG 001" !in searches, "typing applied before the debounce: $searches")
+            compose.mainClock.advanceTimeBy(SEARCH_DEBOUNCE_MS)
+            waiting("the typed search") { searches.lastOrNull() == "PG 001" }
+
+            // Well under the debounce: only the frames the clear needs to recompose and restart the page query.
+            field.performTextClearance()
+            compose.mainClock.advanceTimeBy(SEARCH_DEBOUNCE_MS / 4)
+            waiting("the cleared search") { searches.lastOrNull() == "" }
+        } finally {
+            compose.mainClock.autoAdvance = true
+            finish(container, root)
+        }
+    }
 
     @Test
     fun paging_appends_with_offset_and_never_requeries_from_row_zero() {
