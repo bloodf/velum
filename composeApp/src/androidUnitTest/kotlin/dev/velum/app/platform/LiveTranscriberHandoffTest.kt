@@ -287,6 +287,41 @@ class LiveTranscriberHandoffTest {
         compose.waitUntil(10_000) { compose.onAllNodesWithText(PtBr.ux.liveModelLoading).fetchSemanticsNodes().isNotEmpty() }
     }
 
+    @Test fun the_loading_line_goes_away_once_the_model_is_ready_even_with_no_text_yet() {
+        showPane()
+        compose.waitUntil(10_000) { compose.onAllNodesWithText(PtBr.ux.liveModelLoading).fetchSemanticsNodes().isNotEmpty() }
+        modelLoad.countDown()
+        compose.waitUntil(10_000) { transcriber.starts.get() == 1 }
+        compose.waitUntil(10_000) { compose.onAllNodesWithText(PtBr.ux.liveModelLoading).fetchSemanticsNodes().isEmpty() }
+    }
+
+    @Test fun the_notice_clears_when_stop_begins_even_before_the_mic_has_stopped() {
+        mic.stopGate = kotlinx.coroutines.CompletableDeferred()
+        showPane(open = { null })
+        compose.waitUntil(10_000) { compose.onAllNodesWithText(PtBr.ux.liveNoModelNoApi).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithContentDescription(PtBr.stopRecording).performClick()
+        // The mic session is still Recording here (stop is held), so only the stopping flag can clear it.
+        compose.waitUntil(10_000) { compose.onAllNodesWithText(PtBr.ux.liveNoModelNoApi).fetchSemanticsNodes().isEmpty() }
+        assertTrue(mic.sessions.value is MicSessionState.Recording)
+        mic.stopGate.complete(Unit)
+        compose.waitUntil(10_000) { queued == 1 }
+    }
+
+    @Test fun the_notice_follows_an_api_key_added_while_the_pane_is_open() {
+        showPane(open = { null })
+        compose.waitUntil(10_000) { compose.onAllNodesWithText(PtBr.ux.liveNoModelNoApi).fetchSemanticsNodes().isNotEmpty() }
+        runBlocking { container.settingsRepository.setApiKey("synthetic-key") }
+        compose.waitUntil(10_000) { compose.onAllNodesWithText(PtBr.ux.liveNoModel).fetchSemanticsNodes().isNotEmpty() }
+    }
+
+    @Test fun a_mic_error_re_translates_on_a_language_change() {
+        mic.startResult = MicStartResult.PermissionRequired
+        showPane(open = { null }, awaitAttach = false)
+        compose.waitUntil(10_000) { compose.onAllNodesWithText(PtBr.micPermissionRationale).fetchSemanticsNodes().isNotEmpty() }
+        compose.runOnIdle { uiStrings.value = En }
+        compose.waitUntil(10_000) { compose.onAllNodesWithText(En.micPermissionRationale).fetchSemanticsNodes().isNotEmpty() }
+    }
+
     @Test fun the_no_model_notice_does_not_promise_an_api_that_is_not_set() {
         showPane(open = { null })
         compose.waitUntil(10_000) { compose.onAllNodesWithText(PtBr.ux.liveNoModelNoApi).fetchSemanticsNodes().isNotEmpty() }
@@ -492,6 +527,7 @@ class LiveTranscriberHandoffTest {
         @Volatile var currentMarkers = emptyList<MicMarker>()
         @Volatile var stopFailure: String? = null
         @Volatile var startResult: MicStartResult? = null
+        @Volatile var stopGate = kotlinx.coroutines.CompletableDeferred<Unit>().also { it.complete(Unit) }
         override var onPcmChunk: ((ByteArray) -> Unit)? = null
         @Volatile var starts = 0
         @Volatile var stops = 0
@@ -506,6 +542,7 @@ class LiveTranscriberHandoffTest {
         }
         override suspend fun stop(): MicStopResult {
             val current = session!!
+            stopGate.await()
             stopFailure?.let { message ->
                 sessions.value = MicSessionState.Failed(message, session = current)
                 return MicStopResult.Failed(message)
