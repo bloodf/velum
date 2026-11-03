@@ -6,6 +6,7 @@ import dev.velum.app.platform.PartialTransfer
 import dev.velum.app.platform.PartialTransferFileStore
 import dev.velum.app.ui.DeviceViewModel
 import dev.velum.app.ui.DownloadedSessionAudio
+import dev.velum.ble.BleTransport
 import dev.velum.ble.client.CrcStatus
 import dev.velum.ble.crypto.JcaFileDecryptor
 import dev.velum.ble.crypto.createFileDecryptor
@@ -47,6 +48,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.yield
 
 /**
  * #94 through the real [DeviceViewModel]: a partial left by an earlier process continues from its
@@ -91,10 +93,11 @@ class DeviceResumeRestartTest {
         identity: DeviceIdentityKeys = keys,
         deletePartials: () -> Unit = { PartialTransferFileStore.deleteAll(partials) },
         wipeJoinTimeout: Duration = 15.seconds,
+        transport: (FakePlaudPeripheral) -> BleTransport = { FakeBleTransport(it) },
     ): DeviceViewModel = runBlocking {
         Dispatchers.setMain(Dispatchers.Unconfined)
         val vm = DeviceViewModel(
-            FakeBleTransport(peripheral),
+            transport(peripheral),
             Importer(identity),
             persistDownloadedSession = { persist(it) },
             localeTag = { "en" },
@@ -283,6 +286,170 @@ class DeviceResumeRestartTest {
             assertEquals("rec-synthetic", vm.sessionUi.value.lastDownloadedRecordingId)
             assertContentEquals(plaintext, assertNotNull(saved))
             assertEquals(listOf(0L), fake.syncStartOffsets, "nothing is transferred again")
+        } finally { owner.clear(); Dispatchers.resetMain() }
+    }
+
+    /** Lets the VM's connection collector see Connected before connect() returns, as a real Main dispatcher does. */
+    private fun settled(fake: FakeBleTransport): BleTransport = object : BleTransport by fake {
+        override suspend fun connect(deviceId: String) {
+            fake.connect(deviceId)
+            yield()
+        }
+    }
+
+    @Test fun a_failed_download_after_a_reconnect_keeps_the_device_serial_for_the_retry() {
+        try {
+            // Keys without a serial: the advertised one is the only dedup/resume key. The mid-transfer reconnect
+            // passes through Idle, which used to forget it, so the retry opened its partial with no serial (#212).
+            val noSerial = keys.copy(serialNumber = "")
+            val opened = mutableListOf<String?>()
+            var failing = true
+            val vm = run(
+                peripheral(TransferFaults(disconnectAt = setOf(15_000)), identity = noSerial),
+                identity = noSerial,
+                transport = { p -> val fake = FakeBleTransport(p); settled(fake) },
+                open = { id, sn -> opened += sn; PartialTransferFileStore.open(partials, id, sn) },
+                persist = { audio ->
+                    val out = ByteArrayOutputStream()
+                    audio.writeDecryptedAudio { check(!failing) { "synthetic full disk" }; out.write(it) }
+                    saved = out.toByteArray()
+                    "rec-synthetic"
+                },
+            )
+            assertEquals(DeviceUiCopy.downloadFailed("en"), vm.sessionUi.value.statusMessage)
+            failing = false
+            vm.downloadSession(session)
+            awaitOutcome(vm)
+            assertEquals(listOf<String?>("881FAKE1", "881FAKE1"), opened)
+        } finally { owner.clear(); Dispatchers.resetMain() }
+    }
+
+    /** Counts connect() calls and records any made while [unwinding] is set. */
+    private class ConnectProbe(private val fake: FakeBleTransport) : BleTransport by fake {
+        @Volatile var unwinding = false
+        val connects = java.util.concurrent.atomic.AtomicInteger()
+        val connectsWhileUnwinding = java.util.concurrent.atomic.AtomicInteger()
+        override suspend fun connect(deviceId: String) {
+            connects.incrementAndGet()
+            if (unwinding) connectsWhileUnwinding.incrementAndGet()
+            fake.connect(deviceId)
+            yield()
+        }
+    }
+
+    @Test fun connect_waits_for_a_cancelled_download_that_is_still_unwinding() {
+        try {
+            val saving = CompletableDeferred<Unit>()
+            var probe: ConnectProbe? = null
+            val vm = run(
+                peripheral(),
+                transport = { p -> ConnectProbe(FakeBleTransport(p)).also { probe = it } },
+                persist = { _ ->
+                    probe!!.unwinding = true
+                    saving.complete(Unit)
+                    // A BLE write or save that ignores cancellation, then a failed save.
+                    withContext(NonCancellable) { delay(600) }
+                    probe!!.unwinding = false
+                    throw IOException("synthetic full disk")
+                },
+                await = false,
+            )
+            runBlocking {
+                withTimeout(20_000) { saving.await() }
+                vm.cancelDownload()
+                vm.connect("fake-note-pro")
+                delay(1_500)
+            }
+            assertEquals(0, probe!!.connectsWhileUnwinding.get(), "connect must wait for the cancelled download to finish")
+            assertEquals(2, probe!!.connects.get(), "and then connect")
+        } finally { owner.clear(); Dispatchers.resetMain() }
+    }
+
+    @Test fun a_queued_download_does_not_block_connect_forever_nor_get_replaced_mid_transfer() {
+        try {
+            val saving = CompletableDeferred<Unit>()
+            var probe: ConnectProbe? = null
+            val persists = java.util.concurrent.atomic.AtomicInteger()
+            val vm = run(
+                peripheral(),
+                transport = { p -> ConnectProbe(FakeBleTransport(p)).also { probe = it } },
+                persist = { _ ->
+                    // Held across both downloads: the cancelled one and the queued one right behind it.
+                    probe!!.unwinding = true
+                    saving.complete(Unit)
+                    withContext(NonCancellable) { delay(400) }
+                    if (persists.incrementAndGet() == 2) probe!!.unwinding = false
+                    throw IOException("synthetic full disk")
+                },
+                await = false,
+            )
+            runBlocking {
+                withTimeout(20_000) { saving.await() }
+                vm.cancelDownload()
+                vm.downloadSession(session) // queued behind the one that ignores cancellation: active, nothing shown
+                vm.connect("fake-note-pro")
+                delay(2_500)
+            }
+            assertEquals(2, persists.get(), "both the cancelled and the queued download ran")
+            assertEquals(0, probe!!.connectsWhileUnwinding.get(), "connect must not run while either download uses the client")
+            assertEquals(2, probe!!.connects.get(), "the explicit connect must not be ignored by a job that has not started")
+        } finally { owner.clear(); Dispatchers.resetMain() }
+    }
+
+    @Test fun connect_that_cannot_wait_for_a_stuck_download_says_so() {
+        try {
+            val saving = CompletableDeferred<Unit>()
+            var probe: ConnectProbe? = null
+            val vm = run(
+                peripheral(),
+                transport = { p -> ConnectProbe(FakeBleTransport(p)).also { probe = it } },
+                persist = { _ ->
+                    saving.complete(Unit)
+                    withContext(NonCancellable) { delay(2_000) }
+                    throw IOException("synthetic full disk")
+                },
+                await = false,
+                wipeJoinTimeout = 200.milliseconds,
+            )
+            runBlocking {
+                withTimeout(20_000) { saving.await() }
+                vm.cancelDownload()
+                vm.connect("fake-note-pro")
+                delay(600)
+                assertEquals(DeviceUiCopy.connectBusy("en"), vm.sessionUi.value.statusMessage)
+            }
+            assertEquals(1, probe!!.connects.get(), "no second connect while the download is still unwinding")
+        } finally { owner.clear(); Dispatchers.resetMain() }
+    }
+
+    @Test fun connect_during_a_download_is_ignored() {
+        try {
+            val saving = CompletableDeferred<Unit>()
+            val release = CompletableDeferred<Unit>()
+            val fake = peripheral()
+            val vm = run(
+                fake,
+                persist = { audio ->
+                    saving.complete(Unit)
+                    release.await()
+                    val out = ByteArrayOutputStream()
+                    audio.writeDecryptedAudio { out.write(it) }
+                    saved = out.toByteArray()
+                    "rec-synthetic"
+                },
+                await = false,
+            )
+            runBlocking {
+                withTimeout(20_000) { saving.await() }
+                vm.connect("fake-note-pro")
+                delay(200)
+                assertTrue(vm.sessionUi.value.downloadingSessionId != null, "the running download is still shown")
+                assertTrue(vm.sessionUi.value.statusMessage != DeviceUiCopy.unlocking("en"), "no second unlock on the live link")
+                release.complete(Unit)
+            }
+            awaitOutcome(vm)
+            assertEquals("rec-synthetic", vm.sessionUi.value.lastDownloadedRecordingId)
+            assertEquals(listOf(0L), fake.syncStartOffsets)
         } finally { owner.clear(); Dispatchers.resetMain() }
     }
 

@@ -8,7 +8,7 @@ import androidx.core.content.FileProvider
 import dev.velum.app.platform.ShareTextHolder
 import java.io.File
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 
 actual fun copyToClipboard(text: String) {
     val context = ShareTextHolder.context ?: return
@@ -16,13 +16,13 @@ actual fun copyToClipboard(text: String) {
     clipboard.setPrimaryClip(ClipData.newPlainText("Velum", text))
 }
 
-actual fun shareBytes(filename: String, mime: String, bytes: ByteArray) {
+actual suspend fun shareBytes(filename: String, mime: String, bytes: ByteArray) {
     val context = ShareTextHolder.context
         ?: error("ShareTextHolder.context not set")
     val safeName = filename
         .replace(Regex("[^a-zA-Z0-9._-]"), "_")
         .ifBlank { "velum-export.bin" }
-    val uri = runBlocking(Dispatchers.IO) {
+    val uri = withContext(Dispatchers.IO) {
         val dir = File(context.cacheDir, "share").apply { mkdirs() }
         val out = File(dir, safeName)
         out.writeBytes(bytes)
