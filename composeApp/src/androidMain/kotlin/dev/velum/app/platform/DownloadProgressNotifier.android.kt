@@ -1,5 +1,6 @@
 package dev.velum.app.platform
 
+import dev.velum.ai.pipeline.inAppLanguage
 import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
@@ -30,14 +31,13 @@ actual object DownloadProgressNotifier {
         val context = appContextOrNull() ?: return
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val nm = context.getSystemService(NotificationManager::class.java) ?: return
-        if (nm.getNotificationChannel(CHANNEL_ID) != null) return
         nm.createNotificationChannel(
             NotificationChannel(
                 CHANNEL_ID,
-                context.getString(R.string.download_channel_name),
+                context.inAppLanguage().getString(R.string.download_channel_name),
                 NotificationManager.IMPORTANCE_LOW,
             ).apply {
-                description = context.getString(R.string.download_channel_desc)
+                description = context.inAppLanguage().getString(R.string.download_channel_desc)
                 setShowBadge(false)
             },
         )
@@ -66,7 +66,7 @@ actual object DownloadProgressNotifier {
         val nextBody = body ?: prevBody
         lastTitles[kind] = title to nextBody
         if (kind == DownloadNotifyKind.DeviceSession) deviceSessionProgress = progress
-        val cancelLabel = context.getString(R.string.download_cancel)
+        val cancelLabel = context.inAppLanguage().getString(R.string.download_cancel)
         post(context, kind, title, nextBody, progress, cancelLabel)
     }
 
@@ -88,7 +88,7 @@ actual object DownloadProgressNotifier {
 
     /** What the service shows; falls back to the channel name if the download already ended. */
     internal fun deviceSessionNotification(context: Context): Notification {
-        val fallback = context.getString(R.string.download_channel_name)
+        val fallback = context.inAppLanguage().getString(R.string.download_channel_name)
         val (title, body) = lastTitles[DownloadNotifyKind.DeviceSession] ?: (fallback to fallback)
         return build(
             context,
@@ -96,7 +96,7 @@ actual object DownloadProgressNotifier {
             title,
             body,
             deviceSessionProgress,
-            context.getString(R.string.download_cancel),
+            context.inAppLanguage().getString(R.string.download_cancel),
         )
     }
 

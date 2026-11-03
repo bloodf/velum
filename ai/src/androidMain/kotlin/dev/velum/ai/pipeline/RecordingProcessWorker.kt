@@ -156,8 +156,8 @@ class RecordingProcessWorker(
     private fun buildForegroundInfo(): ForegroundInfo {
         ensureProcessingChannel(applicationContext)
         val notification = NotificationCompat.Builder(applicationContext, PROCESSING_CHANNEL_ID)
-            .setContentTitle(applicationContext.getString(R.string.velum_processing_notification_title))
-            .setContentText(applicationContext.getString(R.string.velum_processing_notification_body))
+            .setContentTitle(applicationContext.inAppLanguage().getString(R.string.velum_processing_notification_title))
+            .setContentText(applicationContext.inAppLanguage().getString(R.string.velum_processing_notification_body))
             .setSmallIcon(android.R.drawable.stat_sys_download)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
@@ -245,11 +245,10 @@ class RecordingProcessWorker(
         fun ensureProcessingChannel(context: Context) {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
             val nm = context.getSystemService(NotificationManager::class.java) ?: return
-            if (nm.getNotificationChannel(PROCESSING_CHANNEL_ID) != null) return
             nm.createNotificationChannel(
                 NotificationChannel(
                     PROCESSING_CHANNEL_ID,
-                    context.getString(R.string.velum_processing_channel_name),
+                    context.inAppLanguage().getString(R.string.velum_processing_channel_name),
                     NotificationManager.IMPORTANCE_LOW,
                 ),
             )
