@@ -63,7 +63,7 @@ object WatchedFolderStore {
                 } else if (child.isFile) {
                     val name = child.name.orEmpty()
                     if (ImportAudioFormats.isSupportedFileName(name)) {
-                        val dest = File(destRoot, "${child.lastModified()}_$name")
+                        val dest = File(destRoot, watchedCopyName(child.uri.toString(), child.lastModified(), name))
                         // One unreadable file (card pulled mid-copy, revoked grant) must not stop the others.
                         val copied = runCatching {
                             copyWholeFile(dest, child.length()) { context.contentResolver.openInputStream(child.uri) }
@@ -121,4 +121,14 @@ fun rememberWatchedFolderPicker(onPicked: (treeUri: String) -> Unit): () -> Unit
         }
     }
     return remember(launcher) { { launcher.launch(null) } }
+}
+
+/**
+ * Name of the private copy of a watched-folder file. The document URI is hashed in, so two folders (or sub-folders)
+ * holding a same-named file with the same modification time no longer share, and overwrite, one copy (#319).
+ */
+internal fun watchedCopyName(documentUri: String, lastModified: Long, name: String): String {
+    val digest = java.security.MessageDigest.getInstance("SHA-256").digest(documentUri.encodeToByteArray())
+    val short = digest.take(6).joinToString("") { (it.toInt() and 0xFF).toString(16).padStart(2, '0') }
+    return "${lastModified}_${short}_$name"
 }

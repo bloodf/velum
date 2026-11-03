@@ -3,6 +3,7 @@ package dev.velum.app.importing
 import dev.velum.app.di.AppContainer
 import dev.velum.core.autoflow.AutoFlowResolve
 import dev.velum.app.platform.AudioNormalizer
+import dev.velum.app.platform.NormalizedAudio
 import dev.velum.app.platform.ImportAudioFormats
 import dev.velum.app.platform.sha256File
 import kotlinx.coroutines.Dispatchers
@@ -20,6 +21,8 @@ sealed class ImportResult {
 class AudioImportPipeline(
     private val container: AppContainer,
     private val normalizer: AudioNormalizer = AudioNormalizer(),
+    /** The normalize step; tests replace it. */
+    private val normalize: suspend (String) -> NormalizedAudio = { normalizer.normalizeToWav(it) },
 ) {
     suspend fun importFile(
         absolutePath: String,
@@ -39,7 +42,7 @@ class AudioImportPipeline(
             if (!existingBySource.isNullOrBlank()) {
                 return@withContext ImportResult.Duplicate(existingBySource, sourceHash)
             }
-            val normalized = normalizer.normalizeToWav(absolutePath)
+            val normalized = normalize(absolutePath)
             val contentHash = normalized.contentSha256
             val existingByContent = container.repository.getMeta("import_sha256_$contentHash")
             if (!existingByContent.isNullOrBlank()) {
