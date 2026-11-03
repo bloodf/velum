@@ -194,18 +194,23 @@ class AutoFlowRunner internal constructor(
             // sawInFlight for synchronous test schedulers that finish before the first poll. The write is
             // conditional: a job that just finished leaves the row ready/failed, and a late "queued" plus a kept
             // enqueue would strand it on queued.
+            // The effective id is resolved once, before any write, so a failing lookup cannot leave the row on queued.
+            val wanted = effectiveFlowTemplateId(templateId)
             val priorStatus = repository.getRecording(recordingId)?.status
-            var enqueueTemplate = templateId
+            // A non-blank template is passed resolved, so the scheduler compares it with a running job's the way the
+            // processor will use it (tpl-meeting vs velum.meeting); blank stays null so null-only KEEP survives.
+            var enqueueTemplate = templateId?.takeIf { it.isNotBlank() }?.let { wanted }
             if (!repository.markQueuedIfActive(recordingId)) {
                 // Terminal: the job that was running finished before we acted. The check runs here, after the
                 // conditional write failed, so no job can finish between a read and the mark.
                 val row = repository.getRecording(recordingId)
-                if (row?.status == "ready" && !isThisFlowsWork(row, templateId)) {
+                if (row?.status == "ready" && repository.activeSummaryTemplateId(recordingId) != wanted) {
                     // Finished, but by other work (another template): this flow's work still has to run. Enqueue with
                     // the effective template id so the scheduler sees real parameters and replaces the finished
                     // worker instead of keeping it.
-                    repository.updateStatus(recordingId, "queued")
-                    enqueueTemplate = effectiveFlowTemplateId(templateId)
+                    // Conditional on still being ready: another run may have taken the row meanwhile.
+                    if (!repository.requeueIfReady(recordingId)) return false
+                    enqueueTemplate = wanted
                 } else {
                     return row?.status == "ready"
                 }
@@ -221,7 +226,7 @@ class AutoFlowRunner internal constructor(
             if (!started && priorStatus != null && priorStatus != "queued" && priorStatus != "ready" && priorStatus != "failed") {
                 repository.restoreStatusIfQueued(recordingId, priorStatus)
             }
-            return awaitReadyStatus(recordingId, alreadyInFlight = true)
+            return awaitReadyStatus(recordingId, wanted, alreadyInFlight = true)
         }
         var succeeded = false
         processRecording(recordingId, templateId, apiModelOverride).collect { progress ->
@@ -229,10 +234,6 @@ class AutoFlowRunner internal constructor(
         }
         return succeeded || repository.getRecording(recordingId)?.status == "ready"
     }
-
-    /** True when the ready row's active summary came from the template this flow asks for. */
-    private suspend fun isThisFlowsWork(recording: Recording, flowTemplateId: String?): Boolean =
-        repository.activeSummaryTemplateId(recording.id) == effectiveFlowTemplateId(flowTemplateId)
 
     /**
      * The id the processor would store for this flow's template: an edited row with that exact id wins over alias
@@ -247,6 +248,7 @@ class AutoFlowRunner internal constructor(
 
     private suspend fun awaitReadyStatus(
         recordingId: String,
+        wantedTemplateId: String,
         alreadyInFlight: Boolean = false,
     ): Boolean {
         var sawInFlight = alreadyInFlight
@@ -257,8 +259,13 @@ class AutoFlowRunner internal constructor(
                 when (status) {
                     "generating", "paused_thermal", "queued" -> sawInFlight = true
                     "ready" -> {
-                        // Only accept ready after in-flight (forced queued counts).
-                        if (sawInFlight) return@withTimeoutOrNull "ready"
+                        // Only accept ready after in-flight (forced queued counts), and only when the active summary is
+                        // this flow's template: a replaced run stopped by the OS can leave `ready` on another
+                        // template's summary, which must not fire this flow's post-action. Otherwise keep polling; a
+                        // flow that never matches ends by the timeout below.
+                        if (sawInFlight && repository.activeSummaryTemplateId(recordingId) == wantedTemplateId) {
+                            return@withTimeoutOrNull "ready"
+                        }
                     }
                     "failed" -> if (sawInFlight) return@withTimeoutOrNull "failed"
                 }
@@ -376,6 +383,8 @@ internal interface AutoFlowRecordingStore {
     suspend fun updateStatus(id: String, status: String)
     /** Marks the row queued unless it is already ready/failed; false when it was terminal. */
     suspend fun markQueuedIfActive(id: String): Boolean
+    /** ready -> queued, only while the row is still ready; false when something else took the row. */
+    suspend fun requeueIfReady(id: String): Boolean
     /** queued -> [status], only while the row is still queued. */
     suspend fun restoreStatusIfQueued(id: String, status: String): Boolean
     /** Id of the template row stored under exactly [templateId] (an edited builtin keeps its id), or null. */
@@ -391,6 +400,7 @@ internal class RepositoryAutoFlowRecordingStore(private val repository: VelumRep
     override suspend fun getRecording(id: String) = repository.getRecording(id)
     override suspend fun updateStatus(id: String, status: String) { repository.updateStatus(id, status) }
     override suspend fun markQueuedIfActive(id: String) = repository.updateStatusIfActive(id, "queued")
+    override suspend fun requeueIfReady(id: String) = repository.updateStatusIfEquals(id, "ready", "queued")
     override suspend fun restoreStatusIfQueued(id: String, status: String) = repository.updateStatusIfEquals(id, "queued", status)
     override suspend fun activeSummaryTemplateId(id: String) = repository.activeSummaryTemplateId(id)
     override suspend fun exactTemplateId(templateId: String) = repository.getTemplate(templateId)?.id
