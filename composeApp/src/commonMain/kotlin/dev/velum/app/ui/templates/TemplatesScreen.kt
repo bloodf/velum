@@ -222,6 +222,8 @@ fun TemplatesScreen(
         // A different filter must not keep the previous filter's rows (or its paging sentinel) on screen.
         if (shownFilter != filter) {
             shown = null
+            // The previous filter's failure must not hide this filter's spinner.
+            loadFailed = false
         }
         try {
             val current = shown.orEmpty()
