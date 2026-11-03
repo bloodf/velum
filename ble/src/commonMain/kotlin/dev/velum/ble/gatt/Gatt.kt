@@ -1,6 +1,7 @@
 package dev.velum.ble.gatt
 
 import dev.velum.protocol.PlaudUuids
+import dev.velum.recorder.omi.OmiUuids
 
 /** A GATT characteristic address (128-bit UUID strings, as in [PlaudUuids]). */
 data class GattChar(val service: String, val characteristic: String)
@@ -29,6 +30,19 @@ object GattProfiles {
         id = "plaud",
         notify = listOf(PLAUD_NOTIFY),
         writes = mapOf(PLAUD_WRITE to PlaudWriteGuard),
+    )
+
+    val OMI_AUDIO_DATA = GattChar(OmiUuids.SERVICE, OmiUuids.AUDIO_DATA)
+    val OMI_BATTERY_LEVEL = GattChar(OmiUuids.BATTERY_SERVICE, OmiUuids.BATTERY_LEVEL)
+
+    /**
+     * Omi / Friend (BasedHardware/omi, MIT): audio notifications and battery level only. It declares NO writable
+     * characteristic, so [GuardedLink] rejects every write made under this profile, including to Plaud's 2BB1.
+     */
+    val Omi = GattProfile(
+        id = "omi",
+        notify = listOf(OMI_AUDIO_DATA, OMI_BATTERY_LEVEL),
+        writes = emptyMap(),
     )
 }
 
