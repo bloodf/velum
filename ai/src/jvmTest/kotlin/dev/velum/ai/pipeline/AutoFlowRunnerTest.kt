@@ -365,6 +365,51 @@ class AutoFlowRunnerTest {
     }
 
     @Test
+    fun missing_calendar_permission_asks_once_not_on_every_status_change_of_an_import() = runBlocking {
+        val database = createDatabase(DriverFactory())
+        val repo = VelumRepository(database)
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val blocked = AtomicInteger()
+        try {
+            repo.setAutoflowEnabled("flow-default", false)
+            val runner = AutoFlowRunner(
+                RepositoryAutoFlowRecordingStore(repo),
+                { _, _, _ -> flow { error("Not used") } },
+                scope,
+                calendar = object : CalendarEventProvider {
+                    override suspend fun currentOrNextEvent(aroundEpochMs: Long) = CalendarLookupResult.PermissionDenied
+                },
+            )
+            scope.launch(start = CoroutineStart.UNDISPATCHED) {
+                runner.actions.collect { if (it is AutoFlowUiAction.BlockedOnPermission) blocked.incrementAndGet() }
+            }
+            runner.start()
+            withTimeout(10_000) { runner.passIndex.first { it > 0 } }
+            fun insert(id: String) = runBlocking {
+                repo.insertRecording(
+                    id = id, sessionId = null, folderId = null, title = "Recording synthetic", source = "phone",
+                    deviceSerial = null, startedAt = 1, durationSeconds = 10, sizeBytes = 0, localPath = null,
+                    transcript = null, summaryMarkdown = null, status = "imported",
+                )
+            }
+            suspend fun settle(change: suspend () -> Unit) {
+                val before = runner.passIndex.value
+                change()
+                withTimeout(10_000) { runner.passIndex.first { it > before } }
+            }
+            settle { insert("one") }
+            settle { repo.updateStatus("one", "queued") }
+            settle { repo.updateStatus("one", "generating") }
+            settle { insert("two") }
+            assertEquals(1, blocked.get())
+        } finally {
+            scope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
+            scope.coroutineContext[kotlinx.coroutines.Job]?.join()
+            database.driver.close()
+        }
+    }
+
+    @Test
     fun realRepositoryImportUpdate_waitsForCompleteInput_thenProcessesExactlyOnce() = runBlocking {
         val database = createDatabase(DriverFactory())
         val repo = VelumRepository(database)

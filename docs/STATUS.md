@@ -73,7 +73,7 @@ Phone-only / external (no Plaud required):
 - [x] Live record UI with partial Markdown (mic when permitted; with no streaming model the pane says so and the audio is saved)
 - [x] Mind-map from summary H2 + list items ("Mapa mental" sheet)
 - [x] Local diarization + cosine voice profiles (`VoiceProfileStore`); preferred embedding `3dspeaker-eres2net-base`
-- [x] Local LLM LiteRT-LM on Android when Gemma Ready (default catalog id `gemma-4-e4b`)
+- [x] Local LLM LiteRT-LM on Android when Gemma Ready (with no model selected: the best downloaded Gemma, else `gemma-4-e2b`, which the first-run recommendation downloads)
 - [x] Ask AI on recording notes via local/`AiTaskRouter` LLM (no Plaud ask endpoints)
 - [x] Compose Markdown preview for Fontes / Notas (deterministic Compose renderer: bold speakers, timestamps, headings/lists, task checkboxes; Roborazzi fixtures seed diarized transcript + summary)
 - [x] Summary/template H2 headings follow output language (pt-BR / en pinned; other langs via LLM instruction) — `SummaryLocalization`

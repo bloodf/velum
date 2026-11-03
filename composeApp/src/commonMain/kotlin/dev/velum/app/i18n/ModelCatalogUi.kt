@@ -1,7 +1,9 @@
 package dev.velum.app.i18n
 
+import dev.velum.ai.engine.DEFAULT_LOCAL_LLM_MODEL_ID
 import dev.velum.ai.local.DefaultLocalCatalog
 import dev.velum.ai.local.DeviceComputeClass
+import dev.velum.ai.local.LOCAL_MODEL_NOT_READY_MESSAGE
 import dev.velum.ai.local.LocalAsrRouter
 import dev.velum.ai.local.detectDeviceComputeClass
 
@@ -160,7 +162,7 @@ object ModelCatalogUi {
             asr,
             "pyannote-segmentation-3.0",
             "3dspeaker-eres2net-base",
-            "gemma-4-e2b",
+            DEFAULT_LOCAL_LLM_MODEL_ID,
         ).distinct()
     }
 
@@ -169,3 +171,14 @@ object ModelCatalogUi {
         return DefaultLocalCatalog.firstOrNull { it.id == id }?.displayName ?: id
     }
 }
+
+
+/** Stored processing failures come from common code in English; show known ones in the user's language. */
+internal fun processingFailureText(raw: String?, strings: Strings): String? = when {
+    raw == null -> null
+    raw == LOCAL_MODEL_NOT_READY_MESSAGE || LEGACY_MODEL_NOT_READY.containsMatchIn(raw) -> strings.ux.localModelNotReady
+    else -> raw
+}
+
+/** Recordings that failed before #260 keep the old text, with a model id and status, in their saved error. */
+private val LEGACY_MODEL_NOT_READY = Regex("""^Local .* is not Ready\b""")
