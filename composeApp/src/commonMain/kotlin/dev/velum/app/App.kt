@@ -147,6 +147,7 @@ private fun VelumRoot(container: AppContainer) {
     var firstRunDismissed by remember { mutableStateOf(false) }
     // (needed, free) bytes when the recommended pack does not fit; resolved to copy at render so a language change applies.
     var firstRunShort by remember { mutableStateOf<Pair<Long, Long>?>(null) }
+    var firstRunDownloading by remember { mutableStateOf(false) }
     val showFirstRun = firstRunPending && !firstRunDismissed
     fun dismissFirstRun() {
         firstRunDismissed = true
@@ -711,6 +712,8 @@ private fun VelumRoot(container: AppContainer) {
                     ModelCatalogUi.fill(strings.firstRun.notEnoughSpaceFormat, ModelCatalogUi.formatBytes(needed), ModelCatalogUi.formatBytes(free))
                 },
                 onDownloadRecommended = {
+                    if (firstRunDownloading) return@FirstRunScreen // a second tap must not start or navigate twice
+                    firstRunDownloading = true
                     val ids = ModelCatalogUi.recommendedModelIds(
                         languageHint = strings.localeTag,
                     )
@@ -721,6 +724,7 @@ private fun VelumRoot(container: AppContainer) {
                         }
                         if (free != null && free < needed) {
                             firstRunShort = needed to free
+                            firstRunDownloading = false
                             return@launch
                         }
                         dismissFirstRun()

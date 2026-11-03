@@ -159,4 +159,18 @@ class ModelStorageTest {
         assertEquals(0L, manager.bytesNeededFor(listOf(id)))
         root.deleteRecursively()
     }
+
+    // A Ready model is not fetched again: a failed re-download would otherwise cost the working copy.
+    @Test fun startDownloads_skips_a_model_that_is_already_ready() = runTest {
+        val bytes = zip(); val root = newRoot(); val requests = AtomicInteger()
+        val dir = root.resolve(id).also { it.createDirectories() }
+        files.forEach { (name, text) -> dir.resolve(name.substringAfter('/')).writeBytes(text.encodeToByteArray()) }
+        val manager = LocalModelManager(root, HttpClient(MockEngine { requests.incrementAndGet(); respond("", HttpStatusCode.InternalServerError) }), listOf(spec(bytes)))
+        assertTrue(manager.isReady(id))
+        manager.startDownloads(listOf(id)).join()
+        assertEquals(0, requests.get())
+        assertTrue(manager.isReady(id))
+        assertTrue(dir.resolve("tokens.txt").exists())
+        root.deleteRecursively()
+    }
 }

@@ -353,6 +353,8 @@ class LocalModelManager(
      */
     fun startDownloads(ids: List<String>): Job = downloadScope.launch {
         for (id in ids) {
+            // A model already on disk is never fetched again: a failed re-download must not cost the working copy.
+            if (isReady(id)) continue
             try {
                 download(id).collect()
             } catch (cancelled: CancellationException) {
