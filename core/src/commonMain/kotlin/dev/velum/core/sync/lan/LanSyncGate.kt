@@ -1,5 +1,7 @@
 package dev.velum.core.sync.lan
 
+import dev.velum.core.integrations.WebhookSigner
+
 enum class LanRejectReason { Disabled, UnknownDevice, Revoked, KeyMismatch }
 
 sealed class LanAdmission {
@@ -14,6 +16,9 @@ sealed class LanAdmission {
  * Rules: off by default (the user turns it on); no paired device means nothing to talk to, so nothing
  * listens; a peer is admitted only when the key its handshake authenticated equals the key pinned at
  * pairing. The id a peer claims is only a lookup hint.
+ *
+ * Revocation (#65) must also hold for sessions already open: a live session re-calls [admit] (or is closed) as
+ * soon as the paired list changes, otherwise a revoked device keeps syncing until it reconnects.
  */
 object LanSyncGate {
     /** [enabled] is the user's explicit opt-in setting, false until they turn it on. */
@@ -32,9 +37,14 @@ object LanSyncGate {
         authenticatedKeyHex: String,
     ): LanAdmission {
         if (!enabled) return LanAdmission.Reject(LanRejectReason.Disabled)
-        val device = devices.find(claimedId) ?: return LanAdmission.Reject(LanRejectReason.UnknownDevice)
+        val device = devices.find(claimedId)
+        // Compare against a dummy key for unknown ids so timing does not reveal which ids are paired.
+        val keyMatches = WebhookSigner.constantTimeEquals(device?.publicKeyHex ?: DUMMY_KEY, authenticatedKeyHex)
+        if (device == null) return LanAdmission.Reject(LanRejectReason.UnknownDevice)
         if (device.revoked) return LanAdmission.Reject(LanRejectReason.Revoked)
-        if (device.publicKeyHex != authenticatedKeyHex) return LanAdmission.Reject(LanRejectReason.KeyMismatch)
+        if (!keyMatches) return LanAdmission.Reject(LanRejectReason.KeyMismatch)
         return LanAdmission.Accept(device)
     }
+
+    private val DUMMY_KEY = "0".repeat(64)
 }
