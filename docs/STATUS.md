@@ -12,7 +12,7 @@ Owner standing rule: nothing may remain stub/demo-only. Prefer **blocked-on-owne
 - [x] Forbidden opcodes never sent: **5, 104, 128, 0xFE20, 143 (OTA)**; never write settings **4 / 26** (every model)
 - [x] Unused cmds left alone: 5, 13, 38, 50, 51, 109, 141, 142, 145, 151
 - [x] Fixed session key/nonce/aad; plaintext = `seq ‖ packet`; FE10 snSignature on every connect (prot ≥ 20)
-- [x] Cmd 138 feature bit 0x08 (AES-GCM Wi-Fi); SoftAP + **WebSocket `:8081`** (`org.java_websocket`, Plaud parity) with SoftAP per-socket bind, token preamble, fixed session nonce, BLE fallback (JVM fake E2E green; confirm on hardware)
+- [x] Cmd 138 feature bit 0x08 (AES-GCM Wi-Fi); SoftAP + **WebSocket `:8081`** (`org.java_websocket`, Plaud parity) with token preamble, fixed session nonce, BLE fallback (JVM fake E2E green; confirm on hardware). SoftAP per-socket bind is attempted, not proven: see `docs/protocol/WIFI_FAST_PATH.md` (#8)
 - [x] Android: `allowBackup=false`, cleartext off, networkSecurityConfig + dataExtractionRules; release R8 on
 - [x] Model downloads: HTTPS + SHA-256 required (streaming hash + atomic rename); ASR catalog pins included
 - [x] BYO API base URL validated (`AiBaseUrl`: HTTPS except localhost; block link-local metadata)
@@ -126,7 +126,7 @@ Phone-only / external (no Plaud required):
 
 - [x] Chunked / windowed ASR + BLE-to-file sync (Y14/Y17); PCM above ~48 MiB spills to temp file and is window-read (no 200 MiB hard fail)
 - [x] Mic + processing foreground services (FOREGROUND_SERVICE) — mic `microphone` + processing `dataSync`
-- [x] SoftAP + WebSocket `:8081` per-socket bind + token preamble + BLE fallback (fixed AEAD nonce kept for Plaud SoftAP parity — see `docs/protocol/WIFI_FAST_PATH.md`)
+- [x] SoftAP + WebSocket `:8081` token preamble + BLE fallback (fixed AEAD nonce kept for Plaud parity, on BLE too: S13 in `docs/REVIEW_2026-10.md`). Per-socket bind is attempted, not proven: see `docs/protocol/WIFI_FAST_PATH.md` (#8)
 
 ### Release / distribution (code-ready; Play upload needs owner secrets)
 

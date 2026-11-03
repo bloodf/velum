@@ -14,9 +14,11 @@ import java.io.ByteArrayOutputStream
 import java.security.Security
 import javax.crypto.Cipher
 import javax.crypto.spec.GCMParameterSpec
+import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
 import kotlin.random.Random
 import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -139,6 +141,33 @@ class FileDecryptDeviceTest {
         val cipher = JcaSessionCipher()
         assertArrayEquals(sealed, cipher.chacha20Poly1305Seal(aeadKey, aeadNonce, aad, plain))
         assertArrayEquals(plain, cipher.chacha20Poly1305Open(aeadKey, aeadNonce, aad, sealed))
+    }
+
+    /** Must return null for each of these, and only these. The log shows what the platform really throws. */
+    @Test fun session_cipher_fails_closed_for_bad_input() {
+        val cipher = JcaSessionCipher()
+        val openKey = ByteArray(32) { it.toByte() }
+        val openNonce = ByteArray(12) { (it + 1).toByte() }
+        val aad = ByteArray(12) { (it + 2).toByte() }
+        val sealed = cipher.chacha20Poly1305Seal(openKey, openNonce, aad, ByteArray(40))
+        val badTag = sealed.copyOf().also { it[it.size - 1] = (it[it.size - 1].toInt() xor 1).toByte() }
+        val cases = listOf(
+            "bad tag" to Triple(openKey, aad, badTag),
+            "wrong aad" to Triple(openKey, ByteArray(12), sealed),
+            "wrong key" to Triple(ByteArray(32), aad, sealed),
+            "empty" to Triple(openKey, aad, ByteArray(0)),
+            "shorter than a tag" to Triple(openKey, aad, ByteArray(15)),
+        )
+        for ((name, case) in cases) {
+            val raw = runCatching {
+                val c = Cipher.getInstance("ChaCha20-Poly1305")
+                c.init(Cipher.DECRYPT_MODE, SecretKeySpec(case.first, "ChaCha20"), IvParameterSpec(openNonce))
+                c.updateAAD(case.second)
+                c.doFinal(case.third)
+            }.exceptionOrNull()
+            Log.i(TAG, "open $name throws ${raw?.javaClass?.name}")
+            assertNull(name, cipher.chacha20Poly1305Open(case.first, openNonce, case.second, case.third))
+        }
     }
 
     /** NIST GCM test case 14, in the form the Wi-Fi frame and voice profile ciphers use. */
