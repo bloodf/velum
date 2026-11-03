@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onRoot
@@ -30,7 +31,7 @@ import org.robolectric.annotation.Config
 class FirstRunInsetsTest {
     @get:Rule val compose = createEmptyComposeRule()
 
-    private fun showWithStatusBar(topPx: Int) {
+    private fun show(statusBarPx: Int, cutoutLeftPx: Int = 0, cutoutRightPx: Int = 0) {
         val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup().get()
         activity.runOnUiThread {
             WindowCompat.setDecorFitsSystemWindows(activity.window, false)
@@ -45,21 +46,36 @@ class FirstRunInsetsTest {
         compose.waitForIdle()
         activity.runOnUiThread {
             val insets = WindowInsetsCompat.Builder()
-                .setInsets(WindowInsetsCompat.Type.statusBars(), Insets.of(0, topPx, 0, 0))
+                .setInsets(WindowInsetsCompat.Type.statusBars(), Insets.of(0, statusBarPx, 0, 0))
+                .setInsets(WindowInsetsCompat.Type.displayCutout(), Insets.of(cutoutLeftPx, 0, cutoutRightPx, 0))
                 .build()
             ViewCompat.dispatchApplyWindowInsets(activity.window.decorView, insets)
         }
         compose.waitForIdle()
     }
 
-    @Test fun scroll_viewport_starts_below_the_status_bar_before_and_after_scrolling() {
-        val statusBar = 120
-        showWithStatusBar(statusBar)
-        val scroller = compose.onNode(hasScrollAction())
-        val top = scroller.fetchSemanticsNode().boundsInRoot.top
-        assertTrue(top >= statusBar, "scroll viewport top $top must be at or below the status bar ($statusBar px)")
+    private fun viewport() = compose.onNode(hasScrollAction()).fetchSemanticsNode()
+
+    @Test fun scroll_viewport_starts_below_the_status_bar() {
+        show(statusBarPx = 120)
+        val top = viewport().boundsInRoot.top
+        assertTrue(top >= 120, "scroll viewport top $top must be at or below the status bar (120 px)")
+    }
+
+    @Test fun scrolling_moves_content_inside_a_viewport_that_stays_below_the_status_bar() {
+        show(statusBarPx = 120)
+        val topBefore = viewport().boundsInRoot.top
+        val scrolledBefore = viewport().config[SemanticsProperties.VerticalScrollAxisRange].value()
         repeat(3) { compose.onRoot().performTouchInput { swipeUp() } }
-        val after = scroller.fetchSemanticsNode().boundsInRoot.top
-        assertTrue(after >= statusBar, "the viewport does not move when content scrolls: $after")
+        val node = viewport()
+        assertTrue(node.config[SemanticsProperties.VerticalScrollAxisRange].value() > scrolledBefore, "the content must actually have scrolled")
+        // The viewport is the clip, so scrolled-off content is cut at its top edge, below the bar.
+        assertTrue(node.boundsInRoot.top == topBefore && node.boundsInRoot.top >= 120, "viewport top ${node.boundsInRoot.top} (was $topBefore)")
+    }
+
+    @Test fun a_landscape_side_cutout_keeps_content_clear_of_it() {
+        show(statusBarPx = 0, cutoutLeftPx = 90, cutoutRightPx = 60)
+        val node = viewport().boundsInRoot
+        assertTrue(node.left >= 90 && node.right <= compose.onRoot().fetchSemanticsNode().boundsInRoot.right - 60, "viewport $node must clear both cutouts")
     }
 }
