@@ -12,7 +12,7 @@ Research date: 2026-10-27. Goal: support other famous Bluetooth AI note-takers /
 | ---: | --- | --- | --- | --- | --- | --- | --- | --- |
 | 1 | **Plaud** (Note / NotePin / Note Pro / One) | Community RE + Velum | Research notes MIT; firmware proprietary | **Yes** (BLE + SoftAP WS) | Ogg Opus / Opus / ADPCM | FE10 snSignature + session AES | **Shipped** | `PlaudRecorderDriver` |
 | 2 | **Omi / Friend** ([BasedHardware/omi](https://github.com/BasedHardware/omi)) | Official protocol docs + firmware | **MIT** | **Yes** (live BLE stream) | Opus 16 kHz (default), PCM, μ-law | Optional DIS; no cloud unlock | **High — driver registered, not usable in the app yet** (scan match and packet decode only; a connected non-Plaud recorder shows an "unsupported" message in `DeviceViewModel`; hardware unverified) | `OmiRecorderDriver` + packet fixtures |
-| 3 | **Pocket** + **OpenPocket** DIY ([pocket-libre](https://github.com/shahcolate/pocket-libre), [open-pocket](https://github.com/TanskiSzymon/open-pocket)) | PROTOCOL.md + MIT client | **MIT** (client/scripts); HW CERN-OHL-P | **Yes** (BLE MP3 + Wi‑Fi) | MP3 16 kHz mono ~32 kbps | 16-char session key (`APP&SK&`) | **High — protocol + driver** | `PocketRecorderDriver` + framing tests |
+| 3 | **Pocket** + **OpenPocket** DIY ([pocket-libre](https://github.com/shahcolate/pocket-libre), [open-pocket](https://github.com/TanskiSzymon/open-pocket)) | PROTOCOL.md + MIT client; **third-party reverse engineering** from HCI captures of the vendor app (shahcolate/pocket-libre; its author states a DMCA basis for the work, unchecked here). **Under the owner's RE-derived-work criterion**, same as Limitless, not final | **MIT** (client/scripts); HW CERN-OHL-P | **Yes** (BLE MP3 + Wi‑Fi) | MP3 16 kHz mono ~32 kbps | 16-char session key (`APP&SK&`) | **High — protocol + driver** | `PocketRecorderDriver` + framing tests |
 | 4 | **Limitless Pendant** (omi `LimitlessProtocol.kt` + [pendant-cli](https://github.com/MAkcanca/pendant-cli)) | MIT codec in-tree; community clients derived from the closed Limitless app (see #20 section) | MIT for the in-tree codec and MAkcanca/pendant-cli; sdelcore/pendant-cli has no formal license (personal/research only) | **Yes** (BLE flash drain) | Opus in flash pages | Unreconciled: ECDH + AES-GCM (MAkcanca) vs X25519 + ChaCha20-Poly1305 (sdelcore), see #20 section | Medium: protocol exists but is RE-derived; has writes, needs its own guard (#18) | `LimitlessProtocol` vendored; driver later |
 | 5 | **OpenGlass / OmiGlass** ([OpenGlass](https://github.com/BasedHardware/OpenGlass) → omi) | MIT firmware; audio PR uses Omi-like BLE | **MIT** | Yes (Opus BLE) | Opus | Same family as Omi | Use **Omi driver** / alias | Via Omi UUIDs |
 | 6 | **DIY XIAO / ESP32 wearing Friend firmware** | Omi open firmware | MIT | Yes | Opus/PCM | Same as Omi | **Same as Omi** | Matches Omi scan filter |
@@ -46,7 +46,7 @@ Research date: 2026-10-27. Goal: support other famous Bluetooth AI note-takers /
 
 - ASCII `APP&…` / `MCU&…` on service `001120A0`; MP3 on `001120A1`.
 - Session key required; first key after hardware reset pairs the device.
-- pocket-libre MIT — credit PROTOCOL.md; reimplement commands in Kotlin.
+- pocket-libre MIT — credit PROTOCOL.md; reimplement commands in Kotlin. The protocol comes from HCI captures of the vendor app (third-party RE), so whether to build a command driver on it is pending the owner's RE-derived criterion (#20 section); the read-only profile (#274) sends nothing.
 
 ### Limitless Pendant (later)
 

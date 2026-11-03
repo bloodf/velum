@@ -57,8 +57,9 @@ object GattProfiles {
     /**
      * Pocket / OpenPocket (pocket-libre PROTOCOL.md, MIT): MP3 audio, `MCU&` replies and battery notifications only.
      * It declares NO writable characteristic, so the `APP&` command channel (001120A2/A3) is unreachable, including
-     * `APP&SK&`, which pairs the device. Commands need their own allow-list guard first (not designed yet), so this
-     * profile can observe a device that is already streaming but cannot start or configure one.
+     * `APP&SK&`, which pairs the device. Commands need their own allow-list guard first (not designed yet). Whether
+     * notifications alone are enough to receive audio from a real device is unverified; the published protocol has the
+     * app start streaming with a command.
      */
     val Pocket = GattProfile(
         id = "pocket",

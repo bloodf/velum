@@ -2,6 +2,7 @@ package dev.velum.ble.gatt
 
 import dev.velum.ble.BleTransport
 import dev.velum.ble.StubBleTransport
+import dev.velum.recorder.pocket.PocketUuids
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -20,7 +21,7 @@ private class CountingTransport(
 class PocketProfileTest {
     private val pocketChars = listOf(GattProfiles.POCKET_AUDIO_DATA, GattProfiles.POCKET_REPLIES, GattProfiles.POCKET_BATTERY_LEVEL)
     private val commandChars = listOf(
-        GattChar("001120a0-2233-4455-6677-889912345678", "001120a2-2233-4455-6677-889912345678"), // vendor app writes here
+        GattChar(PocketUuids.AUDIO_SERVICE, PocketUuids.AUDIO_WRITE), // vendor app writes here
         GattProfiles.POCKET_REPLIES, // pocket-libre also writes commands here
     )
 
