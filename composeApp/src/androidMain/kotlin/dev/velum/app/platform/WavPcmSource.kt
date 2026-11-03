@@ -17,6 +17,9 @@ internal class WavPcmSource private constructor(
     private val dataOffset: Long,
     private val dataSize: Long,
 ) {
+    /** Whether this source was opened on [other]; a source must never be reused for another file. */
+    fun isFor(other: File): Boolean = file == other
+
     /** File bytes read since opening (header excluded), for tests and diagnostics. */
     @Volatile var bytesRead = 0L
         private set
@@ -57,6 +60,7 @@ internal class WavPcmSource private constructor(
         fromMs: Long,
         minSilenceMs: Long = SkipSilenceScanner.DEFAULT_MIN_SILENCE_MS,
         energyThreshold: Int = SkipSilenceScanner.DEFAULT_ENERGY_THRESHOLD,
+        checkCancelled: () -> Unit = {},
     ): SkipSilenceScanner.Result? {
         if (fromMs < 0L || totalFrames == 0L) return null
         val fromSample = ((fromMs * sampleRateHz) / 1000L).coerceIn(0L, totalFrames)
@@ -64,6 +68,7 @@ internal class WavPcmSource private constructor(
         var index = fromSample
         try {
             while (index < totalFrames) {
+                checkCancelled() // a long silence is many windows: stop between them when the scan is cancelled
                 val n = minOf(windowFrames.toLong(), totalFrames - index).toInt()
                 val mono = readMono(index, n)
                 var i = 0

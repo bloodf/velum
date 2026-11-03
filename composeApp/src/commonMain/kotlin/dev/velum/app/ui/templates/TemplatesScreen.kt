@@ -319,7 +319,6 @@ internal fun TemplatesScreen(
                 contentDescription = strings.ux.back,
                 modifier = Modifier
                     .size(48.dp)
-                    .semantics { contentDescription = strings.ux.back }
                     .clickable(role = Role.Button, onClick = onBack)
                     .padding(12.dp),
                 tint = VelumInk,

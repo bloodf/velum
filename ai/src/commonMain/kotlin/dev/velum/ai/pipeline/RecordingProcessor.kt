@@ -133,7 +133,6 @@ class RecordingProcessor(
                 emit(JobProgress.Running(0.1f, "Decoding audio"))
                 awaitThermalGate { emit(it) }
                 filename = localPath.substringAfterLast('/')
-                spillRoot.deleteRecursively() // a leftover from a crashed process never mixes into this run
                 spillRoot.createDirectories()
                 val pcmFile = spillRoot.resolve("pcm.s16le")
                 val oggByExt = filename.endsWith(".ogg", ignoreCase = true) ||
@@ -408,14 +407,18 @@ class RecordingProcessor(
                         repository.updateStatus(recordingId, "ready")
                         repository.setProcessingError(recordingId, null)
                         if (deleteAudio) repository.clearLocalAudioPath(recordingId)
+                        // Finished: a cancel from here on must not restore an earlier status over "ready".
+                        activeRuns.update { map -> map - recordingId }
                     }
                 }
             }
             if (newest) {
                 // The file goes outside the lock; the row no longer points at it.
                 if (deleteAudio) {
-                    emit(JobProgress.Running(0.95f, "Removing local audio"))
+                    // Delete first: emit is a cancellation point, and a collector that stops here must not leave
+                    // the file behind after the row stopped pointing at it.
                     deleteFile(localPath!!)
+                    emit(JobProgress.Running(0.95f, "Removed local audio"))
                 }
                 val successMsg = buildString {
                     append("Processed $recordingId")
