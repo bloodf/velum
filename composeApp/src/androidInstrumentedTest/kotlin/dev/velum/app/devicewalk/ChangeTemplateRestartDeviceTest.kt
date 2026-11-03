@@ -73,7 +73,10 @@ class ChangeTemplateRestartDeviceTest {
         assertTrue(DeviceWalkMode.isEnabled(), "DeviceWalkMode must be enabled via runner arg velumDeviceWalk=true")
         context = InstrumentationRegistry.getInstrumentation().targetContext
         modelRoot = File(context.cacheDir, "ct-restart-models").also { it.deleteRecursively(); it.mkdirs() }
-        if (phase == "regenerate") context.deleteDatabase(DB)
+    }
+
+    /** Opens the container on the kept database file. Called from the test bodies, after any delete. */
+    private fun openContainer() {
         container = AppContainer(InMemorySecureStore(), DriverFactory(context, DB), modelStoreRoot = ModelStoreDir(modelRoot.absolutePath))
     }
 
@@ -82,9 +85,9 @@ class ChangeTemplateRestartDeviceTest {
         if (phase != "regenerate" && phase != "verify") return
         // Activity first: nothing may touch the database while it is closed.
         compose.activityRule.scenario.close()
-        container.databaseHandle.driver.close()
+        if (::container.isInitialized) runCatching { container.databaseHandle.driver.close() } // verify closed it already
         modelRoot.deleteRecursively()
-        if (phase == "verify") context.deleteDatabase(DB) // regenerate keeps the file for the next process
+        // The database file is deleted only inside the test bodies, so method order cannot remove the kept file.
     }
 
     private fun show() {
@@ -127,6 +130,8 @@ class ChangeTemplateRestartDeviceTest {
     @Test
     fun phase_regenerate_changes_the_template_and_keeps_the_previous_version() {
         assumeTrue("phase is $phase", phase == "regenerate")
+        context.deleteDatabase(DB) // fresh start; the file is then kept for the verify process
+        openContainer()
         runBlocking {
             container.settingsRepository.load()
             container.settingsRepository.setSummaryMode(ComputeMode.Api)
@@ -164,9 +169,16 @@ class ChangeTemplateRestartDeviceTest {
     @Test
     fun phase_verify_finds_both_versions_after_a_force_stop() {
         assumeTrue("phase is $phase", phase == "verify")
-        verify()
-        show()
-        await("ZQ Heading Alpha")
+        openContainer()
+        try {
+            verify()
+            show()
+            await("ZQ Heading Alpha")
+        } finally {
+            compose.activityRule.scenario.close()
+            container.databaseHandle.driver.close()
+            context.deleteDatabase(DB) // last step of the last phase
+        }
     }
 
     private fun verify() = runBlocking {
