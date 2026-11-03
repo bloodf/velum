@@ -71,3 +71,21 @@ Rebuild natives: `scripts/fetch-needle-android.sh` then CMake under `ai/src/andr
 ## Why not Whistle-only on low-end
 
 Portuguese is an important language and Whistle cannot transcribe it. Dual low-end engines (Needle + sherpa) are intentional: smallest possible weights when Whistle fits; Whisper Tiny otherwise.
+
+## Measuring Whistle on an emulator and a phone (#13)
+
+Harness: `WhistleMeasureDeviceTest` (androidInstrumentedTest). It loads `whistle.cact`, transcribes a clip twice and
+prints one `velum.whistle` status line: device, SDK, ABI, audio seconds, cold/warm ms, load ms, RTF, peak RSS.
+Definitions: **load ms** = first call minus second call; **RTF** = second-call transcribe time / audio duration
+(below 1 is faster than real time); **peak RSS** = `VmHWM` of the test process after both runs (includes the JVM).
+
+1. Build and install the arm64 debug APK and test APK (`./gradlew :composeApp:installDebug :composeApp:installDebugAndroidTest`).
+2. Push the model and a 16 kHz mono 16-bit WAV with real speech (not the device-walk tone):
+   `adb push whistle.cact /data/local/tmp/ && adb push speech16k.wav /data/local/tmp/` (check `shasum -a 256 whistle.cact` against the table above).
+3. Run: `adb shell am instrument -w -e class dev.velum.app.devicewalk.WhistleMeasureDeviceTest -e velumDeviceWalk false -e whistleCact /data/local/tmp/whistle.cact -e whistleWav /data/local/tmp/speech16k.wav dev.velum.app.test/dev.velum.app.devicewalk.DeviceWalkTestRunner`
+4. Emulator: an arm64-v8a system image on an Apple-silicon host, `hw.ramSize=3072` (or 4096) in the AVD `config.ini`, and `-cores 2`.
+   The Android emulator cannot throttle the CPU clock, so record RAM and core count as the constraint and say so; do not call it a low-end phone.
+5. Record the same run on the physical phone (model identity, Android version, `git rev-parse HEAD` of the build, clip duration).
+
+Results to commit under this heading, each labelled emulator or physical: pending. Constrained-emulator numbers do not
+establish real low-end phone performance; low-end phone feedback remains community validation, not an owner hardware purchase.
