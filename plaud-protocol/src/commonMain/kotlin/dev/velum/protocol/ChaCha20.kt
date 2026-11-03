@@ -3,9 +3,9 @@ package dev.velum.protocol
 /**
  * Plain ChaCha20 (RFC 8439, no Poly1305) for PLAUD.AI file bodies.
  *
- * Not JCA, which can't do this reliably on Android. `ChaCha20ParameterSpec` only exists from API 35, while
- * minSdk is 26. Conscrypt, the default provider, ignores that spec in the version we can inspect (2.5.2): it
- * silently uses a random nonce, so a decrypted file is garbage with no error.
+ * Not JCA, which can't do this reliably on Android. `ChaCha20ParameterSpec` is public API only from 35, while
+ * minSdk is 26: on API 34 its constructor throws NoSuchMethodError. Conscrypt 2.5.2, the version we can inspect,
+ * ignores that spec and silently uses a random nonce, so a decrypted file is garbage with no error.
  */
 object ChaCha20 {
     private const val BLOCK_BYTES = 64
