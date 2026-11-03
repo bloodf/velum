@@ -73,6 +73,21 @@ class VoiceProfileStoreTest {
     }
 
     @Test
+    fun importEncrypted_badSecondEntry_writesNothing() {
+        val store = tempStore()
+        store.upsert("A", floatArrayOf(1f, 0f))
+        store.upsert("B", floatArrayOf(0f, 1f))
+        val export = store.exportEncrypted()
+        store.wipeAll()
+        // Corrupt only the second entry's embedding.
+        val marker = "\"embeddingB64\": \""
+        val second = export.indexOf(marker, export.indexOf(marker) + 1) + marker.length
+        val broken = export.substring(0, second) + "***" + export.substring(second)
+        assertFailsWith<InvalidVoiceProfileBackupException> { store.importEncrypted(broken) }
+        assertTrue(store.listProfiles().isEmpty(), "entry 1 must not be saved when entry 2 is bad")
+    }
+
+    @Test
     fun exportImport_roundTrip() {
         val store = tempStore()
         store.upsert(

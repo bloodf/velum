@@ -467,8 +467,8 @@ class VoiceProfileStore(
             throw InvalidVoiceProfileBackupException(e)
         }
         val c = cipher()
-        var count = 0
-        bundle.profiles.forEach { e ->
+        // Decode every entry before writing any, so a bad entry never leaves a partial import behind.
+        val decoded = bundle.profiles.map { e ->
             val embedding: FloatArray
             val samples: List<FloatArray>
             try {
@@ -482,23 +482,21 @@ class VoiceProfileStore(
             }
             val id = e.id.ifBlank { slug(e.displayName) }
             get(id) // Refuse to overwrite unreadable files; recovery requires an explicit removal.
-            writeProfile(
-                VoiceProfile(
-                    id = id,
-                    displayName = e.displayName,
-                    embedding = embedding,
-                    sampleEmbeddings = samples,
-                    role = e.role,
-                    company = e.company,
-                    email = e.email,
-                    notes = e.notes,
-                    contactUri = e.contactUri,
-                    sampleCount = samples.size,
-                ),
+            VoiceProfile(
+                id = id,
+                displayName = e.displayName,
+                embedding = embedding,
+                sampleEmbeddings = samples,
+                role = e.role,
+                company = e.company,
+                email = e.email,
+                notes = e.notes,
+                contactUri = e.contactUri,
+                sampleCount = samples.size,
             )
-            count++
         }
-        return count
+        decoded.forEach { writeProfile(it) }
+        return decoded.size
     }
 
     private fun writeProfile(profile: VoiceProfile) {
