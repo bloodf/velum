@@ -60,9 +60,13 @@ private class AndroidAudioPlayer : AudioPlayer {
 
     override suspend fun prepare(path: String): Boolean = withContext(Dispatchers.IO) {
         releasePlayerOnly()
-        _isPlaying.value = false
-        _positionMs.value = 0L
-        _durationMs.value = 0L
+        // State is written on the main thread only: a collector's recomposition can run on the writing thread
+        // (the Compose test dispatcher does), and a ripple or animator touched there fails off a Looper (#345).
+        onMain {
+            _isPlaying.value = false
+            _positionMs.value = 0L
+            _durationMs.value = 0L
+        }
         pcm16LeMono = null
         if (path.isBlank()) {
             return@withContext false
@@ -87,7 +91,8 @@ private class AndroidAudioPlayer : AudioPlayer {
             mp.prepare()
             applySpeed(mp, speed)
             player = mp
-            _durationMs.value = mp.duration.coerceAtLeast(0).toLong()
+            val durationMs = mp.duration.coerceAtLeast(0).toLong()
+            onMain { _durationMs.value = durationMs }
             if (path.endsWith(".wav", ignoreCase = true) ||
                 path.endsWith(".wave", ignoreCase = true)
             ) {
@@ -99,6 +104,8 @@ private class AndroidAudioPlayer : AudioPlayer {
             false
         }
     }
+
+    private suspend fun onMain(block: () -> Unit) = withContext(Dispatchers.Main.immediate) { block() }
 
     override fun play() {
         val mp = player ?: return
