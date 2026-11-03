@@ -7,6 +7,7 @@ import dev.velum.app.platform.ImportAudioFormats
 import dev.velum.app.platform.deleteFileAtPath
 import dev.velum.app.platform.sha256File
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
 import kotlinx.coroutines.withContext
 
 sealed class ImportResult {
