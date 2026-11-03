@@ -2,6 +2,7 @@ package dev.velum.app.platform
 
 import dev.velum.core.data.TranscriptMarkers
 import dev.velum.app.di.AppContainer
+import dev.velum.app.di.WipeInProgressException
 import dev.velum.core.data.RecordingIds
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -75,6 +76,9 @@ internal suspend fun startPhoneMicDraft(
         }
         if (result !is MicStartResult.Started) reconcile()
         return PhoneMicDraftStart(id, result)
+    } catch (_: WipeInProgressException) {
+        // No draft row was written.
+        return PhoneMicDraftStart(id, MicStartResult.Failed(""))
     } catch (cancelled: CancellationException) {
         withContext(NonCancellable) { try { reconcile() } catch (_: Exception) { /* Retry at startup; preserve the original cancellation. */ } }
         throw cancelled

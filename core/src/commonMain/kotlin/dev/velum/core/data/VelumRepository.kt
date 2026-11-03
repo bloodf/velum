@@ -595,6 +595,9 @@ class VelumRepository(
         q.setMeta(key, value)
     }
 
+    /** Deletes the keys starting with [prefix], taken literally. Callers must run on [dbContext]. */
+    private fun deleteMetaPrefix(prefix: String) = q.deleteMetaMatching(globPrefix(prefix))
+
     suspend fun deleteMeta(key: String) = withContext(dbContext) {
         q.deleteMeta(key)
     }
@@ -783,9 +786,13 @@ class VelumRepository(
         q.deleteAllAutoflows()
         q.deleteAllMemories()
         q.deleteAllGlossary()
-        q.deleteMetaWithPrefix(globPrefix(PROCESSING_ERROR_PREFIX))
-        q.deleteMetaWithPrefix(globPrefix(UNPROMOTED_RUN_PREFIX))
-        q.deleteMetaWithPrefix(globPrefix(IMPORT_DELETED_PREFIX))
+        // By table, not per recording: a job that finished after its recording was deleted leaves orphans.
+        q.deleteAllSpeakers()
+        q.deleteAllSummaryVersions()
+        deleteMetaPrefix(PROCESSING_ERROR_PREFIX)
+        deleteMetaPrefix(IMPORT_HASH_PREFIX)
+        deleteMetaPrefix(IMPORT_DELETED_PREFIX)
+        deleteMetaPrefix(UNPROMOTED_RUN_PREFIX)
         // Clear seed marker so maybeSeed re-inserts default AutoFlow + builtins.
         SeedData.clearSeedMarker(db)
         SeedData.maybeSeed(db)

@@ -19,6 +19,7 @@ import dev.velum.ai.local.ModelStoreDir
 import dev.velum.ai.local.defaultModelStoreRoot
 import dev.velum.ai.local.walkFiles
 import dev.velum.core.data.VelumRepository
+import dev.velum.core.data.WipeGate
 import dev.velum.core.model.ProcessingWarning
 import dev.velum.core.model.ComputeMode
 import dev.velum.core.settings.AiApiTask
@@ -31,6 +32,9 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.buffer
+import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -91,19 +95,38 @@ class RecordingProcessor(
     },
     private val thermal: ThermalPolicy = NoOpThermalPolicy,
     private val opusDecoder: () -> OpusDecoder = ::createOpusDecoder,
+    private val wipeGate: WipeGate = WipeGate(),
 ) {
     private val nextRun = MutableStateFlow(0L)
     private val activeRuns = MutableStateFlow<Map<String, Long>>(emptyMap())
     private val statusLock = Mutex()
 
+    /** A wipe cancels the run and refuses new ones, so nothing is written while the data goes. */
     fun process(
         recordingId: String,
         templateId: String? = null,
         retranscribe: Boolean = true,
         apiModelOverride: ApiModelOverride? = null,
+    ): Flow<JobProgress> = channelFlow {
+        wipeGate.guard {
+            runProcess(recordingId, templateId, retranscribe, apiModelOverride).collect { send(it) }
+        }
+    }.buffer(Channel.RENDEZVOUS)
+
+    private fun runProcess(
+        recordingId: String,
+        templateId: String?,
+        retranscribe: Boolean,
+        apiModelOverride: ApiModelOverride?,
     ): Flow<JobProgress> = flow {
         emit(JobProgress.Running(0.05f, "Starting"))
-        val priorStatus = repository.getRecording(recordingId)?.status
+        // A job queued before a wipe can run after it: with the row gone, record nothing about it.
+        val prior = repository.getRecording(recordingId)
+        if (prior == null) {
+            emit(JobProgress.Failed("Recording not found: $recordingId"))
+            return@flow
+        }
+        val priorStatus = prior.status
         // Per-run token: only the newest run of a recording may restore its status when cancelled (see the handler).
         val run = nextRun.updateAndGet { it + 1 }
 
