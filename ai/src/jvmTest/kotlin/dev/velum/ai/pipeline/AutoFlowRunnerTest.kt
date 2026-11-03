@@ -169,7 +169,7 @@ class AutoFlowRunnerTest {
     @Test
     fun repositoryCalendarTitleThrows_marksFailed_andProcessesNextRecording() = runTest {
         recovery { f ->
-            f.lookup = { CalendarLookupResult.Ok(CalendarEventSummary("Synthetic event", 0, 1)) }
+            f.lookup = { CalendarLookupResult.Ok(CalendarEventSummary("Synthetic event", 0, Long.MAX_VALUE)) }
             f.store.beforeTitle = { id -> if (id == "bad") error("synthetic title write failure") }
         }
     }
@@ -618,7 +618,7 @@ class AutoFlowRunnerTest {
     @Test
     fun calendarRenamesProductionDefaultTitlesInBothLocales_andKeepsEditedTitles() = runTest {
         val f = Fixture(this)
-        f.lookup = { CalendarLookupResult.Ok(CalendarEventSummary("Planning", 0, 1)) }
+        f.lookup = { CalendarLookupResult.Ok(CalendarEventSummary("Planning", 0, Long.MAX_VALUE)) }
         f.start()
         f.publish(
             recording("pt").copy(started_at = 1_792_000_000, title = defaultTitle(1_792_000_000, "pt-BR")),
@@ -628,6 +628,29 @@ class AutoFlowRunnerTest {
         assertEquals("Planning", f.row("pt").title)
         assertEquals("Planning", f.row("en").title)
         assertEquals("My own title", f.row("edited").title)
+    }
+
+    @Test
+    fun calendarRenameOnlyAcceptsAnEventThatOverlapsTheRecording() = runTest {
+        val f = Fixture(this)
+        val start = 1_792_000_000L
+        val ms = start * 1000
+        var event: CalendarEventSummary? = null
+        f.calendarAround = { CalendarLookupResult.Ok(event) }
+        f.start()
+        fun rec(id: String) = recording(id).copy(started_at = start, duration_seconds = 600, title = defaultTitle(start, "en"))
+        event = CalendarEventSummary("Running", ms - 5 * 60_000, ms + 30 * 60_000) // on at the start
+        f.publish(rec("running"))
+        event = CalendarEventSummary("Soon", ms + 5 * 60_000, ms + 35 * 60_000) // begins during the recording
+        f.publish(rec("soon"))
+        event = CalendarEventSummary("Tomorrow", ms + 20 * 3600_000, ms + 21 * 3600_000) // a day-ahead "next" event
+        f.publish(rec("tomorrow"))
+        event = CalendarEventSummary("Earlier", ms - 3 * 3600_000, ms - 2 * 3600_000) // ended before the start
+        f.publish(rec("earlier"))
+        assertEquals("Running", f.row("running").title)
+        assertEquals("Soon", f.row("soon").title)
+        assertEquals(defaultTitle(start, "en"), f.row("tomorrow").title)
+        assertEquals(defaultTitle(start, "en"), f.row("earlier").title)
     }
 
     @Test

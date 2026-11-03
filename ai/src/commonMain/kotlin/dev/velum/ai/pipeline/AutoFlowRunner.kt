@@ -6,6 +6,7 @@ import dev.velum.core.autoflow.AutoFlowMatcher
 import dev.velum.core.autoflow.AutoFlowPostAction
 import dev.velum.core.autoflow.AutoFlowResolve
 import dev.velum.core.calendar.CalendarEventProvider
+import dev.velum.core.calendar.CalendarEventSummary
 import dev.velum.core.time.VelumDateTime
 import dev.velum.core.calendar.CalendarLookupResult
 import dev.velum.core.calendar.createCalendarEventProvider
@@ -241,12 +242,24 @@ class AutoFlowRunner internal constructor(
     private fun hasAutomaticTitle(recording: Recording): Boolean =
         listOf("pt-BR", "en").any { VelumDateTime.formatFriendlyTitle(recording.started_at, it) == recording.title }
 
+    /**
+     * The lookup window reaches a day ahead, so a recording with no meeting at its start must not take tomorrow's:
+     * accept only an event that is still on at the start and begins within the recording (or 15 minutes after the
+     * start, for a recording that has no duration yet).
+     */
+    private fun overlapsRecording(event: CalendarEventSummary, recording: Recording): Boolean {
+        val startMs = recording.started_at * 1000
+        val spanMs = maxOf(recording.duration_seconds * 1000, 15 * 60_000L)
+        return event.beginEpochMs <= startMs + spanMs && event.endEpochMs >= startMs
+    }
+
     // Looked up at the recording's own start: downloads keep the device start time, so "now" could be days later.
     private suspend fun maybeApplyCalendarTitle(recording: Recording) {
         when (val result = calendar.currentOrNextEvent(recording.started_at * 1000)) {
             is CalendarLookupResult.Ok -> {
                 calendarPermissionAsked.value = false
-                val title = result.currentOrNext?.title?.trim().orEmpty()
+                val event = result.currentOrNext?.takeIf { overlapsRecording(it, recording) }
+                val title = event?.title?.trim().orEmpty()
                 if (title.isNotEmpty() && hasAutomaticTitle(recording)) {
                     repository.updateRecordingTitle(recording.id, title)
                 }
