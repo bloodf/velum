@@ -146,12 +146,14 @@ class AndroidWifiTransferServerTest {
         s: WifiFastTransferSession,
         total: Int,
         subscribed: CompletableDeferred<Unit>,
+        out: ByteArrayOutputStream = ByteArrayOutputStream(),
+        consumerStallMs: Long = 0,
     ): ByteArray {
-        val out = ByteArrayOutputStream()
         @Suppress("UNCHECKED_CAST")
         val frames = s.server.incomingEncryptedFrames() as SharedFlow<ByteArray>
         frames.onSubscription { subscribed.complete(Unit) }
             .transformWhile<ByteArray, Unit> { sealed ->
+                if (out.size() == 0) delay(consumerStallMs)
                 out.write(s.openIncoming(sealed) ?: throw WifiTransferFailure("wifi_frame_rejected"))
                 out.size() < total
             }.collect { }
@@ -342,13 +344,108 @@ class AndroidWifiTransferServerTest {
     }
 
     @Test
+    fun aCompleteFileBeatsACloseThatFollowedIt_howeverSlowTheConsumer() = runTest {
+        val port = freePort()
+        val subscribed = CompletableDeferred<Unit>()
+        val s = session(WifiPayloadCipher.ChaCha20Poly1305, AndroidWifiTransferServer(), RecordingJoiner())
+        val device = launchDevice(port, subscribed, WifiPayloadCipher.ChaCha20Poly1305, chunks) // then closes
+        val outcome = WifiTransferCoordinator({ s }, { error("BLE must not run") }).transferOrFallback(
+            ssid = "PLAUD-FAKE", password = "password12", port = port,
+            preamble = preamble, bindHost = "127.0.0.1",
+            assemble = { assembleExact(it, fixture.size, subscribed, consumerStallMs = 1_000) },
+        )
+        device.join()
+        assertIs<WifiTransferCoordinator.Outcome.Wifi>(outcome)
+        assertContentEquals(fixture, outcome.bytes)
+    }
+
+    /** The close lands after assemble's last frame, while it is still working on the result. */
+    @Test
+    fun aCloseWhileAssembleFinishes_doesNotDiscardACompleteFile() = runTest {
+        val port = freePort()
+        val subscribed = CompletableDeferred<Unit>()
+        val assembleRead = CompletableDeferred<Unit>()
+        val deviceClosed = CompletableDeferred<Unit>()
+        val device = launch(Dispatchers.IO) {
+            val d = connectDevice(port)
+            subscribed.await()
+            val c = cipher(WifiPayloadCipher.ChaCha20Poly1305)
+            d.send(preamble)
+            chunks.forEachIndexed { i, chunk -> d.send(c.seal(i.toLong(), chunk)) }
+            assembleRead.await()
+            d.close()
+            deviceClosed.complete(Unit)
+        }
+        val s = session(WifiPayloadCipher.ChaCha20Poly1305, AndroidWifiTransferServer(), RecordingJoiner())
+        val outcome = WifiTransferCoordinator({ s }, { error("BLE must not run") }).transferOrFallback(
+            ssid = "PLAUD-FAKE", password = "password12", port = port,
+            preamble = preamble, bindHost = "127.0.0.1",
+            assemble = {
+                val bytes = assembleExact(it, fixture.size, subscribed)
+                assembleRead.complete(Unit)
+                deviceClosed.await()
+                delay(500) // the CRC check and decrypt a real assemble does here
+                bytes
+            },
+        )
+        device.join()
+        assertIs<WifiTransferCoordinator.Outcome.Wifi>(outcome)
+        assertContentEquals(fixture, outcome.bytes)
+    }
+
+    /** One frame held by the consumer and exactly 64 queued: a full buffer, then the close. */
+    @Test
+    fun aCloseWithTheBufferExactlyFull_stillComesAfterItsFrames() = runTest {
+        val port = freePort()
+        val frames = List(65) { i -> ByteArray(64) { i.toByte() } }
+        val subscribed = CompletableDeferred<Unit>()
+        val firstHeld = CompletableDeferred<Unit>()
+        val deviceClosed = CompletableDeferred<Unit>()
+        val device = launch(Dispatchers.IO) {
+            val d = connectDevice(port)
+            subscribed.await()
+            val c = cipher(WifiPayloadCipher.ChaCha20Poly1305)
+            d.send(preamble)
+            d.send(c.seal(0, frames[0]))
+            firstHeld.await()
+            for (i in 1 until frames.size) d.send(c.seal(i.toLong(), frames[i]))
+            d.close()
+            deviceClosed.complete(Unit)
+        }
+        val session = session(WifiPayloadCipher.ChaCha20Poly1305, AndroidWifiTransferServer(), RecordingJoiner())
+        val outcome = WifiTransferCoordinator({ session }, { error("BLE must not run") }).transferOrFallback(
+            ssid = "PLAUD-FAKE", password = "password12", port = port,
+            preamble = preamble, bindHost = "127.0.0.1",
+            assemble = { s ->
+                val out = ByteArrayOutputStream()
+                @Suppress("UNCHECKED_CAST")
+                (s.server.incomingEncryptedFrames() as SharedFlow<ByteArray>)
+                    .onSubscription { subscribed.complete(Unit) }
+                    .transformWhile<ByteArray, Unit> { sealed ->
+                        if (out.size() == 0) {
+                            firstHeld.complete(Unit)
+                            deviceClosed.await()
+                            delay(500) // let the server handle the close
+                        }
+                        out.write(s.openIncoming(sealed) ?: throw WifiTransferFailure("wifi_frame_rejected"))
+                        out.size() < 65 * 64
+                    }.collect { }
+                out.toByteArray()
+            },
+        )
+        device.join()
+        assertIs<WifiTransferCoordinator.Outcome.Wifi>(outcome)
+        assertContentEquals(frames.reduce { a, b -> a + b }, outcome.bytes)
+    }
+
+    @Test
     fun wifiDropsMidTransfer_fallsBackToBleWithExactBytes_andReleasesEverything() = runTest {
         val port = freePort()
         val network = RecordingNetwork()
         val joiner = RecordingJoiner()
         val server = AndroidWifiTransferServer(softApNetwork = { network.network })
         val subscribed = CompletableDeferred<Unit>()
-        var arrived: ByteArray? = null
+        val arrived = ByteArrayOutputStream()
         // The device may fail to connect or send if the timeout wins the race and stops the server; the
         // `arrived` assertion below is what proves the drop happened mid-transfer.
         val device = launchDevice(port, subscribed, WifiPayloadCipher.ChaCha20Poly1305, chunks.take(8), tolerateFailure = true) // then closes
@@ -358,15 +455,11 @@ class AndroidWifiTransferServerTest {
             wifiTimeout = 10_000.milliseconds,
         ).transferOrFallback(
             "PLAUD-FAKE", "password12", port = port, preamble = preamble, bindHost = "127.0.0.1",
-            assemble = {
-                // The first 8 chunks must really arrive; then the device is gone and nothing more comes.
-                arrived = assembleExact(it, 8 * CHUNK, subscribed)
-                kotlinx.coroutines.awaitCancellation()
-            },
+            assemble = { assembleExact(it, fixture.size, subscribed, arrived) },
         )
         subscribed.complete(Unit) // never leave the device waiting if the timeout fired before subscription
         device.join()
-        assertContentEquals(fixture.copyOf(8 * CHUNK), arrived, "the 8 frames sent before the drop arrived intact")
+        assertContentEquals(fixture.copyOf(8 * CHUNK), arrived.toByteArray(), "the 8 frames sent before the drop arrived intact")
         assertIs<WifiTransferCoordinator.Outcome.BleFallback>(outcome)
         assertEquals(WifiTransferServer.FAILURE_PEER_CLOSED, outcome.reason, "a peer close falls back at once, not after the timeout")
         assertContentEquals(fixture, outcome.bytes) // BLE result is whole: no partial Wi-Fi bytes mixed in
