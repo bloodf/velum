@@ -38,3 +38,6 @@ internal fun searchApplyDelayMs(query: String, applied: String): Long =
  */
 internal fun showPagingSentinel(shownTick: Long, currentTick: Long, rowCount: Int, loadedTarget: Int, totalMatches: Long): Boolean =
     shownTick == currentTick && rowCount >= loadedTarget && rowCount < totalMatches
+
+/** A spinner stands in for the grid until the first page of the current filter has loaded (or failed). */
+internal fun showLoadingState(shown: List<Template>?, loadFailed: Boolean): Boolean = shown == null && !loadFailed

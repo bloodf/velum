@@ -8,6 +8,7 @@ import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.sin
 import kotlin.test.Test
+import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
@@ -152,5 +153,54 @@ class OpusDecode16kMonoTest {
         assertEquals(1, pcm.channels)
         assertEquals(10 * 320, pcm.samples.size)
         assertTrue(pcm.samples.drop(800).maxOf { abs(it.toInt()) } > 1_000, "voice tone survives")
+    }
+
+    private fun oggWithPreSkip(packets: List<ByteArray>, preSkip: Int): ByteArray =
+        SyntheticOgg.page(listOf(SyntheticOgg.opusHead(2, 48_000, preSkip = preSkip)), 0, 2) +
+            SyntheticOgg.page(listOf(SyntheticOgg.tags()), 1) +
+            SyntheticOgg.page(packets, 2, 4, granule = packets.size * 960L)
+
+    private fun decodeFile(ogg: ByteArray): ShortArray {
+        val src = Files.createTempFile("velum-preskip", ".ogg")
+        val dest = Files.createTempFile("velum-preskip", ".pcm")
+        try {
+            Files.write(src, ogg)
+            val meta = decoder.decodePathToPcmFile(src.toString(), ModelStoreDir(dest.toString()))
+            val bytes = Files.readAllBytes(dest)
+            assertEquals(meta.sizeBytes, bytes.size.toLong())
+            return ShortArray(bytes.size / 2).also { ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer().get(it) }
+        } finally {
+            Files.deleteIfExists(src)
+            Files.deleteIfExists(dest)
+        }
+    }
+
+    /** Both decode paths must drop exactly the head: withSkip[i] == noSkip[i + skip16k], same length. */
+    private fun assertDropsHead(preSkip48k: Int, packets: Int = 10) {
+        val pk = continuousStereoPackets(packets)
+        val skip = preSkip48k / 3
+        val none = decoder.decodeToPcm(oggWithPreSkip(pk, 0)).samples
+        val inMemory = decoder.decodeToPcm(oggWithPreSkip(pk, preSkip48k)).samples
+        val streamed = decodeFile(oggWithPreSkip(pk, preSkip48k))
+        assertEquals(packets * 320, none.size)
+        val expected = none.copyOfRange(minOf(skip, none.size), none.size)
+        assertContentEquals(expected, inMemory, "in-memory drops the head, not the tail")
+        assertContentEquals(expected, streamed, "streaming drops the head, not the tail")
+    }
+
+    @Test
+    fun pre_skip_warmup_is_dropped_from_the_head_at_the_output_rate() = assertDropsHead(312) // 104 samples
+
+    @Test
+    fun pre_skip_longer_than_first_packet_spans_packets() = assertDropsHead(3_000) // 1000 samples, 3.1 packets
+
+    @Test
+    fun pre_skip_exactly_one_packet_drops_whole_packet_cleanly() = assertDropsHead(960) // drop == n path
+
+    @Test
+    fun pre_skip_larger_than_the_stream_yields_empty_pcm() {
+        // A bogus pre-skip silently swallows the audio (up to 65535/48000 = 1.37 s); unconfirmed on real files (#7).
+        assertDropsHead(9_600 * 2, packets = 10)
+        assertEquals(0, decoder.decodeToPcm(oggWithPreSkip(continuousStereoPackets(10), 65_535)).samples.size)
     }
 }

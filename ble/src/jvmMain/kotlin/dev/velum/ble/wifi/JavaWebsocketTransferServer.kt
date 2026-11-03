@@ -19,6 +19,7 @@ import java.util.concurrent.atomic.AtomicReference
  */
 class JavaWebsocketTransferServer : WifiTransferServer {
     private val incoming = MutableSharedFlow<ByteArray>(extraBufferCapacity = 64)
+    private val failures = MutableSharedFlow<String>(extraBufferCapacity = 8)
     private val running = AtomicBoolean(false)
     private val serverRef = AtomicReference<WebSocketServer?>(null)
     private val clientRef = AtomicReference<WebSocket?>(null)
@@ -39,7 +40,10 @@ class JavaWebsocketTransferServer : WifiTransferServer {
             }
 
             override fun onClose(conn: WebSocket, code: Int, reason: String, remote: Boolean) {
-                clientRef.compareAndSet(conn, null)
+                // Only the authenticated peer counts; a superseded or unauthenticated close changes nothing.
+                if (clientRef.compareAndSet(conn, null) && running.get()) {
+                    failures.tryEmit(WifiTransferServer.FAILURE_PEER_CLOSED)
+                }
             }
 
             override fun onMessage(conn: WebSocket, message: String) {
@@ -63,7 +67,11 @@ class JavaWebsocketTransferServer : WifiTransferServer {
                     conn.close(1009, "frame_too_large")
                     return
                 }
-                incoming.tryEmit(bytes)
+                if (!incoming.tryEmit(bytes)) {
+                    // The consumer fell behind: a frame is lost, so the sequence has a gap. Fail the path.
+                    failures.tryEmit(WifiTransferServer.FAILURE_FRAME_OVERFLOW)
+                    conn.close(1013, "overloaded")
+                }
             }
 
             override fun onError(conn: WebSocket?, ex: Exception) {
@@ -94,6 +102,8 @@ class JavaWebsocketTransferServer : WifiTransferServer {
     }
 
     override fun incomingEncryptedFrames(): Flow<ByteArray> = incoming.asSharedFlow()
+
+    override fun pathFailures(): Flow<String> = failures.asSharedFlow()
 
     override suspend fun sendEncryptedFrame(bytes: ByteArray) {
         val client = clientRef.get()

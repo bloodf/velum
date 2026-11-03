@@ -115,7 +115,7 @@ object OggOpusDemuxer {
      */
     fun demuxForEach(
         oggBytes: ByteArray,
-        onHeader: (sampleRateHz: Int, channels: Int) -> Unit = { _, _ -> },
+        onHeader: (sampleRateHz: Int, channels: Int, preSkip: Int) -> Unit = { _, _, _ -> },
         onPacket: (ByteArray) -> Unit,
     ): OpusStreamMeta {
         require(oggBytes.size >= 27) { "Ogg buffer too small" }
@@ -144,7 +144,7 @@ object OggOpusDemuxer {
     fun demuxAtForEach(
         size: Long,
         readAt: (dest: ByteArray, position: Long, length: Int) -> Int,
-        onHeader: (sampleRateHz: Int, channels: Int) -> Unit = { _, _ -> },
+        onHeader: (sampleRateHz: Int, channels: Int, preSkip: Int) -> Unit = { _, _, _ -> },
         onPacket: (ByteArray) -> Unit,
     ): OpusStreamMeta {
         require(size >= 27L) { "Ogg buffer too small" }
@@ -207,7 +207,8 @@ object OggOpusDemuxer {
                         }
                         sampleRate = readLe32(packetBuf, 12)
                         sawIdHeader = true
-                        onHeader(sampleRate, channels)
+                        // RFC 7845: pre-skip is in 48 kHz samples; the first ones are encoder warm-up, not audio.
+                        onHeader(sampleRate, channels, (packetBuf[10].toInt() and 0xff) or ((packetBuf[11].toInt() and 0xff) shl 8))
                     } else if (sawIdHeader && !startsWithOpusTags(packetBuf)) {
                         if (packetBuf.isNotEmpty()) audioPackets++
                         onPacket(packetBuf)
