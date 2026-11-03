@@ -4,6 +4,8 @@ import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.usePinned
 import platform.Foundation.NSData
+import platform.Foundation.NSDate
+import platform.Foundation.timeIntervalSince1970
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSHomeDirectory
 import platform.Foundation.NSNumber
@@ -100,6 +102,12 @@ actual class ModelStoreDir actual constructor(absolutePath: String) {
             ?: return 0L
         val size = attrs["NSFileSize"] as? NSNumber
         return size?.longValue ?: 0L
+    }
+
+    actual fun lastModifiedMillis(): Long {
+        val attrs = NSFileManager.defaultManager.attributesOfItemAtPath(absolutePath, error = null) ?: return 0L
+        val modified = attrs["NSFileModificationDate"] as? NSDate ?: return 0L
+        return (modified.timeIntervalSince1970 * 1000.0).toLong()
     }
 
     actual fun renameTo(dest: ModelStoreDir): Boolean {

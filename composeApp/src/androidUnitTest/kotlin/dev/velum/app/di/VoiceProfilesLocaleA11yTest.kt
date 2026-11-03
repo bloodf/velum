@@ -246,8 +246,9 @@ class VoiceProfilesLocaleA11yTest {
                 assertTrue(!isSelected(balanced), "$tag: selection moved")
                 assertState("$tag sensitivity", s, other, seen)
                 tap(s.ux.voiceProfilesExport)
-                awaitLabel(s.ux.voiceProfilesExportReady)
-                assertState("$tag export", s, other, seen)
+                awaitLabel(s.ux.voiceProfilesExportEmpty)
+                assertTrue(nodes().none { (label, _) -> label.trimStart().startsWith("{") }, "$tag: raw JSON shown for an empty export")
+                assertState("$tag empty export", s, other, seen)
                 tap(s.ux.voiceProfilesWipe)
                 awaitLabel(s.ux.confirmWipeProfilesBody)
                 assertState("$tag wipe dialog", s, other, seen)
@@ -267,6 +268,9 @@ class VoiceProfilesLocaleA11yTest {
             screen(s, scale, memory, root) {
                 awaitLabel("Synthetic Healthy")
                 assertState("$tag list", s, other, seen)
+                tap(s.ux.voiceProfilesExport)
+                awaitLabel(s.ux.voiceProfilesExportReady)
+                assertState("$tag export", s, other, seen)
                 tap("Synthetic Healthy")
                 // The fields also render a visible label, so assert the accessibility name itself.
                 for (field in listOf(s.name, s.ux.role, s.ux.company, s.ux.email, s.notes, s.ux.voiceProfilesImportTitle)) {
@@ -319,6 +323,27 @@ class VoiceProfilesLocaleA11yTest {
             val memory = InMemorySecureStore()
             withProfile(source, memory)
             val export = runBlocking { VoiceProfileStore(source, memory).withReady { exportEncrypted() } }
+            newRoot().let { root ->
+                screen(s, scale, memory, root) {
+                    awaitLabel(s.ux.voiceProfilesEmpty)
+                    compose.onNodeWithContentDescription(s.ux.voiceProfilesImportTitle).performScrollTo().performTextInput("not a backup")
+                    tap(s.ux.voiceProfilesImport)
+                    awaitLabel(s.ux.voiceProfilesImportInvalid)
+                    assertState("$tag import invalid", s, other, seen)
+                }
+                root.deleteRecursively()
+            }
+            // The same backup opened under a different key.
+            newRoot().let { root ->
+                screen(s, scale, InMemorySecureStore(), root) {
+                    awaitLabel(s.ux.voiceProfilesEmpty)
+                    compose.onNodeWithContentDescription(s.ux.voiceProfilesImportTitle).performScrollTo().performTextInput(export)
+                    tap(s.ux.voiceProfilesImport)
+                    awaitLabel(s.ux.voiceProfilesImportWrongKey)
+                    assertState("$tag import wrong key", s, other, seen)
+                }
+                root.deleteRecursively()
+            }
             newRoot().let { root ->
                 screen(s, scale, memory, root) {
                     awaitLabel(s.ux.voiceProfilesEmpty)
