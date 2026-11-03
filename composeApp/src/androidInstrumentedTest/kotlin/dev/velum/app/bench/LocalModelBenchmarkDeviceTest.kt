@@ -36,7 +36,9 @@ import org.junit.runner.RunWith
  * ASR runs the shipping windowed path: 30 s windows, 28 s hop ([WindowedAsr]), one `transcribe` per window, with each
  * window built on demand so the whole workload never sits in the heap.
  *
- * Instrumentation args: `bench.audio` (REQUIRED device path to a 16 kHz mono PCM16 WAV of real speech; the engines
+ * The report is written to getExternalFilesDir/bench-report.json (/sdcard/Android/data/dev.velum.app/files/).
+ *
+ * Instrumentation args: `bench.audio` (REQUIRED device path, e.g. /sdcard/Android/data/dev.velum.app/files/bench.wav, to a 16 kHz mono PCM16 WAV of real speech; the engines
  * reject silence/tones), `bench.models` (comma list, default [DEFAULT_MODELS]), `bench.workloadSeconds`
  * (source duration, input looped to reach it; default 60, 3600 for the #12 1 h workload).
  */
@@ -45,7 +47,12 @@ class LocalModelBenchmarkDeviceTest {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val args = InstrumentationRegistry.getArguments()
 
+    /** App-specific external dir: adb can push/pull it and the app process can read/write it without storage permission. */
+    private val reportFile = File(requireNotNull(instrumentation.targetContext.getExternalFilesDir(null)) { "no external files dir" }, "bench-report.json")
+
     @Test fun benchmark_local_models() = runBlocking {
+        reportFile.parentFile?.mkdirs()
+        reportFile.delete() // a failed run must leave nothing stale to pull
         val models = (args.getString("bench.models") ?: DEFAULT_MODELS).split(',').map(String::trim).filter(String::isNotEmpty)
         assertTrue("bench.models is empty", models.isNotEmpty())
         val workloadSec = (args.getString("bench.workloadSeconds") ?: "60").toInt()
@@ -63,13 +70,10 @@ class LocalModelBenchmarkDeviceTest {
             }
         }
         val report = BenchReport(environment(models, workloadSec, audioPath), results)
-        // Log first so a failed write or validation never loses a finished run.
+        // Log first so a failed validation or write never loses a finished run.
         Log.i(TAG, report.toJson())
-        args.getString("additionalTestOutputDir")?.let { dir ->
-            runCatching { File(dir).apply { mkdirs() }.resolve("bench-report.json").writeText(report.toJson()) }
-                .onFailure { Log.e(TAG, "could not write bench-report.json (report is in logcat above)", it) }
-        }
         report.requireValid(models.toSet())
+        reportFile.writeText(report.toJson()) // a failed write fails the run; the old report was deleted at start
     }
 
     private suspend fun transcribe(manager: LocalModelManager, id: String, clip: ByteArray, sec: Int): BenchResult {
@@ -156,14 +160,14 @@ class LocalModelBenchmarkDeviceTest {
         const val HWM_TOLERANCE_KB = 4096L
         const val DEFAULT_MODELS = "parakeet-tdt-0.6b-v3-int8,whisper-large-v3-turbo,whisper-tiny,gemma-4-e4b"
 
-        /** The fixed summary workload (about 90 words). */
+        /** The fixed summary workload (84 words). */
         const val TRANSCRIPT = "Maria: Let's review the launch plan. The beta ships on Thursday and QA still has two open bugs. " +
             "Joao: Both bugs are in the export flow; I can fix them by Wednesday if design confirms the new icon. " +
             "Maria: Design confirms. Priya, can you update the release notes and tell support? " +
             "Priya: Yes, notes by Wednesday noon. I will also schedule a short training for support on Friday. " +
             "Maria: Good. Next review is Monday at ten; Joao brings the bug status, Priya the notes."
 
-        /** Source duration the transcript stands for: about 90 words at an assumed 150 words per minute. */
-        const val TRANSCRIPT_SOURCE_SECONDS = 36
+        /** Source duration the transcript stands for: 84 words at an assumed 150 words per minute (about 34 s). */
+        const val TRANSCRIPT_SOURCE_SECONDS = 34
     }
 }
