@@ -56,6 +56,8 @@ actual class ModelStoreDir actual constructor(absolutePath: String) {
 
     actual fun length(): Long = if (file.isFile) file.length() else 0L
 
+    actual fun lastModifiedMillis(): Long = file.lastModified()
+
     actual fun renameTo(dest: ModelStoreDir): Boolean {
         val target = File(dest.absolutePath)
         target.parentFile?.mkdirs()
