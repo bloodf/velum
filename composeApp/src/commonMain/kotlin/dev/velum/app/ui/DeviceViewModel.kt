@@ -104,6 +104,7 @@ class DeviceViewModel(
     private var connectedSerial: String? = null
     private var connectedDeviceId: String? = null
     private var downloadJob: Job? = null
+    private var cancelledJob: Job? = null
     private val downloadMutex = Mutex()
 
     init {
@@ -132,8 +133,15 @@ class DeviceViewModel(
 
     fun connect(deviceId: String) {
         // The link and its client belong to the running download; a second connect would replace them mid-transfer.
-        if (downloadJob?.isActive == true) return
+        // Same condition as downloadSession: a queued job that has not started yet owns nothing.
+        if (downloadJob?.isActive == true && _sessionUi.value.downloadingSessionId != null) return
         viewModelScope.launch {
+            // A cancelled download may still be unwinding (a BLE write can ignore cancellation) and will touch
+            // the client when it ends; connect only after it, with the same bound as a wipe.
+            cancelledJob?.let { unwinding ->
+                withTimeoutOrNull(wipeJoinTimeout) { unwinding.join() }
+                if (!unwinding.isCompleted) return@launch
+            }
             try {
                 connectedDeviceId = deviceId
                 ble.connect(deviceId)
@@ -159,7 +167,7 @@ class DeviceViewModel(
 
     fun cancelDownload() {
         val locale = localeTag()
-        downloadJob?.cancel()
+        downloadJob?.let { it.cancel(); cancelledJob = it }
         DownloadProgressNotifier.dismiss(DownloadNotifyKind.DeviceSession)
         DownloadProgressNotifier.setCancelHandler(DownloadNotifyKind.DeviceSession, null)
         if (_sessionUi.value.downloadingSessionId != null) {
@@ -365,6 +373,8 @@ class DeviceViewModel(
             ).download(sessionId, sizeBytes, partial, ::onProgress)
         } catch (e: Throwable) {
             partial.close()
+            // The download owned the client; a cancel before its first attempt leaves it open otherwise.
+            finished?.close()
             throw e
         }
         val recordingId = try {

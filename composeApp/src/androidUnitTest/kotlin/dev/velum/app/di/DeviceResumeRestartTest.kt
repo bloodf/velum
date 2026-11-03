@@ -246,6 +246,72 @@ class DeviceResumeRestartTest {
         } finally { owner.clear(); Dispatchers.resetMain() }
     }
 
+    /** Counts connect() calls and records any made while [unwinding] is set. */
+    private class ConnectProbe(private val fake: FakeBleTransport) : BleTransport by fake {
+        @Volatile var unwinding = false
+        val connects = java.util.concurrent.atomic.AtomicInteger()
+        val connectsWhileUnwinding = java.util.concurrent.atomic.AtomicInteger()
+        override suspend fun connect(deviceId: String) {
+            connects.incrementAndGet()
+            if (unwinding) connectsWhileUnwinding.incrementAndGet()
+            fake.connect(deviceId)
+            yield()
+        }
+    }
+
+    @Test fun connect_waits_for_a_cancelled_download_that_is_still_unwinding() {
+        try {
+            val saving = CompletableDeferred<Unit>()
+            var probe: ConnectProbe? = null
+            val vm = run(
+                peripheral(),
+                transport = { p -> ConnectProbe(FakeBleTransport(p)).also { probe = it } },
+                persist = { _ ->
+                    probe!!.unwinding = true
+                    saving.complete(Unit)
+                    // A BLE write or save that ignores cancellation, then a failed save.
+                    withContext(NonCancellable) { delay(600) }
+                    probe!!.unwinding = false
+                    throw IOException("synthetic full disk")
+                },
+                await = false,
+            )
+            runBlocking {
+                withTimeout(20_000) { saving.await() }
+                vm.cancelDownload()
+                vm.connect("fake-note-pro")
+                delay(1_500)
+            }
+            assertEquals(0, probe!!.connectsWhileUnwinding.get(), "connect must wait for the cancelled download to finish")
+            assertEquals(2, probe!!.connects.get(), "and then connect")
+        } finally { owner.clear(); Dispatchers.resetMain() }
+    }
+
+    @Test fun a_queued_download_does_not_block_connect_forever() {
+        try {
+            val saving = CompletableDeferred<Unit>()
+            var probe: ConnectProbe? = null
+            val vm = run(
+                peripheral(),
+                transport = { p -> ConnectProbe(FakeBleTransport(p)).also { probe = it } },
+                persist = { _ ->
+                    saving.complete(Unit)
+                    withContext(NonCancellable) { delay(400) }
+                    throw IOException("synthetic full disk")
+                },
+                await = false,
+            )
+            runBlocking {
+                withTimeout(20_000) { saving.await() }
+                vm.cancelDownload()
+                vm.downloadSession(session) // queued behind the one that ignores cancellation: active, nothing shown
+                vm.connect("fake-note-pro")
+                delay(1_500)
+            }
+            assertEquals(2, probe!!.connects.get(), "the explicit connect must not be ignored by a job that has not started")
+        } finally { owner.clear(); Dispatchers.resetMain() }
+    }
+
     @Test fun connect_during_a_download_is_ignored() {
         try {
             val saving = CompletableDeferred<Unit>()
