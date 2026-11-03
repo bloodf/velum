@@ -641,14 +641,17 @@ class AutoFlowRunnerTest {
         fun rec(id: String) = recording(id).copy(started_at = start, duration_seconds = 600, title = defaultTitle(start, "en"))
         event = CalendarEventSummary("Running", ms - 5 * 60_000, ms + 30 * 60_000) // on at the start
         f.publish(rec("running"))
-        event = CalendarEventSummary("Soon", ms + 5 * 60_000, ms + 35 * 60_000) // begins during the recording
+        event = CalendarEventSummary("Soon", ms + 4 * 60_000, ms + 35 * 60_000) // begins within the grace after the start
         f.publish(rec("soon"))
+        event = CalendarEventSummary("Later", ms + 5 * 3600_000, ms + 6 * 3600_000) // a meeting hours after the start
+        f.publish(rec("later"))
         event = CalendarEventSummary("Tomorrow", ms + 20 * 3600_000, ms + 21 * 3600_000) // a day-ahead "next" event
         f.publish(rec("tomorrow"))
         event = CalendarEventSummary("Earlier", ms - 3 * 3600_000, ms - 2 * 3600_000) // ended before the start
         f.publish(rec("earlier"))
         assertEquals("Running", f.row("running").title)
         assertEquals("Soon", f.row("soon").title)
+        assertEquals(defaultTitle(start, "en"), f.row("later").title)
         assertEquals(defaultTitle(start, "en"), f.row("tomorrow").title)
         assertEquals(defaultTitle(start, "en"), f.row("earlier").title)
     }
