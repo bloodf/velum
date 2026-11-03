@@ -131,6 +131,8 @@ class DeviceViewModel(
     }
 
     fun connect(deviceId: String) {
+        // The link and its client belong to the running download; a second connect would replace them mid-transfer.
+        if (downloadJob?.isActive == true) return
         viewModelScope.launch {
             try {
                 connectedDeviceId = deviceId
@@ -149,6 +151,7 @@ class DeviceViewModel(
             cancelDownload()
             downloadJob?.join()
             closeClient()
+            connectedSerial = null // an explicit disconnect forgets the device; a link drop does not
             _sessionUi.value = DeviceSessionUi()
             ble.disconnect()
         }
@@ -256,7 +259,7 @@ class DeviceViewModel(
                     startedAtEpochSeconds = sessionId.coerceAtLeast(0L),
                 )
             }
-            client = outcome.client
+            adoptClient(outcome.client)
             connectedSerial = connectedSerial ?: serial
             // The recording is saved: a failed refresh must not report the download as failed.
             val sessions = try { outcome.client?.listSessions()?.entries } catch (cancelled: CancellationException) { throw cancelled } catch (_: Exception) { null }
@@ -367,7 +370,7 @@ class DeviceViewModel(
         val recordingId = try {
             persistDownloadedSession(persist(partial.length()) { position, length -> partial.read(position, length) })
         } catch (e: Throwable) {
-            client = finished
+            adoptClient(finished)
             // Only bytes that can't be decrypted are useless. A read error, full disk or database error can be retried.
             if (undecryptable) partial.delete() else partial.close()
             throw e
@@ -407,7 +410,12 @@ class DeviceViewModel(
     private fun closeClient() {
         client?.close()
         client = null
-        connectedSerial = null
+    }
+
+    /** Takes [next] as the live client, closing the one it replaces so a link is never left open and unreferenced. */
+    private fun adoptClient(next: PlaudDeviceClient?) {
+        if (client !== next) client?.close()
+        client = next
     }
 
     private suspend fun runProtocolIfKeysPresent() {
@@ -458,7 +466,7 @@ class DeviceViewModel(
                 advertisedName = connected?.name,
             )
             val c = PlaudDeviceClient(ble, createSessionCipher(), keys)
-            client = c
+            adoptClient(c)
             c.unlock()
             val hs = c.handshake()
             val caps = capsBase.withHandshake(hs)

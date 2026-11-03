@@ -6,6 +6,7 @@ import dev.velum.app.platform.PartialTransfer
 import dev.velum.app.platform.PartialTransferFileStore
 import dev.velum.app.ui.DeviceViewModel
 import dev.velum.app.ui.DownloadedSessionAudio
+import dev.velum.ble.BleTransport
 import dev.velum.ble.crypto.JcaFileDecryptor
 import dev.velum.ble.crypto.createFileDecryptor
 import dev.velum.ble.crypto.createSessionCipher
@@ -44,6 +45,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.yield
 
 /**
  * #94 through the real [DeviceViewModel]: a partial left by an earlier process continues from its
@@ -88,10 +90,11 @@ class DeviceResumeRestartTest {
         identity: DeviceIdentityKeys = keys,
         deletePartials: () -> Unit = { PartialTransferFileStore.deleteAll(partials) },
         wipeJoinTimeout: Duration = 15.seconds,
+        transport: (FakePlaudPeripheral) -> BleTransport = { FakeBleTransport(it) },
     ): DeviceViewModel = runBlocking {
         Dispatchers.setMain(Dispatchers.Unconfined)
         val vm = DeviceViewModel(
-            FakeBleTransport(peripheral),
+            transport(peripheral),
             Importer(identity),
             persistDownloadedSession = { persist(it) },
             localeTag = { "en" },
@@ -205,6 +208,72 @@ class DeviceResumeRestartTest {
             assertEquals("rec-synthetic", vm.sessionUi.value.lastDownloadedRecordingId)
             assertContentEquals(plaintext, assertNotNull(saved))
             assertEquals(listOf(0L), fake.syncStartOffsets, "nothing is transferred again")
+        } finally { owner.clear(); Dispatchers.resetMain() }
+    }
+
+    /** Lets the VM's connection collector see Connected before connect() returns, as a real Main dispatcher does. */
+    private fun settled(fake: FakeBleTransport): BleTransport = object : BleTransport by fake {
+        override suspend fun connect(deviceId: String) {
+            fake.connect(deviceId)
+            yield()
+        }
+    }
+
+    @Test fun a_failed_download_after_a_reconnect_keeps_the_device_serial_for_the_retry() {
+        try {
+            // Keys without a serial: the advertised one is the only dedup/resume key. The mid-transfer reconnect
+            // passes through Idle, which used to forget it, so the retry opened its partial with no serial (#212).
+            val noSerial = keys.copy(serialNumber = "")
+            val opened = mutableListOf<String?>()
+            var failing = true
+            val vm = run(
+                peripheral(TransferFaults(disconnectAt = setOf(15_000)), identity = noSerial),
+                identity = noSerial,
+                transport = { p -> val fake = FakeBleTransport(p); settled(fake) },
+                open = { id, sn -> opened += sn; PartialTransferFileStore.open(partials, id, sn) },
+                persist = { audio ->
+                    val out = ByteArrayOutputStream()
+                    audio.writeDecryptedAudio { check(!failing) { "synthetic full disk" }; out.write(it) }
+                    saved = out.toByteArray()
+                    "rec-synthetic"
+                },
+            )
+            assertEquals(DeviceUiCopy.downloadFailed("en"), vm.sessionUi.value.statusMessage)
+            failing = false
+            vm.downloadSession(session)
+            awaitOutcome(vm)
+            assertEquals(listOf<String?>("881FAKE1", "881FAKE1"), opened)
+        } finally { owner.clear(); Dispatchers.resetMain() }
+    }
+
+    @Test fun connect_during_a_download_is_ignored() {
+        try {
+            val saving = CompletableDeferred<Unit>()
+            val release = CompletableDeferred<Unit>()
+            val fake = peripheral()
+            val vm = run(
+                fake,
+                persist = { audio ->
+                    saving.complete(Unit)
+                    release.await()
+                    val out = ByteArrayOutputStream()
+                    audio.writeDecryptedAudio { out.write(it) }
+                    saved = out.toByteArray()
+                    "rec-synthetic"
+                },
+                await = false,
+            )
+            runBlocking {
+                withTimeout(20_000) { saving.await() }
+                vm.connect("fake-note-pro")
+                delay(200)
+                assertTrue(vm.sessionUi.value.downloadingSessionId != null, "the running download is still shown")
+                assertTrue(vm.sessionUi.value.statusMessage != DeviceUiCopy.unlocking("en"), "no second unlock on the live link")
+                release.complete(Unit)
+            }
+            awaitOutcome(vm)
+            assertEquals("rec-synthetic", vm.sessionUi.value.lastDownloadedRecordingId)
+            assertEquals(listOf(0L), fake.syncStartOffsets)
         } finally { owner.clear(); Dispatchers.resetMain() }
     }
 
