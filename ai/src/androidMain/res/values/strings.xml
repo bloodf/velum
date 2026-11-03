@@ -3,4 +3,7 @@
     <string name="velum_processing_channel_name">Recording processing</string>
     <string name="velum_processing_notification_title">Processing recording</string>
     <string name="velum_processing_notification_body">Transcribing and summarizing on-device</string>
+    <string name="velum_processing_refused_title">Processing may be interrupted</string>
+    <string name="velum_processing_refused_body">Android did not allow background processing to stay visible. Keep Velum open, or retry from the recording.</string>
+    <string name="velum_processing_stopped_message">Processing was stopped by Android because it could not run in the foreground. Open Velum and retry.</string>
 </resources>
