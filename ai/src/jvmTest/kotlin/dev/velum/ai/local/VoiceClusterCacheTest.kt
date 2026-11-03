@@ -79,4 +79,15 @@ class VoiceClusterCacheTest {
         }
         assertEquals(setOf("rec-1", "rec-2"), store.cachedRecordingIds())
     }
+
+    @Test fun a_new_run_replaces_the_recordings_cached_speakers() = runTest {
+        val store = store(this)
+        store.withReady {
+            replaceClusterEmbeddings("rec-r", mapOf("S0" to embedding, "S1" to floatArrayOf(9f, 9f, 9f)))
+            // Reprocessing found one speaker: an older run's S1 must not stay, or enrolling S1 would promote someone else.
+            replaceClusterEmbeddings("rec-r", mapOf("S0" to embedding))
+        }
+        assertNull(store.withReady { cachedClusterEmbedding("rec-r", "S1") }, "a stale speaker from an older run survived")
+        assertContentEquals(embedding, store.withReady { cachedClusterEmbedding("rec-r", "S0") })
+    }
 }

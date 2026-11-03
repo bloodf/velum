@@ -405,6 +405,15 @@ class VoiceProfileStore(
         dir.resolve("${slug(speakerId)}.f32").deleteFile()
     }
 
+    /**
+     * The cached speakers of [recordingId] after a diarization run: an older run's speakers go first, so a stale
+     * "S1" can't be enrolled as someone else's voice when this run numbered its speakers differently.
+     */
+    fun replaceClusterEmbeddings(recordingId: String, embeddingsBySpeaker: Map<String, FloatArray>) {
+        deleteClusterCache(recordingId)
+        embeddingsBySpeaker.forEach { (speakerId, embedding) -> cacheClusterEmbedding(recordingId, speakerId, embedding) }
+    }
+
     /** Deletes plaintext `.f32` embeddings earlier versions wrote next to the encrypted ones (#320). No key needed. */
     fun purgePlaintextClusterCache() {
         cacheDir.walkFiles().filter { it.name.endsWith(".f32") }.forEach { it.deleteFile() }
