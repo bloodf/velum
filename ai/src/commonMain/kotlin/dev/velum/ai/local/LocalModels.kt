@@ -397,6 +397,12 @@ class LocalModelManager(
 
     private fun downloadBody(id: String): Flow<LocalModelState> = flow {
         val current = stateFor(id) ?: return@flow
+        // Checked here, after single-flight registration, so every caller is covered: a caller that read
+        // "not Ready" just before another download finished must not fetch (and possibly wipe) a Ready model.
+        if (current.status == LocalModelStatus.Ready) {
+            emit(current)
+            return@flow
+        }
         val url = current.spec.downloadUrl
         if (url.isNullOrBlank()) {
             update(id) {
