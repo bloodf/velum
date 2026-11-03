@@ -666,6 +666,10 @@ class DeviceWalkUiTest {
                 var scrolled = false
                 var bodyTop0 = Float.NaN
                 for (attempt in 1..SCROLL_ATTEMPTS) {
+                    // CI shows repeating "Pixel Launcher isn't responding" dialogs that cover the app and swallow the swipe.
+                    lastAnrCheckMs = 0L
+                    dismissSystemAnrDialog()
+                    waitUntil(5_000, "App window not in front before the landscape swipe") { device.currentPackageName == appContext.packageName }
                     bodyTop0 = textTop(statement) ?: error("statement node missing")
                     device.swipe(device.displayWidth / 2, device.displayHeight * 4 / 5, device.displayWidth / 2, device.displayHeight / 5, 20)
                     scrolled = runCatching {
