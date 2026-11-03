@@ -3,11 +3,26 @@ package dev.velum.core.bundle
 import dev.velum.core.sync.Hlc
 import dev.velum.core.sync.SyncField
 import dev.velum.core.sync.SyncRecord
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
-/** Receives a fully validated import. Called only from the commit phase, inside the caller's transaction (#71). */
+/** A record carries a timestamp too far ahead of this device's clock. Not a passphrase or damage problem: fix the clock and retry. */
+class BundleClockSkewException : IllegalArgumentException(
+    "The bundle has timestamps ahead of this device's clock. Check the date and time on both devices and try again.",
+)
+
+/**
+ * Receives a fully validated import. Called only from the commit phase, inside the caller's transaction (#71).
+ *
+ * Contract for implementers:
+ * - Merge with [SyncRecord.mergeRemote] using the SAME `nowMs` given to [BundleSections.importers], and fail (throw, so the
+ *   transaction rolls back) when it returns null.
+ * - Allowlist the fields each section may write; ignore every other field name. Never merge device-local fields such as
+ *   `local_path` or `device_serial`, whatever the bundle says.
+ * - Decoding checks shape and size only; it does not know what any field means.
+ */
 interface BundleSink {
     /** Merge [records] (id to per-field record) into local storage with [SyncRecord.mergeRemote] semantics. */
     fun mergeRecords(section: String, records: Map<String, SyncRecord>)
@@ -18,7 +33,9 @@ interface BundleSink {
 
 /**
  * Maps the #69 synced data types onto [BundleContents] sections (#71). Decisions, stated plainly:
- * - Settings are NOT in the bundle (owner decision pending); a `settings` section is rejected as unknown.
+ * - Settings and voice profiles are NOT in the bundle (owner decisions pending): speaker embeddings are biometric-like,
+ *   a bundle protects them only with its passphrase, and docs/PRIVACY.md says they stay on device. `settings` and
+ *   `voice-profiles` sections are rejected as unknown.
  * - Audio is NOT in the bundle: only SHA-256 content hashes ([AUDIO_HASHES]), so the receiver knows what to fetch.
  * - Record sections carry [SyncRecord]s (per-field LWW with HLC and tombstones) keyed by record id, so importing
  *   merges instead of overwriting.
@@ -27,12 +44,13 @@ interface BundleSink {
 object BundleSections {
     const val TRANSCRIPTS = "transcripts"
     const val NOTES = "notes"
-    const val VOICE_PROFILES = "voice-profiles"
     const val TEMPLATES = "templates"
     const val AUDIO_HASHES = "audio-hashes"
 
-    val recordSections: List<String> = listOf(TRANSCRIPTS, NOTES, VOICE_PROFILES, TEMPLATES)
+    val recordSections: List<String> = listOf(TRANSCRIPTS, NOTES, TEMPLATES)
 
+    /** A section larger than this is refused before parsing: the parser expands JSON to several times its size on the heap. */
+    const val MAX_SECTION_BYTES = 16 * 1024 * 1024
     const val MAX_RECORDS = 100_000
     const val MAX_FIELDS_PER_RECORD = 1_000
     const val MAX_NAME_CHARS = 256
@@ -57,8 +75,13 @@ object BundleSections {
         return json.encodeToString(wire).encodeToByteArray()
     }
 
-    /** Strict decode; any malformed, oversized or out-of-range input is [BundleUnreadableException]. */
+    /**
+     * Shape and size checks: at most [MAX_SECTION_BYTES] (before parsing), version 1, no unknown keys, bounded counts and
+     * lengths, non-negative HLC parts. Not checked: duplicate JSON keys (the last one wins) and what field names mean.
+     * Anything malformed is [BundleUnreadableException].
+     */
     fun decodeRecords(bytes: ByteArray): Map<String, SyncRecord> {
+        if (bytes.size > MAX_SECTION_BYTES) throw BundleUnreadableException()
         val wire = parse<RecordsWire>(bytes)
         if (wire.v != 1 || wire.records.size > MAX_RECORDS) throw BundleUnreadableException()
         return wire.records.mapValues { (id, fields) ->
@@ -76,6 +99,7 @@ object BundleSections {
     fun encodeAudioHashes(hashes: List<String>): ByteArray = json.encodeToString(HashesWire(1, hashes)).encodeToByteArray()
 
     fun decodeAudioHashes(bytes: ByteArray): List<String> {
+        if (bytes.size > MAX_SECTION_BYTES) throw BundleUnreadableException()
         val wire = parse<HashesWire>(bytes)
         if (wire.v != 1 || wire.hashes.size > MAX_RECORDS) throw BundleUnreadableException()
         if (!wire.hashes.all { h -> h.length == SHA256_HEX && h.all { it in '0'..'9' || it in 'a'..'f' } }) throw BundleUnreadableException()
@@ -84,13 +108,13 @@ object BundleSections {
 
     /**
      * Importers for [BundleImporter.import]. Each `prepare` decodes and validates its whole section (record sections also
-     * reject any timestamp more than the drift limit ahead of [nowMs], rejecting the whole bundle); only commits touch [sink].
+     * reject any timestamp more than the drift limit ahead of [nowMs] with [BundleClockSkewException], rejecting the whole bundle); only commits touch [sink].
      */
     fun importers(nowMs: Long, sink: BundleSink): Map<String, SectionImporter> =
         recordSections.associateWith { section ->
             SectionImporter { data ->
                 val records = decodeRecords(data)
-                if (!records.values.all { it.isWithinDrift(nowMs) }) throw BundleUnreadableException()
+                if (!records.values.all { it.isWithinDrift(nowMs) }) throw BundleClockSkewException()
                 ({ sink.mergeRecords(section, records) })
             }
         } + (AUDIO_HASHES to SectionImporter { data ->
@@ -100,7 +124,11 @@ object BundleSections {
 
     private inline fun <reified T> parse(bytes: ByteArray): T = try {
         json.decodeFromString<T>(bytes.decodeToString(throwOnInvalidSequence = true))
-    } catch (_: Exception) { // serialization errors and the platform's invalid-UTF-8 exception alike
+    } catch (_: SerializationException) {
+        throw BundleUnreadableException()
+    } catch (_: IllegalArgumentException) {
+        throw BundleUnreadableException()
+    } catch (_: CharacterCodingException) {
         throw BundleUnreadableException()
     }
 }

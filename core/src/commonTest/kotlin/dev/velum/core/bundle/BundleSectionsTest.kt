@@ -6,6 +6,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class BundleSectionsTest {
     private val now = 1_000_000_000_000L
@@ -42,21 +43,30 @@ class BundleSectionsTest {
         assertEquals(listOf(hash), sink.hashes)
     }
 
-    @Test fun settings_are_not_importable() {
-        val sink = Sink()
-        val sealed = bundle(mapOf("settings" to "{}".encodeToByteArray(), BundleSections.NOTES to BundleSections.encodeRecords(emptyMap())))
-        assertFailsWith<BundleUnreadableException> { BundleImporter.import("pw", sealed, BundleSections.importers(now, sink), atomically) }
-        assertEquals(emptyMap(), sink.merged)
+    @Test fun settings_and_voice_profiles_are_not_importable() {
+        for (name in listOf("settings", "voice-profiles")) {
+            val sink = Sink()
+            val sealed = bundle(mapOf(name to "{}".encodeToByteArray(), BundleSections.NOTES to BundleSections.encodeRecords(emptyMap())))
+            assertFailsWith<BundleUnreadableException>(name) { BundleImporter.import("pw", sealed, BundleSections.importers(now, sink), atomically) }
+            assertEquals(emptyMap(), sink.merged, name)
+        }
     }
 
-    @Test fun a_future_timestamp_or_bad_section_rejects_the_whole_bundle_without_any_merge() {
+    @Test fun oversized_sections_are_refused_before_parsing() {
+        val big = ByteArray(BundleSections.MAX_SECTION_BYTES + 1) { ' '.code.toByte() }
+        assertFailsWith<BundleUnreadableException> { BundleSections.decodeRecords(big) }
+        assertFailsWith<BundleUnreadableException> { BundleSections.decodeAudioHashes(big) }
+    }
+
+    @Test fun a_future_timestamp_rejects_the_whole_bundle_with_its_own_reason_and_no_merge() {
         val far = SyncRecord().write("text", "x", Hlc(now + 3L * 24 * 60 * 60 * 1000, 0, "evil"))
         val sink = Sink()
         val sealed = bundle(mapOf(
             BundleSections.NOTES to BundleSections.encodeRecords(mapOf("ok" to transcript)),
             BundleSections.TRANSCRIPTS to BundleSections.encodeRecords(mapOf("bad" to far)),
         ))
-        assertFailsWith<BundleUnreadableException> { BundleImporter.import("pw", sealed, BundleSections.importers(now, sink), atomically) }
+        val e = assertFailsWith<BundleClockSkewException> { BundleImporter.import("pw", sealed, BundleSections.importers(now, sink), atomically) }
+        assertTrue(e !is BundleUnreadableException && "passphrase" !in e.message.orEmpty(), "must not say wrong passphrase")
         assertEquals(emptyMap(), sink.merged)
         assertNull(sink.hashes)
     }
