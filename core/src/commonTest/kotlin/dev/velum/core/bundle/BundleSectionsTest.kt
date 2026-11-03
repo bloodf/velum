@@ -91,6 +91,19 @@ class BundleSectionsTest {
         assertTrue("limit" in e.message.orEmpty(), e.message)
     }
 
+    @Test fun a_future_timestamp_rejects_the_whole_bundle_with_its_own_reason_and_no_merge() {
+        val far = SyncRecord().write("text", "x", Hlc(now + 3L * 24 * 60 * 60 * 1000, 0, "evil"))
+        val sink = Sink()
+        val sealed = bundle(mapOf(
+            BundleSections.NOTES to BundleSections.encodeRecords(mapOf("ok" to transcript)),
+            BundleSections.TRANSCRIPTS to BundleSections.encodeRecords(mapOf("bad" to far)),
+        ))
+        val e = assertFailsWith<BundleClockSkewException> { BundleImporter.import("pw", sealed, BundleSections.importers(now, sink), atomically) }
+        assertTrue(e !is BundleUnreadableException && "passphrase" !in e.message.orEmpty(), "must not say wrong passphrase")
+        assertEquals(emptyMap(), sink.merged)
+        assertNull(sink.hashes)
+    }
+
     @Test fun malformed_oversized_and_out_of_range_payloads_are_unreadable() {
         for (bad in listOf("not json", """{"v":2,"records":{}}""", """{"v":1,"records":{},"extra":1}""",
             """{"v":1,"records":{"":{}}}""", """{"v":1,"records":{"a":{"f":{"value":"x","wallMs":-1,"counter":0,"node":"n"}}}}""",
