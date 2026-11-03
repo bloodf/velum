@@ -1192,7 +1192,10 @@ internal fun LiveTranscriptPane(
         "${recordingsDirectoryPath()}/$recordingId.wav"
     }
     // No usable streaming model: recording and the WAV go on, the pane says so instead of showing text.
-    var liveNotice by remember(recordingId) { mutableStateOf<String?>(null) }
+    // Kept as a kind, not a string, so a language change mid-recording re-resolves it.
+    var liveNotice by remember(recordingId) { mutableStateOf<LiveNotice?>(null) }
+    val hasApiKey = container.settingsRepository.settings.collectAsState().value.hasApiKey
+    val micSession by container.micCapture.sessions.collectAsState()
     // Seeded transcript (Roborazzi / resume) — keep it visible; keep the stored text.
     val preserveSeeded = seededTranscript != null
 
@@ -1222,7 +1225,7 @@ internal fun LiveTranscriptPane(
                     languageHint = container.settingsRepository.settings.value.audioLanguage,
                     onPartial = { md -> partial = md },
                     onNoTranscriber = { modelFailed ->
-                        liveNotice = if (modelFailed) strings.ux.liveModelUnavailable else strings.ux.liveNoModel
+                        liveNotice = if (modelFailed) LiveNotice.Unavailable else LiveNotice.NoModel
                     },
                 ),
             )
@@ -1396,11 +1399,16 @@ internal fun LiveTranscriptPane(
                 Spacer(Modifier.height(8.dp))
             }
             val notice = liveNotice
+            // "Recording continues" is only true while the mic really is capturing (a stop from the
+            // notification ends the session without this screen's Stop); a mic error is shown above.
+            val capturing = usingMic && micError == null && micSession is dev.velum.app.platform.MicSessionState.Recording
             if (notice != null) {
-                // "Recording continues" is only true while the mic really is capturing; a mic error is shown above.
-                if (usingMic && micError == null) {
+                if (capturing) {
                     Text(
-                        notice,
+                        when (notice) {
+                            LiveNotice.Unavailable -> strings.ux.liveModelUnavailable
+                            LiveNotice.NoModel -> if (hasApiKey) strings.ux.liveNoModel else strings.ux.liveNoModelNoApi
+                        },
                         color = VelumInkSecondary,
                         fontSize = 14.sp,
                         modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
@@ -1408,6 +1416,14 @@ internal fun LiveTranscriptPane(
                 }
             } else if (savableLiveTranscript(partial) != null) {
                 MarkdownPreview(partial)
+            } else if (capturing) {
+                // The model is still loading: say so rather than leave the pane blank.
+                Text(
+                    strings.ux.liveModelLoading,
+                    color = VelumInkSecondary,
+                    fontSize = 14.sp,
+                    modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                )
             }
         }
         BlackButton(
@@ -1460,6 +1476,8 @@ internal fun LiveTranscriptPane(
 // ponytail: live preview only, the WAV never depends on it. At 40-130 ms per chunk this holds a slow
 // model load (about 40 s or more); older audio is dropped from the preview past that.
 internal const val LIVE_PCM_BACKLOG_CHUNKS = 1024
+
+private enum class LiveNotice { NoModel, Unavailable }
 
 // Stop must not hang on a stuck native load. The queued recording is retranscribed from the WAV anyway.
 private const val LIVE_FINISH_WAIT_MS = 30_000L
