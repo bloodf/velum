@@ -105,8 +105,12 @@ class MonoPcmWavWriterTest {
         assertContentEquals(refResample(a, 48_000, 16_000) + b, pcmOf(f))
     }
 
-    /** 60 minutes of 44.1 kHz stereo, generated chunk by chunk and never held: linear time, no big array. */
-    @Test fun sixty_minutes_of_stereo_streams_in_bounded_time_and_memory() {
+    /**
+     * A guard, not a performance test: 60 minutes of 44.1 kHz stereo generated chunk by chunk (never held) must
+     * produce the exact length. The generous time limit only catches a return of quadratic copying, which would
+     * take far longer; it says nothing about speed on a phone.
+     */
+    @Test fun sixty_minutes_of_stereo_streams_without_holding_it_and_in_linear_time_guard() {
         val f = File(dir, "long.wav")
         val chunk = ByteArray(32 * 1024) { (it * 7).toByte() }
         val totalBytes = 60L * 60 * 44_100 * 2 * 2
@@ -140,6 +144,13 @@ class MonoPcmWavWriterTest {
     ).first { it.isFile }.readText()
 
     /** Source guard (the decode loop needs a codec, which no JVM test has): nothing may accumulate or read whole. */
+    @Test fun normalizer_checks_for_cancellation_in_both_loops_and_deletes_the_wav_when_cancelled() {
+        val src = androidSource("AudioNormalize.android.kt")
+        assertTrue(src.substringAfter("while (!outputDone) {").take(200).contains("checkCancelled()"), "decode loop")
+        assertTrue(src.substringAfter("while (left > 0) {").take(120).contains("checkCancelled()"), "WAV copy loop")
+        assertTrue(src.contains("catch (c: CancellationException)") && src.contains("outFile?.delete()"), "late cancellation")
+    }
+
     @Test fun normalizer_never_accumulates_chunks_or_reads_the_source_whole_and_always_releases() {
         val src = androidSource("AudioNormalize.android.kt")
         assertTrue(!src.contains(".fold("), "decoded chunks must be written as they arrive")

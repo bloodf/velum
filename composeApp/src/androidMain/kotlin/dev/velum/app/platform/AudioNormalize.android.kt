@@ -8,21 +8,45 @@ import java.io.File
 import java.io.RandomAccessFile
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
+import kotlin.coroutines.coroutineContext
 
 actual class AudioNormalizer actual constructor() {
 
     actual suspend fun normalizeToWav(
         sourcePath: String,
         targetSampleRateHz: Int,
-    ): NormalizedAudio = withContext(Dispatchers.IO) {
+    ): NormalizedAudio {
+        var outFile: File? = null
+        try {
+            return withContext(Dispatchers.IO) {
+                val job = coroutineContext[Job]
+                normalizeBlocking(sourcePath, targetSampleRateHz, { outFile = it }) { job?.ensureActive() }
+            }
+        } catch (c: CancellationException) {
+            // withContext discards a result when the caller was cancelled just as the block finished.
+            outFile?.delete()
+            throw c
+        }
+    }
+
+    private fun normalizeBlocking(
+        sourcePath: String,
+        targetSampleRateHz: Int,
+        onOutput: (File) -> Unit,
+        checkCancelled: () -> Unit,
+    ): NormalizedAudio {
         val source = File(sourcePath)
         require(source.isFile && source.length() > 0L) { "Missing import: $sourcePath" }
         val hash = sha256File(sourcePath)
         val mime = guessMime(source.name)
         val outDir = File(source.parentFile, "normalized").apply { mkdirs() }
         val outFile = File(outDir, "${source.nameWithoutExtension}_$targetSampleRateHz.wav")
+        onOutput(outFile)
 
         try {
             // Fast path: PCM16 mono WAV at the target rate is streamed through, never read whole (#319).
@@ -34,15 +58,15 @@ actual class AudioNormalizer actual constructor() {
             val pcmBytes = MonoPcmWavWriter(outFile, targetSampleRateHz).use { writer ->
                 if (fast != null && fast.sampleRateHz == targetSampleRateHz && fast.channels == 1) {
                     writer.setFormat(fast.sampleRateHz, fast.channels)
-                    streamWavData(source, fast, writer)
+                    streamWavData(source, fast, writer, checkCancelled)
                 } else {
-                    decodeWithMediaCodec(source, targetSampleRateHz, writer)
+                    decodeWithMediaCodec(source, targetSampleRateHz, writer, checkCancelled)
                 }
                 writer.finish()
                 writer.pcmBytesWritten
             }
             val durationMs = (pcmBytes / 2.0 / targetSampleRateHz * 1000.0).toLong()
-            return@withContext NormalizedAudio(
+            return NormalizedAudio(
                 wavPath = outFile.absolutePath,
                 sampleRateHz = targetSampleRateHz,
                 durationMs = if (fast != null && fast.sampleRateHz == targetSampleRateHz && fast.channels == 1) {
@@ -69,7 +93,12 @@ actual class AudioNormalizer actual constructor() {
         }.getOrDefault(0L)
     }
 
-    private fun decodeWithMediaCodec(source: File, targetSampleRateHz: Int, writer: MonoPcmWavWriter) {
+    private fun decodeWithMediaCodec(
+        source: File,
+        targetSampleRateHz: Int,
+        writer: MonoPcmWavWriter,
+        checkCancelled: () -> Unit,
+    ) {
         val extractor = MediaExtractor()
         var codec: MediaCodec? = null
         var started = false
@@ -105,6 +134,7 @@ actual class AudioNormalizer actual constructor() {
             writer.setFormat(sourceRate, channels)
 
             while (!outputDone) {
+                checkCancelled() // an import of a long file must stop when its job is cancelled
                 if (!inputDone) {
                     val inIndex = codec.dequeueInputBuffer(10_000)
                     if (inIndex >= 0) {
@@ -163,12 +193,13 @@ actual class AudioNormalizer actual constructor() {
     }
 
     /** Copies the data chunk of a mono WAV into [writer] in slices. */
-    private fun streamWavData(source: File, header: WavHeader, writer: MonoPcmWavWriter) {
+    private fun streamWavData(source: File, header: WavHeader, writer: MonoPcmWavWriter, checkCancelled: () -> Unit) {
         RandomAccessFile(source, "r").use { raf ->
             raf.seek(header.dataOffset)
             val buf = ByteArray(WAV_SLICE_BYTES)
             var left = header.dataSize
             while (left > 0) {
+                checkCancelled()
                 val n = raf.read(buf, 0, minOf(buf.size.toLong(), left).toInt())
                 if (n < 0) break
                 writer.write(buf, n)
