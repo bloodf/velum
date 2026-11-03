@@ -91,14 +91,14 @@ class DiscoverFiltersUiTest {
     private val queryLog = QueryLog()
 
     private fun waiting(what: String, condition: () -> Boolean) {
-        compose.waitWhileBusy(queryLog, onTimeout = { e ->
+        compose.waitWhileBusy(queryLog, onTimeout = { reason, e ->
             // Full tree, once: a truncated dump hid the rows below the category chips in a past flake.
             // Diagnostics must never replace the timeout; a second root (open sheet) makes onRoot() throw.
             val diagnostics = runCatching {
                 "${chipState("tag:agenda")}\n${chipState("active:tag:agenda")}\n" +
                     compose.onAllNodes(isRoot()).printToString(maxDepth = Int.MAX_VALUE)
             }.getOrElse { "diagnostic failed: $it" }
-            throw AssertionError("Timed out waiting for $what\n${queryLog.dump()}\n$diagnostics", e)
+            throw AssertionError("Timed out waiting for $what ($reason)\n${queryLog.dump()}\n$diagnostics", e)
         }, condition = condition)
     }
 
@@ -256,7 +256,9 @@ class DiscoverFiltersUiTest {
             compose.onNode(hasSetTextAction()).performTextInput("zq")
             // The failed query is observable: the load error shows before we check the selections.
             await(PtBr.ux.genericError)
-            // Give the facets effect (a separate coroutine) time to fail and any pruning time to run.
+            // The facets effect is a separate coroutine from the page load: wait for its own failure, or the window
+            // below could pass without the facets query ever having failed.
+            waiting("facets failed") { queryLog.count("FAIL  facets(search='zq'") > 0 && queryLog.inFlight() == 0 }
             repeat(10) { compose.mainClock.advanceTimeBy(100); compose.waitForIdle() }
             assertTrue(hasTag("active:category") && hasTag("active:tag:agenda"), "selections pruned after failed facets load")
             // A failed load also keeps the previous facet options on screen (not an empty facet row).

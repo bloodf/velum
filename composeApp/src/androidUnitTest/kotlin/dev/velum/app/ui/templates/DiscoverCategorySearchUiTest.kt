@@ -84,11 +84,11 @@ class DiscoverCategorySearchUiTest {
 
     /** waitUntil that fails with the semantics tree so a timeout is diagnosable. */
     private fun waiting(what: String, condition: () -> Boolean) {
-        compose.waitWhileBusy(queryLog, onTimeout = { e ->
+        compose.waitWhileBusy(queryLog, onTimeout = { reason, e ->
             // Diagnostics must never replace the timeout; an open sheet is a second root.
             val diagnostics = runCatching { compose.onAllNodes(isRoot()).printToString(maxDepth = Int.MAX_VALUE) }
                 .getOrElse { "diagnostic failed: $it" }
-            throw AssertionError("Timed out waiting for $what\n${queryLog.dump()}\n$diagnostics", e)
+            throw AssertionError("Timed out waiting for $what ($reason)\n${queryLog.dump()}\n$diagnostics", e)
         }, condition = condition)
     }
 

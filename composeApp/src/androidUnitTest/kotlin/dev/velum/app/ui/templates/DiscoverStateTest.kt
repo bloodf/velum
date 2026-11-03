@@ -112,10 +112,15 @@ class DiscoverStateTest {
             java.io.File("src/commonMain/kotlin/dev/velum/app/ui/templates/TemplatesScreen.kt"),
             java.io.File("composeApp/src/commonMain/kotlin/dev/velum/app/ui/templates/TemplatesScreen.kt"),
         ).first { it.isFile }.readText()
+        // Only the grid's DSL scope: from its opening brace to the end of the grid, before the search sheet.
         val scope = src.substringAfter("LazyVerticalGrid(").substringAfter(") {\n            // Filter rows scroll")
-        for (stateRead in listOf("showLoadingState(", "showEmptyState(", "showPagingSentinel(", "if (loadFailed)", "ranking.isNotEmpty()")) {
-            assertFalse(scope.contains(stateRead), "the grid scope must not read $stateRead; use the plan")
+            .substringBefore("\n    if (showSearch)")
+        assertTrue(scope.length > 500, "the guard must actually cover the grid scope")
+        for (stateRead in listOf("showLoadingState(", "showEmptyState(", "showPagingSentinel(", "if (loadFailed)", "ranking.", "ranking)")) {
+            assertFalse(Regex("(?<!rankingNow)" + Regex.escape(stateRead)).containsMatchIn(scope), "the grid scope must not read $stateRead; use the plan")
         }
+        // Every conditional at the scope's own level (12 spaces) must be about the plan, nothing else.
+        assertFalse(Regex("(?m)^ {12}if \\((?!plan\\.)").containsMatchIn(scope), "a DSL-level if reads something other than the plan")
         assertTrue(scope.contains("plan.showRanking") && scope.contains("plan.showPagingSentinel"))
     }
 }

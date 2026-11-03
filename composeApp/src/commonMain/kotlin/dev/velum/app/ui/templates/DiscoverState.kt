@@ -48,8 +48,8 @@ internal fun showLoadingState(shown: List<Template>?, loadFailed: Boolean): Bool
 /**
  * Which optional blocks the results grid has, decided once per composition from plain values. The grid's item list
  * must not depend on state read while the lazy grid measures: an item count that moves between the grid's reads
- * of it is the `IndexOutOfBounds` seen in #202. With the plan fixed per composition, every read in a measure pass
- * sees the same structure.
+ * of it may be the `IndexOutOfBounds` seen in #202 (the cause is not proven). With the plan fixed per composition,
+ * every read in a measure pass sees the same structure.
  */
 internal data class DiscoverGridPlan(
     val showRanking: Boolean,

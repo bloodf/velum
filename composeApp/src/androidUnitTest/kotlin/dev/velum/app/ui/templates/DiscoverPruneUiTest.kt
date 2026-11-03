@@ -59,11 +59,11 @@ class DiscoverPruneUiTest {
 
     /** waitUntil that fails with the semantics tree so a timeout is diagnosable. */
     private fun waiting(what: String, condition: () -> Boolean) {
-        compose.waitWhileBusy(queryLog, onTimeout = { e ->
+        compose.waitWhileBusy(queryLog, onTimeout = { reason, e ->
             // An open search sheet is a second root, which makes onRoot() throw and hide the timeout.
             val tree = runCatching { compose.onAllNodes(androidx.compose.ui.test.isRoot()).printToString(maxDepth = Int.MAX_VALUE) }
                 .getOrElse { "diagnostic failed: $it" }
-            throw AssertionError("Timed out waiting for $what\n${queryLog.dump()}\n$tree", e)
+            throw AssertionError("Timed out waiting for $what ($reason)\n${queryLog.dump()}\n$tree", e)
         }, condition = condition)
     }
 

@@ -4,6 +4,7 @@ import dev.velum.app.di.AppContainer
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 
 /** Records every Discover query (start/end, filter, outcome) so a timeout message can say what the screen asked for. */
@@ -38,7 +39,10 @@ internal class QueryLog {
             lines += "${stamp()} CANCELLED $what"
             throw e
         } catch (e: Throwable) {
-            lines += "${stamp()} FAIL  $what: ${e::class.simpleName}"
+            // A failure resumes the screen's catch block, which writes state: that must happen on Main too, as in
+            // production (off-main state writes are the mechanism behind #202). NonCancellable so a cancelled
+            // caller still gets its failure delivered on the right thread.
+            withContext(NonCancellable + Dispatchers.Main) { lines += "${stamp()} FAIL  $what: ${e::class.simpleName}" }
             throw e
         } finally {
             running.decrementAndGet(); touch()
@@ -66,10 +70,11 @@ internal fun androidx.compose.ui.test.junit4.ComposeTestRule.waitWhileBusy(
     queryLog: QueryLog,
     quietMs: Long = 10_000,
     capMs: Long = 180_000,
-    onTimeout: (Throwable) -> Nothing,
+    onTimeout: (reason: String, cause: Throwable) -> Nothing,
     condition: () -> Boolean,
 ) {
     val started = System.nanoTime()
+    var reportedSlow = false
     while (true) {
         try {
             // Query results resume on the Main looper (see logged()). Robolectric's paused looper runs a posted task
@@ -83,8 +88,17 @@ internal fun androidx.compose.ui.test.junit4.ComposeTestRule.waitWhileBusy(
             return
         } catch (e: androidx.compose.ui.test.ComposeTimeoutException) {
             val elapsedMs = (System.nanoTime() - started) / 1_000_000
-            val stalled = queryLog.inFlight() == 0 && queryLog.quietForMs() >= quietMs
-            if (stalled || elapsedMs >= capMs) onTimeout(e)
+            // Quiet is measured inside this wait: a query that ended long before the wait began is not "quiet for
+            // 10 s of waiting", so the budget of a fresh wait is always the full [quietMs].
+            val stalled = queryLog.inFlight() == 0 && minOf(queryLog.quietForMs(), elapsedMs) >= quietMs
+            if (stalled) onTimeout("stalled: no query running or finishing for ${quietMs} ms", e)
+            if (elapsedMs >= capMs) onTimeout("cap: still false after $capMs ms", e)
+            if (elapsedMs >= SLOW_WAIT_MS && !reportedSlow) {
+                reportedSlow = true
+                println("waitWhileBusy: still waiting after ${elapsedMs / 1000}s (queries in flight: ${queryLog.inFlight()})")
+            }
         }
     }
 }
+
+private const val SLOW_WAIT_MS = 30_000L
