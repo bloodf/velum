@@ -169,14 +169,15 @@ class ChangeTemplateRestartDeviceTest {
     @Test
     fun phase_verify_finds_both_versions_after_a_force_stop() {
         assumeTrue("phase is $phase", phase == "verify")
-        openContainer()
         try {
+            openContainer()
             verify()
             show()
             await("ZQ Heading Alpha")
         } finally {
-            compose.activityRule.scenario.close()
-            container.databaseHandle.driver.close()
+            // Each step is independent so the delete always runs and the original failure is the one reported.
+            runCatching { compose.activityRule.scenario.close() }
+            runCatching { if (::container.isInitialized) container.databaseHandle.driver.close() }
             context.deleteDatabase(DB) // last step of the last phase
         }
     }
