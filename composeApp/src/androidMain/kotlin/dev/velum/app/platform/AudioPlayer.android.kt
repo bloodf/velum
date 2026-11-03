@@ -62,7 +62,6 @@ private class AndroidAudioPlayer : AudioPlayer {
     override val skipSilence: StateFlow<Boolean> = _skipSilence.asStateFlow()
 
     override suspend fun prepare(path: String): Boolean = withContext(Dispatchers.IO) {
-        releasePlayerOnly()
         // State is written on the main thread only: a collector's recomposition can run on the writing thread
         // (the Compose test dispatcher does), and a ripple or animator touched there fails off a Looper (#345).
         // The skip-silence fields belong to Main (the poll runs there), so they are reset there too.
@@ -75,6 +74,7 @@ private class AndroidAudioPlayer : AudioPlayer {
             wavFile = null
             wavSource = null
         }
+        releasePlayerOnly()
         if (path.isBlank()) {
             return@withContext false
         }
@@ -82,8 +82,10 @@ private class AndroidAudioPlayer : AudioPlayer {
         if (!file.isFile || !file.canRead()) {
             return@withContext false
         }
+        var created: MediaPlayer? = null
         try {
             val mp = MediaPlayer()
+            created = mp
             mp.setDataSource(path)
             mp.setOnCompletionListener {
                 _isPlaying.value = false
@@ -107,6 +109,11 @@ private class AndroidAudioPlayer : AudioPlayer {
                 withContext(Dispatchers.Main.immediate) { wavFile = file }
             }
             true
+        } catch (e: CancellationException) {
+            // A cancel at a Main hop: release only the player this call made, then let the cancel through.
+            runCatching { created?.release() }
+            if (player === created) player = null
+            throw e
         } catch (_: Throwable) {
             releasePlayerOnly()
             false

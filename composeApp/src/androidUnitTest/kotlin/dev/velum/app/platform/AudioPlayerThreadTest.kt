@@ -49,4 +49,23 @@ class AudioPlayerThreadTest {
         assertTrue(writers.size >= 2, "expected the reset and the duration, saw ${writers.size}")
         assertTrue(writers.all { it === mainThread }, "state written off the main thread: ${writers.map { it.name }}")
     }
+
+    @Test fun a_cancelled_prepare_is_cancelled_not_reported_as_a_failed_prepare() {
+        val file = File.createTempFile("player-cancel", ".wav").apply { writeBytes(ByteArray(64)); deleteOnExit() }
+        ShadowMediaPlayer.addMediaInfo(DataSource.toDataSource(file.absolutePath), MediaInfo(1500, 0))
+        val player = createAudioPlayer()
+        var result: Boolean? = null
+        // The main looper is not run while the job starts, so its first hop to Main is still pending when it is cancelled.
+        val job = CoroutineScope(Dispatchers.IO).launch { result = player.prepare(file.absolutePath) }
+        Thread.sleep(300)
+        job.cancel()
+        val deadline = System.currentTimeMillis() + 20_000
+        while (job.isActive && System.currentTimeMillis() < deadline) {
+            shadowOf(Looper.getMainLooper()).idle()
+            Thread.sleep(5)
+        }
+        assertTrue(job.isCancelled, "the cancel must reach the caller")
+        assertTrue(result == null, "a cancelled prepare must not return a value, got $result")
+        player.play() // no player was left behind: a harmless no-op
+    }
 }
