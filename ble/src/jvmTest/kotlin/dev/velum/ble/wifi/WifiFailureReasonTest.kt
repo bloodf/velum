@@ -2,6 +2,7 @@ package dev.velum.ble.wifi
 
 import dev.velum.ble.crypto.createSessionCipher
 import dev.velum.protocol.Protocol20SessionSecret
+import java.net.InetAddress
 import java.net.ServerSocket
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -14,7 +15,7 @@ class WifiFailureReasonTest {
     private val secret = Protocol20SessionSecret(ByteArray(32), ByteArray(12), ByteArray(12))
 
     private fun reasonFor(failure: Throwable): String = runBlocking {
-        val port = ServerSocket(0).use { it.localPort }
+        val port = ServerSocket(0, 1, InetAddress.getByName("127.0.0.1")).use { it.localPort }
         val outcome = WifiTransferCoordinator(
             sessionFactory = {
                 WifiFastTransferSession(

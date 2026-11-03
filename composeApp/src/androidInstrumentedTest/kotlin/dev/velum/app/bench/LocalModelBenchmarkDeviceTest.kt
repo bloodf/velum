@@ -69,7 +69,7 @@ class LocalModelBenchmarkDeviceTest {
                 else -> error("model '$id' is $kind; the benchmark runs ASR and LLM models")
             }
         }
-        val report = BenchReport(environment(models, workloadSec, audioPath), results)
+        val report = BenchReport(environment(models, workloadSec, audioPath, clip), results)
         // Log first so a failed validation or write never loses a finished run.
         Log.i(TAG, report.toJson())
         report.requireValid(models.toSet())
@@ -98,7 +98,7 @@ class LocalModelBenchmarkDeviceTest {
         return BenchResult(BenchTask.Summary, id, "fixed-transcript", TRANSCRIPT_SOURCE_SECONDS * 1000L, ns / 1_000_000, peakRssBytes(), text.length)
     }
 
-    private fun environment(models: List<String>, workloadSec: Int, audio: String) = BenchEnvironment(
+    private fun environment(models: List<String>, workloadSec: Int, audio: String, clip: ByteArray) = BenchEnvironment(
         device = "${Build.MANUFACTURER} ${Build.MODEL}",
         androidRelease = Build.VERSION.RELEASE,
         sdkInt = Build.VERSION.SDK_INT,
@@ -108,12 +108,17 @@ class LocalModelBenchmarkDeviceTest {
             "models" to models.joinToString(","),
             "workloadSeconds" to workloadSec.toString(),
             "audio" to audio,
+            "audioSha256" to sha256(clip),
+            "summaryTranscriptSha256" to sha256(TRANSCRIPT.encodeToByteArray()),
             "asrWindowSeconds" to "${WindowedAsr.DEFAULT_WINDOW_SECONDS}/hop ${WindowedAsr.DEFAULT_HOP_SECONDS}",
             "summaryTranscriptChars" to TRANSCRIPT.length.toString(),
             "summaryTranscriptSourceSeconds" to TRANSCRIPT_SOURCE_SECONDS.toString(),
             "cores" to Runtime.getRuntime().availableProcessors().toString(),
         ),
     )
+
+    private fun sha256(bytes: ByteArray): String =
+        java.security.MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
 
     /** Minimal RIFF parse: must be PCM16, mono, 16 kHz; returns the `data` chunk (whole samples only). */
     private fun readWavPcm16Mono16k(file: File): ByteArray {
