@@ -297,8 +297,8 @@ class LocalModelManager(
     private val httpClient: HttpClient,
     catalog: List<LocalModelSpec> = DefaultLocalCatalog,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
-    private val freeSpace: () -> Long? = { storeRoot.freeSpaceBytes() },
     private val extractArchive: (archive: ModelStoreDir, destDir: ModelStoreDir) -> Unit = ModelArchiveExtractor::extract,
+    private val freeSpace: () -> Long? = { storeRoot.freeSpaceBytes() },
 ) {
     private val _states = MutableStateFlow(
         catalog.map { initialState(it) },
@@ -444,7 +444,14 @@ class LocalModelManager(
 
         // Nothing here resumes, so a .partial, a half-extracted tree or a stale archive from an earlier
         // attempt is dead weight: clear it before measuring, or a retry would blame space it is holding itself.
-        withContext(ioDispatcher) { storeRoot.resolve(id).takeIf { it.exists() }?.deleteRecursively() }
+        withContext(ioDispatcher) {
+            val modelDir = storeRoot.resolve(id)
+            if (!modelDir.exists()) return@withContext
+            // Only this model's temp files: a model already on disk stays usable if the attempt is cancelled or fails.
+            modelDir.resolve("${current.spec.archiveFileName}.partial").deleteRecursively()
+            modelDir.resolve(ModelReadiness.STAGING_DIR).deleteRecursively()
+            if (current.spec.usesArchiveExtract()) modelDir.resolve(current.spec.archiveFileName).deleteFile()
+        }
         val free = withContext(ioDispatcher) { freeSpace() }
         val needed = current.spec.approxBytes * (if (current.spec.usesArchiveExtract()) 2 else 1)
         if (free != null && free < needed) {
