@@ -5,6 +5,7 @@ import dev.velum.app.i18n.DeviceUiCopy
 import dev.velum.app.platform.PartialTransfer
 import dev.velum.app.platform.PartialTransferFileStore
 import dev.velum.app.ui.DeviceViewModel
+import dev.velum.app.ui.DownloadWipeResult
 import dev.velum.app.ui.DownloadedSessionAudio
 import dev.velum.ble.BleTransport
 import dev.velum.ble.client.CrcStatus
@@ -24,11 +25,13 @@ import java.io.File
 import java.io.IOException
 import java.nio.file.Files
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.random.Random
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
@@ -48,7 +51,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.yield
 
 /**
@@ -133,7 +138,7 @@ class DeviceResumeRestartTest {
     private fun tearDown() {
         try {
             owner.clear()
-            runBlocking { withTimeout(30_000) { running?.awaitDownloadEnd() } }
+            runBlocking { withTimeout(30_000) { running?.awaitDownloads() } }
         } finally {
             Dispatchers.resetMain()
         }
@@ -436,6 +441,181 @@ class DeviceResumeRestartTest {
         } finally { tearDown() }
     }
 
+    /** Starts a download held in NonCancellable saving, cancels it, then queues and cancels a second behind it. */
+    private fun cancelledTwice(
+        hold: suspend () -> Unit,
+        wipeJoinTimeout: Duration = 15.seconds,
+        transport: (FakePlaudPeripheral) -> BleTransport = { FakeBleTransport(it) },
+    ): DeviceViewModel {
+        val saving = CompletableDeferred<Unit>()
+        val vm = run(
+            peripheral(),
+            persist = {
+                saving.complete(Unit)
+                withContext(NonCancellable) { hold() }
+                "rec-synthetic"
+            },
+            await = false,
+            wipeJoinTimeout = wipeJoinTimeout,
+            transport = transport,
+        )
+        runBlocking { withTimeout(20_000) { saving.await() } }
+        vm.cancelDownload()
+        vm.downloadSession(session)
+        vm.cancelDownload()
+        return vm
+    }
+
+    @Test fun wipe_waits_for_a_download_cancelled_before_a_queued_one() {
+        try {
+            val finished = AtomicBoolean(false)
+            val vm = cancelledTwice(hold = { delay(1_000); finished.set(true) })
+            runBlocking { assertEquals(DownloadWipeResult.Clean, vm.wipePartialDownloads()) }
+            assertTrue(finished.get(), "the wipe finished while the first download was still saving")
+        } finally { tearDown() }
+    }
+
+    @Test fun connect_waits_for_a_download_cancelled_before_a_queued_one() {
+        try {
+            val release = CompletableDeferred<Unit>()
+            var probe: ConnectProbe? = null
+            val vm = cancelledTwice(
+                hold = { release.await() },
+                wipeJoinTimeout = 200.milliseconds,
+                transport = { p -> ConnectProbe(FakeBleTransport(p)).also { probe = it } },
+            )
+            vm.connect("fake-note-pro")
+            runBlocking {
+                delay(600)
+                assertEquals(DeviceUiCopy.connectBusy("en"), vm.sessionUi.value.statusMessage)
+                assertEquals(1, probe!!.connects.get(), "no second connect while the first download is still saving")
+                release.complete(Unit)
+                withTimeout(30_000) { vm.awaitDownloads() }
+            }
+        } finally { tearDown() }
+    }
+
+    @Test fun cancel_stops_every_queued_download() {
+        try {
+            val saving = CompletableDeferred<Unit>()
+            val release = CompletableDeferred<Unit>()
+            val vm = run(
+                peripheral(),
+                persist = {
+                    saving.complete(Unit)
+                    withContext(NonCancellable) { release.await() }
+                    "rec-synthetic"
+                },
+                await = false,
+            )
+            runBlocking {
+                withTimeout(20_000) { saving.await() }
+                vm.cancelDownload()
+                vm.downloadSession(session)
+                vm.downloadSession(session)
+                vm.cancelDownload()
+                release.complete(Unit)
+                withTimeout(30_000) { vm.awaitDownloads() }
+                val restarted = withTimeoutOrNull(1_500) { vm.sessionUi.first { it.downloadingSessionId != null } }
+                assertEquals(null, restarted, "a cancelled queued download started anyway")
+            }
+        } finally { tearDown() }
+    }
+
+    private fun heldInSaving(
+        release: CompletableDeferred<Unit>,
+        saves: AtomicInteger,
+        wipeJoinTimeout: Duration = 15.seconds,
+    ): DeviceViewModel {
+        val saving = CompletableDeferred<Unit>()
+        val vm = run(
+            peripheral(),
+            persist = {
+                saves.incrementAndGet()
+                saving.complete(Unit)
+                withContext(NonCancellable) { release.await() }
+                "rec-synthetic"
+            },
+            await = false,
+            wipeJoinTimeout = wipeJoinTimeout,
+        )
+        runBlocking { withTimeout(20_000) { saving.await() } }
+        return vm
+    }
+
+    @Test fun a_download_runs_to_completion_after_a_cancel() {
+        try {
+            val vm = run(peripheral(), await = false)
+            vm.cancelDownload()
+            runBlocking { withTimeout(30_000) { vm.awaitDownloads() } }
+            vm.downloadSession(session)
+            runBlocking {
+                withTimeout(60_000) { vm.sessionUi.first { it.lastDownloadedRecordingId == "rec-synthetic" } }
+            }
+            assertContentEquals(plaintext, assertNotNull(saved))
+        } finally { tearDown() }
+    }
+
+    @Test fun a_tap_during_a_wipe_starts_nothing() {
+        try {
+            val saves = AtomicInteger()
+            val vm = run(peripheral(), persist = { saves.incrementAndGet(); "rec-synthetic" })
+            runBlocking {
+                vm.holdingDownloads {
+                    vm.wipePartialDownloads()
+                    vm.downloadSession(session)
+                    delay(300)
+                    assertEquals(null, vm.sessionUi.value.downloadingSessionId)
+                }
+                vm.awaitDownloads()
+            }
+            assertEquals(1, saves.get(), "only the download from before the wipe saved")
+        } finally { tearDown() }
+    }
+
+    @Test fun a_download_queued_before_a_wipe_does_not_start_during_it() {
+        try {
+            val release = CompletableDeferred<Unit>()
+            val saves = AtomicInteger()
+            val vm = heldInSaving(release, saves)
+            vm.cancelDownload()
+            vm.downloadSession(session)
+            runBlocking {
+                vm.holdingDownloads {
+                    release.complete(Unit)
+                    withTimeout(30_000) { vm.awaitDownloads() }
+                }
+            }
+            assertEquals(1, saves.get(), "the queued download started during the wipe")
+        } finally { tearDown() }
+    }
+
+    @Test fun a_failed_wipe_lets_downloads_start_again() {
+        try {
+            val saves = AtomicInteger()
+            val vm = run(peripheral(), persist = { saves.incrementAndGet(); "rec-synthetic" })
+            runBlocking {
+                assertFailsWith<IllegalStateException> { vm.holdingDownloads { error("synthetic wipe failure") } }
+                vm.downloadSession(session)
+                withTimeout(30_000) { vm.awaitDownloads() }
+            }
+            assertEquals(2, saves.get())
+        } finally { tearDown() }
+    }
+
+    @Test fun disconnect_does_not_wait_forever_for_a_hung_download() {
+        try {
+            val release = CompletableDeferred<Unit>()
+            val vm = heldInSaving(release, AtomicInteger(), wipeJoinTimeout = 200.milliseconds)
+            vm.disconnect()
+            runBlocking {
+                withTimeout(10_000) { vm.sessionUi.first { it.sessions.isEmpty() } }
+                release.complete(Unit)
+                withTimeout(30_000) { vm.awaitDownloads() }
+            }
+        } finally { tearDown() }
+    }
+
     @Test fun connect_during_a_download_is_ignored() {
         try {
             val saving = CompletableDeferred<Unit>()
@@ -471,18 +651,9 @@ class DeviceResumeRestartTest {
         try {
             var deleteThread: Thread? = null
             val vm = run(peripheral(), deletePartials = { deleteThread = Thread.currentThread() }, await = false)
-            assertTrue(runBlocking { vm.wipePartialDownloads() }, "no download running: done")
+            runBlocking { vm.wipePartialDownloads() }
             assertNotNull(deleteThread)
             assertFalse(deleteThread === Thread.currentThread(), "partial deletion must not run on the caller's thread (#237)")
-        } finally { tearDown() }
-    }
-
-    @Test fun wipe_after_the_download_finished_says_done() {
-        try {
-            val vm = run(peripheral())
-            assertEquals("rec-synthetic", vm.sessionUi.value.lastDownloadedRecordingId)
-            runBlocking { withTimeout(20_000) { while (vm.sessionUi.value.downloadingSessionId != null) delay(5) } }
-            assertTrue(runBlocking { vm.wipePartialDownloads() }, "nothing was running")
         } finally { tearDown() }
     }
 
@@ -491,14 +662,14 @@ class DeviceResumeRestartTest {
             val vm = run(peripheral(), persist = { awaitCancellation() }, await = false)
             runBlocking {
                 withTimeout(20_000) { while (partials.list()!!.none { it.endsWith(".partial") }) delay(5) }
-                assertTrue(vm.wipePartialDownloads(), "the download stopped and the partials went")
+                vm.wipePartialDownloads()
             }
             assertFalse(partials.exists(), "no partial or salt survives a wipe")
             assertEquals(DeviceUiCopy.downloadCancelled("en"), vm.sessionUi.value.statusMessage)
         } finally { tearDown() }
     }
 
-    @Test fun wipe_deletes_the_partials_even_if_the_download_ignores_cancellation_and_does_not_say_done() {
+    @Test fun wipe_deletes_the_partials_even_if_the_download_ignores_cancellation() {
         try {
             val saving = AtomicBoolean(false)
             val vm = run(
@@ -513,8 +684,9 @@ class DeviceResumeRestartTest {
             )
             runBlocking {
                 withTimeout(20_000) { while (!saving.get()) delay(5) }
-                val waited = measureTime { assertFalse(vm.wipePartialDownloads(), "the download was still running") }
+                val waited = measureTime { assertEquals(DownloadWipeResult.StillRunning, vm.wipePartialDownloads()) }
                 assertTrue(waited < 2.seconds, "the wipe must not wait for the download: $waited")
+                withTimeout(30_000) { vm.awaitDownloads() }
             }
             assertFalse(partials.exists())
         } finally { tearDown() }
@@ -523,7 +695,7 @@ class DeviceResumeRestartTest {
     @Test fun wipe_reports_partials_it_could_not_delete_instead_of_failing() {
         try {
             val vm = run(peripheral(), deletePartials = { error("synthetic delete failure") })
-            assertFalse(runBlocking { vm.wipePartialDownloads() })
+            assertEquals(DownloadWipeResult.PartialsLeft, runBlocking { vm.wipePartialDownloads() })
         } finally { tearDown() }
     }
 
@@ -605,7 +777,7 @@ class DeviceResumeRestartTest {
             assertEquals("rec-synthetic", vm.sessionUi.value.lastDownloadedRecordingId)
             assertContentEquals(plaintext, assertNotNull(saved))
             assertEquals(listOf(0L, 0L), fake.syncStartOffsets, "the third failure discarded it, so the file came again")
-        } finally { owner.clear(); Dispatchers.resetMain() }
+        } finally { tearDown() }
     }
 
     @Test fun a_good_read_resets_the_count_so_scattered_errors_never_discard() {
@@ -645,7 +817,7 @@ class DeviceResumeRestartTest {
             vm.downloadSession(session)
             awaitReadFailCount(vm, 2)
             assertTrue(partials.list()!!.any { it.endsWith(".partial") }, "two scattered errors never reached the limit")
-        } finally { owner.clear(); Dispatchers.resetMain() }
+        } finally { tearDown() }
     }
 
     @Test fun cancel_during_decrypt_keeps_the_partial_and_a_retry_needs_no_new_transfer() {

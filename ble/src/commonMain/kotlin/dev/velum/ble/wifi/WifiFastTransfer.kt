@@ -1,9 +1,12 @@
 package dev.velum.ble.wifi
 
+import dev.velum.ble.gatt.PlaudWriteGuard
 import dev.velum.protocol.FeatureFlags
 import dev.velum.protocol.Protocol20SessionSecret
 import dev.velum.protocol.SessionCipher
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.flow
 
@@ -120,11 +123,18 @@ object UnsupportedWifiSoftApJoiner : WifiSoftApJoiner {
  */
 class WifiFastTransferSession(
     private val softAp: WifiSoftApJoiner,
-    val server: WifiTransferServer,
-    val frameCipher: WifiFrameCipher,
+    private val server: WifiTransferServer,
+    private val frameCipher: WifiFrameCipher,
 ) {
     private var sendSeq: Long = 0
     private var recvSeq: Long = 0
+    private val sendMutex = Mutex()
+
+    /** Encrypted frames from the device, and [WifiTransferServer.PEER_CLOSED_FRAME]. Open them with [openIncoming]. */
+    fun incomingEncryptedFrames(): Flow<ByteArray> = server.incomingEncryptedFrames()
+
+    /** Fixed failure codes that make the Wi-Fi path unusable; see [WifiTransferServer.pathFailures]. */
+    fun pathFailures(): Flow<String> = server.pathFailures()
 
     suspend fun start(
         ssid: String,
@@ -137,7 +147,8 @@ class WifiFastTransferSession(
         // Start WS listener first so the device can connect as soon as SoftAP is up.
         server.start(port = port, bindHost = bindHost, preamble = preamble)
         softAp.join(ssid, password, ssidIsPattern)
-        sendSeq = 0
+        // Under the send lock, so a send in flight cannot take a sequence number from the old run.
+        sendMutex.withLock { sendSeq = 0 }
         recvSeq = 0
     }
 
@@ -147,9 +158,22 @@ class WifiFastTransferSession(
     }
 
     suspend fun sendPacket(packet: ByteArray) {
-        val sealed = frameCipher.seal(sendSeq, packet)
-        sendSeq += 1
-        server.sendEncryptedFrame(sealed)
+        // The same plaintext check as every BLE write: forbidden opcodes and settings never leave the app (#350).
+        // Before sealing, so a rejected packet neither uses a sequence number nor reaches the server.
+        // The guard and the seal see the same copy, so a caller cannot change the bytes between them (as GuardedLink).
+        val checked = packet.copyOf()
+        PlaudWriteGuard.check(checked)
+        // One send at a time: the sequence number is taken, and the frame written, in the same order for everyone.
+        sendMutex.withLock {
+            val sealed = frameCipher.seal(sendSeq, checked)
+            // What goes out must open to exactly the packet the guard checked, at this sequence.
+            val opened = frameCipher.open(sendSeq, sealed)
+            check(opened != null && opened.first == sendSeq && opened.second.contentEquals(checked)) {
+                "Sealed frame does not match the checked packet"
+            }
+            sendSeq += 1
+            server.sendEncryptedFrame(sealed)
+        }
     }
 
     /** Null for a frame that doesn't open. Throws if the peer closed: see [WifiTransferServer.PEER_CLOSED_FRAME]. */

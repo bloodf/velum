@@ -58,6 +58,7 @@ import androidx.compose.ui.unit.sp
 import dev.velum.app.di.AppContainer
 import dev.velum.core.data.UserContentIds
 import dev.velum.app.i18n.LocalStrings
+import dev.velum.app.i18n.countText
 import dev.velum.app.platform.rememberJsonFileImporter
 import dev.velum.app.ui.components.BlackButton
 import dev.velum.app.ui.components.DisplayTitle
@@ -152,7 +153,7 @@ internal fun TemplatesScreen(
                         builtin = false,
                     )
                 }
-                importStatus = strings.templatesImportOkFormat.replace("%d", specs.size.toString())
+                importStatus = countText(specs.size, strings.templatesImportOkFormatOne, strings.templatesImportOkFormat)
             }.onFailure {
                 importStatus = strings.templatesImportFailed
             }
@@ -300,19 +301,18 @@ internal fun TemplatesScreen(
                 Icons.AutoMirrored.Outlined.ArrowBack,
                 contentDescription = strings.ux.back,
                 modifier = Modifier
-                    .size(40.dp)
-                    .semantics { contentDescription = strings.ux.back }
-                    .clickable(onClick = onBack)
-                    .padding(8.dp),
+                    .size(48.dp)
+                    .clickable(role = Role.Button, onClick = onBack)
+                    .padding(12.dp),
                 tint = VelumInk,
             )
             Spacer(Modifier.weight(1f))
-            Icon(
-                Icons.Outlined.Search,
-                strings.search,
-                tint = VelumInk,
-                modifier = Modifier.size(22.dp).clickable { showSearch = true },
-            )
+            Box(
+                Modifier.size(48.dp).clickable(role = Role.Button) { showSearch = true },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Outlined.Search, strings.search, tint = VelumInk, modifier = Modifier.size(22.dp))
+            }
             Spacer(Modifier.width(12.dp))
             Text(
                 strings.templatesImportJson,
@@ -858,12 +858,13 @@ fun TemplateDetailScreen(
     val contributorCredit = tpl?.let { templateUiCredit(it) }
 
     Column(Modifier.fillMaxSize().background(VelumBg).verticalScroll(rememberScrollState())) {
-        Icon(
-            Icons.Outlined.Close,
-            null,
-            modifier = Modifier.padding(16.dp).size(28.dp).clickable(onClick = onBack),
-            tint = VelumInk,
-        )
+        // 48dp target, same 16dp inset around the 28dp glyph as before.
+        Box(
+            Modifier.padding(6.dp).size(48.dp).clickable(role = Role.Button, onClick = onBack),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(Icons.Outlined.Close, strings.close, modifier = Modifier.size(28.dp), tint = VelumInk)
+        }
         Box(
             Modifier
                 .size(56.dp)

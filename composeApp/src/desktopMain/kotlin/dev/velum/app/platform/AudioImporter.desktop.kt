@@ -6,7 +6,7 @@ import java.awt.FileDialog
 import java.awt.Frame
 
 @Composable
-actual fun rememberAudioImporter(onPicked: (path: String) -> Unit): () -> Unit {
+actual fun rememberAudioImporter(onFailed: () -> Unit, onPicked: (path: String) -> Unit): () -> Unit {
     return remember(onPicked) {
         {
             val dialog = FileDialog(null as Frame?, "Import audio", FileDialog.LOAD)
@@ -19,3 +19,6 @@ actual fun rememberAudioImporter(onPicked: (path: String) -> Unit): () -> Unit {
         }
     }
 }
+
+/** Desktop imports read the picked file in place; there are no copies. */
+actual fun deleteImportCopies() = Unit

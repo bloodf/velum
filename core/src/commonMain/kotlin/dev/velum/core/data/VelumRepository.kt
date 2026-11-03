@@ -571,6 +571,13 @@ class VelumRepository(
         q.setMeta(key, value)
     }
 
+    /** Deletes the keys starting with [prefix], taken literally. Callers must run on [dbContext]. */
+    private fun deleteMetaPrefix(prefix: String) = q.deleteMetaMatching(globPrefix(prefix))
+
+    suspend fun deleteMeta(key: String) = withContext(dbContext) {
+        q.deleteMeta(key)
+    }
+
     /** Last processing failure for [recordingId] (already sanitized), or null. Previous notes are never touched. */
     suspend fun getProcessingError(recordingId: String): String? =
         getMeta(processingErrorKey(recordingId))?.takeIf { it.isNotBlank() }
@@ -578,6 +585,25 @@ class VelumRepository(
     /** Null removes the row; provider error text must not outlive the recording or a wipe. */
     suspend fun setProcessingError(recordingId: String, message: String?) = withContext(dbContext) {
         if (message == null) q.deleteMeta(processingErrorKey(recordingId)) else q.setMeta(processingErrorKey(recordingId), message)
+    }
+
+    /**
+     * The work id of a run that could not be promoted to the foreground and has not ended on its own, or null.
+     * A stop leaves it set; a retry keeps the id, a REPLACE enqueue gets a new one (so it is not mistaken for a rerun).
+     */
+    suspend fun unpromotedRunOwner(recordingId: String): String? = getMeta("$UNPROMOTED_RUN_PREFIX$recordingId")
+
+    /** Null clears it. */
+    suspend fun setUnpromotedRun(recordingId: String, workId: String?) = withContext(dbContext) {
+        if (workId != null) q.setMeta("$UNPROMOTED_RUN_PREFIX$recordingId", workId) else q.deleteMeta("$UNPROMOTED_RUN_PREFIX$recordingId")
+    }
+
+    /** Clears the flag only if [workId] still owns it, so a newer run's flag is never removed by an older one. */
+    suspend fun clearUnpromotedRunIfOwner(recordingId: String, workId: String) = withContext(dbContext) {
+        val key = "$UNPROMOTED_RUN_PREFIX$recordingId"
+        db.transaction {
+            if (q.getMeta(key).executeAsOneOrNull() == workId) q.deleteMeta(key)
+        }
     }
 
     private fun processingErrorKey(recordingId: String) = "$PROCESSING_ERROR_PREFIX$recordingId"
@@ -701,6 +727,13 @@ class VelumRepository(
         q.deleteSpeakersForRecording(id)
         q.deleteRecordingHard(id)
         q.deleteMeta(processingErrorKey(id))
+        q.deleteMeta("$UNPROMOTED_RUN_PREFIX$id")
+        // Import dedupe keys (import_sha256_<hash> -> id) become tombstones: a manual import of the file works
+        // again, but a watched folder does not bring the deleted recording back (#327).
+        q.selectMetaKeysWithPrefixAndValue(globPrefix(IMPORT_HASH_PREFIX), id).executeAsList().forEach { key ->
+            q.setMeta(IMPORT_DELETED_PREFIX + key.removePrefix(IMPORT_HASH_PREFIX), "1")
+            q.deleteMeta(key)
+        }
         tryIndex { if (ftsAvailable) FtsIndex.deleteRecording(driver, id) }
     }
 
@@ -729,7 +762,13 @@ class VelumRepository(
         q.deleteAllAutoflows()
         q.deleteAllMemories()
         q.deleteAllGlossary()
-        q.deleteMetaWithPrefix(PROCESSING_ERROR_PREFIX)
+        // By table, not per recording: a job that finished after its recording was deleted leaves orphans.
+        q.deleteAllSpeakers()
+        q.deleteAllSummaryVersions()
+        deleteMetaPrefix(PROCESSING_ERROR_PREFIX)
+        deleteMetaPrefix(IMPORT_HASH_PREFIX)
+        deleteMetaPrefix(IMPORT_DELETED_PREFIX)
+        deleteMetaPrefix(UNPROMOTED_RUN_PREFIX)
         // Clear seed marker so maybeSeed re-inserts default AutoFlow + builtins.
         SeedData.clearSeedMarker(db)
         SeedData.maybeSeed(db)
@@ -1091,6 +1130,15 @@ class VelumRepository(
         const val META_TEMPLATE_ALIASES_RECONCILED = "template_aliases_reconciled"
         const val META_FTS_DIRTY = "fts_dirty"
         private const val PROCESSING_ERROR_PREFIX = "processing_error:"
+        private const val UNPROMOTED_RUN_PREFIX = "unpromoted_run:"
+        /** Audio import dedupe: import_sha256_<hash> -> recording id. */
+        const val IMPORT_HASH_PREFIX = "import_sha256_"
+
+        /** A GLOB pattern matching keys that start with [prefix] (case-sensitive; GLOB metacharacters escaped). */
+        internal fun globPrefix(prefix: String): String =
+            prefix.map { if (it == '*' || it == '?' || it == '[') "[$it]" else it.toString() }.joinToString("") + "*"
+        /** import_deleted_<hash>: that file's recording was permanently deleted; watched folders skip it. */
+        const val IMPORT_DELETED_PREFIX = "import_deleted_"
     }
 }
 

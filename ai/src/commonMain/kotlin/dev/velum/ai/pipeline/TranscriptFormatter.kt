@@ -58,6 +58,9 @@ object TranscriptFormatter {
         }
     }
 
+    /** The stored speaker id for the diarizer's zero-based cluster index. */
+    fun speakerIdForCluster(index: Int): String = "S${index + 1}"
+
     fun mergeSpeakerLabels(
         segments: List<TranscriptSegment>,
         diarization: DiarizationResult,

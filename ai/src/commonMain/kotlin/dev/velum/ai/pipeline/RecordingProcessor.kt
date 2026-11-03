@@ -19,6 +19,7 @@ import dev.velum.ai.local.ModelStoreDir
 import dev.velum.ai.local.defaultModelStoreRoot
 import dev.velum.ai.local.walkFiles
 import dev.velum.core.data.VelumRepository
+import dev.velum.core.data.WipeGate
 import dev.velum.core.model.ProcessingWarning
 import dev.velum.core.model.ComputeMode
 import dev.velum.core.settings.AiApiTask
@@ -31,6 +32,14 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.buffer
+import kotlinx.coroutines.flow.channelFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.updateAndGet
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.withContext
 
@@ -86,19 +95,48 @@ class RecordingProcessor(
     },
     private val thermal: ThermalPolicy = NoOpThermalPolicy,
     private val opusDecoder: () -> OpusDecoder = ::createOpusDecoder,
+    private val wipeGate: WipeGate = WipeGate(),
 ) {
+    private val nextRun = MutableStateFlow(0L)
+    private val activeRuns = MutableStateFlow<Map<String, Long>>(emptyMap())
+    private val statusLock = Mutex()
+
+    /** A wipe cancels the run and refuses new ones, so nothing is written while the data goes. */
     fun process(
         recordingId: String,
         templateId: String? = null,
         retranscribe: Boolean = true,
         apiModelOverride: ApiModelOverride? = null,
+    ): Flow<JobProgress> = channelFlow {
+        wipeGate.guard {
+            runProcess(recordingId, templateId, retranscribe, apiModelOverride).collect { send(it) }
+        }
+    }.buffer(Channel.RENDEZVOUS)
+
+    private fun runProcess(
+        recordingId: String,
+        templateId: String?,
+        retranscribe: Boolean,
+        apiModelOverride: ApiModelOverride?,
     ): Flow<JobProgress> = flow {
         emit(JobProgress.Running(0.05f, "Starting"))
-        val priorStatus = repository.getRecording(recordingId)?.status
-        repository.setProcessingError(recordingId, null)
-        repository.updateStatus(recordingId, "generating")
+        // A job queued before a wipe can run after it: with the row gone, record nothing about it.
+        val prior = repository.getRecording(recordingId)
+        if (prior == null) {
+            emit(JobProgress.Failed("Recording not found: $recordingId"))
+            return@flow
+        }
+        val priorStatus = prior.status
+        // Per-run token: only the newest run of a recording may restore its status when cancelled (see the handler).
+        val run = nextRun.updateAndGet { it + 1 }
 
         try {
+            // Token and "generating" are published together, under the lock every status write of a run takes.
+            statusLock.withLock {
+                activeRuns.update { it + (recordingId to run) }
+                repository.setProcessingError(recordingId, null)
+                repository.updateStatus(recordingId, "generating")
+            }
             val recording = repository.getRecording(recordingId)
                 ?: throw IllegalArgumentException("Recording not found: $recordingId")
             val cfg = settings.settings.value
@@ -109,7 +147,7 @@ class RecordingProcessor(
             val job = currentCoroutineContext()[Job]
             val spillRoot = ModelStoreDir(defaultModelStoreRoot().absolutePath)
                 .resolve("tmp")
-                .resolve("pcm-$recordingId")
+                .resolve("pcm-$recordingId-$run-${kotlin.random.Random.nextLong().toString(16)}")
             var pcmBuffer: PcmAudioBuffer = PcmAudioBuffer.Memory(ByteArray(0))
             var truncatedAudio = false
             try {
@@ -163,7 +201,9 @@ class RecordingProcessor(
                     copyFileRangeToPcm(src, pcmStart, pcmLen, pcmFile) { job?.ensureActive() }
                     pcmBuffer = PcmAudioBuffer.fromExistingFile(pcmFile, pcmLen)
                 } else {
-                    // Neither container: raw 16 kHz mono PCM, copied in slices like the WAV data.
+                    // Not Ogg or WAV. A known container that is not supported here must not be read as PCM: that
+                    // would give a noise transcript with no error. Anything else is raw 16 kHz mono PCM.
+                    unsupportedContainer(sniffed)?.let { throw IllegalArgumentException(unsupportedAudioMessage(it)) }
                     sampleRate = 16_000
                     requireSpillable(fileLen)
                     copyFileRangeToPcm(src, 0L, fileLen, pcmFile) { job?.ensureActive() }
@@ -375,26 +415,40 @@ class RecordingProcessor(
                 ?: catalogEntry?.nameEn
                 ?: catalogEntry?.namePtBr
                 ?: resolvedTemplateId
-            repository.saveSummaryVersion(
-                recordingId = recordingId,
-                markdown = summary.text,
-                templateId = resolvedTemplateId,
-                templateName = templateName,
-            )
-            repository.updateStatus(recordingId, "ready")
-            repository.setProcessingError(recordingId, null)
-            if (settings.preferences.value.deleteAudioAfterProcessing &&
-                !localPath.isNullOrBlank()
-            ) {
-                emit(JobProgress.Running(0.95f, "Removing local audio"))
-                deleteFile(localPath)
-                repository.clearLocalAudioPath(recordingId)
+            val deleteAudio = settings.preferences.value.deleteAudioAfterProcessing && !localPath.isNullOrBlank()
+            // The summary, status and audio path are written together and only by the newest run. A replaced run
+            // saves nothing: its version would otherwise become the active one over the newer run's.
+            val newest = statusLock.withLock {
+                (activeRuns.value[recordingId] == run).also {
+                    if (it) {
+                        repository.saveSummaryVersion(
+                            recordingId = recordingId,
+                            markdown = summary.text,
+                            templateId = resolvedTemplateId,
+                            templateName = templateName,
+                        )
+                        repository.updateStatus(recordingId, "ready")
+                        repository.setProcessingError(recordingId, null)
+                        if (deleteAudio) repository.clearLocalAudioPath(recordingId)
+                        // Finished: a cancel from here on must not restore an earlier status over "ready".
+                        activeRuns.update { map -> map - recordingId }
+                    }
+                }
             }
-            val successMsg = buildString {
-                append("Processed $recordingId")
-                summary.warning?.let { append(" — ").append(it) }
+            if (newest) {
+                // The file goes outside the lock; the row no longer points at it.
+                if (deleteAudio) {
+                    // Delete first: emit is a cancellation point, and a collector that stops here must not leave
+                    // the file behind after the row stopped pointing at it.
+                    deleteFile(localPath!!)
+                    emit(JobProgress.Running(0.95f, "Removed local audio"))
+                }
+                val successMsg = buildString {
+                    append("Processed $recordingId")
+                    summary.warning?.let { append(" — ").append(it) }
+                }
+                emit(JobProgress.Succeeded(successMsg))
             }
-            emit(JobProgress.Succeeded(successMsg))
             } finally {
                 pcmBuffer.close()
                 runCatching { spillRoot.deleteRecursively() }
@@ -403,23 +457,45 @@ class RecordingProcessor(
             if (t is CancellationException ||
                 t is kotlin.coroutines.cancellation.CancellationException
             ) {
-                // Cancelled work never saved a version; restore the status so notes stay usable.
+                // Cancelled work saved no version; restore the status so notes stay usable (newest run only).
                 withContext(NonCancellable) {
-                    // A pre-run "generating"/"queued" state is not restorable: it would look stuck forever.
-                    val restore = when (priorStatus) {
-                        null, "generating", "queued" ->
-                            if (repository.getRecording(recordingId)?.summary_markdown.isNullOrBlank()) "failed" else "ready"
-                        else -> priorStatus
+                    // A replacement run (AutoFlow's REPLACE) may start before this one unwinds and already own the
+                    // row's "generating"; restoring here would write a false "failed" over it. Check and write are one
+                    // step under the lock, so the replacement cannot publish between them.
+                    statusLock.withLock {
+                        if (activeRuns.value[recordingId] != run) return@withLock
+                        activeRuns.update { it - recordingId }
+                        val current = repository.getRecording(recordingId)
+                        // This job set "generating" when it started. "queued" now means a replacing enqueue (AutoFlow's
+                        // REPLACE) already took over the row; writing here would race its status and hand its runner
+                        // a false terminal "failed".
+                        if (current?.status == "queued") return@withLock
+                        // A pre-run "generating"/"queued" state is not restorable: it would look stuck forever.
+                        val restore = when (priorStatus) {
+                            null, "generating", "queued" ->
+                                if (current?.summary_markdown.isNullOrBlank()) "failed" else "ready"
+                            else -> priorStatus
+                        }
+                        repository.updateStatus(recordingId, restore)
                     }
-                    repository.updateStatus(recordingId, restore)
                 }
                 throw t
             }
             // The previous summary and versions are untouched; surface the reason in the UI.
             val reason = if (isOutOfStorage(t)) INSUFFICIENT_STORAGE_MESSAGE else t.message ?: t.toString()
-            repository.setProcessingError(recordingId, ApiErrorSanitizer.sanitize(reason))
-            repository.updateStatus(recordingId, "failed")
-            emit(JobProgress.Failed(reason))
+            val newest = statusLock.withLock {
+                (activeRuns.value[recordingId] == run).also {
+                    if (it) {
+                        repository.setProcessingError(recordingId, ApiErrorSanitizer.sanitize(reason))
+                        repository.updateStatus(recordingId, "failed")
+                    }
+                }
+            }
+            // A replaced run reports nothing: the newer run owns the outcome and its notification.
+            if (newest) emit(JobProgress.Failed(reason))
+        } finally {
+            // Only this run's own token; a newer run's must survive.
+            activeRuns.update { if (it[recordingId] == run) it - recordingId else it }
         }
     }
 
@@ -681,5 +757,29 @@ class RecordingProcessor(
             }
             return chunks
         }
+    }
+}
+
+/** Plain error for audio whose container is recognised but not decoded by this path. */
+internal fun unsupportedAudioMessage(container: String) =
+    "Unsupported audio format ($container). This file is not Ogg Opus, WAV or raw 16 kHz PCM, so it was not transcribed; " +
+        "re-download it from the device or convert it to WAV or Ogg Opus."
+
+/**
+ * Names a well-known audio container from its first bytes, or null. Only signatures that cannot start raw PCM by
+ * accident are used. A bare MP3 or ADTS frame sync is NOT one: `FF FB` is the sample -1025 and `FF F1` is -3585, so
+ * header-less MP3 or AAC streams stay as raw PCM here (as before), and only ID3-tagged MP3 is recognised.
+ */
+internal fun unsupportedContainer(head: ByteArray): String? {
+    fun at(i: Int, text: String) = head.size >= i + text.length && text.indices.all { head[i + it] == text[it].code.toByte() }
+    fun b(i: Int) = if (head.size > i) head[i].toInt() and 0xFF else -1
+    return when {
+        at(0, "ID3") -> "MP3"
+        at(4, "ftyp") -> "MP4/M4A"
+        at(0, "fLaC") -> "FLAC"
+        at(0, "#!AMR") -> "AMR"
+        at(0, "RIFF") -> "RIFF (not WAVE)"
+        head.size >= 4 && b(0) == 0x1A && b(1) == 0x45 && b(2) == 0xDF && b(3) == 0xA3 -> "WebM/Matroska"
+        else -> null
     }
 }

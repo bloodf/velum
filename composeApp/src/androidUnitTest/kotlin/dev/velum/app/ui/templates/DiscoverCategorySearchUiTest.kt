@@ -90,7 +90,7 @@ class DiscoverCategorySearchUiTest {
             // Diagnostics must never replace the timeout; an open sheet is a second root.
             val diagnostics = runCatching { compose.onAllNodes(isRoot()).printToString(maxDepth = Int.MAX_VALUE) }
                 .getOrElse { "diagnostic failed: $it" }
-            throw AssertionError("Timed out waiting for $what\n$diagnostics", e)
+            throw AssertionError("Timed out waiting for $what\n${queryLog.dump()}\n$diagnostics", e)
         }
     }
 
@@ -109,11 +109,12 @@ class DiscoverCategorySearchUiTest {
     }
 
     /** Facets queries started and finished, so a test waits for the reload itself instead of sleeping. */
+    private val queryLog = QueryLog()
     private val facetsStarted = AtomicInteger()
     private val facetsFinished = AtomicInteger()
 
     private fun countedQueries(container: AppContainer): DiscoverQueries {
-        val real = container.repository.discoverQueries()
+        val real = queryLog.wrap(container)
         return DiscoverQueries(
             page = real.page, count = real.count,
             facets = { f ->

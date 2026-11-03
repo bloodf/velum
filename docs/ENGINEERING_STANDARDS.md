@@ -88,7 +88,7 @@ Local voice-recognition profiles are not hosted user accounts.
 
 - No UI element without a working function (no placeholders, no "coming soon").
 - No account, login, profile or telemetry. No cloud code paths in the open-source build.
-- Never send device commands 104, 5, 0xFE20, 128 or 143; never write device settings 4 or 26 (ForbiddenOpcodes / ForbiddenSettings guard tests stay green).
+- Never send device commands 104, 5, 0xFE20, 128, 143 or 30 (delete file); never write device settings 4 or 26 (ForbiddenOpcodes / ForbiddenSettings guard tests stay green).
 - Never log or print identity values (token, PEMs, signatures). No Plaud screenshots or branding.
 - Commit directly to main referencing this issue, with tests; CI green (JVM tests, assemble, OSV, emulator smoke, device walk debug + R8 release).
 

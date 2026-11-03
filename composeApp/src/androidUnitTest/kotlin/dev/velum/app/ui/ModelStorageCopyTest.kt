@@ -5,7 +5,10 @@ import androidx.activity.compose.setContent
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import dev.velum.ai.local.DefaultLocalCatalog
 import dev.velum.ai.local.LocalModelErrors
+import dev.velum.ai.local.LocalModelState
+import dev.velum.ai.local.LocalModelStatus
 import dev.velum.app.i18n.En
 import dev.velum.app.i18n.LocalStrings
 import dev.velum.app.i18n.ModelCatalogUi
@@ -13,6 +16,7 @@ import dev.velum.app.i18n.PtBr
 import dev.velum.app.i18n.Strings
 import dev.velum.app.ui.onboarding.FirstRunScreen
 import dev.velum.app.ui.settings.modelErrorText
+import dev.velum.app.ui.settings.modelFailureNotice
 import dev.velum.app.ui.theme.VelumTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -66,5 +70,18 @@ class ModelStorageCopyTest {
             val msg = ModelCatalogUi.fill(s.firstRun.notEnoughSpaceFormat, "3.2 GB", "1.0 GB")
             assertTrue(msg.contains("3.2 GB") && msg.contains("1.0 GB") && !msg.contains("%"))
         }
+    }
+
+    // #301: the notice outside Model manager is plain copy in both locales and names the model.
+    @Test fun a_failed_download_notice_is_plain_and_names_the_model_in_both_locales() {
+        val spec = DefaultLocalCatalog.first()
+        for (s in listOf<Strings>(En, PtBr)) {
+            val generic = modelFailureNotice(LocalModelState(spec, LocalModelStatus.Failed, error = "SHA-256 mismatch for x"), s)
+            assertTrue(generic.contains(spec.displayName) && !generic.contains("SHA") && !generic.contains("%s"))
+            val full = modelFailureNotice(LocalModelState(spec, LocalModelStatus.Failed, error = LocalModelErrors.StorageFull), s)
+            assertTrue(full.contains(s.ux.modelStorageFull) && !full.contains("ENOSPC"))
+            assertTrue(s.ux.modelQueued.isNotBlank())
+        }
+        assertTrue(En.ux.modelDownloadFailedFormat != PtBr.ux.modelDownloadFailedFormat)
     }
 }

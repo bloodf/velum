@@ -232,6 +232,12 @@ DELETE FROM memory_item;
 deleteAllGlossary:
 DELETE FROM glossary_term;
 
+deleteAllSpeakers:
+DELETE FROM speaker;
+
+deleteAllSummaryVersions:
+DELETE FROM summary_version;
+
 selectAllRecordingIds:
 SELECT id FROM recording;
 
@@ -298,8 +304,15 @@ INSERT OR REPLACE INTO app_meta(key, value) VALUES (?, ?);
 deleteMeta:
 DELETE FROM app_meta WHERE key = ?;
 
-deleteMetaWithPrefix:
-DELETE FROM app_meta WHERE key LIKE ? || '%';
+-- GLOB, not LIKE: LIKE treats `_` as a wildcard and ignores case. Patterns come from VelumRepository.globPrefix.
+deleteMetaMatching:
+DELETE FROM app_meta WHERE key GLOB :pattern;
+
+deleteMetaWithPrefixAndValue:
+DELETE FROM app_meta WHERE key GLOB :pattern AND value = :value;
+
+selectMetaKeysWithPrefixAndValue:
+SELECT key FROM app_meta WHERE key GLOB :pattern AND value = :value;
 
 selectVersionsForRecording:
 SELECT * FROM summary_version WHERE recording_id = ? ORDER BY created_at DESC;

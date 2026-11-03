@@ -1,5 +1,7 @@
 package dev.velum.ai.local
 
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.distinctUntilChanged
 import dev.velum.ai.createDownloadHttpClient
 import io.ktor.client.HttpClient
 import io.ktor.client.request.prepareGet
@@ -268,12 +270,46 @@ data class LocalModelState(
 object LocalModelErrors {
     const val StorageFull = "storage_full"
 
+    /** The network or the server failed during the HTTP phase (the cause is not stored: it can carry a signed URL). */
+    const val DownloadFailed = "download_failed"
+
+    /** Anything else that went wrong after the bytes arrived, or that the manager did not expect. */
+    const val DownloadError = "download_error"
+    const val ChecksumMismatch = "checksum_mismatch"
+    const val Incomplete = "incomplete"
+    const val NoDownloadUrl = "no_download_url"
+    const val ChecksumNotPinned = "checksum_not_pinned"
+    const val HttpsRequired = "https_required"
+    private const val HTTP_PREFIX = "http_"
+
+    fun http(status: Int) = "$HTTP_PREFIX$status"
+
+    /** The status of an `http_<status>` code, or null for any other value. */
+    fun httpStatus(code: String): Int? = code.removePrefix(HTTP_PREFIX).takeIf { code.startsWith(HTTP_PREFIX) }?.toIntOrNull()
+
+    /**
+     * The error to store for a failed download: always a stable code, never exception text (a network error can carry
+     * a signed URL, and the manager's own messages are English).
+     */
+    fun forFailure(t: Throwable): String = when {
+        isStorageFull(t) -> StorageFull
+        t is ModelFailure -> t.code
+        else -> DownloadError
+    }
+
     fun isStorageFull(t: Throwable): Boolean =
         generateSequence(t) { it.cause }.take(8).any {
             val m = it.message.orEmpty()
             m.contains("ENOSPC", ignoreCase = true) || m.contains("No space left", ignoreCase = true)
         }
 }
+
+/** A download failure with a stable [code] (see [LocalModelErrors]); its text is the code, never a URL. */
+internal class ModelFailure(val code: String, cause: Throwable? = null) : IllegalStateException(code, cause)
+
+/** Models that just became Failed: [before] is the status of each model at the previous emission. */
+fun newlyFailed(before: Map<String, LocalModelStatus>, after: List<LocalModelState>): List<LocalModelState> =
+    after.filter { it.status == LocalModelStatus.Failed && before[it.spec.id] != null && before[it.spec.id] != LocalModelStatus.Failed }
 
 fun createLocalModelManager(
     storeRoot: ModelStoreDir = defaultModelStoreRoot(),
@@ -352,7 +388,13 @@ class LocalModelManager(
      * large transfer. [cancelDownload] on the current model ends the whole sequence.
      */
     fun startDownloads(ids: List<String>): Job = downloadScope.launch {
-        for (id in ids) {
+        val pending = ids.filterNot { isReady(it) }
+        val waiting = pending.toMutableList()
+        adjustQueued(pending, +1)
+        try {
+            for (id in pending) {
+            waiting.remove(id)
+            adjustQueued(listOf(id), -1)
             // A model already on disk is never fetched again: a failed re-download must not cost the working copy.
             if (isReady(id)) continue
             try {
@@ -364,10 +406,30 @@ class LocalModelManager(
                 update(id) {
                     it.copy(
                         status = LocalModelStatus.Failed, progress = 0f,
-                        error = if (LocalModelErrors.isStorageFull(e)) LocalModelErrors.StorageFull else e.message ?: e.toString(),
+                        error = LocalModelErrors.forFailure(e),
                     )
                 }
             }
+            }
+        } finally {
+            // Cancelled or finished: only this sequence's own unstarted entries go; another sequence may still queue the same id.
+            adjustQueued(waiting, -1)
+        }
+    }
+
+    /** Models waiting behind the one currently downloading in a [startDownloads] sequence. */
+    private val queuedCounts = MutableStateFlow(mapOf<String, Int>())
+    val queuedIds: Flow<Set<String>> = queuedCounts.map { it.keys }.distinctUntilChanged()
+
+    // Counted per sequence, so two overlapping sequences never drop each other's queued ids.
+    private fun adjustQueued(ids: List<String>, delta: Int) {
+        queuedCounts.update { counts ->
+            val next = counts.toMutableMap()
+            ids.forEach { id ->
+                val n = (next[id] ?: 0) + delta
+                if (n > 0) next[id] = n else next.remove(id)
+            }
+            next
         }
     }
 
@@ -409,7 +471,7 @@ class LocalModelManager(
                 it.copy(
                     status = LocalModelStatus.BlockedOnUrl,
                     progress = 0f,
-                    error = "No download URL for ${it.spec.id}. Blocked until a release URL is set.",
+                    error = LocalModelErrors.NoDownloadUrl,
                 )
             }
             emit(requireNotNull(stateFor(id)))
@@ -420,7 +482,7 @@ class LocalModelManager(
                 it.copy(
                     status = LocalModelStatus.Failed,
                     progress = 0f,
-                    error = "Model download URL must use https:// (got: $url)",
+                    error = LocalModelErrors.HttpsRequired,
                 )
             }
             emit(requireNotNull(stateFor(id)))
@@ -432,7 +494,7 @@ class LocalModelManager(
                 it.copy(
                     status = LocalModelStatus.BlockedOnUrl,
                     progress = 0f,
-                    error = "SHA-256 required before download for ${it.spec.id}. Blocked until checksum is pinned.",
+                    error = LocalModelErrors.ChecksumNotPinned,
                 )
             }
             emit(requireNotNull(stateFor(id)))
@@ -470,27 +532,37 @@ class LocalModelManager(
 
         try {
             val digest = createSha256Digest()
-            httpClient.prepareGet(url).execute { response ->
-                if (!response.status.isSuccess()) {
-                    throw IllegalStateException("Download failed: HTTP ${response.status.value}")
-                }
-                val total = response.contentLength() ?: current.spec.approxBytes.coerceAtLeast(1L)
-                val channel: ByteReadChannel = response.bodyAsChannel()
-                val buffer = ByteArray(64 * 1024)
-                var written = 0L
-                while (!channel.isClosedForRead) {
-                    if (id in cancelRequested.value) {
-                        throw CancellationException("Download cancelled")
+            try {
+                httpClient.prepareGet(url).execute { response ->
+                    if (!response.status.isSuccess()) {
+                        throw ModelFailure(LocalModelErrors.http(response.status.value))
                     }
-                    val n = channel.readAvailable(buffer, 0, buffer.size)
-                    if (n <= 0) break
-                    digest.update(buffer, 0, n)
-                    partial.appendBytes(buffer.copyOf(n))
-                    written += n
-                    val progress = (written.toDouble() / total.toDouble()).toFloat().coerceIn(0f, 0.99f)
-                    update(id) { it.copy(status = LocalModelStatus.Downloading, progress = progress) }
-                    emit(requireNotNull(stateFor(id)))
+                    val total = response.contentLength() ?: current.spec.approxBytes.coerceAtLeast(1L)
+                    val channel: ByteReadChannel = response.bodyAsChannel()
+                    val buffer = ByteArray(64 * 1024)
+                    var written = 0L
+                    while (!channel.isClosedForRead) {
+                        if (id in cancelRequested.value) {
+                            throw CancellationException("Download cancelled")
+                        }
+                        val n = channel.readAvailable(buffer, 0, buffer.size)
+                        if (n <= 0) break
+                        digest.update(buffer, 0, n)
+                        partial.appendBytes(buffer.copyOf(n))
+                        written += n
+                        val progress = (written.toDouble() / total.toDouble()).toFloat().coerceIn(0f, 0.99f)
+                        update(id) { it.copy(status = LocalModelStatus.Downloading, progress = progress) }
+                        emit(requireNotNull(stateFor(id)))
+                    }
                 }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: ModelFailure) {
+                throw e
+            } catch (e: Exception) {
+                // Only this phase is "the download failed": the network, the server, or writing the bytes.
+                if (LocalModelErrors.isStorageFull(e)) throw e
+                throw ModelFailure(LocalModelErrors.DownloadFailed, e)
             }
 
             if (id in cancelRequested.value) {
@@ -500,7 +572,7 @@ class LocalModelManager(
             val actual = digest.digestHex()
             if (!actual.equals(expectedSha, ignoreCase = true)) {
                 partial.deleteRecursively()
-                throw IllegalStateException("SHA-256 mismatch for $id")
+                throw ModelFailure(LocalModelErrors.ChecksumMismatch)
             }
 
             // renameTo replaces a file target atomically and an existing directory by delete+move.
@@ -526,13 +598,10 @@ class LocalModelManager(
                 val stagedMissing = ModelReadiness.missingRequirements(current.spec, staging)
                 if (stagedMissing.isNotEmpty()) {
                     staging.deleteRecursively()
-                    throw IllegalStateException(
-                        "Model '$id' downloaded but not Ready — missing ${stagedMissing.joinToString(", ")}. " +
-                            "Expected layout: ${ModelReadiness.layoutFor(current.spec).describe()}",
-                    )
+                    throw ModelFailure(LocalModelErrors.Incomplete)
                 }
                 staging.listChildren().forEach { child ->
-                    if (!child.renameTo(dir.resolve(child.name))) throw IllegalStateException("Could not move ${child.name} into place")
+                    if (!child.renameTo(dir.resolve(child.name))) throw ModelFailure(LocalModelErrors.DownloadError)
                 }
                 staging.deleteRecursively()
                 // Only after the weights are in place: the archive is not read again.
@@ -541,10 +610,7 @@ class LocalModelManager(
 
             val missing = ModelReadiness.missingRequirements(current.spec, dir)
             if (missing.isNotEmpty()) {
-                throw IllegalStateException(
-                    "Model '$id' downloaded but not Ready — missing ${missing.joinToString(", ")}. " +
-                        "Expected layout: ${ModelReadiness.layoutFor(current.spec).describe()}",
-                )
+                throw ModelFailure(LocalModelErrors.Incomplete)
             }
 
             update(id) { it.copy(status = LocalModelStatus.Ready, progress = 1f, error = null) }
@@ -569,7 +635,7 @@ class LocalModelManager(
                 it.copy(
                     status = LocalModelStatus.Failed,
                     progress = 0f,
-                    error = if (LocalModelErrors.isStorageFull(t)) LocalModelErrors.StorageFull else t.message ?: t.toString(),
+                    error = LocalModelErrors.forFailure(t),
                 )
             }
             emit(requireNotNull(stateFor(id)))
@@ -595,20 +661,19 @@ class LocalModelManager(
                 LocalModelState(
                     spec,
                     LocalModelStatus.BlockedOnUrl,
-                    error = "No download URL. Blocked until a release URL is set.",
+                    error = LocalModelErrors.NoDownloadUrl,
                 )
             spec.sha256.isNullOrBlank() ->
                 LocalModelState(
                     spec,
                     LocalModelStatus.BlockedOnUrl,
-                    error = "SHA-256 required before download. Blocked until checksum is pinned.",
+                    error = LocalModelErrors.ChecksumNotPinned,
                 )
             dir.exists() && dir.listChildren().isNotEmpty() ->
                 LocalModelState(
                     spec,
                     LocalModelStatus.Failed,
-                    error = "Incomplete model files under ${dir.absolutePath}: " +
-                        ModelReadiness.missingRequirements(spec, dir).joinToString(", "),
+                    error = LocalModelErrors.Incomplete,
                 )
             else -> LocalModelState(spec, LocalModelStatus.NotDownloaded)
         }
