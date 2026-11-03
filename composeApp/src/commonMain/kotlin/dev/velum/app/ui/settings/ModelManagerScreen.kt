@@ -1,5 +1,6 @@
 package dev.velum.app.ui.settings
 
+import dev.velum.ai.local.LocalModelErrors
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -197,7 +198,8 @@ private fun ModelCard(
         }
         Spacer(Modifier.height(8.dp))
         Text(statusLabel, fontWeight = FontWeight.Medium, fontSize = 13.sp, color = VelumInk)
-        state.error?.let { err ->
+        state.error?.let { raw ->
+            val err = modelErrorText(raw, strings)
             Spacer(Modifier.height(4.dp))
             Text(err, color = VelumInkSecondary, fontSize = 12.sp, lineHeight = 16.sp)
         }
@@ -241,6 +243,10 @@ private fun kindLabel(kind: LocalModelKind, strings: Strings): String = when (ki
     LocalModelKind.Embedding -> strings.ux.modelKindEmbedding
     LocalModelKind.Llm -> strings.ux.modelKindLlm
 }
+
+/** A storage failure is shown as plain localized copy; anything else keeps its message. */
+internal fun modelErrorText(raw: String, strings: dev.velum.app.i18n.Strings): String =
+    if (raw == LocalModelErrors.StorageFull) strings.ux.modelStorageFull else raw
 
 private fun formatBytes(bytes: Long): String {
     val mb = bytes / (1024.0 * 1024.0)
