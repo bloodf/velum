@@ -52,6 +52,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 class RecordingProcessorDecodeCleanupTest {
     private class Harness(val transcribe: suspend (AudioInput) -> Unit,
         val llmText: suspend () -> String = { "## Summary\nok" },
+        val diarizeHook: (AudioInput) -> Unit = {},
         thermal: ThermalPolicy = NoOpThermalPolicy,
         opusDecoder: (() -> dev.velum.ai.audio.OpusDecoder)? = null,
     ) {
@@ -75,8 +76,10 @@ class RecordingProcessorDecodeCleanupTest {
         }
         private val diar = object : Diarizer {
             override val engineId = "noop"
-            override suspend fun diarize(input: AudioInput, modelId: String) =
-                DiarizationResult(spans = emptyList(), engineId = engineId, modelId = modelId)
+            override suspend fun diarize(input: AudioInput, modelId: String): DiarizationResult {
+                this@Harness.diarizeHook(input)
+                return DiarizationResult(spans = emptyList(), engineId = engineId, modelId = modelId)
+            }
         }
         private val llm = object : LlmEngine {
             override val engineId = "noop"
@@ -143,6 +146,58 @@ class RecordingProcessorDecodeCleanupTest {
         assertEquals(16_000, captured[0].sampleRateHz)
         assertContentEquals(pcm, captured[0].bytes)
         assertFalse(spillDir("rec-86-wav").exists(), "temp PCM removed after success")
+    }
+
+    /** Writes a mono 16 kHz WAV of [seconds] straight to disk (never whole on the heap): header, then 1 s slices. */
+    private fun writeWav(file: File, seconds: Int) {
+        val dataLen = seconds * 16_000 * 2
+        val header = wav(ByteArray(0)) // header bytes up to and including "data" + len 0
+        val prefix = header.copyOf(header.size - 8) // up to just before the data chunk header
+        val riffBody = prefix.size - 8 + 8 + dataLen
+        file.outputStream().buffered(256 * 1024).use { out ->
+            out.write(prefix.copyOf().also { System.arraycopy(le32(riffBody), 0, it, 4, 4) })
+            out.write("data".toByteArray()); out.write(le32(dataLen))
+            val second = ByteArray(32_000) { (it % 251).toByte() }
+            repeat(seconds) { out.write(second) }
+        }
+    }
+
+    /**
+     * Peak retained heap above the pre-run baseline, measured (after a GC) at every ASR window and when diarization
+     * receives its audio, i.e. at the moments the processor holds PCM on the heap.
+     */
+    private fun retainedHeapProcessingWav(seconds: Int): Long = runBlocking {
+        val src = File.createTempFile("velum-86-heap", ".wav").apply { deleteOnExit() }
+        writeWav(src, seconds)
+        val rt = Runtime.getRuntime()
+        System.gc()
+        val baseline = rt.totalMemory() - rt.freeMemory()
+        var peak = 0L
+        fun sample() {
+            System.gc()
+            peak = maxOf(peak, rt.totalMemory() - rt.freeMemory() - baseline)
+        }
+        // The input arrays are alive while the hook runs (the caller holds them), which is what is being measured.
+        val h = Harness({ input -> sample(); check(input.bytes.size >= 0) }, diarizeHook = { input -> sample(); check(input.bytes.size >= 0) })
+        h.insert("rec-86-heap-$seconds", src)
+        try {
+            val events = h.processor.process("rec-86-heap-$seconds", templateId = "velum.meeting", apiModelOverride = API).toList()
+            assertTrue(events.last() is JobProgress.Succeeded, "last=${events.last()}")
+        } finally {
+            src.delete()
+        }
+        peak
+    }
+
+    @Test
+    fun wav_processing_heap_stays_bounded_as_the_recording_gets_longer() {
+        // Diarization takes at most the first 30 min as one heap array (about 55 MiB at 16 kHz mono); everything
+        // else (the copy to disk, the ASR windows) streams. So retained heap is flat once past that window.
+        val forty = retainedHeapProcessingWav(40 * 60)
+        val ninety = retainedHeapProcessingWav(90 * 60) // ~165 MiB of PCM on disk
+        println("wav-process heap delta: 40min=${forty shr 10}KiB 90min=${ninety shr 10}KiB")
+        assertTrue(ninety < 72L shl 20, "90 min WAV retained ${ninety shr 20} MiB (30 min diarization window is ~55 MiB)")
+        assertTrue(ninety - forty < 12L shl 20, "heap grew with duration past the window: $forty -> $ninety")
     }
 
     @Test
