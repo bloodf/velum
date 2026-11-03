@@ -48,16 +48,41 @@ class ImportPickedDocumentTest {
     }
 
     @Test
-    fun cancellation_isRethrown_notReportedAsFailure() {
+    fun providerFailure_logsTheClassNameOnly() = runBlocking {
         Robolectric.setupContentProvider(ThrowingDocumentProvider::class.java, "velum.test.docs")
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        org.robolectric.shadows.ShadowLog.clear()
+        importPickedDocument(context, uri, onFailed = {}, onPicked = {}, openStream = { throw SecurityException("secret-file-name.wav revoked") })
+        val lines = org.robolectric.shadows.ShadowLog.getLogs().filter { it.tag == "AudioImporter" }.map { it.msg }
+        assertTrue(lines.any { it.contains("SecurityException") }, "logs: $lines")
+        assertTrue(lines.none { it.contains("secret-file-name") || it.contains("revoked") }, "logs: $lines")
+    }
+
+    @Test
+    fun cancellationMidCopy_isRethrown_removesThePartialFile_andIsNotAFailure() {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        File(context.cacheDir, "imports").deleteRecursively()
         var failed = 0
+        var picked = 0
         assertFailsWith<CancellationException> {
             runBlocking {
-                kotlinx.coroutines.currentCoroutineContext()[kotlinx.coroutines.Job]!!.cancel()
-                importPickedDocument(context, uri, onFailed = { failed++ }, onPicked = {})
+                val job = kotlinx.coroutines.currentCoroutineContext()[kotlinx.coroutines.Job]!!
+                importPickedDocument(
+                    context, uri, onFailed = { failed++ }, onPicked = { picked++ },
+                    openStream = {
+                        object : java.io.InputStream() {
+                            var n = 0
+                            override fun read(): Int {
+                                if (n == 3) job.cancel()
+                                return if (n++ < 10) 1 else -1
+                            }
+                        }
+                    },
+                )
             }
         }
         assertEquals(0, failed)
+        assertEquals(0, picked)
+        assertTrue(File(context.cacheDir, "imports").listFiles().orEmpty().isEmpty(), "partial file left behind")
     }
 }

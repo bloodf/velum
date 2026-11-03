@@ -345,6 +345,8 @@ class VoiceProfileStore(
 
     fun wipeAll() {
         if (profilesDir.exists()) profilesDir.deleteRecursively()
+        // Cluster embeddings from processed recordings are voice data too.
+        if (cacheDir.exists()) cacheDir.deleteRecursively()
         profilesDir.createDirectories()
     }
 

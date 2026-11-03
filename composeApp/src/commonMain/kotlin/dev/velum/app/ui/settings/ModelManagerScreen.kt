@@ -294,16 +294,28 @@ internal fun modelFailureNotice(state: LocalModelState, strings: dev.velum.app.i
     }
 
 /**
- * A storage or download failure is shown as plain localized copy; anything else keeps its message with any URL
- * removed (an error saved by an older build can carry a signed download URL with its query string).
+ * Every stored error code ([LocalModelErrors]) is shown as plain localized copy, with the HTTP status for
+ * `http_<status>`. Any other text is a legacy error saved by an older build: it is shown with URLs removed (it can
+ * carry a signed download URL with its query string), or as the generic download-failed copy if nothing is left.
  */
-internal fun modelErrorText(raw: String, strings: dev.velum.app.i18n.Strings): String = when (raw) {
-    LocalModelErrors.StorageFull -> strings.ux.modelStorageFull
-    LocalModelErrors.DownloadFailed -> strings.ux.modelDownloadFailed
-    else -> raw.replace(URL_IN_TEXT, "").replace(Regex("""\s+"""), " ").trim().ifEmpty { strings.ux.modelDownloadFailed }
+internal fun modelErrorText(raw: String, strings: dev.velum.app.i18n.Strings): String {
+    val ux = strings.ux
+    LocalModelErrors.httpStatus(raw)?.let { return ux.modelHttpErrorFormat.replace("%d", it.toString()) }
+    return when (raw) {
+        LocalModelErrors.StorageFull -> ux.modelStorageFull
+        LocalModelErrors.DownloadFailed -> ux.modelDownloadFailed
+        LocalModelErrors.DownloadError -> ux.modelDownloadError
+        LocalModelErrors.ChecksumMismatch -> ux.modelChecksumMismatch
+        LocalModelErrors.Incomplete -> ux.modelIncomplete
+        LocalModelErrors.NoDownloadUrl -> ux.modelNoDownloadUrl
+        LocalModelErrors.ChecksumNotPinned -> ux.modelChecksumNotPinned
+        LocalModelErrors.HttpsRequired -> ux.modelHttpsRequired
+        else -> raw.replace(URL_IN_TEXT, "").replace(WHITESPACE, " ").trim().ifEmpty { ux.modelDownloadFailed }
+    }
 }
 
-private val URL_IN_TEXT = Regex("""https?://\S+""")
+private val URL_IN_TEXT = Regex("""(?i)https?://\S+""")
+private val WHITESPACE = Regex("""\s+""")
 
 private fun formatBytes(bytes: Long): String {
     val mb = bytes / (1024.0 * 1024.0)
