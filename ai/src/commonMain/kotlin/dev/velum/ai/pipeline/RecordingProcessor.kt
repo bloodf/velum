@@ -40,12 +40,16 @@ const val INSUFFICIENT_STORAGE_MESSAGE =
     "Not enough free storage to process this recording. Free up space and try again."
 
 /** True when [t] or a cause reports a full disk (ENOSPC); message text is all common code can see. */
-internal fun isOutOfStorage(t: Throwable): Boolean =
-    // AiApiException messages come from a remote provider, not this device's disk.
-    generateSequence(t) { it.cause }.take(8).filter { it !is AiApiException }.any { e ->
+internal fun isOutOfStorage(t: Throwable): Boolean {
+    val chain = generateSequence(t) { it.cause }.take(8).toList()
+    // AiApiException text comes from a remote provider, not this device's disk; wrappers copy it
+    // into their own message (RuntimeException(cause)), so any provider error in the chain rules it out.
+    if (chain.any { it is AiApiException }) return false
+    return chain.any { e ->
         val m = e.message.orEmpty()
         m.contains("ENOSPC") || m.contains("No space left", ignoreCase = true) || m.contains("disk is full", ignoreCase = true)
     }
+}
 
 /** Removes spilled PCM dirs (`tmp/pcm-*`) left by a process death mid-decode. Run only when no job is active. */
 fun sweepOrphanPcmSpill(root: ModelStoreDir = defaultModelStoreRoot()): Int =
