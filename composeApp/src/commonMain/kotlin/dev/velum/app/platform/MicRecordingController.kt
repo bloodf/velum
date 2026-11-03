@@ -83,5 +83,13 @@ class MicRecordingController(private val capture: MicCapture, private val canSta
 
     internal suspend fun <T> inspectInterruptedDrafts(action: suspend () -> T): T = mutex.withLock { action() }
 
-    internal fun release(owned: OwnedMicRecording) { _owner.compareAndSet(owned, null) }
+    @kotlin.concurrent.Volatile private var uiStopId: String? = null
+
+    /** The in-app Stop is about to finalize this recording itself (with the live text). */
+    fun beginUiStop(recordingId: String) { uiStopId = recordingId }
+    fun isUiStopping(recordingId: String): Boolean = uiStopId == recordingId
+
+    internal fun release(owned: OwnedMicRecording) {
+        if (_owner.compareAndSet(owned, null) && uiStopId == owned.recordingId) uiStopId = null
+    }
 }

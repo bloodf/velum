@@ -859,7 +859,7 @@ class VelumRepository(
         summaryMarkdown: String?,
     ) {
         if (!ftsAvailable) return
-        FtsIndex.upsertRecording(driver, id, title, transcript, summaryMarkdown)
+        FtsIndex.upsertRecording(driver, id, title, TranscriptMarkers.spoken(transcript), summaryMarkdown)
     }
 
     private fun indexTemplate(

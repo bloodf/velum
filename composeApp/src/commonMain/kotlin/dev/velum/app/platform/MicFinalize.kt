@@ -51,6 +51,12 @@ suspend fun finalizeMicRecording(
 }
 
 /** Markers have no other copy, so they are saved even when nothing was transcribed. */
+/** Saves the current markers into the transcript right away; safe to repeat (the section is replaced). */
+suspend fun persistLiveMarkers(container: AppContainer, recordingId: String) {
+    val markers = container.micCapture.markers
+    if (markers.isNotEmpty()) saveLiveText(container, recordingId, null, markers)
+}
+
 private suspend fun saveLiveText(container: AppContainer, recordingId: String, transcript: String?, markers: List<MicMarker>) {
     if (markers.isEmpty()) {
         transcript?.let { container.repository.updateTranscript(recordingId, it) }
@@ -74,8 +80,19 @@ private suspend fun saveLiveText(container: AppContainer, recordingId: String, t
 suspend fun observeMicFailures(container: AppContainer, onFailure: suspend (String) -> Unit) {
     combine(container.micRecordings.owner, container.micCapture.sessions) { owner, state -> owner to state }
         .collect { (owned, state) ->
-            val failure = state as? MicSessionState.Failed ?: return@collect
-            if (owned != null && failOwnedMicRecording(container, owned, failure)) onFailure(failure.message)
+            if (owned == null) return@collect
+            when (state) {
+                is MicSessionState.Failed ->
+                    if (failOwnedMicRecording(container, owned, failure = state)) onFailure(state.message)
+                // Stopped from the notification: nothing else will finalize the row, so it would stay "recording".
+                // A Stop pressed in the app finalizes itself with the live text, so leave that one alone.
+                is MicSessionState.Stopped ->
+                    if (state.session == owned.session && !container.micRecordings.isUiStopping(owned.recordingId)) {
+                        val stopped = finalizeMicRecording(container, owned.recordingId, owned.session.absolutePath, owned.session)
+                        if (stopped is MicStopResult.Failed && stopped.message.isNotBlank()) onFailure(stopped.message)
+                    }
+                else -> Unit
+            }
         }
 }
 

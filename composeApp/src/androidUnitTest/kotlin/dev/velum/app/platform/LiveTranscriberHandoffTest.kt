@@ -9,6 +9,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ApplicationProvider
 import dev.velum.ai.engine.StreamingTranscriber
@@ -342,6 +343,33 @@ class LiveTranscriberHandoffTest {
         assertTrue(compose.onAllNodesWithText(PtBr.ux.liveNoModelNoApi).fetchSemanticsNodes().isEmpty())
     }
 
+    // #205: markers have no other copy, so they are saved when dropped, not only at Stop.
+    @Test fun a_marker_is_saved_the_moment_it_is_dropped() {
+        showPane()
+        compose.onNodeWithContentDescription(PtBr.ux.liveMark).performClick()
+        waitOnMainLooper { recordingRow().transcript?.contains("## Markers") == true }
+        assertTrue(recordingRow().transcript!!.contains("1:05"))
+        assertEquals("recording", recordingRow().status)
+    }
+
+    // #205: a stop from the notification used to leave the row "recording" forever.
+    @Test fun a_stop_from_the_notification_finalizes_the_row() {
+        showPane(reportedFailures = mutableListOf())
+        mic.sessions.value = MicSessionState.Stopped(File(recordingsDirectoryPath(), "$recordingId.wav").path, 1, 64, mic.starts.toLong())
+        waitOnMainLooper { queued == 1 }
+        assertEquals("queued", recordingRow().status)
+    }
+
+    // The in-app Stop keeps finalizing itself with the live text; the observer must not pre-empt it.
+    @Test fun the_in_app_stop_is_not_pre_empted_by_the_stop_observer() {
+        showPane(reportedFailures = mutableListOf())
+        compose.onNodeWithContentDescription(PtBr.stopRecording).performClick()
+        modelLoad.countDown()
+        compose.waitUntil(10_000) { queued == 1 }
+        assertEquals(SyntheticTranscriber.FINAL, recordingRow().transcript)
+        assertEquals(1, queued)
+    }
+
     @Test fun a_stuck_load_cannot_hold_stop_past_the_limit_and_is_still_finished_later() {
         showPane(finishWaitMs = 200)
         compose.onNodeWithContentDescription(PtBr.stopRecording).performClick()
@@ -554,6 +582,10 @@ class LiveTranscriberHandoffTest {
         }
         override suspend fun pause() = MicPauseResult.Ok
         override suspend fun resume() = MicPauseResult.Ok
-        override suspend fun addMarker(label: String) = MicMarkerResult.NotCapturing
+        override suspend fun addMarker(label: String): MicMarkerResult {
+            val marker = MicMarker(offsetMs = 65_000, label = label)
+            currentMarkers = currentMarkers + marker
+            return MicMarkerResult.Ok(marker)
+        }
     }
 }
