@@ -61,7 +61,9 @@ class NavigationBarInsetTest {
         val limit = rootBottom() - navBar
         val files = compose.onNodeWithContentDescription(En.allFiles).fetchSemanticsNode().boundsInRoot
         val explore = compose.onNodeWithContentDescription(En.explore).fetchSemanticsNode().boundsInRoot
+        val create = compose.onNodeWithContentDescription(En.create).fetchSemanticsNode().boundsInRoot
         assertTrue(files.bottom <= limit && explore.bottom <= limit, "tabs $files $explore must end above $limit")
+        assertTrue(create.bottom <= limit, "Create button $create must end above $limit")
     }
 
     @Test fun the_create_menu_clears_the_navigation_bar() {
