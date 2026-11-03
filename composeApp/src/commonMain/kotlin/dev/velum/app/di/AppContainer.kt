@@ -264,21 +264,24 @@ class AppContainer(
         id: String = RecordingIds.newId(),
     ): String {
         val now = epochSecondsNow()
-        repository.insertRecording(
-            id = id,
-            sessionId = null,
-            folderId = null,
-            title = title ?: formatRecordingTitle(now),
-            source = source,
-            deviceSerial = null,
-            startedAt = now,
-            durationSeconds = 0,
-            sizeBytes = 0,
-            localPath = localPath,
-            transcript = null,
-            summaryMarkdown = null,
-            status = status,
-        )
+        // Under the gate: a wipe either refuses the row or waits for it, so it can't outlive the wipe.
+        wipeGate.guard {
+            repository.insertRecording(
+                id = id,
+                sessionId = null,
+                folderId = null,
+                title = title ?: formatRecordingTitle(now),
+                source = source,
+                deviceSerial = null,
+                startedAt = now,
+                durationSeconds = 0,
+                sizeBytes = 0,
+                localPath = localPath,
+                transcript = null,
+                summaryMarkdown = null,
+                status = status,
+            )
+        } ?: throw WipeInProgressException()
         return id
     }
 
@@ -311,9 +314,11 @@ class AppContainer(
         }
 
     /** Ends a mic recording in progress and deletes its file, which may not be on a recording row yet. */
-    private suspend fun stopMicCapture() {
-        val session = micCapture.sessions.value.session ?: return
+    private suspend fun stopMicCapture() = micRecordings.underLock {
+        // Under the controller's lock: a start that passed its check before the wipe finishes first, then stops here.
+        val session = micCapture.sessions.value.session ?: return@underLock
         if (micCapture.isCapturing) micCapture.stop(session)
+        micRecordings.owner.value?.let { micRecordings.release(it) }
         withContext(Dispatchers.IO) { deleteFileAtPath(session.absolutePath) }
     }
 
@@ -467,3 +472,6 @@ class AppContainer(
 
 /** How long a wipe waits for background work to stop before going ahead and reporting it. */
 private val WIPE_JOIN_TIMEOUT = 15.seconds
+
+/** A new recording row was refused because "Wipe all data" is running. */
+class WipeInProgressException : IllegalStateException("Wipe all data is in progress")

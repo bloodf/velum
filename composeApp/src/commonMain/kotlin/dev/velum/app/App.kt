@@ -248,7 +248,7 @@ private fun VelumRoot(container: AppContainer) {
 
     LaunchedEffect(container) {
         consumeIncomingSharePath()?.let { path ->
-            when (val result = importPipeline.importFile(path, source = "share")) {
+            when (val result = importPipeline.importShared(path)) {
                 is ImportResult.Created -> navController.navigate(Routes.recording(result.recordingId))
                 is ImportResult.Duplicate -> {
                     snackbar.showSnackbar(strings.ux.importDuplicate)
@@ -263,9 +263,10 @@ private fun VelumRoot(container: AppContainer) {
         container.autoFlowRunner.actions.collect { action ->
             when (action) {
                 AutoFlowUiAction.ProcessingFailed -> snackbar.showSnackbar(strings.ux.genericError)
-                is AutoFlowUiAction.ShareMarkdown -> shareText(action.title, action.body)
+                // Notes must not leave the app while "Wipe all data" is removing them.
+                is AutoFlowUiAction.ShareMarkdown -> if (!container.wipeGate.isWiping) shareText(action.title, action.body)
                 is AutoFlowUiAction.InsertCalendarEvent ->
-                    openCalendarInsert(action.title, action.description)
+                    if (!container.wipeGate.isWiping) openCalendarInsert(action.title, action.description)
                 is AutoFlowUiAction.ExportMarkdownToFolder -> {
                     when (val result = container.exportRecordingToFolder(action.recordingId)) {
                         null -> snackbar.showSnackbar(strings.ux.recordingMissing)

@@ -55,6 +55,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
@@ -168,7 +170,11 @@ class WipeAllDataTest {
         override val markers = emptyList<MicMarker>()
         override var onPcmChunk: ((ByteArray) -> Unit)? = null
         var stops = 0
+        val startEntered = CompletableDeferred<Unit>()
+        var startGate: CompletableDeferred<Unit>? = null
         override suspend fun start(absolutePath: String, inputSource: MicInputSource): MicStartResult {
+            startEntered.complete(Unit)
+            startGate?.await()
             val session = MicSessionIdentity(2, absolutePath)
             sessions.value = MicSessionState.Recording(absolutePath, 0, session.token)
             return MicStartResult.Started(session)
@@ -290,5 +296,48 @@ class WipeAllDataTest {
         assertTrue(container.deviceKeyImporter.hasKeys())
         assertFailsWith<SecureStoreUnavailableException> { container.wipeAllData() }
         assertFalse(container.deviceKeyImporter.hasKeys(), "device keys survived a wipe that failed later")
+    }
+
+    @Test fun a_mic_start_already_past_its_check_is_stopped_by_the_wipe() {
+        val audio = Files.createTempFile("velum-wipe-mic-race", ".wav").toFile().apply { writeBytes(ByteArray(64)) }
+        val mic = RecordingCapture(audio.path).apply {
+            sessions.value = MicSessionState.Idle
+            startGate = CompletableDeferred()
+        }
+        withContainer(mic = mic) { container, _ ->
+            container.addRecording("rec-race", source = "phone", status = "recording")
+            coroutineScope {
+                val start = async(Dispatchers.Default) { container.micRecordings.startOrAttach("rec-race", audio.path) }
+                withTimeout(10_000) { mic.startEntered.await() }
+                val wipe = async(Dispatchers.Default) { container.wipeAllData() }
+                delay(300) // the wipe is now waiting for the start
+                mic.startGate!!.complete(Unit)
+                start.await()
+                wipe.await()
+            }
+            assertEquals(1, mic.stops, "a mic start that was already past its check kept recording after the wipe")
+            assertFalse(mic.isCapturing)
+            assertFalse(audio.exists(), "the recording's file survived the wipe")
+        }
+    }
+
+    @Test fun no_mic_draft_row_is_written_during_a_wipe() {
+        val mic = RecordingCapture("/synthetic/unused.wav").apply { sessions.value = MicSessionState.Idle }
+        withContainer(mic = mic) { container, _ ->
+            val dir = Files.createTempDirectory("velum-wipe-draft").toFile()
+            val draft = container.wipeGate.wiping(1.seconds) {
+                dev.velum.app.platform.startPhoneMicDraft(container, directory = dir.path, id = "rec-draft")
+            }
+            assertIs<MicStartResult.Failed>(draft.result)
+            assertEquals(null, container.repository.getRecording("rec-draft"), "an empty mic row survived the wipe")
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test fun a_shared_file_refused_by_a_wipe_is_deleted() = withContainer { container, _ ->
+        val copy = Files.createTempFile("velum-wipe-share", ".wav").toFile().apply { writeBytes(ByteArray(64) { 1 }) }
+        val result = container.wipeGate.wiping(1.seconds) { AudioImportPipeline(container).importShared(copy.path) }
+        assertIs<ImportResult.Failed>(result)
+        assertFalse(copy.exists(), "the shared file's copy survived the wipe")
     }
 }
