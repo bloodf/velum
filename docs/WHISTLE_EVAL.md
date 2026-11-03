@@ -71,3 +71,41 @@ Rebuild natives: `scripts/fetch-needle-android.sh` then CMake under `ai/src/andr
 ## Why not Whistle-only on low-end
 
 Portuguese is an important language and Whistle cannot transcribe it. Dual low-end engines (Needle + sherpa) are intentional: smallest possible weights when Whistle fits; Whisper Tiny otherwise.
+
+## Measuring Whistle on an emulator and a phone (#13)
+
+Harness: `WhistleMeasureDeviceTest` (androidInstrumentedTest). It checks `whistle.cact` against the catalog SHA-256,
+runs one cold transcription and three warm ones on a speech clip, and prints one `velum.whistle` status line: device,
+Android release, ABI, app version and revision, model and clip SHA-256, audio seconds, cold ms, warm median ms,
+estimated load ms, RTF, memory, and the transcript. **A run without the `velum.whistle` line measured nothing**
+(the test also fails, naming the path, if an argument is given but its file is missing or unreadable).
+
+Definitions:
+- **loadMs (estimate)**: cold call minus warm median. It is the difference of two timed transcriptions, not a timed
+  model load, so it is only meaningful with a short clip (10 to 30 s); a negative value means the estimate failed.
+- **RTF**: warm median transcribe seconds / audio seconds (below 1 is faster than real time).
+- **Memory**: `VmRSS` and `VmHWM` before the first call and `VmHWM` after the last call, from `/proc/self/status`.
+  This is the whole test process (JVM and app included), not Whistle alone.
+
+Inputs: the model is `whistle.cact` from Hugging Face `Cactus-Compute/whistle` (see the table above; the test fails
+on a SHA mismatch). The clip is any short 16 kHz mono 16-bit PCM WAV with real speech in an English/EU language the
+model supports, e.g. a public-domain or openly licensed speech sample (not a private recording: the transcript is printed to logcat and the status line is meant to be committed with the results) converted with `ffmpeg -i in.m4a -ar 16000 -ac 1 -c:a pcm_s16le speech16k.wav`;
+its SHA-256 is printed so both environments can be shown to use the same file. The device-walk tone is not speech.
+
+1. Build and install the arm64 debug APK and test APK (`./gradlew :composeApp:installDebug :composeApp:installDebugAndroidTest`).
+2. `adb push whistle.cact /data/local/tmp/ && adb push speech16k.wav /data/local/tmp/`
+3. Run, and keep the `INSTRUMENTATION_STATUS: velum.whistle=...` line (no line, no measurement):
+   `adb shell am instrument -w -e class dev.velum.app.devicewalk.WhistleMeasureDeviceTest -e velumDeviceWalk false -e whistleCact /data/local/tmp/whistle.cact -e whistleWav /data/local/tmp/speech16k.wav -e appRevision $(git rev-parse HEAD) dev.velum.app.test/dev.velum.app.devicewalk.DeviceWalkTestRunner`
+4. Emulator: an arm64-v8a system image on an Apple-silicon host, `hw.ramSize=3072` (or 4096) in the AVD `config.ini`,
+   and `-cores 2`. **That does not satisfy the "throttled CPU" criterion**: the Android emulator cannot lower the CPU
+   clock, so `-cores 2` limits parallelism only. Record RAM and core count as the constraint, state that the clock was
+   not throttled, and do not call the result a low-end phone. If the criterion must be met literally, it needs a
+   throttling method that actually lowers the clock (not available in the stock emulator) and is blocked until one is chosen.
+5. In-app check ("display resulting transcript"): the harness proves the engine returns text, not that the app shows
+   it. On the same device, install the debug APK, download the Whistle model in Model manager, import or record the
+   same clip with an English language setting, process it, and confirm the transcript is displayed in the recording
+   detail without a crash; note the screenshot or the visible text. Do this on both environments.
+6. Record the same run on the physical phone (model identity, Android version, `git rev-parse HEAD` of the build, clip duration).
+
+Results to commit under this heading, each labelled emulator or physical: pending. Constrained-emulator numbers do not
+establish real low-end phone performance; low-end phone feedback remains community validation, not an owner hardware purchase.

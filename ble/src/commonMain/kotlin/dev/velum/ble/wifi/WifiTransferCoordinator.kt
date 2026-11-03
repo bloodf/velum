@@ -3,7 +3,12 @@ package dev.velum.ble.wifi
 import dev.velum.protocol.DeviceCapabilities
 import dev.velum.protocol.DeviceCapabilityRegistry
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.selects.select
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeout
 import kotlin.time.Duration
@@ -27,6 +32,8 @@ class WifiTransferCoordinator(
     private val bleDownload: suspend () -> ByteArray,
     private val wifiTimeout: Duration = 45.seconds,
     private val capabilities: DeviceCapabilities? = null,
+    /** After the device closes its socket, how long [assemble] may still finish from frames already received. */
+    private val peerClosedGrace: Duration = 2.seconds,
 ) {
     sealed class Outcome {
         data class Wifi(val bytes: ByteArray) : Outcome() {
@@ -65,16 +72,40 @@ class WifiTransferCoordinator(
         val session = sessionFactory()
         return try {
             withTimeout(wifiTimeout) {
-                session.start(
-                    ssid = ssid,
-                    password = password,
-                    port = port,
-                    ssidIsPattern = ssidIsPattern,
-                    preamble = preamble,
-                    bindHost = bindHost,
-                )
-                val bytes = assemble(session)
-                Outcome.Wifi(bytes)
+                coroutineScope {
+                    // Subscribe before start so no early failure is missed.
+                    val failure = async(start = CoroutineStart.UNDISPATCHED) {
+                        session.server.pathFailures().first()
+                    }
+                    val work = async {
+                        session.start(
+                            ssid = ssid,
+                            password = password,
+                            port = port,
+                            ssidIsPattern = ssidIsPattern,
+                            preamble = preamble,
+                            bindHost = bindHost,
+                        )
+                        Outcome.Wifi(assemble(session))
+                    }
+                    try {
+                        select<Outcome> {
+                            work.onAwait { it }
+                            failure.onAwait { code ->
+                                // A close right after the last frame is normal: let assemble drain what arrived.
+                                val drained = if (code == WifiTransferServer.FAILURE_PEER_CLOSED) {
+                                    withTimeoutOrNull(peerClosedGrace) { work.await() }
+                                } else {
+                                    null
+                                }
+                                drained ?: throw WifiTransferFailure(code)
+                            }
+                        }
+                    } finally {
+                        failure.cancel()
+                        work.cancel()
+                    }
+                }
             }
         } catch (t: CancellationException) {
             if (t is TimeoutCancellationException) {
