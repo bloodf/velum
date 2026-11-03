@@ -49,6 +49,6 @@ class UnpromotedRunGuardTest {
     @Test fun api_only_jobs_are_exempt() {
         val f = Flag().apply { on = true }
         assertFalse(run(f, promoted = false, apiOnly = true))
-        assertEquals(true, f.on)
+        assertEquals(false, f.on)
     }
 }

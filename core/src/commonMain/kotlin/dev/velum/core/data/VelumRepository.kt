@@ -580,11 +580,15 @@ class VelumRepository(
         if (message == null) q.deleteMeta(processingErrorKey(recordingId)) else q.setMeta(processingErrorKey(recordingId), message)
     }
 
-    /** True while a run that could not be promoted to the foreground has started and not ended on its own (a stop leaves it set). */
-    suspend fun isUnpromotedRun(recordingId: String): Boolean = getMeta("$UNPROMOTED_RUN_PREFIX$recordingId") != null
+    /**
+     * The work id of a run that could not be promoted to the foreground and has not ended on its own, or null.
+     * A stop leaves it set; a retry keeps the id, a REPLACE enqueue gets a new one (so it is not mistaken for a rerun).
+     */
+    suspend fun unpromotedRunOwner(recordingId: String): String? = getMeta("$UNPROMOTED_RUN_PREFIX$recordingId")
 
-    suspend fun setUnpromotedRun(recordingId: String, on: Boolean) = withContext(dbContext) {
-        if (on) q.setMeta("$UNPROMOTED_RUN_PREFIX$recordingId", "1") else q.deleteMeta("$UNPROMOTED_RUN_PREFIX$recordingId")
+    /** Null clears it. */
+    suspend fun setUnpromotedRun(recordingId: String, workId: String?) = withContext(dbContext) {
+        if (workId != null) q.setMeta("$UNPROMOTED_RUN_PREFIX$recordingId", workId) else q.deleteMeta("$UNPROMOTED_RUN_PREFIX$recordingId")
     }
 
     private fun processingErrorKey(recordingId: String) = "$PROCESSING_ERROR_PREFIX$recordingId"
@@ -708,6 +712,7 @@ class VelumRepository(
         q.deleteSpeakersForRecording(id)
         q.deleteRecordingHard(id)
         q.deleteMeta(processingErrorKey(id))
+        q.deleteMeta("$UNPROMOTED_RUN_PREFIX$id")
         tryIndex { if (ftsAvailable) FtsIndex.deleteRecording(driver, id) }
     }
 

@@ -76,23 +76,24 @@ class RecordingProcessWorker(
         // processor restores the row, and WorkManager reruns it from the start: a long local job would loop without
         // progress or an error. The unpromoted run itself is recorded; only a run that follows a stopped unpromoted
         // run fails (once, with a message). Thermal, holder and backoff retries do not count.
+        val workId = id.toString()
         val mustFail = failUnpromotedRerun(
             promoted = promoted,
             apiOnly = usesApiOnly(),
-            wasUnpromoted = { runCatching { repository.isUnpromotedRun(recordingId) }.getOrDefault(false) },
-            setFlag = { on -> runCatching { repository.setUnpromotedRun(recordingId, on) } },
+            // Same work id = a retry/reschedule of this run; a REPLACE enqueue gets a new id and starts clean.
+            wasUnpromoted = { runCatching { repository.unpromotedRunOwner(recordingId) }.getOrNull() == workId },
+            setFlag = { on -> runCatching { repository.setUnpromotedRun(recordingId, if (on) workId else null) } },
         )
         if (mustFail) {
             val message = applicationContext.getString(R.string.velum_processing_stopped_message)
-            runCatching {
-                repository.setProcessingError(recordingId, message)
-                repository.updateStatus(recordingId, "failed")
-            }
+            // Status first: it is what ends the `queued` state; each write is independent.
+            runCatching { repository.updateStatus(recordingId, "failed") }
+            runCatching { repository.setProcessingError(recordingId, message) }
             return Result.failure(workDataOf(KEY_ERROR to message))
         }
         val result = processJob(recordingId, templateId, retranscribe, apiOverride, processor, repository)
         // The run ended on its own (even as a retry); only a stop leaves the flag set, by throwing past here.
-        runCatching { repository.setUnpromotedRun(recordingId, false) }
+        runCatching { repository.setUnpromotedRun(recordingId, null) }
         return result
     }
 
