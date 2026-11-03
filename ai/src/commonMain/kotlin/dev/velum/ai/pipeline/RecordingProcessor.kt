@@ -407,10 +407,15 @@ class RecordingProcessor(
             ) {
                 // Cancelled work never saved a version; restore the status so notes stay usable.
                 withContext(NonCancellable) {
+                    val current = repository.getRecording(recordingId)
+                    // This job set "generating" when it started. "queued" now means a replacing enqueue (AutoFlow's
+                    // REPLACE) already took over the row; writing here would race its status and hand its runner a
+                    // false terminal "failed".
+                    if (current?.status == "queued") return@withContext
                     // A pre-run "generating"/"queued" state is not restorable: it would look stuck forever.
                     val restore = when (priorStatus) {
                         null, "generating", "queued" ->
-                            if (repository.getRecording(recordingId)?.summary_markdown.isNullOrBlank()) "failed" else "ready"
+                            if (current?.summary_markdown.isNullOrBlank()) "failed" else "ready"
                         else -> priorStatus
                     }
                     repository.updateStatus(recordingId, restore)
