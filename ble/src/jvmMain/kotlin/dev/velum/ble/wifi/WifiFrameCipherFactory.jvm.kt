@@ -59,7 +59,7 @@ internal class AesGcmWifiFrameCipher(
             if (seq != sequence) return null
             seq to plain.copyOfRange(4, plain.size)
         } catch (_: BadPaddingException) {
-            // A bad tag. Anything else, like a missing algorithm, isn't an auth failure and must surface.
+            // A bad tag. Anything else, like a missing algorithm, isn't an auth failure, so it throws for the caller.
             null
         } catch (_: IllegalBlockSizeException) {
             // Declared by doFinal for input it can't process. SunJCE and Conscrypt 2.5.2 throw the above instead.
