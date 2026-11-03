@@ -727,8 +727,12 @@ private fun VelumRoot(container: AppContainer) {
                             firstRunDownloading = false
                             return@launch
                         }
+                        // Skip or Use API during the disk check already left first run: do not start the pack then.
+                        if (firstRunDismissed) return@launch
                         dismissFirstRun()
-                        container.localModelManager.startDownloads(ids).join()
+                        // The downloads outlive this screen; Model manager shows their progress and any failure.
+                        // Navigating right away (not after they end) cannot pull the user back later.
+                        container.localModelManager.startDownloads(ids)
                         navController.navigate(Routes.MODEL_MANAGER)
                     }
                 },
