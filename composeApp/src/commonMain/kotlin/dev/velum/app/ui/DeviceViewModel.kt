@@ -43,6 +43,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -84,6 +85,9 @@ data class DownloadedSessionAudio(
     val writeDecryptedAudio: (sink: (ByteArray) -> Unit) -> Long,
 )
 
+/** How the downloads ended for "Wipe all data". */
+enum class DownloadWipeResult { Clean, PartialsLeft, StillRunning }
+
 class DeviceViewModel(
     private val ble: BleTransport,
     private val keyImporter: DeviceKeyImporter? = null,
@@ -114,6 +118,7 @@ class DeviceViewModel(
     // Parent of every unfinished download: a cancelled one can still be unwinding after a newer one replaced downloadJob.
     private val downloads = SupervisorJob(viewModelScope.coroutineContext[Job])
     private val downloadMutex = Mutex()
+    private val wipes = MutableStateFlow(0)
 
     init {
         viewModelScope.launch {
@@ -169,7 +174,8 @@ class DeviceViewModel(
     fun disconnect() {
         viewModelScope.launch {
             cancelDownload()
-            awaitDownloads()
+            // Bounded like a wipe: a BLE write that ignores cancellation must not keep the link open forever.
+            withTimeoutOrNull(wipeJoinTimeout) { awaitDownloads() }
             closeClient()
             connectedSerial = null // an explicit disconnect forgets the device; a link drop does not
             _sessionUi.value = DeviceSessionUi()
@@ -197,20 +203,36 @@ class DeviceViewModel(
 
     /**
      * For "Wipe all data": stops any download first, so it can't write or save anything afterwards. The wait
-     * is bounded because a BLE write may ignore cancellation. Returns false if a partial could not be deleted.
+     * is bounded because a BLE write may ignore cancellation, in which case that download can still save.
      */
-    suspend fun wipePartialDownloads(): Boolean {
+    suspend fun wipePartialDownloads(): DownloadWipeResult {
         cancelDownload()
-        withTimeoutOrNull(wipeJoinTimeout) { awaitDownloads() }
-        return try {
+        val stopped = withTimeoutOrNull(wipeJoinTimeout) { awaitDownloads() } != null
+        val deleted = try {
             withContext(Dispatchers.IO) { deletePartialTransfers() }
             true
         } catch (_: Exception) {
             false
         }
+        return when {
+            !stopped -> DownloadWipeResult.StillRunning
+            !deleted -> DownloadWipeResult.PartialsLeft
+            else -> DownloadWipeResult.Clean
+        }
+    }
+
+    /** No download can start during [block], so one can't read the keys or save while a wipe is removing them. */
+    suspend fun <T> holdingDownloads(block: suspend () -> T): T {
+        wipes.update { it + 1 }
+        try {
+            return block()
+        } finally {
+            wipes.update { it - 1 }
+        }
     }
 
     fun downloadSession(sessionId: Long) {
+        if (wipes.value > 0) return
         if (downloadJob?.isActive == true && _sessionUi.value.downloadingSessionId != null) return
         val previous = downloadJob
         val started = viewModelScope.launch(downloads) {
@@ -249,6 +271,8 @@ class DeviceViewModel(
             _sessionUi.value = _sessionUi.value.copy(statusMessage = DeviceUiCopy.notConnected(locale))
             return
         }
+        // A job queued before the wipe began reaches this point during it.
+        if (wipes.value > 0) return
         val keys = keyImporter?.loadKeys()
         if (keys == null) {
             _sessionUi.value = _sessionUi.value.copy(statusMessage = DeviceUiCopy.importKeysToDownload(locale))
