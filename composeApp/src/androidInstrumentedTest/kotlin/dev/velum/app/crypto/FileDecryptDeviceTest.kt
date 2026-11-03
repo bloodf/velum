@@ -5,11 +5,15 @@ import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import dev.velum.ble.crypto.JcaSessionCipher
 import dev.velum.ble.crypto.createFileDecryptor
+import dev.velum.ble.crypto.createSessionCipher
 import dev.velum.ble.crypto.rsaKeyPairToPem
+import dev.velum.ble.wifi.WifiPayloadCipher
+import dev.velum.ble.wifi.createWifiFrameCipher
 import dev.velum.protocol.Bytes
 import dev.velum.protocol.ChaCha20
 import dev.velum.protocol.PlaudFile
 import dev.velum.protocol.PlaudFileCrypto
+import dev.velum.protocol.Protocol20SessionSecret
 import java.io.ByteArrayOutputStream
 import java.security.Security
 import javax.crypto.Cipher
@@ -167,6 +171,25 @@ class FileDecryptDeviceTest {
             }.exceptionOrNull()
             Log.i(TAG, "open $name throws ${raw?.javaClass?.name}")
             assertNull(name, cipher.chacha20Poly1305Open(case.first, openNonce, case.second, case.third))
+        }
+    }
+
+    /** The Wi-Fi AES-GCM frame cipher. The log shows what the platform really throws. */
+    @Test fun wifi_cipher_fails_closed_for_bad_input() {
+        val secret = Protocol20SessionSecret(ByteArray(32) { 1 }, ByteArray(12) { 2 }, ByteArray(12) { 3 })
+        val wifi = createWifiFrameCipher(createSessionCipher(), secret, WifiPayloadCipher.AesGcm)
+        val sealed = wifi.seal(7, byteArrayOf(1, 2, 3))
+        assertArrayEquals(byteArrayOf(1, 2, 3), wifi.open(7, sealed)!!.second)
+        val badTag = sealed.copyOf().also { it[it.size - 1] = (it[it.size - 1].toInt() xor 1).toByte() }
+        for ((name, input) in listOf("bad tag" to badTag, "empty" to ByteArray(0), "shorter than a tag" to ByteArray(15))) {
+            val raw = runCatching {
+                val c = Cipher.getInstance("AES/GCM/NoPadding")
+                c.init(Cipher.DECRYPT_MODE, SecretKeySpec(secret.key, "AES"), GCMParameterSpec(128, secret.nonce))
+                c.updateAAD(secret.aad)
+                c.doFinal(input)
+            }.exceptionOrNull()
+            Log.i(TAG, "wifi open $name throws ${raw?.javaClass?.name}")
+            assertNull(name, wifi.open(7, input))
         }
     }
 

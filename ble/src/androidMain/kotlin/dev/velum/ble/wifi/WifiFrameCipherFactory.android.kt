@@ -3,7 +3,9 @@ package dev.velum.ble.wifi
 import dev.velum.protocol.Bytes
 import dev.velum.protocol.Protocol20SessionSecret
 import dev.velum.protocol.SessionCipher
+import javax.crypto.BadPaddingException
 import javax.crypto.Cipher
+import javax.crypto.IllegalBlockSizeException
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
@@ -55,7 +57,11 @@ internal class AesGcmWifiFrameCipher(
             val seq = Bytes.readU32Le(plain, 0)
             if (seq != sequence) return null
             seq to plain.copyOfRange(4, plain.size)
-        } catch (_: Exception) {
+        } catch (_: BadPaddingException) {
+            // A bad tag. Anything else, like a missing algorithm, isn't an auth failure and must surface.
+            null
+        } catch (_: IllegalBlockSizeException) {
+            // Declared by doFinal for input it can't process. SunJCE and Conscrypt 2.5.2 throw the above instead.
             null
         }
     }
