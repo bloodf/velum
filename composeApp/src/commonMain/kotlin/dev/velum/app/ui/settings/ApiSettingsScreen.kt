@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.velum.app.di.AppContainer
 import dev.velum.app.i18n.LocalStrings
+import dev.velum.app.i18n.countText
 import dev.velum.app.ui.components.BlackButton
 import dev.velum.app.ui.components.ChevronRow
 import dev.velum.app.ui.components.OutlineButton
@@ -311,7 +312,7 @@ fun ApiSettingsScreen(
                 ui.message?.startsWith("loaded:") == true -> {
                     val count = ui.message!!.removePrefix("loaded:")
                     Text(
-                        strings.settingsUi.modelsLoadedFormat.replace("%d", count),
+                        countText(count.toIntOrNull() ?: 0, strings.settingsUi.modelsLoadedFormatOne, strings.settingsUi.modelsLoadedFormat),
                         color = VelumInk,
                         modifier = Modifier.padding(20.dp, 8.dp),
                     )

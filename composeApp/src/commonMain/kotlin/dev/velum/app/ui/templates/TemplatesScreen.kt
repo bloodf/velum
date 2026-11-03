@@ -58,6 +58,7 @@ import androidx.compose.ui.unit.sp
 import dev.velum.app.di.AppContainer
 import dev.velum.core.data.UserContentIds
 import dev.velum.app.i18n.LocalStrings
+import dev.velum.app.i18n.countText
 import dev.velum.app.platform.rememberJsonFileImporter
 import dev.velum.app.ui.components.BlackButton
 import dev.velum.app.ui.components.DisplayTitle
@@ -152,7 +153,7 @@ internal fun TemplatesScreen(
                         builtin = false,
                     )
                 }
-                importStatus = strings.templatesImportOkFormat.replace("%d", specs.size.toString())
+                importStatus = countText(specs.size, strings.templatesImportOkFormatOne, strings.templatesImportOkFormat)
             }.onFailure {
                 importStatus = strings.templatesImportFailed
             }
