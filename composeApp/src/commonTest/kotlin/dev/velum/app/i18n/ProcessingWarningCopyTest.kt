@@ -16,6 +16,15 @@ class ProcessingWarningCopyTest {
     }
 
     @Test
+    fun deviceCrcMismatchWarningIsLocalizedInBothLanguages() {
+        val en = En.processingWarningText(ProcessingWarning.DEVICE_CRC_MISMATCH)
+        val pt = PtBr.processingWarningText(ProcessingWarning.DEVICE_CRC_MISMATCH)
+        assertTrue(!en.isNullOrBlank() && !pt.isNullOrBlank())
+        assertNotEquals(en, pt)
+        assertNotEquals(en, En.processingWarningText(ProcessingWarning.TRUNCATED_AUDIO))
+    }
+
+    @Test
     fun noneOrUnknownCodeShowsNothing() {
         assertNull(En.processingWarningText(null))
         assertNull(En.processingWarningText("something_else"))

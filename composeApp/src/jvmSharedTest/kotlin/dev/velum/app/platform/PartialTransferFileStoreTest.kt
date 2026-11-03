@@ -55,6 +55,21 @@ class PartialTransferFileStoreTest {
         assertEquals(0L, open().length())
     }
 
+    @Test fun crc_mismatch_mark_is_kept_with_the_data_and_dropped_when_the_data_restarts() {
+        val store = open()
+        store.write(ByteArray(50))
+        store.setCrcMismatch(true)
+        store.length()
+        store.close()
+        assertTrue(open().also { it.close() }.crcMismatch(), "a valid checkpoint keeps the verdict")
+        partialFiles().single { it.name.endsWith(".offset") }.writeText("not a number")
+        val restarted = open()
+        assertEquals(0L, restarted.length())
+        assertFalse(restarted.crcMismatch(), "bytes restarting from zero must not inherit the old verdict")
+        restarted.close()
+        assertTrue(root.listFiles()!!.none { it.name.endsWith(".crcmismatch") })
+    }
+
     @Test fun truncate_and_delete() {
         val store = open()
         store.write(ByteArray(100))

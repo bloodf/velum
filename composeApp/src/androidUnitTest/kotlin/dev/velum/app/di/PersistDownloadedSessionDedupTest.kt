@@ -99,6 +99,17 @@ class PersistDownloadedSessionDedupTest {
         assertEquals(1, audioFiles().size)
     }
 
+    @Test fun crc_mismatch_warning_is_stored_on_insert_and_follows_a_redownload() = fixture {
+        fun withWarning(bytes: ByteArray, warning: String?) =
+            DownloadedSessionAudio(1_700_000_000, "SYNTH-SN-1", 1_700_000_000, warning) { sink -> sink(bytes); bytes.size.toLong() }
+        val id = container.persistDownloadedSession(withWarning(ogg(1), dev.velum.core.model.ProcessingWarning.DEVICE_CRC_MISMATCH))
+        assertEquals(dev.velum.core.model.ProcessingWarning.DEVICE_CRC_MISMATCH, row(id).processing_warning)
+        container.persistDownloadedSession(withWarning(ogg(2), null)) // a verified re-download clears it
+        assertEquals(null, row(id).processing_warning)
+        container.persistDownloadedSession(withWarning(ogg(3), dev.velum.core.model.ProcessingWarning.DEVICE_CRC_MISMATCH))
+        assertEquals(dev.velum.core.model.ProcessingWarning.DEVICE_CRC_MISMATCH, row(id).processing_warning)
+    }
+
     @Test fun failed_redownload_leaves_existing_row_and_audio_untouched() = fixture {
         val id = container.persistDownloadedSession(session(ogg(1)))
         val before = row(id)
