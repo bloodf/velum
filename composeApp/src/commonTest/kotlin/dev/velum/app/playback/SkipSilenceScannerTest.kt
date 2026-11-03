@@ -101,6 +101,12 @@ class SkipSilenceScannerTest {
         assertFalse(apply(10_000, 2_000, 14_000, true), "user sought back")
         assertFalse(apply(10_000, 20_000, 14_000, true), "user sought past the target")
         assertFalse(apply(10_000, 10_100, 14_000, false), "paused meanwhile")
-        assertFalse(apply(10_000, 10_100, 10_040, true), "the skip would be under 50 ms")
+        assertFalse(apply(10_000, 10_000, 10_040, true), "the skip would be under 50 ms")
+        assertFalse(apply(10_000, 10_000, 10_050, true), "a skip of exactly 50 ms is not worth a seek")
+        assertTrue(apply(10_000, 10_000, 10_051, true), "just over 50 ms is")
+        assertTrue(apply(10_000, 9_500, 14_000, true), "exactly a poll-and-a-bit before the start is still near")
+        assertFalse(apply(10_000, 9_499, 14_000, true), "one ms further back is a user seek")
+        assertTrue(apply(10_000, 14_000, 14_000, true), "playback already at the target")
+        assertFalse(apply(10_000, 14_001, 14_000, true), "one ms past the target")
     }
 }

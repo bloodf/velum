@@ -4,7 +4,6 @@ import android.media.MediaPlayer
 import android.media.PlaybackParams
 import android.os.Build
 import java.io.File
-import kotlin.coroutines.coroutineContext
 import dev.velum.app.playback.SkipSilenceScanner
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.CancellationException
@@ -67,10 +66,13 @@ private class AndroidAudioPlayer : AudioPlayer {
         _isPlaying.value = false
         _positionMs.value = 0L
         _durationMs.value = 0L
-        skipScan?.cancel() // a scan of the previous file must not seek this one
-        skipScan = null
-        wavFile = null
-        wavSource = null
+        // The skip-silence fields belong to Main (the poll runs there), so they are reset there too.
+        withContext(Dispatchers.Main.immediate) {
+            skipScan?.cancel() // a scan of the previous file must not seek this one
+            skipScan = null
+            wavFile = null
+            wavSource = null
+        }
         if (path.isBlank()) {
             return@withContext false
         }
@@ -98,7 +100,8 @@ private class AndroidAudioPlayer : AudioPlayer {
             if (path.endsWith(".wav", ignoreCase = true) ||
                 path.endsWith(".wave", ignoreCase = true)
             ) {
-                wavFile = file // no data is read here: skip-silence opens it on demand
+                // no data is read here: skip-silence opens it on demand
+                withContext(Dispatchers.Main.immediate) { wavFile = file }
             }
             true
         } catch (_: Throwable) {
@@ -213,16 +216,16 @@ private class AndroidAudioPlayer : AudioPlayer {
         val file = wavFile ?: return
         val pos = _positionMs.value
         skipScan = scope.launch {
-            // Disk reads and the scan stay off the main thread; the seek comes back on it. A failure only means
-            // no skipping: it must not escape this scope (the old loader caught Throwable too).
+            // Disk reads and the scan stay off the main thread; the seek comes back on it. Any failure (like the
+            // old loader's catch of Throwable, OutOfMemoryError included) only means no skipping and must not
+            // escape this scope; a cancellation is the one thing that is rethrown.
             val found = withContext(Dispatchers.IO) {
-                val job = coroutineContext[Job]
                 try {
-                    val source = wavSource?.takeIf { wavFile === file } ?: WavPcmSource.open(file)
-                    source?.let { it to it.findSkipPastSilence(pos) { job?.ensureActive() } }
+                    val source = wavSource?.takeIf { it.isFor(file) } ?: WavPcmSource.open(file)
+                    source?.let { it to it.findSkipPastSilence(pos) { ensureActive() } }
                 } catch (c: CancellationException) {
                     throw c // a cancelled scan must stop, not be swallowed as "nothing found"
-                } catch (_: Exception) {
+                } catch (_: Throwable) {
                     null
                 }
             } ?: return@launch

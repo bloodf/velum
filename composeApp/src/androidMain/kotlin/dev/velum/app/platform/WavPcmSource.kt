@@ -17,6 +17,9 @@ internal class WavPcmSource private constructor(
     private val dataOffset: Long,
     private val dataSize: Long,
 ) {
+    /** Whether this source was opened on [other]; a source must never be reused for another file. */
+    fun isFor(other: File): Boolean = file == other
+
     /** File bytes read since opening (header excluded), for tests and diagnostics. */
     @Volatile var bytesRead = 0L
         private set
