@@ -1,5 +1,6 @@
 package dev.velum.ble.wifi
 
+import dev.velum.ble.gatt.PlaudWriteGuard
 import dev.velum.protocol.FeatureFlags
 import dev.velum.protocol.Protocol20SessionSecret
 import dev.velum.protocol.SessionCipher
@@ -147,6 +148,9 @@ class WifiFastTransferSession(
     }
 
     suspend fun sendPacket(packet: ByteArray) {
+        // The same plaintext check as every BLE write: forbidden opcodes and settings never leave the app (#350).
+        // Before sealing, so a rejected packet neither uses a sequence number nor reaches the server.
+        PlaudWriteGuard.check(packet)
         val sealed = frameCipher.seal(sendSeq, packet)
         sendSeq += 1
         server.sendEncryptedFrame(sealed)
