@@ -1,6 +1,7 @@
 package dev.velum.app.platform
 
 import java.io.File
+import java.io.RandomAccessFile
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.random.Random
@@ -146,9 +147,10 @@ class MonoPcmWavWriterTest {
     @Test fun a_header_failure_cannot_touch_an_earlier_output_and_the_retriever_is_released() {
         val src = androidSource("AudioNormalize.android.kt")
         val body = src.substringAfter("private fun normalizeBlocking").substringBefore("private fun durationHintMs")
-        assertTrue(body.indexOf("readWavHeader(source)") < body.indexOf("onOutput(outFile)"), "header read before anything is created")
-        assertTrue(body.indexOf("onOutput(outFile)") < body.indexOf("try {"), "the try starts where the output begins")
-        assertTrue(body.indexOf("try {") < body.indexOf("MonoPcmWavWriter(outFile"), "and wraps the writer")
+        assertTrue(body.indexOf("readWavHeader(source)") < body.indexOf("onOutput(temp)"), "header read before anything is created")
+        assertTrue(body.indexOf("onOutput(temp)") < body.indexOf("try {"), "the try starts where the output begins")
+        assertTrue(body.indexOf("try {") < body.indexOf("MonoPcmWavWriter(temp"), "and wraps the writer")
+        assertTrue(body.contains("ATOMIC_MOVE") && body.contains("temp.delete()"), "a private temp name, renamed on success")
         val hint = src.substringAfter("private fun durationHintMs").substringBefore("private fun decodeWithMediaCodec")
         assertTrue(hint.contains("} finally {") && hint.contains("r.release()"), "MediaMetadataRetriever released in finally")
     }
@@ -188,6 +190,11 @@ class MonoPcmWavWriterTest {
         assertEquals(null, readWavHeader(File(dir, "n.txt").apply { writeText("not a wav file at all") }))
         assertEquals(null, readWavHeader(wav(withData = false)), "no data chunk: the decoder reports it")
         assertEquals(null, readWavHeader(wav(fmtBits = 8)), "8-bit goes to the decoder instead of failing")
+        for ((format, expectNull) in listOf(1 to false, 0xFFFE to false, 3 to true, 2 to true, 6 to true)) {
+            val f = wav()
+            RandomAccessFile(f, "rw").use { it.seek(20); it.write(byteArrayOf(format.toByte(), (format shr 8).toByte())) }
+            assertEquals(expectNull, readWavHeader(f) == null, "audio format $format")
+        }
     }
 
     @Test fun import_pipeline_lets_a_cancellation_through_instead_of_reporting_failure() {

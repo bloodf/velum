@@ -55,10 +55,13 @@ actual class AudioNormalizer actual constructor() {
             null
         }
         val usesFastPath = fast != null && fast.sampleRateHz == targetSampleRateHz && fast.channels == 1
-        // From here the output belongs to this call: report it (for a late cancel) and delete it on any failure.
-        onOutput(outFile)
+        // The WAV is written under a name only this call uses and renamed on success, so two imports that map to
+        // the same output name (a retry right after a cancel, two copies of one file name) never delete or
+        // overwrite each other's half-written file (#319).
+        val temp = File(outDir, "${outFile.name}.${System.nanoTime()}.part")
+        onOutput(temp) // reported for a late cancel, and deleted on any failure
         try {
-            val pcmBytes = MonoPcmWavWriter(outFile, targetSampleRateHz).use { writer ->
+            val pcmBytes = MonoPcmWavWriter(temp, targetSampleRateHz).use { writer ->
                 if (usesFastPath && fast != null) {
                     writer.setFormat(fast.sampleRateHz, fast.channels)
                     streamWavData(source, fast, writer, checkCancelled)
@@ -68,6 +71,12 @@ actual class AudioNormalizer actual constructor() {
                 writer.finish()
                 writer.pcmBytesWritten
             }
+            checkCancelled()
+            java.nio.file.Files.move(
+                temp.toPath(), outFile.toPath(),
+                java.nio.file.StandardCopyOption.REPLACE_EXISTING, java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+            )
+            onOutput(outFile) // the temp name is gone; a cancel that lands after this removes the final file
             val durationMs = (pcmBytes / 2.0 / targetSampleRateHz * 1000.0).toLong()
             return NormalizedAudio(
                 wavPath = outFile.absolutePath,
@@ -81,7 +90,7 @@ actual class AudioNormalizer actual constructor() {
                 contentSha256 = hash,
             )
         } catch (t: Throwable) {
-            outFile.delete() // never leave a half-written WAV that a later import could trust
+            temp.delete() // never leave a half-written WAV that a later import could trust
             throw t
         }
     }
@@ -225,7 +234,7 @@ internal data class WavHeader(
 
 /**
  * Walks the RIFF chunks with seeks (no full read). Null when the file is not RIFF/WAVE, has no data chunk or
- * is not 16-bit, so the decoder gets it instead of the import failing (#319). The caller streams only mono at the
+ * is not 16-bit PCM, so the decoder gets it instead of the import failing (#319). The caller streams only mono at the
  * target rate.
  */
 internal fun readWavHeader(file: File): WavHeader? = RandomAccessFile(file, "r").use { raf ->
@@ -237,6 +246,7 @@ internal fun readWavHeader(file: File): WavHeader? = RandomAccessFile(file, "r")
     var sampleRate = 16_000
     var channels = 1
     var bits = 16
+    var audioFormat = 1
     var dataOffset = -1L
     var dataSize = 0L
     val chunk = ByteArray(8)
@@ -249,7 +259,7 @@ internal fun readWavHeader(file: File): WavHeader? = RandomAccessFile(file, "r")
             "fmt " -> if (size >= 16) {
                 val fmt = ByteArray(16).also { raf.readFully(it) }
                 val bb = ByteBuffer.wrap(fmt).order(ByteOrder.LITTLE_ENDIAN)
-                bb.short // format
+                audioFormat = bb.short.toInt() and 0xFFFF
                 channels = bb.short.toInt() and 0xFFFF
                 sampleRate = bb.int
                 bb.int // byte rate
@@ -264,7 +274,8 @@ internal fun readWavHeader(file: File): WavHeader? = RandomAccessFile(file, "r")
         offset += 8 + size + (size and 1L)
     }
     // No data chunk: nothing to stream here; the decoder gets the file and reports what is wrong with it.
-    if (dataOffset < 0 || bits != 16) return null
+    // PCM (1) or WAVE_FORMAT_EXTENSIBLE (0xFFFE) only; anything else (float, ADPCM, A-law) goes to the decoder.
+    if (dataOffset < 0 || bits != 16 || (audioFormat != 1 && audioFormat != 0xFFFE)) return null
     WavHeader(sampleRate, channels, dataOffset, dataSize)
 }
 
