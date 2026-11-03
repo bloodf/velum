@@ -31,6 +31,9 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.updateAndGet
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.withContext
 
@@ -87,6 +90,9 @@ class RecordingProcessor(
     private val thermal: ThermalPolicy = NoOpThermalPolicy,
     private val opusDecoder: () -> OpusDecoder = ::createOpusDecoder,
 ) {
+    private val nextRun = MutableStateFlow(0L)
+    private val activeRuns = MutableStateFlow<Map<String, Long>>(emptyMap())
+
     fun process(
         recordingId: String,
         templateId: String? = null,
@@ -95,6 +101,9 @@ class RecordingProcessor(
     ): Flow<JobProgress> = flow {
         emit(JobProgress.Running(0.05f, "Starting"))
         val priorStatus = repository.getRecording(recordingId)?.status
+        // Per-run token: only the newest run of a recording may restore its status when cancelled (see the handler).
+        val run = nextRun.updateAndGet { it + 1 }
+        activeRuns.update { it + (recordingId to run) }
         repository.setProcessingError(recordingId, null)
         repository.updateStatus(recordingId, "generating")
 
@@ -407,6 +416,10 @@ class RecordingProcessor(
             ) {
                 // Cancelled work never saved a version; restore the status so notes stay usable.
                 withContext(NonCancellable) {
+                    // A replacement run (AutoFlow's REPLACE) may start before this one unwinds and already own the
+                    // row's "generating"; restoring here would write a false "failed" over it.
+                    if (activeRuns.value[recordingId] != run) return@withContext
+                    activeRuns.update { it - recordingId }
                     val current = repository.getRecording(recordingId)
                     // This job set "generating" when it started. "queued" now means a replacing enqueue (AutoFlow's
                     // REPLACE) already took over the row; writing here would race its status and hand its runner a

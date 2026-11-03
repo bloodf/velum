@@ -342,6 +342,25 @@ class RecordingProcessorDecodeCleanupTest {
     }
 
     @Test
+    fun old_job_unwinding_after_its_replacement_started_leaves_the_replacements_generating_status() = runBlocking {
+        val bytes = wav(ByteArray(64_000))
+        val entered = java.util.concurrent.atomic.AtomicInteger()
+        val second = CompletableDeferred<Unit>()
+        val h = Harness({ if (entered.incrementAndGet() == 2) second.complete(Unit); awaitCancellation() })
+        val src = tempAudio(".wav", bytes)
+        h.insert("rec-324b", src)
+        val first = launch(Dispatchers.Default) { h.processor.process("rec-324b", templateId = "velum.meeting", apiModelOverride = API).toList() }
+        withTimeout(30_000) { while (entered.get() < 1) kotlinx.coroutines.delay(20) }
+        // WorkManager REPLACE: the replacement is already running (generating) when the old job unwinds.
+        val replacement = launch(Dispatchers.Default) { h.processor.process("rec-324b", templateId = "velum.meeting", apiModelOverride = API).toList() }
+        withTimeout(30_000) { second.await() }
+        first.cancelAndJoin()
+        assertEquals("generating", h.repo.getRecording("rec-324b")!!.status, "the old job overwrote the replacement's status")
+        replacement.cancelAndJoin()
+        assertEquals("failed", h.repo.getRecording("rec-324b")!!.status)
+    }
+
+    @Test
     fun full_disk_reports_insufficient_storage_and_keeps_source() = runBlocking {
         val bytes = ByteArray(1024) { 1 }
         val full = object : dev.velum.ai.audio.OpusDecoder {
