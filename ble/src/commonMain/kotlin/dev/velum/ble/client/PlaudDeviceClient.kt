@@ -282,6 +282,10 @@ class PlaudDeviceClient(
         var ignoredFrames = 0
         var smallestChunk = Int.MAX_VALUE
         var resumeCheck = if (startOffset > 0) storedBytes else null
+        // Protocol < 7 has no session id on recording data, so another session's leftover chunk looks like ours.
+        // The first such mismatch is skipped; a second one is a real fault. Ids present: strays are told apart.
+        var unattributedMismatches = 0
+        fun tolerateUnattributed(packetSessionId: Long?) = packetSessionId == null && ++unattributedMismatches <= 1
         try {
             while (true) {
                 val before = next
@@ -297,11 +301,17 @@ class PlaudDeviceClient(
                                     if (!isStray(data.sessionId, sessionId) && data.data.isNotEmpty()) {
                                         resumeCheck = null
                                         if (end <= next && !stored(data.offset, data.data.size).contentEquals(data.data)) {
-                                            throw TransferIntegrityException("Repeated chunk at offset ${data.offset} differs from the stored bytes")
+                                            if (tolerateUnattributed(data.sessionId)) {
+                                                resumeCheck = stored // compare the next chunk too
+                                            } else {
+                                                throw TransferIntegrityException("Repeated chunk at offset ${data.offset} differs from the stored bytes")
+                                            }
                                         }
                                     }
                                 }
-                                if (!ignored) {
+                                if (!ignored && data.offset != next && tolerateUnattributed(data.sessionId)) {
+                                    // Skipped: a chunk that fits nowhere and cannot be attributed to another session.
+                                } else if (!ignored) {
                                     if (data.offset != next) {
                                         throw TransferIntegrityException("Chunk at offset ${data.offset}, expected $next")
                                     }
