@@ -3,8 +3,9 @@ package dev.velum.protocol
 /**
  * Plain ChaCha20 (RFC 8439, no Poly1305) for PLAUD.AI file bodies.
  *
- * Not JCA: Conscrypt, Android's default provider, accepts `ChaCha20ParameterSpec` and silently uses a random
- * nonce instead, which turns a decrypted file into garbage with no error.
+ * Not JCA, which can't do this reliably on Android. `ChaCha20ParameterSpec` only exists from API 35, while
+ * minSdk is 26. Conscrypt, the default provider, ignores that spec in the version we can inspect (2.5.2): it
+ * silently uses a random nonce, so a decrypted file is garbage with no error.
  */
 object ChaCha20 {
     private const val BLOCK_BYTES = 64
@@ -38,11 +39,11 @@ object ChaCha20 {
                 quarterRound(block, 2, 7, 8, 13)
                 quarterRound(block, 3, 4, 9, 14)
             }
+            for (i in 0 until 16) block[i] += state[i]
             val length = minOf(BLOCK_BYTES, data.size - offset)
             for (i in 0 until length) {
-                val word = block[i / 4] + state[i / 4]
-                val keystream = (word ushr (8 * (i % 4))).toByte()
-                out[offset + i] = (data[offset + i].toInt() xor keystream.toInt()).toByte()
+                val keystream = block[i ushr 2] ushr ((i and 3) shl 3)
+                out[offset + i] = (data[offset + i].toInt() xor keystream).toByte()
             }
             state[12]++
             offset += length
