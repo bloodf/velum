@@ -176,6 +176,7 @@ class DeviceViewModel(
     }
 
     internal suspend fun awaitDownloadEnd() {
+        cancelledJob?.join()
         downloadJob?.join()
     }
 

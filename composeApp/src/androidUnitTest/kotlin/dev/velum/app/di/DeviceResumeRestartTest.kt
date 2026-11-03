@@ -130,9 +130,12 @@ class DeviceResumeRestartTest {
      * work, and resuming it with Main gone is an uncaught exception that fails the next runTest in this JVM.
      */
     private fun tearDown() {
-        owner.clear()
-        runBlocking { withTimeout(30_000) { running?.awaitDownloadEnd() } }
-        Dispatchers.resetMain()
+        try {
+            owner.clear()
+            runBlocking { withTimeout(30_000) { running?.awaitDownloadEnd() } }
+        } finally {
+            Dispatchers.resetMain()
+        }
     }
 
     private fun peripheral(
