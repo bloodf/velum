@@ -22,8 +22,9 @@ actual class AudioNormalizer actual constructor() {
         require(source.isFile && source.length() > 0L) { "Missing import: $sourcePath" }
         val hash = sha256File(sourcePath)
         val mime = guessMime(source.name)
-        val outDir = File(source.parentFile, "normalized").apply { mkdirs() }
-        val outFile = File(outDir, "${source.nameWithoutExtension}_$targetSampleRateHz.wav")
+        // The only copy of an imported recording: it lives with the other recordings, never in the evictable cache.
+        val outDir = File(recordingsDirectoryPath()).apply { mkdirs() }
+        val outFile = File(outDir, "import_${source.nameWithoutExtension}_$targetSampleRateHz.wav")
 
         // Fast path: already WAV at target rate — copy / rewrite header only.
         if (source.extension.equals("wav", true) || source.extension.equals("wave", true)) {
@@ -31,7 +32,7 @@ actual class AudioNormalizer actual constructor() {
             if (looksLikeWav(bytes)) {
                 val pcm = stripWavPcm(bytes)
                 if (pcm.sampleRateHz == targetSampleRateHz && pcm.channels == 1) {
-                    writeWav(outFile, pcm.pcm, targetSampleRateHz)
+                    writeWavAtomically(outFile, pcm.pcm, targetSampleRateHz)
                     val durationMs = (pcm.pcm.size / 2.0 / targetSampleRateHz * 1000.0).toLong()
                     return@withContext NormalizedAudio(
                         wavPath = outFile.absolutePath,
@@ -45,7 +46,7 @@ actual class AudioNormalizer actual constructor() {
         }
 
         val pcm = decodeWithMediaCodec(source, targetSampleRateHz)
-        writeWav(outFile, pcm, targetSampleRateHz)
+        writeWavAtomically(outFile, pcm, targetSampleRateHz)
         val durationMs = (pcm.size / 2.0 / targetSampleRateHz * 1000.0).toLong()
         NormalizedAudio(
             wavPath = outFile.absolutePath,
@@ -245,6 +246,18 @@ private fun resamplePcm16(input: ByteArray, fromRate: Int, toRate: Int): ByteArr
     val out = ByteArray(outLen * 2)
     ByteBuffer.wrap(out).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer().put(outSamples)
     return out
+}
+
+/** Temp file then rename: a kill or full disk never leaves a short WAV under the final name. */
+private fun writeWavAtomically(file: File, pcm: ByteArray, sampleRateHz: Int) {
+    val tmp = File(file.parentFile, file.name + ".tmp")
+    try {
+        writeWav(tmp, pcm, sampleRateHz)
+        file.delete()
+        check(tmp.renameTo(file)) { "Could not publish ${file.name}" }
+    } finally {
+        tmp.delete()
+    }
 }
 
 private fun writeWav(file: File, pcm: ByteArray, sampleRateHz: Int) {

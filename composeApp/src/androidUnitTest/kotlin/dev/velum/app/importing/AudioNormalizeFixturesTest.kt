@@ -32,6 +32,7 @@ class AudioNormalizeFixturesTest {
     @Before
     fun setUp() {
         val context = ApplicationProvider.getApplicationContext<Context>()
+        dev.velum.app.platform.installRecordingFilesDir(java.nio.file.Files.createTempDirectory("velum-norm").toFile().path)
         dir = File(context.cacheDir, "import_fixtures").apply {
             deleteRecursively()
             mkdirs()

@@ -21,6 +21,7 @@ data class WatchedFolderEntry(
     val uriString: String,
     val absoluteCopyPath: String,
     val lastModifiedMs: Long,
+    val fileKey: String = "",
 )
 
 /** Persistable SAF tree for USB OTG / SD / sync folders. */
@@ -45,10 +46,24 @@ object WatchedFolderStore {
         prefs.edit().putString(KEY_URIS, next.joinToString("\n")).apply()
     }
 
+    private const val KEY_IMPORTED = "imported_files"
+
+    /** Identity of one source file version: a changed size or time is a new file. */
+    fun fileKey(uriString: String, lastModifiedMs: Long, length: Long) = "$uriString|$lastModifiedMs|$length"
+
+    private fun importedKeys(context: Context): Set<String> =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getStringSet(KEY_IMPORTED, emptySet()).orEmpty()
+
+    fun markImported(context: Context, key: String) {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        prefs.edit().putStringSet(KEY_IMPORTED, importedKeys(context) + key).apply()
+    }
+
     fun clear(context: Context) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit()
             .putString(KEY_URIS, "")
+            .remove(KEY_IMPORTED)
             .apply()
     }
 
@@ -56,6 +71,7 @@ object WatchedFolderStore {
         val tree = DocumentFile.fromTreeUri(context, Uri.parse(treeUriString)) ?: return emptyList()
         val out = ArrayList<WatchedFolderEntry>()
         val destRoot = File(context.cacheDir, "imports/watched").apply { mkdirs() }
+        val imported = importedKeys(context)
         fun walk(dir: DocumentFile) {
             dir.listFiles().forEach { child ->
                 if (child.isDirectory) {
@@ -63,6 +79,9 @@ object WatchedFolderStore {
                 } else if (child.isFile) {
                     val name = child.name.orEmpty()
                     if (ImportAudioFormats.isSupportedFileName(name)) {
+                        val key = fileKey(child.uri.toString(), child.lastModified(), child.length())
+                        // Already imported: the cache copy is deleted after an import, so do not copy it again.
+                        if (key in imported) return@forEach
                         val dest = File(destRoot, "${child.lastModified()}_$name")
                         // One unreadable file (card pulled mid-copy, revoked grant) must not stop the others.
                         val copied = runCatching {
@@ -74,6 +93,7 @@ object WatchedFolderStore {
                                 uriString = child.uri.toString(),
                                 absoluteCopyPath = dest.absolutePath,
                                 lastModifiedMs = child.lastModified(),
+                                fileKey = key,
                             )
                         }
                     }

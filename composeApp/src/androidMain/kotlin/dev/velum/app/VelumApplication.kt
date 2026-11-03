@@ -19,6 +19,7 @@ import dev.velum.app.platform.installAppContext
 import dev.velum.app.platform.installMicCaptureContext
 import dev.velum.app.platform.STALE_DOWNLOAD_PART_AGE_MS
 import dev.velum.app.platform.installRecordingFilesDir
+import dev.velum.app.platform.migrateCachedImports
 import dev.velum.app.platform.sweepStaleDownloadParts
 import dev.velum.app.platform.sweepStalePartialTransfers
 import dev.velum.app.platform.recoverPartialMicRecordings
@@ -117,6 +118,10 @@ class VelumApplication : Application() {
                             val swept = sweepStalePartialTransfers(System.currentTimeMillis())
                             if (swept > 0) Log.i(TAG, "Removed $swept stale partial download file(s)")
                         }.onFailure { t -> Log.w(TAG, "Partial download sweep failed (${t::class.simpleName})") }
+                        runCatching {
+                            val moved = migrateCachedImports(c.repository, java.io.File(recordingsDirectoryPath()), cacheDir)
+                            if (moved > 0) Log.i(TAG, "Moved $moved imported recording(s) out of the cache")
+                        }.onFailure { t -> Log.w(TAG, "Import migration failed (${t::class.simpleName})") }
                         val report = sweepOrphanRecordingAudio(recordingsDirectoryPath(), c.repository::getAllRecordingFileRefs)
                         Log.i(TAG, "Orphan audio sweep: quarantined=${report.quarantined} purged=${report.purged} staleTemps=${report.staleTemps} failedMoves=${report.failedMoves}")
                     },

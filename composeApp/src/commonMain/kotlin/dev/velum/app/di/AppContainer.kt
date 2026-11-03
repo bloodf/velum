@@ -33,6 +33,7 @@ import dev.velum.app.platform.deleteFileAtPath
 import dev.velum.app.platform.isSamePath
 import dev.velum.app.platform.isSupersededOwnAudio
 import dev.velum.app.platform.recordingsDirectoryPath
+import dev.velum.app.platform.wipeImportScratch
 import dev.velum.app.platform.streamToFileAtomically
 import dev.velum.app.platform.systemLanguageTag
 import dev.velum.app.ui.DeviceViewModel
@@ -283,6 +284,7 @@ class AppContainer(
         device.holdingDownloads {
             val downloads = device.wipePartialDownloads()
             repository.wipeAllUserData { path -> deleteFileAtPath(path) }
+            withContext(Dispatchers.IO) { wipeImportScratch() }
             withContext(Dispatchers.IO) { voiceProfileStore.wipeAll() }
             settingsRepository.clearAllApiKeys()
             deviceKeyImporter.clearKeys()

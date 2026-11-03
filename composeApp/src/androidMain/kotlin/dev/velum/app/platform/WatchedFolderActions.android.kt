@@ -16,12 +16,15 @@ actual suspend fun syncWatchedFolders(pipeline: AudioImportPipeline): List<Impor
         val results = ArrayList<ImportResult>()
         WatchedFolderStore.list(context).forEach { uri ->
             WatchedFolderStore.scanNewAudio(context, uri).forEach { entry ->
-                results += pipeline.importFile(
+                val result = pipeline.importFile(
                     absolutePath = entry.absoluteCopyPath,
                     source = "watched",
                     titleHint = entry.displayName.substringBeforeLast('.'),
                     startedAtEpochSeconds = entry.lastModifiedMs / 1000L,
                 )
+                results += result
+                // A failure is retried on the next sync; anything that landed in the library is not copied again.
+                if (result !is ImportResult.Failed && entry.fileKey.isNotEmpty()) WatchedFolderStore.markImported(context, entry.fileKey)
             }
         }
         results
