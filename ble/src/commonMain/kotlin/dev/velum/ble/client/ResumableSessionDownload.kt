@@ -83,6 +83,15 @@ class ResumableSessionDownload(
         var attempts = 0
         var noProgress = 0
         var crcMismatches = 0
+        var restarts = 0
+        // Lost links reset noProgress, so a device that cannot resume on a flaky link would restart forever.
+        fun restartFromZero(cause: Exception?) {
+            if (restarts >= MAX_RESTARTS) {
+                throw TransferIntegrityException("Device did not resume after $restarts restarts from the beginning", cause)
+            }
+            restarts++
+            store.truncate(0)
+        }
         var noProgressPastHandshake = 0
         var lastError: Exception? = null
         var unlocked = initialClient
@@ -140,7 +149,7 @@ class ResumableSessionDownload(
                 lastError = e
                 // The device may not support resuming (#6): refused it, or sent what can't be joined to the
                 // partial. Restart from 0. A lost link or timeout doesn't get here, so it keeps the partial.
-                if (before > 0 && store.length() == before) store.truncate(0)
+                if (before > 0 && store.length() == before) restartFromZero(e)
             } catch (e: Exception) {
                 lastError = e
             } finally {
@@ -164,7 +173,7 @@ class ResumableSessionDownload(
                 if (noProgressPastHandshake < noProgress || store.length() == 0L) {
                     throw TransferIntegrityException("Session download made no progress in $noProgress attempts", lastError)
                 }
-                store.truncate(0)
+                restartFromZero(lastError)
                 noProgress = 0
                 noProgressPastHandshake = 0
             }
@@ -192,6 +201,8 @@ class ResumableSessionDownload(
     private companion object {
         const val CRC_BLOCK = 64 * 1024
         const val MAX_CRC_MISMATCHES = 3
+        /** Restarts from 0 per download() call (refused or unusable resumes). Past this the device is not resuming. */
+        const val MAX_RESTARTS = 3
         const val MAX_BACKOFF_SHIFT = 5 // 32 s
     }
 }
