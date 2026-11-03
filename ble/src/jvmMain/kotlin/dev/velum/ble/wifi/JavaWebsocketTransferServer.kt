@@ -29,7 +29,6 @@ class JavaWebsocketTransferServer : WifiTransferServer {
     private val running = AtomicBoolean(false)
     private val bindFailed = AtomicBoolean(false)
     private val consumerRead = AtomicBoolean(false)
-    private val closeSignalled = AtomicReference<WebSocket?>(null)
     private val peerClose = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
     private val serverRef = AtomicReference<WebSocketServer?>(null)
     private val clientRef = AtomicReference<WebSocket?>(null)
@@ -43,7 +42,6 @@ class JavaWebsocketTransferServer : WifiTransferServer {
         stop()
         bindFailed.set(false)
         consumerRead.set(false)
-        closeSignalled.set(null)
         expectedPreamble.set(preamble)
         val host = bindHost ?: "127.0.0.1"
         val address = InetSocketAddress(host, port)
@@ -52,15 +50,16 @@ class JavaWebsocketTransferServer : WifiTransferServer {
                 // Authorization is per connection: the peer is only recorded after its own preamble.
             }
 
-            // The device's close frame, on the thread that delivers its frames, so after all of them. onClose runs
-            // on the selector thread and can overtake frames still being decoded, so it only covers a lost connection.
-            override fun onClosing(conn: WebSocket, code: Int, reason: String, remote: Boolean) {
-                if (remote && clientRef.get() === conn) signalPeerClosed(conn)
-            }
-
             override fun onClose(conn: WebSocket, code: Int, reason: String, remote: Boolean) {
                 // Only the authenticated peer counts; a superseded or unauthenticated close changes nothing.
-                if (clientRef.compareAndSet(conn, null)) signalPeerClosed(conn)
+                if (clientRef.compareAndSet(conn, null) && running.get()) {
+                    when {
+                        // After the frames already queued. A full buffer only delays it until they are read.
+                        incoming.subscriptionCount.value > 0 -> peerClose.launch { incoming.emit(WifiTransferServer.PEER_CLOSED_FRAME) }
+                        !consumerRead.get() -> failures.tryEmit(WifiTransferServer.FAILURE_PEER_CLOSED)
+                        // A consumer read frames and left: assemble is finishing. Its result or the timeout ends this.
+                    }
+                }
             }
 
             override fun onMessage(conn: WebSocket, message: String) {
@@ -114,17 +113,6 @@ class JavaWebsocketTransferServer : WifiTransferServer {
         if (!running.get()) {
             stop()
             throw WifiTransferFailure(BIND_FAILURE_CODE)
-        }
-    }
-
-    /** Once per connection, from whichever of onClosing and onClose comes first. */
-    private fun signalPeerClosed(conn: WebSocket) {
-        if (!running.get() || closeSignalled.getAndSet(conn) === conn) return
-        when {
-            // After the frames already queued. A full buffer only delays it until they are read.
-            incoming.subscriptionCount.value > 0 -> peerClose.launch { incoming.emit(WifiTransferServer.PEER_CLOSED_FRAME) }
-            !consumerRead.get() -> failures.tryEmit(WifiTransferServer.FAILURE_PEER_CLOSED)
-            // A consumer read frames and left: assemble is finishing. Its result or the timeout ends this.
         }
     }
 
