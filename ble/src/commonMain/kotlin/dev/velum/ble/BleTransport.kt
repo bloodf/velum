@@ -1,8 +1,11 @@
 package dev.velum.ble
 
+import dev.velum.ble.gatt.GattChar
 import dev.velum.ble.gatt.GattLink
+import dev.velum.ble.gatt.GattProfiles
 import dev.velum.core.model.ConnectedDevice
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.StateFlow
 
 /**
@@ -22,6 +25,13 @@ interface BleTransport : GattLink {
 
     /** Notifications from the Plaud notify characteristic (2BB0). */
     fun notifications(): Flow<ByteArray>
+
+    /**
+     * Notifications of [char] for the connected profile. Default: only Plaud's 2BB0 stream exists; a transport
+     * that connects other profiles overrides this (the Kable transport does not yet: needs a device to verify).
+     */
+    fun notifications(char: GattChar): Flow<ByteArray> =
+        if (char == GattProfiles.PLAUD_NOTIFY) notifications() else emptyFlow()
 }
 
 sealed class BleConnectionState {
