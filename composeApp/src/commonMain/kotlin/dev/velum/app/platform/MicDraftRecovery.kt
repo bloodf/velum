@@ -1,5 +1,6 @@
 package dev.velum.app.platform
 
+import dev.velum.core.data.TranscriptMarkers
 import dev.velum.app.di.AppContainer
 import dev.velum.core.data.RecordingIds
 import kotlinx.coroutines.CancellationException
@@ -32,7 +33,7 @@ suspend fun reconcileInterruptedMicDrafts(
         for (row in rows) {
             currentCoroutineContext().ensureActive()
             if (row.source != "phone" || row.status != "recording" || row.duration_seconds != 0L || row.size_bytes != 0L ||
-                !row.transcript.isNullOrBlank() || !row.summary_markdown.isNullOrBlank()) continue
+                !TranscriptMarkers.spoken(row.transcript).isNullOrBlank() || !row.summary_markdown.isNullOrBlank()) continue
             fun active(): Boolean {
                 val state = container.micCapture.sessions.value
                 val activeSession = if (state is MicSessionState.Starting || state is MicSessionState.Recording || state is MicSessionState.Paused) state.session else null

@@ -18,6 +18,8 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.isEnabled
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
@@ -70,11 +72,15 @@ class DiscoverCategorySearchUiTest {
 
     // Chips appear once the facets loaded, which is after the first rows: wait for the chip before tapping it.
     private fun tap(tag: String) {
-        awaitTag(tag)
-        // Chips sit in horizontally scrolling rows; bring the target into view first, like a user would.
-        runCatching { compose.onNodeWithTag(tag).performScrollTo() }
-        // By node identity, not coordinates: a facets reload can reorder the chips between scroll and tap, and a
-        // coordinate click then lands on a neighbour (seen in CI: tapped tag:report instead of tag:agenda).
+        // Wait until the chip is enabled (a facets reload disables the rows) and actually on screen, then act on it.
+        waiting("tappable chip '$tag'") {
+            compose.onAllNodes(hasTestTag(tag) and hasClickAction() and isEnabled()).fetchSemanticsNodes().isNotEmpty() &&
+                run {
+                    runCatching { compose.onNodeWithTag(tag).performScrollTo() }
+                    runCatching { compose.onNodeWithTag(tag).assertIsDisplayed() }.isSuccess
+                }
+        }
+        // By node identity, not coordinates: a coordinate click could land on a neighbour if the row reflowed.
         compose.onNodeWithTag(tag).performSemanticsAction(SemanticsActions.OnClick)
     }
 
