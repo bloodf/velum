@@ -110,4 +110,53 @@ class ModelStorageTest {
         assertEquals(size * 2, manager.bytesNeededFor(listOf(id)))
         root.deleteRecursively()
     }
+
+    // A killed download leaves a large .partial; the retry must not be told to free space it is holding itself.
+    @Test fun a_retry_is_not_blocked_by_the_models_own_leftovers() = runTest {
+        val bytes = zip(); val root = newRoot(); val capacity = bytes.size * 10L
+        val dir = root.resolve(id).also { it.createDirectories() }
+        dir.resolve("model.zip.partial").writeBytes(ByteArray((bytes.size * 9).toInt()))
+        fun used(d: File): Long = d.walkTopDown().filter { it.isFile }.sumOf { it.length() }
+        val manager = LocalModelManager(root, HttpClient(MockEngine {
+            respond(bytes, HttpStatusCode.OK, headersOf(HttpHeaders.ContentLength, bytes.size.toString()))
+        }), listOf(spec(bytes)), freeSpace = { capacity - used(File(root.absolutePath)) })
+        val last = manager.download(id).toList().last()
+        assertEquals(LocalModelStatus.Ready, last.status, last.error)
+        root.deleteRecursively()
+    }
+
+    // ENOSPC or a kill while extracting must never leave truncated weights that restart reports as Ready.
+    @Test fun a_failed_extraction_exposes_no_weights_and_restart_is_not_ready() = runTest {
+        val whole = zip(); val cut = whole.copyOf(whole.size * 7 / 10); val root = newRoot()
+        val manager = LocalModelManager(root, HttpClient(MockEngine {
+            respond(cut, HttpStatusCode.OK, headersOf(HttpHeaders.ContentLength, cut.size.toString()))
+        }), listOf(spec(cut)))
+        val last = manager.download(id).toList().last()
+        assertEquals(LocalModelStatus.Failed, last.status)
+        assertFalse(root.resolve(id).resolve("tokens.txt").exists() || root.resolve(id).resolve("weights").exists())
+        val restarted = LocalModelManager(root, HttpClient(MockEngine { respond("") }), listOf(spec(cut)))
+        assertFalse(restarted.isReady(id))
+        root.deleteRecursively()
+    }
+
+    @Test fun weights_left_in_the_staging_tree_by_a_kill_are_never_ready() {
+        val bytes = zip(); val root = newRoot()
+        val staging = root.resolve(id).resolve(ModelReadiness.STAGING_DIR).also { it.createDirectories() }
+        files.forEach { (name, text) -> staging.resolve(name.substringAfter('/')).writeBytes(text.encodeToByteArray()) }
+        val manager = LocalModelManager(root, HttpClient(MockEngine { respond("") }), listOf(spec(bytes)))
+        assertFalse(manager.isReady(id))
+        assertEquals(null, manager.modelPath(id))
+        root.deleteRecursively()
+    }
+
+    @Test fun ready_models_are_not_counted_in_what_is_left_to_download() {
+        val bytes = zip(); val root = newRoot()
+        val dir = root.resolve(id).also { it.createDirectories() }
+        files.forEach { (name, text) -> dir.resolve(name.substringAfter('/')).writeBytes(text.encodeToByteArray()) }
+        val manager = LocalModelManager(root, HttpClient(MockEngine { respond("") }), listOf(spec(bytes)))
+        assertTrue(manager.isReady(id))
+        assertEquals(0L, manager.downloadBytesFor(listOf(id)))
+        assertEquals(0L, manager.bytesNeededFor(listOf(id)))
+        root.deleteRecursively()
+    }
 }

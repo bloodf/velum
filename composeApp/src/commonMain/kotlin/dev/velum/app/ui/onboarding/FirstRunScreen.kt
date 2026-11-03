@@ -49,6 +49,9 @@ fun FirstRunScreen(
     languageHint: String? = null,
     /** Plain message shown above the download button, e.g. not enough free space. */
     notice: String? = null,
+    /** Download size and free space the recommended pack still needs (models already Ready excluded); 0 hides the line. */
+    recommendedTotalBytes: Long = 0L,
+    recommendedNeededBytes: Long = 0L,
 ) {
     val strings = LocalStrings.current
     val fr = strings.firstRun
@@ -133,13 +136,16 @@ fun FirstRunScreen(
                 }
             }
             Spacer(Modifier.height(10.dp))
-            val packBytes = recommendedIds.sumOf { id -> DefaultLocalCatalog.firstOrNull { it.id == id }?.approxBytes ?: 0L }
-            val headroom = recommendedIds.mapNotNull { id -> DefaultLocalCatalog.firstOrNull { it.id == id } }
-                .filter { it.archiveFileName.contains(".tar") }.maxOfOrNull { it.approxBytes } ?: 0L
-            Text(
-                ModelCatalogUi.fill(fr.recommendedTotalFormat, ModelCatalogUi.formatBytes(packBytes), ModelCatalogUi.formatBytes(packBytes + headroom)),
-                color = VelumInkSecondary, fontSize = 13.sp, lineHeight = 18.sp,
-            )
+            if (recommendedTotalBytes > 0) {
+                Text(
+                    ModelCatalogUi.fill(
+                        fr.recommendedTotalFormat,
+                        ModelCatalogUi.formatBytes(recommendedTotalBytes),
+                        ModelCatalogUi.formatBytes(recommendedNeededBytes),
+                    ),
+                    color = VelumInkSecondary, fontSize = 13.sp, lineHeight = 18.sp,
+                )
+            }
             if (notice != null) {
                 Spacer(Modifier.height(8.dp))
                 Text(

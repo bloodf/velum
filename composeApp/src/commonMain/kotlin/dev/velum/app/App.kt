@@ -681,6 +681,11 @@ private fun VelumRoot(container: AppContainer) {
         }
 
         if (showFirstRun) {
+            // Same numbers the Download tap checks: models already Ready are not counted.
+            val packIds = remember(strings.localeTag) { ModelCatalogUi.recommendedModelIds(strings.localeTag) }
+            val modelStates by container.localModelManager.states.collectAsState()
+            val recommendedTotal = remember(modelStates, packIds) { container.localModelManager.downloadBytesFor(packIds) }
+            val recommendedNeeded = remember(modelStates, packIds) { container.localModelManager.bytesNeededFor(packIds) }
             FirstRunScreen(
                 onPhoneMic = {
                     dismissFirstRun()
@@ -698,6 +703,8 @@ private fun VelumRoot(container: AppContainer) {
                     dismissFirstRun()
                     navController.navigate(Routes.MODEL_MANAGER)
                 },
+                recommendedTotalBytes = recommendedTotal,
+                recommendedNeededBytes = recommendedNeeded,
                 notice = firstRunShort?.let { (needed, free) ->
                     ModelCatalogUi.fill(strings.firstRun.notEnoughSpaceFormat, ModelCatalogUi.formatBytes(needed), ModelCatalogUi.formatBytes(free))
                 },
@@ -705,14 +712,16 @@ private fun VelumRoot(container: AppContainer) {
                     val ids = ModelCatalogUi.recommendedModelIds(
                         languageHint = strings.localeTag,
                     )
-                    val needed = container.localModelManager.bytesNeededFor(ids)
-                    val free = container.localModelManager.freeSpaceBytes()
-                    if (free != null && free < needed) {
-                        firstRunShort = needed to free
-                        return@FirstRunScreen
-                    }
-                    dismissFirstRun()
                     scope.launch {
+                        // Disk queries stay off the main thread.
+                        val (needed, free) = withContext(Dispatchers.Default) {
+                            container.localModelManager.bytesNeededFor(ids) to container.localModelManager.freeSpaceBytes()
+                        }
+                        if (free != null && free < needed) {
+                            firstRunShort = needed to free
+                            return@launch
+                        }
+                        dismissFirstRun()
                         ids.forEach { id ->
                             runCatching {
                                 container.localModelManager.download(id).collect()

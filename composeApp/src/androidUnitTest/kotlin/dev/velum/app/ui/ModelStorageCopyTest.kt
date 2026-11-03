@@ -38,12 +38,12 @@ class ModelStorageCopyTest {
         assertEquals("HTTP 404", modelErrorText("HTTP 404", En))
     }
 
-    private fun show(s: Strings, notice: String?) {
+    private fun show(s: Strings, notice: String?, total: Long = 0L, needed: Long = 0L) {
         val controller = org.robolectric.Robolectric.buildActivity(ComponentActivity::class.java).setup()
         controller.get().setContent {
             CompositionLocalProvider(LocalStrings provides s) {
                 VelumTheme(darkTheme = false) {
-                    FirstRunScreen({}, {}, {}, {}, onUseApi = {}, onSkip = {}, languageHint = s.localeTag, notice = notice)
+                    FirstRunScreen({}, {}, {}, {}, onUseApi = {}, onSkip = {}, languageHint = s.localeTag, notice = notice, recommendedTotalBytes = total, recommendedNeededBytes = needed)
                 }
             }
         }
@@ -53,7 +53,7 @@ class ModelStorageCopyTest {
         for (s in listOf<Strings>(En, PtBr)) {
             val ids = ModelCatalogUi.recommendedModelIds(s.localeTag)
             val total = ids.sumOf { id -> dev.velum.ai.local.DefaultLocalCatalog.first { it.id == id }.approxBytes }
-            show(s, null)
+            show(s, null, total = total, needed = total + 1024L * 1024 * 1024)
             val prefix = s.firstRun.recommendedTotalFormat.substringBefore("%1")
             compose.waitForIdle()
             assertTrue("${s.localeTag}: total line missing", compose.onAllNodesWithText(prefix, substring = true).fetchSemanticsNodes().isNotEmpty())

@@ -7,6 +7,9 @@ object ModelReadiness {
     fun isReady(spec: LocalModelSpec, modelDir: ModelStoreDir): Boolean =
         missingRequirements(spec, modelDir).isEmpty()
 
+    /** Temp directory an archive is extracted into before its files are moved into the model directory. */
+    const val STAGING_DIR = ".extracting"
+
     fun missingRequirements(spec: LocalModelSpec, modelDir: ModelStoreDir): List<String> {
         if (!modelDir.exists() || !modelDir.isDirectory()) {
             return listOf("model directory missing: ${modelDir.absolutePath}")
@@ -50,7 +53,10 @@ object ModelReadiness {
             }
             else -> Unit
         }
-        return modelDir.walkDirectories().firstOrNull { layout.missing(it).isEmpty() }
+        // The staging tree holds unfinished extraction output; never treat it as weights.
+        return modelDir.walkDirectories()
+            .filter { dir -> !dir.absolutePath.removePrefix(modelDir.absolutePath).contains("/$STAGING_DIR") }
+            .firstOrNull { layout.missing(it).isEmpty() }
     }
 
     fun layoutFor(spec: LocalModelSpec): ModelLayout {

@@ -271,7 +271,7 @@ object LocalModelErrors {
     const val StorageFull = "storage_full"
 
     fun isStorageFull(t: Throwable): Boolean =
-        generateSequence(t) { it.cause }.any {
+        generateSequence(t) { it.cause }.take(8).any {
             val m = it.message.orEmpty()
             m.contains("ENOSPC", ignoreCase = true) || m.contains("No space left", ignoreCase = true)
         }
@@ -401,7 +401,10 @@ class LocalModelManager(
             return@flow
         }
 
-        val free = freeSpace()
+        // Nothing here resumes, so a .partial, a half-extracted tree or a stale archive from an earlier
+        // attempt is dead weight: clear it before measuring, or a retry would blame space it is holding itself.
+        withContext(ioDispatcher) { storeRoot.resolve(id).takeIf { it.exists() }?.deleteRecursively() }
+        val free = withContext(ioDispatcher) { freeSpace() }
         val needed = current.spec.approxBytes * (if (current.spec.usesArchiveExtract()) 2 else 1)
         if (free != null && free < needed) {
             update(id) { it.copy(status = LocalModelStatus.Failed, progress = 0f, error = LocalModelErrors.StorageFull) }
@@ -465,11 +468,26 @@ class LocalModelManager(
                     it.copy(status = LocalModelStatus.Downloading, progress = 0.99f, error = null)
                 }
                 emit(requireNotNull(stateFor(id)))
-                ModelArchiveExtractor.extract(dest, dir)
+                // Extract beside the final location and move finished files in: a full disk or a kill while
+                // writing leaves a stale temp tree (ignored and cleared later), never truncated weights in place.
+                val staging = dir.resolve(ModelReadiness.STAGING_DIR)
+                staging.deleteRecursively()
+                ModelArchiveExtractor.extract(dest, staging)
+                val stagedMissing = ModelReadiness.missingRequirements(current.spec, staging)
+                if (stagedMissing.isNotEmpty()) {
+                    staging.deleteRecursively()
+                    throw IllegalStateException(
+                        "Model '$id' downloaded but not Ready — missing ${stagedMissing.joinToString(", ")}. " +
+                            "Expected layout: ${ModelReadiness.layoutFor(current.spec).describe()}",
+                    )
+                }
+                staging.listChildren().forEach { child ->
+                    if (!child.renameTo(dir.resolve(child.name))) throw IllegalStateException("Could not move ${child.name} into place")
+                }
+                staging.deleteRecursively()
+                // Only after the weights are in place: the archive is not read again.
+                if (ModelReadiness.missingRequirements(current.spec, dir).isEmpty()) runCatching { dest.deleteFile() }
             }
-            val extractedOk = ModelReadiness.missingRequirements(current.spec, dir).isEmpty()
-            // Only after a verified extraction: the archive is not read again.
-            if (extractedOk && current.spec.usesArchiveExtract()) runCatching { dest.deleteFile() }
 
             val missing = ModelReadiness.missingRequirements(current.spec, dir)
             if (missing.isNotEmpty()) {
