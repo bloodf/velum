@@ -140,6 +140,18 @@ class RecordingProcessorDecodeCleanupTest {
     }
 
     @Test
+    fun device_crc_mismatch_warning_survives_processing_and_wins_over_truncation() = runBlocking {
+        val pcm = ByteArray(16_000 * 2) // 1 s
+        val h = Harness({ })
+        val src = tempAudio(".wav", wav(pcm))
+        h.insert("rec-212-crc", src)
+        h.repo.setProcessingWarning("rec-212-crc", dev.velum.core.model.ProcessingWarning.DEVICE_CRC_MISMATCH)
+        val events = h.processor.process("rec-212-crc", templateId = "velum.meeting", apiModelOverride = API).toList()
+        assertTrue(events.last() is JobProgress.Succeeded, "last=${events.last()}")
+        assertEquals(dev.velum.core.model.ProcessingWarning.DEVICE_CRC_MISMATCH, h.repo.getRecording("rec-212-crc")!!.processing_warning)
+    }
+
+    @Test
     fun corrupt_ogg_fails_explicitly_cleans_temp_pcm_and_keeps_source() = runBlocking {
         // Valid header + one page of audio, then a page with a bad magic: PCM is written before the failure.
         val packet = dev.velum.ai.audio.SyntheticOgg.audioPacket(stereo = false)

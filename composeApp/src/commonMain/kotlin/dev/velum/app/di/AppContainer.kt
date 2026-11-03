@@ -300,7 +300,7 @@ class AppContainer(
             ) { sink -> session.writeDecryptedAudio(sink) }
         }
         if (existing != null) {
-            repository.replaceDeviceSessionAudio(id, path, sizeBytes)
+            repository.replaceDeviceSessionAudio(id, path, sizeBytes, session.processingWarning)
             // Only this row's own superseded file in the recordings dir (e.g. .ogg -> .wav).
             val previousPath = existing.local_path
             if (previousPath != null && isSupersededOwnAudio(previousPath, path, dir, id)) deleteFileAtPath(previousPath)
@@ -334,7 +334,7 @@ class AppContainer(
                 status = "queued",
                 trashed = 0,
                 created_at = epochSecondsNow(),
-                processing_warning = null,
+                processing_warning = session.processingWarning,
             ),
         )
         enqueueDownloadedSession(id, title)

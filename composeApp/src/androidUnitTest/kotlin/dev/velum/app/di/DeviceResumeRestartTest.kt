@@ -10,6 +10,7 @@ import dev.velum.ble.crypto.JcaFileDecryptor
 import dev.velum.ble.crypto.createFileDecryptor
 import dev.velum.ble.crypto.createSessionCipher
 import dev.velum.ble.crypto.rsaKeyPairToPem
+import dev.velum.core.model.ProcessingWarning
 import dev.velum.ble.fake.FakeBleTransport
 import dev.velum.ble.fake.FakePlaudPeripheral
 import dev.velum.ble.fake.TransferFaults
@@ -158,6 +159,45 @@ class DeviceResumeRestartTest {
             assertEquals("rec-synthetic", vm.sessionUi.value.lastDownloadedRecordingId)
             assertEquals(DeviceUiCopy.downloadedSessionCrcMismatch("en", session), vm.sessionUi.value.statusMessage)
             assertContentEquals(plaintext, assertNotNull(saved))
+        } finally { owner.clear(); Dispatchers.resetMain() }
+    }
+
+    @Test fun crc_mismatch_is_stored_on_the_recording_and_survives_a_failed_save() {
+        try {
+            var failing = true
+            val warnings = mutableListOf<String?>()
+            val fake = peripheral(stopCrc = FakePlaudPeripheral.StopCrc.Wrong)
+            val vm = run(fake, persist = { audio ->
+                warnings += audio.processingWarning
+                val out = ByteArrayOutputStream()
+                audio.writeDecryptedAudio {
+                    check(!failing) { "synthetic full disk" }
+                    out.write(it)
+                }
+                saved = out.toByteArray()
+                "rec-synthetic"
+            })
+            assertEquals(DeviceUiCopy.downloadFailed("en"), vm.sessionUi.value.statusMessage)
+            assertTrue(partials.list()!!.any { it.endsWith(".crcmismatch") }, "the verdict is kept with the partial")
+            failing = false
+            vm.downloadSession(session)
+            awaitOutcome(vm)
+            assertEquals(listOf(0L), fake.syncStartOffsets, "nothing is transferred again")
+            // The retry connects to nothing, so only the remembered mark can still say it.
+            assertEquals(listOf<String?>(ProcessingWarning.DEVICE_CRC_MISMATCH, ProcessingWarning.DEVICE_CRC_MISMATCH), warnings)
+            assertEquals(DeviceUiCopy.downloadedSessionCrcMismatch("en", session), vm.sessionUi.value.statusMessage)
+            assertFalse(partials.list()!!.any { it.endsWith(".crcmismatch") }, "mark removed with the partial")
+        } finally { owner.clear(); Dispatchers.resetMain() }
+    }
+
+    @Test fun a_verified_transfer_stores_no_warning() {
+        try {
+            val warnings = mutableListOf<String?>()
+            run(peripheral(stopCrc = FakePlaudPeripheral.StopCrc.Ccitt), persist = { audio ->
+                warnings += audio.processingWarning
+                val out = ByteArrayOutputStream(); audio.writeDecryptedAudio { out.write(it) }; saved = out.toByteArray(); "rec-synthetic"
+            })
+            assertEquals(listOf<String?>(null), warnings)
         } finally { owner.clear(); Dispatchers.resetMain() }
     }
 

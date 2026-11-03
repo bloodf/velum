@@ -167,10 +167,13 @@ class RecordingProcessor(
                     }
                 }
                 // Persist (or clear) the stable warning code so the UI can show it after the job ends.
-                repository.setProcessingWarning(
-                    recordingId,
-                    if (truncatedAudio) ProcessingWarning.TRUNCATED_AUDIO else null,
-                )
+                // A device CRC mismatch recorded at download time cannot be rederived, so it is never cleared here.
+                val warning = when {
+                    recording.processing_warning == ProcessingWarning.DEVICE_CRC_MISMATCH -> ProcessingWarning.DEVICE_CRC_MISMATCH
+                    truncatedAudio -> ProcessingWarning.TRUNCATED_AUDIO
+                    else -> null
+                }
+                repository.setProcessingWarning(recordingId, warning)
             } else {
                 // Demo / seed rows have no audio file — keep existing transcript path for summary-only.
                 filename = "missing.ogg"

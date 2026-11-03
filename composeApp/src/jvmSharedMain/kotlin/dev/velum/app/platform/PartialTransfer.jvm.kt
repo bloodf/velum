@@ -29,6 +29,8 @@ internal class PartialTransferFileStore private constructor(
     private val checkpoint: File,
     private val checkpointBytes: Int,
 ) : PartialTransfer {
+    private val mismatchMark = File(data.path.removeSuffix(DATA_SUFFIX) + CRC_MISMATCH_SUFFIX)
+
     private val file = RandomAccessFile(data, "rw")
     private var pending = 0
 
@@ -52,6 +54,7 @@ internal class PartialTransferFileStore private constructor(
     }
 
     override fun truncate(length: Long) {
+        if (length == 0L) mismatchMark.delete() // restarting from zero: the old verdict no longer applies
         file.setLength(length)
         file.seek(length)
         pending = 1
@@ -80,12 +83,19 @@ internal class PartialTransferFileStore private constructor(
         pending = 0
     }
 
+    override fun crcMismatch(): Boolean = mismatchMark.isFile
+
+    override fun setCrcMismatch(mismatch: Boolean) {
+        if (mismatch) mismatchMark.writeText("1") else mismatchMark.delete()
+    }
+
     override fun close() = file.close()
 
     override fun delete() {
         file.close()
         data.delete()
         checkpoint.delete()
+        mismatchMark.delete()
     }
 
     companion object {
@@ -93,6 +103,7 @@ internal class PartialTransferFileStore private constructor(
         private const val DEFAULT_CHECKPOINT_BYTES = 256 * 1024
         private const val DATA_SUFFIX = ".partial"
         private const val CHECKPOINT_SUFFIX = ".offset"
+        private const val CRC_MISMATCH_SUFFIX = ".crcmismatch"
         private const val SALT_FILE = "serial-key.salt"
         private const val SALT_BYTES = 16
 
@@ -141,7 +152,7 @@ internal class PartialTransferFileStore private constructor(
             dir.listFiles().orEmpty().count { file ->
                 val modified = file.lastModified()
                 file.isFile &&
-                    (file.name.endsWith(DATA_SUFFIX) || file.name.endsWith(CHECKPOINT_SUFFIX) || file.name.endsWith("$CHECKPOINT_SUFFIX.tmp")) &&
+                    (file.name.endsWith(DATA_SUFFIX) || file.name.endsWith(CRC_MISMATCH_SUFFIX) || file.name.endsWith(CHECKPOINT_SUFFIX) || file.name.endsWith("$CHECKPOINT_SUFFIX.tmp")) &&
                     modified > 0L && nowEpochMs - modified >= STALE_PARTIAL_TRANSFER_MS &&
                     file.delete()
             }
