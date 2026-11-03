@@ -23,4 +23,24 @@ class ModelErrorTextTest {
     @Test fun other_messages_pass_through() {
         assertEquals("Download failed: HTTP 403", modelErrorText("Download failed: HTTP 403", En))
     }
+
+    @Test fun every_code_has_localized_copy_in_both_languages() {
+        val codes = listOf(
+            LocalModelErrors.StorageFull, LocalModelErrors.DownloadFailed, LocalModelErrors.DownloadError,
+            LocalModelErrors.ChecksumMismatch, LocalModelErrors.Incomplete, LocalModelErrors.NoDownloadUrl,
+            LocalModelErrors.ChecksumNotPinned, LocalModelErrors.HttpsRequired, LocalModelErrors.http(403),
+        )
+        for (code in codes) {
+            val en = modelErrorText(code, En)
+            val pt = modelErrorText(code, PtBr)
+            assertFalse(en == code || pt == code, "$code shown raw")
+            assertFalse(en == pt, "$code has the same text in both languages")
+        }
+        assertEquals(true, modelErrorText(LocalModelErrors.http(403), PtBr).contains("403"))
+    }
+
+    @Test fun a_mixed_case_url_in_an_old_saved_error_is_removed() {
+        val shown = modelErrorText("Failed at HTTPS://Host.Example/m.bin?X-Amz-Signature=1 now", En)
+        assertFalse(shown.contains("Host") || shown.contains("Signature"), shown)
+    }
 }

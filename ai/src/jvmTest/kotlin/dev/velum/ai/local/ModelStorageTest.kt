@@ -98,7 +98,7 @@ class ModelStorageTest {
     @Test fun other_failures_keep_their_message() = runTest {
         val bytes = zip(); val root = newRoot()
         val manager = LocalModelManager(root, HttpClient(MockEngine { respond("", HttpStatusCode.NotFound) }), listOf(spec(bytes)))
-        assertTrue(manager.download(id).toList().last().error!!.contains("404"))
+        assertEquals("http_404", manager.download(id).toList().last().error)
         root.deleteRecursively()
     }
 

@@ -9,6 +9,7 @@ class LibrarySourceIconTest {
     @Test fun imports_and_shares_get_the_import_icon() {
         assertEquals(LibraryListLogic.SourceIcon.Import, LibraryListLogic.sourceIcon("import"))
         assertEquals(LibraryListLogic.SourceIcon.Import, LibraryListLogic.sourceIcon("share"))
+        assertEquals(LibraryListLogic.SourceIcon.Import, LibraryListLogic.sourceIcon("watched"))
     }
 
     @Test fun note_pro_and_phone_keep_their_icons() {
