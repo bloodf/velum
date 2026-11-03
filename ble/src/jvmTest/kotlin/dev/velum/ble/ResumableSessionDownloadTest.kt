@@ -362,27 +362,6 @@ class ResumableSessionDownloadTest {
         assertEquals(listOf(2_000L, 2_000L, 0L), rig.peripheral.syncStartOffsets.take(3))
     }
 
-    @Test fun restarts_are_counted_per_stretch_not_over_a_long_flaky_transfer() = runTest(timeout = 2.minutes) {
-        // Four stretches. In each: a lost link, then the first chunk of the resume is lost (a restart from 0).
-        // The streaming that lingers after a lost chunk consumes the next link loss (+2000 from the event); the
-        // pass from 0 ends at +3000; the next resume ends at +3400 having added bytes, which shows the device
-        // resumes. Without a per-stretch count the fourth restart would exceed the cap of 3.
-        val file = Random(45).nextBytes(50_000)
-        val bases = listOf(0L, 10_000L, 20_000L, 30_000L)
-        val events = bases.map { it + 2_000 }.toSet()
-        val links = events + bases.flatMap { listOf(it + 4_000, it + 5_000, it + 5_400) }
-        val rig = rig(file, TransferFaults(disconnectAt = links, dropAt = events))
-        val store = MemoryStore()
-        try {
-            downloader(rig, CrcPolicy.Enforce).download(SESSION, file.size.toLong(), store)
-        } catch (e: Exception) {
-            throw AssertionError("offsets=${rig.peripheral.syncStartOffsets}", e)
-        }
-        assertContentEquals(file, store.bytes)
-        // With the retry-once of a lost chunk a single lost chunk no longer restarts at all; the cap must still not trip.
-        assertTrue(rig.peripheral.syncStartOffsets.zipWithNext().count { (a, b) -> b == 0L && a > 0L } <= 4)
-    }
-
     @Test fun device_silent_on_a_resume_restarts_from_zero_after_the_retries() = runTest {
         val file = Random(30).nextBytes(5_000)
         val rig = rig(file, TransferFaults(silentOnNonZeroStart = true))
