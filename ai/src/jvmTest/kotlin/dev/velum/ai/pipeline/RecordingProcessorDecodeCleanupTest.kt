@@ -246,7 +246,7 @@ class RecordingProcessorDecodeCleanupTest {
 
     @Test
     fun raw_pcm_that_starts_like_an_mp3_or_adts_sync_word_is_still_pcm() = runBlocking {
-        // FF FB is the sample -1025 and FF F1 is -3841: ordinary audio, never a container.
+        // FF FB is the sample -1025 and FF F1 is -3585: ordinary audio, never a container.
         val starts = listOf(
             byteArrayOf(0x12, 0x34),
             byteArrayOf(0xFF.toByte(), 0xFB.toByte()),

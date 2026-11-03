@@ -694,7 +694,7 @@ internal fun unsupportedAudioMessage(container: String) =
 
 /**
  * Names a well-known audio container from its first bytes, or null. Only signatures that cannot start raw PCM by
- * accident are used. A bare MP3 or ADTS frame sync is NOT one: `FF FB` is the sample -1025 and `FF F1` is -3841, so
+ * accident are used. A bare MP3 or ADTS frame sync is NOT one: `FF FB` is the sample -1025 and `FF F1` is -3585, so
  * header-less MP3 or AAC streams stay as raw PCM here (as before), and only ID3-tagged MP3 is recognised.
  */
 internal fun unsupportedContainer(head: ByteArray): String? {
