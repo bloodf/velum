@@ -34,6 +34,8 @@ import dev.velum.app.platform.isSamePath
 import dev.velum.app.platform.isSupersededOwnAudio
 import dev.velum.app.platform.recordingsDirectoryPath
 import dev.velum.app.platform.streamToFileAtomically
+import dev.velum.app.i18n.recordingTitle
+import dev.velum.app.i18n.resolveLanguageTag
 import dev.velum.app.platform.systemLanguageTag
 import dev.velum.app.ui.DeviceViewModel
 import dev.velum.app.ui.DownloadWipeResult
@@ -129,11 +131,7 @@ class AppContainer(
         persistDownloadedSession = { session -> persistDownloadedSession(session) },
         librarySessionIds = { ids, serial -> repository.librarySessionIds(ids, serial) },
         localeTag = {
-            when (settingsRepository.preferences.value.appLanguage) {
-                "en" -> "en"
-                "pt-BR" -> "pt-BR"
-                else -> systemLanguageTag()
-            }
+            resolveLanguageTag(settingsRepository.preferences.value.appLanguage, systemLanguageTag())
         },
     )
     val integrationAuth = IntegrationAuthStore(secureStore, integrationConfig)
@@ -417,9 +415,6 @@ class AppContainer(
 
 
     private fun formatRecordingTitle(epochSeconds: Long): String {
-        val locale = settingsRepository.preferences.value.appLanguage
-            .takeIf { it != "system" }
-            ?: "pt-BR"
-        return VelumDateTime.formatFriendlyTitle(epochSeconds, locale)
+        return recordingTitle(epochSeconds, settingsRepository.preferences.value.appLanguage, systemLanguageTag())
     }
 }

@@ -327,6 +327,21 @@ class RecordingProcessorDecodeCleanupTest {
     }
 
     @Test
+    fun cancelled_job_leaves_the_queued_status_a_replacing_enqueue_wrote() = runBlocking {
+        val bytes = wav(ByteArray(64_000))
+        val entered = CompletableDeferred<Unit>()
+        val h = Harness({ entered.complete(Unit); awaitCancellation() })
+        val src = tempAudio(".wav", bytes)
+        h.insert("rec-324", src)
+        val job = launch(Dispatchers.Default) { h.processor.process("rec-324", templateId = "velum.meeting", apiModelOverride = API).toList() }
+        withTimeout(30_000) { entered.await() }
+        // AutoFlow's runner marks the row queued and enqueues a replacement (REPLACE) that cancels this job.
+        h.repo.updateStatus("rec-324", "queued")
+        job.cancelAndJoin()
+        assertEquals("queued", h.repo.getRecording("rec-324")!!.status, "the cancelled job overwrote the replacement's status")
+    }
+
+    @Test
     fun full_disk_reports_insufficient_storage_and_keeps_source() = runBlocking {
         val bytes = ByteArray(1024) { 1 }
         val full = object : dev.velum.ai.audio.OpusDecoder {
