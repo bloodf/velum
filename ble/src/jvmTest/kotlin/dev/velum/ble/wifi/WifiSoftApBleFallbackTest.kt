@@ -122,7 +122,7 @@ class WifiSoftApBleFallbackTest {
     ): ByteArray {
         val out = ByteArrayOutputStream()
         @Suppress("UNCHECKED_CAST")
-        val frames = s.server.incomingEncryptedFrames() as SharedFlow<ByteArray>
+        val frames = s.incomingEncryptedFrames() as SharedFlow<ByteArray>
         frames.onSubscription { subscribed.complete(Unit) }
             .transformWhile<ByteArray, Unit> { sealed ->
                 if (out.size() == 0) delay(consumerStallMs)
@@ -271,7 +271,7 @@ class WifiSoftApBleFallbackTest {
             assemble = { s ->
                 val out = ByteArrayOutputStream()
                 @Suppress("UNCHECKED_CAST")
-                (s.server.incomingEncryptedFrames() as SharedFlow<ByteArray>)
+                (s.incomingEncryptedFrames() as SharedFlow<ByteArray>)
                     .onSubscription { subscribed.complete(Unit) }
                     .transformWhile<ByteArray, Unit> { sealed ->
                         if (out.size() == 0) {
