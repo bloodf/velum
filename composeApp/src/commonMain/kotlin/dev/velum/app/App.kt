@@ -1,5 +1,10 @@
 package dev.velum.app
 
+import dev.velum.app.ui.settings.ModelFailureNotifier
+import dev.velum.app.ui.settings.modelFailureNotice
+import dev.velum.ai.local.newlyFailed
+import dev.velum.ai.local.LocalModelStatus
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -194,6 +199,12 @@ private fun VelumRoot(container: AppContainer) {
         }
     }
     ModelDownloadNotification(container)
+    ModelFailureNotifier(
+        states = container.localModelManager.states,
+        snackbar = snackbar,
+        currentRoute = { navController.currentDestination?.route },
+        onOpenModelManager = { navController.navigate(Routes.MODEL_MANAGER) { launchSingleTop = true } },
+    )
     val activeMicOwner by container.micRecordings.owner.collectAsState()
     val activeMicId = activeMicOwner?.recordingId
     LaunchedEffect(container) {
