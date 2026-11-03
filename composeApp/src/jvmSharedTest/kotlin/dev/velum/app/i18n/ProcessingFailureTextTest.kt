@@ -83,6 +83,44 @@ class ProcessingFailureTextTest {
         assertEquals("Processing failed (cannot read …).", windows)
     }
 
+    @Test fun unknown_failure_detail_drops_every_identifying_value() {
+        val probes = listOf(
+            "AABBCCDDEEFF", // MAC without separators
+            "0123456789abcdef0123", // long hex
+            "123e4567-e89b-12d3-a456-426614174000", // UUID
+            "2001:db8::8a2e:370:7334", "fe80::1", "::1", "::ffff:192.0.2.1", // IPv6
+            "192.0.2.1", // IPv4
+            "PLAUD-8812345", "PLAUD8812345", "881FAKE1", "8812345", // serials
+            "https://api.example.test/v1/chat?key=x", "ftp://files.example.test", // URLs
+        )
+        for (probe in probes) {
+            assertEquals("Processing failed (failed for … now).", processingFailureText("failed for $probe now", En), probe)
+        }
+    }
+
+    @Test fun a_url_leaves_no_scheme_fragment() {
+        assertEquals("Processing failed (… failed: HTTP 503).", processingFailureText("https://api.example.test/v1/chat failed: HTTP 503", En))
+    }
+
+    @Test fun a_quoted_host_is_cut_and_the_words_stay() {
+        assertEquals(
+            "Processing failed (Unable to resolve host …: No address).",
+            processingFailureText("""Unable to resolve host "api.example.test": No address.""", En),
+        )
+    }
+
+    @Test fun ordinary_diagnostics_stay_readable() {
+        for (kept in listOf("HTTP 503", "got 8000 Hz", "timeout after 30000 ms", "error: code 12")) {
+            assertEquals("Processing failed ($kept).", processingFailureText(kept, En), kept)
+        }
+    }
+
+    @Test fun a_detail_with_nothing_left_adds_no_second_line() {
+        for (raw in listOf("", "   ", ".", "/data/user/0/app/x.ogg", "https://api.example.test")) {
+            assertEquals(null, processingFailureText(raw, En), "'$raw'")
+        }
+    }
+
     @Test fun unknown_failure_detail_is_length_capped() {
         val shown = processingFailureText("x".repeat(500), En).orEmpty()
         assertTrue(shown.length <= "Processing failed ().".length + 120, shown)
