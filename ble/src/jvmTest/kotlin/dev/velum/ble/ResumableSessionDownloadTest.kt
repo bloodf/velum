@@ -320,6 +320,27 @@ class ResumableSessionDownloadTest {
         assertEquals(1, reads)
     }
 
+    @Test fun a_device_that_cannot_resume_on_a_flaky_link_stops_after_a_few_restarts() = runTest {
+        // Each pass from 0 makes progress then loses the link; the resume is refused, so the partial is thrown
+        // away and the new bytes reset the no-progress count. Without a restart cap this never ends (#212).
+        val file = Random(31).nextBytes(5_000)
+        val rig = rig(file, TransferFaults(refuseNonZeroStart = true, disconnectEveryPassAt = 1_000))
+        val base = MemoryStore()
+        var wipes = 0
+        val store = object : PartialTransferStore by base {
+            override fun truncate(length: Long) {
+                if (length == 0L && base.length() > 0 && ++wipes > 20) throw AssertionError("restarted $wipes times, no cap")
+                base.truncate(length)
+            }
+        }
+        val e = assertFailsWith<TransferIntegrityException> {
+            downloader(rig, CrcPolicy.Enforce).download(SESSION, file.size.toLong(), store)
+        }
+        assertTrue(e.message.orEmpty().contains("restart"), e.message)
+        assertTrue(wipes <= 3, "wipes=$wipes")
+        assertTrue(base.length() > 0, "the partial is kept when giving up")
+    }
+
     @Test fun device_silent_on_a_resume_restarts_from_zero_after_the_retries() = runTest {
         val file = Random(30).nextBytes(5_000)
         val rig = rig(file, TransferFaults(silentOnNonZeroStart = true))
