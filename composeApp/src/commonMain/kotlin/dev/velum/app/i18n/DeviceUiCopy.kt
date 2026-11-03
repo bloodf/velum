@@ -109,6 +109,11 @@ object DeviceUiCopy {
         if (isPt(localeTag)) "Falha no download. Verifique a conexão e tente de novo."
         else "Download failed. Check the connection and try again."
 
+    /** The partial download was dropped after repeated read errors; the next attempt transfers everything again. */
+    fun savedDownloadUnreadable(localeTag: String): String =
+        if (isPt(localeTag)) "Não foi possível ler os dados já baixados. O próximo download recomeça do início."
+        else "The saved download data could not be read. The next download starts over."
+
     fun downloadCancelled(localeTag: String): String =
         if (isPt(localeTag)) "Download cancelado."
         else "Download cancelled."
