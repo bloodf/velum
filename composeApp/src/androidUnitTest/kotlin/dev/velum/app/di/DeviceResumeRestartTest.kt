@@ -32,6 +32,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
@@ -554,6 +555,88 @@ class DeviceResumeRestartTest {
             assertContentEquals(plaintext, assertNotNull(saved))
             assertEquals(listOf(0L), fake.syncStartOffsets, "nothing is transferred again")
         } finally { tearDown() }
+    }
+
+    private fun readFailCount(): Int? =
+        partials.listFiles()!!.firstOrNull { it.name.endsWith(".readfail") }?.readText()?.trim()?.toIntOrNull()
+
+    /** Also waits for the attempt to end: downloadSession ignores a call while one is still running. */
+    private fun awaitReadFailCount(vm: DeviceViewModel, n: Int) = runBlocking {
+        withTimeout(20_000) {
+            while (readFailCount() != n || vm.sessionUi.value.downloadingSessionId != null) delay(5)
+        }
+    }
+
+    @Test fun a_read_error_that_repeats_discards_the_partial_and_the_next_download_starts_fresh() {
+        try {
+            var failing = true
+            val fake = peripheral()
+            val vm = run(fake, open = { id, sn ->
+                val store = PartialTransferFileStore.open(partials, id, sn)
+                object : PartialTransfer by store {
+                    override fun read(offset: Long, length: Int): ByteArray {
+                        if (failing) throw IOException("synthetic permanent read failure")
+                        return store.read(offset, length)
+                    }
+                }
+            })
+            assertEquals(DeviceUiCopy.downloadFailed("en"), vm.sessionUi.value.statusMessage)
+            assertTrue(partials.list()!!.any { it.endsWith(".partial") }, "the first failure keeps the transfer")
+            assertEquals(1, readFailCount(), "and counts it")
+            vm.downloadSession(session)
+            awaitReadFailCount(vm, 2)
+            vm.downloadSession(session) // the third failure in a row
+            runBlocking { withTimeout(20_000) { while (partials.list()!!.any { it.endsWith(".partial") }) delay(5) } }
+            runBlocking { withTimeout(20_000) { while (vm.sessionUi.value.statusMessage != DeviceUiCopy.savedDownloadUnreadable("en")) delay(5) } }
+            // After the status, which is set once the delete has finished: .partial goes first, so it says nothing.
+            assertNull(readFailCount(), "the count goes with the partial")
+            failing = false
+            vm.downloadSession(session)
+            awaitOutcome(vm)
+            assertEquals("rec-synthetic", vm.sessionUi.value.lastDownloadedRecordingId)
+            assertContentEquals(plaintext, assertNotNull(saved))
+            assertEquals(listOf(0L, 0L), fake.syncStartOffsets, "the third failure discarded it, so the file came again")
+        } finally { owner.clear(); Dispatchers.resetMain() }
+    }
+
+    @Test fun a_good_read_resets_the_count_so_scattered_errors_never_discard() {
+        try {
+            var readFails = true
+            var saveFails = false
+            val fake = peripheral()
+            val vm = run(
+                fake,
+                persist = { audio ->
+                    val out = ByteArrayOutputStream()
+                    audio.writeDecryptedAudio {
+                        check(!saveFails) { "synthetic full disk" }
+                        out.write(it)
+                    }
+                    saved = out.toByteArray()
+                    "rec-synthetic"
+                },
+                open = { id, sn ->
+                    val store = PartialTransferFileStore.open(partials, id, sn)
+                    object : PartialTransfer by store {
+                        override fun read(offset: Long, length: Int): ByteArray {
+                            if (readFails) throw IOException("synthetic read failure")
+                            return store.read(offset, length)
+                        }
+                    }
+                },
+            )
+            assertEquals(1, readFailCount())
+            readFails = false; saveFails = true // this attempt reads fine and fails to save
+            vm.downloadSession(session)
+            runBlocking { withTimeout(20_000) { while (readFailCount() != null || vm.sessionUi.value.downloadingSessionId != null) delay(5) } }
+            assertTrue(partials.list()!!.any { it.endsWith(".partial") }, "still kept")
+            readFails = true; saveFails = false
+            vm.downloadSession(session)
+            awaitReadFailCount(vm, 1) // counting restarted at 1, not 2
+            vm.downloadSession(session)
+            awaitReadFailCount(vm, 2)
+            assertTrue(partials.list()!!.any { it.endsWith(".partial") }, "two scattered errors never reached the limit")
+        } finally { owner.clear(); Dispatchers.resetMain() }
     }
 
     @Test fun cancel_during_decrypt_keeps_the_partial_and_a_retry_needs_no_new_transfer() {

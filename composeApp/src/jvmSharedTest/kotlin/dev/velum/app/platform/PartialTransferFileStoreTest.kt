@@ -70,6 +70,20 @@ class PartialTransferFileStoreTest {
         assertTrue(root.listFiles()!!.none { it.name.endsWith(".crcmismatch") })
     }
 
+    @Test fun read_failure_count_survives_a_reopen_and_is_dropped_with_restarted_data() {
+        val store = open()
+        store.write(ByteArray(50))
+        store.setReadFailures(1)
+        store.length()
+        store.close()
+        assertEquals(1, open().also { it.close() }.readFailures())
+        partialFiles().single { it.name.endsWith(".offset") }.writeText("not a number")
+        val restarted = open()
+        assertEquals(0, restarted.readFailures(), "bytes restarting from zero have no read history")
+        restarted.close()
+        assertTrue(root.listFiles()!!.none { it.name.endsWith(".readfail") })
+    }
+
     @Test fun truncate_and_delete() {
         val store = open()
         store.write(ByteArray(100))

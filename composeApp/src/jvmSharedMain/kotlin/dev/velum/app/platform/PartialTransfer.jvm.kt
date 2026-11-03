@@ -30,6 +30,7 @@ internal class PartialTransferFileStore private constructor(
     private val checkpointBytes: Int,
 ) : PartialTransfer {
     private val mismatchMark = File(data.path.removeSuffix(DATA_SUFFIX) + CRC_MISMATCH_SUFFIX)
+    private val readFailMark = File(data.path.removeSuffix(DATA_SUFFIX) + READ_FAIL_SUFFIX)
 
     private val file = RandomAccessFile(data, "rw")
     private var pending = 0
@@ -37,7 +38,7 @@ internal class PartialTransferFileStore private constructor(
     init {
         val durable = checkpoint.takeIf { it.isFile }?.readText()?.trim()?.toLongOrNull()
         val length = durable?.takeIf { it in 0..file.length() } ?: 0L
-        if (length == 0L) mismatchMark.delete() // data restarts from zero: an old verdict would label fresh bytes
+        if (length == 0L) { mismatchMark.delete(); readFailMark.delete() } // data restarts from zero: old verdicts no longer apply
         file.setLength(length)
         file.seek(length)
     }
@@ -55,7 +56,7 @@ internal class PartialTransferFileStore private constructor(
     }
 
     override fun truncate(length: Long) {
-        if (length == 0L) mismatchMark.delete() // restarting from zero: the old verdict no longer applies
+        if (length == 0L) { mismatchMark.delete(); readFailMark.delete() } // restarting from zero: old verdicts no longer apply
         file.setLength(length)
         file.seek(length)
         pending = 1
@@ -84,6 +85,12 @@ internal class PartialTransferFileStore private constructor(
         pending = 0
     }
 
+    override fun readFailures(): Int = readFailMark.takeIf { it.isFile }?.readText()?.trim()?.toIntOrNull()?.coerceAtLeast(0) ?: 0
+
+    override fun setReadFailures(count: Int) {
+        if (count > 0) readFailMark.writeText(count.toString()) else readFailMark.delete()
+    }
+
     override fun crcMismatch(): Boolean = mismatchMark.isFile
 
     override fun setCrcMismatch(mismatch: Boolean) {
@@ -97,6 +104,7 @@ internal class PartialTransferFileStore private constructor(
         data.delete()
         checkpoint.delete()
         mismatchMark.delete()
+        readFailMark.delete()
     }
 
     companion object {
@@ -105,6 +113,7 @@ internal class PartialTransferFileStore private constructor(
         private const val DATA_SUFFIX = ".partial"
         private const val CHECKPOINT_SUFFIX = ".offset"
         private const val CRC_MISMATCH_SUFFIX = ".crcmismatch"
+        private const val READ_FAIL_SUFFIX = ".readfail"
         private const val SALT_FILE = "serial-key.salt"
         private const val SALT_BYTES = 16
 
@@ -153,7 +162,7 @@ internal class PartialTransferFileStore private constructor(
             dir.listFiles().orEmpty().count { file ->
                 val modified = file.lastModified()
                 file.isFile &&
-                    (file.name.endsWith(DATA_SUFFIX) || file.name.endsWith(CRC_MISMATCH_SUFFIX) || file.name.endsWith(CHECKPOINT_SUFFIX) || file.name.endsWith("$CHECKPOINT_SUFFIX.tmp")) &&
+                    (file.name.endsWith(DATA_SUFFIX) || file.name.endsWith(CRC_MISMATCH_SUFFIX) || file.name.endsWith(READ_FAIL_SUFFIX) || file.name.endsWith(CHECKPOINT_SUFFIX) || file.name.endsWith("$CHECKPOINT_SUFFIX.tmp")) &&
                     modified > 0L && nowEpochMs - modified >= STALE_PARTIAL_TRANSFER_MS &&
                     file.delete()
             }
