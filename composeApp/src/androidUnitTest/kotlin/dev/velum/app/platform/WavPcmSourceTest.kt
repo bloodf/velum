@@ -59,9 +59,9 @@ class WavPcmSourceTest {
         val expected = SkipSilenceScanner.findSkipPastSilence(pcm, rate, 1_000L)
         assertEquals(expected, got)
         assertEquals(120_000L, got!!.seekToMs)
-        assertTrue(source.largestRead <= WavPcmSource.WINDOW_FRAMES * 2, "one read was ${source.largestRead} bytes")
+        assertTrue(source.largestRead <= WavPcmSource.WINDOW_BYTES, "one read was ${source.largestRead} bytes")
         // It scanned only the silence it needed, not the audible tail.
-        assertTrue(source.bytesRead <= (silentFrames + WavPcmSource.WINDOW_FRAMES) * 2, "read ${source.bytesRead}")
+        assertTrue(source.bytesRead <= silentFrames * 2 + WavPcmSource.WINDOW_BYTES, "read ${source.bytesRead}")
     }
 
     @Test fun stereo_is_averaged_per_window_and_short_silence_is_not_skipped() {
@@ -99,5 +99,68 @@ class WavPcmSourceTest {
         assertTrue(!src.contains("pcm16LeMono"), "no whole-file PCM field")
         val prepare = src.substringAfter("override suspend fun prepare").substringBefore("override fun play()")
         assertTrue(!prepare.contains("WavPcmSource"), "prepare must not even open the WAV source")
+    }
+
+    private fun expected(f: File, rate: Int, ch: Int, from: Long): SkipSilenceScanner.Result? {
+        // The whole-buffer answer: average the channels, then scan.
+        val raw = f.readBytes().copyOfRange(44, f.length().toInt())
+        val frames = raw.size / (2 * ch)
+        val bb = ByteBuffer.wrap(raw).order(ByteOrder.LITTLE_ENDIAN)
+        val mono = ByteBuffer.allocate(frames * 2).order(ByteOrder.LITTLE_ENDIAN)
+        repeat(frames) { var sum = 0; repeat(ch) { sum += bb.short.toInt() }; mono.putShort((sum / ch).toShort()) }
+        return SkipSilenceScanner.findSkipPastSilence(mono.array(), rate, from)
+    }
+
+    @Test fun stereo_longer_than_one_window_and_a_sample_exactly_at_a_window_boundary() {
+        val rate = 48_000
+        val window = WavPcmSource.WINDOW_BYTES / 4 // stereo frames per window
+        for (audibleAt in listOf(window.toLong(), window - 1L, window + 1L, 3L * window)) {
+            val f = wav("b$audibleAt.wav", rate, 2, 5L * window) { if (it < audibleAt) 0 else 3000 }
+            assertEquals(expected(f, rate, 2, 0L), WavPcmSource.open(f)!!.findSkipPastSilence(0L), "audible at $audibleAt")
+        }
+    }
+
+    @Test fun data_size_larger_than_the_file_and_odd_length_data_are_clamped() {
+        val f = wav("big.wav", 8_000, 1, 8_000L * 3) { if (it < 16_000L) 0 else 3000 }
+        RandomAccessFile(f, "rw").use { it.seek(40); it.write(byteArrayOf(0x7F, 0x7F, 0x7F, 0x7F)) } // claims ~2 GB
+        assertEquals(2_000L, WavPcmSource.open(f)!!.findSkipPastSilence(0L)!!.seekToMs)
+        val odd = wav("odd.wav", 8_000, 1, 8_000L * 3) { if (it < 16_000L) 0 else 3000 }
+        RandomAccessFile(odd, "rw").use { it.setLength(odd.length() - 1) } // an odd number of data bytes
+        assertEquals(2_000L, WavPcmSource.open(odd)!!.findSkipPastSilence(0L)!!.seekToMs)
+    }
+
+    private fun headerWith(format: Int, bits: Int, channels: Int): File {
+        val f = wav("hdr-$format-$bits-$channels.wav", 16_000, 1, 1_000) { 0 }
+        RandomAccessFile(f, "rw").use { raf ->
+            val b = ByteBuffer.allocate(16).order(ByteOrder.LITTLE_ENDIAN)
+            b.putShort(format.toShort()).putShort(channels.toShort()).putInt(16_000).putInt(16_000 * 2).putShort(2).putShort(bits.toShort())
+            raf.seek(20); raf.write(b.array())
+        }
+        return f
+    }
+
+    @Test fun real_8_bit_24_bit_float_and_absurd_channel_headers_have_no_source() {
+        assertNull(WavPcmSource.open(headerWith(1, 8, 1)))
+        assertNull(WavPcmSource.open(headerWith(1, 24, 1)))
+        assertNull(WavPcmSource.open(headerWith(3, 16, 1)), "IEEE float / non-PCM")
+        assertNull(WavPcmSource.open(headerWith(1, 16, 65_535)), "channel count overflowing a window")
+        assertNull(WavPcmSource.open(headerWith(1, 16, 0)))
+    }
+
+    @Test fun an_unreadable_data_chunk_means_no_skip_not_a_crash() {
+        val f = wav("trunc.wav", 16_000, 1, 16_000L * 10) { 0 }
+        val source = WavPcmSource.open(f)!!
+        f.delete() // the file vanishes under the open source
+        assertNull(source.findSkipPastSilence(0L))
+    }
+
+    @Test fun the_player_cancels_stale_scans_catches_failures_and_rechecks_before_seeking() {
+        val src = androidSource("AudioPlayer.android.kt")
+        val prepare = src.substringAfter("override suspend fun prepare").substringBefore("override fun play()")
+        assertTrue(prepare.contains("skipScan?.cancel()"), "prepare cancels a scan of the previous file")
+        val scan = src.substringAfter("private fun maybeSkipSilence")
+        assertTrue(scan.contains("runCatching"), "an IO failure must not escape the scope")
+        assertTrue(scan.contains("wavFile !== file"), "re-check the file before using the result")
+        assertTrue(scan.contains("now >= pos - 500L"), "a late result must not undo a user seek")
     }
 }

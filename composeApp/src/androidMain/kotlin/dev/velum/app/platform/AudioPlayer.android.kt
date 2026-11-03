@@ -42,7 +42,7 @@ private class AndroidAudioPlayer : AudioPlayer {
     private var pollJob: Job? = null
     /** The WAV being played, if it is one; its PCM is only ever read in windows, and only for skip-silence (#333). */
     private var wavFile: File? = null
-    private var wavSource: WavPcmSource? = null
+    @Volatile private var wavSource: WavPcmSource? = null
     private var skipScan: Job? = null
     private var speed = PlaybackSpeed.S100
 
@@ -63,6 +63,8 @@ private class AndroidAudioPlayer : AudioPlayer {
         _isPlaying.value = false
         _positionMs.value = 0L
         _durationMs.value = 0L
+        skipScan?.cancel() // a scan of the previous file must not seek this one
+        skipScan = null
         wavFile = null
         wavSource = null
         if (path.isBlank()) {
@@ -207,12 +209,22 @@ private class AndroidAudioPlayer : AudioPlayer {
         val file = wavFile ?: return
         val pos = _positionMs.value
         skipScan = scope.launch {
-            // Disk reads and the scan stay off the main thread; the seek comes back on it.
-            val skip = withContext(Dispatchers.IO) {
-                val source = wavSource ?: WavPcmSource.open(file)?.also { wavSource = it }
-                source?.findSkipPastSilence(pos)
+            // Disk reads and the scan stay off the main thread; the seek comes back on it. A failure only means
+            // no skipping: it must not escape this scope (the old loader caught Throwable too).
+            val found = withContext(Dispatchers.IO) {
+                runCatching {
+                    val source = wavSource?.takeIf { wavFile === file } ?: WavPcmSource.open(file)
+                    source?.let { it to it.findSkipPastSilence(pos) }
+                }.getOrNull()
             } ?: return@launch
-            if (skip.seekToMs > pos + 50L && _isPlaying.value) seekTo(skip.seekToMs)
+            val (source, skip) = found
+            if (wavFile !== file) return@launch // another file was prepared meanwhile
+            wavSource = source
+            val target = skip?.seekToMs ?: return@launch
+            val now = _positionMs.value
+            // A late result must not undo a user seek: the position still has to lie between where the scan
+            // started (give or take a poll) and where it wants to go.
+            if (target > pos + 50L && _isPlaying.value && now >= pos - 500L && now <= target) seekTo(target)
         }
     }
 

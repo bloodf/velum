@@ -27,6 +27,7 @@ internal class WavPcmSource private constructor(
 
     private val frameBytes = 2 * channels
     private val totalFrames = dataSize / frameBytes
+    private val windowFrames = (WINDOW_BYTES / frameBytes).coerceAtLeast(1)
 
     /** Mono PCM16 LE of [count] frames from [startFrame], averaged across channels like the old code. */
     private fun readMono(startFrame: Long, count: Int): ByteArray {
@@ -61,13 +62,17 @@ internal class WavPcmSource private constructor(
         val fromSample = ((fromMs * sampleRateHz) / 1000L).coerceIn(0L, totalFrames)
         if (fromSample >= totalFrames) return null
         var index = fromSample
-        while (index < totalFrames) {
-            val n = minOf(WINDOW_FRAMES.toLong(), totalFrames - index).toInt()
-            val mono = readMono(index, n)
-            var i = 0
-            while (i < n && SkipSilenceScanner.isSilent(mono, i, energyThreshold)) i++
-            index += i
-            if (i < n) break
+        try {
+            while (index < totalFrames) {
+                val n = minOf(windowFrames.toLong(), totalFrames - index).toInt()
+                val mono = readMono(index, n)
+                var i = 0
+                while (i < n && SkipSilenceScanner.isSilent(mono, i, energyThreshold)) i++
+                index += i
+                if (i < n) break
+            }
+        } catch (_: java.io.IOException) {
+            return null // an unreadable file just means no skipping
         }
         val silentSamples = index - fromSample
         if (silentSamples <= 0) return null
@@ -77,8 +82,11 @@ internal class WavPcmSource private constructor(
     }
 
     companion object {
-        /** 32,768 frames: at most 128 KiB per read even for 16-bit stereo. */
-        const val WINDOW_FRAMES = 32_768
+        /** Bytes read per window, whatever the channel count. */
+        const val WINDOW_BYTES = 128 * 1024
+
+        /** More channels than any real file has; a corrupt header must not size a buffer. */
+        const val MAX_CHANNELS = 32
 
         /** Null unless the file is a PCM16 WAV with a data chunk (the old loader's conditions). Reads the header only. */
         fun open(file: File): WavPcmSource? = try {
@@ -107,7 +115,7 @@ internal class WavPcmSource private constructor(
                         sampleRate = bb.int
                         bb.position(14)
                         val bits = bb.short.toInt() and 0xFFFF
-                        if (audioFormat != 1 || bits != 16 || channels < 1) return null
+                        if (audioFormat != 1 || bits != 16 || channels !in 1..MAX_CHANNELS) return null
                     } else if (id == "data") {
                         dataOffset = offset + 8
                         dataSize = minOf(size, length - dataOffset)
