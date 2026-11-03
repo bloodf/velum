@@ -5,6 +5,7 @@ import android.app.NotificationManager
 import android.content.Context
 import android.content.pm.ServiceInfo
 import android.os.Build
+import android.util.Log
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import androidx.work.BackoffPolicy
@@ -261,7 +262,7 @@ class RecordingProcessWorker(
             templateId: String? = null,
             retranscribe: Boolean = true,
             apiModelOverride: ApiModelOverride? = null,
-        ) {
+        ): Boolean {
             val data = Data.Builder()
                 .putString(KEY_RECORDING_ID, recordingId)
                 .putBoolean(KEY_RETRANSCRIBE, retranscribe)
@@ -286,7 +287,7 @@ class RecordingProcessWorker(
                 .setConstraints(constraints)
                 .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
                 .addTag("recording:$recordingId")
-                .addTag(recordingWorkParamsTag(templateId, retranscribe, apiModelOverride))
+                .addTag(recordingWorkParamsTag(templateId, retranscribe, apiModelOverride, requiresNetworkForApiModes()))
                 .build()
             // KEEP drops a later AutoFlow enqueue (template/model) after download/import
             // enqueued with nulls. REPLACE upgrades pending work when AutoFlow params arrive;
@@ -294,9 +295,12 @@ class RecordingProcessWorker(
             // An enqueue for the same template, model and retranscribe flag as the work already queued or running
             // keeps it (#324): REPLACE would cancel a job mid-ASR and run ASR twice.
             val manager = WorkManager.getInstance(context)
-            val policy = if (!recordingWorkHasAutoFlowParams(templateId, apiModelOverride) ||
-                activeWorkHasParams(manager, recordingId, recordingWorkParamsTag(templateId, retranscribe, apiModelOverride))
-            ) {
+            val sameParams = activeWorkHasParams(
+                manager,
+                recordingId,
+                recordingWorkParamsTag(templateId, retranscribe, apiModelOverride, requiresNetworkForApiModes()),
+            )
+            val policy = if (!recordingWorkHasAutoFlowParams(templateId, apiModelOverride) || sameParams) {
                 ExistingWorkPolicy.KEEP
             } else {
                 ExistingWorkPolicy.REPLACE
@@ -306,7 +310,15 @@ class RecordingProcessWorker(
                 policy,
                 request,
             )
+            // Reports "started or replaced"; KEEP over queued/running work did neither.
+            return !(policy == ExistingWorkPolicy.KEEP && hasActiveWork(manager, recordingId, excluding = request.id))
         }
+
+        private fun hasActiveWork(manager: WorkManager, recordingId: String, excluding: java.util.UUID): Boolean =
+            runCatching {
+                manager.getWorkInfosForUniqueWork(UNIQUE_PREFIX + recordingId).get(2, TimeUnit.SECONDS)
+                    .any { !it.state.isFinished && it.id != excluding }
+            }.getOrDefault(false)
 
         /**
          * True when the unique work for [recordingId] is queued or running and carries [paramsTag]. The params live in
@@ -314,12 +326,18 @@ class RecordingProcessWorker(
          * failed lookup answers false, which falls back to REPLACE.
          */
         private fun activeWorkHasParams(manager: WorkManager, recordingId: String, paramsTag: String): Boolean {
-            if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) return false
+            if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
+                Log.w(TAG, "params lookup skipped on the main thread; same-params enqueue falls back to REPLACE")
+                return false
+            }
             return runCatching {
                 manager.getWorkInfosForUniqueWork(UNIQUE_PREFIX + recordingId).get(2, TimeUnit.SECONDS).any { info ->
                     !info.state.isFinished && paramsTag in info.tags
                 }
-            }.getOrDefault(false)
+            }.getOrElse {
+                Log.w(TAG, "params lookup failed; same-params enqueue falls back to REPLACE", it)
+                false
+            }
         }
 
         /** Y18: API transcription/summary/diarization needs connectivity. */
@@ -345,8 +363,17 @@ class RecordingProcessWorker(
 }
 
 fun createWorkManagerRecordingJobScheduler(context: Context): RecordingJobScheduler =
-    RecordingJobScheduler { recordingId, templateId, retranscribe, apiModelOverride ->
-        RecordingProcessWorker.enqueue(
+    object : RecordingJobScheduler {
+        override fun enqueue(recordingId: String, templateId: String?, retranscribe: Boolean, apiModelOverride: ApiModelOverride?) {
+            enqueueReportingStart(recordingId, templateId, retranscribe, apiModelOverride)
+        }
+
+        override fun enqueueReportingStart(
+            recordingId: String,
+            templateId: String?,
+            retranscribe: Boolean,
+            apiModelOverride: ApiModelOverride?,
+        ): Boolean = RecordingProcessWorker.enqueue(
             context = context.applicationContext,
             recordingId = recordingId,
             templateId = templateId,

@@ -33,27 +33,67 @@ class RecordingWorkKeepTest {
     private fun infos(id: String): List<WorkInfo> =
         WorkManager.getInstance(context).getWorkInfosForUniqueWork(RecordingProcessWorker.UNIQUE_PREFIX + id).get()
 
-    private fun enqueueOffMain(id: String, template: String?, override: ApiModelOverride? = null) {
+    private fun enqueueOffMain(
+        id: String,
+        template: String?,
+        override: ApiModelOverride? = null,
+        retranscribe: Boolean = true,
+    ): Boolean {
         // The params lookup is skipped on the main thread, which is not how the runner or MicFinalize call it.
-        val t = Thread { RecordingProcessWorker.enqueue(context, id, template, true, override) }
+        var started = false
+        val t = Thread { started = RecordingProcessWorker.enqueue(context, id, template, retranscribe, override) }
         t.start(); t.join()
+        return started
     }
 
     @Test fun sameTemplateAndModelKeepsTheQueuedWork() {
-        enqueueOffMain("rec-keep", "velum.meeting")
+        assertEquals(true, enqueueOffMain("rec-keep", "velum.meeting"), "a first enqueue starts work")
         val first = infos("rec-keep").single().id
-        enqueueOffMain("rec-keep", "velum.meeting")
+        assertEquals(false, enqueueOffMain("rec-keep", "velum.meeting"), "the second one reports it kept the work")
         val after = infos("rec-keep")
         assertEquals(1, after.size, "no second work item: $after")
         assertEquals(first, after.single().id, "the first work item survives")
     }
 
+    @Test fun aBlankTemplateAndTheDefaultMeetingTemplateAreTheSameWork() {
+        enqueueOffMain("rec-default", null)
+        enqueueOffMain("rec-default", "tpl-meeting") // legacy id of the default meeting template
+        assertEquals(1, infos("rec-default").size)
+    }
+
+    @Test fun aLaterIdenticalEnqueueAfterTheWorkFinishedStartsNewWork() {
+        enqueueOffMain("rec-again", "velum.meeting")
+        val first = infos("rec-again").single().id
+        WorkManager.getInstance(context).cancelWorkById(first).result.get()
+        assertEquals(true, enqueueOffMain("rec-again", "velum.meeting"), "finished work is not kept")
+        val fresh = infos("rec-again").filter { it.id != first }
+        assertEquals(1, fresh.size)
+        assertEquals(WorkInfo.State.ENQUEUED, fresh.single().state)
+    }
+
+    @Test fun differentRetranscribeFlagReplacesTheQueuedWork() {
+        enqueueOffMain("rec-flag", "velum.meeting", retranscribe = true)
+        val first = infos("rec-flag").single().id
+        assertEquals(true, enqueueOffMain("rec-flag", "velum.meeting", retranscribe = false))
+        assertEquals(false, infos("rec-flag").any { it.id == first && it.state != WorkInfo.State.CANCELLED })
+        assertEquals(WorkInfo.State.ENQUEUED, infos("rec-flag").single { it.id != first }.state)
+    }
+
+    @Test fun differentProfileReplacesTheQueuedWork() {
+        enqueueOffMain("rec-profile", "velum.meeting", ApiModelOverride(profileId = "a"))
+        val first = infos("rec-profile").single().id
+        assertEquals(true, enqueueOffMain("rec-profile", "velum.meeting", ApiModelOverride(profileId = "b")))
+        assertEquals(false, infos("rec-profile").any { it.id == first && it.state != WorkInfo.State.CANCELLED })
+        assertEquals(WorkInfo.State.ENQUEUED, infos("rec-profile").single { it.id != first }.state)
+    }
+
     @Test fun differentTemplateReplacesTheQueuedWork() {
         enqueueOffMain("rec-replace", "velum.meeting")
         val first = infos("rec-replace").single().id
-        enqueueOffMain("rec-replace", "velum.summary")
+        assertEquals(true, enqueueOffMain("rec-replace", "velum.summary"))
         val after = infos("rec-replace")
         assertEquals(false, after.any { it.id == first && it.state != WorkInfo.State.CANCELLED }, "the old work was replaced: $after")
+        assertEquals(WorkInfo.State.ENQUEUED, after.single { it.id != first }.state, "the replacement is queued")
     }
 
     @Test fun differentModelReplacesTheQueuedWork() {

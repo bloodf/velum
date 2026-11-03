@@ -1,6 +1,7 @@
 package dev.velum.ai.pipeline
 
 import dev.velum.core.settings.ApiModelOverride
+import dev.velum.core.templates.BuiltinTemplateCatalog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
@@ -21,11 +22,26 @@ fun interface RecordingJobScheduler {
         retranscribe: Boolean,
         apiModelOverride: ApiModelOverride?,
     )
+
+    /**
+     * Like [enqueue], but reports whether work was started or replaced (true) or the work already queued or running
+     * with the same parameters was kept (false). A caller that moved the row to `queued` for a new job must restore
+     * `generating` when the job was kept, or the row would sit on `queued` while the old job runs (#324).
+     */
+    fun enqueueReportingStart(
+        recordingId: String,
+        templateId: String?,
+        retranscribe: Boolean,
+        apiModelOverride: ApiModelOverride?,
+    ): Boolean {
+        enqueue(recordingId, templateId, retranscribe, apiModelOverride)
+        return true
+    }
 }
 
 /**
- * True when enqueue carries AutoFlow template/model/profile that must not lose to KEEP.
- * WorkManager uses UPDATE for these; null-only downloads keep KEEP.
+ * True when enqueue carries AutoFlow template/model/profile. Such an enqueue replaces queued or running WorkManager
+ * work unless that work already has the same parameters ([recordingWorkParamsMatch]); null-only downloads always KEEP.
  */
 fun recordingWorkHasAutoFlowParams(
     templateId: String?,
@@ -49,18 +65,24 @@ fun recordingWorkParamsMatch(
     overrideB: ApiModelOverride?,
 ): Boolean =
     retranscribeA == retranscribeB &&
-        templateA.orEmpty() == templateB.orEmpty() &&
+        BuiltinTemplateCatalog.resolveId(templateA) == BuiltinTemplateCatalog.resolveId(templateB) &&
         overrideA?.modelId.orEmpty() == overrideB?.modelId.orEmpty() &&
         overrideA?.profileId.orEmpty() == overrideB?.profileId.orEmpty()
 
 /** Stable tag form of the params, readable from a queued WorkManager item's tags. */
-fun recordingWorkParamsTag(templateId: String?, retranscribe: Boolean, apiModelOverride: ApiModelOverride?): String =
-    "velum-params:${templateId.orEmpty()}|${apiModelOverride?.modelId.orEmpty()}|${apiModelOverride?.profileId.orEmpty()}|$retranscribe"
+fun recordingWorkParamsTag(
+    templateId: String?,
+    retranscribe: Boolean,
+    apiModelOverride: ApiModelOverride?,
+    requiresNetwork: Boolean = false,
+): String =
+    "velum-params:${BuiltinTemplateCatalog.resolveId(templateId)}|${apiModelOverride?.modelId.orEmpty()}|" +
+        "${apiModelOverride?.profileId.orEmpty()}|$retranscribe|net=$requiresNetwork"
 
 /**
- * In-process scheduler with per-recording-id dedupe: a new enqueue cancels any still-active
- * job for the same id and waits for it to finish before starting, so AutoFlow can replace a
- * premature null-template launch without overlapping ASR/summary work.
+ * In-process scheduler with per-recording-id dedupe: an enqueue with the same parameters as the still-active job
+ * for that id is dropped (the running job is kept); any other enqueue cancels the active job and waits for it to
+ * finish before starting, so AutoFlow can replace a premature launch without overlapping ASR/summary work.
  */
 fun createCoroutineRecordingJobScheduler(
     processor: RecordingProcessor,
@@ -75,38 +97,50 @@ fun createCoroutineRecordingJobScheduler(
     // Atomic CAS map (common; `synchronized` is JVM-only). The job starts only after it is
     // registered, so its own cleanup can never run before the registration.
     val inFlight = MutableStateFlow<Map<String, InFlight>>(emptyMap())
-    return RecordingJobScheduler { recordingId, templateId, retranscribe, apiModelOverride ->
-        var previous: Job? = null
-        lateinit var job: Job
-        job = scope.launch(start = CoroutineStart.LAZY) {
-            previous?.cancelAndJoin()
-            try {
-                processor.process(
-                    recordingId = recordingId,
-                    templateId = templateId,
-                    retranscribe = retranscribe,
-                    apiModelOverride = apiModelOverride,
-                ).collect { }
-            } finally {
-                inFlight.update { if (it[recordingId]?.job === job) it - recordingId else it }
-            }
+    return object : RecordingJobScheduler {
+        override fun enqueue(recordingId: String, templateId: String?, retranscribe: Boolean, apiModelOverride: ApiModelOverride?) {
+            enqueueReportingStart(recordingId, templateId, retranscribe, apiModelOverride)
         }
-        var keepRunning = false
-        inFlight.update { current ->
-            val running = current[recordingId]
-            keepRunning = running != null && running.job.isActive &&
-                recordingWorkParamsMatch(
-                    running.templateId, running.retranscribe, running.apiModelOverride,
-                    templateId, retranscribe, apiModelOverride,
-                )
-            if (keepRunning) {
-                current
-            } else {
-                previous = running?.job
-                current + (recordingId to InFlight(job, templateId, retranscribe, apiModelOverride))
+
+        override fun enqueueReportingStart(
+            recordingId: String,
+            templateId: String?,
+            retranscribe: Boolean,
+            apiModelOverride: ApiModelOverride?,
+        ): Boolean {
+            var previous: Job? = null
+            lateinit var job: Job
+            job = scope.launch(start = CoroutineStart.LAZY) {
+                previous?.cancelAndJoin()
+                try {
+                    processor.process(
+                        recordingId = recordingId,
+                        templateId = templateId,
+                        retranscribe = retranscribe,
+                        apiModelOverride = apiModelOverride,
+                    ).collect { }
+                } finally {
+                    inFlight.update { if (it[recordingId]?.job === job) it - recordingId else it }
+                }
             }
+            var keepRunning = false
+            inFlight.update { current ->
+                val running = current[recordingId]
+                keepRunning = running != null && running.job.isActive &&
+                    recordingWorkParamsMatch(
+                        running.templateId, running.retranscribe, running.apiModelOverride,
+                        templateId, retranscribe, apiModelOverride,
+                    )
+                if (keepRunning) {
+                    current
+                } else {
+                    previous = running?.job
+                    current + (recordingId to InFlight(job, templateId, retranscribe, apiModelOverride))
+                }
+            }
+            // Same work already running: keep it, so ASR does not run twice and nothing cancels mid-flight.
+            if (keepRunning) job.cancel() else job.start()
+            return !keepRunning
         }
-        // Same work already running: keep it, so ASR does not run twice and nothing cancels mid-flight.
-        if (keepRunning) job.cancel() else job.start()
     }
 }

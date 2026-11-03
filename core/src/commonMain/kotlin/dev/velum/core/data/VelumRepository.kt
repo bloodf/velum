@@ -529,6 +529,34 @@ class VelumRepository(
         q.updateStatus(status, id)
     }
 
+    /**
+     * Sets [status] unless the recording is already `ready`/`failed` (a job that just finished) or gone. Returns
+     * whether it wrote, so a caller can tell the work ended before it acted (#324).
+     */
+    suspend fun updateStatusIfActive(id: String, status: String): Boolean = withContext(dbContext) {
+        db.transactionWithResult {
+            val current = q.selectRecordingById(id).executeAsOneOrNull()?.status
+            if (current == null || current == "ready" || current == "failed") {
+                false
+            } else {
+                q.updateStatus(status, id)
+                true
+            }
+        }
+    }
+
+    /** Sets [to] only while the status is still [from]; returns whether it wrote. */
+    suspend fun updateStatusIfEquals(id: String, from: String, to: String): Boolean = withContext(dbContext) {
+        db.transactionWithResult {
+            if (q.selectRecordingById(id).executeAsOneOrNull()?.status == from) {
+                q.updateStatus(to, id)
+                true
+            } else {
+                false
+            }
+        }
+    }
+
     /** [code] is a [dev.velum.core.model.ProcessingWarning] constant, or null to clear. */
     suspend fun setProcessingWarning(id: String, code: String?) = withContext(dbContext) {
         q.updateProcessingWarning(code, id)

@@ -105,6 +105,35 @@ class AutoFlowRunnerTest {
     }
 
     @Test
+    fun keptJob_leavesTheRowGenerating_notQueued_untilItFinishes() = runTest {
+        val f = Fixture(this)
+        f.start()
+        f.keepRunning = true
+        f.enqueue = { /* the running job owns the row */ }
+        f.store.put(recording("rec-kept", "imported"))
+        runCurrent() // the runner now waits on the kept job, so the pass does not complete
+        assertEquals("generating", f.row("rec-kept").status, "a kept job must not leave the row on queued")
+        assertTrue(f.actions.none { it is AutoFlowUiAction.PostWebhook }, "no post-action before the job finishes")
+        f.complete("rec-kept")
+        testScheduler.advanceTimeBy(2_000)
+        runCurrent()
+        assertEquals("ready", f.row("rec-kept").status)
+        assertEquals(listOf("rec-kept"), f.actions.filterIsInstance<AutoFlowUiAction.PostWebhook>().map { it.recordingId })
+    }
+
+    @Test
+    fun jobEndingBeforeTheQueuedWrite_isTerminal_andNothingIsEnqueued() = runTest {
+        val f = Fixture(this)
+        f.start()
+        // The row turns ready between the runner reading it and its conditional queued write.
+        f.store.beforeConditionalQueue = { id -> f.store.change(id) { it.copy(status = "ready", summary_markdown = "## done") } }
+        f.publish(recording("rec-gap", "imported"))
+        assertTrue(f.enqueued.isEmpty(), "a finished job must not be re-enqueued")
+        assertEquals("ready", f.row("rec-gap").status, "the row must not be pushed back to queued")
+        assertEquals(listOf("rec-gap"), f.actions.filterIsInstance<AutoFlowUiAction.PostWebhook>().map { it.recordingId })
+    }
+
+    @Test
     fun seed_skips_in_flight_so_generating_can_rematch() = runTest {
         val f = Fixture(this)
         f.store.put(recording("rec-inflight", "generating"))
@@ -549,17 +578,30 @@ class AutoFlowRunnerTest {
         val overrides = mutableListOf<ApiModelOverride?>()
         val actions = mutableListOf<AutoFlowUiAction>()
         var enqueue: (String) -> Unit = { complete(it) }
+        /** Makes the scheduler report that it kept an already running job instead of starting one. */
+        var keepRunning = false
         var process: (String) -> Flow<JobProgress> = { id -> flow { complete(id); emit(JobProgress.Succeeded()) } }
         var lookup: suspend () -> CalendarLookupResult = { CalendarLookupResult.Ok(null) }
         var calendarAround: suspend (Long) -> CalendarLookupResult = { lookup() }
         val runner = AutoFlowRunner(
             store, { id, _, _ -> process(id) }, test.backgroundScope,
             calendar = object : CalendarEventProvider { override suspend fun currentOrNextEvent(aroundEpochMs: Long) = calendarAround(aroundEpochMs) },
-            jobScheduler = if (scheduler) RecordingJobScheduler { id, template, _, override ->
-                enqueued += id
-                templates += template
-                overrides += override
-                enqueue(id)
+            jobScheduler = if (scheduler) object : RecordingJobScheduler {
+                override fun enqueue(recordingId: String, templateId: String?, retranscribe: Boolean, apiModelOverride: ApiModelOverride?) {
+                    enqueueReportingStart(recordingId, templateId, retranscribe, apiModelOverride)
+                }
+                override fun enqueueReportingStart(
+                    recordingId: String,
+                    templateId: String?,
+                    retranscribe: Boolean,
+                    apiModelOverride: ApiModelOverride?,
+                ): Boolean {
+                    enqueued += recordingId
+                    templates += templateId
+                    overrides += apiModelOverride
+                    enqueue(recordingId)
+                    return !keepRunning
+                }
             } else null,
         )
         init {
@@ -602,6 +644,19 @@ class AutoFlowRunnerTest {
         override suspend fun updateStatus(id: String, status: String) {
             beforeStatus(id, status)
             change(id) { it.copy(status = status) }
+        }
+        var beforeConditionalQueue: (String) -> Unit = {}
+        override suspend fun markQueuedIfActive(id: String): Boolean {
+            beforeConditionalQueue(id)
+            val current = rows.value.firstOrNull { it.id == id }?.status
+            if (current == null || current == "ready" || current == "failed") return false
+            updateStatus(id, "queued")
+            return true
+        }
+        override suspend fun restoreGeneratingIfQueued(id: String): Boolean {
+            if (rows.value.firstOrNull { it.id == id }?.status != "queued") return false
+            updateStatus(id, "generating")
+            return true
         }
         override suspend fun updateRecordingTitle(id: String, title: String) {
             beforeTitle(id)

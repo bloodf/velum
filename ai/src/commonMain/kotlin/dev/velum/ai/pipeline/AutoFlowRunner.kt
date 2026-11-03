@@ -194,13 +194,19 @@ class AutoFlowRunner internal constructor(
             // fired post-actions before WorkManager started). Marking queued also
             // seeds sawInFlight for synchronous test schedulers that finish before
             // the first poll.
-            repository.updateStatus(recordingId, "queued")
-            scheduler.enqueue(
+            // Conditional: a job that just finished leaves the row ready/failed, and a late "queued" write plus a
+            // dropped (kept) enqueue would strand it on queued. Nothing left to do then; the row is terminal.
+            if (!repository.markQueuedIfActive(recordingId)) {
+                return repository.getRecording(recordingId)?.status == "ready"
+            }
+            val started = scheduler.enqueueReportingStart(
                 recordingId = recordingId,
                 templateId = templateId,
                 retranscribe = true,
                 apiModelOverride = apiModelOverride,
             )
+            // The running job was kept: give the row back its "generating" so the UI still shows work in progress.
+            if (!started) repository.restoreGeneratingIfQueued(recordingId)
             return awaitReadyStatus(recordingId, alreadyInFlight = true)
         }
         var succeeded = false
@@ -339,6 +345,10 @@ internal interface AutoFlowRecordingStore {
     fun observeAutoflows(): Flow<List<Autoflow>>
     suspend fun getRecording(id: String): Recording?
     suspend fun updateStatus(id: String, status: String)
+    /** Marks the row queued unless it is already ready/failed; false when it was terminal. */
+    suspend fun markQueuedIfActive(id: String): Boolean
+    /** queued -> generating, only while the row is still queued. */
+    suspend fun restoreGeneratingIfQueued(id: String): Boolean
     suspend fun updateRecordingTitle(id: String, title: String)
 }
 
@@ -347,6 +357,8 @@ internal class RepositoryAutoFlowRecordingStore(private val repository: VelumRep
     override fun observeAutoflows() = repository.observeAutoflows()
     override suspend fun getRecording(id: String) = repository.getRecording(id)
     override suspend fun updateStatus(id: String, status: String) { repository.updateStatus(id, status) }
+    override suspend fun markQueuedIfActive(id: String) = repository.updateStatusIfActive(id, "queued")
+    override suspend fun restoreGeneratingIfQueued(id: String) = repository.updateStatusIfEquals(id, "queued", "generating")
     override suspend fun updateRecordingTitle(id: String, title: String) { repository.updateRecordingTitle(id, title) }
 }
 
