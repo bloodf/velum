@@ -56,7 +56,7 @@ class OmiProfileTest {
             byteArrayOf(0x01),
             byteArrayOf(Framing.APP_PREFIX) + Bytes.u16Le(ForbiddenOpcodes.ALL.first()),
         )
-        for (char in omiChars + GattProfiles.PLAUD_WRITE + GattChar("1234", "5678")) {
+        for (char in omiChars + GattProfiles.OMI_AUDIO_CODEC + GattProfiles.PLAUD_WRITE + GattChar("1234", "5678")) {
             for (p in payloads) {
                 assertFailsWith<IllegalArgumentException>("$char") { link.write(char, p, withoutResponse = false) }
             }

@@ -13,7 +13,6 @@ import java.security.spec.X509EncodedKeySpec
 import java.util.Base64
 import javax.crypto.BadPaddingException
 import javax.crypto.Cipher
-import javax.crypto.IllegalBlockSizeException
 import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
@@ -56,9 +55,6 @@ class JcaSessionCipher : SessionCipher {
             cipher.doFinal(ciphertextAndTag)
         } catch (_: BadPaddingException) {
             // A bad tag. Anything else, like a missing algorithm, isn't an auth failure, so it throws for the caller.
-            null
-        } catch (_: IllegalBlockSizeException) {
-            // Declared by doFinal for input it can't process. SunJCE and Conscrypt 2.5.2 throw the above instead.
             null
         }
     }
