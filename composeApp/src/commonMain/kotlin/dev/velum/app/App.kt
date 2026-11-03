@@ -222,7 +222,7 @@ private fun VelumRoot(container: AppContainer) {
             if (result == SnackbarResult.ActionPerformed) container.settingsViewModel.reloadSettings()
         }
     }
-    val importAudio = rememberAudioImporter { path ->
+    val importAudio = rememberAudioImporter(onFailed = { scope.launch { snackbar.showSnackbar(strings.ux.importCopyFailed) } }) { path ->
         scope.launch {
             fabOpen = false
             when (val result = importPipeline.importFile(path, source = "import")) {

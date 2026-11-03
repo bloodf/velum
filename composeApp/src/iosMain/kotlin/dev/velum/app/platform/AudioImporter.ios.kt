@@ -54,7 +54,7 @@ private class AudioPickerDelegate(val onPicked: (String) -> Unit) : NSObject(), 
 
 /** Opens the Files picker for audio. `asCopy` gives an app-owned copy, so no security-scoped access is needed. */
 @Composable
-actual fun rememberAudioImporter(onPicked: (path: String) -> Unit): () -> Unit =
+actual fun rememberAudioImporter(onFailed: () -> Unit, onPicked: (path: String) -> Unit): () -> Unit =
     remember(onPicked) {
         {
             val presenter = topViewController()
