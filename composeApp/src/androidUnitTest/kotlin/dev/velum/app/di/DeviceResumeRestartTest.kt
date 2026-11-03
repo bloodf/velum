@@ -287,7 +287,7 @@ class DeviceResumeRestartTest {
         } finally { owner.clear(); Dispatchers.resetMain() }
     }
 
-    @Test fun a_queued_download_does_not_block_connect_forever() {
+    @Test fun a_queued_download_does_not_block_connect_forever_nor_get_replaced_mid_transfer() {
         try {
             val saving = CompletableDeferred<Unit>()
             var probe: ConnectProbe? = null
@@ -295,8 +295,10 @@ class DeviceResumeRestartTest {
                 peripheral(),
                 transport = { p -> ConnectProbe(FakeBleTransport(p)).also { probe = it } },
                 persist = { _ ->
+                    probe!!.unwinding = true
                     saving.complete(Unit)
                     withContext(NonCancellable) { delay(400) }
+                    probe!!.unwinding = false
                     throw IOException("synthetic full disk")
                 },
                 await = false,
@@ -306,9 +308,36 @@ class DeviceResumeRestartTest {
                 vm.cancelDownload()
                 vm.downloadSession(session) // queued behind the one that ignores cancellation: active, nothing shown
                 vm.connect("fake-note-pro")
-                delay(1_500)
+                delay(2_500)
             }
+            assertEquals(0, probe!!.connectsWhileUnwinding.get(), "connect must not run while either download uses the client")
             assertEquals(2, probe!!.connects.get(), "the explicit connect must not be ignored by a job that has not started")
+        } finally { owner.clear(); Dispatchers.resetMain() }
+    }
+
+    @Test fun connect_that_cannot_wait_for_a_stuck_download_says_so() {
+        try {
+            val saving = CompletableDeferred<Unit>()
+            var probe: ConnectProbe? = null
+            val vm = run(
+                peripheral(),
+                transport = { p -> ConnectProbe(FakeBleTransport(p)).also { probe = it } },
+                persist = { _ ->
+                    saving.complete(Unit)
+                    withContext(NonCancellable) { delay(2_000) }
+                    throw IOException("synthetic full disk")
+                },
+                await = false,
+                wipeJoinTimeout = 200.milliseconds,
+            )
+            runBlocking {
+                withTimeout(20_000) { saving.await() }
+                vm.cancelDownload()
+                vm.connect("fake-note-pro")
+                delay(600)
+                assertEquals(DeviceUiCopy.connectBusy("en"), vm.sessionUi.value.statusMessage)
+            }
+            assertEquals(1, probe!!.connects.get(), "no second connect while the download is still unwinding")
         } finally { owner.clear(); Dispatchers.resetMain() }
     }
 

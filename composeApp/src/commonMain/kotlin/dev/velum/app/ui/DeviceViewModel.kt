@@ -136,11 +136,16 @@ class DeviceViewModel(
         // Same condition as downloadSession: a queued job that has not started yet owns nothing.
         if (downloadJob?.isActive == true && _sessionUi.value.downloadingSessionId != null) return
         viewModelScope.launch {
-            // A cancelled download may still be unwinding (a BLE write can ignore cancellation) and will touch
-            // the client when it ends; connect only after it, with the same bound as a wipe.
-            cancelledJob?.let { unwinding ->
-                withTimeoutOrNull(wipeJoinTimeout) { unwinding.join() }
-                if (!unwinding.isCompleted) return@launch
+            // A cancelled download may still be unwinding (a BLE write can ignore cancellation) and a queued one may
+            // start right behind it; both use the client, so connect only after them, with the same bound as a wipe.
+            val settled = withTimeoutOrNull(wipeJoinTimeout) {
+                cancelledJob?.join()
+                downloadJob?.join()
+                true
+            }
+            if (settled == null) {
+                _sessionUi.value = _sessionUi.value.copy(statusMessage = DeviceUiCopy.connectBusy(localeTag()))
+                return@launch
             }
             try {
                 connectedDeviceId = deviceId
