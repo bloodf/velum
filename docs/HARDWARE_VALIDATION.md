@@ -28,7 +28,7 @@ Use a green CI **`velum-debug-apk`** artifact (fixed debug keystore) or a signed
 
 - [ ] Record ≥2 h on device; BLE download completes; CRC matches.
 - [ ] Interrupt mid-transfer (BT off / kill app / range); resume from last offset.
-- [ ] Screen-off + `dataSync` FGS keeps transfer alive.
+- [ ] Screen-off + download FGS (`connectedDevice`, or `dataSync` without `BLUETOOTH_CONNECT`) keeps transfer alive.
 - [ ] Note transfer time and battery drain in `docs/STATUS.md`.
 
 ## Audio decrypt / decode (#7)

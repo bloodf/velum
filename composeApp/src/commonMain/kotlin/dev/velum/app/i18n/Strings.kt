@@ -442,6 +442,7 @@ data class UxStrings(
     val webhookInvalidUrl: String,
     val recordingMissing: String,
     val truncatedAudioWarning: String,
+    val deviceCrcMismatchWarning: String,
     val selectRecording: String,
     val askAcrossAnswer: String,
     val folderSavedResync: String,
@@ -1005,6 +1006,7 @@ val PtBr = Strings(
         webhookInvalidUrl = "URL inválida — use https:// (ou http://localhost)",
         recordingMissing = "Gravação não encontrada",
         truncatedAudioWarning = "O áudio está incompleto; só a parte legível foi transcrita.",
+        deviceCrcMismatchWarning = "A verificação de integridade do aparelho não conferiu. O áudio foi mantido, mas não foi confirmado.",
         selectRecording = "Selecione uma gravação",
         askAcrossAnswer = "Resposta",
         folderSavedResync = "Pasta salva — toque em Sincronizar para importar novos arquivos",
@@ -1567,6 +1569,7 @@ val En = Strings(
         webhookInvalidUrl = "Invalid URL — use https:// (or http://localhost)",
         recordingMissing = "Recording not found",
         truncatedAudioWarning = "The audio file is incomplete; only the readable part was transcribed.",
+        deviceCrcMismatchWarning = "The device's integrity check did not match. The audio was kept but is not verified.",
         selectRecording = "Select a recording",
         askAcrossAnswer = "Answer",
         folderSavedResync = "Folder saved — tap Re-sync to import new files",
@@ -1706,5 +1709,6 @@ val LocalStrings = staticCompositionLocalOf { PtBr }
 /** User-facing text for a stored `recording.processing_warning` code; null for none or an unknown code. */
 fun Strings.processingWarningText(code: String?): String? = when (code) {
     dev.velum.core.model.ProcessingWarning.TRUNCATED_AUDIO -> ux.truncatedAudioWarning
+    dev.velum.core.model.ProcessingWarning.DEVICE_CRC_MISMATCH -> ux.deviceCrcMismatchWarning
     else -> null
 }

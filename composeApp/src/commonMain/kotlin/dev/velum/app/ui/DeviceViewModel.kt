@@ -18,6 +18,7 @@ import dev.velum.ble.client.ResumableSessionDownload
 import dev.velum.ble.crypto.createFileDecryptor
 import dev.velum.ble.crypto.createSessionCipher
 import dev.velum.core.model.ConnectedDevice
+import dev.velum.core.model.ProcessingWarning
 import dev.velum.core.security.DeviceKeyImporter
 import dev.velum.core.security.SecureStoreUnavailableException
 import dev.velum.protocol.DeviceCapabilities
@@ -58,6 +59,8 @@ data class DeviceSessionUi(
     val downloadingSessionId: Long? = null,
     val downloadProgress: Float? = null,
     val lastDownloadedRecordingId: String? = null,
+    /** CRC result of the last download's final transfer; null until one completes. A resumed save can report a kept mismatch in its status message instead. */
+    val lastDownloadCrc: CrcStatus? = null,
     /** Device sessions already in the library (#113); their action re-downloads into the same row. */
     val librarySessionIds: Set<Long> = emptySet(),
 )
@@ -70,6 +73,8 @@ data class DownloadedSessionAudio(
     val sessionId: Long,
     val deviceSerial: String?,
     val startedAtEpochSeconds: Long,
+    /** A [dev.velum.core.model.ProcessingWarning] code stored on the recording, or null. Before the lambda so callers can pass it trailing. */
+    val processingWarning: String? = null,
     /**
      * Streams decrypted audio into the sink in bounded chunks (never the whole file at
      * once) and returns the total byte count. Throws on decrypt failure or cancellation.
@@ -104,6 +109,7 @@ class DeviceViewModel(
     private var connectedSerial: String? = null
     private var connectedDeviceId: String? = null
     private var downloadJob: Job? = null
+    private var cancelledJob: Job? = null
     private val downloadMutex = Mutex()
 
     init {
@@ -131,7 +137,21 @@ class DeviceViewModel(
     }
 
     fun connect(deviceId: String) {
+        // The link and its client belong to the running download; a second connect would replace them mid-transfer.
+        // Same condition as downloadSession: a queued job that has not started yet owns nothing.
+        if (downloadJob?.isActive == true && _sessionUi.value.downloadingSessionId != null) return
         viewModelScope.launch {
+            // A cancelled download may still be unwinding (a BLE write can ignore cancellation) and a queued one may
+            // start right behind it; both use the client, so connect only after them, with the same bound as a wipe.
+            val settled = withTimeoutOrNull(wipeJoinTimeout) {
+                cancelledJob?.join()
+                downloadJob?.join()
+                true
+            }
+            if (settled == null) {
+                _sessionUi.value = _sessionUi.value.copy(statusMessage = DeviceUiCopy.connectBusy(localeTag()))
+                return@launch
+            }
             try {
                 connectedDeviceId = deviceId
                 ble.connect(deviceId)
@@ -149,6 +169,7 @@ class DeviceViewModel(
             cancelDownload()
             downloadJob?.join()
             closeClient()
+            connectedSerial = null // an explicit disconnect forgets the device; a link drop does not
             _sessionUi.value = DeviceSessionUi()
             ble.disconnect()
         }
@@ -156,7 +177,7 @@ class DeviceViewModel(
 
     fun cancelDownload() {
         val locale = localeTag()
-        downloadJob?.cancel()
+        downloadJob?.let { it.cancel(); cancelledJob = it }
         DownloadProgressNotifier.dismiss(DownloadNotifyKind.DeviceSession)
         DownloadProgressNotifier.setCancelHandler(DownloadNotifyKind.DeviceSession, null)
         if (_sessionUi.value.downloadingSessionId != null) {
@@ -233,6 +254,7 @@ class DeviceViewModel(
             downloadProgress = 0f,
             statusMessage = DeviceUiCopy.downloadingSession(locale, sessionId),
             lastDownloadedRecordingId = null,
+            lastDownloadCrc = null,
         )
         DownloadProgressNotifier.ensureChannel()
         DownloadProgressNotifier.setCancelHandler(DownloadNotifyKind.DeviceSession) { cancelDownload() }
@@ -256,7 +278,7 @@ class DeviceViewModel(
                     startedAtEpochSeconds = sessionId.coerceAtLeast(0L),
                 )
             }
-            client = outcome.client
+            adoptClient(outcome.client)
             connectedSerial = connectedSerial ?: serial
             // The recording is saved: a failed refresh must not report the download as failed.
             val sessions = try { outcome.client?.listSessions()?.entries } catch (cancelled: CancellationException) { throw cancelled } catch (_: Exception) { null }
@@ -268,7 +290,8 @@ class DeviceViewModel(
                 downloadingSessionId = null,
                 downloadProgress = null,
                 lastDownloadedRecordingId = outcome.recordingId,
-                statusMessage = if (outcome.crc is CrcStatus.Mismatch) {
+                lastDownloadCrc = outcome.crc,
+                statusMessage = if (outcome.crcMismatch) {
                     DeviceUiCopy.downloadedSessionCrcMismatch(localeTag(), sessionId)
                 } else {
                     DeviceUiCopy.downloadedSession(localeTag(), sessionId)
@@ -309,11 +332,13 @@ class DeviceViewModel(
         var saveFailed = false
         var readFailed = false
         var undecryptable = false
+        var crcMismatch = false // set from the partial's mark, then from this attempt's result
         val deviceId = connectedDeviceId
         fun persist(size: Long, readAt: (Long, Int) -> ByteArray) = DownloadedSessionAudio(
             sessionId = sessionId,
             deviceSerial = deviceSerial,
             startedAtEpochSeconds = startedAtEpochSeconds,
+            processingWarning = if (crcMismatch) ProcessingWarning.DEVICE_CRC_MISMATCH else null,
             writeDecryptedAudio = { sink ->
                 try {
                     val checkedRead = { position: Long, length: Int ->
@@ -340,6 +365,8 @@ class DeviceViewModel(
             },
         )
         val partial = openPartialTransfer(sessionId, deviceSerial)
+        // A mismatch seen on an earlier attempt that then failed to save is remembered with the partial.
+        crcMismatch = partial?.crcMismatch() == true
         if (partial == null) {
             val c = initialClient ?: throw IllegalStateException("Not connected")
             val encrypted = c.downloadSession(sessionId, sizeBytes, ::onProgress)
@@ -348,7 +375,7 @@ class DeviceViewModel(
                     encrypted.copyOfRange(position.toInt(), position.toInt() + length)
                 },
             )
-            return DownloadOutcome(recordingId, c, CrcStatus.NotProvided)
+            return DownloadOutcome(recordingId, c, crcMismatch = false, crc = CrcStatus.NotProvided)
         }
         // A transfer failure or cancellation keeps the partial for the next attempt.
         client = null // the download owns it now: it may close it and reconnect
@@ -362,21 +389,30 @@ class DeviceViewModel(
             ).download(sessionId, sizeBytes, partial, ::onProgress)
         } catch (e: Throwable) {
             partial.close()
+            // The download owned the client; a cancel before its first attempt leaves it open otherwise.
+            finished?.close()
             throw e
+        }
+        // Verified clears an old mark; NotProvided (nothing was transferred this time) keeps it.
+        when (result.crc) {
+            // The in-memory verdict is set first: a failure to write the mark only costs the retry-after-failed-save case.
+            is CrcStatus.Mismatch -> { crcMismatch = true; runCatching { partial.setCrcMismatch(true) } }
+            is CrcStatus.Verified -> { crcMismatch = false; runCatching { partial.setCrcMismatch(false) } }
+            else -> Unit
         }
         val recordingId = try {
             persistDownloadedSession(persist(partial.length()) { position, length -> partial.read(position, length) })
         } catch (e: Throwable) {
-            client = finished
+            adoptClient(finished)
             // Only bytes that can't be decrypted are useless. A read error, full disk or database error can be retried.
             if (undecryptable) partial.delete() else partial.close()
             throw e
         }
         partial.delete()
-        return DownloadOutcome(recordingId, finished, result.crc)
+        return DownloadOutcome(recordingId, finished, crcMismatch, result.crc)
     }
 
-    private class DownloadOutcome(val recordingId: String, val client: PlaudDeviceClient?, val crc: CrcStatus)
+    private class DownloadOutcome(val recordingId: String, val client: PlaudDeviceClient?, val crcMismatch: Boolean, val crc: CrcStatus)
 
     /** New link and client for a resume attempt; [ResumableSessionDownload] unlocks it. */
     private suspend fun reconnect(keys: DeviceIdentityKeys, deviceId: String?): PlaudDeviceClient {
@@ -407,7 +443,12 @@ class DeviceViewModel(
     private fun closeClient() {
         client?.close()
         client = null
-        connectedSerial = null
+    }
+
+    /** Takes [next] as the live client, closing the one it replaces so a link is never left open and unreferenced. */
+    private fun adoptClient(next: PlaudDeviceClient?) {
+        if (client !== next) client?.close()
+        client = next
     }
 
     private suspend fun runProtocolIfKeysPresent() {
@@ -458,7 +499,7 @@ class DeviceViewModel(
                 advertisedName = connected?.name,
             )
             val c = PlaudDeviceClient(ble, createSessionCipher(), keys)
-            client = c
+            adoptClient(c)
             c.unlock()
             val hs = c.handshake()
             val caps = capsBase.withHandshake(hs)

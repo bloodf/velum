@@ -61,6 +61,7 @@ import dev.velum.app.platform.shareText
 import dev.velum.app.platform.syncWatchedFolders
 import dev.velum.app.platform.systemLanguageTag
 import dev.velum.app.platform.writeMarkdownToExportFolder
+import dev.velum.app.ui.settings.ModelDownloadNotification
 import dev.velum.core.integrations.MarkdownNoteExport
 import dev.velum.app.ui.DeviceScreen
 import dev.velum.app.ui.importing.ImportHubScreen
@@ -188,6 +189,7 @@ private fun VelumRoot(container: AppContainer) {
             runCatching { syncWatchedFolders(importPipeline) }
         }
     }
+    ModelDownloadNotification(container)
     val activeMicOwner by container.micRecordings.owner.collectAsState()
     val activeMicId = activeMicOwner?.recordingId
     LaunchedEffect(container) {
@@ -698,15 +700,11 @@ private fun VelumRoot(container: AppContainer) {
                 },
                 onDownloadRecommended = {
                     dismissFirstRun()
+                    val downloads = container.localModelManager.startDownloads(
+                        ModelCatalogUi.recommendedModelIds(languageHint = strings.localeTag),
+                    )
                     scope.launch {
-                        val ids = ModelCatalogUi.recommendedModelIds(
-                            languageHint = strings.localeTag,
-                        )
-                        ids.forEach { id ->
-                            runCatching {
-                                container.localModelManager.download(id).collect()
-                            }
-                        }
+                        downloads.join()
                         navController.navigate(Routes.MODEL_MANAGER)
                     }
                 },

@@ -119,6 +119,6 @@ Computed locally from official downloads (k2-fsa GitHub release assets) or Huggi
 | `streaming-zipformer-multilang-2025-02` | k2-fsa `asr-models` ar/en/id/ja/ru/th/vi/zh | `28044b67324f7f831689f0a3761473dd2ade380e93aa53f1dbcd479ef71c40d4` |
 | `gemma-4-e4b` | HF `litert-community/gemma-4-E4B-it-litert-lm` LFS oid | `0b2a8980ce155fd97673d8e820b4d29d9c7d99b8fa6806f425d969b145bd52e0` |
 | `gemma-4-e2b` | HF `litert-community/gemma-4-E2B-it-litert-lm` LFS oid | `181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c` |
-| `qwen3-4b-instruct-2507` | HF `unsloth/Qwen3-4B-Instruct-2507-GGUF` Q4_K_M LFS oid | `3605803b982cb64aead44f6c1b2ae36e3acdb41d8e46c8a94c6533bc4c67e597` |
+| ~~`qwen3-4b-instruct-2507`~~ (not in the catalog: GGUF, no runtime loads it, #273) | HF `unsloth/Qwen3-4B-Instruct-2507-GGUF` Q4_K_M LFS oid | `3605803b982cb64aead44f6c1b2ae36e3acdb41d8e46c8a94c6533bc4c67e597` |
 
 `LocalModelManager` verifies `sha256` after download and rejects mismatches. Gemma/Qwen downloads still need the user to accept HF gated licenses where applicable.

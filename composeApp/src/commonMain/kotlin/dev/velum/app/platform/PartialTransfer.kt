@@ -7,6 +7,12 @@ const val STALE_PARTIAL_TRANSFER_MS: Long = 7L * 24L * 60L * 60L * 1000L
 
 /** A session's encrypted bytes kept across restarts until they are decrypted and persisted. */
 interface PartialTransfer : PartialTransferStore {
+    /** Whether the device's checksum for this complete transfer did not match (kept across restarts). */
+    fun crcMismatch(): Boolean
+
+    /** Records or clears the mismatch durably, so a retry after a failed save still reports it. */
+    fun setCrcMismatch(mismatch: Boolean)
+
     fun close()
 
     /** Close and remove the partial data. */

@@ -2,10 +2,15 @@ package dev.velum.ble.wifi
 
 import android.net.Network
 import android.util.Log
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.launch
 import org.java_websocket.WebSocket
 import org.java_websocket.handshake.ClientHandshake
 import org.java_websocket.server.WebSocketServer
@@ -32,6 +37,8 @@ class AndroidWifiTransferServer(
     private val failures = MutableSharedFlow<String>(extraBufferCapacity = 8)
     private val running = AtomicBoolean(false)
     private val bindFailed = AtomicBoolean(false)
+    private val consumerRead = AtomicBoolean(false)
+    private val peerClose = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
     private val serverRef = AtomicReference<WebSocketServer?>(null)
     private val clientRef = AtomicReference<WebSocket?>(null)
     private val expectedPreamble = AtomicReference(WifiTransferPreamble.defaultToken())
@@ -43,6 +50,7 @@ class AndroidWifiTransferServer(
     ) {
         stop()
         bindFailed.set(false)
+        consumerRead.set(false)
         expectedPreamble.set(preamble)
         val address = if (bindHost != null) {
             InetSocketAddress(bindHost, port)
@@ -59,7 +67,12 @@ class AndroidWifiTransferServer(
             override fun onClose(conn: WebSocket, code: Int, reason: String, remote: Boolean) {
                 // Only the authenticated peer counts; a superseded or unauthenticated close changes nothing.
                 if (clientRef.compareAndSet(conn, null) && running.get()) {
-                    failures.tryEmit(WifiTransferServer.FAILURE_PEER_CLOSED)
+                    when {
+                        // After the frames already queued. A full buffer only delays it until they are read.
+                        incoming.subscriptionCount.value > 0 -> peerClose.launch { incoming.emit(WifiTransferServer.PEER_CLOSED_FRAME) }
+                        !consumerRead.get() -> failures.tryEmit(WifiTransferServer.FAILURE_PEER_CLOSED)
+                        // A consumer read frames and left: assemble is finishing. Its result or the timeout ends this.
+                    }
                 }
             }
 
@@ -82,6 +95,7 @@ class AndroidWifiTransferServer(
                     conn.close(1009, "frame_too_large")
                     return
                 }
+                if (incoming.subscriptionCount.value > 0) consumerRead.set(true)
                 if (!incoming.tryEmit(bytes)) {
                     // The consumer fell behind: a frame is lost, so the sequence has a gap. Fail the path.
                     failures.tryEmit(WifiTransferServer.FAILURE_FRAME_OVERFLOW)
@@ -118,6 +132,7 @@ class AndroidWifiTransferServer(
 
     override suspend fun stop() {
         running.set(false)
+        peerClose.coroutineContext.cancelChildren()
         clientRef.getAndSet(null)?.let { runCatching { it.close() } }
         serverRef.getAndSet(null)?.let { s -> runCatching { s.stop(500) } }
     }
