@@ -53,7 +53,7 @@ import dev.velum.app.platform.ExportFolderResult
 import dev.velum.app.platform.LocalHaptics
 import dev.velum.app.platform.MicStartResult
 import dev.velum.app.platform.PermissionOutcome
-import dev.velum.app.platform.consumeIncomingSharePath
+import dev.velum.app.platform.awaitIncomingSharePath
 import dev.velum.app.platform.observeMicFailures
 import dev.velum.app.platform.MicStopResult
 import dev.velum.app.platform.finalizeMicRecording
@@ -249,7 +249,9 @@ private fun VelumRoot(container: AppContainer) {
     }
 
     LaunchedEffect(container) {
-        consumeIncomingSharePath()?.let { path ->
+        // Each share is copied off the main thread and arrives here when ready; null means this platform has none.
+        while (true) {
+            val path = awaitIncomingSharePath() ?: break
             when (val result = importPipeline.importFile(path, source = "share")) {
                 is ImportResult.Created -> navController.navigate(Routes.recording(result.recordingId))
                 is ImportResult.Duplicate -> {

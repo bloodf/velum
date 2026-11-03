@@ -1,3 +1,3 @@
 package dev.velum.app.platform
 
-actual fun consumeIncomingSharePath(): String? = null
+actual suspend fun awaitIncomingSharePath(): String? = null
