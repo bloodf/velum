@@ -547,8 +547,12 @@ class DeviceResumeRestartTest {
     private fun readFailCount(): Int? =
         partials.listFiles()!!.firstOrNull { it.name.endsWith(".readfail") }?.readText()?.trim()?.toIntOrNull()
 
-    private fun awaitReadFailCount(n: Int) =
-        runBlocking { withTimeout(20_000) { while (readFailCount() != n) delay(5) } }
+    /** Also waits for the attempt to end: downloadSession ignores a call while one is still running. */
+    private fun awaitReadFailCount(vm: DeviceViewModel, n: Int) = runBlocking {
+        withTimeout(20_000) {
+            while (readFailCount() != n || vm.sessionUi.value.downloadingSessionId != null) delay(5)
+        }
+    }
 
     @Test fun a_read_error_that_repeats_discards_the_partial_and_the_next_download_starts_fresh() {
         try {
@@ -567,7 +571,7 @@ class DeviceResumeRestartTest {
             assertTrue(partials.list()!!.any { it.endsWith(".partial") }, "the first failure keeps the transfer")
             assertEquals(1, readFailCount(), "and counts it")
             vm.downloadSession(session)
-            awaitReadFailCount(2)
+            awaitReadFailCount(vm, 2)
             vm.downloadSession(session) // the third failure in a row
             runBlocking { withTimeout(20_000) { while (partials.list()!!.any { it.endsWith(".partial") }) delay(5) } }
             runBlocking { withTimeout(20_000) { while (vm.sessionUi.value.statusMessage != DeviceUiCopy.savedDownloadUnreadable("en")) delay(5) } }
@@ -611,13 +615,13 @@ class DeviceResumeRestartTest {
             assertEquals(1, readFailCount())
             readFails = false; saveFails = true // this attempt reads fine and fails to save
             vm.downloadSession(session)
-            runBlocking { withTimeout(20_000) { while (readFailCount() != null) delay(5) } }
+            runBlocking { withTimeout(20_000) { while (readFailCount() != null || vm.sessionUi.value.downloadingSessionId != null) delay(5) } }
             assertTrue(partials.list()!!.any { it.endsWith(".partial") }, "still kept")
             readFails = true; saveFails = false
             vm.downloadSession(session)
-            awaitReadFailCount(1) // counting restarted at 1, not 2
+            awaitReadFailCount(vm, 1) // counting restarted at 1, not 2
             vm.downloadSession(session)
-            awaitReadFailCount(2)
+            awaitReadFailCount(vm, 2)
             assertTrue(partials.list()!!.any { it.endsWith(".partial") }, "two scattered errors never reached the limit")
         } finally { owner.clear(); Dispatchers.resetMain() }
     }
