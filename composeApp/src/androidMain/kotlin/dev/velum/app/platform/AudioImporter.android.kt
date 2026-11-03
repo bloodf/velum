@@ -24,7 +24,7 @@ actual fun rememberAudioImporter(onPicked: (path: String) -> Unit): () -> Unit {
         if (uri == null) return@rememberLauncherForActivityResult
         scope.launch {
             val path = withContext(Dispatchers.IO) {
-                val name = sanitizeImportFileName(uri.lastPathSegment)
+                val name = sanitizeImportFileName(displayNameOf(context, uri))
                 val dest = File(context.cacheDir, "imports").apply { mkdirs() }
                 val outFile = File(dest, "${System.currentTimeMillis()}_$name")
                 context.contentResolver.openInputStream(uri)?.use { input ->
@@ -42,11 +42,20 @@ actual fun rememberAudioImporter(onPicked: (path: String) -> Unit): () -> Unit {
     }
 }
 
+/** The provider's display name ("two-speakers.wav"); the last path segment is an opaque id ("msf:1000000063") for document providers. */
+internal fun displayNameOf(context: android.content.Context, uri: Uri): String? =
+    runCatching {
+        context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+            if (c.moveToFirst()) c.getString(0) else null
+        }
+    }.getOrNull()?.takeIf { it.isNotBlank() } ?: uri.lastPathSegment
+
 internal fun sanitizeImportFileName(raw: String?): String {
     val base = raw
         ?.substringAfterLast('/')
         ?.substringAfterLast('\\')
         ?.trim()
+        ?.replace(' ', '_')
         .orEmpty()
     val cleaned = base
         .replace("..", "")

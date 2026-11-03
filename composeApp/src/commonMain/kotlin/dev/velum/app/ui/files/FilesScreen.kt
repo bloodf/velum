@@ -532,12 +532,11 @@ private fun RecordingRow(
     onLongClick: () -> Unit,
 ) {
     val strings = LocalStrings.current
-    val mins = (rec.duration_seconds / 60).toInt()
     val timeLabel = VelumDateTime.formatClock(rec.started_at)
     val deviceLabel = when (rec.source) {
         "note_pro" -> strings.ux.sourceNotePro
         "phone" -> strings.ux.sourcePhone
-        "import" -> strings.ux.sourceImport
+        "import", "share" -> strings.ux.sourceImport
         else -> null
     }
     val highlightBg = VelumWarningContainer
@@ -551,7 +550,7 @@ private fun RecordingRow(
         )
     }
     val sourceIcon = if (rec.source == "note_pro") Icons.Outlined.MicExternalOn else Icons.Outlined.Headphones
-    val sourceA11y = if (rec.source == "note_pro") strings.ux.noteProMicA11y else strings.ux.headphonesA11y
+    val sourceA11y = LibraryListLogic.sourceA11y(rec.source, strings)
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -583,7 +582,7 @@ private fun RecordingRow(
             Spacer(Modifier.height(4.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    "$timeLabel | ${strings.durationMinutesFormat.replace("%d", mins.toString())}",
+                    "$timeLabel | ${LibraryListLogic.durationLabel(rec.duration_seconds, strings)}",
                     color = VelumInkSecondary,
                     fontSize = 13.sp,
                 )

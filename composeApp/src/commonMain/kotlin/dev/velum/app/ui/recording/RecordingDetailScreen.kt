@@ -1078,11 +1078,22 @@ private fun SourcesPane(
     }
 }
 
+/**
+ * Cue header as drawn: the stored `**Name** · 0:00` without its Markdown markers, and the generated
+ * English "Speaker N" in the app language. The stored text and exports are unchanged.
+ */
+internal fun transcriptHeaderDisplay(line: String, strings: dev.velum.app.i18n.Strings): String {
+    val plain = line.trim().replace("**", "")
+    val generated = Regex("""^Speaker (\d+)(?= ·)""").find(plain) ?: return plain
+    return strings.ux.speakerLabel.replace("%d", generated.groupValues[1]) + plain.removePrefix(generated.value)
+}
+
 @Composable
 private fun SeekableTranscript(
     transcript: String,
     onSeekMs: (Long) -> Unit,
 ) {
+    val strings = LocalStrings.current
     if (transcript.isBlank()) {
         MarkdownPreview(transcript)
         return
@@ -1106,7 +1117,7 @@ private fun SeekableTranscript(
                 val seconds = match.groupValues[4].toLongOrNull() ?: 0L
                 val startMs = ((hours * 60L + minutes) * 60L + seconds) * 1000L
                 Text(
-                    line.trim(),
+                    transcriptHeaderDisplay(line, strings),
                     color = VelumInk,
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 15.sp,
