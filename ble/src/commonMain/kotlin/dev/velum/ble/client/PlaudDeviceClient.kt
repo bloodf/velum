@@ -310,7 +310,7 @@ class PlaudDeviceClient(
                                 }
                                 if (!ignored) {
                                     if (data.offset != next) {
-                                        throw TransferIntegrityException("Chunk at offset ${data.offset}, expected $next")
+                                        throw TransferIntegrityException("Chunk at offset ${data.offset}, expected $next", transient = data.offset > next)
                                     }
                                     if (sizeBytes > 0 && end > sizeBytes) {
                                         throw TransferIntegrityException("Chunk ending at $end overruns size $sizeBytes")
@@ -350,7 +350,7 @@ class PlaudDeviceClient(
                 }
             }
             if (sizeBytes > 0 && next != sizeBytes) {
-                throw TransferIntegrityException("Transfer ended at offset $next of $sizeBytes")
+                throw TransferIntegrityException("Transfer ended at offset $next of $sizeBytes", transient = true)
             }
         } catch (e: Exception) {
             sendStopBestEffort()
