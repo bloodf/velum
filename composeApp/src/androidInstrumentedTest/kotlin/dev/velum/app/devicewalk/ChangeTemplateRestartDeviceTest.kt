@@ -139,8 +139,10 @@ class ChangeTemplateRestartDeviceTest {
             container.repository.insertRecording(
                 id = ID, sessionId = null, folderId = null, title = "Weekly", source = "phone", deviceSerial = null,
                 startedAt = 1, durationSeconds = 60, sizeBytes = 0, localPath = null,
-                transcript = "Speaker 1: ship on Friday.", summaryMarkdown = PRIOR, status = "ready",
+                transcript = "Speaker 1: ship on Friday.", summaryMarkdown = null, status = "ready",
             )
+            // The prior summary is a real version generated from a template, so its association must survive.
+            container.repository.saveSummaryVersion(ID, PRIOR, PRIOR_TEMPLATE_ID, PRIOR_TEMPLATE_NAME)
         }
         show()
         await("Prior heading")
@@ -177,6 +179,8 @@ class ChangeTemplateRestartDeviceTest {
         assertEquals(rec.summary_markdown, current.markdown)
         val previous = versions.single { it.is_active == 0L }
         assertEquals(PRIOR, previous.markdown, "previous summary retained verbatim")
+        assertEquals(PRIOR_TEMPLATE_ID, previous.template_id, "previous version keeps its template association")
+        assertEquals(PRIOR_TEMPLATE_NAME, previous.template_name)
         assertEquals(2, versions.size)
     }
 
@@ -189,5 +193,7 @@ class ChangeTemplateRestartDeviceTest {
         const val TEMPLATE_ID = "dev103-target"
         const val TEMPLATE_NAME = "ZQ Change Target"
         const val PRIOR = "## Prior heading\n- prior point"
+        const val PRIOR_TEMPLATE_ID = "velum.meeting"
+        const val PRIOR_TEMPLATE_NAME = "Meeting prior"
     }
 }
