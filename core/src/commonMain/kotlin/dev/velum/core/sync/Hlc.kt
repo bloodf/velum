@@ -20,11 +20,19 @@ data class Hlc(val wallMs: Long, val counter: Int, val node: String) : Comparabl
 
 const val DEFAULT_MAX_DRIFT_MS: Long = 24L * 60 * 60 * 1000
 
+/** True when this timestamp is more than [maxDriftMs] ahead of [nowMs]. Saturating, so a negative or huge [nowMs] cannot overflow. */
+fun Hlc.isTooFarAhead(nowMs: Long, maxDriftMs: Long): Boolean {
+    require(maxDriftMs >= 0) { "maxDriftMs must not be negative" }
+    val limit = if (nowMs > Long.MAX_VALUE - maxDriftMs) Long.MAX_VALUE else nowMs + maxDriftMs
+    return wallMs > limit
+}
+
 /**
  * One device's clock. [now] is injected so tests control wall time and skew.
  *
- * - [seed]: the last timestamp persisted before shutdown. Without it a restart with a stepped-back
- *   system clock would issue timestamps below writes already made.
+ * - [seed]: [current] as last persisted. Save it with every write, in the same transaction as the data it
+ *   stamps: Android can kill the process with no shutdown hook, and a restart with a stepped-back system
+ *   clock would otherwise issue timestamps below writes already made.
  * - [maxDriftMs]: a remote timestamp further ahead of [now] than this is rejected, so a bad or hostile
  *   peer cannot pin the clock in the far future.
  * Safe to call from several threads: updates are compare-and-set, so no two calls get the same timestamp.
@@ -36,7 +44,11 @@ class HlcClock(
     private val maxDriftMs: Long = DEFAULT_MAX_DRIFT_MS,
     private val now: () -> Long,
 ) {
-    init { require(seed == null || seed.node == node) { "seed belongs to another node" } }
+    init {
+        require(maxDriftMs >= 0) { "maxDriftMs must not be negative" }
+        require(seed == null || seed.node == node) { "seed belongs to another node" }
+        require(seed == null || (seed.wallMs < Long.MAX_VALUE && seed.counter >= 0)) { "seed is not a usable timestamp" }
+    }
 
     private val last = AtomicReference(seed ?: Hlc(0L, 0, node))
 
@@ -51,7 +63,7 @@ class HlcClock(
      * new local timestamp. Returns null, changing nothing, when [remote] is more than [maxDriftMs] ahead of now.
      */
     fun receive(remote: Hlc): Hlc? =
-        if (remote.wallMs - now() > maxDriftMs) null else tick(remote)
+        if (remote.isTooFarAhead(now(), maxDriftMs)) null else tick(remote)
 
     private fun tick(remote: Hlc?): Hlc {
         while (true) {
@@ -67,6 +79,8 @@ class HlcClock(
         if (wall == cur.wallMs) base = maxOf(base, cur.counter)
         if (remote != null && wall == remote.wallMs) base = maxOf(base, remote.counter)
         // A full counter carries into the wall clock instead of wrapping negative.
-        return if (base == Int.MAX_VALUE) Hlc(wall + 1, 0, node) else Hlc(wall, base + 1, node)
+        if (base != Int.MAX_VALUE) return Hlc(wall, base + 1, node)
+        check(wall < Long.MAX_VALUE) { "clock exhausted" } // unreachable with a drift bound and a validated seed
+        return Hlc(wall + 1, 0, node)
     }
 }

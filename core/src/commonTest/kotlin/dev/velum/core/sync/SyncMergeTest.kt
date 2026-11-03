@@ -3,6 +3,7 @@ package dev.velum.core.sync
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -151,5 +152,44 @@ class SyncMergeTest {
         val b = SyncRecord().write("k", "b", Hlc(7, 3, "beta"))
         assertEquals(a.merge(b), b.merge(a))
         assertEquals("b", a.merge(b).value("k"))
+    }
+
+    @Test fun mergeRemote_rejects_the_whole_record_for_one_far_future_field_and_accepts_it_again_later() {
+        val local = SyncRecord().write("title", "mine", Hlc(10_000, 0, "phone"))
+        val incoming = SyncRecord()
+            .write("title", "theirs", Hlc(20_000, 0, "desktop"))
+            .write("notes", "x", Hlc(Long.MAX_VALUE, 0, "evil"))
+        assertNull(local.mergeRemote(incoming, nowMs = 10_000, maxDriftMs = 1_000))
+        assertEquals("mine", local.value("title")) // nothing partially applied
+        // Clocks agree later: the same record, unchanged, is accepted.
+        val later = local.mergeRemote(incoming.copy(fields = incoming.fields - "notes"), nowMs = 19_500, maxDriftMs = 1_000)
+        assertEquals("theirs", later!!.value("title"))
+    }
+
+    @Test fun mergeRemote_equals_merge_for_a_sane_record() {
+        val a = SyncRecord().write("k", "a", Hlc(10, 0, "phone"))
+        val b = SyncRecord().write("k", "b", Hlc(11, 0, "desktop"))
+        assertEquals(a.merge(b), a.mergeRemote(b, nowMs = 10))
+    }
+
+    @Test fun drift_checks_do_not_overflow_for_negative_or_huge_now() {
+        val bound = 1_000L
+        assertTrue(Hlc(0, 0, "n").isTooFarAhead(nowMs = Long.MIN_VALUE, maxDriftMs = bound))
+        assertTrue(!Hlc(Long.MAX_VALUE, 0, "n").isTooFarAhead(nowMs = Long.MAX_VALUE, maxDriftMs = bound))
+        assertTrue(Hlc(Long.MAX_VALUE, 0, "n").isTooFarAhead(nowMs = 0, maxDriftMs = bound))
+        assertNull(HlcClock("p", now = { Long.MIN_VALUE }).receive(Hlc(Long.MAX_VALUE, 0, "evil")))
+    }
+
+    @Test fun a_wall_clock_at_the_maximum_with_a_full_counter_fails_loudly_instead_of_wrapping() {
+        val clock = HlcClock("p", now = { Long.MAX_VALUE })
+        val remote = Hlc(Long.MAX_VALUE, Int.MAX_VALUE, "d")
+        assertFailsWith<IllegalStateException> { clock.receive(remote) }
+    }
+
+    @Test fun bad_seed_and_bound_are_rejected() {
+        assertFailsWith<IllegalArgumentException> { HlcClock("p", maxDriftMs = -1, now = { 0L }) }
+        assertFailsWith<IllegalArgumentException> { HlcClock("p", seed = Hlc(Long.MAX_VALUE, 0, "p"), now = { 0L }) }
+        assertFailsWith<IllegalArgumentException> { HlcClock("p", seed = Hlc(1, -1, "p"), now = { 0L }) }
+        assertFailsWith<IllegalArgumentException> { HlcClock("p", seed = Hlc(1, 0, "other"), now = { 0L }) }
     }
 }
