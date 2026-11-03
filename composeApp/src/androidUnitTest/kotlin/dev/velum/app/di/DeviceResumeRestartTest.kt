@@ -17,6 +17,7 @@ import dev.velum.core.security.DeviceKeyImporter
 import dev.velum.protocol.DeviceIdentityKeys
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.IOException
 import java.nio.file.Files
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.random.Random
@@ -82,13 +83,14 @@ class DeviceResumeRestartTest {
         },
         open: (Long, String?) -> PartialTransfer? = { id, sn -> PartialTransferFileStore.open(partials, id, sn) },
         await: Boolean = true,
+        identity: DeviceIdentityKeys = keys,
         deletePartials: () -> Unit = { PartialTransferFileStore.deleteAll(partials) },
         wipeJoinTimeout: Duration = 15.seconds,
     ): DeviceViewModel = runBlocking {
         Dispatchers.setMain(Dispatchers.Unconfined)
         val vm = DeviceViewModel(
             FakeBleTransport(peripheral),
-            Importer(keys),
+            Importer(identity),
             persistDownloadedSession = { persist(it) },
             localeTag = { "en" },
             openPartialTransfer = open,
@@ -116,7 +118,8 @@ class DeviceResumeRestartTest {
         faults: TransferFaults = TransferFaults(),
         stopCrc: FakePlaudPeripheral.StopCrc = FakePlaudPeripheral.StopCrc.NotProvided,
         file: ByteArray = encrypted,
-    ) = FakePlaudPeripheral(createSessionCipher(), keys, file, sessionId = session, requirePublicKey = false, chunkSize = 200, faults = faults, stopCrc = stopCrc)
+        identity: DeviceIdentityKeys = keys,
+    ) = FakePlaudPeripheral(createSessionCipher(), identity, file, sessionId = session, requirePublicKey = false, chunkSize = 200, faults = faults, stopCrc = stopCrc)
 
     @Test fun restart_continues_from_the_checkpoint_and_clears_the_partial() {
         try {
@@ -253,6 +256,46 @@ class DeviceResumeRestartTest {
                     while (vm.sessionUi.value.statusMessage != DeviceUiCopy.unlockFailed("en")) delay(50)
                 }
             }
+        } finally { owner.clear(); Dispatchers.resetMain() }
+    }
+
+    @Test fun read_error_on_a_complete_partial_keeps_it_and_a_retry_needs_no_new_transfer() {
+        try {
+            var failing = true
+            val fake = peripheral()
+            val vm = run(fake, open = { id, sn ->
+                val store = PartialTransferFileStore.open(partials, id, sn)
+                object : PartialTransfer by store {
+                    override fun read(offset: Long, length: Int): ByteArray {
+                        if (failing) throw IOException("synthetic read failure")
+                        return store.read(offset, length)
+                    }
+                }
+            })
+            assertEquals(DeviceUiCopy.downloadFailed("en"), vm.sessionUi.value.statusMessage)
+            assertTrue(partials.list()!!.any { it.endsWith(".partial") }, "the transfer is kept")
+            failing = false
+            vm.downloadSession(session)
+            awaitOutcome(vm)
+            assertEquals("rec-synthetic", vm.sessionUi.value.lastDownloadedRecordingId)
+            assertContentEquals(plaintext, assertNotNull(saved))
+            assertEquals(listOf(0L), fake.syncStartOffsets, "nothing is transferred again")
+        } finally { owner.clear(); Dispatchers.resetMain() }
+    }
+
+    @Test fun wrong_key_on_a_complete_partial_deletes_it_without_connecting_to_transfer() {
+        try {
+            val other = rsaKeyPairToPem()
+            val reimported = keys.copy(publicKeyPem = other.first, privateKeyPem = other.second)
+            val earlier = PartialTransferFileStore.open(partials, session, serial)
+            earlier.write(encrypted)
+            assertEquals(encrypted.size.toLong(), earlier.length())
+            earlier.close()
+            val fake = peripheral(identity = reimported)
+            val vm = run(fake, identity = reimported)
+            assertEquals(DeviceUiCopy.downloadFailed("en"), vm.sessionUi.value.statusMessage)
+            assertEquals(emptyList(), fake.syncStartOffsets)
+            assertTrue(partials.list()!!.none { it.endsWith(".partial") || it.endsWith(".offset") })
         } finally { owner.clear(); Dispatchers.resetMain() }
     }
 
