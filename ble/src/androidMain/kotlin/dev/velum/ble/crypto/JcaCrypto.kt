@@ -1,6 +1,7 @@
 package dev.velum.ble.crypto
 
 import dev.velum.protocol.Bytes
+import android.util.Log
 import dev.velum.protocol.ChaCha20
 import dev.velum.protocol.ChaCha20Poly1305
 import dev.velum.protocol.FileDecryptor
@@ -8,6 +9,7 @@ import dev.velum.protocol.Protocol20SessionSecret
 import dev.velum.protocol.SessionCipher
 import java.security.KeyFactory
 import java.security.PrivateKey
+import java.security.GeneralSecurityException
 import java.security.PublicKey
 import java.security.spec.PKCS8EncodedKeySpec
 import java.security.spec.X509EncodedKeySpec
@@ -25,10 +27,20 @@ actual fun createFileDecryptor(): FileDecryptor = JcaFileDecryptor()
  */
 class JcaSessionCipher : SessionCipher {
     /**
-     * Android documents ChaCha20/Poly1305 from API 28, and minSdk is 26 (#226). Without a platform cipher, fall
-     * back to the Kotlin AEAD, which has the same output. Probed per instance, not cached globally.
+     * Android documents ChaCha20/Poly1305 from API 28, and minSdk is 26 (#226). Without a usable platform cipher,
+     * fall back to the Kotlin AEAD, which has the same output. Probed per instance, not cached globally. The probe
+     * also runs `init` with a throwaway all-zero key: a provider that lists the cipher but rejects the key or IV
+     * would fail every real call, so it must take the fallback too. Only the active path is logged, never key
+     * material.
      */
-    private val platformChaCha: Boolean = runCatching { Cipher.getInstance("ChaCha20-Poly1305") }.isSuccess
+    private val platformChaCha: Boolean = try {
+        Cipher.getInstance("ChaCha20-Poly1305")
+            .init(Cipher.ENCRYPT_MODE, SecretKeySpec(ByteArray(32), "ChaCha20"), IvParameterSpec(ByteArray(12)))
+        true
+    } catch (_: GeneralSecurityException) {
+        // NoSuchAlgorithm / NoSuchPadding / InvalidKey / InvalidAlgorithmParameter: no usable platform cipher.
+        false
+    }.also { Log.i(TAG, "ChaCha20-Poly1305 via ${if (it) "platform cipher" else "Kotlin fallback"}") }
 
     override fun rsaDecryptPkcs1(privateKeyPem: String, ciphertext: ByteArray): ByteArray {
         val cipher = Cipher.getInstance("RSA/ECB/PKCS1Padding")
@@ -255,3 +267,5 @@ fun encodePem(label: String, der: ByteArray): String {
     val b64 = Base64.getMimeEncoder(64, "\n".toByteArray()).encodeToString(der)
     return "-----BEGIN $label-----\n$b64\n-----END $label-----"
 }
+
+private const val TAG = "VelumCrypto"

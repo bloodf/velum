@@ -10,7 +10,13 @@ package dev.velum.protocol
 object ChaCha20Poly1305 {
     const val TAG_BYTES = 16
 
-    /** Returns ciphertext followed by the 16-byte tag. */
+    /**
+     * Returns ciphertext followed by the 16-byte tag.
+     *
+     * This has no nonce guard. Never seal twice with the same [key] and [nonce]: that reuses keystream and breaks
+     * confidentiality and the MAC. The Plaud session deliberately does so (fixed nonce, S13 in the review doc);
+     * this class does not make that safe.
+     */
     fun seal(key: ByteArray, nonce: ByteArray, aad: ByteArray, plaintext: ByteArray): ByteArray {
         val ciphertext = ChaCha20.xor(key, nonce, 1, plaintext)
         return ciphertext + tag(key, nonce, aad, ciphertext)
@@ -52,8 +58,13 @@ object ChaCha20Poly1305 {
             ((b[at + 2].toLong() and 0xFF) shl 16) or
             ((b[at + 3].toLong() and 0xFF) shl 24))
 
-    /** Poly1305 over 26-bit limbs (poly1305-donna layout); every message here is already padded to 16 bytes. */
-    private fun poly1305(key: ByteArray, message: ByteArray): ByteArray {
+    /**
+     * Poly1305 over 26-bit limbs (poly1305-donna layout). [message] must be a multiple of 16 bytes (the AEAD pads
+     * it), and [key] is 32 bytes (r, then s). Internal so tests can run the RFC 8439 A.3 vectors directly.
+     */
+    internal fun poly1305(key: ByteArray, message: ByteArray): ByteArray {
+        require(key.size == 32) { "Poly1305 key must be 32 bytes" }
+        require(message.size % 16 == 0) { "Poly1305 message must be a multiple of 16 bytes" }
         val m26 = 0x3ffffffL
         val t0 = readIntLe(key, 0)
         val t1 = readIntLe(key, 4)
