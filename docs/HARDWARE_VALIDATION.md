@@ -1,7 +1,7 @@
 # Android 1.0 hardware validation checklist
 
 Run on the owner’s **Plaud Note Pro** + a mid-range Android phone (arm64).  
-Do **not** send opcodes **5, 104, 128, 0xFE20, 143 (OTA)** or write settings **4 / 26**.
+Do **not** send opcodes **5, 30 (delete file), 104, 128, 0xFE20, 143 (OTA)** or write settings **4 / 26**.
 
 Use a green CI **`velum-debug-apk`** artifact (fixed debug keystore) or a signed release build.
 

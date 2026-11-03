@@ -39,7 +39,18 @@ class RecordingProcessWorker(
     override suspend fun getForegroundInfo(): ForegroundInfo = buildForegroundInfo()
 
     override suspend fun doWork(): Result {
-        setForeground(buildForegroundInfo())
+        var promoted = true
+        try {
+            setForeground(buildForegroundInfo())
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Android 12+ refuses a foreground start from the background (ForegroundServiceStartNotAllowedException).
+            // Failing here would leave the row `queued` forever (#330), so the job runs unpromoted.
+            promoted = false
+            android.util.Log.w(TAG, "Foreground start refused (${e::class.java.simpleName})")
+            notifyRefusedStart()
+        }
         val recordingId = inputData.getString(KEY_RECORDING_ID) ?: return Result.failure()
         val templateId = inputData.getString(KEY_TEMPLATE_ID)
         val retranscribe = inputData.getBoolean(KEY_RETRANSCRIBE, true)
@@ -61,6 +72,39 @@ class RecordingProcessWorker(
                 Result.retry()
             }
         }
+        // Unpromoted work is stopped after about 10 minutes (WorkManager's limit for non-foreground workers), the
+        // processor restores the row, and WorkManager reruns it from the start: a long local job would loop without
+        // progress or an error. The unpromoted run itself is recorded; only a run that follows a stopped unpromoted
+        // run fails (once, with a message). Thermal, holder and backoff retries do not count.
+        val workId = id.toString()
+        val mustFail = failUnpromotedRerun(
+            promoted = promoted,
+            apiOnly = usesApiOnly(),
+            // Same work id = a retry/reschedule of this run; a REPLACE enqueue gets a new id and starts clean.
+            wasUnpromoted = { runCatching { repository.unpromotedRunOwner(recordingId) }.getOrNull() == workId },
+            setFlag = { on -> runCatching { repository.setUnpromotedRun(recordingId, if (on) workId else null) } },
+        )
+        if (mustFail) {
+            val message = applicationContext.getString(R.string.velum_processing_stopped_message)
+            // Status first: it is what ends the `queued` state; each write is independent.
+            runCatching { repository.updateStatus(recordingId, "failed") }
+            runCatching { repository.setProcessingError(recordingId, message) }
+            return Result.failure(workDataOf(KEY_ERROR to message))
+        }
+        val result = processJob(recordingId, templateId, retranscribe, apiOverride, processor, repository)
+        // The run ended on its own (even as a retry); only a stop leaves the flag set, by throwing past here.
+        runCatching { repository.setUnpromotedRun(recordingId, null) }
+        return result
+    }
+
+    private suspend fun processJob(
+        recordingId: String,
+        templateId: String?,
+        retranscribe: Boolean,
+        apiOverride: ApiModelOverride?,
+        processor: RecordingProcessor,
+        repository: dev.velum.core.data.VelumRepository,
+    ): Result {
         val powerManager = applicationContext.getSystemService(PowerManager::class.java)
 
         if (ThermalMonitor.isSevereOrCritical(powerManager)) {
@@ -153,11 +197,33 @@ class RecordingProcessWorker(
         }
     }
 
+    private fun usesApiOnly(): Boolean {
+        val cfg = AiRuntimeHolder.settings?.settings?.value ?: return false
+        return cfg.transcriptionMode == ComputeMode.Api && cfg.summaryMode == ComputeMode.Api &&
+            cfg.diarizationMode == ComputeMode.Api
+    }
+
+    /** A plain notification (no foreground service needed) so the user knows why a long job may stop. */
+    private fun notifyRefusedStart() {
+        runCatching {
+            ensureProcessingChannel(applicationContext)
+            val nm = applicationContext.getSystemService(NotificationManager::class.java) ?: return
+            val n = NotificationCompat.Builder(applicationContext, PROCESSING_CHANNEL_ID)
+                .setContentTitle(applicationContext.getString(R.string.velum_processing_refused_title))
+                .setContentText(applicationContext.getString(R.string.velum_processing_refused_body))
+                .setSmallIcon(android.R.drawable.stat_sys_warning)
+                .setAutoCancel(true)
+                .setOnlyAlertOnce(true)
+                .build()
+            nm.notify(PROCESSING_REFUSED_NOTIFICATION_ID, n)
+        }
+    }
+
     private fun buildForegroundInfo(): ForegroundInfo {
         ensureProcessingChannel(applicationContext)
         val notification = NotificationCompat.Builder(applicationContext, PROCESSING_CHANNEL_ID)
-            .setContentTitle(applicationContext.getString(R.string.velum_processing_notification_title))
-            .setContentText(applicationContext.getString(R.string.velum_processing_notification_body))
+            .setContentTitle(applicationContext.inAppLanguage().getString(R.string.velum_processing_notification_title))
+            .setContentText(applicationContext.inAppLanguage().getString(R.string.velum_processing_notification_body))
             .setSmallIcon(android.R.drawable.stat_sys_download)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
@@ -184,6 +250,8 @@ class RecordingProcessWorker(
         const val KEY_ERROR = "error"
         const val STATUS_PAUSED_THERMAL = "paused_thermal"
         const val MAX_HOLDER_RETRIES = 5
+        private const val TAG = "RecordingWorker"
+        const val PROCESSING_REFUSED_NOTIFICATION_ID = 0x56454C03
         const val PROCESSING_CHANNEL_ID = "velum_recording_processing"
         const val PROCESSING_NOTIFICATION_ID = 0x56454C02
 
@@ -245,11 +313,10 @@ class RecordingProcessWorker(
         fun ensureProcessingChannel(context: Context) {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
             val nm = context.getSystemService(NotificationManager::class.java) ?: return
-            if (nm.getNotificationChannel(PROCESSING_CHANNEL_ID) != null) return
             nm.createNotificationChannel(
                 NotificationChannel(
                     PROCESSING_CHANNEL_ID,
-                    context.getString(R.string.velum_processing_channel_name),
+                    context.inAppLanguage().getString(R.string.velum_processing_channel_name),
                     NotificationManager.IMPORTANCE_LOW,
                 ),
             )
