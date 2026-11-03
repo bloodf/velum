@@ -131,7 +131,7 @@ class AndroidWifiTransferServerTest {
         var last: Throwable? = null
         while (System.nanoTime() < deadline) {
             try {
-                ServerSocket(port).close()
+                ServerSocket(port, 1, InetAddress.getByName("127.0.0.1")).close()
                 return
             } catch (t: Throwable) {
                 last = t
