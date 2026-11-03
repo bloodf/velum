@@ -1,5 +1,6 @@
 package dev.velum.app.i18n
 
+import dev.velum.ai.ApiErrorSanitizer
 import dev.velum.ai.pipeline.INSUFFICIENT_STORAGE_MESSAGE
 import dev.velum.ai.pipeline.NO_AUDIO_OR_TRANSCRIPT_MESSAGE
 import dev.velum.ai.pipeline.NO_TRANSCRIPT_TO_SUMMARIZE_MESSAGE
@@ -8,12 +9,13 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
+import kotlin.test.assertTrue
 
 /** #348: a saved processing failure shows in the app's language, whatever language the device uses. */
 class ProcessingFailureTextTest {
     /** Saved text as common code and the engines write it, with synthetic paths, and the copy it must become. */
     private val cases: List<Pair<String, (Strings) -> String>> = listOf(
-        INSUFFICIENT_STORAGE_MESSAGE to { s -> s.ux.processingFailedStorage },
+        INSUFFICIENT_STORAGE_MESSAGE to { s -> s.ux.insufficientStorage },
         "Unsupported audio format (WebM/Matroska). This file is not Ogg Opus, WAV or raw 16 kHz PCM, so it was not transcribed; re-download it from the device or convert it to WAV or Ogg Opus." to { s -> s.ux.processingFailedUnsupportedFormat },
         NO_TRANSCRIPT_TO_SUMMARIZE_MESSAGE to { s -> s.ux.processingFailedNoTranscript },
         NO_AUDIO_OR_TRANSCRIPT_MESSAGE to { s -> s.ux.processingFailedNoAudio },
@@ -50,5 +52,40 @@ class ProcessingFailureTextTest {
                 assertFalse(Regex("\\b$it\\b").containsMatchIn(shown), "'$it' in pt-BR copy for: $raw")
             }
         }
+    }
+
+    @Test fun out_of_storage_failure_is_shown_in_the_app_language() {
+        // The processor stores the sanitized message; the screen must still recognise it after that round trip.
+        val stored = ApiErrorSanitizer.sanitize(INSUFFICIENT_STORAGE_MESSAGE)
+        assertEquals(En.ux.insufficientStorage, processingFailureText(stored, En))
+        assertEquals(PtBr.ux.insufficientStorage, processingFailureText(stored, PtBr))
+    }
+
+    @Test fun english_copy_matches_the_stored_text_and_portuguese_is_not_english() {
+        assertEquals(INSUFFICIENT_STORAGE_MESSAGE, En.ux.insufficientStorage)
+        assertNotEquals(En.ux.insufficientStorage, PtBr.ux.insufficientStorage)
+    }
+
+    @Test fun missing_failure_shows_nothing() {
+        assertEquals(null, processingFailureText(null, PtBr))
+    }
+
+    @Test fun unknown_failure_keeps_its_detail_inside_localized_copy() {
+        assertEquals("O processamento falhou (Provider said no (HTTP 500)).", processingFailureText("Provider said no (HTTP 500).", PtBr))
+        assertEquals("Processing failed (Provider said no (HTTP 500)).", processingFailureText("Provider said no (HTTP 500)", En))
+    }
+
+    @Test fun unknown_failure_detail_drops_paths_emails_and_hardware_addresses() {
+        val raw = "open failed: /storage/emulated/0/Velum/meeting.ogg for someone@example.test on AA:BB:CC:DD:EE:FF"
+        val shown = processingFailureText(raw, En).orEmpty()
+        assertEquals("Processing failed (open failed: … for … on …).", shown)
+        val windows = processingFailureText("""cannot read C:\Users\someone\rec.wav""", En).orEmpty()
+        assertEquals("Processing failed (cannot read …).", windows)
+    }
+
+    @Test fun unknown_failure_detail_is_length_capped() {
+        val shown = processingFailureText("x".repeat(500), En).orEmpty()
+        assertTrue(shown.length <= "Processing failed ().".length + 120, shown)
+        assertTrue(shown.endsWith("…)."), shown)
     }
 }

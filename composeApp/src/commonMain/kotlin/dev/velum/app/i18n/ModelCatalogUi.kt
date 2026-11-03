@@ -5,11 +5,11 @@ import dev.velum.ai.local.DefaultLocalCatalog
 import dev.velum.ai.local.DeviceComputeClass
 import dev.velum.ai.local.LOCAL_MODEL_NOT_READY_MESSAGE
 import dev.velum.ai.local.LocalAsrRouter
+import dev.velum.ai.local.detectDeviceComputeClass
 import dev.velum.ai.pipeline.INSUFFICIENT_STORAGE_MESSAGE
 import dev.velum.ai.pipeline.NO_AUDIO_OR_TRANSCRIPT_MESSAGE
 import dev.velum.ai.pipeline.NO_TRANSCRIPT_TO_SUMMARIZE_MESSAGE
 import dev.velum.ai.pipeline.PROCESSING_STOPPED_MESSAGE
-import dev.velum.ai.local.detectDeviceComputeClass
 
 /**
  * User-facing copy for on-device models (pt-BR + en). Catalog technical
@@ -190,7 +190,7 @@ internal fun processingFailureText(raw: String?, strings: Strings): String? {
     val ux = strings.ux
     return when {
         raw == LOCAL_MODEL_NOT_READY_MESSAGE || LEGACY_MODEL_NOT_READY.containsMatchIn(raw) -> ux.localModelNotReady
-        raw == INSUFFICIENT_STORAGE_MESSAGE -> ux.processingFailedStorage
+        raw == INSUFFICIENT_STORAGE_MESSAGE -> ux.insufficientStorage
         raw.startsWith("Unsupported audio format (") -> ux.processingFailedUnsupportedFormat
         raw == NO_TRANSCRIPT_TO_SUMMARIZE_MESSAGE -> ux.processingFailedNoTranscript
         raw == NO_AUDIO_OR_TRANSCRIPT_MESSAGE -> ux.processingFailedNoAudio
@@ -199,9 +199,23 @@ internal fun processingFailureText(raw: String?, strings: Strings): String? {
         MODEL_PRODUCED_NO_TEXT.containsMatchIn(raw) -> ux.processingFailedNoText
         LOCAL_ENGINE_FAILED.containsMatchIn(raw) -> ux.processingFailedLocalEngine
         raw == PROCESSING_STOPPED_MESSAGE || raw in LEGACY_PROCESSING_STOPPED -> ux.processingStoppedByAndroid
-        else -> ux.processingFailedWithDetail.replace("%s", raw.trim().removeSuffix("."))
+        else -> ux.processingFailedWithDetail.replace("%s", failureDetail(raw))
     }
 }
+
+/**
+ * The saved text of an unknown failure, fit to show: file paths, emails and hardware addresses are cut, since they
+ * can name the user or the device, and it is capped at [FAILURE_DETAIL_MAX] characters.
+ */
+private fun failureDetail(raw: String): String {
+    val cut = IDENTIFYING_TEXT.replace(raw, "…").trim().removeSuffix(".")
+    return if (cut.length <= FAILURE_DETAIL_MAX) cut else cut.take(FAILURE_DETAIL_MAX - 1).trimEnd() + "…"
+}
+
+private const val FAILURE_DETAIL_MAX = 120
+private val IDENTIFYING_TEXT = Regex(
+    """(?:[A-Za-z]:)?(?:[/\\][^\s/\\]+){2,}[/\\]?|[\w.+-]+@[\w-]+(?:\.[\w-]+)+|\b(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}\b""",
+)
 
 private val MODEL_FILES_MISSING = Regex(
     "^(ASR model directory missing|Model archive at .* is not extracted|(Whisper|SenseVoice|Parakeet/transducer) ASR config " +

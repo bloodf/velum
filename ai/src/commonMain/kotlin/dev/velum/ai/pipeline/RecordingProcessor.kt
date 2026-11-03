@@ -39,6 +39,7 @@ const val TRUNCATED_AUDIO_MESSAGE = "Audio file is truncated; processing the par
 /** Bytes read to tell an Ogg or WAV file apart when the file name does not say. */
 private const val SNIFF_BYTES = 16
 
+/** Saved as the processing error when the disk is full; the UI matches this exact text to translate it (#348). */
 const val INSUFFICIENT_STORAGE_MESSAGE =
     "Not enough free storage to process this recording. Free up space and try again."
 
