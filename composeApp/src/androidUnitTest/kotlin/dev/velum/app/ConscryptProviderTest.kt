@@ -100,7 +100,9 @@ class ConscryptProviderTest {
         assertNull(session.chacha20Poly1305Open(key, nonce, ByteArray(12), sealed), "wrong aad")
         assertNull(session.chacha20Poly1305Open(ByteArray(32), nonce, aad, sealed), "wrong key")
         assertNull(session.chacha20Poly1305Open(key, nonce, aad, ByteArray(0)), "empty")
+        assertNull(session.chacha20Poly1305Open(key, nonce, aad, ByteArray(1)), "one byte")
         assertNull(session.chacha20Poly1305Open(key, nonce, aad, ByteArray(15)), "shorter than a tag")
+        assertNull(session.chacha20Poly1305Open(key, nonce, aad, ByteArray(16)), "exactly a tag, wrong")
     }
 
     @Test fun wifi_cipher_fails_closed_under_conscrypt() = withConscryptFirst {
@@ -111,7 +113,9 @@ class ConscryptProviderTest {
         val badTag = sealed.copyOf().also { it[it.size - 1] = (it[it.size - 1].toInt() xor 1).toByte() }
         assertNull(wifi.open(7, badTag), "bad tag")
         assertNull(wifi.open(7, ByteArray(0)), "empty")
+        assertNull(wifi.open(7, ByteArray(1)), "one byte")
         assertNull(wifi.open(7, ByteArray(15)), "shorter than a tag")
+        assertNull(wifi.open(7, ByteArray(16)), "exactly a tag, wrong")
     }
 
     @Test fun aes_gcm_and_rsa_work_under_conscrypt() = withConscryptFirst {

@@ -160,7 +160,9 @@ class FileDecryptDeviceTest {
             "wrong aad" to Triple(openKey, ByteArray(12), sealed),
             "wrong key" to Triple(ByteArray(32), aad, sealed),
             "empty" to Triple(openKey, aad, ByteArray(0)),
+            "one byte" to Triple(openKey, aad, ByteArray(1)),
             "shorter than a tag" to Triple(openKey, aad, ByteArray(15)),
+            "exactly a tag, wrong" to Triple(openKey, aad, ByteArray(16)),
         )
         for ((name, case) in cases) {
             val raw = runCatching {
@@ -181,7 +183,14 @@ class FileDecryptDeviceTest {
         val sealed = wifi.seal(7, byteArrayOf(1, 2, 3))
         assertArrayEquals(byteArrayOf(1, 2, 3), wifi.open(7, sealed)!!.second)
         val badTag = sealed.copyOf().also { it[it.size - 1] = (it[it.size - 1].toInt() xor 1).toByte() }
-        for ((name, input) in listOf("bad tag" to badTag, "empty" to ByteArray(0), "shorter than a tag" to ByteArray(15))) {
+        val cases = listOf(
+            "bad tag" to badTag,
+            "empty" to ByteArray(0),
+            "one byte" to ByteArray(1),
+            "shorter than a tag" to ByteArray(15),
+            "exactly a tag, wrong" to ByteArray(16),
+        )
+        for ((name, input) in cases) {
             val raw = runCatching {
                 val c = Cipher.getInstance("AES/GCM/NoPadding")
                 c.init(Cipher.DECRYPT_MODE, SecretKeySpec(secret.key, "AES"), GCMParameterSpec(128, secret.nonce))
