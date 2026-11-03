@@ -286,23 +286,10 @@ object FtsIndex {
         }.value
 
     /**
-     * Wrap delete+insert so a crash mid-upsert cannot leave a missing FTS row.
-     * Skips BEGIN/COMMIT when already inside a SQLDelight Transacter transaction.
+     * Runs the delete+insert pair. It issues no BEGIN/COMMIT of its own: on the single shared JDBC
+     * connection a raw BEGIN collides with any other transaction ("cannot start a transaction within a
+     * transaction", #208). Callers that need the pair atomic wrap it in the database's Transacter
+     * (VelumRepository does).
      */
-    private inline fun inTransaction(driver: SqlDriver, block: () -> Unit) {
-        if (driver.currentTransaction() != null) {
-            block()
-            return
-        }
-        driver.execute(identifier = null, sql = "BEGIN", parameters = 0)
-        try {
-            block()
-            driver.execute(identifier = null, sql = "COMMIT", parameters = 0)
-        } catch (t: Throwable) {
-            runCatching {
-                driver.execute(identifier = null, sql = "ROLLBACK", parameters = 0)
-            }
-            throw t
-        }
-    }
+    private inline fun inTransaction(@Suppress("UNUSED_PARAMETER") driver: SqlDriver, block: () -> Unit) = block()
 }
