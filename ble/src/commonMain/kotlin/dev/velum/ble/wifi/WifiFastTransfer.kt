@@ -166,6 +166,11 @@ class WifiFastTransferSession(
         // One send at a time: the sequence number is taken, and the frame written, in the same order for everyone.
         sendMutex.withLock {
             val sealed = frameCipher.seal(sendSeq, checked)
+            // What goes out must open to exactly the packet the guard checked, at this sequence.
+            val opened = frameCipher.open(sendSeq, sealed)
+            check(opened != null && opened.first == sendSeq && opened.second.contentEquals(checked)) {
+                "Sealed frame does not match the checked packet"
+            }
             sendSeq += 1
             server.sendEncryptedFrame(sealed)
         }

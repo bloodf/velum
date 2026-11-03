@@ -37,13 +37,17 @@ import platform.darwin.NSObject
 private var activeDelegate: AudioPickerDelegate? = null
 private val importScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
-private class AudioPickerDelegate(val onPicked: (String) -> Unit) : NSObject(), UIDocumentPickerDelegateProtocol {
+private class AudioPickerDelegate(val onPicked: (String) -> Unit, val onFailed: () -> Unit) : NSObject(), UIDocumentPickerDelegateProtocol {
     override fun documentPicker(controller: UIDocumentPickerViewController, didPickDocumentsAtURLs: List<*>) {
         activeDelegate = null
-        val url = didPickDocumentsAtURLs.firstOrNull() as? NSURL ?: return
+        val url = didPickDocumentsAtURLs.firstOrNull() as? NSURL
+        if (url == null) {
+            onFailed()
+            return
+        }
         importScope.launch {
             val path = withContext(Dispatchers.IO) { moveIntoImports(url) }
-            if (path != null) onPicked(path)
+            if (path != null) onPicked(path) else onFailed()
         }
     }
 
@@ -55,11 +59,11 @@ private class AudioPickerDelegate(val onPicked: (String) -> Unit) : NSObject(), 
 /** Opens the Files picker for audio. `asCopy` gives an app-owned copy, so no security-scoped access is needed. */
 @Composable
 actual fun rememberAudioImporter(onFailed: () -> Unit, onPicked: (path: String) -> Unit): () -> Unit =
-    remember(onPicked) {
+    remember(onPicked, onFailed) {
         {
             val presenter = topViewController()
             if (presenter != null) {
-                val delegate = AudioPickerDelegate(onPicked)
+                val delegate = AudioPickerDelegate(onPicked, onFailed)
                 activeDelegate = delegate
                 val picker = UIDocumentPickerViewController(forOpeningContentTypes = listOf(UTTypeAudio), asCopy = true)
                 picker.delegate = delegate
@@ -70,7 +74,7 @@ actual fun rememberAudioImporter(onFailed: () -> Unit, onPicked: (path: String) 
 
 /**
  * Moves the picker's temporary copy into `Caches/imports` so it is not left behind. Failures are logged
- * and return null; there is no error channel in the shared importer contract (Android also drops them).
+ * and return null, which the delegate reports through `onFailed`.
  */
 @OptIn(ExperimentalForeignApi::class)
 private fun moveIntoImports(source: NSURL): String? {
@@ -86,11 +90,11 @@ private fun moveIntoImports(source: NSURL): String? {
     return memScoped {
         val error = alloc<ObjCObjectVar<NSError?>>()
         if (!files.createDirectoryAtPath(dir, withIntermediateDirectories = true, attributes = null, error = error.ptr)) {
-            NSLog("Velum import: cannot create imports directory: ${error.value?.localizedDescription}")
+            NSLog("Velum import: cannot create imports directory (${errorCode(error.value)})")
             return@memScoped null
         }
         if (!files.moveItemAtURL(source, NSURL.fileURLWithPath(dest), error = error.ptr)) {
-            NSLog("Velum import: cannot move picked file: ${error.value?.localizedDescription}")
+            NSLog("Velum import: cannot move picked file (${errorCode(error.value)})")
             return@memScoped null
         }
         val size = (files.attributesOfItemAtPath(dest, error = null)?.get(NSFileSize) as? NSNumber)?.longLongValue ?: 0L
@@ -103,10 +107,19 @@ private fun moveIntoImports(source: NSURL): String? {
     }
 }
 
+/** Domain and code only: the description can carry the user's file name. */
+private fun errorCode(error: NSError?): String = "${error?.domain}:${error?.code}"
+
 private fun topViewController(): UIViewController? {
     val window: UIWindow = UIApplication.sharedApplication.windows.filterIsInstance<UIWindow>()
         .firstOrNull { it.isKeyWindow() } ?: return null
     var top = window.rootViewController
     while (top?.presentedViewController != null) top = top.presentedViewController
     return top
+}
+
+@OptIn(ExperimentalForeignApi::class)
+actual fun deleteImportCopies() {
+    val caches = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, true).firstOrNull() as? String ?: return
+    NSFileManager.defaultManager.removeItemAtPath("$caches/imports", error = null)
 }

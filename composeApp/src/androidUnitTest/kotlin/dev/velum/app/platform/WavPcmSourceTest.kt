@@ -81,6 +81,14 @@ class WavPcmSourceTest {
         assertEquals(SkipSilenceScanner.findSkipPastSilence(pcm, rate, 0L), WavPcmSource.open(f)!!.findSkipPastSilence(0L))
     }
 
+    @Test fun a_source_knows_its_file() {
+        val a = wav("a.wav", 16_000, 1, 16_000L) { 0 }
+        val b = wav("b.wav", 16_000, 1, 16_000L) { 0 }
+        val source = assertNotNull(WavPcmSource.open(a))
+        assertTrue(source.isFor(a))
+        assertTrue(!source.isFor(b))
+    }
+
     @Test fun non_pcm16_or_headerless_files_have_no_source() {
         assertNull(WavPcmSource.open(File(dir, "x.wav").apply { writeBytes(Random(1).nextBytes(100)) }))
         assertNull(WavPcmSource.open(File(dir, "tiny.wav").apply { writeBytes(ByteArray(10)) }))
@@ -147,6 +155,21 @@ class WavPcmSourceTest {
         assertNull(WavPcmSource.open(headerWith(1, 16, 0)))
     }
 
+    @Test fun a_cancelled_scan_stops_between_windows() {
+        val rate = 16_000
+        val f = wav("cancel.wav", rate, 1, rate * 60L) { 0 } // a minute of silence: dozens of windows
+        val source = assertNotNull(WavPcmSource.open(f))
+        var windows = 0
+        val stopped = try {
+            source.findSkipPastSilence(0L) { if (++windows == 3) throw kotlinx.coroutines.CancellationException("stop") }
+            false
+        } catch (_: kotlinx.coroutines.CancellationException) {
+            true
+        }
+        assertTrue(stopped)
+        assertTrue(source.bytesRead <= 2L * WavPcmSource.WINDOW_BYTES, "read ${source.bytesRead} bytes after cancelling at window 3")
+    }
+
     @Test fun an_unreadable_data_chunk_means_no_skip_not_a_crash() {
         val f = wav("trunc.wav", 16_000, 1, 16_000L * 10) { 0 }
         val source = WavPcmSource.open(f)!!
@@ -159,8 +182,12 @@ class WavPcmSourceTest {
         val prepare = src.substringAfter("override suspend fun prepare").substringBefore("override fun play()")
         assertTrue(prepare.contains("skipScan?.cancel()"), "prepare cancels a scan of the previous file")
         val scan = src.substringAfter("private fun maybeSkipSilence")
-        assertTrue(scan.contains("runCatching"), "an IO failure must not escape the scope")
+        assertTrue(scan.contains("catch (_: Throwable)"), "an IO failure must not escape the scope")
         assertTrue(scan.contains("wavFile !== file"), "re-check the file before using the result")
-        assertTrue(scan.contains("now >= pos - 500L"), "a late result must not undo a user seek")
+        assertTrue(scan.contains("SkipSilenceScanner.shouldApplySkip("), "the late-seek rule is the tested pure function")
+        assertTrue(scan.contains("catch (c: CancellationException)") && !scan.contains("runCatching"), "cancellation is never swallowed")
+        assertTrue(scan.contains("ensureActive()"), "the scan is told to stop between windows")
+        assertTrue(scan.contains("it.isFor(file)"), "a source is only reused for its own file")
+        assertTrue(prepare.contains("Dispatchers.Main.immediate"), "prepare resets the skip-silence fields on Main")
     }
 }

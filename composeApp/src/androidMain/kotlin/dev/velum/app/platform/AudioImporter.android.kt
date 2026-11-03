@@ -23,21 +23,7 @@ actual fun rememberAudioImporter(onFailed: () -> Unit, onPicked: (path: String) 
         contract = ActivityResultContracts.OpenDocument(),
     ) { uri: Uri? ->
         if (uri == null) return@rememberLauncherForActivityResult
-        scope.launch {
-            val path = withContext(Dispatchers.IO) {
-                val displayName = displayNameOf(context, uri)
-                val name = sanitizeImportFileName(displayName, "${UUID.randomUUID()}.audio")
-                val dest = File(context.cacheDir, "imports").apply { mkdirs() }
-                val outFile = File(dest, "${System.currentTimeMillis()}_$name")
-                if (copyToCache({ context.contentResolver.openInputStream(uri) }, outFile)) {
-                    dev.velum.app.importing.ImportDisplayNames.put(outFile.absolutePath, displayName)
-                    outFile.absolutePath
-                } else {
-                    null
-                }
-            }
-            if (path != null) onPicked(path) else onFailed()
-        }
+        scope.launch { importPickedDocument(context, uri, onFailed, onPicked) }
     }
     return remember(launcher) {
         {
@@ -46,17 +32,71 @@ actual fun rememberAudioImporter(onFailed: () -> Unit, onPicked: (path: String) 
     }
 }
 
+actual fun deleteImportCopies() {
+    val context = appContextOrNull() ?: return
+    File(context.cacheDir, "imports").deleteRecursively()
+}
+
+private const val TAG = "AudioImporter"
+
+/**
+ * Copies [uri] into the import cache and reports the result: [onPicked] with the cached path, or
+ * [onFailed] when the provider cannot be read. A cancelled copy removes its partial file and rethrows.
+ */
+internal suspend fun importPickedDocument(
+    context: android.content.Context,
+    uri: Uri,
+    onFailed: () -> Unit,
+    onPicked: (path: String) -> Unit,
+    openStream: () -> java.io.InputStream? = { context.contentResolver.openInputStream(uri) },
+) {
+    var outFile: File? = null
+    var displayName: String? = null
+    val path = try {
+        withContext(Dispatchers.IO) {
+            displayName = displayNameOf(context, uri)
+            val name = sanitizeImportFileName(displayName, "${UUID.randomUUID()}.audio")
+            val dest = File(context.cacheDir, "imports").apply { mkdirs() }
+            val target = File(dest, "${System.currentTimeMillis()}_$name").also { outFile = it }
+            val copied = copyToCache(openStream, target) {
+                // Class name only: the message and path can carry the user's file names.
+                android.util.Log.w(TAG, "Import copy failed (${it::class.java.simpleName})")
+            }
+            if (copied) {
+                target.absolutePath
+            } else {
+                null
+            }
+        }
+    } catch (cancelled: CancellationException) {
+        outFile?.delete()
+        throw cancelled
+    }
+    if (path != null) {
+        // Only for a copy that survived: a cancelled or failed import must not leave a registry entry.
+        dev.velum.app.importing.ImportDisplayNames.put(path, displayName)
+        onPicked(path)
+    } else {
+        onFailed()
+    }
+}
+
 /**
  * Copies a picked document into the cache. A provider error (offline Drive, revoked grant) or an empty
  * stream returns false and leaves no partial file; cancellation still propagates.
  */
-internal fun copyToCache(open: () -> java.io.InputStream?, outFile: File): Boolean {
+internal fun copyToCache(
+    open: () -> java.io.InputStream?,
+    outFile: File,
+    onError: (Exception) -> Unit = {},
+): Boolean {
     try {
         open()?.use { input -> FileOutputStream(outFile).use { output -> input.copyTo(output) } }
     } catch (cancelled: CancellationException) {
         outFile.delete()
         throw cancelled
     } catch (failure: Exception) {
+        onError(failure)
         outFile.delete()
         return false
     }
