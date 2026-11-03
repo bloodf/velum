@@ -12,6 +12,7 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performScrollToKey
 import androidx.compose.ui.test.printToString
 import androidx.compose.ui.test.onAllNodesWithText
@@ -53,11 +54,24 @@ class DiscoverCategorySearchUiTest {
     private fun shows(text: String) = compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()
     private fun hasTag(tag: String) = compose.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()
 
-    /** Sees every loaded row by its key, where text checks only see composed ones. */
-    private fun assertRowAbsent(key: String) {
+    /** Sees every loaded row by its key, where text checks only see composed ones. Only a missing key means absent. */
+    private fun rowLoaded(key: String): Boolean {
         assertTrue(hasTag("templates:grid"), "no grid to look in")
-        assertTrue(runCatching { compose.onNodeWithTag("templates:grid").performScrollToKey(key) }.isFailure, "row $key should not be loaded")
+        return try {
+            compose.onNodeWithTag("templates:grid").performScrollToKey(key)
+            true
+        } catch (_: IllegalArgumentException) {
+            false
+        }
     }
+
+    /** A result row by key, not a ranking card with the same name: the filtered rows have landed once this returns. */
+    private fun awaitRow(key: String) {
+        waiting("row $key") { hasTag("templates:grid") && rowLoaded(key) }
+        compose.onNodeWithTag("templates:grid").performScrollToIndex(0)
+    }
+
+    private fun assertRowAbsent(key: String) = assertTrue(!rowLoaded(key), "row $key should not be loaded")
 
     private fun await(text: String, present: Boolean = true) = waiting("text '$text' present=$present") {
         shows(text) == present
@@ -116,6 +130,7 @@ class DiscoverCategorySearchUiTest {
             await("ZQ Alpha"); await("ZQ Gamma")
             tap("category:meeting")
             await("ZQ Gamma", present = false)
+            awaitRow("cs102-a")
             assertRowAbsent("cs102-c")
             // Search for a template that is only in the other category: the category must stay selected.
             compose.onNodeWithContentDescription(PtBr.search).performClick()
@@ -188,6 +203,7 @@ class DiscoverCategorySearchUiTest {
     fun tag_survives_search_without_hits_and_clears() = withScreen {
         tap("tag:agenda") // only ZQ Alpha
         await("ZQ Beta", present = false)
+        awaitRow("fs-a")
         assertRowAbsent("fs-b")
         searchThenExpectNoMatch("ZQ Beta", "active:tag:agenda")
     }
@@ -196,6 +212,7 @@ class DiscoverCategorySearchUiTest {
     fun language_survives_search_without_hits_and_clears() = withScreen {
         tap("lang:en") // only ZQ Alpha
         await("ZQ Beta", present = false)
+        awaitRow("fs-a")
         assertRowAbsent("fs-b")
         searchThenExpectNoMatch("ZQ Beta", "active:lang")
     }
