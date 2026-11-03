@@ -53,17 +53,4 @@ class RecordingProcessWorkerForegroundTest {
         val result = runBlocking { worker(attempt = RecordingProcessWorker.MAX_HOLDER_RETRIES).doWork() }
         assertTrue(result is ListenableWorker.Result.Failure, "got $result")
     }
-
-    @Test fun an_unpromoted_rerun_fails_once_with_a_message_instead_of_looping() {
-        // Attempt 1 means an earlier run was stopped (the ~10 minute limit for unpromoted work) and rescheduled.
-        val result = runBlocking { worker(attempt = 1).doWork() } as ListenableWorker.Result.Failure
-        val message = result.outputData.getString(RecordingProcessWorker.KEY_ERROR)
-        assertTrue(message.orEmpty().contains("foreground"), "got $message")
-    }
-
-    @Test fun a_promoted_rerun_is_not_failed_by_the_guard() {
-        // Same attempt count, foreground granted: the normal path runs (holder missing here, so it asks to retry).
-        val result = runBlocking { worker(attempt = 1, refuse = false).doWork() }
-        assertEquals(ListenableWorker.Result.retry(), result)
-    }
 }

@@ -52,19 +52,6 @@ class RecordingProcessWorker(
             notifyRefusedStart()
         }
         val recordingId = inputData.getString(KEY_RECORDING_ID) ?: return Result.failure()
-        // Unpromoted work is stopped after about 10 minutes (WorkManager's limit for non-foreground workers), the
-        // processor restores the row, and WorkManager reruns it from the start: a long local job would loop without
-        // progress or an error. A rerun that is still unpromoted fails once, with a message the user can act on.
-        if (!promoted && runAttemptCount >= MAX_UNPROMOTED_RUNS && !usesApiOnly()) {
-            val message = applicationContext.getString(R.string.velum_processing_stopped_message)
-            AiRuntimeHolder.repository?.let { repo ->
-                runCatching {
-                    repo.setProcessingError(recordingId, message)
-                    repo.updateStatus(recordingId, "failed")
-                }
-            }
-            return Result.failure(workDataOf(KEY_ERROR to message))
-        }
         val templateId = inputData.getString(KEY_TEMPLATE_ID)
         val retranscribe = inputData.getBoolean(KEY_RETRANSCRIBE, true)
         val overrideModel = inputData.getString(KEY_MODEL_ID)?.takeIf { it.isNotBlank() }
@@ -85,6 +72,38 @@ class RecordingProcessWorker(
                 Result.retry()
             }
         }
+        // Unpromoted work is stopped after about 10 minutes (WorkManager's limit for non-foreground workers), the
+        // processor restores the row, and WorkManager reruns it from the start: a long local job would loop without
+        // progress or an error. The unpromoted run itself is recorded; only a run that follows a stopped unpromoted
+        // run fails (once, with a message). Thermal, holder and backoff retries do not count.
+        val mustFail = failUnpromotedRerun(
+            promoted = promoted,
+            apiOnly = usesApiOnly(),
+            wasUnpromoted = { runCatching { repository.isUnpromotedRun(recordingId) }.getOrDefault(false) },
+            setFlag = { on -> runCatching { repository.setUnpromotedRun(recordingId, on) } },
+        )
+        if (mustFail) {
+            val message = applicationContext.getString(R.string.velum_processing_stopped_message)
+            runCatching {
+                repository.setProcessingError(recordingId, message)
+                repository.updateStatus(recordingId, "failed")
+            }
+            return Result.failure(workDataOf(KEY_ERROR to message))
+        }
+        val result = processJob(recordingId, templateId, retranscribe, apiOverride, processor, repository)
+        // The run ended on its own (even as a retry); only a stop leaves the flag set, by throwing past here.
+        runCatching { repository.setUnpromotedRun(recordingId, false) }
+        return result
+    }
+
+    private suspend fun processJob(
+        recordingId: String,
+        templateId: String?,
+        retranscribe: Boolean,
+        apiOverride: ApiModelOverride?,
+        processor: RecordingProcessor,
+        repository: dev.velum.core.data.VelumRepository,
+    ): Result {
         val powerManager = applicationContext.getSystemService(PowerManager::class.java)
 
         if (ThermalMonitor.isSevereOrCritical(powerManager)) {
@@ -193,6 +212,7 @@ class RecordingProcessWorker(
                 .setContentText(applicationContext.getString(R.string.velum_processing_refused_body))
                 .setSmallIcon(android.R.drawable.stat_sys_warning)
                 .setAutoCancel(true)
+                .setOnlyAlertOnce(true)
                 .build()
             nm.notify(PROCESSING_REFUSED_NOTIFICATION_ID, n)
         }
@@ -229,8 +249,6 @@ class RecordingProcessWorker(
         const val KEY_ERROR = "error"
         const val STATUS_PAUSED_THERMAL = "paused_thermal"
         const val MAX_HOLDER_RETRIES = 5
-        /** Reruns of a job that could not be promoted to the foreground before it fails with a message. */
-        const val MAX_UNPROMOTED_RUNS = 1
         private const val TAG = "RecordingWorker"
         const val PROCESSING_REFUSED_NOTIFICATION_ID = 0x56454C03
         const val PROCESSING_CHANNEL_ID = "velum_recording_processing"
