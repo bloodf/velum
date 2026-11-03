@@ -6,6 +6,7 @@ import dev.velum.core.autoflow.AutoFlowMatcher
 import dev.velum.core.autoflow.AutoFlowPostAction
 import dev.velum.core.autoflow.AutoFlowResolve
 import dev.velum.core.calendar.CalendarEventProvider
+import dev.velum.core.time.VelumDateTime
 import dev.velum.core.calendar.CalendarLookupResult
 import dev.velum.core.calendar.createCalendarEventProvider
 import dev.velum.core.data.VelumRepository
@@ -233,12 +234,19 @@ class AutoFlowRunner internal constructor(
         return terminal == "ready"
     }
 
+    /**
+     * True while the title is still the one the app generated (`formatFriendlyTitle` of the start time, in either
+     * language), so a title the user edited is never overwritten.
+     */
+    private fun hasAutomaticTitle(recording: Recording): Boolean =
+        listOf("pt-BR", "en").any { VelumDateTime.formatFriendlyTitle(recording.started_at, it) == recording.title }
+
     private suspend fun maybeApplyCalendarTitle(recording: Recording) {
         when (val result = calendar.currentOrNextEvent(nowEpochMs())) {
             is CalendarLookupResult.Ok -> {
                 calendarPermissionAsked.value = false
                 val title = result.currentOrNext?.title?.trim().orEmpty()
-                if (title.isNotEmpty() && recording.title.startsWith("Recording ")) {
+                if (title.isNotEmpty() && hasAutomaticTitle(recording)) {
                     repository.updateRecordingTitle(recording.id, title)
                 }
             }

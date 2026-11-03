@@ -3,6 +3,7 @@ package dev.velum.ai.pipeline
 import dev.velum.ai.engine.JobProgress
 import dev.velum.core.autoflow.AutoFlowPostAction
 import dev.velum.core.calendar.CalendarEventProvider
+import dev.velum.core.time.VelumDateTime
 import dev.velum.core.calendar.CalendarEventSummary
 import dev.velum.core.calendar.CalendarLookupResult
 import dev.velum.core.data.DriverFactory
@@ -203,7 +204,7 @@ class AutoFlowRunnerTest {
         assertEquals("ready", f.row("bad").status)
         assertEquals("ready", f.row("good").status)
         assertEquals(1, f.actions.count { it === AutoFlowUiAction.ProcessingFailed })
-        assertEquals(listOf("Recording good"), f.actions.filterIsInstance<AutoFlowUiAction.InsertCalendarEvent>().map { it.title })
+        assertEquals(listOf(recording("good").title), f.actions.filterIsInstance<AutoFlowUiAction.InsertCalendarEvent>().map { it.title })
         f.publish(recording("later"))
         assertEquals("ready", f.row("later").status)
     }
@@ -613,9 +614,26 @@ class AutoFlowRunnerTest {
         }
     }
 
+    @Test
+    fun calendarRenamesProductionDefaultTitlesInBothLocales_andKeepsEditedTitles() = runTest {
+        val f = Fixture(this)
+        f.lookup = { CalendarLookupResult.Ok(CalendarEventSummary("Planning", 0, 1)) }
+        f.start()
+        f.publish(
+            recording("pt").copy(started_at = 1_792_000_000, title = defaultTitle(1_792_000_000, "pt-BR")),
+            recording("en").copy(started_at = 1_792_000_000, title = defaultTitle(1_792_000_000, "en")),
+            recording("edited").copy(started_at = 1_792_000_000, title = "My own title"),
+        )
+        assertEquals("Planning", f.row("pt").title)
+        assertEquals("Planning", f.row("en").title)
+        assertEquals("My own title", f.row("edited").title)
+    }
+
     companion object {
+        private fun defaultTitle(startedAt: Long, locale: String) = VelumDateTime.formatFriendlyTitle(startedAt, locale)
+
         private fun recording(id: String, status: String = "imported", duration: Long = 10) = Recording(
-            id = id, session_id = null, folder_id = null, title = "Recording $id",
+            id = id, session_id = null, folder_id = null, title = defaultTitle(1, "en"),
             source = "note_pro", device_serial = null, started_at = 1, duration_seconds = duration,
             size_bytes = 0, local_path = null, transcript = null, summary_markdown = null,
             status = status, trashed = 0, created_at = 1, processing_warning = null,
