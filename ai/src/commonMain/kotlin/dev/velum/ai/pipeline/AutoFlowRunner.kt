@@ -269,7 +269,8 @@ class AutoFlowRunner internal constructor(
                     if (!recording.summary_markdown.isNullOrBlank()) {
                         append(recording.summary_markdown).append("\n\n")
                     }
-                    if (!recording.transcript.isNullOrBlank()) {
+                    // A markers-only transcript has no spoken text: no empty "Transcript" section (#205).
+                    if (!TranscriptMarkers.spoken(recording.transcript).isNullOrBlank()) {
                         append("## Transcript\n\n").append(recording.transcript)
                     }
                 }
