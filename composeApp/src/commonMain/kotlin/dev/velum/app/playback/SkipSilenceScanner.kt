@@ -50,6 +50,14 @@ object SkipSilenceScanner {
         return Result(seekToMs)
     }
 
+    /**
+     * Whether a finished scan may still seek. [scanStartMs] is where playback was when the scan began, [nowMs] where
+     * it is now, [targetMs] where the scan wants to go. A user seek back before the start (more than a poll earlier)
+     * or already past the target must not be undone by a late result.
+     */
+    fun shouldApplySkip(scanStartMs: Long, nowMs: Long, targetMs: Long, playing: Boolean): Boolean =
+        playing && targetMs > scanStartMs + 50L && nowMs >= scanStartMs - 500L && nowMs <= targetMs
+
     /** True when the absolute sample energy at [sampleIndex] is below [energyThreshold]. */
     fun isSilent(
         pcm16LeMono: ByteArray,

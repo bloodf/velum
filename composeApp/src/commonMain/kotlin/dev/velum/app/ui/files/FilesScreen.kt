@@ -27,6 +27,7 @@ import androidx.compose.material.icons.outlined.DeleteForever
 import androidx.compose.material.icons.outlined.DeleteSweep
 import androidx.compose.material.icons.outlined.DriveFileRenameOutline
 import androidx.compose.material.icons.outlined.ExpandMore
+import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.Headphones
 import androidx.compose.material.icons.outlined.IosShare
 import androidx.compose.material.icons.outlined.MicExternalOn
@@ -541,7 +542,7 @@ private fun RecordingRow(
     val deviceLabel = when (rec.source) {
         "note_pro" -> strings.ux.sourceNotePro
         "phone" -> strings.ux.sourcePhone
-        "import", "share" -> strings.ux.sourceImport
+        "import", "share", "watched" -> strings.ux.sourceImport
         else -> null
     }
     val highlightBg = VelumWarningContainer
@@ -554,7 +555,11 @@ private fun RecordingRow(
             highlightForeground = highlightFg,
         )
     }
-    val sourceIcon = if (rec.source == "note_pro") Icons.Outlined.MicExternalOn else Icons.Outlined.Headphones
+    val sourceIcon = when (LibraryListLogic.sourceIcon(rec.source)) {
+        LibraryListLogic.SourceIcon.NotePro -> Icons.Outlined.MicExternalOn
+        LibraryListLogic.SourceIcon.Import -> Icons.Outlined.FileDownload
+        LibraryListLogic.SourceIcon.Phone -> Icons.Outlined.Headphones
+    }
     val sourceA11y = LibraryListLogic.sourceA11y(rec.source, strings)
     Row(
         modifier = Modifier

@@ -25,6 +25,7 @@ import dev.velum.ai.engine.DiarizationResult
 import dev.velum.ai.engine.LlmRequest
 import dev.velum.ai.engine.LlmResult
 import dev.velum.ai.engine.SpeakerSpan
+import dev.velum.ai.pipeline.TranscriptFormatter
 import dev.velum.ai.engine.TranscriptSegment
 import dev.velum.ai.engine.TranscriptionResult
 import dev.velum.ai.local.LocalAsrRouter
@@ -153,7 +154,7 @@ actual class LocalAsrRuntime actual constructor() {
             val segments = diarizer.process(samples)
             val spans = segments.map { seg ->
                 SpeakerSpan(
-                    speakerId = "S${seg.speaker}",
+                    speakerId = TranscriptFormatter.speakerIdForCluster(seg.speaker),
                     startMs = (seg.start * 1000f).toLong().coerceAtLeast(0L),
                     endMs = (seg.end * 1000f).toLong().coerceAtLeast(0L),
                 )

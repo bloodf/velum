@@ -3,9 +3,10 @@ package dev.velum.app.platform
 import android.media.MediaPlayer
 import android.media.PlaybackParams
 import android.os.Build
-import dev.velum.app.playback.SkipSilenceScanner
 import java.io.File
-import java.io.RandomAccessFile
+import dev.velum.app.playback.SkipSilenceScanner
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -42,8 +43,10 @@ private class AndroidAudioPlayer : AudioPlayer {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var player: MediaPlayer? = null
     private var pollJob: Job? = null
-    private var pcm16LeMono: ByteArray? = null
-    private var pcmSampleRateHz: Int = 16_000
+    /** The WAV being played, if it is one; its PCM is only ever read in windows, and only for skip-silence (#333). */
+    @Volatile private var wavFile: File? = null
+    @Volatile private var wavSource: WavPcmSource? = null
+    @Volatile private var skipScan: Job? = null
     private var speed = PlaybackSpeed.S100
 
     private val _isPlaying = MutableStateFlow(false)
@@ -63,7 +66,13 @@ private class AndroidAudioPlayer : AudioPlayer {
         _isPlaying.value = false
         _positionMs.value = 0L
         _durationMs.value = 0L
-        pcm16LeMono = null
+        // The skip-silence fields belong to Main (the poll runs there), so they are reset there too.
+        withContext(Dispatchers.Main.immediate) {
+            skipScan?.cancel() // a scan of the previous file must not seek this one
+            skipScan = null
+            wavFile = null
+            wavSource = null
+        }
         if (path.isBlank()) {
             return@withContext false
         }
@@ -91,7 +100,8 @@ private class AndroidAudioPlayer : AudioPlayer {
             if (path.endsWith(".wav", ignoreCase = true) ||
                 path.endsWith(".wave", ignoreCase = true)
             ) {
-                loadWavPcm(file)
+                // no data is read here: skip-silence opens it on demand
+                withContext(Dispatchers.Main.immediate) { wavFile = file }
             }
             true
         } catch (_: Throwable) {
@@ -153,7 +163,9 @@ private class AndroidAudioPlayer : AudioPlayer {
     override fun release() {
         stopPolling()
         releasePlayerOnly()
-        pcm16LeMono = null
+        wavFile = null
+        wavSource = null
+        skipScan?.cancel()
         _isPlaying.value = false
         _positionMs.value = 0L
         _durationMs.value = 0L
@@ -200,15 +212,28 @@ private class AndroidAudioPlayer : AudioPlayer {
     private fun maybeSkipSilence() {
         if (!_skipSilence.value) return
         if (!_isPlaying.value) return
-        val pcm = pcm16LeMono ?: return
+        if (skipScan?.isActive == true) return
+        val file = wavFile ?: return
         val pos = _positionMs.value
-        val skip = SkipSilenceScanner.findSkipPastSilence(
-            pcm16LeMono = pcm,
-            sampleRateHz = pcmSampleRateHz,
-            fromMs = pos,
-        ) ?: return
-        if (skip.seekToMs > pos + 50L) {
-            seekTo(skip.seekToMs)
+        skipScan = scope.launch {
+            // Disk reads and the scan stay off the main thread; the seek comes back on it. Any failure (like the
+            // old loader's catch of Throwable, OutOfMemoryError included) only means no skipping and must not
+            // escape this scope; a cancellation is the one thing that is rethrown.
+            val found = withContext(Dispatchers.IO) {
+                try {
+                    val source = wavSource?.takeIf { it.isFor(file) } ?: WavPcmSource.open(file)
+                    source?.let { it to it.findSkipPastSilence(pos) { ensureActive() } }
+                } catch (c: CancellationException) {
+                    throw c // a cancelled scan must stop, not be swallowed as "nothing found"
+                } catch (_: Throwable) {
+                    null
+                }
+            } ?: return@launch
+            val (source, skip) = found
+            if (wavFile !== file) return@launch // another file was prepared meanwhile
+            wavSource = source
+            val target = skip?.seekToMs ?: return@launch
+            if (SkipSilenceScanner.shouldApplySkip(pos, _positionMs.value, target, _isPlaying.value)) seekTo(target)
         }
     }
 
@@ -220,116 +245,6 @@ private class AndroidAudioPlayer : AudioPlayer {
         } catch (_: Throwable) {
             // Some devices reject params while idle; retry on play().
         }
-    }
-
-    private fun loadWavPcm(file: File) {
-        try {
-            RandomAccessFile(file, "r").use { raf ->
-                if (raf.length() < 44L) return
-                val header = ByteArray(12)
-                raf.readFully(header)
-                if (header[0] != 'R'.code.toByte() ||
-                    header[1] != 'I'.code.toByte() ||
-                    header[2] != 'F'.code.toByte() ||
-                    header[3] != 'F'.code.toByte()
-                ) {
-                    return
-                }
-                var sampleRate = 16_000
-                var channels = 1
-                var bitsPerSample = 16
-                var dataOffset = -1
-                var dataSize = 0
-                // Walk chunks after "WAVE"
-                raf.seek(12)
-                while (raf.filePointer + 8 <= raf.length()) {
-                    val id = ByteArray(4)
-                    raf.readFully(id)
-                    val size = readIntLe(raf)
-                    val chunk = id.decodeToString()
-                    when (chunk) {
-                        "fmt " -> {
-                            if (size < 16) return
-                            val audioFormat = readShortLe(raf).toInt() and 0xFFFF
-                            channels = readShortLe(raf).toInt() and 0xFFFF
-                            sampleRate = readIntLe(raf)
-                            raf.skipBytes(6) // byteRate + blockAlign
-                            bitsPerSample = readShortLe(raf).toInt() and 0xFFFF
-                            val remaining = size - 16
-                            if (remaining > 0) raf.skipBytes(remaining)
-                            if (audioFormat != 1 || bitsPerSample != 16) {
-                                pcm16LeMono = null
-                                return
-                            }
-                        }
-                        "data" -> {
-                            dataOffset = raf.filePointer.toInt()
-                            dataSize = size.coerceAtLeast(0)
-                            break
-                        }
-                        else -> {
-                            if (size > 0) raf.skipBytes(size)
-                        }
-                    }
-                }
-                if (dataOffset < 0 || dataSize <= 0) return
-                if (channels != 1) {
-                    // Downmix stereo → mono average for silence energy.
-                    raf.seek(dataOffset.toLong())
-                    val raw = ByteArray(dataSize.coerceAtMost((raf.length() - dataOffset).toInt()))
-                    raf.readFully(raw)
-                    pcmSampleRateHz = sampleRate.coerceAtLeast(1)
-                    pcm16LeMono = downmixToMono(raw, channels)
-                    return
-                }
-                raf.seek(dataOffset.toLong())
-                val pcm = ByteArray(dataSize.coerceAtMost((raf.length() - dataOffset).toInt()))
-                raf.readFully(pcm)
-                pcmSampleRateHz = sampleRate.coerceAtLeast(1)
-                pcm16LeMono = pcm
-            }
-        } catch (_: Throwable) {
-            pcm16LeMono = null
-        }
-    }
-
-    private fun downmixToMono(interleaved: ByteArray, channels: Int): ByteArray {
-        if (channels <= 1) return interleaved
-        val frameBytes = channels * 2
-        val frames = interleaved.size / frameBytes
-        val out = ByteArray(frames * 2)
-        var inPos = 0
-        var outPos = 0
-        repeat(frames) {
-            var sum = 0
-            repeat(channels) {
-                val lo = interleaved[inPos].toInt() and 0xFF
-                val hi = interleaved[inPos + 1].toInt()
-                sum += ((hi shl 8) or lo).toShort().toInt()
-                inPos += 2
-            }
-            val avg = (sum / channels).toShort().toInt()
-            out[outPos] = (avg and 0xFF).toByte()
-            out[outPos + 1] = ((avg shr 8) and 0xFF).toByte()
-            outPos += 2
-        }
-        return out
-    }
-
-    private fun readIntLe(raf: RandomAccessFile): Int {
-        val b0 = raf.read()
-        val b1 = raf.read()
-        val b2 = raf.read()
-        val b3 = raf.read()
-        if (b0 < 0 || b1 < 0 || b2 < 0 || b3 < 0) return 0
-        return b0 or (b1 shl 8) or (b2 shl 16) or (b3 shl 24)
-    }
-
-    private fun readShortLe(raf: RandomAccessFile): Short {
-        val b0 = raf.read()
-        val b1 = raf.read()
-        if (b0 < 0 || b1 < 0) return 0
-        return (b0 or (b1 shl 8)).toShort()
     }
 
     companion object {

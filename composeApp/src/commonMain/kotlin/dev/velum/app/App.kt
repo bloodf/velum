@@ -66,9 +66,7 @@ import dev.velum.app.platform.rememberPermissionRequester
 import dev.velum.app.platform.shareText
 import dev.velum.app.platform.syncWatchedFolders
 import dev.velum.app.platform.systemLanguageTag
-import dev.velum.app.platform.writeMarkdownToExportFolder
 import dev.velum.app.ui.settings.ModelDownloadNotification
-import dev.velum.core.integrations.MarkdownNoteExport
 import dev.velum.app.ui.DeviceScreen
 import dev.velum.app.ui.importing.ImportHubScreen
 import dev.velum.app.ui.motion.Motion
@@ -222,7 +220,7 @@ private fun VelumRoot(container: AppContainer) {
             if (result == SnackbarResult.ActionPerformed) container.settingsViewModel.reloadSettings()
         }
     }
-    val importAudio = rememberAudioImporter { path ->
+    val importAudio = rememberAudioImporter(onFailed = { scope.launch { snackbar.showSnackbar(strings.ux.importCopyFailed) } }) { path ->
         scope.launch {
             fabOpen = false
             when (val result = importPipeline.importFile(path, source = "import")) {
@@ -236,6 +234,7 @@ private fun VelumRoot(container: AppContainer) {
                 is ImportResult.Failed -> {
                     snackbar.showSnackbar(strings.ux.genericError)
                 }
+                is ImportResult.Deleted -> Unit // watched-folder sync only
             }
         }
     }
@@ -250,13 +249,14 @@ private fun VelumRoot(container: AppContainer) {
 
     LaunchedEffect(container) {
         consumeIncomingSharePath()?.let { path ->
-            when (val result = importPipeline.importFile(path, source = "share")) {
+            when (val result = importPipeline.importShared(path)) {
                 is ImportResult.Created -> navController.navigate(Routes.recording(result.recordingId))
                 is ImportResult.Duplicate -> {
                     snackbar.showSnackbar(strings.ux.importDuplicate)
                     navController.navigate(Routes.recording(result.existingRecordingId))
                 }
                 is ImportResult.Failed -> snackbar.showSnackbar(strings.ux.genericError)
+                is ImportResult.Deleted -> Unit // watched-folder sync only
             }
         }
     }
@@ -265,36 +265,16 @@ private fun VelumRoot(container: AppContainer) {
         container.autoFlowRunner.actions.collect { action ->
             when (action) {
                 AutoFlowUiAction.ProcessingFailed -> snackbar.showSnackbar(strings.ux.genericError)
-                is AutoFlowUiAction.ShareMarkdown -> shareText(action.title, action.body)
+                // Notes must not leave the app while "Wipe all data" is removing them.
+                is AutoFlowUiAction.ShareMarkdown -> if (!container.wipeGate.isWiping) shareText(action.title, action.body)
                 is AutoFlowUiAction.InsertCalendarEvent ->
-                    openCalendarInsert(action.title, action.description)
+                    if (!container.wipeGate.isWiping) openCalendarInsert(action.title, action.description)
                 is AutoFlowUiAction.ExportMarkdownToFolder -> {
-                    val rec = container.repository.getRecording(action.recordingId)
-                    if (rec == null) {
-                        snackbar.showSnackbar(strings.ux.recordingMissing)
-                    } else {
-                        val speakers = container.repository.getSpeakers(action.recordingId)
-                            .mapNotNull { it.display_name ?: it.label }
-                        val note = MarkdownNoteExport.Note(
-                            title = rec.title,
-                            startedAtEpochSeconds = rec.started_at,
-                            durationSeconds = rec.duration_seconds,
-                            source = rec.source,
-                            speakers = speakers,
-                            tags = listOf("velum"),
-                            summaryMarkdown = rec.summary_markdown,
-                            transcriptMarkdown = rec.transcript,
-                        )
-                        val md = MarkdownNoteExport.render(note)
-                        val name = MarkdownNoteExport.filename(rec.title, rec.started_at)
-                        when (val result = withContext(Dispatchers.IO) { writeMarkdownToExportFolder(name, md) }) {
-                            is ExportFolderResult.Ok ->
-                                snackbar.showSnackbar(
-                                    strings.ux.folderExportOkFormat.replace("%s", result.displayPath),
-                                )
-                            is ExportFolderResult.Failed ->
-                                snackbar.showSnackbar(strings.ux.genericError)
-                        }
+                    when (val result = container.exportRecordingToFolder(action.recordingId)) {
+                        null -> snackbar.showSnackbar(strings.ux.recordingMissing)
+                        is ExportFolderResult.Ok ->
+                            snackbar.showSnackbar(strings.ux.folderExportOkFormat.replace("%s", result.displayPath))
+                        is ExportFolderResult.Failed -> snackbar.showSnackbar(strings.ux.genericError)
                     }
                 }
                 is AutoFlowUiAction.PostWebhook -> {
