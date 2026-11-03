@@ -5,7 +5,7 @@ import dev.velum.recorder.RecorderAudioCodec
 /**
  * Read-only Omi / Friend audio session. [codec] is the value the device reports on its codec characteristic
  * (19b10002, read once at connect). Audio notifications (see [OmiAudioPackets]) go through [OmiFrameAssembler],
- * which only returns frames that arrived in sequence: a gap drops the pending frame and counts it in [lostFrames].
+ * which only returns frames that arrived in sequence: a gap drops the pending frame and counts it in [syncLosses].
  * It never writes to the device.
  */
 class OmiAudioSession(val codec: OmiCodec) {
@@ -14,13 +14,16 @@ class OmiAudioSession(val codec: OmiCodec) {
     val recorderCodec: RecorderAudioCodec get() = codec.toRecorderCodec()
     val sampleRateHz: Int get() = codec.sampleRateHz
 
-    /** Frames dropped because of a sequence gap or an oversize frame. */
-    val lostFrames: Long get() = assembler.lostFrames
+    /**
+     * How many times the stream lost sync (a sequence gap or an oversize frame). Each event drops at most the pending
+     * frame and ignores fragments until the next frame start, so this is not a count of lost frames.
+     */
+    val syncLosses: Long get() = assembler.syncLosses
 
     /** The previous in-sequence frame when [notification] starts a new one, else null. */
     fun accept(notification: ByteArray): ByteArray? = assembler.accept(notification)
 
-    /** The trailing frame when the stream ends. */
+    /** The trailing frame when the stream ends; it may be incomplete (the stream can stop mid-frame). */
     fun finish(): ByteArray? = assembler.finish()
 }
 
