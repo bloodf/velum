@@ -1,5 +1,6 @@
 package dev.velum.ble.wifi
 
+import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.URI
 import java.nio.ByteBuffer
@@ -29,7 +30,7 @@ import org.java_websocket.handshake.ServerHandshake
 class PreamblePerConnectionTest {
     private val preamble = WifiTransferPreamble.defaultToken("per-conn")
 
-    private fun freePort(): Int = ServerSocket(0).use { it.localPort }
+    private fun freePort(): Int = ServerSocket(0, 1, InetAddress.getByName("127.0.0.1")).use { it.localPort }
 
     private suspend fun withServer(block: suspend (JavaWebsocketTransferServer, Int) -> Unit) {
         val server = JavaWebsocketTransferServer()

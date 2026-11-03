@@ -51,7 +51,7 @@ class WifiSoftApMockServerTest {
         runBlocking { withTimeout(90_000) { block() } }
     }
 
-    private fun freePort(): Int = ServerSocket(0).use { it.localPort }
+    private fun freePort(): Int = ServerSocket(0, 1, InetAddress.getByName("127.0.0.1")).use { it.localPort }
 
     private fun crc(bytes: ByteArray): Long = CRC32().also { it.update(bytes) }.value
 
@@ -428,7 +428,7 @@ class WifiSoftApMockServerTest {
         var last: Throwable? = null
         while (System.nanoTime() < deadline) {
             try {
-                ServerSocket(port).close()
+                ServerSocket(port, 1, InetAddress.getByName("127.0.0.1")).close()
                 return
             } catch (t: Throwable) {
                 last = t
