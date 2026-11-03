@@ -202,17 +202,19 @@ class DeviceViewModel(
 
     /**
      * For "Wipe all data": stops any download first, so it can't write or save anything afterwards. The wait
-     * is bounded because a BLE write may ignore cancellation. Returns false if a partial could not be deleted.
+     * is bounded because a BLE write may ignore cancellation. Returns false if a partial could not be deleted,
+     * or if the download was still running when the wait ended, so the wipe isn't reported as done.
      */
     suspend fun wipePartialDownloads(): Boolean {
         cancelDownload()
-        withTimeoutOrNull(wipeJoinTimeout) { downloadJob?.join() }
-        return try {
+        val stopped = withTimeoutOrNull(wipeJoinTimeout) { downloadJob?.join(); true } ?: false
+        val deleted = try {
             withContext(Dispatchers.IO) { deletePartialTransfers() }
             true
         } catch (_: Exception) {
             false
         }
+        return stopped && deleted
     }
 
     fun downloadSession(sessionId: Long) {

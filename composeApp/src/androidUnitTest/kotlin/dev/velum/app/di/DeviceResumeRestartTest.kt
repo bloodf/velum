@@ -471,7 +471,7 @@ class DeviceResumeRestartTest {
         try {
             var deleteThread: Thread? = null
             val vm = run(peripheral(), deletePartials = { deleteThread = Thread.currentThread() }, await = false)
-            runBlocking { vm.wipePartialDownloads() }
+            assertTrue(runBlocking { vm.wipePartialDownloads() }, "no download running: done")
             assertNotNull(deleteThread)
             assertFalse(deleteThread === Thread.currentThread(), "partial deletion must not run on the caller's thread (#237)")
         } finally { tearDown() }
@@ -482,14 +482,14 @@ class DeviceResumeRestartTest {
             val vm = run(peripheral(), persist = { awaitCancellation() }, await = false)
             runBlocking {
                 withTimeout(20_000) { while (partials.list()!!.none { it.endsWith(".partial") }) delay(5) }
-                vm.wipePartialDownloads()
+                assertTrue(vm.wipePartialDownloads(), "the download stopped and the partials went")
             }
             assertFalse(partials.exists(), "no partial or salt survives a wipe")
             assertEquals(DeviceUiCopy.downloadCancelled("en"), vm.sessionUi.value.statusMessage)
         } finally { tearDown() }
     }
 
-    @Test fun wipe_deletes_the_partials_even_if_the_download_ignores_cancellation() {
+    @Test fun wipe_deletes_the_partials_even_if_the_download_ignores_cancellation_and_does_not_say_done() {
         try {
             val saving = AtomicBoolean(false)
             val vm = run(
@@ -504,7 +504,7 @@ class DeviceResumeRestartTest {
             )
             runBlocking {
                 withTimeout(20_000) { while (!saving.get()) delay(5) }
-                val waited = measureTime { assertTrue(vm.wipePartialDownloads()) }
+                val waited = measureTime { assertFalse(vm.wipePartialDownloads(), "the download was still running") }
                 assertTrue(waited < 2.seconds, "the wipe must not wait for the download: $waited")
             }
             assertFalse(partials.exists())
