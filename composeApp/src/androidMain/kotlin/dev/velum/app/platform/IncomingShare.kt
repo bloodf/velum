@@ -3,7 +3,6 @@ package dev.velum.app.platform
 import android.content.Intent
 import android.net.Uri
 import java.io.File
-import java.io.FileOutputStream
 import java.util.concurrent.atomic.AtomicReference
 
 /** One-shot path handed from MainActivity share/VIEW intents into Compose. */
@@ -32,12 +31,7 @@ object IncomingShare {
         }
         val dest = File(context.cacheDir, "imports").apply { mkdirs() }
         val outFile = File(dest, "share_${System.currentTimeMillis()}_$name")
-        runCatching {
-            context.contentResolver.openInputStream(uri)?.use { input ->
-                FileOutputStream(outFile).use { output -> input.copyTo(output) }
-            }
-        }
-        if (outFile.exists() && outFile.length() > 0L) {
+        if (copyToCache({ context.contentResolver.openInputStream(uri) }, outFile)) {
             dev.velum.app.importing.ImportDisplayNames.put(outFile.absolutePath, displayName)
             pendingPath.set(outFile.absolutePath)
         }

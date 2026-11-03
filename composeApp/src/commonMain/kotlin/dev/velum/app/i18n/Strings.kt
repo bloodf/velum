@@ -415,6 +415,7 @@ data class UxStrings(
     val importing: String,
     val imported: String,
     val importDuplicate: String,
+    val importCopyFailed: String,
     val syncDoneFormat: String,
     val syncNewOne: String,
     val syncNewMany: String,
@@ -601,6 +602,7 @@ data class UxStrings(
     val pausePlayback: String,
     val failedProcessing: String,
     val localModelNotReady: String,
+    val insufficientStorage: String,
     val retryProcessing: String,
     val waveformA11y: String,
 )
@@ -1001,6 +1003,7 @@ val PtBr = Strings(
         importing = "Importando…",
         imported = "Importado",
         importDuplicate = "Duplicado — abrindo existente",
+        importCopyFailed = "Não foi possível ler o arquivo escolhido. Verifique a conexão ou o acesso e tente de novo.",
         syncDoneFormat = "Pronto · %s · %s · %s",
         syncNewOne = "1 novo",
         syncNewMany = "%d novos",
@@ -1186,6 +1189,7 @@ val PtBr = Strings(
         pausePlayback = "Pausar",
         failedProcessing = "Não foi possível processar esta gravação.",
         localModelNotReady = "Falta baixar um modelo necessário para esta etapa. Baixe-o em Gerenciador de modelos ou mude esta etapa para API em Processamento de IA.",
+        insufficientStorage = "Não há espaço livre suficiente para processar esta gravação. Libere espaço e tente de novo.",
         retryProcessing = "Tentar de novo",
         waveformA11y = "Progresso da reprodução",
     ),)
@@ -1586,6 +1590,7 @@ val En = Strings(
         importing = "Importing…",
         imported = "Imported",
         importDuplicate = "Duplicate — opened existing",
+        importCopyFailed = "Couldn't read the file you picked. Check your connection or access and try again.",
         syncDoneFormat = "Done · %s · %s · %s",
         syncNewOne = "1 new",
         syncNewMany = "%d new",
@@ -1771,6 +1776,7 @@ val En = Strings(
         pausePlayback = "Pause",
         failedProcessing = "Could not process this recording.",
         localModelNotReady = "A model this step needs isn't downloaded yet. Download it in Model manager, or switch this step to API in AI processing.",
+        insufficientStorage = "Not enough free storage to process this recording. Free up space and try again.",
         retryProcessing = "Try again",
         waveformA11y = "Playback progress",
     ),)

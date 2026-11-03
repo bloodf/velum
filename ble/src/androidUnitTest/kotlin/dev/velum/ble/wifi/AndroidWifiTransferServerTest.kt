@@ -150,7 +150,7 @@ class AndroidWifiTransferServerTest {
         consumerStallMs: Long = 0,
     ): ByteArray {
         @Suppress("UNCHECKED_CAST")
-        val frames = s.server.incomingEncryptedFrames() as SharedFlow<ByteArray>
+        val frames = s.incomingEncryptedFrames() as SharedFlow<ByteArray>
         frames.onSubscription { subscribed.complete(Unit) }
             .transformWhile<ByteArray, Unit> { sealed ->
                 if (out.size() == 0) delay(consumerStallMs)
@@ -419,7 +419,7 @@ class AndroidWifiTransferServerTest {
             assemble = { s ->
                 val out = ByteArrayOutputStream()
                 @Suppress("UNCHECKED_CAST")
-                (s.server.incomingEncryptedFrames() as SharedFlow<ByteArray>)
+                (s.incomingEncryptedFrames() as SharedFlow<ByteArray>)
                     .onSubscription { subscribed.complete(Unit) }
                     .transformWhile<ByteArray, Unit> { sealed ->
                         if (out.size() == 0) {
@@ -515,7 +515,7 @@ class AndroidWifiTransferServerTest {
             "PLAUD-FAKE", "password12", port = port, preamble = preamble, bindHost = "127.0.0.1",
             assemble = { s ->
                 @Suppress("UNCHECKED_CAST")
-                (s.server.incomingEncryptedFrames() as SharedFlow<ByteArray>)
+                (s.incomingEncryptedFrames() as SharedFlow<ByteArray>)
                     .onSubscription { subscribed.complete(Unit) }
                     .collect { delay(60_000) } // stuck on the first frame, so the 64-frame buffer fills
                 ByteArray(0)
