@@ -62,6 +62,7 @@ class PlaudDeviceClient(
     private val inbound = Channel<ByteArray>(capacity = 128)
     private val writeMutex = Mutex()
     private var notifyJob: Job? = null
+    @Volatile private var closed = false
 
     private var secret: Protocol20SessionSecret? = null
     private var sendSeq: Long = 2
@@ -84,6 +85,9 @@ class PlaudDeviceClient(
     }
 
     fun close() {
+        // A closed client never writes again: its session secret and counter belong to the link it was opened on, and
+        // the same transport may be connected to the device again by a new client.
+        closed = true
         notifyJob?.cancel()
         notifyJob = null
         inbound.close()
@@ -442,6 +446,7 @@ class PlaudDeviceClient(
 
     private suspend fun writeOutbound(packet: ByteArray) {
         writeMutex.withLock {
+            check(!closed) { "Client is closed" }
             val sec = secret
             if (sec == null) {
                 writePlain(packet, withoutResponse = false)
@@ -452,6 +457,12 @@ class PlaudDeviceClient(
                 withTimeout(responseTimeout) {
                     link.write(GattProfiles.PLAUD_WRITE, packet, withoutResponse = false) {
                         val sealed = cipher.sealPacket(sec, sendSeq, it)
+                        // The guard checked [it]. The cipher is a separate component: the bytes that go out must open
+                        // to exactly that plaintext, or nothing is written (sealed bytes are never parsed as opcodes).
+                        val opened = cipher.openPacket(sec, sendSeq, sealed)
+                        check(opened != null && opened.second.contentEquals(it)) {
+                            "Sealed packet does not match the checked plaintext"
+                        }
                         sendSeq += 1
                         sealed
                     }
