@@ -14,7 +14,9 @@ import java.security.PublicKey
 import java.security.spec.PKCS8EncodedKeySpec
 import java.security.spec.X509EncodedKeySpec
 import java.util.Base64
+import javax.crypto.BadPaddingException
 import javax.crypto.Cipher
+import javax.crypto.IllegalBlockSizeException
 import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
@@ -65,6 +67,8 @@ class JcaSessionCipher : SessionCipher {
         aad: ByteArray,
         ciphertextAndTag: ByteArray,
     ): ByteArray? {
+        // Not left to the provider: what it throws for this differs (see AesGcmWifiFrameCipher.open).
+        if (ciphertextAndTag.size < AEAD_TAG_BYTES) return null
         if (!usesPlatformChaCha) return ChaCha20Poly1305.open(key, nonce, aad, ciphertextAndTag)
         return try {
             val cipher = Cipher.getInstance("ChaCha20-Poly1305")
@@ -75,7 +79,11 @@ class JcaSessionCipher : SessionCipher {
             )
             cipher.updateAAD(aad)
             cipher.doFinal(ciphertextAndTag)
-        } catch (_: Exception) {
+        } catch (_: BadPaddingException) {
+            // A bad tag. Anything else, like a missing algorithm, isn't an auth failure, so it throws for the caller.
+            null
+        } catch (_: IllegalBlockSizeException) {
+            // Declared by doFinal for input it can't process. SunJCE and Conscrypt 2.5.2 throw the above instead.
             null
         }
     }
@@ -292,3 +300,5 @@ private val PROBE_SEALED = hexBytes(
         "92ddbd7f2d778b8c9803aee328091b58fab324e4fad675945585808b4831d7bc" +
         "3ff4def08e4b7a9de576d26586cec64b61161ae10b594f09e26a7e902ecbd0600691",
 )
+
+private const val AEAD_TAG_BYTES = 16
