@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.AlertDialog
@@ -173,10 +175,11 @@ fun VoiceProfilesScreen(
                             Text(
                                 buildString {
                                     append(
-                                        strings.ux.voiceProfilesSamplesFormat.replace(
-                                            "%d",
-                                            p.sampleCount.toString(),
-                                        ),
+                                        if (p.sampleCount == 1) {
+                                            strings.ux.voiceProfilesSampleOne
+                                        } else {
+                                            strings.ux.voiceProfilesSamplesFormat.replace("%d", p.sampleCount.toString())
+                                        },
                                     )
                                     if (p.role.isNotBlank()) append(" · ${p.role}")
                                     if (p.company.isNotBlank()) append(" · ${p.company}")
@@ -266,7 +269,7 @@ fun VoiceProfilesScreen(
                     .semantics { contentDescription = strings.ux.voiceProfilesImportTitle }
                         .fillMaxWidth()
                         .height(100.dp)
-                        .background(VelumBg)
+                        .border(1.dp, VelumInk, RoundedCornerShape(8.dp))
                         .padding(8.dp),
                 )
                 Spacer(Modifier.height(8.dp))
@@ -297,19 +300,10 @@ fun VoiceProfilesScreen(
                     fontWeight = FontWeight.SemiBold,
                     color = VelumInk,
                 )
-                Row(Modifier.fillMaxWidth()) {
-                    thresholdOptions(strings).forEach { (t, label) ->
-                        OutlineButton(
-                            label,
-                            {
-                                container.settingsViewModel.runStorageAction {
-                                    container.settingsRepository.setSpeakerMatchThreshold(t)
-                                    status = strings.ux.voiceProfilesThresholdSet
-                                }
-                            },
-                            modifier = Modifier.weight(1f).padding(horizontal = 2.dp),
-                            selected = kotlin.math.abs(settings.speakerMatchThreshold - t) < 0.005f,
-                        )
+                SensitivityOptions(strings, settings.speakerMatchThreshold) { t ->
+                    container.settingsViewModel.runStorageAction {
+                        container.settingsRepository.setSpeakerMatchThreshold(t)
+                        status = strings.ux.voiceProfilesThresholdSet
                     }
                 }
                 status?.takeIf { loaded }?.let {
@@ -405,6 +399,21 @@ internal fun thresholdOptions(strings: Strings): List<Pair<Float, String>> = lis
     0.75f to strings.ux.voiceProfilesSensitivityVeryStrict,
 )
 
+/** One full-width button per level: a word never has to break to fit a quarter-width cell. */
+@Composable
+internal fun SensitivityOptions(strings: Strings, current: Float, onSelect: (Float) -> Unit) {
+    Column(Modifier.fillMaxWidth()) {
+        thresholdOptions(strings).forEach { (t, label) ->
+            OutlineButton(
+                label,
+                { onSelect(t) },
+                modifier = Modifier.padding(vertical = 3.dp),
+                selected = kotlin.math.abs(current - t) < 0.005f,
+            )
+        }
+    }
+}
+
 @Composable
 private fun ProfileEditor(
     profile: VoiceProfile,
@@ -440,6 +449,8 @@ private fun Field(label: String, value: String, onChange: (String) -> Unit) {
         modifier = Modifier
             .semantics { contentDescription = label }
             .fillMaxWidth()
-            .padding(vertical = 6.dp),
+            .padding(vertical = 6.dp)
+            .border(1.dp, VelumInk, RoundedCornerShape(8.dp))
+            .padding(10.dp),
     )
 }
