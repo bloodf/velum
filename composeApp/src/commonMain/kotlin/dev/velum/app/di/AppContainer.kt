@@ -30,6 +30,7 @@ import dev.velum.app.platform.MicCapture
 import dev.velum.app.platform.createMicCapture
 import dev.velum.app.platform.DOWNLOAD_PART_SUFFIX
 import dev.velum.app.platform.deleteFileAtPath
+import dev.velum.app.platform.isSamePath
 import dev.velum.app.platform.isSupersededOwnAudio
 import dev.velum.app.platform.recordingsDirectoryPath
 import dev.velum.app.platform.streamToFileAtomically
@@ -346,10 +347,14 @@ class AppContainer(
             id
         } catch (t: Throwable) {
             val orphan = finalPath
-            if (orphan != null && orphan != existing?.local_path) {
-                // Ask the database, not a flag: a cancel can land right after the row commits.
-                withContext(NonCancellable) {
-                    if (repository.getRecording(id)?.local_path != orphan) deleteFileAtPath(orphan)
+            if (orphan != null && existing?.local_path?.let { isSamePath(it, orphan) } != true) {
+                // Ask the database, not a flag: a cancel can land right after the row commits. If the check
+                // itself fails the file is kept (unknown is not orphaned), and the original [t] is rethrown.
+                runCatching {
+                    withContext(NonCancellable) {
+                        val rowPath = repository.getRecording(id)?.local_path
+                        if (rowPath == null || !isSamePath(rowPath, orphan)) deleteFileAtPath(orphan)
+                    }
                 }
             }
             throw t

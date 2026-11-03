@@ -90,6 +90,15 @@ class PersistDownloadedSessionDedupTest {
         assertEquals(0, container.repository.getAllRecordings().size)
     }
 
+    @Test fun failure_after_the_row_commits_keeps_the_recording_file() = fixture {
+        onEnqueue = { error("synthetic: scheduler failed after the row was written") }
+        assertFailsWith<IllegalStateException> { container.persistDownloadedSession(session(ogg(1))) }
+        val rows = container.repository.getAllRecordings()
+        assertEquals(1, rows.size, "the row committed before the failure")
+        assertTrue(File(rows.single().local_path!!).isFile, "a file a row points to must never be removed")
+        assertEquals(1, audioFiles().size)
+    }
+
     @Test fun failed_redownload_leaves_existing_row_and_audio_untouched() = fixture {
         val id = container.persistDownloadedSession(session(ogg(1)))
         val before = row(id)
@@ -187,9 +196,10 @@ class PersistDownloadedSessionDedupTest {
     private class Fixture(context: Application) {
         val root: File = Files.createTempDirectory("velum-dedup-synthetic").toFile().also { installRecordingFilesDir(it.path) }
         var enqueued = 0
+        var onEnqueue: () -> Unit = {}
         val container = AppContainer(
             InMemorySecureStore(), DriverFactory(context), modelStoreRoot = ModelStoreDir(File(root, "models").path),
-            recordingJobSchedulerFactory = { _, _ -> RecordingJobScheduler { _, _, _, _ -> enqueued++ } },
+            recordingJobSchedulerFactory = { _, _ -> RecordingJobScheduler { _, _, _, _ -> enqueued++; onEnqueue() } },
         )
         fun dir() = recordingsDirectoryPath()
         fun audioFiles() = File(dir()).listFiles().orEmpty().filter { it.isFile }.map { it.name }.sorted()
