@@ -1,5 +1,7 @@
 package dev.velum.ai.local
 
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.distinctUntilChanged
 import dev.velum.ai.createDownloadHttpClient
 import io.ktor.client.HttpClient
 import io.ktor.client.request.prepareGet
@@ -275,6 +277,10 @@ object LocalModelErrors {
         }
 }
 
+/** Models that just became Failed: [before] is the status of each model at the previous emission. */
+fun newlyFailed(before: Map<String, LocalModelStatus>, after: List<LocalModelState>): List<LocalModelState> =
+    after.filter { it.status == LocalModelStatus.Failed && before[it.spec.id] != null && before[it.spec.id] != LocalModelStatus.Failed }
+
 fun createLocalModelManager(
     storeRoot: ModelStoreDir = defaultModelStoreRoot(),
     catalog: List<LocalModelSpec> = DefaultLocalCatalog,
@@ -352,7 +358,13 @@ class LocalModelManager(
      * large transfer. [cancelDownload] on the current model ends the whole sequence.
      */
     fun startDownloads(ids: List<String>): Job = downloadScope.launch {
-        for (id in ids) {
+        val pending = ids.filterNot { isReady(it) }
+        val waiting = pending.toMutableList()
+        adjustQueued(pending, +1)
+        try {
+            for (id in pending) {
+            waiting.remove(id)
+            adjustQueued(listOf(id), -1)
             // A model already on disk is never fetched again: a failed re-download must not cost the working copy.
             if (isReady(id)) continue
             try {
@@ -368,6 +380,26 @@ class LocalModelManager(
                     )
                 }
             }
+            }
+        } finally {
+            // Cancelled or finished: only this sequence's own unstarted entries go; another sequence may still queue the same id.
+            adjustQueued(waiting, -1)
+        }
+    }
+
+    /** Models waiting behind the one currently downloading in a [startDownloads] sequence. */
+    private val queuedCounts = MutableStateFlow(mapOf<String, Int>())
+    val queuedIds: Flow<Set<String>> = queuedCounts.map { it.keys }.distinctUntilChanged()
+
+    // Counted per sequence, so two overlapping sequences never drop each other's queued ids.
+    private fun adjustQueued(ids: List<String>, delta: Int) {
+        queuedCounts.update { counts ->
+            val next = counts.toMutableMap()
+            ids.forEach { id ->
+                val n = (next[id] ?: 0) + delta
+                if (n > 0) next[id] = n else next.remove(id)
+            }
+            next
         }
     }
 
