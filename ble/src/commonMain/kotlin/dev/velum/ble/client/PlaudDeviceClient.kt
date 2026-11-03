@@ -72,7 +72,7 @@ class PlaudDeviceClient(
     private var protocolVersion: Int = 20
 
     /** Null once the client is closed; the secret itself is kept so a write already past the check cannot go out in plain. */
-    val sessionSecret: Protocol20SessionSecret? get() = if (closed) null else secret
+    internal val sessionSecret: Protocol20SessionSecret? get() = if (closed) null else secret
     val linkProtocolVersion: Int get() = protocolVersion
 
     suspend fun start() {
@@ -462,7 +462,8 @@ class PlaudDeviceClient(
                 // requires exact sequence numbers (unverified, #6) until a reconnect brings a new client.
                 withTimeout(responseTimeout) {
                     link.write(GattProfiles.PLAUD_WRITE, packet, withoutResponse = false) {
-                        val sealed = cipher.sealPacket(sec, sendSeq, it)
+                        // The cipher gets its own copy: one that edits its input then seals the edit cannot also change what we compare.
+                        val sealed = cipher.sealPacket(sec, sendSeq, it.copyOf())
                         // The guard checked [it]. The cipher is a separate component: the bytes that go out must open
                         // to exactly that plaintext, or nothing is written (sealed bytes are never parsed as opcodes).
                         // Opened with the protocol's own AEAD, not the injected cipher, so a cipher cannot vouch for itself.
