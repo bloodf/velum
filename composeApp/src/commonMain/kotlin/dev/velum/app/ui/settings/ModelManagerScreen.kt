@@ -293,9 +293,17 @@ internal fun modelFailureNotice(state: LocalModelState, strings: dev.velum.app.i
         strings.ux.modelDownloadFailedFormat.replace("%s", state.spec.displayName)
     }
 
-/** A storage failure is shown as plain localized copy; anything else keeps its message. */
-internal fun modelErrorText(raw: String, strings: dev.velum.app.i18n.Strings): String =
-    if (raw == LocalModelErrors.StorageFull) strings.ux.modelStorageFull else raw
+/**
+ * A storage or download failure is shown as plain localized copy; anything else keeps its message with any URL
+ * removed (an error saved by an older build can carry a signed download URL with its query string).
+ */
+internal fun modelErrorText(raw: String, strings: dev.velum.app.i18n.Strings): String = when (raw) {
+    LocalModelErrors.StorageFull -> strings.ux.modelStorageFull
+    LocalModelErrors.DownloadFailed -> strings.ux.modelDownloadFailed
+    else -> raw.replace(URL_IN_TEXT, "").replace(Regex("""\s+"""), " ").trim().ifEmpty { strings.ux.modelDownloadFailed }
+}
+
+private val URL_IN_TEXT = Regex("""https?://\S+""")
 
 private fun formatBytes(bytes: Long): String {
     val mb = bytes / (1024.0 * 1024.0)
