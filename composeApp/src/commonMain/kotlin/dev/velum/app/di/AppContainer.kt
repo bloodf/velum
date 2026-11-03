@@ -36,6 +36,7 @@ import dev.velum.app.platform.recordingsDirectoryPath
 import dev.velum.app.platform.streamToFileAtomically
 import dev.velum.app.platform.systemLanguageTag
 import dev.velum.app.ui.DeviceViewModel
+import dev.velum.app.ui.DownloadWipeResult
 import dev.velum.app.ui.DownloadedSessionAudio
 import dev.velum.app.ui.SettingsViewModel
 import dev.velum.ble.BleTransport
@@ -277,6 +278,19 @@ class AppContainer(
      * row's audio and keeps its id, title, transcript, summary and template; a failed write leaves
      * the existing row and file untouched.
      */
+    /** "Wipe all data": downloads stay off until the keys are gone, including when a step fails. */
+    internal suspend fun wipeAllData(device: DeviceViewModel = deviceViewModel): DownloadWipeResult =
+        device.holdingDownloads {
+            val downloads = device.wipePartialDownloads()
+            repository.wipeAllUserData { path -> deleteFileAtPath(path) }
+            withContext(Dispatchers.IO) { voiceProfileStore.wipeAll() }
+            settingsRepository.clearAllApiKeys()
+            deviceKeyImporter.clearKeys()
+            webhookSettings.clear()
+            integrationAuth.clearTokens()
+            downloads
+        }
+
     suspend fun persistDownloadedSession(
         session: DownloadedSessionAudio,
     ): String = downloadPersistMutex.withLock {
