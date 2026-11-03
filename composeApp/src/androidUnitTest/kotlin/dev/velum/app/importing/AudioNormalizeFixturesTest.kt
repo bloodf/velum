@@ -52,6 +52,42 @@ class AudioNormalizeFixturesTest {
     }
 
     @Test
+    fun wavFastPath_streamsExactPcmAndPatchesTheHeader() = runBlocking {
+        val src = File(dir, "ramp.wav")
+        val pcm = ByteArray(16_000 * 2 * 3) { (it * 13).toByte() } // 3 s, spans many 256 KiB slices? no: one slice
+        writeSilentWav(src, sampleRate = 16_000, durationMs = 100)
+        // Replace the data with the ramp, keeping a valid header.
+        val header = ByteBuffer.allocate(44).order(ByteOrder.LITTLE_ENDIAN)
+        header.put("RIFF".toByteArray()).putInt(36 + pcm.size).put("WAVE".toByteArray()).put("fmt ".toByteArray()).putInt(16)
+        header.putShort(1).putShort(1).putInt(16_000).putInt(32_000).putShort(2).putShort(16)
+        header.put("data".toByteArray()).putInt(pcm.size)
+        src.writeBytes(header.array() + pcm)
+        val out = File(AudioNormalizer().normalizeToWav(src.absolutePath, 16_000).wavPath).readBytes()
+        assertEquals(44 + pcm.size, out.size)
+        org.junit.Assert.assertArrayEquals(pcm, out.copyOfRange(44, out.size))
+        assertEquals(pcm.size, ByteBuffer.wrap(out).order(ByteOrder.LITTLE_ENDIAN).getInt(40))
+    }
+
+    @Test
+    fun failureAfterTheWriterStartedDeletesTheOutput_andPreviousOutputsAreNotTouchedByOtherNames() = runBlocking {
+        val other = File(dir, "normalized/keep_16000.wav").apply { parentFile!!.mkdirs(); writeText("an earlier import") }
+        val bad = File(dir, "bad.wav")
+        // PCM16 stereo header with a data chunk: not the fast path, so the (unavailable under Robolectric) decoder runs.
+        val b = ByteBuffer.allocate(44 + 8).order(ByteOrder.LITTLE_ENDIAN)
+        b.put("RIFF".toByteArray()).putInt(44).put("WAVE".toByteArray()).put("fmt ".toByteArray()).putInt(16)
+        b.putShort(1).putShort(2).putInt(44_100).putInt(176_400).putShort(4).putShort(16)
+        b.put("data".toByteArray()).putInt(8)
+        bad.writeBytes(b.array())
+        try {
+            AudioNormalizer().normalizeToWav(bad.absolutePath, 16_000)
+            org.junit.Assert.fail("the decoder cannot decode this under a unit test")
+        } catch (_: Throwable) {
+        }
+        assertTrue("a half-written WAV must not remain", !File(dir, "normalized/bad_16000.wav").exists())
+        assertEquals("an earlier import", other.readText())
+    }
+
+    @Test
     fun extensionMatrix_matchesRequirement() {
         val required = listOf("mp3", "m4a", "aac", "wav", "ogg", "opus", "flac", "amr", "3gp", "webm", "mp4")
         required.forEach { ext ->

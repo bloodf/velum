@@ -144,6 +144,15 @@ class MonoPcmWavWriterTest {
     ).first { it.isFile }.readText()
 
     /** Source guard (the decode loop needs a codec, which no JVM test has): nothing may accumulate or read whole. */
+    @Test fun a_failure_before_the_writer_exists_must_not_delete_an_earlier_output_and_the_retriever_is_released() {
+        val src = androidSource("AudioNormalize.android.kt")
+        val body = src.substringAfter("private fun normalizeBlocking").substringBefore("private fun durationHintMs")
+        assertTrue(body.contains("var writerCreated = false") && body.contains("if (writerCreated) outFile.delete()"))
+        assertTrue(body.indexOf("writerCreated = true") < body.indexOf("onOutput(outFile)"), "report the output only once the writer owns it")
+        val hint = src.substringAfter("private fun durationHintMs").substringBefore("private fun decodeWithMediaCodec")
+        assertTrue(hint.contains("} finally {") && hint.contains("r.release()"), "MediaMetadataRetriever released in finally")
+    }
+
     @Test fun normalizer_checks_for_cancellation_in_both_loops_and_deletes_the_wav_when_cancelled() {
         val src = androidSource("AudioNormalize.android.kt")
         assertTrue(src.substringAfter("while (!outputDone) {").take(200).contains("checkCancelled()"), "decode loop")
@@ -171,12 +180,12 @@ class MonoPcmWavWriterTest {
         return f
     }
 
-    @Test fun wav_header_is_read_by_seeking_and_keeps_the_old_failure_modes() {
+    @Test fun wav_header_is_read_by_seeking_and_reports_the_bit_depth_instead_of_failing() {
         val h = readWavHeader(wav(rate = 44_100, ch = 2, pcm = ByteArray(100)))!!
         assertEquals(44_100, h.sampleRateHz); assertEquals(2, h.channels); assertEquals(100L, h.dataSize)
         assertEquals(44L, h.dataOffset)
         assertEquals(null, readWavHeader(File(dir, "n.txt").apply { writeText("not a wav file at all") }))
-        assertFailsWith<IllegalArgumentException> { readWavHeader(wav(withData = false)) }
-        assertFailsWith<IllegalArgumentException> { readWavHeader(wav(fmtBits = 8)) }
+        assertEquals(null, readWavHeader(wav(withData = false)), "no data chunk: the decoder reports it")
+        assertEquals(8, readWavHeader(wav(fmtBits = 8))!!.bitsPerSample, "8-bit is reported, not rejected")
     }
 }

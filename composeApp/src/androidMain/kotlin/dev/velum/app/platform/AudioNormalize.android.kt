@@ -46,8 +46,10 @@ actual class AudioNormalizer actual constructor() {
         val mime = guessMime(source.name)
         val outDir = File(source.parentFile, "normalized").apply { mkdirs() }
         val outFile = File(outDir, "${source.nameWithoutExtension}_$targetSampleRateHz.wav")
-        onOutput(outFile)
 
+        // Only a file this call started writing may be deleted on failure: an earlier good import of the same
+        // name must survive a failure that happens before the writer exists (e.g. an unreadable header).
+        var writerCreated = false
         try {
             // Fast path: PCM16 mono WAV at the target rate is streamed through, never read whole (#319).
             val fast = if (source.extension.equals("wav", true) || source.extension.equals("wave", true)) {
@@ -55,8 +57,12 @@ actual class AudioNormalizer actual constructor() {
             } else {
                 null
             }
+            val usesFastPath = fast != null && fast.bitsPerSample == 16 &&
+                fast.sampleRateHz == targetSampleRateHz && fast.channels == 1
             val pcmBytes = MonoPcmWavWriter(outFile, targetSampleRateHz).use { writer ->
-                if (fast != null && fast.sampleRateHz == targetSampleRateHz && fast.channels == 1) {
+                writerCreated = true
+                onOutput(outFile)
+                if (usesFastPath && fast != null) {
                     writer.setFormat(fast.sampleRateHz, fast.channels)
                     streamWavData(source, fast, writer, checkCancelled)
                 } else {
@@ -69,7 +75,7 @@ actual class AudioNormalizer actual constructor() {
             return NormalizedAudio(
                 wavPath = outFile.absolutePath,
                 sampleRateHz = targetSampleRateHz,
-                durationMs = if (fast != null && fast.sampleRateHz == targetSampleRateHz && fast.channels == 1) {
+                durationMs = if (usesFastPath) {
                     durationMs
                 } else {
                     durationMs.coerceAtLeast(durationHintMs(sourcePath))
@@ -78,19 +84,21 @@ actual class AudioNormalizer actual constructor() {
                 contentSha256 = hash,
             )
         } catch (t: Throwable) {
-            outFile.delete() // never leave a half-written WAV that a later import could trust
+            if (writerCreated) outFile.delete() // never leave a half-written WAV that a later import could trust
             throw t
         }
     }
 
     private fun durationHintMs(path: String): Long {
-        return runCatching {
-            val r = MediaMetadataRetriever()
+        val r = MediaMetadataRetriever()
+        return try {
             r.setDataSource(path)
-            val ms = r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()
-            r.release()
-            ms ?: 0L
-        }.getOrDefault(0L)
+            r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+        } catch (_: Throwable) {
+            0L
+        } finally {
+            releaseAll({ r.release() }) // also when setDataSource or extractMetadata throws
+        }
     }
 
     private fun decodeWithMediaCodec(
@@ -211,11 +219,18 @@ actual class AudioNormalizer actual constructor() {
 
 private const val WAV_SLICE_BYTES = 256 * 1024
 
-internal data class WavHeader(val sampleRateHz: Int, val channels: Int, val dataOffset: Long, val dataSize: Long)
+internal data class WavHeader(
+    val sampleRateHz: Int,
+    val channels: Int,
+    val bitsPerSample: Int,
+    val dataOffset: Long,
+    val dataSize: Long,
+)
 
 /**
- * Walks the RIFF chunks with seeks (no full read). Null when the file is not RIFF/WAVE, so another decoder gets it;
- * throws like the former in-memory parser for a WAV with no data chunk or a bit depth other than 16.
+ * Walks the RIFF chunks with seeks (no full read). Null when the file is not RIFF/WAVE or has no data chunk, so
+ * another decoder gets it. The caller streams only 16-bit mono at the target rate; other depths fall back to the
+ * decoder instead of failing (#319).
  */
 internal fun readWavHeader(file: File): WavHeader? = RandomAccessFile(file, "r").use { raf ->
     val length = raf.length()
@@ -252,9 +267,9 @@ internal fun readWavHeader(file: File): WavHeader? = RandomAccessFile(file, "r")
         }
         offset += 8 + size + (size and 1L)
     }
-    require(dataOffset >= 0) { "WAV missing data chunk" }
-    require(bits == 16) { "Only PCM16 WAV supported in fast path (got $bits-bit)" }
-    WavHeader(sampleRate, channels, dataOffset, dataSize)
+    // No data chunk: nothing to stream here; the decoder gets the file and reports what is wrong with it.
+    if (dataOffset < 0) return null
+    WavHeader(sampleRate, channels, bits, dataOffset, dataSize)
 }
 
 private fun guessMime(name: String): String? {
