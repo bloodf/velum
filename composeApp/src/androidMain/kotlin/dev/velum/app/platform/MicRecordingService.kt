@@ -16,6 +16,7 @@ import android.os.IBinder
 import android.os.SystemClock
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
+import dev.velum.ai.pipeline.inAppLanguage
 import dev.velum.app.R
 import java.io.File
 import java.io.RandomAccessFile
@@ -69,7 +70,7 @@ class MicRecordingService : Service() {
                 val path = intent.getStringExtra(EXTRA_PATH)
                 if (path.isNullOrBlank()) {
                     if (!capturing.get()) {
-                        publish(MicSessionState.Failed(getString(R.string.mic_recording_start_failed)))
+                        publish(MicSessionState.Failed(inAppLanguage().getString(R.string.mic_recording_start_failed)))
                         stopSelfSafely()
                     }
                     return@synchronized START_NOT_STICKY
@@ -264,7 +265,7 @@ class MicRecordingService : Service() {
         capturing.set(false)
         paused.set(false)
         pcmListener = null
-        publish(MicSessionState.Failed(getString(message), permissionRequired, currentSession))
+        publish(MicSessionState.Failed(inAppLanguage().getString(message), permissionRequired, currentSession))
         outputFile = null
         stopSelfSafely()
     }
@@ -329,15 +330,15 @@ class MicRecordingService : Service() {
         // command cannot block on disk while an old session is being finalized.
         val terminal = try {
             when {
-                file == null -> MicSessionState.Failed(getString(R.string.mic_recording_cancelled), session = currentSession)
-                thread?.isAlive == true -> MicSessionState.Failed(getString(R.string.mic_recording_capture_failed), session = currentSession)
+                file == null -> MicSessionState.Failed(inAppLanguage().getString(R.string.mic_recording_cancelled), session = currentSession)
+                thread?.isAlive == true -> MicSessionState.Failed(inAppLanguage().getString(R.string.mic_recording_capture_failed), session = currentSession)
                 else -> {
                     val recovered = WavWriter.recoverOrFinalize(file.absolutePath, SAMPLE_RATE_HZ)
                         ?: error("Unable to finalize microphone recording.")
                     MicSessionState.Stopped(recovered.absolutePath, recovered.durationSeconds, recovered.sizeBytes, token)
                 }
             }
-        } catch (_: Exception) { MicSessionState.Failed(getString(R.string.mic_recording_capture_failed), session = currentSession) }
+        } catch (_: Exception) { MicSessionState.Failed(inAppLanguage().getString(R.string.mic_recording_capture_failed), session = currentSession) }
         synchronized(sessionLock) {
             if (generation != token || sessionSequence.get() != token) return
             pcmListener = null
@@ -373,16 +374,16 @@ class MicRecordingService : Service() {
         val openApp = packageManager.getLaunchIntentForPackage(packageName)?.let { launch ->
             PendingIntent.getActivity(this, 0, launch, pendingFlags())
         }
-        val title = getString(
+        val title = inAppLanguage().getString(
             if (paused) R.string.mic_recording_paused_title else R.string.mic_recording_title,
         )
-        val body = getString(
+        val body = inAppLanguage().getString(
             if (paused) R.string.mic_recording_paused_body else R.string.mic_recording_body,
         )
-        val toggleLabel = getString(
+        val toggleLabel = inAppLanguage().getString(
             if (paused) R.string.mic_recording_resume else R.string.mic_recording_pause,
         )
-        val stopLabel = getString(R.string.mic_recording_stop)
+        val stopLabel = inAppLanguage().getString(R.string.mic_recording_stop)
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(title)
             .setContentText(body)
@@ -460,14 +461,14 @@ class MicRecordingService : Service() {
         fun ensureNotificationChannel(context: Context) {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
             val nm = context.getSystemService(NotificationManager::class.java) ?: return
-            val existing = nm.getNotificationChannel(CHANNEL_ID)
-            if (existing != null) return
+            // Always (re)create: for an existing channel Android only updates the name and description, which
+            // is how a change of the in-app language reaches the channel list.
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                context.getString(R.string.mic_recording_channel_name),
+                context.inAppLanguage().getString(R.string.mic_recording_channel_name),
                 NotificationManager.IMPORTANCE_LOW,
             ).apply {
-                description = context.getString(R.string.mic_recording_channel_desc)
+                description = context.inAppLanguage().getString(R.string.mic_recording_channel_desc)
                 setShowBadge(false)
             }
             nm.createNotificationChannel(channel)

@@ -4,6 +4,7 @@ import dev.velum.ai.engine.DEFAULT_LOCAL_LLM_MODEL_ID
 import dev.velum.ai.local.DefaultLocalCatalog
 import dev.velum.ai.local.DeviceComputeClass
 import dev.velum.ai.local.LOCAL_MODEL_NOT_READY_MESSAGE
+import dev.velum.ai.pipeline.INSUFFICIENT_STORAGE_MESSAGE
 import dev.velum.ai.local.LocalAsrRouter
 import dev.velum.ai.local.detectDeviceComputeClass
 
@@ -179,6 +180,7 @@ object ModelCatalogUi {
 internal fun processingFailureText(raw: String?, strings: Strings): String? = when {
     raw == null -> null
     raw == LOCAL_MODEL_NOT_READY_MESSAGE || LEGACY_MODEL_NOT_READY.containsMatchIn(raw) -> strings.ux.localModelNotReady
+    raw == INSUFFICIENT_STORAGE_MESSAGE -> strings.ux.insufficientStorage
     else -> raw
 }
 

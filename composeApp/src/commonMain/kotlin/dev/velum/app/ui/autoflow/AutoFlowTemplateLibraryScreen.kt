@@ -3,6 +3,7 @@ package dev.velum.app.ui.autoflow
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -141,7 +142,8 @@ fun AutoFlowTemplateLibraryScreen(
                 .clip(RoundedCornerShape(10.dp))
                 .background(VelumSurface)
                 .border(1.dp, VelumDivider, RoundedCornerShape(10.dp))
-                .padding(horizontal = 12.dp, vertical = 10.dp),
+                // Vertical padding is 0: the 48dp clear target below is always reserved, so the row never changes height.
+                .padding(start = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(Icons.Outlined.Search, strings.search, tint = VelumInkSecondary, modifier = Modifier.size(18.dp))
@@ -161,12 +163,14 @@ fun AutoFlowTemplateLibraryScreen(
                 },
             )
             if (query.isNotEmpty()) {
-                Icon(
-                    Icons.Outlined.Close,
-                    strings.cancel,
-                    tint = VelumInkSecondary,
-                    modifier = Modifier.size(20.dp).clickable { query = "" },
-                )
+                Box(
+                    Modifier.size(48.dp).clickable(role = Role.Button) { query = "" },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(Icons.Outlined.Close, strings.clearSearch, tint = VelumInkSecondary, modifier = Modifier.size(20.dp))
+                }
+            } else {
+                Spacer(Modifier.size(48.dp))
             }
         }
         Spacer(Modifier.height(10.dp))
@@ -233,11 +237,12 @@ fun AutoFlowTemplateLibraryScreen(
                             fontSize = 13.sp,
                         )
                     }
-                    Icon(
-                        Icons.Outlined.Close,
-                        strings.cancel,
-                        modifier = Modifier.clickable { preview = null },
-                    )
+                    Box(
+                        Modifier.size(48.dp).clickable(role = Role.Button) { preview = null },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(Icons.Outlined.Close, strings.close)
+                    }
                 }
                 Spacer(Modifier.height(12.dp))
                 Text(

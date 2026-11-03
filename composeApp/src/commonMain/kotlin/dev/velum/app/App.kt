@@ -222,7 +222,7 @@ private fun VelumRoot(container: AppContainer) {
             if (result == SnackbarResult.ActionPerformed) container.settingsViewModel.reloadSettings()
         }
     }
-    val importAudio = rememberAudioImporter { path ->
+    val importAudio = rememberAudioImporter(onFailed = { scope.launch { snackbar.showSnackbar(strings.ux.importCopyFailed) } }) { path ->
         scope.launch {
             fabOpen = false
             when (val result = importPipeline.importFile(path, source = "import")) {
@@ -236,6 +236,7 @@ private fun VelumRoot(container: AppContainer) {
                 is ImportResult.Failed -> {
                     snackbar.showSnackbar(strings.ux.genericError)
                 }
+                is ImportResult.Deleted -> Unit // watched-folder sync only
             }
         }
     }
@@ -257,6 +258,7 @@ private fun VelumRoot(container: AppContainer) {
                     navController.navigate(Routes.recording(result.existingRecordingId))
                 }
                 is ImportResult.Failed -> snackbar.showSnackbar(strings.ux.genericError)
+                is ImportResult.Deleted -> Unit // watched-folder sync only
             }
         }
     }

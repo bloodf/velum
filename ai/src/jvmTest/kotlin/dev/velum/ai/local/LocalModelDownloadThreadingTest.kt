@@ -176,6 +176,27 @@ class LocalModelDownloadThreadingTest {
         assertEquals(LocalModelStatus.NotDownloaded, manager.stateFor("tiny")?.status)
     }
 
+    @Test fun an_archive_that_extracts_to_nothing_useful_is_incomplete_and_leaves_nothing() = runBlocking {
+        val client = HttpClient(MockEngine {
+            respond(payload, HttpStatusCode.OK, headersOf(HttpHeaders.ContentLength, payload.size.toString()))
+        })
+        val manager = archiveManager(client) { _, _ -> } // extracts nothing, so the required files are missing
+        manager.download("tiny").collect()
+        assertEquals(LocalModelStatus.Failed, manager.stateFor("tiny")?.status)
+        assertEquals(LocalModelErrors.Incomplete, manager.stateFor("tiny")?.error)
+        assertFalse(root.resolve("tiny").exists(), "nothing a refresh could call Ready may stay")
+    }
+
+    @Test fun a_junk_file_in_the_model_folder_is_incomplete_after_a_restart() = runBlocking {
+        val dir = root.resolve("tiny")
+        dir.createDirectories()
+        dir.resolve("junk.bin").writeBytes(ByteArray(8))
+        val manager = archiveManager(HttpClient(MockEngine { respond("", HttpStatusCode.OK) })) { _, _ -> }
+        manager.refreshFromDisk()
+        assertEquals(LocalModelStatus.Failed, manager.stateFor("tiny")?.status)
+        assertEquals(LocalModelErrors.Incomplete, manager.stateFor("tiny")?.error)
+    }
+
     @Test fun cancel_at_the_final_emit_keeps_the_complete_model() = runBlocking {
         val client = HttpClient(MockEngine {
             respond(payload, HttpStatusCode.OK, headersOf(HttpHeaders.ContentLength, payload.size.toString()))
