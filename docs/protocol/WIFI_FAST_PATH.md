@@ -35,11 +35,13 @@ Run `./gradlew :ble:jvmTest --rerun`. `WifiSoftApMockServerTest` starts `JavaWeb
 ephemeral loopback port (`ServerSocket(0)`, connect-retry, no fixed ports) with `FakeWifiDeviceClient` as the device.
 
 - **Simulated (JVM):** preamble accept/reject, sealed frames for both ciphers, seq ordering/replay, AEAD failure,
-  full-file transfer with CRC (loopback MB/s is printed, not a hardware claim), mid-transfer disconnect and device
+  full-file transfer with CRC (loopback MB/s is printed and recorded below, not a hardware claim), mid-transfer disconnect and device
   never joining -> timeout -> BLE fallback with exact bytes, and port release after stop.
 - **Android-side (Robolectric, `./gradlew :ble:testDebugUnitTest --rerun`):** `AndroidWifiTransferServerTest` runs the real
   `AndroidWifiTransferServer` on an ephemeral loopback port with a java-websocket device and Robolectric's `Network`
-  shadow. It checks that each accepted socket is passed to `Network.bindSocket`, preamble accept/reject (close 1008),
+  shadow. `completeTransfer_onTheLiteralPort8081` repeats the complete transfer on `:8081`, the port a real device uses;
+  if something else on the machine holds that port, the test is reported as skipped with that reason, and it never passes
+  without running. It checks that each accepted socket is passed to `Network.bindSocket`, preamble accept/reject (close 1008),
   full-file CRC for both ciphers, mid-transfer disconnect and AEAD failure -> BLE fallback with exact bytes, and
   release of the SoftAP join and the port on success and failure. `AndroidWifiSoftApJoinerTest` checks the
   `ConnectivityManager` request/callback lifecycle: the process is never bound (`bindProcessToNetwork`), the callback
@@ -53,6 +55,17 @@ ephemeral loopback port (`ServerSocket(0)`, connect-retry, no fixed ports) with 
   the connection is still served. The Robolectric tests only prove the call is made and the failure is reported, not that
   traffic is routed over the SoftAP network. Whoever wires Wi-Fi into the app must bind the listening side instead
   (SoftAP host address via `bindHost`) and confirm on a real Note Pro that traffic uses the SoftAP network; an address bind is not proven to be a network bind.
+- **Measured throughput, loopback only (2026-11-03):** this is the same machine talking to itself under the simulated
+  path, not Wi-Fi, and says nothing about a Note Pro or a phone. Each test moves a 262,144-byte fixture, once per cipher,
+  so the numbers mostly reflect start-up and a cold JVM. Three runs on a heavily loaded macOS arm64 machine (load above 600),
+  in MB/s from the lines the tests print:
+
+  | Test | ChaCha20-Poly1305 | AES-GCM |
+  | --- | --- | --- |
+  | `AndroidWifiTransferServerTest`, ephemeral port (Robolectric) | 3.73, 5.63, 4.57 | 2.10, 3.36, 3.57 |
+  | `AndroidWifiTransferServerTest`, `:8081` (Robolectric) | 4.53, 3.29, 2.69 | 1.35, 1.83, 2.14 |
+  | `WifiSoftApMockServerTest` (JVM) | 3.73, 2.81, 2.71 | 2.40, 3.25, 3.32 |
+
 - **Not covered (stays in #8):** real SoftAP join, `Network.bindSocket` on a real `Network`, normal-network
   restoration, hardware throughput.
 - **Nonce (#28):** `wifiFrameSealing_isDeterministicPerSecretAndSeq` characterizes sealing as deterministic per
