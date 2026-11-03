@@ -109,3 +109,5 @@ tasks.withType<Test>().configureEach {
         exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
     }
 }
+
+apply(from = rootProject.file("gradle/robolectric-offline.gradle.kts"))
