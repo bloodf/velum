@@ -4,6 +4,9 @@ import android.media.MediaPlayer
 import android.media.PlaybackParams
 import android.os.Build
 import java.io.File
+import dev.velum.app.playback.SkipSilenceScanner
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -41,9 +44,9 @@ private class AndroidAudioPlayer : AudioPlayer {
     private var player: MediaPlayer? = null
     private var pollJob: Job? = null
     /** The WAV being played, if it is one; its PCM is only ever read in windows, and only for skip-silence (#333). */
-    private var wavFile: File? = null
+    @Volatile private var wavFile: File? = null
     @Volatile private var wavSource: WavPcmSource? = null
-    private var skipScan: Job? = null
+    @Volatile private var skipScan: Job? = null
     private var speed = PlaybackSpeed.S100
 
     private val _isPlaying = MutableStateFlow(false)
@@ -63,10 +66,13 @@ private class AndroidAudioPlayer : AudioPlayer {
         _isPlaying.value = false
         _positionMs.value = 0L
         _durationMs.value = 0L
-        skipScan?.cancel() // a scan of the previous file must not seek this one
-        skipScan = null
-        wavFile = null
-        wavSource = null
+        // The skip-silence fields belong to Main (the poll runs there), so they are reset there too.
+        withContext(Dispatchers.Main.immediate) {
+            skipScan?.cancel() // a scan of the previous file must not seek this one
+            skipScan = null
+            wavFile = null
+            wavSource = null
+        }
         if (path.isBlank()) {
             return@withContext false
         }
@@ -94,7 +100,8 @@ private class AndroidAudioPlayer : AudioPlayer {
             if (path.endsWith(".wav", ignoreCase = true) ||
                 path.endsWith(".wave", ignoreCase = true)
             ) {
-                wavFile = file // no data is read here: skip-silence opens it on demand
+                // no data is read here: skip-silence opens it on demand
+                withContext(Dispatchers.Main.immediate) { wavFile = file }
             }
             true
         } catch (_: Throwable) {
@@ -209,22 +216,24 @@ private class AndroidAudioPlayer : AudioPlayer {
         val file = wavFile ?: return
         val pos = _positionMs.value
         skipScan = scope.launch {
-            // Disk reads and the scan stay off the main thread; the seek comes back on it. A failure only means
-            // no skipping: it must not escape this scope (the old loader caught Throwable too).
+            // Disk reads and the scan stay off the main thread; the seek comes back on it. Any failure (like the
+            // old loader's catch of Throwable, OutOfMemoryError included) only means no skipping and must not
+            // escape this scope; a cancellation is the one thing that is rethrown.
             val found = withContext(Dispatchers.IO) {
-                runCatching {
-                    val source = wavSource?.takeIf { wavFile === file } ?: WavPcmSource.open(file)
-                    source?.let { it to it.findSkipPastSilence(pos) }
-                }.getOrNull()
+                try {
+                    val source = wavSource?.takeIf { it.isFor(file) } ?: WavPcmSource.open(file)
+                    source?.let { it to it.findSkipPastSilence(pos) { ensureActive() } }
+                } catch (c: CancellationException) {
+                    throw c // a cancelled scan must stop, not be swallowed as "nothing found"
+                } catch (_: Throwable) {
+                    null
+                }
             } ?: return@launch
             val (source, skip) = found
             if (wavFile !== file) return@launch // another file was prepared meanwhile
             wavSource = source
             val target = skip?.seekToMs ?: return@launch
-            val now = _positionMs.value
-            // A late result must not undo a user seek: the position still has to lie between where the scan
-            // started (give or take a poll) and where it wants to go.
-            if (target > pos + 50L && _isPlaying.value && now >= pos - 500L && now <= target) seekTo(target)
+            if (SkipSilenceScanner.shouldApplySkip(pos, _positionMs.value, target, _isPlaying.value)) seekTo(target)
         }
     }
 
