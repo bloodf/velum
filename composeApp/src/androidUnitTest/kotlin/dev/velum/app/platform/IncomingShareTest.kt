@@ -62,7 +62,15 @@ class IncomingShareTest {
         val intent = Intent(Intent.ACTION_SEND).putExtra(Intent.EXTRA_STREAM, u)
         IncomingShare.offerFromIntent(context, intent) // would hang forever here if the copy ran on the caller's thread
         gate.countDown()
-        val path = kotlinx.coroutines.runBlocking { kotlinx.coroutines.withTimeout(10_000) { IncomingShare.next() } }
-        assertEquals(10L, File(assertNotNull(path)).length())
+        val shared = kotlinx.coroutines.runBlocking { kotlinx.coroutines.withTimeout(10_000) { IncomingShare.next() } }
+        assertEquals(10L, File((shared as SharedFile.Ready).path).length())
+    }
+
+    @Test fun a_failed_offered_share_is_reported_not_dropped() {
+        val u = Uri.parse("content://test.provider/fail.mp3")
+        shadowOf(context.contentResolver).registerInputStream(u, object : InputStream() { override fun read(): Int = throw IOException("gone") })
+        IncomingShare.offerFromIntent(context, Intent(Intent.ACTION_SEND).putExtra(Intent.EXTRA_STREAM, u))
+        val shared = kotlinx.coroutines.runBlocking { kotlinx.coroutines.withTimeout(10_000) { IncomingShare.next() } }
+        assertEquals(SharedFile.CopyFailed, shared)
     }
 }

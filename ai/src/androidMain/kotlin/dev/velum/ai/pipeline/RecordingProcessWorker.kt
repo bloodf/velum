@@ -93,7 +93,7 @@ class RecordingProcessWorker(
         }
         val result = processJob(recordingId, templateId, retranscribe, apiOverride, processor, repository)
         // The run ended on its own (even as a retry); only a stop leaves the flag set, by throwing past here.
-        runCatching { repository.setUnpromotedRun(recordingId, null) }
+        runCatching { repository.clearUnpromotedRunIfOwner(recordingId, workId) }
         return result
     }
 

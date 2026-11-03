@@ -141,7 +141,7 @@ class WifiFastPathE2ETest {
             bindHost = "127.0.0.1",
             assemble = { s ->
                 withTimeout(5_000) {
-                    val sealed = (s.server.incomingEncryptedFrames() as SharedFlow<ByteArray>)
+                    val sealed = (s.incomingEncryptedFrames() as SharedFlow<ByteArray>)
                         .onSubscription { subscribed.countDown() }
                         .first()
                     s.openIncoming(sealed) ?: error("open failed")

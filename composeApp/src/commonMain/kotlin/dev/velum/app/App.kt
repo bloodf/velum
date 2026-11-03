@@ -53,6 +53,7 @@ import dev.velum.app.platform.ExportFolderResult
 import dev.velum.app.platform.LocalHaptics
 import dev.velum.app.platform.MicStartResult
 import dev.velum.app.platform.PermissionOutcome
+import dev.velum.app.platform.SharedFile
 import dev.velum.app.platform.awaitIncomingSharePath
 import dev.velum.app.platform.observeMicFailures
 import dev.velum.app.platform.MicStopResult
@@ -222,7 +223,7 @@ private fun VelumRoot(container: AppContainer) {
             if (result == SnackbarResult.ActionPerformed) container.settingsViewModel.reloadSettings()
         }
     }
-    val importAudio = rememberAudioImporter { path ->
+    val importAudio = rememberAudioImporter(onFailed = { scope.launch { snackbar.showSnackbar(strings.ux.importCopyFailed) } }) { path ->
         scope.launch {
             fabOpen = false
             when (val result = importPipeline.importFile(path, source = "import")) {
@@ -251,7 +252,14 @@ private fun VelumRoot(container: AppContainer) {
     LaunchedEffect(container) {
         // Each share is copied off the main thread and arrives here when ready; null means this platform has none.
         while (true) {
-            val path = awaitIncomingSharePath() ?: break
+            val shared = awaitIncomingSharePath() ?: break
+            val path = when (shared) {
+                is SharedFile.Ready -> shared.path
+                SharedFile.CopyFailed -> {
+                    snackbar.showSnackbar(strings.ux.importCopyFailed)
+                    continue
+                }
+            }
             when (val result = importPipeline.importFile(path, source = "share")) {
                 is ImportResult.Created -> navController.navigate(Routes.recording(result.recordingId))
                 is ImportResult.Duplicate -> {

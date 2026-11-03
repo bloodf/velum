@@ -74,7 +74,7 @@ fun ImportHubScreen(
     var resumeTick by remember { mutableStateOf(0) }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { resumeTick++ }
     LaunchedEffect(status, importing, resumeTick, watchedFoldersVersion) { folderCount = withContext(Dispatchers.IO) { watchedFolderCount() } }
-    val pickFile = rememberAudioImporter { path ->
+    val pickFile = rememberAudioImporter(onFailed = { status = strings.ux.importCopyFailed }) { path ->
         scope.launch {
             importing = true
             status = strings.ux.importing

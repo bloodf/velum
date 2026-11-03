@@ -37,6 +37,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -48,7 +49,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
  * and decode failure, cancellation and a full disk leave no temp PCM and keep the recording file.
  */
 class RecordingProcessorDecodeCleanupTest {
-    private class Harness(val transcribe: suspend (AudioInput) -> Unit,
+    class Harness(val transcribe: suspend (AudioInput) -> Unit,
         thermal: ThermalPolicy = NoOpThermalPolicy,
         opusDecoder: (() -> dev.velum.ai.audio.OpusDecoder)? = null,
     ) {
@@ -102,8 +103,12 @@ class RecordingProcessorDecodeCleanupTest {
 
     private val API = ApiModelOverride(profileId = "work", modelId = "whisper-custom")
 
-    private fun spillDir(id: String) =
-        File(ModelStoreDir(defaultModelStoreRoot().absolutePath).resolve("tmp").resolve("pcm-$id").absolutePath)
+    /** The run-scoped spill dir (`pcm-<id>-<run>`) if one exists, otherwise a path that does not. */
+    private fun spillDir(id: String): File {
+        val tmp = File(ModelStoreDir(defaultModelStoreRoot().absolutePath).resolve("tmp").absolutePath)
+        return tmp.listFiles { f -> f.isDirectory && f.name.startsWith("pcm-$id-") }?.firstOrNull()
+            ?: File(tmp, "pcm-$id-none")
+    }
 
     private fun tempAudio(suffix: String, bytes: ByteArray) =
         File.createTempFile("velum-86-decode", suffix).apply { writeBytes(bytes); deleteOnExit() }
@@ -339,6 +344,111 @@ class RecordingProcessorDecodeCleanupTest {
         h.repo.updateStatus("rec-324", "queued")
         job.cancelAndJoin()
         assertEquals("queued", h.repo.getRecording("rec-324")!!.status, "the cancelled job overwrote the replacement's status")
+    }
+
+    @Test
+    fun old_job_unwinding_after_its_replacement_started_leaves_the_replacements_generating_status() = runBlocking {
+        val bytes = wav(ByteArray(64_000))
+        val entered = java.util.concurrent.atomic.AtomicInteger()
+        val second = CompletableDeferred<Unit>()
+        val h = Harness({ if (entered.incrementAndGet() == 2) second.complete(Unit); awaitCancellation() })
+        val src = tempAudio(".wav", bytes)
+        h.insert("rec-324b", src)
+        val first = launch(Dispatchers.Default) { h.processor.process("rec-324b", templateId = "velum.meeting", apiModelOverride = API).toList() }
+        withTimeout(30_000) { while (entered.get() < 1) kotlinx.coroutines.delay(20) }
+        // WorkManager REPLACE: the replacement is already running (generating) when the old job unwinds.
+        val replacement = launch(Dispatchers.Default) { h.processor.process("rec-324b", templateId = "velum.meeting", apiModelOverride = API).toList() }
+        withTimeout(30_000) { second.await() }
+        first.cancelAndJoin()
+        assertEquals("generating", h.repo.getRecording("rec-324b")!!.status, "the old job overwrote the replacement's status")
+        replacement.cancelAndJoin()
+        assertEquals("failed", h.repo.getRecording("rec-324b")!!.status)
+    }
+
+    /** Runs A until [gateA] opens, lets B run to the end meanwhile, then releases A: A is a stale (replaced) run. */
+    private suspend fun staleRunScenario(
+        id: String,
+        deleteAudio: Boolean,
+        failA: Boolean,
+        check: suspend (Harness, java.io.File, List<JobProgress>) -> Unit,
+    ) = kotlinx.coroutines.coroutineScope {
+        val gateA = CompletableDeferred<Unit>()
+        val enteredA = CompletableDeferred<Unit>()
+        val calls = java.util.concurrent.atomic.AtomicInteger()
+        val h = Harness({
+            if (calls.incrementAndGet() == 1) {
+                enteredA.complete(Unit)
+                gateA.await()
+                if (failA) error("stale run failed")
+            }
+        })
+        if (deleteAudio) h.settings.setDeleteAudioAfterProcessing(true)
+        val src = tempAudio(".wav", wav(ByteArray(64_000)))
+        h.insert(id, src)
+        val aEvents = java.util.concurrent.CopyOnWriteArrayList<JobProgress>()
+        val a = launch(Dispatchers.Default) { h.processor.process(id, templateId = "velum.meeting", apiModelOverride = API).collect { aEvents += it } }
+        withTimeout(30_000) { enteredA.await() }
+        // The replacement runs to the end while A is still in flight.
+        h.processor.process(id, templateId = "velum.meeting", apiModelOverride = API).toList()
+        gateA.complete(Unit)
+        a.join()
+        check(h, src, aEvents.toList())
+    }
+
+    @Test
+    fun stale_success_after_the_replacement_published_writes_nothing() = runBlocking {
+        staleRunScenario("rec-324-stale-ok", deleteAudio = true, failA = false) { h, src, aEvents ->
+            val row = h.repo.getRecording("rec-324-stale-ok")!!
+            assertEquals("ready", row.status)
+            val versions = h.repo.observeSummaryVersions("rec-324-stale-ok").first()
+            assertEquals(1, versions.size, "only the replacement's version exists: $versions")
+            assertTrue(versions.single().is_active == 1L)
+            assertTrue(aEvents.none { it is JobProgress.Succeeded || it is JobProgress.Failed }, "stale run reported: $aEvents")
+            assertFalse(src.exists(), "the newest run deleted the audio once")
+        }
+    }
+
+    @Test
+    fun stale_failure_after_the_replacement_published_writes_nothing() = runBlocking {
+        staleRunScenario("rec-324-stale-fail", deleteAudio = false, failA = true) { h, _, aEvents ->
+            val row = h.repo.getRecording("rec-324-stale-fail")!!
+            assertEquals("ready", row.status, "a stale failure overwrote the replacement's status")
+            assertEquals(null, row.processing_warning)
+            assertTrue(aEvents.none { it is JobProgress.Failed }, "stale run reported failure: $aEvents")
+        }
+    }
+
+    @Test
+    fun a_cancelled_rerun_after_a_normal_finish_restores_the_ready_status() = runBlocking {
+        val entered = CompletableDeferred<Unit>()
+        val calls = java.util.concurrent.atomic.AtomicInteger()
+        val h = Harness({ if (calls.incrementAndGet() == 2) { entered.complete(Unit); awaitCancellation() } })
+        val src = tempAudio(".wav", wav(ByteArray(64_000)))
+        h.insert("rec-324-rerun", src)
+        h.processor.process("rec-324-rerun", templateId = "velum.meeting", apiModelOverride = API).toList()
+        assertEquals("ready", h.repo.getRecording("rec-324-rerun")!!.status)
+        val job = launch(Dispatchers.Default) { h.processor.process("rec-324-rerun", templateId = "velum.meeting", apiModelOverride = API).toList() }
+        withTimeout(30_000) { entered.await() }
+        job.cancelAndJoin()
+        assertEquals("ready", h.repo.getRecording("rec-324-rerun")!!.status, "the finished run's token must not block the restore")
+    }
+
+    @Test
+    fun overlapping_runs_decode_into_separate_spill_dirs() = runBlocking {
+        val enteredBoth = java.util.concurrent.atomic.AtomicInteger()
+        val h = Harness({ enteredBoth.incrementAndGet(); awaitCancellation() })
+        val src = tempAudio(".wav", wav(ByteArray(64_000)))
+        h.insert("rec-324-spill", src)
+        val tmp = File(ModelStoreDir(defaultModelStoreRoot().absolutePath).resolve("tmp").absolutePath)
+        val a = launch(Dispatchers.Default) { h.processor.process("rec-324-spill", templateId = "velum.meeting", apiModelOverride = API).toList() }
+        withTimeout(30_000) { while (enteredBoth.get() < 1) kotlinx.coroutines.delay(20) }
+        val b = launch(Dispatchers.Default) { h.processor.process("rec-324-spill", templateId = "velum.meeting", apiModelOverride = API).toList() }
+        withTimeout(30_000) { while (enteredBoth.get() < 2) kotlinx.coroutines.delay(20) }
+        val dirs = tmp.listFiles { f -> f.isDirectory && f.name.startsWith("pcm-rec-324-spill-") }.orEmpty()
+        assertEquals(2, dirs.size, "each run decodes into its own directory: ${dirs.map { it.name }}")
+        assertTrue(dirs.all { File(it, "pcm.s16le").isFile }, "both directories were in use during decode")
+        a.cancelAndJoin(); b.cancelAndJoin()
+        assertEquals(0, tmp.listFiles { f -> f.name.startsWith("pcm-rec-324-spill-") }.orEmpty().size, "both removed")
     }
 
     @Test
