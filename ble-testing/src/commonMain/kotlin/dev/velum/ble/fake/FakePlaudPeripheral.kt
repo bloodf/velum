@@ -220,14 +220,23 @@ class FakePlaudPeripheral(
                 val sid = Bytes.readU32Le(payload, 0)
                 val startOffset = Bytes.readU32Le(payload, 4)
                 _syncStartOffsets += startOffset
+                if (startOffset > 0) {
+                    if (faults.silentOnNonZeroStart) return
+                    if (faults.malformedReplyOnNonZeroStart) {
+                        emitCommand(Commands.SYNC_FILE_START, ByteArray(2))
+                        return
+                    }
+                }
+                val refuse = faults.refuseNonZeroStart && startOffset > 0
                 emitCommand(
                     Commands.SYNC_FILE_START,
-                    Bytes.u32Le(sid) + byteArrayOf(0),
+                    Bytes.u32Le(sid) + byteArrayOf(if (refuse) 1 else 0),
                 )
+                if (refuse) return
                 // Like real GATT, the write completes first and notifications follow under backpressure.
                 // Emitting inside the write would deadlock once the buffers fill (nothing reads yet).
                 streamJob?.cancel()
-                streamJob = CoroutineScope(currentCoroutineContext()).launch { streamSessionFrom(startOffset.toInt()) }
+                streamJob = launchDetached { streamSessionFrom(if (faults.ignoreStartOffset) 0 else startOffset.toInt()) }
             }
             Commands.SYNC_FILE_STOP -> {
                 // A real device stops streaming; its reply follows the completed write.
@@ -243,7 +252,7 @@ class FakePlaudPeripheral(
                     StopReply.Silent -> null
                 }
                 if (replyCmd != null) {
-                    streamJob = CoroutineScope(currentCoroutineContext()).launch {
+                    streamJob = launchDetached {
                         emitCommand(replyCmd, Bytes.u32Le(sessionId) + Bytes.u16Le(crc))
                     }
                 }
@@ -257,17 +266,29 @@ class FakePlaudPeripheral(
         }
     }
 
+    /** Not a child of the write: like real GATT, a write completes (and any timeout around it ends) while this runs. */
+    private suspend fun launchDetached(block: suspend () -> Unit): Job =
+        CoroutineScope(currentCoroutineContext().minusKey(Job)).launch { block() }
+
     /** Emits type-2 chunks from [startOffset] to the end, applying one-shot [faults]. */
     private suspend fun streamSessionFrom(startOffset: Int) {
         var offset = startOffset
+        faults.startPass(startOffset)
         while (offset < sessionFile.size) {
             val end = minOf(offset + chunkSize, sessionFile.size)
             val at = offset.toLong()
             // Link lost: nothing more arrives, not even the end marker.
-            if (faults.takeDisconnect(at)) return
+            if (faults.takeDisconnect(at) || faults.takePassDisconnect(at)) return
             // At the offset the client expects next, so only the session id tells it apart.
             if (faults.stray.remove(at)) emitEncrypted(chunkFrame(sessionId + 1, at, ByteArray(10) { 0x77 }))
             if (faults.strayEnd.remove(at)) emitEncrypted(endFrame(sessionId + 1))
+            faults.repeatBurst.remove(at)?.let { times ->
+                val previous = chunkFrame(sessionId, at - chunkSize, sessionFile.copyOfRange(offset - chunkSize, offset))
+                repeat(times) {
+                    emitEncrypted(previous)
+                    yield()
+                }
+            }
             if (faults.endlessRepeatAt == at) {
                 val previous = chunkFrame(sessionId, at - chunkSize, sessionFile.copyOfRange(offset - chunkSize, offset))
                 while (true) {
@@ -282,7 +303,7 @@ class FakePlaudPeripheral(
             }
             val slice = sessionFile.copyOfRange(offset, end)
             if (faults.corrupt.remove(at)) slice[0] = (slice[0].toInt() xor 0x5A).toByte()
-            val frame = chunkFrame(sessionId, at, slice)
+            val frame = chunkFrame(sessionId, if (faults.relativeOffsets) at - startOffset else at, slice)
             when {
                 faults.drop.remove(at) -> Unit
                 faults.garble.remove(at) -> emitEncrypted(frame, garble = true)
