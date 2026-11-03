@@ -50,4 +50,11 @@ class DiscoverStateTest {
         assertFalse(showPagingSentinel(shownTick = 3, currentTick = 3, rowCount = 59, loadedTarget = 60, totalMatches = 100))
         assertFalse(showPagingSentinel(shownTick = 3, currentTick = 3, rowCount = 100, loadedTarget = 60, totalMatches = 100))
     }
+
+    @Test fun tick_reload_keeps_paged_in_rows_up_to_a_bound() {
+        assertEquals(60, reloadLimit(pages = 1, sameFilterRowCount = 0, pageSize = 60))
+        assertEquals(120, reloadLimit(pages = 1, sameFilterRowCount = 120, pageSize = 60))
+        assertEquals(60 * MAX_RELOAD_PAGES, reloadLimit(pages = 1, sameFilterRowCount = 16_000, pageSize = 60))
+        assertEquals(60, reloadLimit(pages = 2, sameFilterRowCount = 120, pageSize = 60))
+    }
 }
