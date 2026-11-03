@@ -84,6 +84,10 @@ object DeviceUiCopy {
         if (isPt(localeTag)) "Não conectado. Conecte e desbloqueie primeiro."
         else "Not connected. Connect and unlock first."
 
+    fun connectBusy(localeTag: String): String =
+        if (isPt(localeTag)) "Finalizando o download anterior. Tente conectar de novo em instantes."
+        else "Still finishing the previous download. Try connecting again in a moment."
+
     fun importKeysToDownload(localeTag: String): String =
         if (isPt(localeTag)) "Importe as chaves de identidade do aparelho para baixar."
         else "Import device identity keys to download."

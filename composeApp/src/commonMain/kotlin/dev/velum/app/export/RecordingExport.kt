@@ -217,4 +217,4 @@ expect fun copyToClipboard(text: String)
  * Share raw [bytes] via the platform share sheet / save path.
  * Android writes a cache file and fires ACTION_SEND through FileProvider.
  */
-expect fun shareBytes(filename: String, mime: String, bytes: ByteArray)
+expect suspend fun shareBytes(filename: String, mime: String, bytes: ByteArray)

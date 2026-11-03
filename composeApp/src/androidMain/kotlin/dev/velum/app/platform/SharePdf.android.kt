@@ -7,12 +7,21 @@ import android.graphics.pdf.PdfDocument
 import dev.velum.app.export.PdfTextLayout
 import dev.velum.app.export.shareBytes
 import java.io.ByteArrayOutputStream
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 actual fun canExportPdf(): Boolean = true
 
-actual fun sharePdf(title: String, bodyPlain: String) {
+actual suspend fun sharePdf(title: String, bodyPlain: String) {
     val safeTitle = title.trim().ifBlank { "Velum" }
-    val body = bodyPlain.ifBlank { " " }
+    val bytes = withContext(Dispatchers.Default) { renderPdf(safeTitle, bodyPlain.ifBlank { " " }) }
+    val fileName = safeTitle
+        .replace(Regex("[^a-zA-Z0-9._-]"), "_")
+        .ifBlank { "velum" } + ".pdf"
+    shareBytes(fileName, "application/pdf", bytes)
+}
+
+private fun renderPdf(safeTitle: String, body: String): ByteArray {
     val pageWidth = 595
     val pageHeight = 842
     val margin = 48f
@@ -56,13 +65,9 @@ actual fun sharePdf(title: String, bodyPlain: String) {
         document.finishPage(page)
     }
 
-    val bytes = ByteArrayOutputStream().use { out ->
+    return ByteArrayOutputStream().use { out ->
         document.writeTo(out)
         document.close()
         out.toByteArray()
     }
-    val fileName = safeTitle
-        .replace(Regex("[^a-zA-Z0-9._-]"), "_")
-        .ifBlank { "velum" } + ".pdf"
-    shareBytes(fileName, "application/pdf", bytes)
 }

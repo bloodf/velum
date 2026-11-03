@@ -38,6 +38,12 @@ class MicDraftRecoveryTest {
         val before = container.repository.getAllRecordings(); assertTrue(reconcile().failedIds.isEmpty())
         assertEquals(before, container.repository.getAllRecordings()); assertEquals(0, enqueued)
     }
+    // #205: markers saved while recording are not progress; the interrupted draft must still be failed.
+    @Test fun a_draft_with_only_saved_markers_is_still_failed_when_the_audio_is_missing() = fixture {
+        insert(); container.repository.updateTranscript(id, "## Markers\n- **0:30** synthetic note")
+        assertEquals(listOf(id), reconcile().failedIds); assertEquals("failed", row()!!.status)
+        assertTrue(row()!!.transcript!!.contains("## Markers")) // the markers are kept
+    }
     @Test fun cancellation_before_insert_leaves_no_row_or_audio() = fixture {
         coroutineScope {
             val entered = CompletableDeferred<Unit>(); val gate = CompletableDeferred<Unit>()

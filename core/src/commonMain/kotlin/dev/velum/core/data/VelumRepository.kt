@@ -189,7 +189,8 @@ class VelumRepository(
             val current = q.selectRecordingById(expected.id).executeAsOneOrNull()
             if (current == null || current != expected || current.source != "phone" || current.status != "recording" ||
                 current.duration_seconds != 0L || current.size_bytes != 0L ||
-                !current.transcript.isNullOrBlank() || !current.summary_markdown.isNullOrBlank()) false
+                // Markers saved while recording are not content: the interrupted draft must still be failed.
+                !TranscriptMarkers.spoken(current.transcript).isNullOrBlank() || !current.summary_markdown.isNullOrBlank()) false
             else { q.updateStatus("failed", current.id); true }
         }
     }
@@ -889,7 +890,7 @@ class VelumRepository(
         summaryMarkdown: String?,
     ) {
         if (!ftsAvailable) return
-        db.transaction { FtsIndex.upsertRecording(driver, id, title, transcript, summaryMarkdown) }
+        db.transaction { FtsIndex.upsertRecording(driver, id, title, TranscriptMarkers.spoken(transcript), summaryMarkdown) }
     }
 
     private fun indexTemplate(

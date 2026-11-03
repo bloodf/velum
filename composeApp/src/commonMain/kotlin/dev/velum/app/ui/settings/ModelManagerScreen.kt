@@ -49,19 +49,14 @@ import dev.velum.app.ui.theme.VelumBg
 import dev.velum.app.ui.theme.VelumInk
 import dev.velum.app.ui.theme.VelumInkSecondary
 import dev.velum.app.ui.theme.VelumSurface
-import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.launch
 
+/** Lives at the app level: a download outlives the Model manager screen, so its notification must too. */
 @Composable
-fun ModelManagerScreen(
-    container: AppContainer,
-    onBack: () -> Unit,
-) {
+fun ModelDownloadNotification(container: AppContainer) {
     val strings = LocalStrings.current
     val states by container.localModelManager.states.collectAsState()
-    val scope = rememberCoroutineScope()
-    var pendingDeleteId by remember { mutableStateOf<String?>(null) }
-
     val downloading = states.firstOrNull { it.status == LocalModelStatus.Downloading }
     LaunchedEffect(downloading?.spec?.id, downloading?.progress) {
         val active = downloading
@@ -93,6 +88,17 @@ fun ModelManagerScreen(
             DownloadProgressNotifier.setCancelHandler(DownloadNotifyKind.LocalModel, null)
         }
     }
+}
+
+@Composable
+fun ModelManagerScreen(
+    container: AppContainer,
+    onBack: () -> Unit,
+) {
+    val strings = LocalStrings.current
+    val states by container.localModelManager.states.collectAsState()
+    val scope = rememberCoroutineScope()
+    var pendingDeleteId by remember { mutableStateOf<String?>(null) }
 
     Column(Modifier.fillMaxSize().background(VelumBg)) {
         ScreenTopBar(strings.modelManager, onBack = onBack)
@@ -112,11 +118,7 @@ fun ModelManagerScreen(
             items(states, key = { it.spec.id }) { state ->
                 ModelCard(
                     state = state,
-                    onDownload = {
-                        scope.launch {
-                            container.localModelManager.download(state.spec.id).collect()
-                        }
-                    },
+                    onDownload = { container.localModelManager.startDownloads(listOf(state.spec.id)) },
                     onCancel = { container.localModelManager.cancelDownload(state.spec.id) },
                     onDelete = { pendingDeleteId = state.spec.id },
                 )
@@ -133,7 +135,7 @@ fun ModelManagerScreen(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        scope.launch { container.localModelManager.delete(modelId) }
+                        scope.launch(start = CoroutineStart.UNDISPATCHED) { container.localModelManager.delete(modelId) }
                         pendingDeleteId = null
                     },
                 ) { Text(strings.delete) }

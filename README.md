@@ -14,7 +14,7 @@ Velum is an open-source, subscription-free companion for the [Plaud Note Pro](ht
 
 **Foundation (M0)** — repository, KMP modules, protocol codec + tests, AI client, BLE interface (Kable on mobile, stub on desktop), Compose Multiplatform shell (Device / Recordings / Settings).
 
-**Focus right now: Android.** The KMP layout keeps iOS targets for later (M3), but day-to-day work and CI target **Android + JVM tests** only. No Xcode project is maintained yet.
+**Focus right now: Android.** The KMP layout keeps iOS targets for later (M3), but day-to-day work and CI target **Android + JVM tests** only. The Xcode host is generated from `iosApp/project.yml` (see `iosApp/README.md`); there is no iOS CI.
 
 Not yet: full BLE sync/download/decrypt on device, templates, desktop system-audio recorder, sync, integrations, speaker ID.
 
