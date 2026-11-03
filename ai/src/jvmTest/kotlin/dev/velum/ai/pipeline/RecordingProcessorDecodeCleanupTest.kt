@@ -33,6 +33,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.awaitCancellation
@@ -49,7 +50,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
  * and decode failure, cancellation and a full disk leave no temp PCM and keep the recording file.
  */
 class RecordingProcessorDecodeCleanupTest {
-    class Harness(val transcribe: suspend (AudioInput) -> Unit,
+    private class Harness(val transcribe: suspend (AudioInput) -> Unit,
+        val llmText: suspend () -> String = { "## Summary\nok" },
         thermal: ThermalPolicy = NoOpThermalPolicy,
         opusDecoder: (() -> dev.velum.ai.audio.OpusDecoder)? = null,
     ) {
@@ -79,7 +81,7 @@ class RecordingProcessorDecodeCleanupTest {
         private val llm = object : LlmEngine {
             override val engineId = "noop"
             override suspend fun complete(request: LlmRequest, modelId: String) =
-                LlmResult(text = "## Summary\nok", engineId = engineId, modelId = modelId)
+                LlmResult(text = this@Harness.llmText(), engineId = engineId, modelId = modelId)
         }
         val processor = RecordingProcessor(
             AiTaskRouter(
@@ -375,13 +377,14 @@ class RecordingProcessorDecodeCleanupTest {
         val gateA = CompletableDeferred<Unit>()
         val enteredA = CompletableDeferred<Unit>()
         val calls = java.util.concurrent.atomic.AtomicInteger()
+        val llmCalls = java.util.concurrent.atomic.AtomicInteger()
         val h = Harness({
             if (calls.incrementAndGet() == 1) {
                 enteredA.complete(Unit)
                 gateA.await()
                 if (failA) error("stale run failed")
             }
-        })
+        }, llmText = { "## Summary\nrun-${llmCalls.incrementAndGet()}" })
         if (deleteAudio) h.settings.setDeleteAudioAfterProcessing(true)
         val src = tempAudio(".wav", wav(ByteArray(64_000)))
         h.insert(id, src)
@@ -403,6 +406,9 @@ class RecordingProcessorDecodeCleanupTest {
             val versions = h.repo.observeSummaryVersions("rec-324-stale-ok").first()
             assertEquals(1, versions.size, "only the replacement's version exists: $versions")
             assertTrue(versions.single().is_active == 1L)
+            // The replacement summarized first (run-1); the stale run (run-2) must not have replaced it.
+            assertEquals("## Summary\nrun-1", versions.single().markdown)
+            assertEquals("## Summary\nrun-1", row.summary_markdown)
             assertTrue(aEvents.none { it is JobProgress.Succeeded || it is JobProgress.Failed }, "stale run reported: $aEvents")
             assertFalse(src.exists(), "the newest run deleted the audio once")
         }
@@ -431,6 +437,24 @@ class RecordingProcessorDecodeCleanupTest {
         withTimeout(30_000) { entered.await() }
         job.cancelAndJoin()
         assertEquals("ready", h.repo.getRecording("rec-324-rerun")!!.status, "the finished run's token must not block the restore")
+    }
+
+    @Test
+    fun a_collector_that_stops_right_after_the_success_write_leaves_ready_in_place() = runBlocking {
+        val h = Harness({})
+        h.settings.setDeleteAudioAfterProcessing(true)
+        val src = tempAudio(".wav", wav(ByteArray(64_000)))
+        h.insert("rec-324-late-cancel", src)
+        h.repo.updateStatus("rec-324-late-cancel", "imported") // the status a wrongful restore would write back
+        val job = launch(Dispatchers.Default) {
+            h.processor.process("rec-324-late-cancel", templateId = "velum.meeting", apiModelOverride = API).collect {
+                // The success write and the audio delete are done; stop the collector at the next emit.
+                if (it is JobProgress.Running && it.message.startsWith("Removed")) throw CancellationException("collector gone")
+            }
+        }
+        job.join()
+        assertEquals("ready", h.repo.getRecording("rec-324-late-cancel")!!.status, "a late cancel restored the earlier status")
+        assertFalse(src.exists(), "the audio was deleted before the emit")
     }
 
     @Test
