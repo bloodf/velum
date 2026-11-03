@@ -112,12 +112,18 @@ class WifiSoftApBleFallbackTest {
         error("device could not connect on :$port: ${last?.message}")
     }
 
-    private suspend fun assembleExact(s: WifiFastTransferSession, total: Int, subscribed: CompletableDeferred<Unit>): ByteArray {
+    private suspend fun assembleExact(
+        s: WifiFastTransferSession,
+        total: Int,
+        subscribed: CompletableDeferred<Unit>,
+        consumerStallMs: Long = 0,
+    ): ByteArray {
         val out = ByteArrayOutputStream()
         @Suppress("UNCHECKED_CAST")
         val frames = s.server.incomingEncryptedFrames() as SharedFlow<ByteArray>
         frames.onSubscription { subscribed.complete(Unit) }
             .transformWhile<ByteArray, Unit> { sealed ->
+                if (out.size() == 0) delay(consumerStallMs)
                 out.write(s.openIncoming(sealed) ?: throw WifiTransferFailure("wifi_frame_rejected"))
                 out.size() < total
             }.collect { }
@@ -149,6 +155,7 @@ class WifiSoftApBleFallbackTest {
         wifiTimeoutMs: Long,
         good: Int,
         corruptNext: Boolean,
+        consumerStallMs: Long = 0,
     ): Triple<WifiTransferCoordinator.Outcome, CountingBle, FakeWifiSoftApJoiner> = coroutineScope2 {
         val port = freePort()
         val subscribed = CompletableDeferred<Unit>()
@@ -161,7 +168,7 @@ class WifiSoftApBleFallbackTest {
             wifiTimeout = wifiTimeoutMs.milliseconds,
         ).transferOrFallback(
             "PLAUD-FAKE", "password12", port = port, preamble = preamble, bindHost = "127.0.0.1",
-            assemble = { assembleExact(it, fixture.size, subscribed) },
+            assemble = { assembleExact(it, fixture.size, subscribed, consumerStallMs) },
         )
         device.join()
         Triple(outcome, ble, joiner)
@@ -184,10 +191,25 @@ class WifiSoftApBleFallbackTest {
     }
 
     @Test
-    fun droppedLinkMidTransfer_timesOutAndFallsBackToRealBleDownload_withExactBytes() = runBoundedTest {
-        val (outcome, ble, joiner) = transfer(wifiTimeoutMs = 1_500, good = 2, corruptNext = false)
+    fun aRejectedFrameBeatsACloseThatFollowedIt_howeverSlowTheConsumer() = runBoundedTest {
+        val (outcome, _, _) = transfer(wifiTimeoutMs = 15_000, good = 2, corruptNext = true, consumerStallMs = 3_000)
         assertIs<WifiTransferCoordinator.Outcome.BleFallback>(outcome)
-        assertTrue(outcome.reason.startsWith("wifi_timeout"), outcome.reason)
+        assertEquals("wifi_frame_rejected", outcome.reason)
+    }
+
+    @Test
+    fun aCompleteFileBeatsACloseThatFollowedIt_howeverSlowTheConsumer() = runBoundedTest {
+        val (outcome, ble, _) = transfer(wifiTimeoutMs = 15_000, good = wifiChunks.size, corruptNext = false, consumerStallMs = 3_000)
+        assertIs<WifiTransferCoordinator.Outcome.Wifi>(outcome)
+        assertContentEquals(fixture, outcome.bytes)
+        assertEquals(0, ble.frames, "BLE must not run")
+    }
+
+    @Test
+    fun droppedLinkMidTransfer_fallsBackToRealBleDownload_withExactBytes() = runBoundedTest {
+        val (outcome, ble, joiner) = transfer(wifiTimeoutMs = 15_000, good = 2, corruptNext = false)
+        assertIs<WifiTransferCoordinator.Outcome.BleFallback>(outcome)
+        assertEquals(WifiTransferServer.FAILURE_PEER_CLOSED, outcome.reason)
         assertTrue(ble.frames > 0, "BLE path must actually have run")
         assertEquals(1, joiner.joinCount, "SoftAP must have been joined before it was left")
         assertTrue(!joiner.joined, "SoftAP must be left after failure")

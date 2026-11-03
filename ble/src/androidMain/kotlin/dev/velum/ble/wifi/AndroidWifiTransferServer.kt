@@ -59,7 +59,8 @@ class AndroidWifiTransferServer(
             override fun onClose(conn: WebSocket, code: Int, reason: String, remote: Boolean) {
                 // Only the authenticated peer counts; a superseded or unauthenticated close changes nothing.
                 if (clientRef.compareAndSet(conn, null) && running.get()) {
-                    failures.tryEmit(WifiTransferServer.FAILURE_PEER_CLOSED)
+                    val queued = incoming.subscriptionCount.value > 0 && incoming.tryEmit(WifiTransferServer.PEER_CLOSED_FRAME)
+                    if (!queued) failures.tryEmit(WifiTransferServer.FAILURE_PEER_CLOSED)
                 }
             }
 
