@@ -32,6 +32,11 @@ actual fun rememberAudioImporter(onFailed: () -> Unit, onPicked: (path: String) 
     }
 }
 
+actual fun deleteImportCopies() {
+    val context = appContextOrNull() ?: return
+    File(context.cacheDir, "imports").deleteRecursively()
+}
+
 private const val TAG = "AudioImporter"
 
 /**
