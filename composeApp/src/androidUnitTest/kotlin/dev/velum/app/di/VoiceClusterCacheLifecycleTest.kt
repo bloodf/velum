@@ -57,4 +57,14 @@ class VoiceClusterCacheLifecycleTest {
             withTimeout(10_000) { while (plaintext.exists()) delay(20) }
         }
     }
+
+    @Test fun startup_removes_speaker_embeddings_of_recordings_that_no_longer_exist() {
+        val root = ModelStoreDir(Files.createTempDirectory("velum-cluster-orphans").toString())
+        val orphan = root.resolve("voices/cluster-cache/rec-deleted-during-diarization")
+        orphan.createDirectories()
+        orphan.resolve("speaker.enc").writeBytes(ByteArray(8) { 1 })
+        withContainer(root) {
+            withTimeout(10_000) { while (orphan.exists()) delay(20) }
+        }
+    }
 }

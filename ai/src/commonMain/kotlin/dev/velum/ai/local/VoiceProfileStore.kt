@@ -410,8 +410,13 @@ class VoiceProfileStore(
         cacheDir.walkFiles().filter { it.name.endsWith(".f32") }.forEach { it.deleteFile() }
     }
 
+    /** Recordings with cached speaker embeddings, so startup can drop those whose recording is gone (#320). */
+    fun cachedRecordingIds(): Set<String> =
+        if (cacheDir.isDirectory()) cacheDir.listChildren().filter { it.isDirectory() }.map { it.name }.toSet() else emptySet()
+
     /** The speaker embeddings of [recordingId], for when the recording is permanently deleted. */
     fun deleteClusterCache(recordingId: String) {
+        require(safeProfileId(recordingId)) { "Invalid recording identifier." }
         cacheDir.resolve(recordingId).deleteRecursively()
     }
 
@@ -420,9 +425,8 @@ class VoiceProfileStore(
         if (encFile.exists()) {
             return bytesToFloats(cipher().decrypt(encFile.readBytes()))
         }
-        val file = cacheDir.resolve(recordingId).resolve("${slug(speakerId)}.f32")
-        if (!file.exists() || file.length() == 0L) return null
-        return bytesToFloats(file.readBytes())
+        // Plaintext copies from earlier versions are never read (#320).
+        return null
     }
 
     fun promoteCached(

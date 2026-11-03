@@ -5,7 +5,10 @@ import java.nio.file.Files
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
@@ -48,5 +51,32 @@ class VoiceClusterCacheTest {
         store.deleteClusterCache("rec-gone")
         assertFalse(cache.resolve("rec-gone").exists(), "the deleted recording's embeddings survived")
         assertTrue(cache.resolve("rec-kept").exists())
+    }
+
+    @Test fun a_cache_delete_cannot_leave_the_cache_directory() = runTest {
+        val store = store(this)
+        store.withReady { cacheClusterEmbedding("rec-kept", "speaker", embedding) }
+        for (bad in listOf("", " ", ".", "..", "../voices", "a/b", "a\\b")) {
+            assertFailsWith<IllegalArgumentException>("accepted '$bad'") { store.deleteClusterCache(bad) }
+        }
+        assertTrue(cache.resolve("rec-kept").exists())
+    }
+
+    @Test fun a_plaintext_copy_is_never_read() = runTest {
+        val store = store(this)
+        store.withReady { cacheClusterEmbedding("rec-c", "speaker", embedding) }
+        val dir = cache.resolve("rec-c")
+        dir.resolve("speaker.enc").deleteFile()
+        dir.resolve("speaker.f32").writeBytes(ByteArray(12))
+        assertNull(store.withReady { cachedClusterEmbedding("rec-c", "speaker") })
+    }
+
+    @Test fun cached_recording_ids_list_the_cache_directories() = runTest {
+        val store = store(this)
+        store.withReady {
+            cacheClusterEmbedding("rec-1", "speaker", embedding)
+            cacheClusterEmbedding("rec-2", "speaker", embedding)
+        }
+        assertEquals(setOf("rec-1", "rec-2"), store.cachedRecordingIds())
     }
 }

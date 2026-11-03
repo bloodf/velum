@@ -696,6 +696,11 @@ class VelumRepository(
         tryIndex { if (ftsAvailable) FtsIndex.deleteTemplate(driver, id) }
     }
 
+    /** Every recording id, including those in the trash. */
+    suspend fun recordingIds(): Set<String> = withContext(dbContext) {
+        q.selectAllRecordingIds().executeAsList().toSet()
+    }
+
     suspend fun deleteRecordingHard(id: String) = withContext(dbContext) {
         q.deleteVersionsForRecording(id)
         q.deleteSpeakersForRecording(id)
