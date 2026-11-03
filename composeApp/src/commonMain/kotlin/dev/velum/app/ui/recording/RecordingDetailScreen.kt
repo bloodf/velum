@@ -561,12 +561,15 @@ fun RecordingDetailScreen(
                 ExportOption(strings.ux.exportDocx) {
                     showExport = false
                     val safe = title.replace(Regex("[^a-zA-Z0-9._-]"), "_").ifBlank { "velum" }
-                    shareBytes("$safe.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", RecordingExport.docxMinimal(md))
+                    scope.launch {
+                        val docx = withContext(Dispatchers.Default) { RecordingExport.docxMinimal(md) }
+                        shareBytes("$safe.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", docx)
+                    }
                 }
                 if (canExportPdf()) {
                     ExportOption(strings.ux.exportPdf) {
                         showExport = false
-                        sharePdf(title, RecordingExport.plainText(md))
+                        scope.launch { sharePdf(title, RecordingExport.plainText(md)) }
                     }
                 }
                 ExportOption(strings.ux.copyTranscript) {
