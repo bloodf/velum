@@ -5,9 +5,11 @@ import dev.velum.core.autoflow.AutoFlowResolve
 import dev.velum.app.platform.AudioNormalizer
 import dev.velum.app.platform.NormalizedAudio
 import dev.velum.app.platform.ImportAudioFormats
+import dev.velum.app.platform.deleteFileAtPath
 import dev.velum.app.platform.sha256File
 import dev.velum.core.data.VelumRepository.Companion.IMPORT_DELETED_PREFIX
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
 import kotlinx.coroutines.withContext
 
 sealed class ImportResult {
@@ -32,6 +34,20 @@ class AudioImportPipeline(
         source: String = "import",
         titleHint: String? = null,
         startedAtEpochSeconds: Long? = null,
+    ): ImportResult = container.wipeGate.guard { importNow(absolutePath, source, titleHint, startedAtEpochSeconds) }
+        // A wipe in progress refuses or stops the import before it creates a recording.
+        ?: ImportResult.Failed(WIPE_IN_PROGRESS)
+
+    /** A file shared into the app: its cache copy is deleted when a wipe refuses the import, so it can't outlive the wipe. */
+    suspend fun importShared(copyPath: String): ImportResult = importFile(copyPath, source = "share").also { result ->
+        if (result == ImportResult.Failed(WIPE_IN_PROGRESS)) withContext(Dispatchers.IO) { deleteFileAtPath(copyPath) }
+    }
+
+    private suspend fun importNow(
+        absolutePath: String,
+        source: String,
+        titleHint: String?,
+        startedAtEpochSeconds: Long?,
     ): ImportResult = withContext(Dispatchers.Default) {
         runCatching {
             val name = absolutePath.substringAfterLast('/')
@@ -107,6 +123,8 @@ class AudioImportPipeline(
         container.repository.getMeta("import_sha256_$hash")
             ?.takeIf { it.isNotBlank() && container.repository.getRecording(it) != null }
 }
+
+private const val WIPE_IN_PROGRESS = "wipe_in_progress"
 
 /** Source of watched-folder imports, the only imports that skip files whose recording was deleted. */
 internal const val WATCHED_SOURCE = "watched"
