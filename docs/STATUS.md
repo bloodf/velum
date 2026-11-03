@@ -69,6 +69,7 @@ Phone-only / external (no Plaud required):
 - [x] Mic first-class: pause/resume, markers, input-source picker (Mic / VoiceCommunication / Unprocessed / Camcorder for BT/USB routes)
 - [x] External import hub + share intents + watched SAF folders + MediaCodec normalize + hash dedupe
 - [x] Phone-first onboarding: Use phone mic / Import from a recorder / Connect a Plaud
+- [x] Device session download FGS (`SessionDownloadService`, `connectedDevice`, or `dataSync` without `BLUETOOTH_CONNECT`), started and stopped with the download notification (#85). Background, Doze and process-death behaviour on real hardware is still unverified. Wi-Fi fast transfer is not wired into the app in 1.0, so BLE is the only path it covers today.
 - [x] Processing FGS via WorkManager `setForegroundAsync` (`FOREGROUND_SERVICE_DATA_SYNC`) on `RecordingProcessWorker`
 - [x] Live record UI with partial Markdown (mic when permitted; with no streaming model the pane says so and the audio is saved)
 - [x] Mind-map from summary H2 + list items ("Mapa mental" sheet)
