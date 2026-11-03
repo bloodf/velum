@@ -9,7 +9,7 @@ import kotlin.test.assertTrue
  * raw GATT writes. Drivers/app code receive BleTransport or GuardedLink and nothing else.
  */
 class GattArchitectureTest {
-    private val banned = listOf("writeRaw", "SealedWrite(", "PlainWrite(", "GattWrite")
+    private val banned = listOf("writeRaw", "SealedWrite(", "PlainWrite(", "GattWrite", "sendEncryptedFrame")
     // Test double that only IMPLEMENTS the link (cannot construct writes: constructors are internal).
     private val allowedFiles = setOf(
         "composeApp/src/androidUnitTest/kotlin/dev/velum/app/di/DeviceCredentialFailureTest.kt",

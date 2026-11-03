@@ -8,6 +8,9 @@ import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.test.runTest
@@ -19,13 +22,23 @@ class WifiSendGuardTest {
         override suspend fun start(port: Int, bindHost: String?, preamble: ByteArray) = Unit
         override suspend fun stop() = Unit
         override fun incomingEncryptedFrames(): Flow<ByteArray> = emptyFlow()
-        override suspend fun sendEncryptedFrame(bytes: ByteArray) { sent += bytes }
+        var firstDelayMs = 0L
+        private var calls = 0
+        override suspend fun sendEncryptedFrame(bytes: ByteArray) {
+            if (calls++ == 0 && firstDelayMs > 0) delay(firstDelayMs)
+            sent += bytes
+        }
     }
 
     private class CountingCipher : WifiFrameCipher {
         override val mode = WifiPayloadCipher.ChaCha20Poly1305
         val sequences = mutableListOf<Long>()
-        override fun seal(sequence: Long, packet: ByteArray): ByteArray { sequences += sequence; return packet.copyOf() }
+        var beforeSeal: () -> Unit = {}
+        override fun seal(sequence: Long, packet: ByteArray): ByteArray {
+            beforeSeal()
+            sequences += sequence
+            return packet.copyOf()
+        }
         override fun open(sequence: Long, ciphertextAndTag: ByteArray): Pair<Long, ByteArray>? = null
     }
 
@@ -61,5 +74,22 @@ class WifiSendGuardTest {
         session.sendPacket(ok)
         assertEquals(listOf(0L), cipher.sequences)
         assertContentEquals(ok, server.sent.single())
+    }
+
+    @Test fun concurrent_sends_go_out_in_sequence_order_with_no_sequence_reused() = runTest {
+        // The first frame is slow to write; without one-at-a-time sending a later frame overtakes it on the wire.
+        server.firstDelayMs = 50
+        val packets = (0 until 5).map { Framing.encodeCommand(0x40 + it) }
+        packets.map { async { session.sendPacket(it) } }.awaitAll()
+        assertEquals((0L until 5L).toList(), cipher.sequences)
+        assertEquals(packets.map { it.toList() }, server.sent.map { it.toList() }, "wire order = sequence order")
+    }
+
+    @Test fun the_guard_checks_the_bytes_that_are_sent() = runTest {
+        val packet = Framing.encodeCommand(0x40)
+        // A caller that rewrites its array to a forbidden opcode between the guard and the seal.
+        cipher.beforeSeal = { packet[1] = ForbiddenOpcodes.OTA.toByte() }
+        session.sendPacket(packet)
+        assertContentEquals(Framing.encodeCommand(0x40), server.sent.single(), "the checked bytes are the sent bytes")
     }
 }

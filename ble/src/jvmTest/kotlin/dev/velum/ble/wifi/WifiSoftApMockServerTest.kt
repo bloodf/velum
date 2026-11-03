@@ -92,7 +92,7 @@ class WifiSoftApMockServerTest {
     ): ByteArray {
         val out = ByteArrayOutputStream()
         @Suppress("UNCHECKED_CAST")
-        val frames = s.server.incomingEncryptedFrames() as SharedFlow<ByteArray>
+        val frames = s.incomingEncryptedFrames() as SharedFlow<ByteArray>
         frames.onSubscription { subscribed.complete(Unit) }
             .transformWhile<ByteArray, Unit> { sealed ->
                 val plain = s.openIncoming(sealed) ?: throw WifiTransferFailure("wifi_frame_rejected")
@@ -162,7 +162,7 @@ class WifiSoftApMockServerTest {
         s.start("PLAUD-FAKE", "password12", port, preamble = preamble, bindHost = "127.0.0.1")
         try {
             @Suppress("UNCHECKED_CAST")
-            val frames = s.server.incomingEncryptedFrames() as SharedFlow<ByteArray>
+            val frames = s.incomingEncryptedFrames() as SharedFlow<ByteArray>
             val subscribed = CompletableDeferred<Unit>()
             val first = async(start = CoroutineStart.UNDISPATCHED) {
                 withTimeout(30_000) { frames.onSubscription { subscribed.complete(Unit) }.first() }
@@ -210,7 +210,7 @@ class WifiSoftApMockServerTest {
         val s = session(mode)
         s.start("PLAUD-FAKE", "password12", port, preamble = preamble, bindHost = "127.0.0.1")
         val subscribed = CompletableDeferred<Unit>()
-        val frames = s.server.incomingEncryptedFrames() as SharedFlow<ByteArray>
+        val frames = s.incomingEncryptedFrames() as SharedFlow<ByteArray>
         val collected = async(start = CoroutineStart.UNDISPATCHED) {
             withTimeout(30_000) {
                 val list = mutableListOf<ByteArray>()
@@ -377,7 +377,7 @@ class WifiSoftApMockServerTest {
             assemble = { s ->
                 // Stalls on the first frame: the 64-frame buffer fills and a frame is dropped.
                 @Suppress("UNCHECKED_CAST")
-                (s.server.incomingEncryptedFrames() as SharedFlow<ByteArray>)
+                (s.incomingEncryptedFrames() as SharedFlow<ByteArray>)
                     .onSubscription { subscribed.complete(Unit) }
                     .collect { delay(60_000) } // a collector stuck on its first frame keeps its subscription
                 ByteArray(0)
