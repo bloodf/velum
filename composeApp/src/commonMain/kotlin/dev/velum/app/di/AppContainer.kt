@@ -29,6 +29,8 @@ import dev.velum.app.platform.ExportFolderResult
 import dev.velum.app.platform.ExportFolderStore
 import dev.velum.app.platform.clearWatchedFolders
 import dev.velum.app.platform.deleteImportCopies
+import dev.velum.app.platform.deleteShareExports
+import dev.velum.app.platform.releaseFolderGrants
 import dev.velum.app.platform.writeMarkdownToExportFolder
 import dev.velum.core.integrations.MarkdownNoteExport
 import dev.velum.app.platform.MicCapture
@@ -293,6 +295,7 @@ class AppContainer(
      */
     internal suspend fun wipeAllData(device: DeviceViewModel = deviceViewModel): DownloadWipeResult =
         wipeGate.wiping(WIPE_JOIN_TIMEOUT) { workStopped ->
+            recordingJobs.cancelAll()
             device.holdingDownloads {
                 val downloads = device.wipePartialDownloads()
                 deviceKeyImporter.clearKeys()
@@ -302,7 +305,9 @@ class AppContainer(
                     voiceProfileStore.wipeAll()
                     clearWatchedFolders()
                     deleteImportCopies()
+                    deleteShareExports()
                     ExportFolderStore.clear()
+                    releaseFolderGrants()
                 }
                 settingsRepository.clearAllApiKeys()
                 webhookSettings.clear()

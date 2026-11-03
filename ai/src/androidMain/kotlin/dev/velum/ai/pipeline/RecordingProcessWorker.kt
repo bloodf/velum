@@ -325,12 +325,24 @@ class RecordingProcessWorker(
 }
 
 fun createWorkManagerRecordingJobScheduler(context: Context): RecordingJobScheduler =
-    RecordingJobScheduler { recordingId, templateId, retranscribe, apiModelOverride ->
-        RecordingProcessWorker.enqueue(
-            context = context.applicationContext,
-            recordingId = recordingId,
-            templateId = templateId,
-            retranscribe = retranscribe,
-            apiModelOverride = apiModelOverride,
-        )
+    object : RecordingJobScheduler {
+        override fun enqueue(
+            recordingId: String,
+            templateId: String?,
+            retranscribe: Boolean,
+            apiModelOverride: ApiModelOverride?,
+        ) {
+            RecordingProcessWorker.enqueue(
+                context = context.applicationContext,
+                recordingId = recordingId,
+                templateId = templateId,
+                retranscribe = retranscribe,
+                apiModelOverride = apiModelOverride,
+            )
+        }
+
+        // WorkManager tags every request with its worker class.
+        override fun cancelAll() {
+            WorkManager.getInstance(context.applicationContext).cancelAllWorkByTag(RecordingProcessWorker::class.java.name)
+        }
     }

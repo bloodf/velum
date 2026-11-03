@@ -10,6 +10,12 @@ import dev.velum.app.importing.ImportResult
 import dev.velum.app.platform.ExportFolderResult
 import dev.velum.app.platform.ExportFolderStore
 import dev.velum.app.platform.MicCapture
+import dev.velum.app.platform.syncWatchedFolders
+import dev.velum.ai.pipeline.RecordingProcessor
+import dev.velum.core.settings.ApiModelOverride
+import android.content.Intent
+import android.net.Uri
+import kotlinx.coroutines.CoroutineScope
 import dev.velum.app.platform.MicInputSource
 import dev.velum.app.platform.MicMarker
 import dev.velum.app.platform.MicMarkerResult
@@ -201,6 +207,7 @@ class WipeAllDataTest {
     private fun withContainer(
         store: SecureStore = InMemorySecureStore(),
         mic: MicCapture? = null,
+        jobs: ((RecordingProcessor, CoroutineScope) -> RecordingJobScheduler)? = null,
         block: suspend (AppContainer, Context) -> Unit,
     ) {
         Dispatchers.setMain(Dispatchers.Unconfined)
@@ -209,9 +216,9 @@ class WipeAllDataTest {
         context.deleteDatabase("velum.db")
         val root = ModelStoreDir(Files.createTempDirectory("velum-wipe-paths").toString())
         val container = if (mic == null) {
-            AppContainer(store, DriverFactory(context), modelStoreRoot = root)
+            AppContainer(store, DriverFactory(context), modelStoreRoot = root, recordingJobSchedulerFactory = jobs)
         } else {
-            AppContainer(store, DriverFactory(context), modelStoreRoot = root, micCapture = mic)
+            AppContainer(store, DriverFactory(context), modelStoreRoot = root, recordingJobSchedulerFactory = jobs, micCapture = mic)
         }
         try {
             runBlocking { block(container, context) }
@@ -254,6 +261,44 @@ class WipeAllDataTest {
         container.wipeAllData()
         assertEquals(null, container.repository.getMeta("import_sha256_synthetic"))
         assertEquals(null, container.repository.getMeta("import_deleted_synthetic"))
+    }
+
+    @Test fun a_wipe_releases_every_folder_grant() = withContainer { container, context ->
+        val tree = Uri.parse("content://com.android.externalstorage.documents/tree/primary%3ASynthetic")
+        val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        context.contentResolver.takePersistableUriPermission(tree, flags)
+        assertEquals(1, context.contentResolver.persistedUriPermissions.size)
+        container.wipeAllData()
+        assertEquals(emptyList(), context.contentResolver.persistedUriPermissions, "the app kept access to the user's folder")
+    }
+
+    @Test fun a_watched_folder_sync_after_a_wipe_imports_nothing() = withContainer { container, context ->
+        context.getSharedPreferences("velum_watched_folders", Context.MODE_PRIVATE).edit()
+            .putString("tree_uris", "content://synthetic/tree").commit()
+        container.wipeAllData()
+        assertEquals(emptyList(), syncWatchedFolders(AudioImportPipeline(container)))
+    }
+
+    @Test fun a_wipe_deletes_shared_exports() = withContainer { container, context ->
+        val share = File(context.cacheDir, "share").apply { mkdirs() }
+        File(share, "synthetic-transcript.md").writeText("synthetic")
+        container.wipeAllData()
+        assertFalse(share.exists(), "an exported transcript survived the wipe")
+    }
+
+    @Test fun a_wipe_drops_queued_processing_before_it_deletes_the_rows() {
+        var rowsAtCancel: Long? = null
+        lateinit var wiped: AppContainer
+        val jobs = object : RecordingJobScheduler {
+            override fun enqueue(recordingId: String, templateId: String?, retranscribe: Boolean, apiModelOverride: ApiModelOverride?) = Unit
+            override fun cancelAll() { rowsAtCancel = runBlocking { wiped.repository.storageUsage().recordingCount.toLong() } }
+        }
+        withContainer(jobs = { _, _ -> jobs }) { container, _ ->
+            wiped = container
+            container.addRecording("rec-queued")
+            container.wipeAllData()
+            assertEquals(1L, rowsAtCancel, "queued work was not dropped before the rows went")
+        }
     }
 
     @Test fun a_wipe_stops_the_mic_and_deletes_its_file() {

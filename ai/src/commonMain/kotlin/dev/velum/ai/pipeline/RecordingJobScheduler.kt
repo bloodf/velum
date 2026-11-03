@@ -21,6 +21,9 @@ fun interface RecordingJobScheduler {
         retranscribe: Boolean,
         apiModelOverride: ApiModelOverride?,
     )
+
+    /** Drops work that is queued or waiting to retry. A job already running is stopped through its [dev.velum.core.data.WipeGate]. */
+    fun cancelAll() = Unit
 }
 
 /**
