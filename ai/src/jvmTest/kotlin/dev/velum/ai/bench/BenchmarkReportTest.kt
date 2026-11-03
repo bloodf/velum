@@ -18,8 +18,19 @@ class BenchmarkReportTest {
 
     @Test fun json_carries_every_required_field() {
         val json = BenchReport(env, listOf(result())).toJson()
-        listOf("modelId", "workload", "inputDurationMs", "elapsedMs", "peakRamBytes", "sdkInt", "abi", "isEmulator", "device", "settings")
+        listOf("modelId", "workload", "rtf", "inputDurationMs", "elapsedMs", "peakRamBytes", "sdkInt", "abi", "isEmulator", "device", "settings")
             .forEach { assertTrue("\"$it\"" in json, "missing $it in $json") }
+    }
+
+    @Test fun json_rtf_value_is_elapsed_over_input() {
+        val json = BenchReport(env, listOf(result(elapsed = 30_000, input = 60_000))).toJson()
+        assertTrue(Regex("\"rtf\": 0\\.5").containsMatchIn(json), json)
+    }
+
+    @Test fun empty_or_blank_model_request_fails() {
+        assertFailsWith<IllegalArgumentException> { BenchReport(env, listOf(result())).requireValid(emptySet()) }
+        assertFailsWith<IllegalArgumentException> { BenchReport(env, listOf(result())).requireValid(setOf("")) }
+        assertFailsWith<IllegalArgumentException> { BenchReport(env, emptyList()).requireValid(setOf("m")) }
     }
 
     @Test fun valid_report_passes() = BenchReport(env, listOf(result("a"), result("b"))).requireValid(setOf("a", "b"))

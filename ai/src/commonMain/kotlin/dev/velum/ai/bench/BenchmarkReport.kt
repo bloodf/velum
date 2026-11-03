@@ -10,7 +10,9 @@ enum class BenchTask { Transcription, Summary }
 /**
  * One model/workload measurement (#98). [inputDurationMs] is the source audio duration; for
  * [BenchTask.Summary] it is the duration of the audio the fixed transcript stands for.
- * [elapsedMs] covers inference only (model load excluded); [peakRamBytes] is the process peak RSS (VmHWM).
+ * [elapsedMs] is the wall-clock of the engine calls as the app makes them; the runtime builds its recognizer
+ * inside each call, so model load is INCLUDED (once per ASR window, once for the summary).
+ * [peakRamBytes] is the process peak RSS (VmHWM) since the pre-run reset.
  */
 @Serializable
 data class BenchResult(
@@ -22,8 +24,8 @@ data class BenchResult(
     val peakRamBytes: Long,
     val outputChars: Int,
 ) {
-    /** Real-time factor: elapsed time divided by source audio duration. */
-    val rtf: Double get() = rtf(elapsedMs, inputDurationMs)
+    /** Real-time factor: elapsed time divided by source audio duration. Serialized into the report. */
+    val rtf: Double = rtf(elapsedMs, inputDurationMs)
 }
 
 @Serializable
@@ -54,6 +56,8 @@ fun rtf(elapsedMs: Long, inputDurationMs: Long): Double {
 
 /** Throws unless the report is complete: a missing measurement must fail the run, not pass it. */
 fun BenchReport.requireValid(expectedModels: Set<String>) {
+    require(expectedModels.isNotEmpty() && expectedModels.none { it.isBlank() }) { "no benchmark models requested" }
+    require(results.isNotEmpty()) { "report has no results" }
     val missing = expectedModels - results.map { it.modelId }.toSet()
     require(missing.isEmpty()) { "no measurement for models: $missing" }
     results.forEach { r ->
