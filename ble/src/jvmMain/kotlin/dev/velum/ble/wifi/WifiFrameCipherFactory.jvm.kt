@@ -43,6 +43,8 @@ internal class AesGcmWifiFrameCipher(
     }
 
     override fun open(sequence: Long, ciphertextAndTag: ByteArray): Pair<Long, ByteArray>? {
+        // SunJCE throws ProviderException for this, which the catches below rightly don't cover.
+        if (ciphertextAndTag.size < GCM_TAG_BYTES) return null
         return try {
             val c = Cipher.getInstance("AES/GCM/NoPadding")
             c.init(
@@ -65,3 +67,5 @@ internal class AesGcmWifiFrameCipher(
         }
     }
 }
+
+private const val GCM_TAG_BYTES = 16
