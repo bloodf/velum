@@ -280,6 +280,8 @@ class WifiSoftApMockServerTest {
         val port = freePort()
         val subscribed = CompletableDeferred<Unit>()
         val chunks = fixture.toList().chunked(CHUNK).map { it.toByteArray() }
+        val server = JavaWebsocketTransferServer()
+        val delivered = DeliveredFrames(server, this)
         val device = launch(Dispatchers.IO) {
             val d = connectDevice(port)
             try {
@@ -288,17 +290,19 @@ class WifiSoftApMockServerTest {
                 d.sendPreamble(preamble)
                 for (i in 0 until 3) d.sendBinary(c.seal(i.toLong(), chunks[i]))
                 d.sendBinary(c.seal(3, chunks[3]).also { it[0] = (it[0].toInt() xor 0x55).toByte() })
+                delivered.await(4) // see DeliveredFrames: closing at once can lose the last frames
             } finally {
                 d.close()
             }
         }
         val joiner = FakeWifiSoftApJoiner()
-        val outcome = WifiTransferCoordinator({ session(WifiPayloadCipher.ChaCha20Poly1305, joiner = joiner) }, { fixture })
+        val outcome = WifiTransferCoordinator({ session(WifiPayloadCipher.ChaCha20Poly1305, server, joiner) }, { fixture })
             .transferOrFallback(
                 "PLAUD-FAKE", "password12", port = port, preamble = preamble, bindHost = "127.0.0.1",
                 assemble = { assembleExact(it, fixture.size, subscribed) },
             )
         device.join()
+        delivered.stop()
         assertIs<WifiTransferCoordinator.Outcome.BleFallback>(outcome)
         assertEquals("wifi_frame_rejected", outcome.reason)
         assertEquals(1, joiner.joinCount, "SoftAP must have been joined before it was left")
