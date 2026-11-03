@@ -111,20 +111,23 @@ class AndroidWifiTransferServer(
 
     private fun bindClientToSoftAp(conn: WebSocket, network: Network?) {
         if (network == null) return
-        try {
+        // Report outside the try so a throwing callback is never invoked twice.
+        val failure: Throwable? = try {
             val method = conn.javaClass.methods.firstOrNull {
                 it.name == "getChannel" && it.parameterCount == 0
             }
             val channel = method?.invoke(conn) as? java.nio.channels.ByteChannel
             val socket = (channel as? java.nio.channels.SocketChannel)?.socket()
             if (socket == null) {
-                onBindFailure(IllegalStateException("accepted socket not reachable"))
+                IllegalStateException("accepted socket not reachable")
             } else {
                 network.bindSocket(socket)
+                null
             }
         } catch (t: Throwable) {
-            onBindFailure(t)
+            t
         }
+        if (failure != null) onBindFailure(failure)
     }
 
     companion object {

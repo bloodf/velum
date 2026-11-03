@@ -26,7 +26,7 @@
 - Android: `AndroidWifiSoftApJoiner`, `AndroidWifiTransferServer`
 - JVM fakes (test-only `:ble-testing`): `FakeWifiSoftApJoiner`, `FakeWifiDeviceClient`; real loopback server: `JavaWebsocketTransferServer`
 - Sync entry: `PlaudDeviceClient.downloadSessionPreferWifi`
-- Tests: `WifiFastPathE2ETest`, `WifiSoftApMockServerTest`
+- Tests: `WifiFastPathE2ETest`, `WifiSoftApMockServerTest`, `WifiFailureReasonTest` (JVM); `AndroidWifiTransferServerTest`, `AndroidWifiSoftApJoinerTest`, `AndroidWifiBindFailureTest` (Robolectric)
 
 ## Test instructions (#96)
 
@@ -43,7 +43,9 @@ ephemeral loopback port (`ServerSocket(0)`, connect-retry, no fixed ports) with 
   release of the SoftAP join and the port on success and failure. `AndroidWifiSoftApJoinerTest` checks the
   `ConnectivityManager` request/callback lifecycle: the process is never bound (`bindProcessToNetwork`), the callback
   is unregistered on leave, cancel and failed join, and the host address follows the bound network's link properties.
-  No emulator is needed; these are simulated and make no hardware claim.
+  `AndroidWifiBindFailureTest` makes `Network.bindSocket` throw like the platform: the failure is reported through
+  `onBindFailure` and the device is still served; it also asserts the join request has a Wi-Fi transport and a
+  `WifiNetworkSpecifier` with the expected SSID and passphrase. No emulator is needed; these are simulated and make no hardware claim.
 - **Known platform limit (#8):** `AndroidWifiTransferServer` calls `Network.bindSocket` on each *accepted* socket. On
   real Android that is expected to throw (`Socket is connected`: the platform call reads the peer address), so the
   per-socket bind does not take effect there; the failure is reported through `onBindFailure` (logged by class only) and

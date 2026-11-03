@@ -160,15 +160,20 @@ class AndroidWifiTransferServerTest {
         subscribed: CompletableDeferred<Unit>,
         mode: WifiPayloadCipher,
         chunks: List<ByteArray>,
+        tolerateFailure: Boolean = false,
     ) = launch(Dispatchers.IO) {
-        val d = connectDevice(port)
         try {
-            subscribed.await() // SharedFlow has no replay; send only once the collector is attached.
-            d.send(preamble)
-            val c = cipher(mode)
-            chunks.forEachIndexed { i, chunk -> d.send(c.seal(i.toLong(), chunk)) }
-        } finally {
-            d.close()
+            val d = connectDevice(port)
+            try {
+                subscribed.await() // SharedFlow has no replay; send only once the collector is attached.
+                d.send(preamble)
+                val c = cipher(mode)
+                chunks.forEachIndexed { i, chunk -> d.send(c.seal(i.toLong(), chunk)) }
+            } finally {
+                d.close()
+            }
+        } catch (t: Exception) {
+            if (!tolerateFailure) throw t
         }
     }
 
@@ -329,7 +334,9 @@ class AndroidWifiTransferServerTest {
         val server = AndroidWifiTransferServer(softApNetwork = { network.network })
         val subscribed = CompletableDeferred<Unit>()
         var arrived: ByteArray? = null
-        val device = launchDevice(port, subscribed, WifiPayloadCipher.ChaCha20Poly1305, chunks.take(8)) // then closes
+        // The device may fail to connect or send if the timeout wins the race and stops the server; the
+        // `arrived` assertion below is what proves the drop happened mid-transfer.
+        val device = launchDevice(port, subscribed, WifiPayloadCipher.ChaCha20Poly1305, chunks.take(8), tolerateFailure = true) // then closes
         val outcome = WifiTransferCoordinator(
             sessionFactory = { session(WifiPayloadCipher.ChaCha20Poly1305, server, joiner) },
             bleDownload = { fixture },
