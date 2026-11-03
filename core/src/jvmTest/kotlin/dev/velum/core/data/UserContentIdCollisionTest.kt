@@ -13,7 +13,8 @@ class UserContentIdCollisionTest {
 
     // Same second for every id, so only the 10-digit suffix (9.0e9 values) separates them. With an unseeded
     // Random, 2,000 ids collide with probability ~2.2e-4 per type (2000*1999/2 pairs / 9.0e9), ~6.7e-4 per
-    // run: a rare flake. A fixed seed makes the draw reproducible; a narrower suffix range still collides.
+    // run: a rare flake. A fixed seed makes the draw reproducible. The spread check below catches a suffix confined to a
+    // narrow contiguous range even if the seeded draw happens not to collide.
     @Test
     fun templateMemoryGlossary_useWideRandomSpace_noCollisionsIn2k() {
         val random = Random(SEED)
@@ -35,6 +36,19 @@ class UserContentIdCollisionTest {
         assertTrue(templates.all { id -> tplRe.matches(id) })
         assertTrue(memories.all { id -> memRe.matches(id) })
         assertTrue(glossary.all { id -> glossRe.matches(id) })
+        // 2,000 draws from ~9.0e9 values span ~8.99e9; any contiguous narrowing below 8e9 fails.
+        for (ids in listOf(templates, memories, glossary)) {
+            val suffixes = ids.map { it.substringAfterLast('-').toLong() }
+            assertTrue(suffixes.max() - suffixes.min() > 8_000_000_000L, "suffix range too narrow")
+        }
+    }
+
+    @Test
+    fun ids_useTheRandomTheyAreGiven() {
+        val at = 1_700_000_000L
+        assertEquals(UserContentIds.template(at, Random(SEED)), UserContentIds.template(at, Random(SEED)))
+        assertEquals(UserContentIds.memory(at, Random(SEED)), UserContentIds.memory(at, Random(SEED)))
+        assertEquals(UserContentIds.glossary(at, Random(SEED)), UserContentIds.glossary(at, Random(SEED)))
     }
 
     @Test
