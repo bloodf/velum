@@ -49,6 +49,29 @@ class GuardedLinkTest {
         assertEquals(0, t.writes.size)
     }
 
+    /** #326: 30 is delete-file, receive-only. Every form a write can take must be rejected, plain or sealed. */
+    @Test
+    fun deleteFile_30_isRejected_inEveryForm_andNeverReachesTransport() = runTest {
+        val (t, link) = rig()
+        var sealed = 0
+        val forms = listOf(
+            prefixed(30, Bytes.u32Le(1_700_000_000L)),
+            prefixed(30),
+            byteArrayOf(Framing.APP_PREFIX, 30), // what Framing's zero-trimming makes of a param-less 30
+            bare(30),
+        )
+        for (packet in forms) {
+            assertFailsWith<IllegalArgumentException>(packet.toList().toString()) {
+                link.write(char, packet, withoutResponse = false)
+            }
+            assertFailsWith<IllegalArgumentException>(packet.toList().toString()) {
+                link.write(char, packet, withoutResponse = false) { sealed++; it }
+            }
+        }
+        assertEquals(0, sealed, "seal must not run for a rejected delete")
+        assertEquals(0, t.writes.size)
+    }
+
     @Test
     fun fe20_byteOrder_isLittleEndian() = runTest {
         val (t, link) = rig()

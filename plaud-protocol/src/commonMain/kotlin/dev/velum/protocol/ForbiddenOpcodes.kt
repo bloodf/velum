@@ -8,6 +8,7 @@ package dev.velum.protocol
  * - 128 — resetFindmy
  * - 0xFE20 — reserved unlock/reset path (community: destructive)
  * - 143 — OTA
+ * - 30 — delete file. Receive-only: a device may answer a stop with it, but Velum never sends it.
  */
 object ForbiddenOpcodes {
     const val DEPAIR: Int = 5
@@ -15,14 +16,15 @@ object ForbiddenOpcodes {
     const val RESET_FINDMY: Int = 128
     const val FE20: Int = 0xFE20
     const val OTA: Int = 143
+    const val DELETE_FILE: Int = Commands.DELETE_FILE
 
-    val ALL: Set<Int> = setOf(DEPAIR, CLEAR_ALL, RESET_FINDMY, FE20, OTA)
+    val ALL: Set<Int> = setOf(DEPAIR, CLEAR_ALL, RESET_FINDMY, FE20, OTA, DELETE_FILE)
 
     fun isForbidden(opcode: Int): Boolean = opcode in ALL
 
     fun requireAllowed(opcode: Int) {
         require(!isForbidden(opcode)) {
-            "Forbidden opcode 0x${opcode.toString(16)} ($opcode) — Velum never sends depair/clear/resetFindmy/OTA/0xFE20"
+            "Forbidden opcode 0x${opcode.toString(16)} ($opcode) — Velum never sends depair/clear/resetFindmy/OTA/0xFE20/delete-file"
         }
     }
 }
