@@ -6,7 +6,8 @@ package dev.velum.ble.gatt
  */
 class GuardedLink(
     private val transport: GattLink,
-    private val profile: GattProfile = GattProfiles.Plaud,
+    // No default: a link for another family must name its profile, never silently get the Plaud guard.
+    private val profile: GattProfile,
 ) {
     suspend fun write(
         char: GattChar,
