@@ -12,6 +12,7 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performScrollToKey
 import androidx.compose.ui.test.printToString
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -51,6 +52,12 @@ class DiscoverCategorySearchUiTest {
 
     private fun shows(text: String) = compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()
     private fun hasTag(tag: String) = compose.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()
+
+    /** Sees every loaded row by its key, where text checks only see composed ones. */
+    private fun assertRowAbsent(key: String) {
+        assertTrue(hasTag("templates:grid"), "no grid to look in")
+        assertTrue(runCatching { compose.onNodeWithTag("templates:grid").performScrollToKey(key) }.isFailure, "row $key should not be loaded")
+    }
 
     private fun await(text: String, present: Boolean = true) = waiting("text '$text' present=$present") {
         shows(text) == present
@@ -109,6 +116,7 @@ class DiscoverCategorySearchUiTest {
             await("ZQ Alpha"); await("ZQ Gamma")
             tap("category:meeting")
             await("ZQ Gamma", present = false)
+            assertRowAbsent("cs102-c")
             // Search for a template that is only in the other category: the category must stay selected.
             compose.onNodeWithContentDescription(PtBr.search).performClick()
             compose.onNode(hasSetTextAction()).performTextInput("ZQ Gamma")
@@ -120,6 +128,7 @@ class DiscoverCategorySearchUiTest {
             assertTrue(hasTag("templates:empty") && hasTag("active:category"))
             // The search field itself contains "ZQ Gamma"; only result cards would be non-editable matches.
             assertTrue(compose.onAllNodes(hasText("ZQ Gamma") and !hasSetTextAction()).fetchSemanticsNodes().isEmpty())
+            assertRowAbsent("cs102-c")
             // Individual clear brings the match back, search kept.
             tap("active:category")
             await("ZQ Gamma")
@@ -179,6 +188,7 @@ class DiscoverCategorySearchUiTest {
     fun tag_survives_search_without_hits_and_clears() = withScreen {
         tap("tag:agenda") // only ZQ Alpha
         await("ZQ Beta", present = false)
+        assertRowAbsent("fs-b")
         searchThenExpectNoMatch("ZQ Beta", "active:tag:agenda")
     }
 
@@ -186,6 +196,7 @@ class DiscoverCategorySearchUiTest {
     fun language_survives_search_without_hits_and_clears() = withScreen {
         tap("lang:en") // only ZQ Alpha
         await("ZQ Beta", present = false)
+        assertRowAbsent("fs-b")
         searchThenExpectNoMatch("ZQ Beta", "active:lang")
     }
 }

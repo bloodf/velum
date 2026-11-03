@@ -60,6 +60,14 @@ class DiscoverFiltersUiTest {
         compose.onAllNodes(hasText(text) and hasSetTextAction().not()).fetchSemanticsNodes().isNotEmpty()
     private fun hasTag(tag: String) = compose.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()
 
+    /** Sees every loaded row by its key, where [shows] only sees composed ones: a short viewport can't hide a wrong row. */
+    private fun rowLoaded(key: String): Boolean {
+        assertTrue(hasTag("templates:grid"), "no grid to look in")
+        return runCatching { compose.onNodeWithTag("templates:grid").performScrollToKey(key) }.isSuccess
+    }
+
+    private fun assertRowAbsent(key: String) = assertTrue(!rowLoaded(key), "row $key should not be loaded")
+
     private fun await(text: String, present: Boolean = true) = waiting("text '$text' present=$present") {
         shows(text) == present
     }
@@ -137,20 +145,20 @@ class DiscoverFiltersUiTest {
             }
             // Featured tier: featured rows only.
             await("ZQ Alpha"); await("ZQ Beta"); await("ZQ Gamma")
-            assertTrue(!shows("ZQ Delta"))
+            assertRowAbsent("ui102-d")
 
             // Tier switching: All adds the non-featured row, Featured removes it again.
             tap("tier:all"); await("ZQ Delta")
             tap("tier:featured"); await("ZQ Alpha"); await("ZQ Delta", present = false)
             // A result row, not the weekly-ranking card that can also show "ZQ Alpha".
             waiting("row ui102-a") { runCatching { compose.onNodeWithTag("templates:grid").performScrollToKey("ui102-a") }.isSuccess }
-            assertTrue(!shows("ZQ Delta"))
+            assertRowAbsent("ui102-d")
             compose.onNodeWithTag("templates:grid").performScrollToIndex(0)
 
             // Category filter, with the selected state exposed.
             tap("category:meeting")
             await("ZQ Alpha"); await("ZQ Beta")
-            assertTrue(!shows("ZQ Gamma"))
+            assertRowAbsent("ui102-c")
             awaitTag("active:category")
             // A result card is actually on screen on a short phone, not just in the tree.
             compose.onAllNodesWithText("ZQ Beta")[0].assertIsDisplayed()
@@ -158,21 +166,21 @@ class DiscoverFiltersUiTest {
             // Tag filter composes with the category; removing it individually restores the row.
             tap("tag:agenda")
             await("ZQ Alpha")
-            assertTrue(!shows("ZQ Beta"))
-            assertTrue(!shows("ZQ Gamma"))
+            assertRowAbsent("ui102-b")
+            assertRowAbsent("ui102-c")
             tap("active:tag:agenda")
             await("ZQ Beta")
 
             // Language filter composes; a combination with no match shows the clearable empty state.
             tap("tag:agenda")
             await("ZQ Alpha")
-            assertTrue(!shows("ZQ Beta"))
+            assertRowAbsent("ui102-b")
             tap("lang:en"); await("ZQ Alpha")
-            assertTrue(!shows("ZQ Beta"))
+            assertRowAbsent("ui102-b")
             compose.onAllNodesWithText("ZQ Alpha")[0].assertIsDisplayed()
             tap("lang:pt")
             awaitTag("templates:empty")
-            assertTrue(!shows("ZQ Alpha"))
+            assertRowAbsent("ui102-a")
             compose.onNode(
                 hasText(PtBr.templatesClearFilters) and hasAnyAncestor(hasTestTag("templates:empty")),
             ).performClick()
@@ -185,17 +193,17 @@ class DiscoverFiltersUiTest {
             compose.onNode(hasSetTextAction()).performTextInput("ZQ Beta")
             // Typing is debounced: wait for the old rows to go, then for the match to return.
             await("ZQ Alpha", present = false); await("ZQ Beta")
-            assertTrue(!shows("ZQ Alpha"))
+            assertRowAbsent("ui102-a")
 
             // Widen the search to every ZQ row: the category still excludes Gamma.
             compose.onNode(hasSetTextAction()).performTextReplacement("ZQ")
             await("ZQ Alpha"); await("ZQ Beta")
-            assertTrue(!shows("ZQ Gamma"))
+            assertRowAbsent("ui102-c")
 
             // Clear-all keeps the search but drops every facet filter, so Gamma returns.
             tap("filters:clear")
             awaitTag("active:category", present = false)
-            await("ZQ Gamma"); assertTrue(!shows("ZQ Delta"))
+            await("ZQ Gamma"); assertRowAbsent("ui102-d")
         } finally {
             activity.pause().stop().destroy()
             container.databaseHandle.driver.close()
@@ -273,6 +281,9 @@ class DiscoverFiltersUiTest {
             val grid = { compose.onNodeWithTag("templates:grid") }
             // Page 1 is exactly 60 rows: pg-000 is loaded, pg-060 is not (composed rows alone would not show that).
             waiting("first page") { runCatching { grid().performScrollToKey("pg-000") }.isSuccess }
+            // A loaded row past the viewport: a composed-text check can't see it, the key check can.
+            assertTrue(!shows("PG 059"), "this row should be past the viewport")
+            assertTrue(rowLoaded("pg-059"))
             assertTrue(runCatching { grid().performScrollToKey("pg-060") }.isFailure, "page 1 holds more than 60 rows")
             // Scrolling to the end composes the sentinel, which loads page 2 and appends it.
             grid().performScrollToKey("pg-059")
@@ -322,7 +333,7 @@ class DiscoverFiltersUiTest {
             tap("tag:$last")
             awaitTag("active:tag:$last")
             await("TG ${slugs.lastIndex}")
-            assertTrue(!shows("TG 0"))
+            assertRowAbsent("tg-0")
         } finally {
             activity.pause().stop().destroy()
             container.databaseHandle.driver.close()
