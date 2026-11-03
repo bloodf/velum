@@ -220,6 +220,7 @@ kotlin {
                 implementation(libs.androidx.compose.ui.test.junit4)
                 implementation(libs.androidx.compose.ui.test.manifest)
                 implementation("androidx.tracing:tracing:1.2.0")
+                implementation(project(":ble-testing"))
             }
         }
         desktopMain.dependencies {

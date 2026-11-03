@@ -58,6 +58,8 @@ data class DeviceSessionUi(
     val downloadingSessionId: Long? = null,
     val downloadProgress: Float? = null,
     val lastDownloadedRecordingId: String? = null,
+    /** CRC result of the last completed download; null until one completes. */
+    val lastDownloadCrc: CrcStatus? = null,
     /** Device sessions already in the library (#113); their action re-downloads into the same row. */
     val librarySessionIds: Set<Long> = emptySet(),
 )
@@ -233,6 +235,7 @@ class DeviceViewModel(
             downloadProgress = 0f,
             statusMessage = DeviceUiCopy.downloadingSession(locale, sessionId),
             lastDownloadedRecordingId = null,
+            lastDownloadCrc = null,
         )
         DownloadProgressNotifier.ensureChannel()
         DownloadProgressNotifier.setCancelHandler(DownloadNotifyKind.DeviceSession) { cancelDownload() }
@@ -268,6 +271,7 @@ class DeviceViewModel(
                 downloadingSessionId = null,
                 downloadProgress = null,
                 lastDownloadedRecordingId = outcome.recordingId,
+                lastDownloadCrc = outcome.crc,
                 statusMessage = if (outcome.crc is CrcStatus.Mismatch) {
                     DeviceUiCopy.downloadedSessionCrcMismatch(localeTag(), sessionId)
                 } else {

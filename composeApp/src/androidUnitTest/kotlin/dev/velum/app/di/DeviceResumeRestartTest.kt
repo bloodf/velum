@@ -6,6 +6,7 @@ import dev.velum.app.platform.PartialTransfer
 import dev.velum.app.platform.PartialTransferFileStore
 import dev.velum.app.ui.DeviceViewModel
 import dev.velum.app.ui.DownloadedSessionAudio
+import dev.velum.ble.client.CrcStatus
 import dev.velum.ble.crypto.JcaFileDecryptor
 import dev.velum.ble.crypto.createFileDecryptor
 import dev.velum.ble.crypto.createSessionCipher
@@ -27,6 +28,7 @@ import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration
@@ -152,9 +154,25 @@ class DeviceResumeRestartTest {
         } finally { owner.clear(); Dispatchers.resetMain() }
     }
 
+    @Test fun a_matching_device_crc_is_reported_as_verified() {
+        try {
+            val vm = run(peripheral(stopCrc = FakePlaudPeripheral.StopCrc.Ccitt))
+            assertEquals(CrcStatus.Verified, vm.sessionUi.value.lastDownloadCrc)
+            assertContentEquals(plaintext, assertNotNull(saved))
+        } finally { owner.clear(); Dispatchers.resetMain() }
+    }
+
+    @Test fun a_device_with_no_crc_is_reported_as_not_provided() {
+        try {
+            val vm = run(peripheral())
+            assertEquals(CrcStatus.NotProvided, vm.sessionUi.value.lastDownloadCrc)
+        } finally { owner.clear(); Dispatchers.resetMain() }
+    }
+
     @Test fun real_device_crc_mismatch_keeps_the_recording_and_says_so() {
         try {
             val vm = run(peripheral(stopCrc = FakePlaudPeripheral.StopCrc.Wrong))
+            assertIs<CrcStatus.Mismatch>(vm.sessionUi.value.lastDownloadCrc)
             assertEquals("rec-synthetic", vm.sessionUi.value.lastDownloadedRecordingId)
             assertEquals(DeviceUiCopy.downloadedSessionCrcMismatch("en", session), vm.sessionUi.value.statusMessage)
             assertContentEquals(plaintext, assertNotNull(saved))
