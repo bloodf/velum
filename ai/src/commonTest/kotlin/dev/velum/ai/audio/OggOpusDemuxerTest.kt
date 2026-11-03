@@ -76,7 +76,7 @@ class OggOpusDemuxerTest {
         var packets = 0
         val meta = OggOpusDemuxer.demuxForEach(
             buildOggPage(head),
-            onHeader = { rate, ch ->
+            onHeader = { rate, ch, _ ->
                 headerRate = rate
                 headerCh = ch
             },

@@ -60,8 +60,12 @@ object OmiAudioPackets {
  * Reassembles fragments the way Friend.swift does: on fragment index 0, flush
  * the previous packet; append payload bytes to the current packet number.
  */
-class OmiPacketReassembler {
+class OmiPacketReassembler(private val maxFrameBytes: Int = OmiLimits.MAX_FRAME_BYTES) {
     private val counter = BleAudioPacketCounter()
+
+    /** Frames dropped because a peer never started a new frame and the pending bytes hit [maxFrameBytes]. */
+    var overflowDrops: Long = 0
+        private set
     private var currentNumber: Int? = null
     private val current = ArrayList<Byte>()
 
@@ -88,6 +92,11 @@ class OmiPacketReassembler {
         if (currentNumber == null) {
             currentNumber = fragment.packetNumber
         }
+        if (current.size + fragment.payload.size > maxFrameBytes) {
+            current.clear()
+            overflowDrops++
+            return flushed
+        }
         current.addAll(fragment.payload.toList())
         return flushed
     }
@@ -101,4 +110,73 @@ class OmiPacketReassembler {
     }
 
     fun stats(): Pair<Long, Long> = counter.snapshot()
+}
+
+object OmiLimits {
+    /** Upper bound for one reassembled frame (an Opus frame is at most 1275 bytes; BLE payloads are far smaller). */
+    const val MAX_FRAME_BYTES: Int = 4096
+}
+
+/**
+ * Frame reassembly as upstream does it (BasedHardware/omi `app/lib/utils/audio/wav_bytes.dart`, `storeFramePacket`):
+ * each notification carries a 16-bit packet index that must advance by exactly one, and a fragment id that is 0 for
+ * the first fragment of a frame and then counts up. A gap in either, or a frame that would exceed [maxFrameBytes],
+ * drops the pending frame, counts it in [lostFrames] and waits for the next fragment 0.
+ * Deviation from upstream: the 16-bit packet index wraps (65535 then 0) without counting a loss.
+ */
+class OmiFrameAssembler(private val maxFrameBytes: Int = OmiLimits.MAX_FRAME_BYTES) {
+    private var lastPacketIndex = -1
+    private var lastFragmentId = -1
+    private var pending = ByteArray(0)
+
+    var lostFrames: Long = 0
+        private set
+
+    /** The previous frame when [notification] starts a new one in sequence, else null. */
+    fun accept(notification: ByteArray): ByteArray? {
+        val f = OmiAudioPackets.parseFragment(notification) ?: return null
+        if (lastPacketIndex == -1) {
+            if (f.fragmentIndex != 0) return null // not in sync yet: wait for a frame start
+            start(f)
+            return null
+        }
+        val inSequence = f.packetNumber == (lastPacketIndex + 1) and 0xFFFF &&
+            (f.fragmentIndex == 0 || f.fragmentIndex == lastFragmentId + 1)
+        if (!inSequence) return lose()
+        if (f.fragmentIndex == 0) {
+            val done = pending
+            start(f)
+            return done
+        }
+        if (pending.size + f.payload.size > maxFrameBytes) return lose()
+        pending += f.payload
+        lastFragmentId = f.fragmentIndex
+        lastPacketIndex = f.packetNumber
+        return null
+    }
+
+    /** The in-sync trailing frame when the stream ends. */
+    fun finish(): ByteArray? {
+        val out = pending.takeIf { lastPacketIndex != -1 && it.isNotEmpty() }
+        reset()
+        return out
+    }
+
+    private fun start(f: OmiAudioFragment) {
+        pending = if (f.payload.size > maxFrameBytes) { lostFrames++; reset(); return } else f.payload
+        lastPacketIndex = f.packetNumber
+        lastFragmentId = 0
+    }
+
+    private fun lose(): ByteArray? {
+        lostFrames++
+        reset()
+        return null
+    }
+
+    private fun reset() {
+        lastPacketIndex = -1
+        lastFragmentId = -1
+        pending = ByteArray(0)
+    }
 }
