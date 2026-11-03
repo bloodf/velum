@@ -301,7 +301,7 @@ class WifiSoftApMockServerTest {
     }
 
     @Test
-    fun disconnectMidTransfer_timesOutAndFallsBackToBle_thenReleasesPort() = runBoundedTest {
+    fun disconnectMidTransfer_fallsBackToBleAtOnce_thenReleasesPort() = runBoundedTest {
         val port = freePort()
         val server = JavaWebsocketTransferServer()
         val subscribed = CompletableDeferred<Unit>()
@@ -311,18 +311,56 @@ class WifiSoftApMockServerTest {
         val outcome = WifiTransferCoordinator(
             sessionFactory = { session(WifiPayloadCipher.ChaCha20Poly1305, server, joiner) },
             bleDownload = { fixture },
-            wifiTimeout = 1_500.milliseconds,
+            wifiTimeout = 60_000.milliseconds, // far above the test's runtime: only peer-close detection can end it
         ).transferOrFallback(
             "PLAUD-FAKE", "password12", port = port, preamble = preamble, bindHost = "127.0.0.1",
             assemble = { assembleExact(it, fixture.size, subscribed) },
         )
         device.join()
         assertIs<WifiTransferCoordinator.Outcome.BleFallback>(outcome)
-        assertTrue(outcome.reason.startsWith("wifi_timeout"), outcome.reason)
+        assertEquals(WifiTransferServer.FAILURE_PEER_CLOSED, outcome.reason)
         assertEquals(1, joiner.joinCount, "SoftAP must have been joined before it was left")
         assertTrue(!joiner.joined, "SoftAP must be left after failure")
         assertEquals(crc(fixture), crc(outcome.bytes))
         assertPortReleased(port)
+    }
+
+    @Test
+    fun slowConsumer_overflowsTheBuffer_failsThePathAndFallsBackToBle() = runBoundedTest {
+        val port = freePort()
+        val joiner = FakeWifiSoftApJoiner()
+        val subscribed = CompletableDeferred<Unit>()
+        val many = List(400) { byteArrayOf(it.toByte()) }
+        val device = launch(Dispatchers.IO) {
+            val d = connectDevice(port)
+            try {
+                subscribed.await()
+                // The server closes the socket on overflow, so later sends may fail: expected.
+                runCatching { sendChunks(d, cipher(WifiPayloadCipher.ChaCha20Poly1305), many) }
+            } finally {
+                d.close()
+            }
+        }
+        val outcome = WifiTransferCoordinator(
+            sessionFactory = { session(WifiPayloadCipher.ChaCha20Poly1305, joiner = joiner) },
+            bleDownload = { fixture },
+            wifiTimeout = 60_000.milliseconds,
+        ).transferOrFallback(
+            "PLAUD-FAKE", "password12", port = port, preamble = preamble, bindHost = "127.0.0.1",
+            assemble = { s ->
+                // Stalls on the first frame: the 64-frame buffer fills and a frame is dropped.
+                @Suppress("UNCHECKED_CAST")
+                (s.server.incomingEncryptedFrames() as SharedFlow<ByteArray>)
+                    .onSubscription { subscribed.complete(Unit) }
+                    .collect { delay(60_000) } // a collector stuck on its first frame keeps its subscription
+                ByteArray(0)
+            },
+        )
+        device.join()
+        assertIs<WifiTransferCoordinator.Outcome.BleFallback>(outcome)
+        assertEquals(WifiTransferServer.FAILURE_FRAME_OVERFLOW, outcome.reason)
+        assertContentEquals(fixture, outcome.bytes)
+        assertTrue(!joiner.joined)
     }
 
     @Test

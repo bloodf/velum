@@ -355,7 +355,7 @@ class AndroidWifiTransferServerTest {
         device.join()
         assertContentEquals(fixture.copyOf(8 * CHUNK), arrived, "the 8 frames sent before the drop arrived intact")
         assertIs<WifiTransferCoordinator.Outcome.BleFallback>(outcome)
-        assertTrue(outcome.reason.startsWith("wifi_timeout"), outcome.reason)
+        assertEquals(WifiTransferServer.FAILURE_PEER_CLOSED, outcome.reason, "a peer close falls back at once, not after the timeout")
         assertContentEquals(fixture, outcome.bytes) // BLE result is whole: no partial Wi-Fi bytes mixed in
         assertEquals(crc(fixture), crc(outcome.bytes))
         assertTrue(!joiner.joined && joiner.leaveCalls >= 1, "SoftAP left after failure")
@@ -390,6 +390,37 @@ class AndroidWifiTransferServerTest {
         assertEquals("wifi_frame_rejected", outcome.reason)
         assertContentEquals(fixture, outcome.bytes)
         assertTrue(!joiner.joined, "SoftAP left after failure")
+        assertPortReleased(port)
+    }
+
+    @Test
+    fun slowConsumer_overflowsTheBuffer_failsThePathAndFallsBackToBle() = runTest {
+        val port = freePort()
+        val joiner = RecordingJoiner()
+        val server = AndroidWifiTransferServer()
+        val subscribed = CompletableDeferred<Unit>()
+        val many = List(400) { byteArrayOf(it.toByte()) }
+        val device = launchDevice(port, subscribed, WifiPayloadCipher.ChaCha20Poly1305, many, tolerateFailure = true)
+        val outcome = WifiTransferCoordinator(
+            sessionFactory = { session(WifiPayloadCipher.ChaCha20Poly1305, server, joiner) },
+            bleDownload = { fixture },
+            wifiTimeout = 60_000.milliseconds,
+        ).transferOrFallback(
+            "PLAUD-FAKE", "password12", port = port, preamble = preamble, bindHost = "127.0.0.1",
+            assemble = { s ->
+                @Suppress("UNCHECKED_CAST")
+                (s.server.incomingEncryptedFrames() as SharedFlow<ByteArray>)
+                    .onSubscription { subscribed.complete(Unit) }
+                    .collect { delay(60_000) } // stuck on the first frame, so the 64-frame buffer fills
+                ByteArray(0)
+            },
+        )
+        subscribed.complete(Unit)
+        device.join()
+        assertIs<WifiTransferCoordinator.Outcome.BleFallback>(outcome)
+        assertEquals(WifiTransferServer.FAILURE_FRAME_OVERFLOW, outcome.reason)
+        assertContentEquals(fixture, outcome.bytes)
+        assertTrue(!joiner.joined)
         assertPortReleased(port)
     }
 
