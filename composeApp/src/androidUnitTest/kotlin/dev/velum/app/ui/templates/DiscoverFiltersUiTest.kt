@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasSetTextAction
@@ -66,9 +67,17 @@ class DiscoverFiltersUiTest {
         try {
             compose.waitUntil(10_000, condition)
         } catch (e: androidx.compose.ui.test.ComposeTimeoutException) {
-            val tree = compose.onRoot().printToString(maxDepth = 12).take(6000)
-            throw AssertionError("Timed out waiting for $what\n$tree", e)
+            // Full tree, once: a truncated dump hid the rows below the category chips in a past flake.
+            val tree = compose.onRoot().printToString()
+            throw AssertionError("Timed out waiting for $what\n${chipState("tag:agenda")}\n${chipState("active:tag:agenda")}\n$tree", e)
         }
+    }
+
+    /** One line on whether a tagged node exists and reports Selected, for timeout messages. */
+    private fun chipState(tag: String): String {
+        val nodes = compose.onAllNodesWithTag(tag).fetchSemanticsNodes()
+        val selected = nodes.map { SemanticsProperties.Selected in it.config && it.config[SemanticsProperties.Selected] }
+        return "state[$tag]: nodes=${nodes.size} selected=$selected"
     }
 
     /** Chips come from an async facets load, so wait for the node before tapping it. */
