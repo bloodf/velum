@@ -21,8 +21,7 @@ import org.robolectric.RobolectricTestRunner
  * Production crypto with Conscrypt as provider 1, which Robolectric installs for every test it runs, so this
  * doesn't depend on test order. Conscrypt is Android's default provider, in the version Robolectric brings. Its
  * jar has no macOS arm64 library, so this skips there; on Linux x64, where CI runs, Conscrypt missing fails the
- * test so the coverage can't silently disappear. Loading Conscrypt by hand outside Robolectric's sandbox isn't an
- * option: it would bind the native library to the wrong class loader for every later Robolectric test.
+ * test so the coverage can't silently disappear.
  */
 @RunWith(RobolectricTestRunner::class)
 class ConscryptProviderTest {
