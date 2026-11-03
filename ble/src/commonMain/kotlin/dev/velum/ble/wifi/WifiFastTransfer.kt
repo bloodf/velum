@@ -4,6 +4,8 @@ import dev.velum.protocol.FeatureFlags
 import dev.velum.protocol.Protocol20SessionSecret
 import dev.velum.protocol.SessionCipher
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.flow.flow
 
 /**
  * Cipher for Wi-Fi fast-transfer frames.
@@ -53,7 +55,19 @@ interface WifiTransferServer {
 
     suspend fun sendEncryptedFrame(bytes: ByteArray)
 
+    /**
+     * Fixed codes ([FAILURE_PEER_CLOSED], [FAILURE_FRAME_OVERFLOW]) for events that make the Wi-Fi path
+     * unusable before [WifiTransferCoordinator]'s timeout. Hot: subscribe before [start]. The default never emits.
+     */
+    fun pathFailures(): Flow<String> = flow { awaitCancellation() }
+
     companion object {
+        /** The authenticated device closed its WebSocket. */
+        const val FAILURE_PEER_CLOSED: String = "wifi_peer_closed"
+
+        /** A frame was dropped because the consumer fell behind the receive buffer; the stream has a gap. */
+        const val FAILURE_FRAME_OVERFLOW: String = "wifi_frame_overflow"
+
         const val DEFAULT_PORT: Int = 8081
     }
 }

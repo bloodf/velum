@@ -46,6 +46,8 @@ APKs (1001 / 1002) alongside it. `check-release-signing.sh --package` also requi
 `fastlane/metadata/android/*/changelogs/<universal versionCode>.txt` and the F-Droid draft
 `versionCode` to match the universal APK.
 
+APK size target and the 10% growth check: `docs/APK_SIZE.md`, `scripts/check-apk-size.sh`.
+
 F-Droid builds the unsigned universal APK with `-Pvelum.unsignedRelease=true` (no upload key; F-Droid
 signs it). The property is refused when `VELUM_UPLOAD_*` variables are set, so a shipping build can
 never come out unsigned by accident. Never distribute that unsigned APK yourself.

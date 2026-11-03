@@ -27,3 +27,6 @@ internal fun appendPage(shown: List<Template>, next: List<Template>): List<Templ
  */
 internal fun showEmptyState(shown: List<Template>?, fullImportRunning: Boolean, loadFailed: Boolean): Boolean =
     shown != null && shown.isEmpty() && !fullImportRunning && !loadFailed
+
+/** A spinner stands in for the grid until the first page of the current filter has loaded (or failed). */
+internal fun showLoadingState(shown: List<Template>?, loadFailed: Boolean): Boolean = shown == null && !loadFailed
