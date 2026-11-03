@@ -82,4 +82,20 @@ class AccessibilitySemanticsTest {
         assertEquals(false, cfg("English").getOrNull(SemanticsProperties.Selected))
         assertEquals(Role.RadioButton, cfg("Portuguese").getOrNull(SemanticsProperties.Role))
     }
+
+    @Test fun templates_back_is_a_48dp_target() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        context.deleteDatabase("velum.db")
+        val root = ModelStoreDir(Files.createTempDirectory("velum-a11y-back").toString())
+        val container = AppContainer(InMemorySecureStore(), DriverFactory(context), modelStoreRoot = root)
+        try {
+            show { dev.velum.app.ui.templates.TemplatesScreen(container, onBack = {}, onOpenTemplate = {}) }
+            val density = context.resources.displayMetrics.density
+            val back = compose.onAllNodes(hasContentDescription(En.ux.back) and hasClickAction()).fetchSemanticsNodes().first()
+            assertTrue(back.size.width / density >= 48f && back.size.height / density >= 48f, "back target ${back.size} px at density $density")
+        } finally {
+            container.databaseHandle.driver.close()
+            root.deleteRecursively()
+        }
+    }
 }

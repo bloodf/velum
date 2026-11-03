@@ -300,10 +300,10 @@ internal fun TemplatesScreen(
                 Icons.AutoMirrored.Outlined.ArrowBack,
                 contentDescription = strings.ux.back,
                 modifier = Modifier
-                    .size(40.dp)
+                    .size(48.dp)
                     .semantics { contentDescription = strings.ux.back }
-                    .clickable(onClick = onBack)
-                    .padding(8.dp),
+                    .clickable(role = Role.Button, onClick = onBack)
+                    .padding(12.dp),
                 tint = VelumInk,
             )
             Spacer(Modifier.weight(1f))

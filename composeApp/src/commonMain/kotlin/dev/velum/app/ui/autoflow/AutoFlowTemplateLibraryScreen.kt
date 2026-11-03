@@ -142,7 +142,8 @@ fun AutoFlowTemplateLibraryScreen(
                 .clip(RoundedCornerShape(10.dp))
                 .background(VelumSurface)
                 .border(1.dp, VelumDivider, RoundedCornerShape(10.dp))
-                .padding(horizontal = 12.dp, vertical = 10.dp),
+                // Vertical padding is 0: the 48dp clear target below is always reserved, so the row never changes height.
+                .padding(start = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(Icons.Outlined.Search, strings.search, tint = VelumInkSecondary, modifier = Modifier.size(18.dp))
@@ -166,8 +167,10 @@ fun AutoFlowTemplateLibraryScreen(
                     Modifier.size(48.dp).clickable(role = Role.Button) { query = "" },
                     contentAlignment = Alignment.Center,
                 ) {
-                    Icon(Icons.Outlined.Close, strings.cancel, tint = VelumInkSecondary, modifier = Modifier.size(20.dp))
+                    Icon(Icons.Outlined.Close, strings.clearSearch, tint = VelumInkSecondary, modifier = Modifier.size(20.dp))
                 }
+            } else {
+                Spacer(Modifier.size(48.dp))
             }
         }
         Spacer(Modifier.height(10.dp))
