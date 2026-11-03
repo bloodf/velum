@@ -307,12 +307,12 @@ internal fun TemplatesScreen(
                 tint = VelumInk,
             )
             Spacer(Modifier.weight(1f))
-            Icon(
-                Icons.Outlined.Search,
-                strings.search,
-                tint = VelumInk,
-                modifier = Modifier.size(22.dp).clickable { showSearch = true },
-            )
+            Box(
+                Modifier.size(48.dp).clickable(role = Role.Button) { showSearch = true },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Outlined.Search, strings.search, tint = VelumInk, modifier = Modifier.size(22.dp))
+            }
             Spacer(Modifier.width(12.dp))
             Text(
                 strings.templatesImportJson,
@@ -858,12 +858,13 @@ fun TemplateDetailScreen(
     val contributorCredit = tpl?.let { templateUiCredit(it) }
 
     Column(Modifier.fillMaxSize().background(VelumBg).verticalScroll(rememberScrollState())) {
-        Icon(
-            Icons.Outlined.Close,
-            null,
-            modifier = Modifier.padding(16.dp).size(28.dp).clickable(onClick = onBack),
-            tint = VelumInk,
-        )
+        // 48dp target, same 16dp inset around the 28dp glyph as before.
+        Box(
+            Modifier.padding(6.dp).size(48.dp).clickable(role = Role.Button, onClick = onBack),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(Icons.Outlined.Close, strings.close, modifier = Modifier.size(28.dp), tint = VelumInk)
+        }
         Box(
             Modifier
                 .size(56.dp)

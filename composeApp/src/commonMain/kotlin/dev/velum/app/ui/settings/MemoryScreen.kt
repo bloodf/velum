@@ -85,7 +85,7 @@ fun MemoryScreen(
                         Column(
                             Modifier
                                 .fillMaxWidth()
-                                .clickable { pendingDeleteGlossaryId = item.id }
+                                .clickable(onClickLabel = strings.delete) { pendingDeleteGlossaryId = item.id }
                                 .padding(vertical = 10.dp),
                         ) {
                             Text(item.term, color = VelumInk, fontWeight = FontWeight.Medium, fontSize = 15.sp)
@@ -115,7 +115,7 @@ fun MemoryScreen(
                             fontSize = 15.sp,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { pendingDeleteMemoryId = item.id }
+                                .clickable(onClickLabel = strings.delete) { pendingDeleteMemoryId = item.id }
                                 .padding(vertical = 14.dp),
                         )
                     }

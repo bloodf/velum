@@ -3,6 +3,7 @@ package dev.velum.app.ui.autoflow
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -161,12 +162,12 @@ fun AutoFlowTemplateLibraryScreen(
                 },
             )
             if (query.isNotEmpty()) {
-                Icon(
-                    Icons.Outlined.Close,
-                    strings.cancel,
-                    tint = VelumInkSecondary,
-                    modifier = Modifier.size(20.dp).clickable { query = "" },
-                )
+                Box(
+                    Modifier.size(48.dp).clickable(role = Role.Button) { query = "" },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(Icons.Outlined.Close, strings.cancel, tint = VelumInkSecondary, modifier = Modifier.size(20.dp))
+                }
             }
         }
         Spacer(Modifier.height(10.dp))
@@ -233,11 +234,12 @@ fun AutoFlowTemplateLibraryScreen(
                             fontSize = 13.sp,
                         )
                     }
-                    Icon(
-                        Icons.Outlined.Close,
-                        strings.cancel,
-                        modifier = Modifier.clickable { preview = null },
-                    )
+                    Box(
+                        Modifier.size(48.dp).clickable(role = Role.Button) { preview = null },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(Icons.Outlined.Close, strings.close)
+                    }
                 }
                 Spacer(Modifier.height(12.dp))
                 Text(
