@@ -9,7 +9,7 @@ Owner standing rule: nothing may remain stub/demo-only. Prefer **blocked-on-owne
 ### Protocol / BLE
 - [x] Pluggable `RecorderDriver` registry (`:recorder`): Plaud + Omi/Friend + Pocket; Limitless codec vendored; see `docs/DEVICES_ROADMAP.md` / `THIRD_PARTY.md` — **Omi/Pocket/Limitless not verified on hardware**
 - [x] Protocol-20 framing, unlock (FE10/FE11/FE12), handshake, list (26), download (28/type-2/29), battery (9)
-- [x] Forbidden opcodes never sent: **5, 104, 128, 0xFE20, 143 (OTA)**; never write settings **4 / 26** (every model)
+- [x] Forbidden opcodes never sent: **5, 30 (delete file, receive-only), 104, 128, 0xFE20, 143 (OTA)**; never write settings **4 / 26** (every model)
 - [x] Unused cmds left alone: 5, 13, 38, 50, 51, 109, 141, 142, 145, 151
 - [x] Fixed session key/nonce/aad; plaintext = `seq ‖ packet`; FE10 snSignature on every connect (prot ≥ 20)
 - [x] Cmd 138 feature bit 0x08 (AES-GCM Wi-Fi); SoftAP + **WebSocket `:8081`** (`org.java_websocket`, Plaud parity) with token preamble, fixed session nonce, BLE fallback (JVM fake E2E green; confirm on hardware). SoftAP per-socket bind is attempted, not proven: see `docs/protocol/WIFI_FAST_PATH.md` (#8)
@@ -121,7 +121,7 @@ Phone-only / external (no Plaud required):
 
 - [x] Full security / systems / UX review → `docs/REVIEW_2026-10.md` (2026-10-26)
 - [x] Critical/high/medium findings fixed on `main` (`eb2b2b6`, `aa2af18`, `c61e5ae`) except intentional deferrals listed in that doc
-- [x] Forbidden opcodes **5 / 104 / 128 / 0xFE20 / 143** + settings **4 / 26** re-verified with client send-path tests
+- [x] Forbidden opcodes **5 / 30 / 104 / 128 / 0xFE20 / 143** + settings **4 / 26** re-verified with client send-path tests
 
 ## In progress
 
