@@ -6,6 +6,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import dev.velum.ai.local.ModelStoreDir
 import dev.velum.ai.pipeline.RecordingJobScheduler
 import dev.velum.app.di.AppContainer
+import dev.velum.app.platform.sha256File
 import dev.velum.core.data.DriverFactory
 import dev.velum.core.security.InMemorySecureStore
 import java.io.File
@@ -71,15 +72,33 @@ class ReimportAfterDeleteTest {
         assertEquals(again.recordingId, assertIs<ImportResult.Duplicate>(pipeline.importFile(wav.path, source = "watched")).existingRecordingId)
     }
 
-    private fun silentWav(file: File, sampleRate: Int = 16_000, durationMs: Int = 200): File {
+    @Test fun an_edited_watched_file_is_a_new_recording() = withPipeline { container, pipeline, wav ->
+        val first = assertIs<ImportResult.Created>(pipeline.importFile(wav.path, source = "watched"))
+        container.repository.deleteRecordingHard(first.recordingId)
+        silentWav(wav, sample = 7)
+        assertIs<ImportResult.Created>(pipeline.importFile(wav.path, source = "watched"))
+    }
+
+    @Test fun the_same_audio_in_another_container_stays_deleted() = withPipeline { container, pipeline, wav ->
+        val first = assertIs<ImportResult.Created>(pipeline.importFile(wav.path, source = "watched"))
+        container.repository.deleteRecordingHard(first.recordingId)
+        // Same samples, different file bytes: an extra chunk before the audio.
+        val retagged = silentWav(File(wav.parentFile, "retagged.wav"), extraChunk = true)
+        assertNotEquals(sha256File(wav.path), sha256File(retagged.path))
+        assertIs<ImportResult.Deleted>(pipeline.importFile(retagged.path, source = "watched"))
+    }
+
+    private fun silentWav(file: File, sampleRate: Int = 16_000, durationMs: Int = 200, sample: Short = 0, extraChunk: Boolean = false): File {
         val samples = sampleRate * durationMs / 1000
         val dataSize = samples * 2
-        val buffer = ByteBuffer.allocate(44 + dataSize).order(ByteOrder.LITTLE_ENDIAN)
-        buffer.put("RIFF".toByteArray()).putInt(36 + dataSize).put("WAVE".toByteArray())
+        val extra = if (extraChunk) 8 + 4 else 0
+        val buffer = ByteBuffer.allocate(44 + extra + dataSize).order(ByteOrder.LITTLE_ENDIAN)
+        buffer.put("RIFF".toByteArray()).putInt(36 + extra + dataSize).put("WAVE".toByteArray())
         buffer.put("fmt ".toByteArray()).putInt(16).putShort(1).putShort(1).putInt(sampleRate).putInt(sampleRate * 2)
             .putShort(2).putShort(16)
+        if (extraChunk) buffer.put("LIST".toByteArray()).putInt(4).put("INFO".toByteArray())
         buffer.put("data".toByteArray()).putInt(dataSize)
-        repeat(samples) { buffer.putShort(0) }
+        repeat(samples) { buffer.putShort(sample) }
         file.writeBytes(buffer.array())
         return file
     }

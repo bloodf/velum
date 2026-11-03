@@ -90,7 +90,8 @@ actual class AudioNormalizer actual constructor() {
                     durationMs.coerceAtLeast(durationHintMs(sourcePath))
                 },
                 sourceMime = mime,
-                contentSha256 = hash,
+                // Of the normalized audio, so the same audio in another container is recognised (#327).
+                contentSha256 = sha256File(outFile.absolutePath),
             )
         } catch (t: Throwable) {
             temp.delete() // never leave a half-written WAV that a later import could trust

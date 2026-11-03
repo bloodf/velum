@@ -308,9 +308,6 @@ DELETE FROM app_meta WHERE key = ?;
 deleteMetaMatching:
 DELETE FROM app_meta WHERE key GLOB :pattern;
 
-deleteMetaWithPrefixAndValue:
-DELETE FROM app_meta WHERE key GLOB :pattern AND value = :value;
-
 selectMetaKeysWithPrefixAndValue:
 SELECT key FROM app_meta WHERE key GLOB :pattern AND value = :value;
 
