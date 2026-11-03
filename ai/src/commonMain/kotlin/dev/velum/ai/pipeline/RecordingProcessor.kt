@@ -163,7 +163,9 @@ class RecordingProcessor(
                     copyFileRangeToPcm(src, pcmStart, pcmLen, pcmFile) { job?.ensureActive() }
                     pcmBuffer = PcmAudioBuffer.fromExistingFile(pcmFile, pcmLen)
                 } else {
-                    // Neither container: raw 16 kHz mono PCM, copied in slices like the WAV data.
+                    // Not Ogg or WAV. A known container that is not supported here must not be read as PCM: that
+                    // would give a noise transcript with no error. Anything else is raw 16 kHz mono PCM.
+                    unsupportedContainer(sniffed)?.let { throw IllegalArgumentException(unsupportedAudioMessage(it)) }
                     sampleRate = 16_000
                     requireSpillable(fileLen)
                     copyFileRangeToPcm(src, 0L, fileLen, pcmFile) { job?.ensureActive() }
@@ -681,5 +683,29 @@ class RecordingProcessor(
             }
             return chunks
         }
+    }
+}
+
+/** Plain error for audio whose container is recognised but not decoded by this path. */
+internal fun unsupportedAudioMessage(container: String) =
+    "Unsupported audio format ($container). This file is not Ogg Opus, WAV or raw 16 kHz PCM, so it was not transcribed; " +
+        "re-download it from the device or convert it to WAV or Ogg Opus."
+
+/**
+ * Names a well-known audio container from its first bytes, or null. Only signatures that cannot start raw PCM by
+ * accident are used. A bare MP3 or ADTS frame sync is NOT one: `FF FB` is the sample -1025 and `FF F1` is -3585, so
+ * header-less MP3 or AAC streams stay as raw PCM here (as before), and only ID3-tagged MP3 is recognised.
+ */
+internal fun unsupportedContainer(head: ByteArray): String? {
+    fun at(i: Int, text: String) = head.size >= i + text.length && text.indices.all { head[i + it] == text[it].code.toByte() }
+    fun b(i: Int) = if (head.size > i) head[i].toInt() and 0xFF else -1
+    return when {
+        at(0, "ID3") -> "MP3"
+        at(4, "ftyp") -> "MP4/M4A"
+        at(0, "fLaC") -> "FLAC"
+        at(0, "#!AMR") -> "AMR"
+        at(0, "RIFF") -> "RIFF (not WAVE)"
+        head.size >= 4 && b(0) == 0x1A && b(1) == 0x45 && b(2) == 0xDF && b(3) == 0xA3 -> "WebM/Matroska"
+        else -> null
     }
 }

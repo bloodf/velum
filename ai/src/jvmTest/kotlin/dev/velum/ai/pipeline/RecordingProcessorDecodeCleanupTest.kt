@@ -221,6 +221,51 @@ class RecordingProcessorDecodeCleanupTest {
     }
 
     @Test
+    fun known_unsupported_containers_in_a_bin_fail_plainly_instead_of_becoming_noise() = runBlocking {
+        val heads = mapOf(
+            "MP3" to "ID3".toByteArray() + byteArrayOf(4, 0, 0) + ByteArray(40),
+            "MP4/M4A" to byteArrayOf(0, 0, 0, 0x20) + "ftypM4A ".toByteArray() + ByteArray(40),
+            "FLAC" to "fLaC".toByteArray() + ByteArray(40),
+            "RIFF (not WAVE)" to "RIFF".toByteArray() + ByteArray(4) + "AVI ".toByteArray() + ByteArray(40),
+            "AMR" to "#!AMR\n".toByteArray() + ByteArray(40),
+            "WebM/Matroska" to byteArrayOf(0x1A, 0x45, 0xDF.toByte(), 0xA3.toByte()) + ByteArray(40),
+        )
+        for ((name, bytes) in heads) {
+            var asrRan = false
+            val h = Harness({ asrRan = true })
+            val src = tempAudio(".bin", bytes)
+            h.insert("rec-86-container", src)
+            val events = h.processor.process("rec-86-container", templateId = "velum.meeting", apiModelOverride = API).toList()
+            val failed = events.last() as JobProgress.Failed
+            assertTrue(failed.message.startsWith("Unsupported audio format"), "$name: ${failed.message}")
+            assertFalse(asrRan, "$name must not reach ASR as PCM")
+            assertContentEquals(bytes, src.readBytes(), "source recording preserved")
+            assertFalse(spillDir("rec-86-container").exists())
+        }
+    }
+
+    @Test
+    fun raw_pcm_that_starts_like_an_mp3_or_adts_sync_word_is_still_pcm() = runBlocking {
+        // FF FB is the sample -1025 and FF F1 is -3585: ordinary audio, never a container.
+        val starts = listOf(
+            byteArrayOf(0x12, 0x34),
+            byteArrayOf(0xFF.toByte(), 0xFB.toByte()),
+            byteArrayOf(0xFF.toByte(), 0xF1.toByte()),
+            byteArrayOf(0xFF.toByte(), 0xF3.toByte()),
+        )
+        for ((i, start) in starts.withIndex()) {
+            val pcm = start + ByteArray(2_000) { if (it % 2 == 0) 0x12 else 0x34 }
+            val captured = mutableListOf<AudioInput>()
+            val h = Harness({ captured += it })
+            val src = tempAudio(".bin", pcm)
+            h.insert("rec-86-loud-$i", src)
+            val events = h.processor.process("rec-86-loud-$i", templateId = "velum.meeting", apiModelOverride = API).toList()
+            assertTrue(events.last() is JobProgress.Succeeded, "start $i: last=${events.last()}")
+            assertContentEquals(pcm, captured.single().bytes, "start $i")
+        }
+    }
+
+    @Test
     fun a_file_over_the_spill_limit_fails_before_any_pcm_is_written() = runBlocking {
         // Sparse: setLength reserves no disk. The size check must reject it before the slice copy starts.
         val huge = File.createTempFile("velum-86-huge", ".bin").apply {
