@@ -89,7 +89,7 @@ Definitions:
 
 Inputs: the model is `whistle.cact` from Hugging Face `Cactus-Compute/whistle` (see the table above; the test fails
 on a SHA mismatch). The clip is any short 16 kHz mono 16-bit PCM WAV with real speech in an English/EU language the
-model supports, e.g. exported from your own recording with `ffmpeg -i in.m4a -ar 16000 -ac 1 -c:a pcm_s16le speech16k.wav`;
+model supports, e.g. a public-domain or openly licensed speech sample (not a private recording: the transcript is printed to logcat and the status line is meant to be committed with the results) converted with `ffmpeg -i in.m4a -ar 16000 -ac 1 -c:a pcm_s16le speech16k.wav`;
 its SHA-256 is printed so both environments can be shown to use the same file. The device-walk tone is not speech.
 
 1. Build and install the arm64 debug APK and test APK (`./gradlew :composeApp:installDebug :composeApp:installDebugAndroidTest`).
