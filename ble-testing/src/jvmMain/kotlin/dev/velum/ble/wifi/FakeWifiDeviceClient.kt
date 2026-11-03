@@ -56,6 +56,10 @@ class FakeWifiDeviceClient(
         c.send(frame)
     }
 
+    /**
+     * Java-WebSocket's server can drop frames it has read but not yet decoded if it reads this close first
+     * (close 1006, #349), so a test that needs every frame through waits for delivery before calling this.
+     */
     fun close() {
         runCatching { client?.closeBlocking() }
         client = null

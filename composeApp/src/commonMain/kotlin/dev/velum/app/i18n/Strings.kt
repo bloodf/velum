@@ -595,6 +595,7 @@ data class UxStrings(
     val pausePlayback: String,
     val failedProcessing: String,
     val localModelNotReady: String,
+    val insufficientStorage: String,
     val retryProcessing: String,
     val waveformA11y: String,
 )
@@ -1174,6 +1175,7 @@ val PtBr = Strings(
         pausePlayback = "Pausar",
         failedProcessing = "Não foi possível processar esta gravação.",
         localModelNotReady = "Falta baixar um modelo necessário para esta etapa. Baixe-o em Gerenciador de modelos ou mude esta etapa para API em Processamento de IA.",
+        insufficientStorage = "Não há espaço livre suficiente para processar esta gravação. Libere espaço e tente de novo.",
         retryProcessing = "Tentar de novo",
         waveformA11y = "Progresso da reprodução",
     ),)
@@ -1753,6 +1755,7 @@ val En = Strings(
         pausePlayback = "Pause",
         failedProcessing = "Could not process this recording.",
         localModelNotReady = "A model this step needs isn't downloaded yet. Download it in Model manager, or switch this step to API in AI processing.",
+        insufficientStorage = "Not enough free storage to process this recording. Free up space and try again.",
         retryProcessing = "Try again",
         waveformA11y = "Playback progress",
     ),)
