@@ -24,11 +24,23 @@ actual fun createSessionCipher(): SessionCipher = JcaSessionCipher()
 actual fun createFileDecryptor(): FileDecryptor = JcaFileDecryptor()
 
 /**
+ * ChaCha20-Poly1305 names to try, in order. Android documents "ChaCha20/Poly1305/NoPadding" (API 28+) and it is the
+ * only one that resolves on API 28 AOSP images, where the bare alias throws NoSuchAlgorithmException. A JDK (host
+ * unit tests) only registers the alias. The first one that passes the known-answer probe is used for seal and open.
+ */
+internal val PLATFORM_CHACHA_TRANSFORMATIONS = listOf("ChaCha20/Poly1305/NoPadding", "ChaCha20-Poly1305")
+
+/**
  * JCA-backed protocol-20 crypto (ChaCha20-Poly1305 + RSA PKCS#1 v1.5).
  */
-class JcaSessionCipher : SessionCipher {
+class JcaSessionCipher internal constructor(
+    /** Seam for tests: resolves a transformation name to a cipher. */
+    private val getCipher: (String) -> Cipher,
+) : SessionCipher {
+    constructor() : this(Cipher::getInstance)
+
     /**
-     * Android documents ChaCha20/Poly1305 from API 28, and minSdk is 26 (#226). Without a usable platform cipher,
+     * Android documents ChaCha20/Poly1305 from API 28, and minSdk is 26 (#226); API 28 only resolves the full transformation name. Without a usable platform cipher,
      * use the Kotlin AEAD, which has the same output. Probed per instance, not cached globally. The probe seals the
      * RFC 8439 section 2.8.2 message with the platform cipher and compares it with the fixed sealed bytes (not with
      * the Kotlin code, so a bug there cannot discard a correct platform cipher). A provider that is missing, throws
@@ -36,8 +48,12 @@ class JcaSessionCipher : SessionCipher {
      * failing every real call. Not logged here (plain JUnit tests build this class and `android.util.Log` is not
      * mocked); read [usesPlatformChaCha] to see the path.
      */
-    val usesPlatformChaCha: Boolean = try {
-        val cipher = Cipher.getInstance("ChaCha20-Poly1305")
+    private val platformTransformation: String? = PLATFORM_CHACHA_TRANSFORMATIONS.firstOrNull { probe(it) }
+
+    val usesPlatformChaCha: Boolean = platformTransformation != null
+
+    private fun probe(transformation: String): Boolean = try {
+        val cipher = getCipher(transformation)
         cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(PROBE_KEY, "ChaCha20"), IvParameterSpec(PROBE_NONCE))
         cipher.updateAAD(PROBE_AAD)
         cipher.doFinal(PROBE_PLAIN).contentEquals(PROBE_SEALED)
@@ -68,9 +84,9 @@ class JcaSessionCipher : SessionCipher {
     ): ByteArray? {
         // Not left to the provider: what it throws for this differs (see AesGcmWifiFrameCipher.open).
         if (ciphertextAndTag.size < AEAD_TAG_BYTES) return null
-        if (!usesPlatformChaCha) return ChaCha20Poly1305.open(key, nonce, aad, ciphertextAndTag)
+        val transformation = platformTransformation ?: return ChaCha20Poly1305.open(key, nonce, aad, ciphertextAndTag)
         return try {
-            val cipher = Cipher.getInstance("ChaCha20-Poly1305")
+            val cipher = getCipher(transformation)
             cipher.init(
                 Cipher.DECRYPT_MODE,
                 SecretKeySpec(key, "ChaCha20"),
@@ -90,8 +106,8 @@ class JcaSessionCipher : SessionCipher {
         aad: ByteArray,
         plaintext: ByteArray,
     ): ByteArray {
-        if (!usesPlatformChaCha) return ChaCha20Poly1305.seal(key, nonce, aad, plaintext)
-        val cipher = Cipher.getInstance("ChaCha20-Poly1305")
+        val transformation = platformTransformation ?: return ChaCha20Poly1305.seal(key, nonce, aad, plaintext)
+        val cipher = getCipher(transformation)
         cipher.init(
             Cipher.ENCRYPT_MODE,
             SecretKeySpec(key, "ChaCha20"),

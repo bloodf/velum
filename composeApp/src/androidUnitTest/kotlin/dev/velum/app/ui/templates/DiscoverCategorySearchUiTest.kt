@@ -9,9 +9,9 @@ import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
-import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.printToString
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -34,6 +34,7 @@ import dev.velum.core.data.DriverFactory
 import dev.velum.core.data.SeedData
 import dev.velum.core.security.InMemorySecureStore
 import java.nio.file.Files
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
 import org.junit.Rule
@@ -65,8 +66,10 @@ class DiscoverCategorySearchUiTest {
         try {
             compose.waitUntil(10_000, condition)
         } catch (e: androidx.compose.ui.test.ComposeTimeoutException) {
-            val tree = compose.onRoot().printToString(maxDepth = 12).take(6000)
-            throw AssertionError("Timed out waiting for $what\n$tree", e)
+            // Diagnostics must never replace the timeout; an open sheet is a second root.
+            val diagnostics = runCatching { compose.onAllNodes(isRoot()).printToString(maxDepth = Int.MAX_VALUE) }
+                .getOrElse { "diagnostic failed: $it" }
+            throw AssertionError("Timed out waiting for $what\n$diagnostics", e)
         }
     }
 
@@ -82,6 +85,36 @@ class DiscoverCategorySearchUiTest {
         }
         // By node identity, not coordinates: a coordinate click could land on a neighbour if the row reflowed.
         compose.onNodeWithTag(tag).performSemanticsAction(SemanticsActions.OnClick)
+    }
+
+    /** Facets queries started and finished, so a test waits for the reload itself instead of sleeping. */
+    private val facetsStarted = AtomicInteger()
+    private val facetsFinished = AtomicInteger()
+
+    private fun countedQueries(container: AppContainer): DiscoverQueries {
+        val real = container.repository.discoverQueries()
+        return DiscoverQueries(
+            page = real.page, count = real.count,
+            facets = { f ->
+                facetsStarted.incrementAndGet()
+                try { real.facets(f) } finally { facetsFinished.incrementAndGet() }
+            },
+        )
+    }
+
+    /** Waits until a facets reload that began after [finishedBefore] has completed and none is in flight. */
+    private fun awaitFacetsReloadAfter(finishedBefore: Int) = waiting("a facets reload after $finishedBefore") {
+        facetsFinished.get() > finishedBefore && facetsStarted.get() == facetsFinished.get()
+    }
+
+    /**
+     * The reload counter moves before the screen stores the new facets, so a wrong prune lands after it. Poll the
+     * selection across a short window instead of checking it once.
+     */
+    private fun assertStaysSelected(tag: String) = repeat(6) {
+        Thread.sleep(100)
+        compose.waitForIdle()
+        assertTrue(hasTag(tag), "$tag was pruned after the facets reload")
     }
 
     @Test
@@ -103,21 +136,24 @@ class DiscoverCategorySearchUiTest {
         try {
             activity.get().setContent {
                 CompositionLocalProvider(LocalStrings provides PtBr) {
-                    VelumTheme(darkTheme = false) { TemplatesScreen(container, onBack = {}, onOpenTemplate = {}) }
+                    VelumTheme(darkTheme = false) { TemplatesScreen(container, onBack = {}, onOpenTemplate = {}, queries = countedQueries(container)) }
                 }
             }
             await("ZQ Alpha"); await("ZQ Gamma")
             tap("category:meeting")
+            // Wait for the filtered rows first: "Gamma absent" alone is also true while the list is cleared.
+            await("ZQ Alpha")
             await("ZQ Gamma", present = false)
+            val facetsBeforeSearch = facetsFinished.get()
             // Search for a template that is only in the other category: the category must stay selected.
             compose.onNodeWithContentDescription(PtBr.search).performClick()
             compose.onNode(hasSetTextAction()).performTextInput("ZQ Gamma")
             awaitTag("templates:empty")
             awaitTag("active:category")
             // Facets reload asynchronously after the search; the category must still be there once they landed.
-            Thread.sleep(1500)
-            compose.waitForIdle()
-            assertTrue(hasTag("templates:empty") && hasTag("active:category"))
+            awaitFacetsReloadAfter(facetsBeforeSearch)
+            assertStaysSelected("active:category")
+            assertTrue(hasTag("templates:empty"))
             // The search field itself contains "ZQ Gamma"; only result cards would be non-editable matches.
             assertTrue(compose.onAllNodes(hasText("ZQ Gamma") and !hasSetTextAction()).fetchSemanticsNodes().isEmpty())
             // Individual clear brings the match back, search kept.
@@ -150,7 +186,7 @@ class DiscoverCategorySearchUiTest {
         try {
             activity.get().setContent {
                 CompositionLocalProvider(LocalStrings provides PtBr) {
-                    VelumTheme(darkTheme = false) { TemplatesScreen(container, onBack = {}, onOpenTemplate = {}) }
+                    VelumTheme(darkTheme = false) { TemplatesScreen(container, onBack = {}, onOpenTemplate = {}, queries = countedQueries(container)) }
                 }
             }
             await("ZQ Alpha"); await("ZQ Beta")
@@ -163,13 +199,14 @@ class DiscoverCategorySearchUiTest {
     }
 
     private fun searchThenExpectNoMatch(query: String, activeTag: String) {
+        val facetsBeforeSearch = facetsFinished.get()
         compose.onNodeWithContentDescription(PtBr.search).performClick()
         compose.onNode(hasSetTextAction()).performTextInput(query)
         awaitTag("templates:empty")
         // Facets reload asynchronously after the search; the filter must still be selected once they landed.
-        Thread.sleep(1500)
-        compose.waitForIdle()
-        assertTrue(hasTag("templates:empty") && hasTag(activeTag))
+        awaitFacetsReloadAfter(facetsBeforeSearch)
+        assertStaysSelected(activeTag)
+        assertTrue(hasTag("templates:empty"))
         tap(activeTag)
         await(query)
         awaitTag("templates:empty", present = false)
