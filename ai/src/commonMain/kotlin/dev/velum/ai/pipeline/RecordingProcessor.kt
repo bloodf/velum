@@ -689,24 +689,24 @@ class RecordingProcessor(
 
 /** Plain error for audio whose container is recognised but not decoded by this path. */
 internal fun unsupportedAudioMessage(container: String) =
-    "Unsupported audio format ($container). This recording cannot be processed; export it as WAV or Ogg Opus."
+    "Unsupported audio format ($container). This file is not Ogg Opus, WAV or raw 16 kHz PCM, so it was not transcribed; " +
+        "re-download it from the device or convert it to WAV or Ogg Opus."
 
 /**
  * Names a well-known audio container from its first bytes, or null. Only signatures that cannot start raw PCM by
- * accident are used (a bare MP3 frame sync is limited to the common MPEG-1/2 layer III headers).
+ * accident are used. A bare MP3 or ADTS frame sync is NOT one: `FF FB` is the sample -1025 and `FF F1` is -3841, so
+ * header-less MP3 or AAC streams stay as raw PCM here (as before), and only ID3-tagged MP3 is recognised.
  */
 internal fun unsupportedContainer(head: ByteArray): String? {
     fun at(i: Int, text: String) = head.size >= i + text.length && text.indices.all { head[i + it] == text[it].code.toByte() }
     fun b(i: Int) = if (head.size > i) head[i].toInt() and 0xFF else -1
     return when {
         at(0, "ID3") -> "MP3"
-        b(0) == 0xFF && b(1) in setOf(0xFB, 0xFA, 0xF3, 0xF2, 0xE3, 0xE2) -> "MP3"
         at(4, "ftyp") -> "MP4/M4A"
         at(0, "fLaC") -> "FLAC"
         at(0, "#!AMR") -> "AMR"
         at(0, "RIFF") -> "RIFF (not WAVE)"
         head.size >= 4 && b(0) == 0x1A && b(1) == 0x45 && b(2) == 0xDF && b(3) == 0xA3 -> "WebM/Matroska"
-        b(0) == 0xFF && (b(1) == 0xF1 || b(1) == 0xF9) -> "AAC (ADTS)"
         else -> null
     }
 }
