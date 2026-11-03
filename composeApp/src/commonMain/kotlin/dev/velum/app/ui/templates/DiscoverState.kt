@@ -45,6 +45,41 @@ internal fun showPagingSentinel(shownTick: Long, currentTick: Long, rowCount: In
 /** A spinner stands in for the grid until the first page of the current filter has loaded (or failed). */
 internal fun showLoadingState(shown: List<Template>?, loadFailed: Boolean): Boolean = shown == null && !loadFailed
 
+/**
+ * Which optional blocks the results grid has, decided once per composition from plain values. The grid's item list
+ * must not depend on state read while the lazy grid measures: an item count that moves between the grid's reads
+ * of it is the `IndexOutOfBounds` seen in #202. With the plan fixed per composition, every read in a measure pass
+ * sees the same structure.
+ */
+internal data class DiscoverGridPlan(
+    val showRanking: Boolean,
+    val showLoading: Boolean,
+    val showEmpty: Boolean,
+    val showRetry: Boolean,
+    val showPagingSentinel: Boolean,
+)
+
+internal fun discoverGridPlan(
+    discoverTab: Boolean,
+    featuredOnly: Boolean,
+    hasRanking: Boolean,
+    searchBlank: Boolean,
+    noFacetSelected: Boolean,
+    shown: List<Template>?,
+    fullImportRunning: Boolean,
+    loadFailed: Boolean,
+    shownTick: Long,
+    currentTick: Long,
+    loadedTarget: Int,
+    totalMatches: Long,
+): DiscoverGridPlan = DiscoverGridPlan(
+    showRanking = discoverTab && featuredOnly && hasRanking && searchBlank && noFacetSelected,
+    showLoading = showLoadingState(shown, loadFailed),
+    showEmpty = showEmptyState(shown, fullImportRunning, loadFailed),
+    showRetry = loadFailed,
+    showPagingSentinel = showPagingSentinel(shownTick, currentTick, shown.orEmpty().size, loadedTarget, totalMatches),
+)
+
 /** The three Discover queries as a seam: production delegates to the repository, tests count, fail or hold them. */
 internal class DiscoverQueries(
     val page: suspend (DiscoverFilter, Int, Int) -> List<Template>,

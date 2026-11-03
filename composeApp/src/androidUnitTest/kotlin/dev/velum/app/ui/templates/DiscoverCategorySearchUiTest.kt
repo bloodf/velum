@@ -84,14 +84,12 @@ class DiscoverCategorySearchUiTest {
 
     /** waitUntil that fails with the semantics tree so a timeout is diagnosable. */
     private fun waiting(what: String, condition: () -> Boolean) {
-        try {
-            compose.waitUntil(10_000, condition)
-        } catch (e: androidx.compose.ui.test.ComposeTimeoutException) {
+        compose.waitWhileBusy(queryLog, onTimeout = { e ->
             // Diagnostics must never replace the timeout; an open sheet is a second root.
             val diagnostics = runCatching { compose.onAllNodes(isRoot()).printToString(maxDepth = Int.MAX_VALUE) }
                 .getOrElse { "diagnostic failed: $it" }
             throw AssertionError("Timed out waiting for $what\n${queryLog.dump()}\n$diagnostics", e)
-        }
+        }, condition = condition)
     }
 
     // Chips appear once the facets loaded, which is after the first rows: wait for the chip before tapping it.
@@ -134,7 +132,8 @@ class DiscoverCategorySearchUiTest {
      * selection across a short window instead of checking it once.
      */
     private fun assertStaysSelected(tag: String) = repeat(6) {
-        Thread.sleep(100)
+        // Frames of the test clock, not wall time: a wrong prune is a LaunchedEffect that runs on a later frame.
+        compose.mainClock.advanceTimeBy(100)
         compose.waitForIdle()
         assertTrue(hasTag(tag), "$tag was pruned after the facets reload")
     }

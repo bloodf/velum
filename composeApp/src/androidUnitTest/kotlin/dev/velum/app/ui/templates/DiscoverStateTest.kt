@@ -71,4 +71,51 @@ class DiscoverStateTest {
         assertEquals(liveSearch, "")
         assertEquals(LoadedFacets(narrow, "foo"), loaded)
     }
+
+    private fun plan(
+        discoverTab: Boolean = true, featuredOnly: Boolean = true, hasRanking: Boolean = true, searchBlank: Boolean = true,
+        noFacetSelected: Boolean = true, shown: List<dev.velum.core.db.Template>? = emptyList(), fullImportRunning: Boolean = false,
+        loadFailed: Boolean = false, shownTick: Long = 1, currentTick: Long = 1, loadedTarget: Int = 60, totalMatches: Long = 0,
+    ) = discoverGridPlan(
+        discoverTab, featuredOnly, hasRanking, searchBlank, noFacetSelected, shown, fullImportRunning, loadFailed,
+        shownTick, currentTick, loadedTarget, totalMatches,
+    )
+
+    @Test fun grid_plan_ranking_needs_every_condition() {
+        assertTrue(plan().showRanking)
+        assertFalse(plan(discoverTab = false).showRanking)
+        assertFalse(plan(featuredOnly = false).showRanking)
+        assertFalse(plan(hasRanking = false).showRanking)
+        assertFalse(plan(searchBlank = false).showRanking)
+        assertFalse(plan(noFacetSelected = false).showRanking)
+    }
+
+    @Test fun grid_plan_blocks_follow_the_load_state() {
+        assertTrue(plan(shown = null).showLoading)
+        assertFalse(plan(shown = null, loadFailed = true).showLoading)
+        assertTrue(plan(shown = null, loadFailed = true).showRetry)
+        assertTrue(plan(shown = emptyList()).showEmpty)
+        assertFalse(plan(shown = emptyList(), fullImportRunning = true).showEmpty)
+        assertFalse(plan(shown = null).showEmpty)
+    }
+
+    @Test fun grid_plan_paging_sentinel_matches_the_rule() {
+        val rows = List(60) { t("r$it") }
+        assertTrue(plan(shown = rows, loadedTarget = 60, totalMatches = 100).showPagingSentinel)
+        assertFalse(plan(shown = rows, loadedTarget = 60, totalMatches = 60).showPagingSentinel)
+        assertFalse(plan(shown = rows, shownTick = 0, currentTick = 1, totalMatches = 100).showPagingSentinel)
+        assertFalse(plan(shown = rows.take(10), loadedTarget = 60, totalMatches = 100).showPagingSentinel)
+    }
+
+    @Test fun grid_scope_reads_the_plan_not_live_state() {
+        val src = listOf(
+            java.io.File("src/commonMain/kotlin/dev/velum/app/ui/templates/TemplatesScreen.kt"),
+            java.io.File("composeApp/src/commonMain/kotlin/dev/velum/app/ui/templates/TemplatesScreen.kt"),
+        ).first { it.isFile }.readText()
+        val scope = src.substringAfter("LazyVerticalGrid(").substringAfter(") {\n            // Filter rows scroll")
+        for (stateRead in listOf("showLoadingState(", "showEmptyState(", "showPagingSentinel(", "if (loadFailed)", "ranking.isNotEmpty()")) {
+            assertFalse(scope.contains(stateRead), "the grid scope must not read $stateRead; use the plan")
+        }
+        assertTrue(scope.contains("plan.showRanking") && scope.contains("plan.showPagingSentinel"))
+    }
 }
