@@ -39,7 +39,14 @@ class RecordingProcessWorker(
     override suspend fun getForegroundInfo(): ForegroundInfo = buildForegroundInfo()
 
     override suspend fun doWork(): Result {
-        setForeground(buildForegroundInfo())
+        try {
+            setForeground(buildForegroundInfo())
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            // Android 12+ refuses a foreground start from the background (ForegroundServiceStartNotAllowedException).
+            // The job can still run unpromoted; failing here would leave the row `queued` forever (#330).
+        }
         val recordingId = inputData.getString(KEY_RECORDING_ID) ?: return Result.failure()
         val templateId = inputData.getString(KEY_TEMPLATE_ID)
         val retranscribe = inputData.getBoolean(KEY_RETRANSCRIBE, true)
