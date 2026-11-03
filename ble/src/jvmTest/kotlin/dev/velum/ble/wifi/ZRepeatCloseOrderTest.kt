@@ -23,7 +23,7 @@ class ZRepeatCloseOrderTest {
                     total.incrementAndGet()
                     runCatching(run).onFailure {
                         failures.computeIfAbsent(name) { java.util.Collections.synchronizedList(mutableListOf()) } +=
-                            "${it::class.simpleName}: ${it.message?.take(160)} LOG:" + ZPortLog.lastPort()?.let { p -> ZDebugLog.byPort[p]?.joinToString(" | ") }
+                            "${it::class.simpleName}: ${it.message?.take(160)}"
                     }
                 }
             }
@@ -31,7 +31,7 @@ class ZRepeatCloseOrderTest {
         workers.forEach { it.join() }
         val summary = "close-order repeat: ports ${ZPortLog.handedOut()}, cross-thread collisions ${ZPortLog.collisions()}; ${failures.values.sumOf { it.size }} of ${total.get()} failed " +
             runs.joinToString { "${it.first}=${failures[it.first]?.size ?: 0}" } +
-            failures.entries.joinToString("") { (k, v) -> v.take(3).joinToString("") { "\n  $k: $it" } }
+            failures.entries.joinToString("") { (k, v) -> "\n  $k first: ${v.first()}" }
         println(summary)
         if (failures.isNotEmpty()) fail(summary)
     }
