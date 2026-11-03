@@ -291,14 +291,16 @@ class DeviceResumeRestartTest {
         try {
             val saving = CompletableDeferred<Unit>()
             var probe: ConnectProbe? = null
+            val persists = java.util.concurrent.atomic.AtomicInteger()
             val vm = run(
                 peripheral(),
                 transport = { p -> ConnectProbe(FakeBleTransport(p)).also { probe = it } },
                 persist = { _ ->
+                    // Held across both downloads: the cancelled one and the queued one right behind it.
                     probe!!.unwinding = true
                     saving.complete(Unit)
                     withContext(NonCancellable) { delay(400) }
-                    probe!!.unwinding = false
+                    if (persists.incrementAndGet() == 2) probe!!.unwinding = false
                     throw IOException("synthetic full disk")
                 },
                 await = false,
@@ -310,6 +312,7 @@ class DeviceResumeRestartTest {
                 vm.connect("fake-note-pro")
                 delay(2_500)
             }
+            assertEquals(2, persists.get(), "both the cancelled and the queued download ran")
             assertEquals(0, probe!!.connectsWhileUnwinding.get(), "connect must not run while either download uses the client")
             assertEquals(2, probe!!.connects.get(), "the explicit connect must not be ignored by a job that has not started")
         } finally { owner.clear(); Dispatchers.resetMain() }
