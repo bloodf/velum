@@ -286,20 +286,40 @@ class RecordingProcessWorker(
                 .setConstraints(constraints)
                 .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
                 .addTag("recording:$recordingId")
+                .addTag(recordingWorkParamsTag(templateId, retranscribe, apiModelOverride))
                 .build()
             // KEEP drops a later AutoFlow enqueue (template/model) after download/import
             // enqueued with nulls. REPLACE upgrades pending work when AutoFlow params arrive;
             // null-only enqueues still KEEP so we do not cancel an in-flight job.
-            val policy = if (recordingWorkHasAutoFlowParams(templateId, apiModelOverride)) {
-                ExistingWorkPolicy.REPLACE
-            } else {
+            // An enqueue for the same template, model and retranscribe flag as the work already queued or running
+            // keeps it (#324): REPLACE would cancel a job mid-ASR and run ASR twice.
+            val manager = WorkManager.getInstance(context)
+            val policy = if (!recordingWorkHasAutoFlowParams(templateId, apiModelOverride) ||
+                activeWorkHasParams(manager, recordingId, recordingWorkParamsTag(templateId, retranscribe, apiModelOverride))
+            ) {
                 ExistingWorkPolicy.KEEP
+            } else {
+                ExistingWorkPolicy.REPLACE
             }
-            WorkManager.getInstance(context).enqueueUniqueWork(
+            manager.enqueueUniqueWork(
                 UNIQUE_PREFIX + recordingId,
                 policy,
                 request,
             )
+        }
+
+        /**
+         * True when the unique work for [recordingId] is queued or running and carries [paramsTag]. The params live in
+         * the work's tags, so they survive a process restart. A main-thread caller (the lookup blocks briefly) or a
+         * failed lookup answers false, which falls back to REPLACE.
+         */
+        private fun activeWorkHasParams(manager: WorkManager, recordingId: String, paramsTag: String): Boolean {
+            if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) return false
+            return runCatching {
+                manager.getWorkInfosForUniqueWork(UNIQUE_PREFIX + recordingId).get(2, TimeUnit.SECONDS).any { info ->
+                    !info.state.isFinished && paramsTag in info.tags
+                }
+            }.getOrDefault(false)
         }
 
         /** Y18: API transcription/summary/diarization needs connectivity. */

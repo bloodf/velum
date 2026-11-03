@@ -46,6 +46,16 @@ class RecordingJobSchedulerTest {
     }
 
     @Test
+    fun recordingWorkParamsMatch_comparesTemplateModelProfileAndRetranscribe() {
+        val o = ApiModelOverride(profileId = "work", modelId = "m")
+        assertTrue(recordingWorkParamsMatch("velum.meeting", true, o, "velum.meeting", true, ApiModelOverride(profileId = "work", modelId = "m")))
+        assertTrue(recordingWorkParamsMatch(null, true, null, "", true, ApiModelOverride()), "blank equals null")
+        assertFalse(recordingWorkParamsMatch("velum.meeting", true, null, null, true, null))
+        assertFalse(recordingWorkParamsMatch("velum.meeting", true, o, "velum.meeting", true, ApiModelOverride(profileId = "work", modelId = "other")))
+        assertFalse(recordingWorkParamsMatch("velum.meeting", true, null, "velum.meeting", false, null))
+    }
+
+    @Test
     fun coroutineScheduler_dedupesPerRecordingId() = runBlocking {
         val repo = VelumRepository(createDatabase(DriverFactory()))
         val settings = SettingsRepository(InMemorySecureStore()).also {
@@ -133,12 +143,12 @@ class RecordingJobSchedulerTest {
 
     @Test
     fun micFinalizeThenAutoFlowReplace_firesThePostActionOnceAndEndsReady() =
-        micFinalizeScenario { processor, scope -> createCoroutineRecordingJobScheduler(processor, scope) }
+        micFinalizeScenario(expectedAsrCalls = 1) { processor, scope -> createCoroutineRecordingJobScheduler(processor, scope) }
 
     /** WorkManager REPLACE order: the replacement is started first, then the old job is cancelled and unwinds. */
     @Test
     fun micFinalizeThenAutoFlowReplace_whenTheReplacementStartsBeforeTheOldJobUnwinds() =
-        micFinalizeScenario { processor, scope ->
+        micFinalizeScenario(expectedAsrCalls = 2) { processor, scope ->
             val jobs = MutableStateFlow<Map<String, kotlinx.coroutines.Job>>(emptyMap())
             RecordingJobScheduler { id, template, retranscribe, override ->
                 val next = scope.launch { processor.process(id, template, retranscribe, override).collect { } }
@@ -149,6 +159,7 @@ class RecordingJobSchedulerTest {
         }
 
     private fun micFinalizeScenario(
+        expectedAsrCalls: Int,
         makeScheduler: (RecordingProcessor, CoroutineScope) -> RecordingJobScheduler,
     ) = runBlocking {
         val repo = VelumRepository(createDatabase(DriverFactory()))
@@ -160,13 +171,15 @@ class RecordingJobSchedulerTest {
         }
         val asrCalls = java.util.concurrent.atomic.AtomicInteger()
         val firstStarted = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val releaseFirst = kotlinx.coroutines.CompletableDeferred<Unit>()
         val asr = object : Transcriber {
             override val engineId = "asr"
             override suspend fun transcribe(input: AudioInput, modelId: String): TranscriptionResult {
                 // The first (MicFinalize) job is mid-ASR when AutoFlow's replacement arrives and cancels it.
                 if (asrCalls.incrementAndGet() == 1) {
                     firstStarted.complete(Unit)
-                    kotlinx.coroutines.awaitCancellation()
+                    // Cancelled when a scheduler replaces the job; otherwise it finishes once the runner has enqueued.
+                    releaseFirst.await()
                 }
                 return TranscriptionResult(text = "hi", engineId = engineId, modelId = modelId)
             }
@@ -217,6 +230,8 @@ class RecordingJobSchedulerTest {
             runner.start()
             delay(300) // the first pass only seeds
             repo.updateRecordingTitle("rec-mic", "Mic 2") // a row change wakes the runner while the first job runs
+        delay(500) // the runner has now enqueued its own request for the same work
+        releaseFirst.complete(Unit)
             try {
                 withTimeout(20_000) { while (repo.getRecording("rec-mic")?.status != "ready") delay(50) }
             } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
@@ -226,7 +241,7 @@ class RecordingJobSchedulerTest {
             delay(1_000) // any late second post-action or status overwrite would show up here
             assertEquals("ready", repo.getRecording("rec-mic")?.status)
             assertEquals(1, shares.get(), "post-action must fire exactly once")
-            assertEquals(2, asrCalls.get(), "the first job was replaced, and only once")
+            assertEquals(expectedAsrCalls, asrCalls.get(), "ASR runs once per surviving job")
         } finally {
             collector.cancel()
             runner.stop()
