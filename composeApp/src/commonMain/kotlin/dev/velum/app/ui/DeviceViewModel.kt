@@ -179,7 +179,7 @@ class DeviceViewModel(
         cancelDownload()
         withTimeoutOrNull(wipeJoinTimeout) { downloadJob?.join() }
         return try {
-            deletePartialTransfers()
+            withContext(Dispatchers.IO) { deletePartialTransfers() }
             true
         } catch (_: Exception) {
             false

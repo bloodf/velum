@@ -24,7 +24,7 @@ object WebhookSigner {
         return constantTimeEquals(expected, headerValue.trim())
     }
 
-    private fun constantTimeEquals(a: String, b: String): Boolean {
+    internal fun constantTimeEquals(a: String, b: String): Boolean {
         if (a.length != b.length) return false
         var diff = 0
         for (i in a.indices) {

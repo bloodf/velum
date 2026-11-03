@@ -277,6 +277,16 @@ class DeviceResumeRestartTest {
         } finally { owner.clear(); Dispatchers.resetMain() }
     }
 
+    @Test fun wipe_deletes_partials_off_the_callers_thread() {
+        try {
+            var deleteThread: Thread? = null
+            val vm = run(peripheral(), deletePartials = { deleteThread = Thread.currentThread() }, await = false)
+            runBlocking { vm.wipePartialDownloads() }
+            assertNotNull(deleteThread)
+            assertFalse(deleteThread === Thread.currentThread(), "partial deletion must not run on the caller's thread (#237)")
+        } finally { owner.clear(); Dispatchers.resetMain() }
+    }
+
     @Test fun wipe_stops_a_running_download_and_deletes_the_partials() {
         try {
             val vm = run(peripheral(), persist = { awaitCancellation() }, await = false)

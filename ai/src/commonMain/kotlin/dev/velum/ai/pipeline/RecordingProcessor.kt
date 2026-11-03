@@ -18,6 +18,7 @@ import dev.velum.ai.engine.requiredLocalModelId
 import dev.velum.ai.local.ModelNotReadyException
 import dev.velum.ai.local.ModelStoreDir
 import dev.velum.ai.local.defaultModelStoreRoot
+import dev.velum.ai.local.walkFiles
 import dev.velum.core.data.VelumRepository
 import dev.velum.core.model.ProcessingWarning
 import dev.velum.core.model.ComputeMode
@@ -51,11 +52,25 @@ internal fun isOutOfStorage(t: Throwable): Boolean {
     }
 }
 
-/** Removes spilled PCM dirs (`tmp/pcm-*`) left by a process death mid-decode. Run only when no job is active. */
-fun sweepOrphanPcmSpill(root: ModelStoreDir = defaultModelStoreRoot()): Int =
+/** A spill dir untouched for this long belongs to no live job (a decode keeps appending to its file). */
+const val STALE_PCM_SPILL_AGE_MS: Long = 24L * 60L * 60L * 1000L
+
+/**
+ * Removes spilled PCM dirs (`tmp/pcm-*`) left by a process death mid-decode, but only when nothing inside them
+ * (nor the dir itself) changed since [olderThanEpochMs]. A job still decoding keeps modifying its file, so it is
+ * kept. Returns how many were removed. Android calls this at startup; desktop has no caller yet.
+ */
+fun sweepOrphanPcmSpill(
+    olderThanEpochMs: Long,
+    root: ModelStoreDir = defaultModelStoreRoot(),
+): Int =
     root.resolve("tmp").takeIf { it.isDirectory() }?.listChildren().orEmpty()
         .filter { it.name.startsWith("pcm-") }
+        .filter { newestChangeMillis(it) < olderThanEpochMs }
         .count { runCatching { it.deleteRecursively() }; !it.exists() }
+
+private fun newestChangeMillis(dir: ModelStoreDir): Long =
+    maxOf(dir.lastModifiedMillis(), dir.walkFiles().maxOfOrNull { it.lastModifiedMillis() } ?: 0L)
 
 /**
  * End-to-end job: decode → transcribe → diarize → markdown transcript → summarize → DB.
