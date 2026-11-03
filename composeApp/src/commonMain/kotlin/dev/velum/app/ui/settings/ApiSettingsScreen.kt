@@ -3,6 +3,8 @@ package dev.velum.app.ui.settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.semantics.Role
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -430,7 +432,7 @@ private fun TaskBindingEditor(
 }
 
 @Composable
-private fun TaskModelPicker(
+internal fun TaskModelPicker(
     title: String,
     selectedId: String?,
     models: List<AiModelInfo>,
@@ -447,7 +449,7 @@ private fun TaskModelPicker(
                     .clip(RoundedCornerShape(10.dp))
                     .background(if (selected) VelumSurface else VelumBg)
                     .border(1.dp, if (selected) VelumBlack else VelumDivider, RoundedCornerShape(10.dp))
-                    .clickable { onSelect(model.id) }
+                    .selectable(selected = selected, role = Role.RadioButton) { onSelect(model.id) }
                     .padding(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
