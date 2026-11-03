@@ -97,6 +97,8 @@ class DownloadBackgroundDeviceTest {
         context.getSystemService(NotificationManager::class.java).activeNotifications
             .any { it.id == DownloadProgressNotifier.DEVICE_SESSION_NOTIFICATION_ID }
 
+    private fun finished(vm: DeviceViewModel) = vm.sessionUi.value.downloadingSessionId == null
+
     private fun await(what: String, timeoutMs: Long = 30_000, condition: () -> Boolean) {
         val deadline = SystemClock.uptimeMillis() + timeoutMs
         while (!condition()) {
@@ -111,6 +113,7 @@ class DownloadBackgroundDeviceTest {
         automation.grantRuntimePermission(context.packageName, Manifest.permission.POST_NOTIFICATIONS)
         val device = UiDevice.getInstance(instrumentation)
         device.wakeUp()
+        device.executeShellCommand("wm dismiss-keyguard")
         val power = context.getSystemService(PowerManager::class.java)
         val store = File(context.cacheDir, "download-background-synthetic").apply { deleteRecursively() }
         val peripheral = FakePlaudPeripheral(
@@ -150,16 +153,16 @@ class DownloadBackgroundDeviceTest {
 
                 var moved = false
                 val deadline = SystemClock.uptimeMillis() + TRANSFER_TIMEOUT_MS
-                while (vm.sessionUi.value.lastDownloadedRecordingId == null) {
-                    assertTrue(vm.sessionUi.value.statusMessage, vm.sessionUi.value.downloadingSessionId != null)
+                while (true) {
+                    val ui = vm.sessionUi.value // one snapshot: it can finish between two reads
+                    if (ui.lastDownloadedRecordingId != null) break
+                    assertTrue(ui.statusMessage, ui.downloadingSessionId != null)
                     assertTrue("Timed out with the screen off", SystemClock.uptimeMillis() < deadline)
                     assertFalse("The screen came back on, so the check no longer means anything", power.isInteractive)
-                    val progress = vm.sessionUi.value.downloadProgress
-                    if (progress != null && progress > atScreenOff) moved = true
-                    if (progress != null) {
-                        assertTrue("The service left the foreground mid-transfer", serviceInForeground())
-                        assertTrue("The notification disappeared mid-transfer", notificationShown())
-                    }
+                    if ((ui.downloadProgress ?: 0f) > atScreenOff) moved = true
+                    // Finishing right after the snapshot releases both, which is not a failure.
+                    assertTrue("The service left the foreground mid-transfer", serviceInForeground() || finished(vm))
+                    assertTrue("The notification disappeared mid-transfer", notificationShown() || finished(vm))
                     SystemClock.sleep(500)
                 }
 
@@ -176,12 +179,13 @@ class DownloadBackgroundDeviceTest {
         } finally {
             instrumentation.runOnMainSync { owner.clear() }
             device.wakeUp()
+            device.executeShellCommand("wm dismiss-keyguard")
             store.deleteRecursively()
         }
     }
 
     private companion object {
-        /** With [FRAME_DELAY_MS] and the peripheral's 100-byte chunks, about a minute of transfer. */
+        /** With [FRAME_DELAY_MS] and the peripheral's 100-byte chunks, about 80 s of transfer (79.8 s on the JVM). */
         const val TRANSFER_BYTES = 400_000
         const val FRAME_DELAY_MS = 15L
         const val TRANSFER_TIMEOUT_MS = 8 * 60 * 1000L
