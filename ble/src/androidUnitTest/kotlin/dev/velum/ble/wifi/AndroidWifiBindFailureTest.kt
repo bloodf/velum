@@ -117,7 +117,13 @@ class AndroidWifiBindFailureTest {
         val request = RecordingConnectivityShadow.requests.single()
         assertTrue(request.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI))
         assertTrue(!request.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR))
-        assertIs<WifiNetworkSpecifier>(request.networkSpecifier, "join must use WifiNetworkSpecifier")
+        val spec = assertIs<WifiNetworkSpecifier>(request.networkSpecifier, "join must use WifiNetworkSpecifier")
+        // WifiNetworkSpecifier has no public getters; read the framework fields (synthetic values only).
+        fun field(name: String): Any? = spec.javaClass.getDeclaredField(name).apply { isAccessible = true }.get(spec)
+        val ssid = field("ssidPatternMatcher") as android.os.PatternMatcher
+        assertEquals("PLAUD-FAKE", ssid.path)
+        assertEquals(android.os.PatternMatcher.PATTERN_LITERAL, ssid.type)
+        assertEquals("\"password12\"", (field("wifiConfiguration") as android.net.wifi.WifiConfiguration).preSharedKey)
         join.cancel()
     }
 }

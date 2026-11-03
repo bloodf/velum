@@ -128,6 +128,7 @@ class AndroidWifiSoftApJoinerTest {
         val result = outcome.await()
         assertIs<WifiTransferCoordinator.Outcome.BleFallback>(result)
         assertTrue(result.reason.contains("SoftAP network unavailable"), result.reason)
+        assertTrue(!result.reason.contains("PLAUD-FAKE"), "the SSID must not reach the fallback reason")
         assertEquals(ble.toList(), result.bytes.toList())
         assertTrue(shadowCm.networkCallbacks.isEmpty(), "failed join still releases the network request")
         assertNull(joiner.boundNetwork())
