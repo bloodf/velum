@@ -253,19 +253,8 @@ val DefaultLocalCatalog: List<LocalModelSpec> = listOf(
         sha256 = "181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c",
         archiveFileName = "gemma-4-E2B-it.litertlm",
     ),
-    LocalModelSpec(
-        id = "qwen3-4b-instruct-2507",
-        displayName = "Qwen3-4B-Instruct-2507",
-        kind = LocalModelKind.Llm,
-        approxBytes = 2500L * 1024 * 1024,
-        license = "Apache-2.0",
-        notes = "Alternate on-device summaries. ~2.5 GB.",
-        languages = "Many languages",
-        downloadUrl =
-            "https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
-        sha256 = "3605803b982cb64aead44f6c1b2ae36e3acdb41d8e46c8a94c6533bc4c67e597",
-        archiveFileName = "Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
-    ),
+    // Qwen3-4B-Instruct-2507 (GGUF, llama.cpp) is not offered: no shipping runtime loads GGUF (#273).
+    // Re-add it together with a runtime that does; CatalogFormatsTest fails until both exist.
 )
 
 data class LocalModelState(
