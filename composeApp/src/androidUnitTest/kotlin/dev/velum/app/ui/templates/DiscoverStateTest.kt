@@ -112,15 +112,33 @@ class DiscoverStateTest {
             java.io.File("src/commonMain/kotlin/dev/velum/app/ui/templates/TemplatesScreen.kt"),
             java.io.File("composeApp/src/commonMain/kotlin/dev/velum/app/ui/templates/TemplatesScreen.kt"),
         ).first { it.isFile }.readText()
-        // Only the grid's DSL scope: from its opening brace to the end of the grid, before the search sheet.
-        val scope = src.substringAfter("LazyVerticalGrid(").substringAfter(") {\n            // Filter rows scroll")
-            .substringBefore("\n    if (showSearch)")
-        assertTrue(scope.length > 500, "the guard must actually cover the grid scope")
-        for (stateRead in listOf("showLoadingState(", "showEmptyState(", "showPagingSentinel(", "if (loadFailed)", "ranking.", "ranking)")) {
-            assertFalse(Regex("(?<!rankingNow)" + Regex.escape(stateRead)).containsMatchIn(scope), "the grid scope must not read $stateRead; use the plan")
+        // Only the grid's DSL scope: from its opening brace to the end of the grid, before the search sheet. A moved
+        // marker yields "" here (missingDelimiterValue), so the length check fails instead of the guard going quiet.
+        val scope = src.substringAfter("LazyVerticalGrid(", "").substringAfter(") {\n            // Filter rows scroll", "")
+            .substringBefore("\n    if (showSearch)", "")
+        assertTrue(scope.length > 500, "the guard does not cover the grid scope any more; update its markers")
+        val code = scope.lines().filterNot { it.trim().startsWith("//") }
+        val dsl = code.filter { it.startsWith("            ") && !it.startsWith("             ") } // the scope's own level
+        // The optional blocks: exactly the plan's five, each a bare `if (plan.x) {`.
+        val planIfs = dsl.filter { Regex("""^ {12}if \(plan\.\w+\) \{$""").matches(it) }
+        assertTrue(planIfs.size >= 5, "expected the five plan blocks, found ${planIfs.size}")
+        val otherControl = dsl.filter { Regex("""^ {12}(if|when|for|while)\b""").containsMatchIn(it) } - planIfs.toSet()
+        assertTrue(otherControl.isEmpty(), "the grid scope branches on something other than the plan: $otherControl")
+        val badItems = dsl.filter { it.trim().startsWith("items(") && !it.trim().startsWith("items(rows,") }
+        assertTrue(badItems.isEmpty(), "the grid items must come from the captured rows: $badItems")
+        // No state a screen writes may appear on a scope-level line, even outside an if (a `when`, an argument).
+        val stateNames = listOf(
+            "loadFailed", "shownTick", "templateTick", "totalMatches", "pages", "ranking", "searchQuery", "selectedCategory",
+            "selectedTags", "selectedLang", "tab", "shown", "visible", "fullImportRunning", "discoverFeaturedOnly",
+        )
+        for (line in dsl) for (name in stateNames) {
+            assertFalse(Regex("\\b$name\\b").containsMatchIn(line), "scope-level line reads state '$name': ${line.trim()}")
         }
-        // Every conditional at the scope's own level (12 spaces) must be about the plan, nothing else.
-        assertFalse(Regex("(?m)^ {12}if \\((?!plan\\.)").containsMatchIn(scope), "a DSL-level if reads something other than the plan")
-        assertTrue(scope.contains("plan.showRanking") && scope.contains("plan.showPagingSentinel"))
+        // The old helper calls and a bare `ranking` read must be gone from the whole scope.
+        val text = code.joinToString("\n")
+        for (stateRead in listOf("showLoadingState(", "showEmptyState(", "showPagingSentinel(", "if (loadFailed)", "ranking.", "ranking)")) {
+            assertFalse(text.contains(stateRead), "the grid scope must not read $stateRead; use the plan")
+        }
+        assertTrue(text.contains("plan.showRanking") && text.contains("plan.showPagingSentinel"))
     }
 }

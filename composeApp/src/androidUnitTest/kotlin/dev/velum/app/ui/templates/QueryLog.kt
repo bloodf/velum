@@ -27,6 +27,10 @@ internal class QueryLog {
 
     private fun stamp() = "+${(System.nanoTime() - t0) / 1_000_000}ms"
 
+    /**
+     * Never call this through `runBlocking` on the test thread: the result hops to Main, which is that thread, and
+     * the call deadlocks. Launch it on another scope and wait with `waitWhileBusy`.
+     */
     private suspend fun <T> logged(what: String, block: suspend () -> T): T {
         lines += "${stamp()} start $what"
         running.incrementAndGet(); touch()
@@ -40,8 +44,8 @@ internal class QueryLog {
             throw e
         } catch (e: Throwable) {
             // A failure resumes the screen's catch block, which writes state: that must happen on Main too, as in
-            // production (off-main state writes are the mechanism behind #202). NonCancellable so a cancelled
-            // caller still gets its failure delivered on the right thread.
+            // production (off-main state writes are a suspected mechanism for #202). NonCancellable so the hop still
+            // happens if the caller is cancelled meanwhile; the original failure is rethrown either way.
             withContext(NonCancellable + Dispatchers.Main) { lines += "${stamp()} FAIL  $what: ${e::class.simpleName}" }
             throw e
         } finally {

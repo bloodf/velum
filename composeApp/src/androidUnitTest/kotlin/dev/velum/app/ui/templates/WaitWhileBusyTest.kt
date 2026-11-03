@@ -62,6 +62,8 @@ class WaitWhileBusyTest {
         val base = DiscoverQueries(page = { _, _, _ -> Thread.sleep(3_000); emptyList() }, count = { 0 }, facets = { error("unused") })
         val queries = log.wrapQueries(base)
         scope.launch { queries.page(dev.velum.core.templates.DiscoverFilter(), 1, 0); finished.set(true) }
+        // Do not start waiting before the query is in flight, or an idle log looks like a stall.
+        while (log.inFlight() == 0 && !finished.get()) Thread.sleep(5)
         // quietMs (1 s) is shorter than the query (3 s): in flight is progress, so the wait must not give up.
         compose.waitWhileBusy(log, quietMs = 1_000, capMs = 60_000, onTimeout = { reason, e -> throw AssertionError("gave up on a running query ($reason)", e) }) { finished.get() }
         assertTrue(finished.get())
@@ -74,9 +76,9 @@ class WaitWhileBusyTest {
         // Off the test thread: the result hops to Main, which is the thread this test is on.
         val query = scope.launch { log.wrapQueries(base).page(dev.velum.core.templates.DiscoverFilter(), 1, 0) }
         compose.waitWhileBusy(log, onTimeout = { reason, e -> throw AssertionError("query never finished ($reason)", e) }) { query.isCompleted }
-        Thread.sleep(2_500) // the log has now been quiet for longer than quietMs below
+        Thread.sleep(5_500) // the log has now been quiet for longer than quietMs below, by a margin that survives load
         val becomesTrueAt = System.nanoTime() + 1_800_000_000L // after more than 1 s of waiting, less than quietMs
-        compose.waitWhileBusy(log, quietMs = 2_000, capMs = 60_000, onTimeout = { reason, e -> throw AssertionError("gave up early ($reason)", e) }) {
+        compose.waitWhileBusy(log, quietMs = 5_000, capMs = 60_000, onTimeout = { reason, e -> throw AssertionError("gave up early ($reason)", e) }) {
             System.nanoTime() >= becomesTrueAt
         }
     }
