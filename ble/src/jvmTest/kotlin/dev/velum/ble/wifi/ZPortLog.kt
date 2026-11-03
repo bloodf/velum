@@ -14,4 +14,6 @@ object ZPortLog {
     }
 
     fun handedOut(): Int = entries.size
+
+    fun lastPort(): Int? = synchronized(entries) { entries.lastOrNull { it.second == Thread.currentThread().id }?.first }
 }

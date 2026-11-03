@@ -47,18 +47,23 @@ class JavaWebsocketTransferServer : WifiTransferServer {
         expectedPreamble.set(preamble)
         val host = bindHost ?: "127.0.0.1"
         val address = InetSocketAddress(host, port)
+        val dlog = java.util.concurrent.ConcurrentLinkedQueue<String>().also { ZDebugLog.byPort[port] = it }
+        fun d(e: String) { dlog += "${System.nanoTime() / 1_000_000 % 100000} ${Thread.currentThread().name}: $e" }
         val server = object : WebSocketServer(address) {
             override fun onOpen(conn: WebSocket, handshake: ClientHandshake) {
+                d("open ${conn.remoteSocketAddress?.port}")
                 // Authorization is per connection: the peer is only recorded after its own preamble.
             }
 
             // The device's close frame, on the thread that delivers its frames, so after all of them. onClose runs
             // on the selector thread and can overtake frames still being decoded, so it only covers a lost connection.
             override fun onClosing(conn: WebSocket, code: Int, reason: String, remote: Boolean) {
+                d("closing ${conn.remoteSocketAddress?.port} code=$code remote=$remote auth=${clientRef.get() === conn} subs=${incoming.subscriptionCount.value} read=${consumerRead.get()}")
                 if (remote && clientRef.get() === conn) signalPeerClosed(conn)
             }
 
             override fun onClose(conn: WebSocket, code: Int, reason: String, remote: Boolean) {
+                d("close ${conn.remoteSocketAddress?.port} code=$code remote=$remote auth=${clientRef.get() === conn} subs=${incoming.subscriptionCount.value} read=${consumerRead.get()}")
                 // Only the authenticated peer counts; a superseded or unauthenticated close changes nothing.
                 if (clientRef.compareAndSet(conn, null)) signalPeerClosed(conn)
             }
@@ -72,6 +77,7 @@ class JavaWebsocketTransferServer : WifiTransferServer {
                 message.get(bytes)
                 // The single authenticated peer is clientRef; any other connection must send its own preamble.
                 // Latest authenticated wins: a device reconnect must not be locked out by a stale socket.
+                d("msg ${conn.remoteSocketAddress?.port} n=${bytes.size} auth=${clientRef.get() === conn} subs=${incoming.subscriptionCount.value}")
                 if (clientRef.get() !== conn) {
                     if (WifiTransferPreamble.matches(bytes, expectedPreamble.get())) {
                         clientRef.getAndSet(conn)?.let { old -> runCatching { old.close(1001, "superseded") } }
