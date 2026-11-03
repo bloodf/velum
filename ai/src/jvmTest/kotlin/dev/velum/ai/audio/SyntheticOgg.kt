@@ -29,7 +29,7 @@ object SyntheticOgg {
         }
     }
 
-    fun page(packets: List<ByteArray>, seq: Int, flags: Int = 0): ByteArray {
+    fun page(packets: List<ByteArray>, seq: Int, flags: Int = 0, granule: Long = 0): ByteArray {
         val table = ArrayList<Byte>()
         for (p in packets) {
             var n = p.size
@@ -40,11 +40,24 @@ object SyntheticOgg {
         val out = ByteArray(27 + table.size + body.size)
         "OggS".encodeToByteArray().copyInto(out)
         out[5] = flags.toByte()
+        for (i in 0 until 8) out[6 + i] = (granule shr (8 * i)).toByte()
         out[18] = seq.toByte()
         out[26] = table.size.toByte()
         table.forEachIndexed { i, b -> out[27 + i] = b }
         body.copyInto(out, 27 + table.size)
+        val crc = crc(out)
+        for (i in 0 until 4) out[22 + i] = (crc shr (8 * i)).toByte()
         return out
+    }
+
+    /** Ogg page CRC-32 (poly 0x04C11DB7, MSB first, init 0) over the page with its CRC field zeroed. */
+    fun crc(page: ByteArray): Int {
+        var c = 0
+        for (b in page) {
+            c = c xor ((b.toInt() and 0xff) shl 24)
+            repeat(8) { c = if (c < 0) (c shl 1) xor 0x04C11DB7 else c shl 1 }
+        }
+        return c
     }
 
     fun tags(): ByteArray = "OpusTags".encodeToByteArray() + ByteArray(8)

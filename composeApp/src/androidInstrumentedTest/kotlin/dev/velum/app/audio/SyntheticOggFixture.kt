@@ -4,7 +4,9 @@ import java.util.Base64
 
 /**
  * Synthetic Ogg Opus: 50 packets (1 s) of a phase-continuous 440 Hz tone, 48 kHz stereo, OpusHead pre-skip 312,
- * encoded once with libopus on the JVM. No recorded audio. Expected decode: 16 kHz mono, 50 * 320 - 104 samples.
+ * encoded once with libopus on the JVM. No recorded audio. Conformant pages: real Ogg CRCs, granule 0 on the
+ * header pages and 48000 (total 48 kHz samples decoded) on the last, so MediaExtractor/ffmpeg read it too.
+ * Expected decode: 16 kHz mono, 50 * 320 - 104 samples (ffmpeg gives the same 15896).
  */
 object SyntheticOggFixture {
     const val PACKETS = 50
@@ -12,9 +14,25 @@ object SyntheticOggFixture {
     const val TONE_HZ = 440.0
     val bytes: ByteArray by lazy { Base64.getDecoder().decode(BASE64) }
 
+    /** The same stream with another OpusHead pre-skip (header page CRC recomputed), for head-vs-tail comparisons. */
+    fun withPreSkip(preSkip48k: Int): ByteArray {
+        val out = bytes.copyOf()
+        val headPage = 27 + 1 + 19 // OpusHead is one 19-byte packet on the first page
+        out[28 + 10] = (preSkip48k and 0xff).toByte()
+        out[28 + 11] = ((preSkip48k shr 8) and 0xff).toByte()
+        out.fill(0, 22, 26)
+        var c = 0
+        for (i in 0 until headPage) {
+            c = c xor ((out[i].toInt() and 0xff) shl 24)
+            repeat(8) { c = if (c < 0) (c shl 1) xor 0x04C11DB7 else c shl 1 }
+        }
+        for (i in 0 until 4) out[22 + i] = (c shr (8 * i)).toByte()
+        return out
+    }
+
     private const val BASE64 =
-        "T2dnUwACAAAAAAAAAAAAAAAAAAAAAAAAAAABE09wdXNIZWFkAQI4AYC7AAAAAABPZ2dTAAAAAAAAAAAAAAAAAAABAAAAAAAAAAEQ" +
-        "T3B1c1RhZ3MAAAAAAAAAAE9nZ1MABAAAAAAAAAAAAAAAAAIAAAAAAAAANv+P/yn/Iv8D+fj5+Pn4+fj5+Pn4+fj5+Pn4+fj5+Pn4" +
+        "T2dnUwACAAAAAAAAAAAAAAAAAAAAABzVxfcBE09wdXNIZWFkAQI4AYC7AAAAAABPZ2dTAAAAAAAAAAAAAAAAAAABAAAAC5lXUwEQ" +
+        "T3B1c1RhZ3MAAAAAAAAAAE9nZ1MABIC7AAAAAAAAAAAAAAIAAAAyiFfDNv+P/yn/Iv8D+fj5+Pn4+fj5+Pn4+fj5+Pn4+fj5+Pn4" +
         "+fj5+Pn4+fj5+Pn4+fj5+Pn4+fj5+Px3PVtEeTFMIu9tgo1QjHCF5Q7rt1+kBH9Tfd0IvoTWM9AywqD3Lf1muHr4/9oMOeMAK5Yq" +
         "FlstMGjZmlWZoJ3TcdfcREDaBueslV/PiNp6jhvnKr2riU1fR9AA9sh4EUWf1/W0OeBRqzWv2d13BrSzENrhR3jp+P002zsiIsMB" +
         "EoSTs/4oayotm2dAIPkgqNrG6OvauYERb6VXFoZ3K3L8Kx1x0c2cKR5Gz5u7B9W4af3aHJxQNFPl/BLKsGyKL3yIgMM/MgreMBh6" +

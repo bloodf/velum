@@ -99,6 +99,15 @@ class OggOpusDecodeDeviceTest {
         assertEquals("pre-skip dropped, 16 kHz mono PCM16", expectedSamples * 2L, meta.sizeBytes)
         assertEquals(meta.sizeBytes, pcmFile.length())
         val pcm = samples(pcmFile)
+        // Same stream with pre-skip 0: the pre-skip result must be that decode minus its first 104 samples,
+        // so dropping from the tail (same length) cannot pass.
+        val noSkipSrc = File(dir, "noskip.ogg").apply { writeBytes(SyntheticOggFixture.withPreSkip(0)) }
+        val noSkipPcm = File(dir, "noskip.pcm")
+        createOpusDecoder().decodePathToPcmFile(noSkipSrc.path, ModelStoreDir(noSkipPcm.path))
+        val full = samples(noSkipPcm)
+        assertEquals(SyntheticOggFixture.PACKETS * 320, full.size)
+        val skip = SyntheticOggFixture.PRE_SKIP_48K / 3
+        assertTrue("head dropped", full.copyOfRange(skip, full.size).contentEquals(pcm))
         val durationMs = pcm.size * 1000L / 16_000
         assertTrue("duration $durationMs ms", abs(durationMs - 993) <= 20)
         // Skip codec settling, then count rising zero crossings: wrong rate/channels would move the pitch.
@@ -113,14 +122,15 @@ class OggOpusDecodeDeviceTest {
     @Test fun wrong_key_never_reaches_successful_decode_and_leaks_no_key() {
         val file = plaudFile(SyntheticOggFixture.bytes)
         val other = rsaKeyPairToPem()
-        val outcome = runCatching {
-            val garbage = decrypt(file, other.second)
-            val src = File(dir, "bad.ogg").apply { writeBytes(garbage) }
-            createOpusDecoder().decodePathToPcmFile(src.path, ModelStoreDir(File(dir, "bad.pcm").path))
-        }
-        assertTrue("wrong key must not decode", outcome.isFailure)
-        val text = outcome.exceptionOrNull().toString()
-        assertFalse("no key material in the error", text.contains("PRIVATE KEY") || text.contains(other.second.lines()[1]))
+        // PKCS#1 unwrap with the wrong RSA key fails in the decrypt step, before any decode runs.
+        val failure = runCatching { decrypt(file, other.second) }.exceptionOrNull()
+        assertTrue("wrong key must fail at decrypt, got $failure", failure != null)
+        val chain = generateSequence(failure) { it.cause }.toList()
+        assertTrue("a security exception in the chain: $chain", chain.any { it is java.security.GeneralSecurityException })
+        val text = chain.joinToString(" | ") { it.toString() }
+        val pemBody = other.second.lines().first { it.isNotBlank() && !it.startsWith("-----") }
+        assertFalse("no key material in the error chain", text.contains("PRIVATE KEY") || text.contains(pemBody))
+        assertFalse("no key bytes either", text.contains(key.joinToString("") { "%02x".format(it) }))
     }
 
     @Test fun platform_normalizer_turns_the_decrypted_ogg_into_16k_mono_wav() {
@@ -132,5 +142,24 @@ class OggOpusDecodeDeviceTest {
         val header = ByteBuffer.wrap(wav).order(ByteOrder.LITTLE_ENDIAN)
         assertEquals("channels", 1, header.getShort(22).toInt())
         assertEquals("sample rate", 16_000, header.getInt(24))
+        // Not silence: find the data chunk, then check level and pitch like the decoder test does.
+        var at = 12
+        var dataStart = -1
+        var dataLen = 0
+        while (at + 8 <= wav.size) {
+            val id = String(wav, at, 4, Charsets.US_ASCII)
+            val len = header.getInt(at + 4)
+            if (id == "data") { dataStart = at + 8; dataLen = minOf(len.toLong() and 0xffffffffL, (wav.size - dataStart).toLong()).toInt(); break }
+            at += 8 + len + (len and 1)
+        }
+        assertTrue("data chunk found", dataStart >= 0)
+        val pcm = ShortArray(dataLen / 2).also { header.position(dataStart); header.asShortBuffer().get(it) }
+        assertTrue("about 1 s of samples: ${pcm.size}", abs(pcm.size - 16_000) <= 960)
+        val steady = pcm.copyOfRange(1_600, pcm.size)
+        assertTrue("tone level", steady.maxOf { abs(it.toInt()) } > 1_000)
+        var crossings = 0
+        for (i in 1 until steady.size) if (steady[i - 1] < 0 && steady[i] >= 0) crossings++
+        val hz = crossings * 16_000.0 / steady.size
+        assertTrue("pitch $hz Hz", abs(hz - SyntheticOggFixture.TONE_HZ) < 10.0)
     }
 }
