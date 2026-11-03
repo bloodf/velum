@@ -12,7 +12,7 @@ Re-run after bumping any of the above, or monthly if Renovate is not yet enabled
 
 ## Recommendations
 
-1. Enable Renovate (or GitHub Dependabot) for Gradle version catalogs (onboarding PR #2).
+1. Enable Renovate (or GitHub Dependabot) for Gradle version catalogs. Renovate onboarding PR #2 was closed unmerged on 2026-10-30, so no update bot runs today; this is an owner decision. Until then pins live in `gradle/libs.versions.toml` and are spot-checked against OSV.
 2. ~~Optionally add an OSV-Scanner CI job~~ — landed as `osv-scan` in `.github/workflows/ci.yml` (`fail-on-vuln: false` until Renovate is on).
 3. Skip in-repo OWASP `dependencyCheck` unless the team wants HTML reports in CI artifacts.
 
