@@ -234,10 +234,12 @@ internal const val STALE_PART_AGE_MS = 30L * 60L * 1000L
 internal fun normalizedFileName(baseName: String, targetRateHz: Int, contentSha256: String): String =
     "${baseName}_${targetRateHz}_${contentSha256.take(12)}.wav"
 
+private val PART_FILE_NAME = Regex(""".+\.wav\.\d+\.part""")
+
 /** Deletes `*.wav.<n>.part` files in [dir] last modified before [olderThanEpochMs]; returns how many. */
 internal fun sweepStalePartFiles(dir: File, olderThanEpochMs: Long): Int =
     dir.listFiles().orEmpty().count { f ->
-        f.isFile && Regex(""".+\.wav\.\d+\.part""").matches(f.name) && f.lastModified() < olderThanEpochMs && f.delete()
+        f.isFile && PART_FILE_NAME.matches(f.name) && f.lastModified() < olderThanEpochMs && f.delete()
     }
 
 internal data class WavHeader(

@@ -270,6 +270,21 @@ data class LocalModelState(
 object LocalModelErrors {
     const val StorageFull = "storage_full"
 
+    /** A download failed for a reason other than a full disk; the cause is not stored (it can carry a signed URL). */
+    const val DownloadFailed = "download_failed"
+
+    /**
+     * The error to store for a failed download. Only the manager's own plain messages are kept (they name the status
+     * or the file, never the URL); anything from the network stack can carry a signed URL, so it becomes a code.
+     */
+    fun forFailure(t: Throwable): String = when {
+        isStorageFull(t) -> StorageFull
+        t is IllegalStateException && t.message?.let { m -> OWN_MESSAGES.any { m.startsWith(it) } } == true -> t.message!!
+        else -> DownloadFailed
+    }
+
+    private val OWN_MESSAGES = listOf("Download failed: HTTP ", "SHA-256 mismatch for ", "Could not move ", "Incomplete model files", "Model '")
+
     fun isStorageFull(t: Throwable): Boolean =
         generateSequence(t) { it.cause }.take(8).any {
             val m = it.message.orEmpty()
@@ -376,7 +391,7 @@ class LocalModelManager(
                 update(id) {
                     it.copy(
                         status = LocalModelStatus.Failed, progress = 0f,
-                        error = if (LocalModelErrors.isStorageFull(e)) LocalModelErrors.StorageFull else e.message ?: e.toString(),
+                        error = LocalModelErrors.forFailure(e),
                     )
                 }
             }
@@ -452,7 +467,7 @@ class LocalModelManager(
                 it.copy(
                     status = LocalModelStatus.Failed,
                     progress = 0f,
-                    error = "Model download URL must use https:// (got: $url)",
+                    error = "Model download URL must use https://",
                 )
             }
             emit(requireNotNull(stateFor(id)))
@@ -601,7 +616,7 @@ class LocalModelManager(
                 it.copy(
                     status = LocalModelStatus.Failed,
                     progress = 0f,
-                    error = if (LocalModelErrors.isStorageFull(t)) LocalModelErrors.StorageFull else t.message ?: t.toString(),
+                    error = LocalModelErrors.forFailure(t),
                 )
             }
             emit(requireNotNull(stateFor(id)))

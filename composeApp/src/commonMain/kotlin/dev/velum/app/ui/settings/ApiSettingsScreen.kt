@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -450,6 +451,7 @@ internal fun TaskModelPicker(
                     .background(if (selected) VelumSurface else VelumBg)
                     .border(1.dp, if (selected) VelumBlack else VelumDivider, RoundedCornerShape(10.dp))
                     .selectable(selected = selected, role = Role.RadioButton) { onSelect(model.id) }
+                    .heightIn(min = 48.dp)
                     .padding(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {

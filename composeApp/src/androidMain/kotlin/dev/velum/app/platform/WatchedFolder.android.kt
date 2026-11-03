@@ -69,6 +69,7 @@ object WatchedFolderStore {
                             copyWholeFile(dest, child.length()) { context.contentResolver.openInputStream(child.uri) }
                         }.getOrDefault(false)
                         if (copied) {
+                            removeLegacyWatchedCopy(destRoot, child.lastModified(), name, dest)
                             out += WatchedFolderEntry(
                                 displayName = name,
                                 uriString = child.uri.toString(),
@@ -130,5 +131,15 @@ fun rememberWatchedFolderPicker(onPicked: (treeUri: String) -> Unit): () -> Unit
 internal fun watchedCopyName(documentUri: String, lastModified: Long, name: String): String {
     val digest = java.security.MessageDigest.getInstance("SHA-256").digest(documentUri.encodeToByteArray())
     val short = digest.take(6).joinToString("") { (it.toInt() and 0xFF).toString(16).padStart(2, '0') }
-    return "${lastModified}_${short}_$name"
+    // Sanitised like every other imported name: a long or odd document name must not exceed the 255-byte limit.
+    return "${lastModified}_${short}_${sanitizeImportFileName(name)}"
+}
+
+/**
+ * Before the document-URI hash, a copy was named `<lastModified>_<name>`. Once the new copy exists the old one is
+ * dead weight (and would otherwise double the folder), so remove it. Never removes [current] itself.
+ */
+internal fun removeLegacyWatchedCopy(destRoot: File, lastModified: Long, name: String, current: File): Boolean {
+    val legacy = File(destRoot, "${lastModified}_$name")
+    return legacy.isFile && legacy.canonicalFile != current.canonicalFile && legacy.delete()
 }

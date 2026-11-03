@@ -236,6 +236,7 @@ private fun VelumRoot(container: AppContainer) {
                 is ImportResult.Failed -> {
                     snackbar.showSnackbar(strings.ux.genericError)
                 }
+                is ImportResult.Deleted -> Unit // watched-folder sync only
             }
         }
     }
@@ -257,6 +258,7 @@ private fun VelumRoot(container: AppContainer) {
                     navController.navigate(Routes.recording(result.existingRecordingId))
                 }
                 is ImportResult.Failed -> snackbar.showSnackbar(strings.ux.genericError)
+                is ImportResult.Deleted -> Unit // watched-folder sync only
             }
         }
     }
