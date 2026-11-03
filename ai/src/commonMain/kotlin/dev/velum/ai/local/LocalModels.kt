@@ -1,5 +1,7 @@
 package dev.velum.ai.local
 
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.distinctUntilChanged
 import dev.velum.ai.createDownloadHttpClient
 import io.ktor.client.HttpClient
 import io.ktor.client.request.prepareGet
@@ -357,10 +359,12 @@ class LocalModelManager(
      */
     fun startDownloads(ids: List<String>): Job = downloadScope.launch {
         val pending = ids.filterNot { isReady(it) }
-        _queued.update { it + pending }
+        val waiting = pending.toMutableList()
+        adjustQueued(pending, +1)
         try {
             for (id in pending) {
-            _queued.update { it - id }
+            waiting.remove(id)
+            adjustQueued(listOf(id), -1)
             // A model already on disk is never fetched again: a failed re-download must not cost the working copy.
             if (isReady(id)) continue
             try {
@@ -378,14 +382,26 @@ class LocalModelManager(
             }
             }
         } finally {
-            // Cancelled or finished: nothing left in this sequence may still look queued.
-            _queued.update { it - pending.toSet() }
+            // Cancelled or finished: only this sequence's own unstarted entries go; another sequence may still queue the same id.
+            adjustQueued(waiting, -1)
         }
     }
 
     /** Models waiting behind the one currently downloading in a [startDownloads] sequence. */
-    private val _queued = MutableStateFlow(setOf<String>())
-    val queuedIds: StateFlow<Set<String>> = _queued.asStateFlow()
+    private val queuedCounts = MutableStateFlow(mapOf<String, Int>())
+    val queuedIds: Flow<Set<String>> = queuedCounts.map { it.keys }.distinctUntilChanged()
+
+    // Counted per sequence, so two overlapping sequences never drop each other's queued ids.
+    private fun adjustQueued(ids: List<String>, delta: Int) {
+        queuedCounts.update { counts ->
+            val next = counts.toMutableMap()
+            ids.forEach { id ->
+                val n = (next[id] ?: 0) + delta
+                if (n > 0) next[id] = n else next.remove(id)
+            }
+            next
+        }
+    }
 
     /**
      * Safe to collect on any dispatcher: the transfer, hashing, rename and extraction run on [ioDispatcher] (#237).

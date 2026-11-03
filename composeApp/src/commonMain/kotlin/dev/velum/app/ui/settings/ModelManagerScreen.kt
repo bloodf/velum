@@ -53,6 +53,39 @@ import dev.velum.app.ui.theme.VelumSurface
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.launch
 
+/**
+ * A download outlives Model manager: when one fails while the user is elsewhere, say so with a way back.
+ * [currentRoute] is read when the failure happens; Model manager itself already shows its rows.
+ */
+@Composable
+fun ModelFailureNotifier(
+    states: kotlinx.coroutines.flow.Flow<List<LocalModelState>>,
+    snackbar: androidx.compose.material3.SnackbarHostState,
+    currentRoute: () -> String?,
+    onOpenModelManager: () -> Unit,
+) {
+    val latestStrings by androidx.compose.runtime.rememberUpdatedState(LocalStrings.current)
+    LaunchedEffect(states) {
+        var before: Map<String, LocalModelStatus>? = null
+        states.collect { list ->
+            val previous = before
+            before = list.associate { it.spec.id to it.status }
+            if (previous == null) return@collect
+            for (failed in dev.velum.ai.local.newlyFailed(previous, list)) {
+                if (currentRoute() == dev.velum.app.navigation.Routes.MODEL_MANAGER) continue // the row shows it
+                launch {
+                    val result = snackbar.showSnackbar(
+                        message = modelFailureNotice(failed, latestStrings),
+                        actionLabel = latestStrings.modelManager,
+                        withDismissAction = true,
+                    )
+                    if (result == androidx.compose.material3.SnackbarResult.ActionPerformed) onOpenModelManager()
+                }
+            }
+        }
+    }
+}
+
 /** Lives at the app level: a download outlives the Model manager screen, so its notification must too. */
 @Composable
 fun ModelDownloadNotification(container: AppContainer) {
@@ -98,7 +131,7 @@ fun ModelManagerScreen(
 ) {
     val strings = LocalStrings.current
     val states by container.localModelManager.states.collectAsState()
-    val queued by container.localModelManager.queuedIds.collectAsState()
+    val queued by container.localModelManager.queuedIds.collectAsState(initial = emptySet())
     val scope = rememberCoroutineScope()
     var pendingDeleteId by remember { mutableStateOf<String?>(null) }
 
@@ -163,7 +196,7 @@ private fun ModelCard(
     val statusLabel = when (state.status) {
         LocalModelStatus.Ready -> strings.modelReady
         LocalModelStatus.Downloading -> strings.modelDownloading
-        LocalModelStatus.Failed -> strings.modelFailed
+        LocalModelStatus.Failed -> if (queued) strings.ux.modelQueued else strings.modelFailed
         LocalModelStatus.NotDownloaded -> if (queued) strings.ux.modelQueued else strings.modelNotDownloaded
         LocalModelStatus.BlockedOnUrl -> strings.modelBlockedOnUrl
     }
@@ -201,7 +234,7 @@ private fun ModelCard(
         }
         Spacer(Modifier.height(8.dp))
         Text(statusLabel, fontWeight = FontWeight.Medium, fontSize = 13.sp, color = VelumInk)
-        state.error?.let { raw ->
+        state.error?.takeIf { !queued }?.let { raw ->
             val err = modelErrorText(raw, strings)
             Spacer(Modifier.height(4.dp))
             Text(err, color = VelumInkSecondary, fontSize = 12.sp, lineHeight = 16.sp)
@@ -233,7 +266,7 @@ private fun ModelCard(
                 }
                 LocalModelStatus.NotDownloaded, LocalModelStatus.Failed -> {
                     // A queued row starts by itself when its turn comes; a second start would run beside the current one.
-                    if (queued && state.status == LocalModelStatus.NotDownloaded) {
+                    if (queued) {
                         Spacer(Modifier.weight(1f))
                     } else {
                         BlackButton(strings.download, onDownload, Modifier.weight(1f))
