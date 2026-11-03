@@ -275,6 +275,10 @@ object LocalModelErrors {
         }
 }
 
+/** Models that just became Failed: [before] is the status of each model at the previous emission. */
+fun newlyFailed(before: Map<String, LocalModelStatus>, after: List<LocalModelState>): List<LocalModelState> =
+    after.filter { it.status == LocalModelStatus.Failed && before[it.spec.id] != null && before[it.spec.id] != LocalModelStatus.Failed }
+
 fun createLocalModelManager(
     storeRoot: ModelStoreDir = defaultModelStoreRoot(),
     catalog: List<LocalModelSpec> = DefaultLocalCatalog,
@@ -352,7 +356,11 @@ class LocalModelManager(
      * large transfer. [cancelDownload] on the current model ends the whole sequence.
      */
     fun startDownloads(ids: List<String>): Job = downloadScope.launch {
-        for (id in ids) {
+        val pending = ids.filterNot { isReady(it) }
+        _queued.update { it + pending }
+        try {
+            for (id in pending) {
+            _queued.update { it - id }
             // A model already on disk is never fetched again: a failed re-download must not cost the working copy.
             if (isReady(id)) continue
             try {
@@ -368,8 +376,16 @@ class LocalModelManager(
                     )
                 }
             }
+            }
+        } finally {
+            // Cancelled or finished: nothing left in this sequence may still look queued.
+            _queued.update { it - pending.toSet() }
         }
     }
+
+    /** Models waiting behind the one currently downloading in a [startDownloads] sequence. */
+    private val _queued = MutableStateFlow(setOf<String>())
+    val queuedIds: StateFlow<Set<String>> = _queued.asStateFlow()
 
     /**
      * Safe to collect on any dispatcher: the transfer, hashing, rename and extraction run on [ioDispatcher] (#237).

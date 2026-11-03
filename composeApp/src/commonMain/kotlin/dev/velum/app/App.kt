@@ -1,5 +1,9 @@
 package dev.velum.app
 
+import dev.velum.app.ui.settings.modelFailureNotice
+import dev.velum.ai.local.newlyFailed
+import dev.velum.ai.local.LocalModelStatus
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -193,6 +197,27 @@ private fun VelumRoot(container: AppContainer) {
         }
     }
     ModelDownloadNotification(container)
+    // A download outlives Model manager: say so when one fails while the user is elsewhere.
+    val latestStrings by rememberUpdatedState(strings)
+    LaunchedEffect(container) {
+        var before: Map<String, LocalModelStatus>? = null
+        container.localModelManager.states.collect { list ->
+            val previous = before
+            before = list.associate { it.spec.id to it.status }
+            if (previous == null) return@collect
+            for (failed in newlyFailed(previous, list)) {
+                if (navController.currentDestination?.route == Routes.MODEL_MANAGER) continue // the row shows it
+                scope.launch {
+                    val result = snackbar.showSnackbar(
+                        message = modelFailureNotice(failed, latestStrings),
+                        actionLabel = latestStrings.modelManager,
+                        withDismissAction = true,
+                    )
+                    if (result == SnackbarResult.ActionPerformed) navController.navigate(Routes.MODEL_MANAGER)
+                }
+            }
+        }
+    }
     val activeMicOwner by container.micRecordings.owner.collectAsState()
     val activeMicId = activeMicOwner?.recordingId
     LaunchedEffect(container) {

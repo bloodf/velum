@@ -98,6 +98,7 @@ fun ModelManagerScreen(
 ) {
     val strings = LocalStrings.current
     val states by container.localModelManager.states.collectAsState()
+    val queued by container.localModelManager.queuedIds.collectAsState()
     val scope = rememberCoroutineScope()
     var pendingDeleteId by remember { mutableStateOf<String?>(null) }
 
@@ -119,6 +120,7 @@ fun ModelManagerScreen(
             items(states, key = { it.spec.id }) { state ->
                 ModelCard(
                     state = state,
+                    queued = state.spec.id in queued,
                     onDownload = { container.localModelManager.startDownloads(listOf(state.spec.id)) },
                     onCancel = { container.localModelManager.cancelDownload(state.spec.id) },
                     onDelete = { pendingDeleteId = state.spec.id },
@@ -151,6 +153,7 @@ fun ModelManagerScreen(
 @Composable
 private fun ModelCard(
     state: LocalModelState,
+    queued: Boolean,
     onDownload: () -> Unit,
     onCancel: () -> Unit,
     onDelete: () -> Unit,
@@ -161,7 +164,7 @@ private fun ModelCard(
         LocalModelStatus.Ready -> strings.modelReady
         LocalModelStatus.Downloading -> strings.modelDownloading
         LocalModelStatus.Failed -> strings.modelFailed
-        LocalModelStatus.NotDownloaded -> strings.modelNotDownloaded
+        LocalModelStatus.NotDownloaded -> if (queued) strings.ux.modelQueued else strings.modelNotDownloaded
         LocalModelStatus.BlockedOnUrl -> strings.modelBlockedOnUrl
     }
     Column(
@@ -229,8 +232,13 @@ private fun ModelCard(
                     Spacer(Modifier.weight(1f))
                 }
                 LocalModelStatus.NotDownloaded, LocalModelStatus.Failed -> {
-                    BlackButton(strings.download, onDownload, Modifier.weight(1f))
-                    Spacer(Modifier.width(0.dp))
+                    // A queued row starts by itself when its turn comes; a second start would run beside the current one.
+                    if (queued && state.status == LocalModelStatus.NotDownloaded) {
+                        Spacer(Modifier.weight(1f))
+                    } else {
+                        BlackButton(strings.download, onDownload, Modifier.weight(1f))
+                        Spacer(Modifier.width(0.dp))
+                    }
                 }
             }
         }
@@ -243,6 +251,14 @@ private fun kindLabel(kind: LocalModelKind, strings: Strings): String = when (ki
     LocalModelKind.Embedding -> strings.ux.modelKindEmbedding
     LocalModelKind.Llm -> strings.ux.modelKindLlm
 }
+
+/** Plain notice for a download that failed while Model manager is not open. */
+internal fun modelFailureNotice(state: LocalModelState, strings: dev.velum.app.i18n.Strings): String =
+    if (state.error == LocalModelErrors.StorageFull) {
+        "${state.spec.displayName}: ${strings.ux.modelStorageFull}"
+    } else {
+        strings.ux.modelDownloadFailedFormat.replace("%s", state.spec.displayName)
+    }
 
 /** A storage failure is shown as plain localized copy; anything else keeps its message. */
 internal fun modelErrorText(raw: String, strings: dev.velum.app.i18n.Strings): String =
