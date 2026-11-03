@@ -57,6 +57,7 @@ internal class WavPcmSource private constructor(
         fromMs: Long,
         minSilenceMs: Long = SkipSilenceScanner.DEFAULT_MIN_SILENCE_MS,
         energyThreshold: Int = SkipSilenceScanner.DEFAULT_ENERGY_THRESHOLD,
+        checkCancelled: () -> Unit = {},
     ): SkipSilenceScanner.Result? {
         if (fromMs < 0L || totalFrames == 0L) return null
         val fromSample = ((fromMs * sampleRateHz) / 1000L).coerceIn(0L, totalFrames)
@@ -64,6 +65,7 @@ internal class WavPcmSource private constructor(
         var index = fromSample
         try {
             while (index < totalFrames) {
+                checkCancelled() // a long silence is many windows: stop between them when the scan is cancelled
                 val n = minOf(windowFrames.toLong(), totalFrames - index).toInt()
                 val mono = readMono(index, n)
                 var i = 0

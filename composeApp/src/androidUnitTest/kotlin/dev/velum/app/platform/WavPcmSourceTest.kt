@@ -147,6 +147,21 @@ class WavPcmSourceTest {
         assertNull(WavPcmSource.open(headerWith(1, 16, 0)))
     }
 
+    @Test fun a_cancelled_scan_stops_between_windows() {
+        val rate = 16_000
+        val f = wav("cancel.wav", rate, 1, rate * 600L) { 0 } // ten minutes of silence: many windows
+        val source = assertNotNull(WavPcmSource.open(f))
+        var windows = 0
+        val stopped = try {
+            source.findSkipPastSilence(0L) { if (++windows == 3) throw kotlinx.coroutines.CancellationException("stop") }
+            false
+        } catch (_: kotlinx.coroutines.CancellationException) {
+            true
+        }
+        assertTrue(stopped)
+        assertTrue(source.bytesRead <= 2L * WavPcmSource.WINDOW_BYTES, "read ${source.bytesRead} bytes after cancelling at window 3")
+    }
+
     @Test fun an_unreadable_data_chunk_means_no_skip_not_a_crash() {
         val f = wav("trunc.wav", 16_000, 1, 16_000L * 10) { 0 }
         val source = WavPcmSource.open(f)!!
@@ -159,8 +174,9 @@ class WavPcmSourceTest {
         val prepare = src.substringAfter("override suspend fun prepare").substringBefore("override fun play()")
         assertTrue(prepare.contains("skipScan?.cancel()"), "prepare cancels a scan of the previous file")
         val scan = src.substringAfter("private fun maybeSkipSilence")
-        assertTrue(scan.contains("runCatching"), "an IO failure must not escape the scope")
+        assertTrue(scan.contains("catch (_: Exception)"), "an IO failure must not escape the scope")
         assertTrue(scan.contains("wavFile !== file"), "re-check the file before using the result")
-        assertTrue(scan.contains("now >= pos - 500L"), "a late result must not undo a user seek")
+        assertTrue(scan.contains("SkipSilenceScanner.shouldApplySkip("), "the late-seek rule is the tested pure function")
+        assertTrue(scan.contains("catch (c: CancellationException)") && !scan.contains("runCatching"), "cancellation is never swallowed")
     }
 }
