@@ -13,7 +13,11 @@ import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
+import dev.velum.ble.BleConnectionState
+import dev.velum.core.model.ConnectedDevice
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
@@ -38,6 +42,8 @@ class OmiProfileTest {
     @Test
     fun omiProfile_declaresNoWritableCharacteristic_andIsAddressedByOmiUuids() {
         assertTrue(GattProfiles.Omi.writes.isEmpty())
+        assertEquals(listOf(GattProfiles.OMI_AUDIO_CODEC), GattProfiles.Omi.reads)
+        assertEquals("19b10002-e8f2-537e-4f6c-d104768a1214", GattProfiles.OMI_AUDIO_CODEC.characteristic)
         assertEquals(omiChars, GattProfiles.Omi.notify)
         assertEquals("19b10001-e8f2-537e-4f6c-d104768a1214", GattProfiles.OMI_AUDIO_DATA.characteristic)
     }
@@ -88,7 +94,7 @@ class OmiProfileTest {
     fun fakePeripheral_streamsAudioAndBatteryThroughTheSessionWithoutAnyWrite() = runTest {
         val t = MultiCharTransport(
             mapOf(
-                GattProfiles.OMI_AUDIO_DATA to listOf(audio(1, 0, 1, 2), audio(1, 1, 3), audio(2, 0, 4), audio(3, 0, 5)),
+                GattProfiles.OMI_AUDIO_DATA to listOf(audio(1, 0, 1, 2), audio(2, 1, 3), audio(3, 0, 4), audio(4, 0, 5)),
                 GattProfiles.OMI_BATTERY_LEVEL to listOf(byteArrayOf(64), byteArrayOf(63)),
             ),
         )
@@ -101,7 +107,26 @@ class OmiProfileTest {
         assertContentEquals(byteArrayOf(5), frames[2])
         assertEquals(listOf(64, 63), t.notifications(GattProfiles.OMI_BATTERY_LEVEL).toList().map { OmiBattery.parse(it) })
         assertEquals(0, t.writes.size)
-        // Plaud's single stream is unaffected by the per-characteristic API.
-        assertEquals(0, t.notifications(GattProfiles.PLAUD_NOTIFY).toList().size)
+    }
+
+    /** Implements only the Plaud-style single stream, so the interface default for notifications(char) is what runs. */
+    private class SingleStreamTransport : BleTransport {
+        override val isAvailable = true
+        override val connectionState = MutableStateFlow<BleConnectionState>(BleConnectionState.Idle)
+        override val discoveredDevices = MutableStateFlow<List<ConnectedDevice>>(emptyList())
+        override fun advertisements(): Flow<ConnectedDevice> = emptyFlow()
+        override suspend fun startScan() {}
+        override suspend fun stopScan() {}
+        override suspend fun connect(deviceId: String) {}
+        override suspend fun disconnect() {}
+        override suspend fun writeRaw(write: GattWrite) {}
+        override fun notifications(): Flow<ByteArray> = flowOf(byteArrayOf(7))
+    }
+
+    @Test
+    fun defaultPerCharacteristicNotifications_onlyKnowThePlaudStream() = runTest {
+        val t = SingleStreamTransport()
+        assertEquals(listOf(listOf<Byte>(7)), t.notifications(GattProfiles.PLAUD_NOTIFY).toList().map { it.toList() })
+        for (char in omiChars) assertEquals(0, t.notifications(char).toList().size)
     }
 }

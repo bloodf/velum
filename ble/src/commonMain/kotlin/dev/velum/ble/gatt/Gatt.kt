@@ -19,6 +19,8 @@ data class GattProfile(
     val id: String,
     val notify: List<GattChar>,
     val writes: Map<GattChar, WriteGuard>,
+    /** Characteristics read once (not subscribed), e.g. a codec descriptor. */
+    val reads: List<GattChar> = emptyList(),
 )
 
 object GattProfiles {
@@ -33,6 +35,7 @@ object GattProfiles {
     )
 
     val OMI_AUDIO_DATA = GattChar(OmiUuids.SERVICE, OmiUuids.AUDIO_DATA)
+    val OMI_AUDIO_CODEC = GattChar(OmiUuids.SERVICE, OmiUuids.AUDIO_CODEC)
     val OMI_BATTERY_LEVEL = GattChar(OmiUuids.BATTERY_SERVICE, OmiUuids.BATTERY_LEVEL)
 
     /**
@@ -43,6 +46,7 @@ object GattProfiles {
         id = "omi",
         notify = listOf(OMI_AUDIO_DATA, OMI_BATTERY_LEVEL),
         writes = emptyMap(),
+        reads = listOf(OMI_AUDIO_CODEC),
     )
 }
 
