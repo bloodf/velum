@@ -111,9 +111,10 @@ class DiscoverSeamUiTest {
             waiting("first page") { reaches("pg-000") }
             grid().performScrollToIndex(61)
             waiting("page 2") { reaches("pg-099") }
-            // Every request is a single page; the only continuation is offset 60. (The first page may be requested twice
-            // at start-up, once per initial tick/filter settle, which is a separate, harmless duplicate.)
+            // Every request is a single page, the first page is requested exactly once, and the only continuation
+            // is offset 60 (the catalog tick must not trigger a second start-up load).
             assertTrue(calls.all { it.limit == 60 }, "a request re-queried more than one page: $calls")
+            assertEquals(listOf(PageCall(60, 0)), calls.filter { it.offset == 0 }, "first page loaded more than once")
             assertEquals(listOf(PageCall(60, 60)), calls.filter { it.offset > 0 })
         } finally {
             finish(container, root)
@@ -238,6 +239,29 @@ class DiscoverSeamUiTest {
             waiting("tag chip enabled again") { compose.onAllNodes(hasTestTag("tag:agenda") and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
         } finally {
             gate?.complete(Unit)
+            finish(container, root)
+        }
+    }
+
+    @Test
+    fun facet_chips_are_tappable_again_after_a_failed_facets_reload() {
+        val (container, root) = seeded()
+        val real = container.repository.discoverQueries()
+        var gate: CompletableDeferred<Unit>? = null
+        val queries = DiscoverQueries(
+            page = real.page, count = real.count,
+            facets = { f -> gate?.await(); real.facets(f) },
+        )
+        try {
+            show(container, queries)
+            waiting("tag chip enabled") { compose.onAllNodes(hasTestTag("tag:agenda") and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
+            val held = CompletableDeferred<Unit>().also { gate = it }
+            compose.onNodeWithTag("tier:all").performSemanticsAction(SemanticsActions.OnClick)
+            waiting("tag chip disabled during the reload") { compose.onAllNodes(hasTestTag("tag:agenda") and isEnabled()).fetchSemanticsNodes().isEmpty() }
+            held.completeExceptionally(IllegalStateException("facets reload fails"))
+            // A failed reload keeps the previous chips and must not leave them dimmed and dead.
+            waiting("tag chip enabled after the failure") { compose.onAllNodes(hasTestTag("tag:agenda") and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
+        } finally {
             finish(container, root)
         }
     }
