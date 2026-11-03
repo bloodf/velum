@@ -5,6 +5,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
@@ -317,7 +318,10 @@ private fun VelumRoot(container: AppContainer) {
         else -> ShellTab.Files
     }
 
-    Box(Modifier.fillMaxSize()) {
+    // The window is edge-to-edge, so adjustResize no longer shrinks it: lift the whole shell above the keyboard so
+    // focused fields stay visible (#305). imePadding consumes the keyboard inset, which the Scaffold and the
+    // navigation-bar padding of the bottom bar (#299) exclude, so nothing is padded twice.
+    Box(Modifier.fillMaxSize().imePadding()) {
         Scaffold(
             snackbarHost = { SnackbarHost(snackbar) },
             bottomBar = {
