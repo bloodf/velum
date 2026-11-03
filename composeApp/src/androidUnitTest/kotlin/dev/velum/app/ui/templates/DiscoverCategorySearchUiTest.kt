@@ -107,6 +107,16 @@ class DiscoverCategorySearchUiTest {
         facetsFinished.get() > finishedBefore && facetsStarted.get() == facetsFinished.get()
     }
 
+    /**
+     * The reload counter moves before the screen stores the new facets, so a wrong prune lands after it. Poll the
+     * selection across a short window instead of checking it once.
+     */
+    private fun assertStaysSelected(tag: String) = repeat(6) {
+        Thread.sleep(100)
+        compose.waitForIdle()
+        assertTrue(hasTag(tag), "$tag was pruned after the facets reload")
+    }
+
     @Test
     fun category_survives_search_without_hits_and_clears() {
         val context = ApplicationProvider.getApplicationContext<Context>()
@@ -142,8 +152,8 @@ class DiscoverCategorySearchUiTest {
             awaitTag("active:category")
             // Facets reload asynchronously after the search; the category must still be there once they landed.
             awaitFacetsReloadAfter(facetsBeforeSearch)
-            compose.waitForIdle()
-            assertTrue(hasTag("templates:empty") && hasTag("active:category"))
+            assertStaysSelected("active:category")
+            assertTrue(hasTag("templates:empty"))
             // The search field itself contains "ZQ Gamma"; only result cards would be non-editable matches.
             assertTrue(compose.onAllNodes(hasText("ZQ Gamma") and !hasSetTextAction()).fetchSemanticsNodes().isEmpty())
             // Individual clear brings the match back, search kept.
@@ -195,8 +205,8 @@ class DiscoverCategorySearchUiTest {
         awaitTag("templates:empty")
         // Facets reload asynchronously after the search; the filter must still be selected once they landed.
         awaitFacetsReloadAfter(facetsBeforeSearch)
-        compose.waitForIdle()
-        assertTrue(hasTag("templates:empty") && hasTag(activeTag))
+        assertStaysSelected(activeTag)
+        assertTrue(hasTag("templates:empty"))
         tap(activeTag)
         await(query)
         awaitTag("templates:empty", present = false)

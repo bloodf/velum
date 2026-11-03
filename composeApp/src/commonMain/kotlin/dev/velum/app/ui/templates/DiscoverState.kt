@@ -69,6 +69,14 @@ internal fun reloadLimit(pages: Int, sameFilterRowCount: Int, pageSize: Int): In
 internal const val MAX_RELOAD_PAGES = 10
 
 /** Facets together with the (debounced) search they were loaded for, so the pair is replaced atomically. */
-internal class LoadedFacets(val facets: DiscoverFacets, val search: String)
+internal data class LoadedFacets(val facets: DiscoverFacets, val search: String)
 
 internal val NoFacets = DiscoverFacets(emptyList(), emptyList(), emptyList())
+
+/**
+ * Loads facets for [filter] and labels them with that same filter's search. The label comes from the filter captured
+ * before the query, never from live state read after it: clearing the search writes the new value at once, so a
+ * slower load for the old search would otherwise be stored as a blank-search load and allowed to prune selections.
+ */
+internal suspend fun loadFacets(queries: DiscoverQueries, filter: DiscoverFilter): LoadedFacets =
+    LoadedFacets(queries.facets(filter), filter.search)

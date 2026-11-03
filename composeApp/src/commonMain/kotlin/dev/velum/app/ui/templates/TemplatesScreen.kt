@@ -168,10 +168,9 @@ internal fun TemplatesScreen(
     // `loadedFacets` stays null until a load succeeds; a failed load keeps the previous facets and never prunes.
     // One state object, written once per load: the facets and the search they were loaded for must never be
     // observed out of step (a recomposition between two separate writes pruned a selection against new facets while
-    // the old blank search still allowed pruning).
+    // the old blank search still allowed pruning). Only a blank-search load may prune selections (#102).
     var loadedFacets by remember { mutableStateOf<LoadedFacets?>(null) }
     val facets = loadedFacets?.facets ?: NoFacets
-    // Search the current facets were loaded for: only a blank-search load may prune selections (#102).
     // Debounced so each keystroke does not re-run the facet and page queries.
     var debouncedQuery by remember { mutableStateOf(searchQuery) }
     LaunchedEffect(searchQuery) {
@@ -186,7 +185,7 @@ internal fun TemplatesScreen(
         if (!tickReady) return@LaunchedEffect
         facetsLoading = true
         try {
-            loadedFacets = LoadedFacets(queries.facets(DiscoverFilter(tier, debouncedQuery, selectedCategory)), debouncedQuery)
+            loadedFacets = loadFacets(queries, DiscoverFilter(tier, debouncedQuery, selectedCategory))
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
