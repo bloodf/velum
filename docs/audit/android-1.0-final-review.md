@@ -35,7 +35,7 @@ Remaining non-blockers for *this* ship (accepted / out of scope): SoftAP WS `:80
 | **low** | Template back `contentDescription` missing | `TemplatesScreen` | a11y back label | `e9ebb67` |
 | **low** | Templates grid no empty state | `TemplatesScreen` | `EmptyState` when filtered empty | `e9ebb67` |
 | **accepted** | `BleTransport.write` ungated | `KableBleTransport` | Production path triple-gated; leave as M3 residual | — |
-| **accepted** | SoftAP WS not WSS / fixed nonce | wifi transfer | Hardware SoftAP parity; BLE fallback | — |
+| **open** | SoftAP WS not WSS / fixed nonce (S13) | wifi transfer, BLE, files | Open, pending owner decision: BLE, files and Wi-Fi. An earlier document called the Wi-Fi case accepted on 2026-10-27; no owner decision is on record. | — |
 | **oos** | iOS All catalog / Opus / PDF stubs | iosMain | Android-first 1.0 | — |
 
 ### Hard rules re-checked (pass)

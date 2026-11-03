@@ -5,6 +5,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import dev.velum.ble.crypto.createSessionCipher
 import dev.velum.protocol.Protocol20SessionSecret
 import java.io.ByteArrayOutputStream
+import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.URI
 import java.nio.ByteBuffer
@@ -13,6 +14,7 @@ import java.util.concurrent.TimeUnit
 import java.util.zip.CRC32
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.milliseconds
@@ -443,5 +445,18 @@ class AndroidWifiTransferServerTest {
 
     private companion object {
         const val CHUNK = 16 * 1024
+    }
+
+    @Test
+    fun portInUse_failsStart() = runTest {
+        ServerSocket(0, 50, InetAddress.getByName("127.0.0.1")).use { occupied ->
+            val started = System.nanoTime()
+            val failure = assertFailsWith<WifiTransferFailure> {
+                AndroidWifiTransferServer().start(occupied.localPort, "127.0.0.1", WifiTransferPreamble.defaultToken("bind-219"))
+            }
+            assertEquals(AndroidWifiTransferServer.BIND_FAILURE_CODE, failure.code)
+            // 5 s is the server's limit for a wait that went wrong: the listener's own error must end it sooner.
+            assertTrue(System.nanoTime() - started < 5_000_000_000L, "the bind failure must be noticed, not waited out")
+        }
     }
 }

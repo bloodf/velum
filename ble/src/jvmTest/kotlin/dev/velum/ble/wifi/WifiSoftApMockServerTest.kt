@@ -3,6 +3,7 @@ package dev.velum.ble.wifi
 import dev.velum.ble.crypto.createSessionCipher
 import dev.velum.protocol.Protocol20SessionSecret
 import java.io.ByteArrayOutputStream
+import java.net.InetAddress
 import java.net.ServerSocket
 import java.util.zip.CRC32
 import kotlin.test.Test
@@ -423,5 +424,26 @@ class WifiSoftApMockServerTest {
 
     private companion object {
         const val CHUNK = 16 * 1024
+    }
+
+    @Test
+    fun portInUse_failsAtOnceAndFallsBackToBle_withoutJoiningSoftAp() = runBoundedTest {
+        ServerSocket(0, 50, InetAddress.getByName("127.0.0.1")).use { occupied ->
+            val joiner = FakeWifiSoftApJoiner()
+            val started = System.nanoTime()
+            val outcome = WifiTransferCoordinator(
+                sessionFactory = { session(WifiPayloadCipher.ChaCha20Poly1305, JavaWebsocketTransferServer(), joiner) },
+                bleDownload = { fixture },
+                wifiTimeout = 600_000.milliseconds, // far above the test's limit: only the bind failure can end this
+            ).transferOrFallback(
+                "PLAUD-FAKE", "password12", port = occupied.localPort, preamble = preamble, bindHost = "127.0.0.1",
+                assemble = { error("the transfer must not start") },
+            )
+            assertIs<WifiTransferCoordinator.Outcome.BleFallback>(outcome)
+            assertEquals(JavaWebsocketTransferServer.BIND_FAILURE_CODE, outcome.reason)
+            assertEquals(0, joiner.joinCount, "SoftAP must not be joined without a listener")
+            // 5 s is the server's limit for a wait that went wrong: the listener's own error must end it sooner.
+            assertTrue(System.nanoTime() - started < 5_000_000_000L, "the bind failure must be noticed, not waited out")
+        }
     }
 }
