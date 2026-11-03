@@ -2,6 +2,9 @@ package dev.velum.app.ui.templates
 
 import dev.velum.app.di.AppContainer
 import java.util.concurrent.CopyOnWriteArrayList
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /** Records every Discover query (start/end, filter, outcome) so a timeout message can say what the screen asked for. */
 internal class QueryLog {
@@ -13,7 +16,13 @@ internal class QueryLog {
     private suspend fun <T> logged(what: String, block: suspend () -> T): T {
         lines += "${stamp()} start $what"
         return try {
-            block().also { lines += "${stamp()} done  $what [resumed on ${Thread.currentThread().name}]" }
+            // The compose-test recomposer resumes effects unconfined, on the Default worker that ran the repository's
+            // withContext; production resumes on the UI thread. Hop to Main so the screen's state writes match.
+            val result = block()
+            withContext(Dispatchers.Main) { result }.also { lines += "${stamp()} done  $what [resumed on ${Thread.currentThread().name}]" }
+        } catch (e: CancellationException) {
+            lines += "${stamp()} CANCELLED $what"
+            throw e
         } catch (e: Throwable) {
             lines += "${stamp()} FAIL  $what: ${e::class.simpleName}"
             throw e
