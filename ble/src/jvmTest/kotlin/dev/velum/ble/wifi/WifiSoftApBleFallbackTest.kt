@@ -205,6 +205,89 @@ class WifiSoftApBleFallbackTest {
         assertEquals(0, ble.frames, "BLE must not run")
     }
 
+    /** The close lands after assemble's last frame, while it is still working on the result. */
+    @Test
+    fun aCloseWhileAssembleFinishes_doesNotDiscardACompleteFile() = runBoundedTest {
+        val port = freePort()
+        val subscribed = CompletableDeferred<Unit>()
+        val assembleRead = CompletableDeferred<Unit>()
+        val deviceClosed = CompletableDeferred<Unit>()
+        val device = launch(Dispatchers.IO) {
+            val d = connectDevice(port)
+            subscribed.await()
+            val c = wifiCipher()
+            d.sendPreamble(preamble)
+            wifiChunks.forEachIndexed { i, chunk -> d.sendBinary(c.seal(i.toLong(), chunk)) }
+            assembleRead.await()
+            d.close()
+            deviceClosed.complete(Unit)
+        }
+        val outcome = WifiTransferCoordinator(
+            sessionFactory = { WifiFastTransferSession(FakeWifiSoftApJoiner(), JavaWebsocketTransferServer(), wifiCipher()) },
+            bleDownload = { error("BLE must not run") },
+            wifiTimeout = 15_000.milliseconds,
+        ).transferOrFallback(
+            "PLAUD-FAKE", "password12", port = port, preamble = preamble, bindHost = "127.0.0.1",
+            assemble = {
+                val bytes = assembleExact(it, fixture.size, subscribed)
+                assembleRead.complete(Unit)
+                deviceClosed.await()
+                delay(500) // the CRC check and decrypt a real assemble does here
+                bytes
+            },
+        )
+        device.join()
+        assertIs<WifiTransferCoordinator.Outcome.Wifi>(outcome)
+        assertContentEquals(fixture, outcome.bytes)
+    }
+
+    /** One frame held by the consumer and exactly 64 queued: a full buffer, then the close. */
+    @Test
+    fun aCloseWithTheBufferExactlyFull_stillComesAfterItsFrames() = runBoundedTest {
+        val port = freePort()
+        val frames = List(65) { i -> ByteArray(64) { i.toByte() } }
+        val subscribed = CompletableDeferred<Unit>()
+        val firstHeld = CompletableDeferred<Unit>()
+        val deviceClosed = CompletableDeferred<Unit>()
+        val device = launch(Dispatchers.IO) {
+            val d = connectDevice(port)
+            subscribed.await()
+            val c = wifiCipher()
+            d.sendPreamble(preamble)
+            d.sendBinary(c.seal(0, frames[0]))
+            firstHeld.await()
+            for (i in 1 until frames.size) d.sendBinary(c.seal(i.toLong(), frames[i]))
+            d.close()
+            deviceClosed.complete(Unit)
+        }
+        val outcome = WifiTransferCoordinator(
+            sessionFactory = { WifiFastTransferSession(FakeWifiSoftApJoiner(), JavaWebsocketTransferServer(), wifiCipher()) },
+            bleDownload = { error("BLE must not run") },
+            wifiTimeout = 15_000.milliseconds,
+        ).transferOrFallback(
+            "PLAUD-FAKE", "password12", port = port, preamble = preamble, bindHost = "127.0.0.1",
+            assemble = { s ->
+                val out = ByteArrayOutputStream()
+                @Suppress("UNCHECKED_CAST")
+                (s.server.incomingEncryptedFrames() as SharedFlow<ByteArray>)
+                    .onSubscription { subscribed.complete(Unit) }
+                    .transformWhile<ByteArray, Unit> { sealed ->
+                        if (out.size() == 0) {
+                            firstHeld.complete(Unit)
+                            deviceClosed.await()
+                            delay(500) // let the server handle the close
+                        }
+                        out.write(s.openIncoming(sealed) ?: throw WifiTransferFailure("wifi_frame_rejected"))
+                        out.size() < 65 * 64
+                    }.collect { }
+                out.toByteArray()
+            },
+        )
+        device.join()
+        assertIs<WifiTransferCoordinator.Outcome.Wifi>(outcome)
+        assertContentEquals(frames.reduce { a, b -> a + b }, outcome.bytes)
+    }
+
     @Test
     fun droppedLinkMidTransfer_fallsBackToRealBleDownload_withExactBytes() = runBoundedTest {
         val (outcome, ble, joiner) = transfer(wifiTimeoutMs = 15_000, good = 2, corruptNext = false)
