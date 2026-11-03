@@ -126,6 +126,7 @@ class AutoFlowRunnerTest {
         val f = Fixture(this)
         f.start()
         // The row turns ready between the runner reading it and its conditional queued write.
+        f.store.activeTemplates["rec-gap"] = "velum.meeting" // the finished job produced this flow's summary
         f.store.beforeConditionalQueue = { id -> f.store.change(id) { it.copy(status = "ready", summary_markdown = "## done") } }
         f.publish(recording("rec-gap", "imported"))
         assertTrue(f.enqueued.isEmpty(), "a finished job must not be re-enqueued")
@@ -164,6 +165,44 @@ class AutoFlowRunnerTest {
         f.publish(recording("rec-same", "imported"))
         assertTrue(f.enqueued.isEmpty(), "the finished job already did this flow's work")
         assertEquals(listOf("rec-same"), f.actions.filterIsInstance<AutoFlowUiAction.PostWebhook>().map { it.recordingId })
+    }
+
+    @Test
+    fun aBlankTemplateFlow_reEnqueuesWithTheEffectiveTemplate_soTheFinishedWorkerIsReplaced() = runTest {
+        val f = Fixture(this, rule = rule().copy(template_id = null))
+        f.start()
+        f.finishesBeforeTheRunnerActs("velum.sales")
+        f.publish(recording("rec-blank", "imported"))
+        assertEquals(listOf<String?>("velum.meeting"), f.templates, "a blank template must be enqueued as real parameters")
+    }
+
+    @Test
+    fun aKeptEnqueueNeverRestoresReady_soThePostActionDoesNotFireOnAnotherTemplatesSummary() = runTest {
+        val f = Fixture(this, rule = rule().copy(template_id = null))
+        f.start()
+        f.keepRunning = true
+        f.enqueue = { }
+        f.finishesBeforeTheRunnerActs("velum.sales")
+        f.store.put(recording("rec-kept-ready", "imported"))
+        runCurrent()
+        assertTrue(f.row("rec-kept-ready").status != "ready", "the other template's ready must not be put back")
+        assertTrue(f.actions.none { it is AutoFlowUiAction.PostWebhook }, "no post-action on the wrong summary")
+    }
+
+    @Test
+    fun anUneditedTplMeetingFlow_matchesTheStoredBuiltin_butAnEditedOneDoesNot() = runTest {
+        val unedited = Fixture(this, rule = rule().copy(template_id = "tpl-meeting"))
+        unedited.start()
+        unedited.finishesBeforeTheRunnerActs("velum.meeting") // the processor stores the resolved built-in id
+        unedited.publish(recording("rec-unedited", "imported"))
+        assertTrue(unedited.enqueued.isEmpty(), "tpl-meeting resolves to velum.meeting: the finished work is the flow's")
+
+        val edited = Fixture(this, rule = rule().copy(template_id = "tpl-meeting"))
+        edited.store.exactTemplates += "tpl-meeting" // the user's edited row keeps its id
+        edited.start()
+        edited.finishesBeforeTheRunnerActs("velum.meeting")
+        edited.publish(recording("rec-edited", "imported"))
+        assertEquals(listOf("rec-edited"), edited.enqueued, "an edited tpl-meeting is a different template from the built-in")
     }
 
     @Test
@@ -704,6 +743,9 @@ class AutoFlowRunnerTest {
         /** Template of each recording's active summary, set by tests that need a finished row. */
         val activeTemplates = mutableMapOf<String, String>()
         override suspend fun activeSummaryTemplateId(id: String): String? = activeTemplates[id]
+        /** Template rows that exist under their exact id (an edited builtin). */
+        val exactTemplates = mutableSetOf<String>()
+        override suspend fun exactTemplateId(templateId: String): String? = templateId.takeIf { it in exactTemplates }
         override suspend fun updateRecordingTitle(id: String, title: String) {
             beforeTitle(id)
             change(id) { it.copy(title = title) }
