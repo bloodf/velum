@@ -1,27 +1,36 @@
 package dev.velum.ble.wifi
 
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
+import kotlin.concurrent.thread
 import kotlin.test.Test
 import kotlin.test.fail
 
-/** TEMPORARY (#349): repeats the tests that failed on CI's Linux, to measure the rate. Removed before merge. */
+/** TEMPORARY (#349): repeats the tests that failed on CI's Linux, 4 threads at once, to measure the rate. Removed before merge. */
 class ZRepeatCloseOrderTest {
     @Test
     fun repeatTheTestsThatFailedOnCi() {
-        val runs = mapOf<String, () -> Unit>(
-            "aeadFailureMidTransfer" to { WifiSoftApBleFallbackTest().aeadFailureMidTransfer_fallsBackToRealBleDownload_withExactBytes() },
-            "aRejectedFrameBeatsAClose" to { WifiSoftApBleFallbackTest().aRejectedFrameBeatsACloseThatFollowedIt_howeverSlowTheConsumer() },
-            "completeTransferBothCiphers" to { WifiSoftApMockServerTest().completeTransfer_matchesFixtureAndCrc_bothCiphers() },
+        val runs = listOf<Triple<String, Int, () -> Unit>>(
+            Triple("aeadFailureMidTransfer", 150, { WifiSoftApBleFallbackTest().aeadFailureMidTransfer_fallsBackToRealBleDownload_withExactBytes() }),
+            Triple("completeTransferBothCiphers", 60, { WifiSoftApMockServerTest().completeTransfer_matchesFixtureAndCrc_bothCiphers() }),
+            Triple("aRejectedFrameBeatsAClose", 8, { WifiSoftApBleFallbackTest().aRejectedFrameBeatsACloseThatFollowedIt_howeverSlowTheConsumer() }),
         )
-        val failures = mutableMapOf<String, MutableList<String>>()
-        var total = 0
-        repeat(50) {
-            for ((name, run) in runs) {
-                total++
-                runCatching(run).onFailure { failures.getOrPut(name) { mutableListOf() } += "${it::class.simpleName}: ${it.message?.take(160)}" }
+        val failures = ConcurrentHashMap<String, MutableList<String>>()
+        val total = AtomicInteger()
+        val workers = List(4) {
+            thread {
+                for ((name, times, run) in runs) repeat(times) {
+                    total.incrementAndGet()
+                    runCatching(run).onFailure {
+                        failures.computeIfAbsent(name) { java.util.Collections.synchronizedList(mutableListOf()) } +=
+                            "${it::class.simpleName}: ${it.message?.take(160)}"
+                    }
+                }
             }
         }
-        val summary = "close-order repeat: ${failures.values.sumOf { it.size }} of $total failed " +
-            runs.keys.joinToString { "$it=${failures[it]?.size ?: 0}" } +
+        workers.forEach { it.join() }
+        val summary = "close-order repeat: ${failures.values.sumOf { it.size }} of ${total.get()} failed " +
+            runs.joinToString { "${it.first}=${failures[it.first]?.size ?: 0}" } +
             failures.entries.joinToString("") { (k, v) -> "\n  $k first: ${v.first()}" }
         println(summary)
         if (failures.isNotEmpty()) fail(summary)
