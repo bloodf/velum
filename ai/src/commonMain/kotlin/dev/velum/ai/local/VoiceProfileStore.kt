@@ -459,13 +459,27 @@ class VoiceProfileStore(
     }
 
     fun importEncrypted(text: String): Int {
-        val bundle = json.decodeFromString<ExportedBundle>(text)
+        val bundle = try {
+            json.decodeFromString<ExportedBundle>(text)
+        } catch (e: SerializationException) {
+            throw InvalidVoiceProfileBackupException(e)
+        } catch (e: IllegalArgumentException) {
+            throw InvalidVoiceProfileBackupException(e)
+        }
         val c = cipher()
         var count = 0
         bundle.profiles.forEach { e ->
-            val embedding = bytesToFloats(c.decrypt(Base64.decode(e.embeddingB64)))
-            val samples = e.samplesB64.map { bytesToFloats(c.decrypt(Base64.decode(it))) }
-                .ifEmpty { listOf(embedding) }
+            val embedding: FloatArray
+            val samples: List<FloatArray>
+            try {
+                embedding = bytesToFloats(c.decrypt(Base64.decode(e.embeddingB64)))
+                samples = e.samplesB64.map { bytesToFloats(c.decrypt(Base64.decode(it))) }
+                    .ifEmpty { listOf(embedding) }
+            } catch (bad: ProfileCiphertextUnreadableException) {
+                throw bad // wrong key or damaged data: reported separately from a malformed bundle
+            } catch (bad: IllegalArgumentException) {
+                throw InvalidVoiceProfileBackupException(bad)
+            }
             val id = e.id.ifBlank { slug(e.displayName) }
             get(id) // Refuse to overwrite unreadable files; recovery requires an explicit removal.
             writeProfile(
@@ -708,6 +722,11 @@ class UnreadableVoiceProfile internal constructor(
 ) {
     val canRemove: Boolean get() = files != null
 }
+
+/** The pasted text is not a Voice Profiles backup (not JSON, wrong shape, or bad base64). */
+class InvalidVoiceProfileBackupException(cause: Throwable) : IllegalArgumentException(
+    "The text is not a voice profile backup.", cause,
+)
 
 class UnreadableVoiceProfileException : IllegalStateException(
     "Some voice profile files are unreadable. Inspect them before changing or exporting these profiles.",
