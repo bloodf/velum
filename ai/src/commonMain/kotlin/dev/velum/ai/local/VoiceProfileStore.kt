@@ -401,8 +401,18 @@ class VoiceProfileStore(
         val dir = cacheDir.resolve(recordingId)
         dir.createDirectories()
         dir.resolve("${slug(speakerId)}.enc").writeBytes(enc)
-        // Keep legacy plaintext cache for one release of promoteCached compatibility.
-        dir.resolve("${slug(speakerId)}.f32").writeBytes(floatsToBytes(embedding))
+        // Encrypted only (#320); an older plaintext copy of this speaker goes too.
+        dir.resolve("${slug(speakerId)}.f32").deleteFile()
+    }
+
+    /** Deletes plaintext `.f32` embeddings earlier versions wrote next to the encrypted ones (#320). No key needed. */
+    fun purgePlaintextClusterCache() {
+        cacheDir.walkFiles().filter { it.name.endsWith(".f32") }.forEach { it.deleteFile() }
+    }
+
+    /** The speaker embeddings of [recordingId], for when the recording is permanently deleted. */
+    fun deleteClusterCache(recordingId: String) {
+        cacheDir.resolve(recordingId).deleteRecursively()
     }
 
     fun cachedClusterEmbedding(recordingId: String, speakerId: String): FloatArray? {
