@@ -28,6 +28,7 @@ import dev.velum.ai.engine.SpeakerSpan
 import dev.velum.ai.engine.TranscriptSegment
 import dev.velum.ai.engine.TranscriptionResult
 import dev.velum.ai.local.LocalAsrRouter
+import dev.velum.ai.local.LocalModelFormats
 import dev.velum.ai.local.VoiceProfileStore
 import dev.velum.ai.local.pcm16LeToFloats
 import dev.velum.ai.local.sliceFloats
@@ -430,9 +431,7 @@ actual class LocalAsrRuntime actual constructor() {
     }
 
     private fun isLlmFile(name: String): Boolean {
-        val lower = name.lowercase()
-        return lower.endsWith(".litertlm") || lower.endsWith(".task") ||
-            lower.endsWith(".gguf") || lower.endsWith(".tflite")
+        return LocalModelFormats.isLoadableLlmWeights(name)
     }
 
     private fun isArchiveName(name: String): Boolean {

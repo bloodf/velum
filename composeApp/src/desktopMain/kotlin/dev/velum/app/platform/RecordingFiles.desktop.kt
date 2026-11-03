@@ -11,6 +11,9 @@ actual fun recordingsDirectoryPath(): String {
 actual fun deleteFileAtPath(absolutePath: String): Boolean =
     runCatching { File(absolutePath).takeIf { it.isFile }?.delete() == true }.getOrDefault(false)
 
+actual fun isSamePath(a: String, b: String): Boolean =
+    runCatching { File(a).canonicalFile == File(b).canonicalFile }.getOrDefault(false)
+
 actual fun isSupersededOwnAudio(previousPath: String, newPath: String, dir: String, id: String): Boolean =
     runCatching {
         val previous = File(previousPath).canonicalFile

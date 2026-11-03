@@ -72,10 +72,6 @@ object ModelCatalogUi {
             blurb = "On-device summaries and Ask AI — lighter download. ~2.5 GB.",
             languages = "35+ tuned languages",
         ),
-        "qwen3-4b-instruct-2507" to ModelUiCopy(
-            blurb = "Alternate on-device summaries. ~2.5 GB.",
-            languages = "Many languages",
-        ),
     )
 
     private val ptBr: Map<String, ModelUiCopy> = mapOf(
@@ -134,10 +130,6 @@ object ModelCatalogUi {
         "gemma-4-e2b" to ModelUiCopy(
             blurb = "Resumos e Perguntar à IA no aparelho — download mais leve. ~2,5 GB.",
             languages = "35+ idiomas ajustados",
-        ),
-        "qwen3-4b-instruct-2507" to ModelUiCopy(
-            blurb = "Resumos no aparelho (alternativa). ~2,5 GB.",
-            languages = "Muitos idiomas",
         ),
     )
 
