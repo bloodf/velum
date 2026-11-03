@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -86,6 +87,7 @@ fun MemoryScreen(
                             Modifier
                                 .fillMaxWidth()
                                 .clickable(onClickLabel = strings.delete) { pendingDeleteGlossaryId = item.id }
+                                .heightIn(min = 48.dp)
                                 .padding(vertical = 10.dp),
                         ) {
                             Text(item.term, color = VelumInk, fontWeight = FontWeight.Medium, fontSize = 15.sp)

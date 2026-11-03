@@ -542,7 +542,7 @@ private fun RecordingRow(
     val deviceLabel = when (rec.source) {
         "note_pro" -> strings.ux.sourceNotePro
         "phone" -> strings.ux.sourcePhone
-        "import", "share" -> strings.ux.sourceImport
+        "import", "share", "watched" -> strings.ux.sourceImport
         else -> null
     }
     val highlightBg = VelumWarningContainer
