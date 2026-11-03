@@ -2,6 +2,7 @@ package dev.velum.ble.crypto
 
 import dev.velum.protocol.Bytes
 import dev.velum.protocol.ChaCha20
+import dev.velum.protocol.ChaCha20Poly1305
 import dev.velum.protocol.FileDecryptor
 import dev.velum.protocol.Protocol20SessionSecret
 import dev.velum.protocol.SessionCipher
@@ -23,6 +24,12 @@ actual fun createFileDecryptor(): FileDecryptor = JcaFileDecryptor()
  * JCA-backed protocol-20 crypto (ChaCha20-Poly1305 + RSA PKCS#1 v1.5).
  */
 class JcaSessionCipher : SessionCipher {
+    /**
+     * Android documents ChaCha20/Poly1305 from API 28, and minSdk is 26 (#226). Without a platform cipher, fall
+     * back to the Kotlin AEAD, which has the same output. Probed per instance, not cached globally.
+     */
+    private val platformChaCha: Boolean = runCatching { Cipher.getInstance("ChaCha20-Poly1305") }.isSuccess
+
     override fun rsaDecryptPkcs1(privateKeyPem: String, ciphertext: ByteArray): ByteArray {
         val cipher = Cipher.getInstance("RSA/ECB/PKCS1Padding")
         cipher.init(Cipher.DECRYPT_MODE, parsePrivateKey(privateKeyPem))
@@ -41,6 +48,7 @@ class JcaSessionCipher : SessionCipher {
         aad: ByteArray,
         ciphertextAndTag: ByteArray,
     ): ByteArray? {
+        if (!platformChaCha) return ChaCha20Poly1305.open(key, nonce, aad, ciphertextAndTag)
         return try {
             val cipher = Cipher.getInstance("ChaCha20-Poly1305")
             cipher.init(
@@ -61,6 +69,7 @@ class JcaSessionCipher : SessionCipher {
         aad: ByteArray,
         plaintext: ByteArray,
     ): ByteArray {
+        if (!platformChaCha) return ChaCha20Poly1305.seal(key, nonce, aad, plaintext)
         val cipher = Cipher.getInstance("ChaCha20-Poly1305")
         cipher.init(
             Cipher.ENCRYPT_MODE,
