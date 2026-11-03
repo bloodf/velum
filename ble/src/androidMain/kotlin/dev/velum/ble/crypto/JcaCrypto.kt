@@ -1,7 +1,6 @@
 package dev.velum.ble.crypto
 
 import dev.velum.protocol.Bytes
-import android.util.Log
 import dev.velum.protocol.ChaCha20
 import dev.velum.protocol.ChaCha20Poly1305
 import dev.velum.protocol.FileDecryptor
@@ -28,19 +27,24 @@ actual fun createFileDecryptor(): FileDecryptor = JcaFileDecryptor()
 class JcaSessionCipher : SessionCipher {
     /**
      * Android documents ChaCha20/Poly1305 from API 28, and minSdk is 26 (#226). Without a usable platform cipher,
-     * fall back to the Kotlin AEAD, which has the same output. Probed per instance, not cached globally. The probe
-     * also runs `init` with a throwaway all-zero key: a provider that lists the cipher but rejects the key or IV
-     * would fail every real call, so it must take the fallback too. Only the active path is logged, never key
-     * material.
+     * use the Kotlin AEAD, which has the same output. Probed per instance, not cached globally. The probe seals a
+     * fixed synthetic message and compares it with the Kotlin result: a provider that lists the cipher but throws,
+     * or ignores the IV, gets the Kotlin path instead of failing every real call. Not logged here (plain JUnit
+     * tests build this class and `android.util.Log` is not mocked); read [usesPlatformChaCha] to see the path.
      */
-    private val platformChaCha: Boolean = try {
-        Cipher.getInstance("ChaCha20-Poly1305")
-            .init(Cipher.ENCRYPT_MODE, SecretKeySpec(ByteArray(32), "ChaCha20"), IvParameterSpec(ByteArray(12)))
-        true
+    val usesPlatformChaCha: Boolean = try {
+        val key = ByteArray(32) { it.toByte() }
+        val nonce = ByteArray(12) { (it + 1).toByte() }
+        val aad = ByteArray(12) { (it + 2).toByte() }
+        val plain = ByteArray(40) { (it * 3).toByte() }
+        val cipher = Cipher.getInstance("ChaCha20-Poly1305")
+        cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "ChaCha20"), IvParameterSpec(nonce))
+        cipher.updateAAD(aad)
+        cipher.doFinal(plain).contentEquals(ChaCha20Poly1305.seal(key, nonce, aad, plain))
     } catch (_: GeneralSecurityException) {
-        // NoSuchAlgorithm / NoSuchPadding / InvalidKey / InvalidAlgorithmParameter: no usable platform cipher.
+        // NoSuchAlgorithm / NoSuchPadding / InvalidKey / InvalidAlgorithmParameter / AEADBadTag: no usable cipher.
         false
-    }.also { Log.i(TAG, "ChaCha20-Poly1305 via ${if (it) "platform cipher" else "Kotlin fallback"}") }
+    }
 
     override fun rsaDecryptPkcs1(privateKeyPem: String, ciphertext: ByteArray): ByteArray {
         val cipher = Cipher.getInstance("RSA/ECB/PKCS1Padding")
@@ -60,7 +64,7 @@ class JcaSessionCipher : SessionCipher {
         aad: ByteArray,
         ciphertextAndTag: ByteArray,
     ): ByteArray? {
-        if (!platformChaCha) return ChaCha20Poly1305.open(key, nonce, aad, ciphertextAndTag)
+        if (!usesPlatformChaCha) return ChaCha20Poly1305.open(key, nonce, aad, ciphertextAndTag)
         return try {
             val cipher = Cipher.getInstance("ChaCha20-Poly1305")
             cipher.init(
@@ -81,7 +85,7 @@ class JcaSessionCipher : SessionCipher {
         aad: ByteArray,
         plaintext: ByteArray,
     ): ByteArray {
-        if (!platformChaCha) return ChaCha20Poly1305.seal(key, nonce, aad, plaintext)
+        if (!usesPlatformChaCha) return ChaCha20Poly1305.seal(key, nonce, aad, plaintext)
         val cipher = Cipher.getInstance("ChaCha20-Poly1305")
         cipher.init(
             Cipher.ENCRYPT_MODE,
@@ -267,5 +271,3 @@ fun encodePem(label: String, der: ByteArray): String {
     val b64 = Base64.getMimeEncoder(64, "\n".toByteArray()).encodeToString(der)
     return "-----BEGIN $label-----\n$b64\n-----END $label-----"
 }
-
-private const val TAG = "VelumCrypto"
