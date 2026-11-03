@@ -175,7 +175,7 @@ class AndroidWifiTransferServerTest {
     private val chunks get() = fixture.toList().chunked(CHUNK).map { it.toByteArray() }
 
     @Test
-    fun acceptedSocketIsBoundToTheSelectedNetwork_notTheProcess() = runTest {
+    fun callsBindSocketOncePerAcceptedConnection() = runTest {
         val port = freePort()
         val network = RecordingNetwork()
         val server = AndroidWifiTransferServer(softApNetwork = { network.network })
@@ -201,14 +201,26 @@ class AndroidWifiTransferServerTest {
     }
 
     @Test
-    fun noNetwork_noBinding_serverStillAccepts() = runTest {
+    fun noNetwork_noBinding_serverStillDeliversFrames() = runTest {
         val port = freePort()
-        val server = AndroidWifiTransferServer()
+        val untouched = RecordingNetwork() // never handed to the server: must stay unbound
+        val failures = mutableListOf<Throwable>()
+        val server = AndroidWifiTransferServer(onBindFailure = { failures += it })
         server.start(port, "127.0.0.1", preamble)
         try {
+            @Suppress("UNCHECKED_CAST")
+            val frames = server.incomingEncryptedFrames() as SharedFlow<ByteArray>
+            val subscribed = CompletableDeferred<Unit>()
+            val first = async(start = CoroutineStart.UNDISPATCHED) {
+                withTimeout(30_000) { frames.onSubscription { subscribed.complete(Unit) }.first() }
+            }
+            subscribed.await()
             val d = connectDevice(port)
-            d.send(preamble)
+            withContext(Dispatchers.IO) { d.send(preamble); d.send(byteArrayOf(5)) }
+            assertContentEquals(byteArrayOf(5), first.await())
             d.close()
+            assertEquals(0, untouched.boundCount)
+            assertTrue(failures.isEmpty(), "no network, so nothing to bind or report")
         } finally {
             server.stop()
         }

@@ -44,6 +44,12 @@ ephemeral loopback port (`ServerSocket(0)`, connect-retry, no fixed ports) with 
   `ConnectivityManager` request/callback lifecycle: the process is never bound (`bindProcessToNetwork`), the callback
   is unregistered on leave, cancel and failed join, and the host address follows the bound network's link properties.
   No emulator is needed; these are simulated and make no hardware claim.
+- **Known platform limit (#8):** `AndroidWifiTransferServer` calls `Network.bindSocket` on each *accepted* socket. On
+  real Android that is expected to throw (`Socket is connected`: the platform call reads the peer address), so the
+  per-socket bind does not take effect there; the failure is reported through `onBindFailure` (logged by class only) and
+  the connection is still served. The Robolectric tests only prove the call is made and the failure is reported, not that
+  traffic is routed over the SoftAP network. Whoever wires Wi-Fi into the app must bind the listening side instead
+  (SoftAP host address via `bindHost`, or `Network.socketFactory`) and confirm on a real Note Pro.
 - **Not covered (stays in #8):** real SoftAP join, `Network.bindSocket` on a real `Network`, normal-network
   restoration, hardware throughput.
 - **Nonce (#28):** `wifiFrameSealing_isDeterministicPerSecretAndSeq` characterizes sealing as deterministic per
