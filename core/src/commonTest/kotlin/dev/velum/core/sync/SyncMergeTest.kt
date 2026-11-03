@@ -74,7 +74,7 @@ class SyncMergeTest {
 
     @Test fun clock_orders_local_writes_and_sorts_after_anything_received() {
         var wall = 100L
-        val clock = HlcClock("phone") { wall }
+        val clock = HlcClock("phone", now = { wall })
         val first = clock.send()
         val second = clock.send() // same millisecond: counter breaks the tie
         assertTrue(second > first)
@@ -83,21 +83,73 @@ class SyncMergeTest {
         assertTrue(clock.send() > second)
 
         val fromFuture = Hlc(10_000, 4, "desktop") // other device's clock runs far ahead
-        val after = clock.receive(fromFuture)
+        val after = clock.receive(fromFuture)!!
         assertTrue(after > fromFuture)
         assertTrue(clock.send() > after)
     }
 
     @Test fun a_write_made_after_receiving_wins_even_with_a_slower_clock() {
         var phoneWall = 1_000L
-        val phone = HlcClock("phone") { phoneWall }
+        val phone = HlcClock("phone", now = { phoneWall })
         var desktopWall = 9_000L // desktop clock is ahead
-        val desktop = HlcClock("desktop") { desktopWall }
+        val desktop = HlcClock("desktop", now = { desktopWall })
 
         val desktopEdit = SyncRecord().write("title", "from desktop", desktop.send())
-        phone.receive(desktopEdit.fields.getValue("title").hlc)
+        assertTrue(phone.receive(desktopEdit.fields.getValue("title").hlc) != null)
         val phoneEdit = SyncRecord().write("title", "reply from phone", phone.send())
         assertEquals("reply from phone", desktopEdit.merge(phoneEdit).value("title"))
         assertEquals("reply from phone", phoneEdit.merge(desktopEdit).value("title"))
+    }
+
+    @Test fun a_full_counter_carries_into_the_wall_clock_instead_of_wrapping() {
+        val clock = HlcClock("phone", now = { 100L })
+        val remote = Hlc(100, Int.MAX_VALUE, "desktop")
+        val after = clock.receive(remote)!!
+        assertTrue(after > remote, "$after must sort after $remote")
+        assertTrue(after.counter >= 0)
+        assertTrue(clock.send() > after)
+    }
+
+    @Test fun a_remote_timestamp_beyond_the_drift_bound_is_rejected_and_changes_nothing() {
+        val clock = HlcClock("phone", maxDriftMs = 1_000, now = { 10_000L })
+        val before = clock.current()
+        assertNull(clock.receive(Hlc(Long.MAX_VALUE, 0, "evil")))
+        assertNull(clock.receive(Hlc(11_001, 0, "desktop")))
+        assertEquals(before, clock.current())
+        assertTrue(clock.receive(Hlc(11_000, 0, "desktop")) != null) // exactly at the bound is fine
+    }
+
+    @Test fun records_with_future_timestamps_fail_the_drift_check_before_merge() {
+        val sane = SyncRecord().write("title", "ok", Hlc(10_000, 0, "desktop"))
+        val hostile = sane.write("notes", "x", Hlc(Long.MAX_VALUE, 0, "evil"))
+        assertTrue(sane.isWithinDrift(nowMs = 10_000, maxDriftMs = 1_000))
+        assertTrue(!hostile.isWithinDrift(nowMs = 10_000, maxDriftMs = 1_000))
+    }
+
+    @Test fun a_restart_with_a_stepped_back_clock_does_not_reissue_old_timestamps() {
+        var wall = 5_000L
+        val before = HlcClock("phone", now = { wall })
+        val issued = before.send()
+        wall = 1_000L // system clock stepped back across the restart
+        val restarted = HlcClock("phone", seed = before.current(), now = { wall })
+        assertTrue(restarted.send() > issued)
+        val unseeded = HlcClock("phone", now = { wall })
+        assertTrue(unseeded.send() < issued) // why the seed exists
+    }
+
+    @Test fun a_remote_at_or_below_the_local_state_still_moves_the_clock_forward() {
+        val clock = HlcClock("phone", now = { 100L })
+        val first = clock.send()
+        val after = clock.receive(Hlc(50, 0, "desktop"))!!
+        assertTrue(after > first)
+        val sameWallLowerCounter = clock.receive(Hlc(after.wallMs, 0, "desktop"))!!
+        assertTrue(sameWallLowerCounter > after)
+    }
+
+    @Test fun equal_time_and_counter_from_two_nodes_still_order_the_same_everywhere() {
+        val a = SyncRecord().write("k", "a", Hlc(7, 3, "alpha"))
+        val b = SyncRecord().write("k", "b", Hlc(7, 3, "beta"))
+        assertEquals(a.merge(b), b.merge(a))
+        assertEquals("b", a.merge(b).value("k"))
     }
 }

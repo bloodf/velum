@@ -24,20 +24,19 @@ data class SyncRecord(val fields: Map<String, SyncField> = emptyMap()) {
 
     fun delete(name: String, hlc: Hlc): SyncRecord = write(name, null, hlc)
 
-    fun merge(other: SyncRecord): SyncRecord {
-        val names = fields.keys + other.fields.keys
-        return SyncRecord(
-            names.associateWith { name ->
-                val mine = fields[name]
-                val theirs = other.fields[name]
-                when {
-                    mine == null -> theirs!!
-                    theirs == null -> mine
-                    else -> mine.merge(theirs)
-                }
+    fun merge(other: SyncRecord): SyncRecord =
+        SyncRecord(
+            (fields.keys + other.fields.keys).associateWith { name ->
+                listOfNotNull(fields[name], other.fields[name]).reduce(SyncField::merge)
             },
         )
-    }
+
+    /**
+     * False when any timestamp is more than [maxDriftMs] ahead of [nowMs]. A record received from a peer
+     * must pass this before [merge], or one far-future write would win every field it touches forever.
+     */
+    fun isWithinDrift(nowMs: Long, maxDriftMs: Long = DEFAULT_MAX_DRIFT_MS): Boolean =
+        fields.values.all { it.hlc.wallMs - nowMs <= maxDriftMs }
 
     /** Live value, or null when absent or deleted. */
     fun value(name: String): String? = fields[name]?.value
