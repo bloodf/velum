@@ -580,6 +580,17 @@ class VelumRepository(
         if (message == null) q.deleteMeta(processingErrorKey(recordingId)) else q.setMeta(processingErrorKey(recordingId), message)
     }
 
+    /**
+     * The work id of a run that could not be promoted to the foreground and has not ended on its own, or null.
+     * A stop leaves it set; a retry keeps the id, a REPLACE enqueue gets a new one (so it is not mistaken for a rerun).
+     */
+    suspend fun unpromotedRunOwner(recordingId: String): String? = getMeta("$UNPROMOTED_RUN_PREFIX$recordingId")
+
+    /** Null clears it. */
+    suspend fun setUnpromotedRun(recordingId: String, workId: String?) = withContext(dbContext) {
+        if (workId != null) q.setMeta("$UNPROMOTED_RUN_PREFIX$recordingId", workId) else q.deleteMeta("$UNPROMOTED_RUN_PREFIX$recordingId")
+    }
+
     private fun processingErrorKey(recordingId: String) = "$PROCESSING_ERROR_PREFIX$recordingId"
 
     suspend fun isFirstRunDone(): Boolean = getMeta(META_FIRST_RUN_DONE) == "1"
@@ -701,6 +712,7 @@ class VelumRepository(
         q.deleteSpeakersForRecording(id)
         q.deleteRecordingHard(id)
         q.deleteMeta(processingErrorKey(id))
+        q.deleteMeta("$UNPROMOTED_RUN_PREFIX$id")
         tryIndex { if (ftsAvailable) FtsIndex.deleteRecording(driver, id) }
     }
 
@@ -730,6 +742,7 @@ class VelumRepository(
         q.deleteAllMemories()
         q.deleteAllGlossary()
         q.deleteMetaWithPrefix(PROCESSING_ERROR_PREFIX)
+        q.deleteMetaWithPrefix(UNPROMOTED_RUN_PREFIX)
         // Clear seed marker so maybeSeed re-inserts default AutoFlow + builtins.
         SeedData.clearSeedMarker(db)
         SeedData.maybeSeed(db)
@@ -1091,6 +1104,7 @@ class VelumRepository(
         const val META_TEMPLATE_ALIASES_RECONCILED = "template_aliases_reconciled"
         const val META_FTS_DIRTY = "fts_dirty"
         private const val PROCESSING_ERROR_PREFIX = "processing_error:"
+        private const val UNPROMOTED_RUN_PREFIX = "unpromoted_run:"
     }
 }
 
