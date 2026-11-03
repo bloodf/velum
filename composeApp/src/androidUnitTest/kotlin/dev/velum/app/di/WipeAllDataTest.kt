@@ -204,6 +204,14 @@ class WipeAllDataTest {
         }
     }
 
+    /** Fails clearing the device keys, the way a locked keystore does. */
+    private class FailingDeviceKeyStore(private val delegate: SecureStore = InMemorySecureStore()) : SecureStore by delegate {
+        override suspend fun remove(key: String) {
+            if (key.startsWith("device.")) throw SecureStoreUnavailableException(IllegalStateException("synthetic"))
+            delegate.remove(key)
+        }
+    }
+
     private fun withContainer(
         store: SecureStore = InMemorySecureStore(),
         mic: MicCapture? = null,
@@ -298,6 +306,20 @@ class WipeAllDataTest {
             container.addRecording("rec-queued")
             container.wipeAllData()
             assertEquals(1L, rowsAtCancel, "queued work was not dropped before the rows went")
+        }
+    }
+
+    @Test fun a_wipe_that_fails_at_the_keys_leaves_queued_processing_alone() {
+        var cancelled = false
+        val jobs = object : RecordingJobScheduler {
+            override fun enqueue(recordingId: String, templateId: String?, retranscribe: Boolean, apiModelOverride: ApiModelOverride?) = Unit
+            override fun cancelAll() { cancelled = true }
+        }
+        withContainer(store = FailingDeviceKeyStore(), jobs = { _, _ -> jobs }) { container, _ ->
+            container.addRecording("rec-queued", status = "queued")
+            assertFailsWith<SecureStoreUnavailableException> { container.wipeAllData() }
+            assertFalse(cancelled, "queued work was cancelled but its recording stayed in the library")
+            assertNotNull(container.repository.getRecording("rec-queued"))
         }
     }
 

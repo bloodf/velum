@@ -295,11 +295,12 @@ class AppContainer(
      */
     internal suspend fun wipeAllData(device: DeviceViewModel = deviceViewModel): DownloadWipeResult =
         wipeGate.wiping(WIPE_JOIN_TIMEOUT) { workStopped ->
-            recordingJobs.cancelAll()
             device.holdingDownloads {
                 val downloads = device.wipePartialDownloads()
                 deviceKeyImporter.clearKeys()
                 stopMicCapture()
+                // Only now: if an earlier step fails, recordings stay and still need their queued work.
+                recordingJobs.cancelAll()
                 repository.wipeAllUserData { path -> deleteFileAtPath(path) }
                 withContext(Dispatchers.IO) {
                     voiceProfileStore.wipeAll()
