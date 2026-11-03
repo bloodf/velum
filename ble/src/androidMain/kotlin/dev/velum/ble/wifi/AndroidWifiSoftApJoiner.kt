@@ -76,7 +76,7 @@ class AndroidWifiSoftApJoiner(
                 override fun onUnavailable() {
                     if (cont.isActive) {
                         cont.resumeWithException(
-                            IllegalStateException("SoftAP network unavailable"),
+                            WifiTransferFailure("SoftAP network unavailable"),
                         )
                     }
                 }

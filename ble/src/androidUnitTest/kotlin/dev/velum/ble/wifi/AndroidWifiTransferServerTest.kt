@@ -149,7 +149,7 @@ class AndroidWifiTransferServerTest {
         val frames = s.server.incomingEncryptedFrames() as SharedFlow<ByteArray>
         frames.onSubscription { subscribed.complete(Unit) }
             .transformWhile<ByteArray, Unit> { sealed ->
-                out.write(s.openIncoming(sealed) ?: error("wifi_frame_rejected"))
+                out.write(s.openIncoming(sealed) ?: throw WifiTransferFailure("wifi_frame_rejected"))
                 out.size() < total
             }.collect { }
         return out.toByteArray()
@@ -328,6 +328,7 @@ class AndroidWifiTransferServerTest {
         val joiner = RecordingJoiner()
         val server = AndroidWifiTransferServer(softApNetwork = { network.network })
         val subscribed = CompletableDeferred<Unit>()
+        var arrived: ByteArray? = null
         val device = launchDevice(port, subscribed, WifiPayloadCipher.ChaCha20Poly1305, chunks.take(8)) // then closes
         val outcome = WifiTransferCoordinator(
             sessionFactory = { session(WifiPayloadCipher.ChaCha20Poly1305, server, joiner) },
@@ -335,10 +336,15 @@ class AndroidWifiTransferServerTest {
             wifiTimeout = 10_000.milliseconds,
         ).transferOrFallback(
             "PLAUD-FAKE", "password12", port = port, preamble = preamble, bindHost = "127.0.0.1",
-            assemble = { assembleExact(it, fixture.size, subscribed) },
+            assemble = {
+                // The first 8 chunks must really arrive; then the device is gone and nothing more comes.
+                arrived = assembleExact(it, 8 * CHUNK, subscribed)
+                kotlinx.coroutines.awaitCancellation()
+            },
         )
         subscribed.complete(Unit) // never leave the device waiting if the timeout fired before subscription
         device.join()
+        assertContentEquals(fixture.copyOf(8 * CHUNK), arrived, "the 8 frames sent before the drop arrived intact")
         assertIs<WifiTransferCoordinator.Outcome.BleFallback>(outcome)
         assertTrue(outcome.reason.startsWith("wifi_timeout"), outcome.reason)
         assertContentEquals(fixture, outcome.bytes) // BLE result is whole: no partial Wi-Fi bytes mixed in

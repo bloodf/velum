@@ -93,7 +93,7 @@ class WifiSoftApMockServerTest {
         val frames = s.server.incomingEncryptedFrames() as SharedFlow<ByteArray>
         frames.onSubscription { subscribed.complete(Unit) }
             .transformWhile<ByteArray, Unit> { sealed ->
-                val plain = s.openIncoming(sealed) ?: error("wifi_frame_rejected")
+                val plain = s.openIncoming(sealed) ?: throw WifiTransferFailure("wifi_frame_rejected")
                 out.write(plain)
                 out.size() < total
             }.collect { }

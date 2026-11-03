@@ -118,7 +118,7 @@ class WifiSoftApBleFallbackTest {
         val frames = s.server.incomingEncryptedFrames() as SharedFlow<ByteArray>
         frames.onSubscription { subscribed.complete(Unit) }
             .transformWhile<ByteArray, Unit> { sealed ->
-                out.write(s.openIncoming(sealed) ?: error("wifi_frame_rejected"))
+                out.write(s.openIncoming(sealed) ?: throw WifiTransferFailure("wifi_frame_rejected"))
                 out.size() < total
             }.collect { }
         return out.toByteArray()
