@@ -67,13 +67,28 @@ object BundleSections {
 
     private val json = Json { ignoreUnknownKeys = false; encodeDefaults = true }
 
+    /** Same limits as [decodeRecords], enforced here so an oversized section fails at export, not as "damaged" on import. */
     fun encodeRecords(records: Map<String, SyncRecord>): ByteArray {
+        require(records.size <= MAX_RECORDS) { "too many records: ${records.size} (max $MAX_RECORDS)" }
+        records.forEach { (id, r) ->
+            require(id.isNotEmpty() && id.length <= MAX_NAME_CHARS) { "record id must be 1..$MAX_NAME_CHARS chars" }
+            require(r.fields.size <= MAX_FIELDS_PER_RECORD) { "record $id has too many fields (max $MAX_FIELDS_PER_RECORD)" }
+            r.fields.forEach { (name, f) ->
+                require(name.isNotEmpty() && name.length <= MAX_NAME_CHARS) { "field name must be 1..$MAX_NAME_CHARS chars" }
+                require(f.hlc.wallMs >= 0 && f.hlc.counter >= 0 && f.hlc.node.isNotEmpty() && f.hlc.node.length <= MAX_NAME_CHARS) {
+                    "field $name has an invalid timestamp"
+                }
+            }
+        }
         val wire = RecordsWire(
             1,
             records.mapValues { (_, r) -> r.fields.mapValues { (_, f) -> FieldWire(f.value, f.hlc.wallMs, f.hlc.counter, f.hlc.node) } },
         )
-        return json.encodeToString(wire).encodeToByteArray()
+        return json.encodeToString(wire).encodeToByteArray().also { requireSectionFits(it) }
     }
+
+    private fun requireSectionFits(bytes: ByteArray) =
+        require(bytes.size <= MAX_SECTION_BYTES) { "section is ${bytes.size} bytes, over the ${MAX_SECTION_BYTES} byte limit; split the export" }
 
     /**
      * Shape and size checks: at most [MAX_SECTION_BYTES] (before parsing), version 1, no unknown keys, bounded counts and
@@ -96,13 +111,19 @@ object BundleSections {
         }
     }
 
-    fun encodeAudioHashes(hashes: List<String>): ByteArray = json.encodeToString(HashesWire(1, hashes)).encodeToByteArray()
+    fun encodeAudioHashes(hashes: List<String>): ByteArray {
+        require(hashes.size <= MAX_RECORDS) { "too many hashes: ${hashes.size} (max $MAX_RECORDS)" }
+        require(hashes.all(::isSha256Hex)) { "audio hashes must be 64 lowercase hex characters" }
+        return json.encodeToString(HashesWire(1, hashes)).encodeToByteArray().also { requireSectionFits(it) }
+    }
+
+    private fun isSha256Hex(h: String) = h.length == SHA256_HEX && h.all { it in '0'..'9' || it in 'a'..'f' }
 
     fun decodeAudioHashes(bytes: ByteArray): List<String> {
         if (bytes.size > MAX_SECTION_BYTES) throw BundleUnreadableException()
         val wire = parse<HashesWire>(bytes)
         if (wire.v != 1 || wire.hashes.size > MAX_RECORDS) throw BundleUnreadableException()
-        if (!wire.hashes.all { h -> h.length == SHA256_HEX && h.all { it in '0'..'9' || it in 'a'..'f' } }) throw BundleUnreadableException()
+        if (!wire.hashes.all(::isSha256Hex)) throw BundleUnreadableException()
         return wire.hashes
     }
 
@@ -110,6 +131,9 @@ object BundleSections {
      * Importers for [BundleImporter.import]. Each `prepare` decodes and validates its whole section (record sections also
      * reject any timestamp more than the drift limit ahead of [nowMs] with [BundleClockSkewException], rejecting the whole bundle); only commits touch [sink].
      */
+    // ponytail: no total parsed-bytes budget across sections. Each section is capped at MAX_SECTION_BYTES and the whole
+    // bundle at SealedBundle.MAX_BUNDLE_BYTES (64 MiB), so decoded objects are bounded by roughly 300 MB (estimate, not
+    // measured). Measure that on a device and add a total budget (or lower MAX_BUNDLE_BYTES) before a caller is wired.
     fun importers(nowMs: Long, sink: BundleSink): Map<String, SectionImporter> =
         recordSections.associateWith { section ->
             SectionImporter { data ->

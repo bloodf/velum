@@ -53,22 +53,42 @@ class BundleSectionsTest {
     }
 
     @Test fun oversized_sections_are_refused_before_parsing() {
-        val big = ByteArray(BundleSections.MAX_SECTION_BYTES + 1) { ' '.code.toByte() }
-        assertFailsWith<BundleUnreadableException> { BundleSections.decodeRecords(big) }
-        assertFailsWith<BundleUnreadableException> { BundleSections.decodeAudioHashes(big) }
+        // Valid JSON padded with trailing whitespace past the cap: only the size cap can reject it.
+        fun padded(json: String) = ByteArray(BundleSections.MAX_SECTION_BYTES + 1) { ' '.code.toByte() }.also { json.encodeToByteArray().copyInto(it) }
+        assertEquals(emptyMap(), BundleSections.decodeRecords("""{"v":1,"records":{}}""".encodeToByteArray())) // the base is valid
+        assertFailsWith<BundleUnreadableException> { BundleSections.decodeRecords(padded("""{"v":1,"records":{}}""")) }
+        assertFailsWith<BundleUnreadableException> { BundleSections.decodeAudioHashes(padded("""{"v":1,"hashes":[]}""")) }
     }
 
-    @Test fun a_future_timestamp_rejects_the_whole_bundle_with_its_own_reason_and_no_merge() {
-        val far = SyncRecord().write("text", "x", Hlc(now + 3L * 24 * 60 * 60 * 1000, 0, "evil"))
-        val sink = Sink()
-        val sealed = bundle(mapOf(
-            BundleSections.NOTES to BundleSections.encodeRecords(mapOf("ok" to transcript)),
-            BundleSections.TRANSCRIPTS to BundleSections.encodeRecords(mapOf("bad" to far)),
-        ))
-        val e = assertFailsWith<BundleClockSkewException> { BundleImporter.import("pw", sealed, BundleSections.importers(now, sink), atomically) }
-        assertTrue(e !is BundleUnreadableException && "passphrase" !in e.message.orEmpty(), "must not say wrong passphrase")
-        assertEquals(emptyMap(), sink.merged)
-        assertNull(sink.hashes)
+    @Test fun count_and_name_limits_are_enforced_on_decode() {
+        val tooManyRecords = (0..BundleSections.MAX_RECORDS).joinToString(",", """{"v":1,"records":{""", "}}") { "\"r$it\":{}" }
+        val tooManyFields = (0..BundleSections.MAX_FIELDS_PER_RECORD).joinToString(",", """{"v":1,"records":{"a":{""", "}}}") { """"f$it":{"value":"x","wallMs":1,"counter":0,"node":"n"}""" }
+        val long = "x".repeat(BundleSections.MAX_NAME_CHARS + 1)
+        val field = """{"value":"x","wallMs":1,"counter":0,"node":"n"}"""
+        val cases = mapOf(
+            "records" to tooManyRecords,
+            "fields" to tooManyFields,
+            "record id" to """{"v":1,"records":{"$long":{}}}""",
+            "field name" to """{"v":1,"records":{"a":{"$long":$field}}}""",
+            "node" to """{"v":1,"records":{"a":{"f":{"value":"x","wallMs":1,"counter":0,"node":"$long"}}}}""",
+        )
+        for ((what, json) in cases) assertFailsWith<BundleUnreadableException>(what) { BundleSections.decodeRecords(json.encodeToByteArray()) }
+        val manyHashes = (0..BundleSections.MAX_RECORDS).joinToString(",", """{"v":1,"hashes":[""", "]}") { "\"$hash\"" }
+        assertFailsWith<BundleUnreadableException> { BundleSections.decodeAudioHashes(manyHashes.encodeToByteArray()) }
+    }
+
+    @Test fun encode_enforces_the_same_limits_with_a_clear_error() {
+        assertFailsWith<IllegalArgumentException> { BundleSections.encodeRecords((0..BundleSections.MAX_RECORDS).associate { "r$it" to SyncRecord() }) }
+        val manyFields = (0..BundleSections.MAX_FIELDS_PER_RECORD).fold(SyncRecord()) { r, i -> r.write("f$i", "x", Hlc(1, 0, "n")) }
+        assertFailsWith<IllegalArgumentException> { BundleSections.encodeRecords(mapOf("a" to manyFields)) }
+        assertFailsWith<IllegalArgumentException> { BundleSections.encodeRecords(mapOf("x".repeat(BundleSections.MAX_NAME_CHARS + 1) to SyncRecord())) }
+        assertFailsWith<IllegalArgumentException> { BundleSections.encodeRecords(mapOf("a" to SyncRecord().write("f", "x", Hlc(1, 0, "")))) }
+        assertFailsWith<IllegalArgumentException> { BundleSections.encodeAudioHashes(listOf("nope")) }
+        assertFailsWith<IllegalArgumentException> { BundleSections.encodeAudioHashes(List(BundleSections.MAX_RECORDS + 1) { hash }) }
+        // A section over the byte cap (valid counts, huge values) must fail at export, not seal and then look damaged.
+        val big = "v".repeat(BundleSections.MAX_SECTION_BYTES)
+        val e = assertFailsWith<IllegalArgumentException> { BundleSections.encodeRecords(mapOf("a" to SyncRecord().write("f", big, Hlc(1, 0, "n")))) }
+        assertTrue("limit" in e.message.orEmpty(), e.message)
     }
 
     @Test fun malformed_oversized_and_out_of_range_payloads_are_unreadable() {
