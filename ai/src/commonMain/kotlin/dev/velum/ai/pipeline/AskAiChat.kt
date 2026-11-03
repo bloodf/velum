@@ -1,5 +1,6 @@
 package dev.velum.ai.pipeline
 
+import dev.velum.core.data.TranscriptMarkers
 import dev.velum.ai.MissingApiKeyException
 import dev.velum.ai.engine.AiTaskRouter
 import dev.velum.ai.engine.LlmRequest
@@ -42,7 +43,7 @@ class AskAiChat(
                 append("Custom instructions: ").append(prefs.customInstructions).append('\n')
             }
             append("\n--- Transcript ---\n")
-            append(recording.transcript.orEmpty().ifBlank { "(empty)" })
+            append(TranscriptMarkers.spoken(recording.transcript).orEmpty().ifBlank { "(empty)" })
             append("\n\n--- Summary ---\n")
             append(recording.summary_markdown.orEmpty().ifBlank { "(empty)" })
         }

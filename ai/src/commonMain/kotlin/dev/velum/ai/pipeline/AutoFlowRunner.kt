@@ -1,5 +1,6 @@
 package dev.velum.ai.pipeline
 
+import dev.velum.core.data.TranscriptMarkers
 import dev.velum.ai.engine.JobProgress
 import dev.velum.core.autoflow.AutoFlowMatcher
 import dev.velum.core.autoflow.AutoFlowPostAction
@@ -311,7 +312,7 @@ class AutoFlowRunner internal constructor(
                 source = recording.source,
                 durationSeconds = recording.duration_seconds,
                 title = recording.title,
-                transcript = recording.transcript,
+                transcript = TranscriptMarkers.spoken(recording.transcript),
             ),
         )
 

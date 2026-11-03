@@ -1,5 +1,6 @@
 package dev.velum.core.autoflow
 
+import dev.velum.core.data.TranscriptMarkers
 /**
  * Pure matching for AutoFlow rules against a new recording.
  * Source filter `"all"` matches any source; otherwise equality on source.
@@ -28,7 +29,7 @@ object AutoFlowMatcher {
         if (candidate.durationSeconds > rule.durationMaxSeconds) return false
         val phrase = rule.wakePhrase?.trim().orEmpty()
         if (phrase.isNotEmpty()) {
-            val haystack = listOfNotNull(candidate.title, candidate.transcript)
+            val haystack = listOfNotNull(candidate.title, TranscriptMarkers.spoken(candidate.transcript))
                 .joinToString("\n")
             if (!haystack.contains(phrase, ignoreCase = true)) return false
         }
