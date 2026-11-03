@@ -289,8 +289,9 @@ class RecordingProcessor(
                             settings.resolveApiModel(AiApiTask.Diarization, apiModelOverride).modelId
                     }
                     val diarization = try {
-                        // Prefer in-memory buffer; for spilled PCM diarize the first 30 min window
-                        // (full-buffer diarizers cannot take multi-hour arrays without OOM).
+                        // Prefer in-memory buffer; for spilled PCM diarize a leading window of at most 30 min and at
+                        // most DIARIZATION_MAX_BYTES (30 min at 16 kHz mono, so 10 min at 48 kHz): full-buffer
+                        // diarizers cannot take multi-hour arrays without OOM.
                         val diarBytes = pcmBuffer.asFullArrayOrNull()
                             ?: pcmBuffer.slice(
                                 0,
@@ -649,29 +650,30 @@ class RecordingProcessor(
      */
     private fun locateWavPcmHeader(probe: ByteArray, fileLength: Long): WavPcmHeader {
         if (!looksLikeWav(probe)) return WavPcmHeader(-1, -1, 16_000)
-        var offset = 12
+        // Chunk sizes are unsigned 32-bit: read as a signed Int, 0xFFFFFFF8 is -8 and the walk would never advance.
+        var offset = 12L
         var sampleRate = 16_000
         while (offset + 8 <= probe.size) {
-            val id = fourCc(probe, offset)
-            val size = u32le(probe, offset + 4)
+            val at = offset.toInt()
+            val id = fourCc(probe, at)
+            val size = u32le(probe, at + 4).toLong() and 0xFFFF_FFFFL
             val body = offset + 8
             when (id) {
                 "fmt " -> {
                     if (body + 16 <= probe.size) {
-                        sampleRate = u32le(probe, body + 4)
+                        sampleRate = u32le(probe, body.toInt() + 4)
                     }
                 }
                 "data" -> {
                     val maxSize = (fileLength - body).coerceAtLeast(0L).coerceAtMost(Int.MAX_VALUE.toLong())
                     return WavPcmHeader(
-                        dataStart = body,
-                        dataSize = size.toLong().coerceAtMost(maxSize).toInt(),
+                        dataStart = body.toInt(),
+                        dataSize = size.coerceAtMost(maxSize).toInt(),
                         sampleRateHz = sampleRate,
                     )
                 }
             }
             offset = body + size + (size % 2)
-            if (offset < 0) break // overflow guard
         }
         return WavPcmHeader(-1, -1, sampleRate)
     }
