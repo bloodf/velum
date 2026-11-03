@@ -105,6 +105,78 @@ class AutoFlowRunnerTest {
     }
 
     @Test
+    fun keptJob_givesTheRowItsPriorStatusBack_notQueued_untilItFinishes() = runTest {
+        val f = Fixture(this)
+        f.start()
+        f.keepRunning = true
+        f.enqueue = { /* the running job owns the row */ }
+        f.store.put(recording("rec-kept", "paused_thermal"))
+        runCurrent() // the runner now waits on the kept job, so the pass does not complete
+        assertEquals("paused_thermal", f.row("rec-kept").status, "a kept job must not leave the row on queued or invent generating")
+        assertTrue(f.actions.none { it is AutoFlowUiAction.PostWebhook }, "no post-action before the job finishes")
+        f.complete("rec-kept")
+        testScheduler.advanceTimeBy(2_000)
+        runCurrent()
+        assertEquals("ready", f.row("rec-kept").status)
+        assertEquals(listOf("rec-kept"), f.actions.filterIsInstance<AutoFlowUiAction.PostWebhook>().map { it.recordingId })
+    }
+
+    @Test
+    fun jobEndingBeforeTheQueuedWrite_isTerminal_andNothingIsEnqueued() = runTest {
+        val f = Fixture(this)
+        f.start()
+        // The row turns ready between the runner reading it and its conditional queued write.
+        f.store.beforeConditionalQueue = { id -> f.store.change(id) { it.copy(status = "ready", summary_markdown = "## done") } }
+        f.publish(recording("rec-gap", "imported"))
+        assertTrue(f.enqueued.isEmpty(), "a finished job must not be re-enqueued")
+        assertEquals("ready", f.row("rec-gap").status, "the row must not be pushed back to queued")
+        assertEquals(listOf("rec-gap"), f.actions.filterIsInstance<AutoFlowUiAction.PostWebhook>().map { it.recordingId })
+    }
+
+    @Test
+    fun keptJobThatHasNotStarted_keepsTheImportedStatus_notGenerating() = runTest {
+        val f = Fixture(this)
+        f.start()
+        f.keepRunning = true
+        f.enqueue = { }
+        f.store.put(recording("rec-notyet", "imported"))
+        runCurrent()
+        assertEquals("imported", f.row("rec-notyet").status)
+    }
+
+    /** The row turns ready (with [template] as its active summary) the first time the runner re-reads it. */
+    private fun Fixture.finishesBeforeTheRunnerActs(template: String) {
+        var flipped = false
+        store.beforeRead = { id ->
+            if (!flipped) {
+                flipped = true
+                store.activeTemplates[id] = template
+                store.change(id) { it.copy(status = "ready", summary_markdown = "## done") }
+            }
+        }
+    }
+
+    @Test
+    fun jobFinishedForTheFlowsOwnTemplate_isSkipped_andThePostActionFiresOnce() = runTest {
+        val f = Fixture(this) // the flow asks for velum.meeting
+        f.start()
+        f.finishesBeforeTheRunnerActs("velum.meeting")
+        f.publish(recording("rec-same", "imported"))
+        assertTrue(f.enqueued.isEmpty(), "the finished job already did this flow's work")
+        assertEquals(listOf("rec-same"), f.actions.filterIsInstance<AutoFlowUiAction.PostWebhook>().map { it.recordingId })
+    }
+
+    @Test
+    fun jobFinishedForAnotherTemplate_doesNotSatisfyTheFlow_soItRunsAgain() = runTest {
+        val f = Fixture(this) // the flow asks for velum.meeting
+        f.start()
+        f.finishesBeforeTheRunnerActs("velum.sales")
+        f.publish(recording("rec-other", "imported"))
+        assertEquals(listOf("rec-other"), f.enqueued, "the flow's own template still has to be generated")
+        assertEquals("ready", f.row("rec-other").status)
+    }
+
+    @Test
     fun seed_skips_in_flight_so_generating_can_rematch() = runTest {
         val f = Fixture(this)
         f.store.put(recording("rec-inflight", "generating"))
@@ -549,17 +621,30 @@ class AutoFlowRunnerTest {
         val overrides = mutableListOf<ApiModelOverride?>()
         val actions = mutableListOf<AutoFlowUiAction>()
         var enqueue: (String) -> Unit = { complete(it) }
+        /** Makes the scheduler report that it kept an already running job instead of starting one. */
+        var keepRunning = false
         var process: (String) -> Flow<JobProgress> = { id -> flow { complete(id); emit(JobProgress.Succeeded()) } }
         var lookup: suspend () -> CalendarLookupResult = { CalendarLookupResult.Ok(null) }
         var calendarAround: suspend (Long) -> CalendarLookupResult = { lookup() }
         val runner = AutoFlowRunner(
             store, { id, _, _ -> process(id) }, test.backgroundScope,
             calendar = object : CalendarEventProvider { override suspend fun currentOrNextEvent(aroundEpochMs: Long) = calendarAround(aroundEpochMs) },
-            jobScheduler = if (scheduler) RecordingJobScheduler { id, template, _, override ->
-                enqueued += id
-                templates += template
-                overrides += override
-                enqueue(id)
+            jobScheduler = if (scheduler) object : RecordingJobScheduler {
+                override fun enqueue(recordingId: String, templateId: String?, retranscribe: Boolean, apiModelOverride: ApiModelOverride?) {
+                    enqueueReportingStart(recordingId, templateId, retranscribe, apiModelOverride)
+                }
+                override fun enqueueReportingStart(
+                    recordingId: String,
+                    templateId: String?,
+                    retranscribe: Boolean,
+                    apiModelOverride: ApiModelOverride?,
+                ): Boolean {
+                    enqueued += recordingId
+                    templates += templateId
+                    overrides += apiModelOverride
+                    enqueue(recordingId)
+                    return !keepRunning
+                }
             } else null,
         )
         init {
@@ -603,6 +688,22 @@ class AutoFlowRunnerTest {
             beforeStatus(id, status)
             change(id) { it.copy(status = status) }
         }
+        var beforeConditionalQueue: (String) -> Unit = {}
+        override suspend fun markQueuedIfActive(id: String): Boolean {
+            beforeConditionalQueue(id)
+            val current = rows.value.firstOrNull { it.id == id }?.status
+            if (current == null || current == "ready" || current == "failed") return false
+            updateStatus(id, "queued")
+            return true
+        }
+        override suspend fun restoreStatusIfQueued(id: String, status: String): Boolean {
+            if (rows.value.firstOrNull { it.id == id }?.status != "queued") return false
+            updateStatus(id, status)
+            return true
+        }
+        /** Template of each recording's active summary, set by tests that need a finished row. */
+        val activeTemplates = mutableMapOf<String, String>()
+        override suspend fun activeSummaryTemplateId(id: String): String? = activeTemplates[id]
         override suspend fun updateRecordingTitle(id: String, title: String) {
             beforeTitle(id)
             change(id) { it.copy(title = title) }
