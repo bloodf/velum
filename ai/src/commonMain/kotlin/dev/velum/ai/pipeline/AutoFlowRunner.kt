@@ -241,8 +241,9 @@ class AutoFlowRunner internal constructor(
     private fun hasAutomaticTitle(recording: Recording): Boolean =
         listOf("pt-BR", "en").any { VelumDateTime.formatFriendlyTitle(recording.started_at, it) == recording.title }
 
+    // Looked up at the recording's own start: downloads keep the device start time, so "now" could be days later.
     private suspend fun maybeApplyCalendarTitle(recording: Recording) {
-        when (val result = calendar.currentOrNextEvent(nowEpochMs())) {
+        when (val result = calendar.currentOrNextEvent(recording.started_at * 1000)) {
             is CalendarLookupResult.Ok -> {
                 calendarPermissionAsked.value = false
                 val title = result.currentOrNext?.title?.trim().orEmpty()

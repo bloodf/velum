@@ -551,9 +551,10 @@ class AutoFlowRunnerTest {
         var enqueue: (String) -> Unit = { complete(it) }
         var process: (String) -> Flow<JobProgress> = { id -> flow { complete(id); emit(JobProgress.Succeeded()) } }
         var lookup: suspend () -> CalendarLookupResult = { CalendarLookupResult.Ok(null) }
+        var calendarAround: suspend (Long) -> CalendarLookupResult = { lookup() }
         val runner = AutoFlowRunner(
             store, { id, _, _ -> process(id) }, test.backgroundScope,
-            calendar = object : CalendarEventProvider { override suspend fun currentOrNextEvent(aroundEpochMs: Long) = lookup() },
+            calendar = object : CalendarEventProvider { override suspend fun currentOrNextEvent(aroundEpochMs: Long) = calendarAround(aroundEpochMs) },
             jobScheduler = if (scheduler) RecordingJobScheduler { id, template, _, override ->
                 enqueued += id
                 templates += template
@@ -627,6 +628,16 @@ class AutoFlowRunnerTest {
         assertEquals("Planning", f.row("pt").title)
         assertEquals("Planning", f.row("en").title)
         assertEquals("My own title", f.row("edited").title)
+    }
+
+    @Test
+    fun calendarLookupUsesTheRecordingStartNotNow() = runTest {
+        val f = Fixture(this)
+        val asked = mutableListOf<Long>()
+        f.calendarAround = { asked += it; CalendarLookupResult.Ok(null) }
+        f.start()
+        f.publish(recording("old").copy(started_at = 1_700_000_000, title = defaultTitle(1_700_000_000, "en")))
+        assertEquals(listOf(1_700_000_000_000L), asked.distinct())
     }
 
     companion object {
