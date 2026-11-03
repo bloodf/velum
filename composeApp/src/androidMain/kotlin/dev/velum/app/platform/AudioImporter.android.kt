@@ -24,13 +24,19 @@ actual fun rememberAudioImporter(onPicked: (path: String) -> Unit): () -> Unit {
         if (uri == null) return@rememberLauncherForActivityResult
         scope.launch {
             val path = withContext(Dispatchers.IO) {
-                val name = sanitizeImportFileName(displayNameOf(context, uri), "${UUID.randomUUID()}.audio")
+                val displayName = displayNameOf(context, uri)
+                val name = sanitizeImportFileName(displayName, "${UUID.randomUUID()}.audio")
                 val dest = File(context.cacheDir, "imports").apply { mkdirs() }
                 val outFile = File(dest, "${System.currentTimeMillis()}_$name")
                 context.contentResolver.openInputStream(uri)?.use { input ->
                     FileOutputStream(outFile).use { output -> input.copyTo(output) }
                 }
-                if (outFile.exists() && outFile.length() > 0L) outFile.absolutePath else null
+                if (outFile.exists() && outFile.length() > 0L) {
+                    dev.velum.app.importing.ImportDisplayNames.put(outFile.absolutePath, displayName)
+                    outFile.absolutePath
+                } else {
+                    null
+                }
             }
             if (path != null) onPicked(path)
         }

@@ -4,6 +4,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import dev.velum.app.i18n.En
 import dev.velum.app.i18n.PtBr
+import dev.velum.app.ui.recording.transcriptBodyLineDisplay
 import dev.velum.app.ui.recording.transcriptHeaderDisplay
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
@@ -39,6 +40,15 @@ class ImportedRecordingDisplayTest {
         assertEquals("Orador 1 · 0:00", transcriptHeaderDisplay("**Speaker 1** · 0:00", PtBr))
         assertEquals("Ana · 0:00", transcriptHeaderDisplay("**Ana** · 0:00", PtBr))
         assertEquals("Speaker Phil · 1:02", transcriptHeaderDisplay("**Speaker Phil** · 1:02", PtBr))
+    }
+
+    @Test
+    fun markersSectionShowsNoMarkdownInEitherLocale() {
+        assertEquals("Markers", transcriptBodyLineDisplay("## Markers", En))
+        assertEquals("Marcadores", transcriptBodyLineDisplay("## Markers", PtBr))
+        assertEquals("• 0:12 budget", transcriptBodyLineDisplay("- **0:12** budget", En))
+        assertEquals("• 1:05", transcriptBodyLineDisplay("- **1:05**", PtBr))
+        assertEquals("plain **bold** line".replace("**", ""), transcriptBodyLineDisplay("plain **bold** line", En))
     }
 
     @Test

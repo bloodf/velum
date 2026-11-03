@@ -47,7 +47,7 @@ class AudioImportPipeline(
                 container.repository.setMeta("import_sha256_$sourceHash", existingByContent)
                 return@withContext ImportResult.Duplicate(existingByContent, contentHash)
             }
-            val title = titleHint ?: ImportTitles.fromFileName(name)
+            val title = titleHint ?: ImportTitles.forImport(absolutePath, name)
             val durationSeconds = (normalized.durationMs / 1000L).coerceAtLeast(0L)
             val id = container.createLocalRecording(
                 title = title,
