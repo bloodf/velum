@@ -173,14 +173,14 @@ class DeviceResumeRestartTest {
             val vm = run(peripheral(stopCrc = FakePlaudPeripheral.StopCrc.Ccitt))
             assertEquals(CrcStatus.Verified, vm.sessionUi.value.lastDownloadCrc)
             assertContentEquals(plaintext, assertNotNull(saved))
-        } finally { owner.clear(); Dispatchers.resetMain() }
+        } finally { tearDown() }
     }
 
     @Test fun a_device_with_no_crc_is_reported_as_not_provided() {
         try {
             val vm = run(peripheral())
             assertEquals(CrcStatus.NotProvided, vm.sessionUi.value.lastDownloadCrc)
-        } finally { owner.clear(); Dispatchers.resetMain() }
+        } finally { tearDown() }
     }
 
     @Test fun real_device_crc_mismatch_keeps_the_recording_and_says_so() {
