@@ -21,6 +21,7 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Test
@@ -65,6 +66,28 @@ class PersistDownloadedSessionDedupTest {
         assertEquals("queued", row(id).status)
         assertEquals(0, row(id).trashed)
         assertEquals(2, enqueued, "unprocessed row must be re-enqueued once")
+    }
+
+    @Test fun cancel_after_the_rename_leaves_no_orphan_file_and_no_row() = fixture {
+        val persisting = coroutineScope {
+            var self: kotlinx.coroutines.Job? = null
+            val job = launch(start = kotlinx.coroutines.CoroutineStart.LAZY) {
+                container.persistDownloadedSession(
+                    DownloadedSessionAudio(1_700_000_000, "SYNTH-SN-1", 1_700_000_000) { sink ->
+                        sink(ogg(1))
+                        self!!.cancel() // lands after the rename, before the row
+                        ogg(1).size.toLong()
+                    },
+                )
+            }
+            self = job
+            job.start()
+            job.join()
+            job
+        }
+        assertTrue(persisting.isCancelled)
+        assertEquals(emptyList(), audioFiles(), "the renamed file must not outlive the cancelled save")
+        assertEquals(0, container.repository.getAllRecordings().size)
     }
 
     @Test fun failed_redownload_leaves_existing_row_and_audio_untouched() = fixture {
