@@ -35,14 +35,14 @@ class AudioImportPipeline(
                 // Still try — MIME may have been audio without extension.
             }
             val sourceHash = sha256File(absolutePath)
-            val existingBySource = container.repository.getMeta("import_sha256_$sourceHash")
-            if (!existingBySource.isNullOrBlank()) {
+            val existingBySource = importedRecording(sourceHash)
+            if (existingBySource != null) {
                 return@withContext ImportResult.Duplicate(existingBySource, sourceHash)
             }
             val normalized = normalizer.normalizeToWav(absolutePath)
             val contentHash = normalized.contentSha256
-            val existingByContent = container.repository.getMeta("import_sha256_$contentHash")
-            if (!existingByContent.isNullOrBlank()) {
+            val existingByContent = importedRecording(contentHash)
+            if (existingByContent != null) {
                 // Same audio after normalize — also record source hash for next lookup.
                 container.repository.setMeta("import_sha256_$sourceHash", existingByContent)
                 return@withContext ImportResult.Duplicate(existingByContent, contentHash)
@@ -84,4 +84,9 @@ class AudioImportPipeline(
             ImportResult.Created(id, normalized.wavPath, contentHash)
         }.getOrElse { ImportResult.Failed(it.message ?: it::class.simpleName ?: "import_failed") }
     }
+
+    /** The recording this audio was imported as, or null when there is none or it no longer exists (#327). */
+    private suspend fun importedRecording(hash: String): String? =
+        container.repository.getMeta("import_sha256_$hash")
+            ?.takeIf { it.isNotBlank() && container.repository.getRecording(it) != null }
 }

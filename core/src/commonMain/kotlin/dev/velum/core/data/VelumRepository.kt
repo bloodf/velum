@@ -701,6 +701,8 @@ class VelumRepository(
         q.deleteSpeakersForRecording(id)
         q.deleteRecordingHard(id)
         q.deleteMeta(processingErrorKey(id))
+        // Import dedupe keys (import_sha256_<hash> -> id): the file can be imported again (#327).
+        q.deleteMetaWithPrefixAndValue("import_sha256_", id)
         tryIndex { if (ftsAvailable) FtsIndex.deleteRecording(driver, id) }
     }
 

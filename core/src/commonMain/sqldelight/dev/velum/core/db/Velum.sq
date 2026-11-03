@@ -301,6 +301,9 @@ DELETE FROM app_meta WHERE key = ?;
 deleteMetaWithPrefix:
 DELETE FROM app_meta WHERE key LIKE ? || '%';
 
+deleteMetaWithPrefixAndValue:
+DELETE FROM app_meta WHERE key LIKE ? || '%' AND value = ?;
+
 selectVersionsForRecording:
 SELECT * FROM summary_version WHERE recording_id = ? ORDER BY created_at DESC;
 
