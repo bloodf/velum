@@ -17,4 +17,15 @@ class LibrarySourceIconTest {
         assertEquals(LibraryListLogic.SourceIcon.Phone, LibraryListLogic.sourceIcon("phone"))
         assertNotEquals(LibraryListLogic.SourceIcon.Import, LibraryListLogic.sourceIcon("phone"))
     }
+
+    @Test fun the_accessibility_name_treats_watched_like_import() {
+        assertEquals(
+            dev.velum.app.i18n.En.ux.importedAudioA11y,
+            LibraryListLogic.sourceA11y("watched", dev.velum.app.i18n.En),
+        )
+        assertEquals(
+            LibraryListLogic.sourceA11y("import", dev.velum.app.i18n.PtBr),
+            LibraryListLogic.sourceA11y("watched", dev.velum.app.i18n.PtBr),
+        )
+    }
 }

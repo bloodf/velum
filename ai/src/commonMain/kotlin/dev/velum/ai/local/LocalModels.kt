@@ -601,7 +601,7 @@ class LocalModelManager(
                     throw ModelFailure(LocalModelErrors.Incomplete)
                 }
                 staging.listChildren().forEach { child ->
-                    if (!child.renameTo(dir.resolve(child.name))) throw ModelFailure(LocalModelErrors.Incomplete)
+                    if (!child.renameTo(dir.resolve(child.name))) throw ModelFailure(LocalModelErrors.DownloadError)
                 }
                 staging.deleteRecursively()
                 // Only after the weights are in place: the archive is not read again.

@@ -24,19 +24,29 @@ class ModelErrorTextTest {
         assertEquals("Download failed: HTTP 403", modelErrorText("Download failed: HTTP 403", En))
     }
 
-    @Test fun every_code_has_localized_copy_in_both_languages() {
-        val codes = listOf(
-            LocalModelErrors.StorageFull, LocalModelErrors.DownloadFailed, LocalModelErrors.DownloadError,
-            LocalModelErrors.ChecksumMismatch, LocalModelErrors.Incomplete, LocalModelErrors.NoDownloadUrl,
-            LocalModelErrors.ChecksumNotPinned, LocalModelErrors.HttpsRequired, LocalModelErrors.http(403),
-        )
-        for (code in codes) {
-            val en = modelErrorText(code, En)
-            val pt = modelErrorText(code, PtBr)
-            assertFalse(en == code || pt == code, "$code shown raw")
-            assertFalse(en == pt, "$code has the same text in both languages")
+    @Test fun every_code_maps_to_its_own_field_in_both_languages() {
+        for ((strings, h403) in listOf(En to "403", PtBr to "403")) {
+            val ux = strings.ux
+            assertEquals(ux.modelStorageFull, modelErrorText(LocalModelErrors.StorageFull, strings))
+            assertEquals(ux.modelDownloadFailed, modelErrorText(LocalModelErrors.DownloadFailed, strings))
+            assertEquals(ux.modelDownloadError, modelErrorText(LocalModelErrors.DownloadError, strings))
+            assertEquals(ux.modelChecksumMismatch, modelErrorText(LocalModelErrors.ChecksumMismatch, strings))
+            assertEquals(ux.modelIncomplete, modelErrorText(LocalModelErrors.Incomplete, strings))
+            assertEquals(ux.modelNoDownloadUrl, modelErrorText(LocalModelErrors.NoDownloadUrl, strings))
+            assertEquals(ux.modelChecksumNotPinned, modelErrorText(LocalModelErrors.ChecksumNotPinned, strings))
+            assertEquals(ux.modelHttpsRequired, modelErrorText(LocalModelErrors.HttpsRequired, strings))
+            assertEquals(ux.modelHttpErrorFormat.replace("%d", h403), modelErrorText(LocalModelErrors.http(403), strings))
         }
-        assertEquals(true, modelErrorText(LocalModelErrors.http(403), PtBr).contains("403"))
+    }
+
+    @Test fun the_copy_differs_between_languages_and_never_names_a_missing_button() {
+        val fields: (Strings) -> List<String> = { s ->
+            val u = s.ux
+            listOf(u.modelStorageFull, u.modelDownloadFailed, u.modelDownloadError, u.modelChecksumMismatch, u.modelIncomplete,
+                u.modelNoDownloadUrl, u.modelChecksumNotPinned, u.modelHttpsRequired, u.modelHttpErrorFormat)
+        }
+        fields(En).zip(fields(PtBr)).forEach { (en, pt) -> assertFalse(en == pt, en) }
+        assertFalse(En.ux.modelIncomplete.contains("Delete") || PtBr.ux.modelIncomplete.contains("Exclua"))
     }
 
     @Test fun a_mixed_case_url_in_an_old_saved_error_is_removed() {
