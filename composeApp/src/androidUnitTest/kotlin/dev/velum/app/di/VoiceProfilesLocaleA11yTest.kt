@@ -159,6 +159,9 @@ class VoiceProfilesLocaleA11yTest {
                 "$name: '$label' is clipped: ${n.boundsInRoot} in width $width",
             )
         }
+        // The sample counts are short ("1 sample", "2 samples"), below appearsIn's length floor: match them in the list rows.
+        val sampleRows = mapOf("VoiceProfilesSampleOne" to own.ux.voiceProfilesSampleOne, "VoiceProfilesSamplesFormat" to own.ux.voiceProfilesSamplesFormat.replace("%d", "2"))
+        for ((key, text) in sampleRows) if (labels.any { it.contains(text) }) seen += key
         for ((key, text) in ownKeys) if (appearsIn(text, labels) || exact(text, labels)) seen += key
     }
 
@@ -253,6 +256,8 @@ class VoiceProfilesLocaleA11yTest {
         newRoot().let { root ->
             val memory = InMemorySecureStore()
             withProfile(root, memory)
+            // Two samples, so the plural copy shows next to the singular one.
+            runBlocking { VoiceProfileStore(root, memory).withReady { repeat(2) { upsert("Synthetic Pair", floatArrayOf(0f, 1f), id = "pair") } } }
             screen(s, scale, memory, root) {
                 awaitLabel("Synthetic Healthy")
                 assertState("$tag list", s, other, seen)
