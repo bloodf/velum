@@ -1,5 +1,6 @@
 package dev.velum.app.di
 
+import dev.velum.ai.pipeline.resolveTemplateForEnqueue
 import dev.velum.ai.createOpenAiCompatibleClient
 import dev.velum.ai.engine.AiTaskRouter
 import dev.velum.ai.local.LocalDiarizer
@@ -439,7 +440,7 @@ class AppContainer(
         )
         enqueueProcessing(
             recordingId = id,
-            templateId = match?.template_id,
+            templateId = resolveTemplateForEnqueue(repository, match?.template_id),
             retranscribe = true,
             apiModelOverride = match?.let { AutoFlowResolve.modelOverride(it) },
         )

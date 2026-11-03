@@ -50,6 +50,7 @@ class AutoFlowRunner internal constructor(
     private val calendar: CalendarEventProvider = createCalendarEventProvider(),
     private val nowEpochMs: () -> Long = { epochMsNow() },
     private val jobScheduler: RecordingJobScheduler? = null,
+    private val diagnostics: (String) -> Unit = {},
 ) {
     constructor(
         repository: VelumRepository,
@@ -59,10 +60,11 @@ class AutoFlowRunner internal constructor(
         calendar: CalendarEventProvider = createCalendarEventProvider(),
         nowEpochMs: () -> Long = { epochMsNow() },
         jobScheduler: RecordingJobScheduler? = null,
+        diagnostics: (String) -> Unit = {},
     ) : this(
         RepositoryAutoFlowRecordingStore(repository),
         { id, template, override -> processor.process(id, template, true, override) },
-        scope, notifyEnabled, calendar, nowEpochMs, jobScheduler,
+        scope, notifyEnabled, calendar, nowEpochMs, jobScheduler, diagnostics,
     )
 
     private val job = MutableStateFlow<Job?>(null)
@@ -81,6 +83,9 @@ class AutoFlowRunner internal constructor(
     /** Test observation hook: number of completed passes, including seed/error/cancel. */
     internal val passIndex = _passIndex.asStateFlow()
     internal val isRunning: Boolean get() = job.value?.isActive == true
+
+    /** Recordings this runner already requeued once for the flow's template (bounds the requeue to one per id). */
+    private val requeuedIds = mutableSetOf<String>()
 
     fun start() {
         while (true) {
@@ -210,6 +215,7 @@ class AutoFlowRunner internal constructor(
                     // worker instead of keeping it.
                     // Conditional on still being ready: another run may have taken the row meanwhile.
                     if (!repository.requeueIfReady(recordingId)) return false
+                    requeuedIds += recordingId
                     enqueueTemplate = wanted
                 } else {
                     return row?.status == "ready"
@@ -226,7 +232,7 @@ class AutoFlowRunner internal constructor(
             if (!started && priorStatus != null && priorStatus != "queued" && priorStatus != "ready" && priorStatus != "failed") {
                 repository.restoreStatusIfQueued(recordingId, priorStatus)
             }
-            return awaitReadyStatus(recordingId, wanted, alreadyInFlight = true)
+            return awaitReadyStatus(scheduler, recordingId, wanted, apiModelOverride, alreadyInFlight = true)
         }
         var succeeded = false
         processRecording(recordingId, templateId, apiModelOverride).collect { progress ->
@@ -247,8 +253,10 @@ class AutoFlowRunner internal constructor(
         )
 
     private suspend fun awaitReadyStatus(
+        scheduler: RecordingJobScheduler,
         recordingId: String,
         wantedTemplateId: String,
+        apiModelOverride: ApiModelOverride?,
         alreadyInFlight: Boolean = false,
     ): Boolean {
         var sawInFlight = alreadyInFlight
@@ -261,10 +269,24 @@ class AutoFlowRunner internal constructor(
                     "ready" -> {
                         // Only accept ready after in-flight (forced queued counts), and only when the active summary is
                         // this flow's template: a replaced run stopped by the OS can leave `ready` on another
-                        // template's summary, which must not fire this flow's post-action. Otherwise keep polling; a
-                        // flow that never matches ends by the timeout below.
-                        if (sawInFlight && repository.activeSummaryTemplateId(recordingId) == wantedTemplateId) {
-                            return@withTimeoutOrNull "ready"
+                        // template's summary, which must not fire this flow's post-action.
+                        if (sawInFlight) {
+                            if (repository.activeSummaryTemplateId(recordingId) == wantedTemplateId) {
+                                return@withTimeoutOrNull "ready"
+                            }
+                            if (requeuedIds.add(recordingId)) {
+                                // Do not wait for a summary that will not come: queue this flow's work once. An enqueue
+                                // with the same parameters is kept over a pending rerun; otherwise it replaces the
+                                // finished worker.
+                                if (repository.requeueIfReady(recordingId)) {
+                                    scheduler.enqueueReportingStart(recordingId, wantedTemplateId, true, apiModelOverride)
+                                }
+                            } else {
+                                // Bounded: one requeue per recording. A second mismatch is claimed without a
+                                // post-action rather than looping. Class and count only, never content.
+                                diagnostics("AutoFlow: ready on another template's summary after a requeue; claimed without a post-action (requeues=1)")
+                                return@withTimeoutOrNull "claimed"
+                            }
                         }
                     }
                     "failed" -> if (sawInFlight) return@withTimeoutOrNull "failed"
