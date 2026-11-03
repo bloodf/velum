@@ -16,7 +16,7 @@ Thanks for helping build a local-first, subscription-free recorder companion.
 - JDK 17+
 - Android Studio / SDK 35 for Android
 
-**Android-first:** prefer changes that ship on Android. iOS source sets may exist for shared code, but there is no Xcode project or iOS CI yet.
+**Android-first:** prefer changes that ship on Android. iOS source sets may exist for shared code, and the Xcode project is generated from `iosApp/project.yml` (see `iosApp/README.md`); there is no iOS CI yet.
 
 ```bash
 ./gradlew :plaud-protocol:jvmTest :ai:jvmTest

@@ -19,6 +19,14 @@ targets:
           - Info.plist
     info:
       path: iosApp/Info.plist
+      # XcodeGen rewrites Info.plist from these, so every key the app needs lives here.
+      properties:
+        CFBundleName: Velum
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSBluetoothAlwaysUsageDescription: Velum talks to your voice recorder over Bluetooth to sync recordings.
+        NSBluetoothPeripheralUsageDescription: Velum talks to your voice recorder over Bluetooth to sync recordings.
+        UILaunchScreen: {}
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.velum.app
