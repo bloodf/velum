@@ -248,6 +248,14 @@ class WipeAllDataTest {
         assertFalse(written, "an export was written during the wipe")
     }
 
+    @Test fun a_wipe_removes_import_hashes_and_tombstones() = withContainer { container, _ ->
+        container.repository.setMeta("import_sha256_synthetic", "rec-gone")
+        container.repository.setMeta("import_deleted_synthetic", "1")
+        container.wipeAllData()
+        assertEquals(null, container.repository.getMeta("import_sha256_synthetic"))
+        assertEquals(null, container.repository.getMeta("import_deleted_synthetic"))
+    }
+
     @Test fun a_wipe_stops_the_mic_and_deletes_its_file() {
         val audio = Files.createTempFile("velum-wipe-mic", ".wav").toFile().apply { writeBytes(ByteArray(64)) }
         val mic = RecordingCapture(audio.path)
