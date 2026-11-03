@@ -5,6 +5,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import dev.velum.ai.pipeline.AiRuntimeHolder
 import dev.velum.ai.pipeline.inAppLanguage
+import dev.velum.ai.pipeline.saveAppLanguageHint
 import dev.velum.app.R
 import dev.velum.core.security.InMemorySecureStore
 import dev.velum.core.settings.SettingsRepository
@@ -44,5 +45,21 @@ class InAppLanguageOnEnglishDeviceTest {
         withLanguage("system") { assertEquals("Pause", context.inAppLanguage().getString(R.string.mic_recording_pause)) }
         AiRuntimeHolder.settings = null
         assertEquals("Pause", context.inAppLanguage().getString(R.string.mic_recording_pause))
+    }
+
+    @Test fun a_cold_process_job_uses_the_saved_language_before_the_runtime_is_installed() {
+        AiRuntimeHolder.settings = null // no AiRuntimeHolder.install yet
+        saveAppLanguageHint(context, "pt-BR")
+        try {
+            // Off the main thread, as a WorkManager job is.
+            var text = ""
+            val t = Thread { text = context.inAppLanguage().getString(R.string.mic_recording_pause) }
+            t.start(); t.join()
+            assertEquals("Pausar", text)
+            // On the main thread (Application.onCreate) nothing is read from disk: the device language stays.
+            assertEquals("Pause", context.inAppLanguage().getString(R.string.mic_recording_pause))
+        } finally {
+            saveAppLanguageHint(context, null)
+        }
     }
 }

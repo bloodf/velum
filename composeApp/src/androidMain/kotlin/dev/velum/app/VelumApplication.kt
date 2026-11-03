@@ -106,7 +106,9 @@ class VelumApplication : Application() {
                 )
                 // Channel names are stored by the system; re-publish them when the in-app language changes.
                 appScope.launch {
-                    built.settingsRepository.preferences.map { it.appLanguage }.distinctUntilChanged().collect {
+                    built.settingsRepository.preferences.map { it.appLanguage }.distinctUntilChanged().collect { language ->
+                        // A cold-process job reads this before the runtime is installed (#348).
+                        dev.velum.ai.pipeline.saveAppLanguageHint(appContext, language)
                         MicRecordingService.ensureNotificationChannel(appContext)
                         DownloadProgressNotifier.ensureChannel()
                         dev.velum.ai.pipeline.RecordingProcessWorker.ensureProcessingChannel(appContext)
