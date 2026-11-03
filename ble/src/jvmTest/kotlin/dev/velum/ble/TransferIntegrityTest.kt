@@ -220,6 +220,16 @@ class TransferIntegrityTest {
         client.close()
     }
 
+    @Test fun a_stray_chunk_mid_catch_up_does_not_end_the_transfer() = runTest {
+        // The catch-up replays 5,000 frames, past the 4,096 limit; one stray inside it must cost one frame, not the transfer.
+        val big = Random(10).nextBytes(1_200_000)
+        val client = clientFor(TransferFaults(ignoreStartOffset = true, strayAt = setOf(900_000L)), sessionFile = big)
+        val sink = Sink()
+        client.downloadSessionTo(SESSION, big.size.toLong(), sink, startOffset = 1_000_000L)
+        assertContentEquals(big.copyOfRange(1_000_000, big.size), sink.out.toByteArray())
+        client.close()
+    }
+
     /** A real transport's write suspends, and takes an hour of test time once [hang] is set. */
     private class WriteGate {
         var hang = false
