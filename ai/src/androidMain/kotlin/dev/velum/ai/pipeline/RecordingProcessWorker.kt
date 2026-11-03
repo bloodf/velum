@@ -39,15 +39,32 @@ class RecordingProcessWorker(
     override suspend fun getForegroundInfo(): ForegroundInfo = buildForegroundInfo()
 
     override suspend fun doWork(): Result {
+        var promoted = true
         try {
             setForeground(buildForegroundInfo())
         } catch (e: CancellationException) {
             throw e
-        } catch (_: Exception) {
+        } catch (e: Exception) {
             // Android 12+ refuses a foreground start from the background (ForegroundServiceStartNotAllowedException).
-            // The job can still run unpromoted; failing here would leave the row `queued` forever (#330).
+            // Failing here would leave the row `queued` forever (#330), so the job runs unpromoted.
+            promoted = false
+            android.util.Log.w(TAG, "Foreground start refused (${e::class.java.simpleName})")
+            notifyRefusedStart()
         }
         val recordingId = inputData.getString(KEY_RECORDING_ID) ?: return Result.failure()
+        // Unpromoted work is stopped after about 10 minutes (WorkManager's limit for non-foreground workers), the
+        // processor restores the row, and WorkManager reruns it from the start: a long local job would loop without
+        // progress or an error. A rerun that is still unpromoted fails once, with a message the user can act on.
+        if (!promoted && runAttemptCount >= MAX_UNPROMOTED_RUNS && !usesApiOnly()) {
+            val message = applicationContext.getString(R.string.velum_processing_stopped_message)
+            AiRuntimeHolder.repository?.let { repo ->
+                runCatching {
+                    repo.setProcessingError(recordingId, message)
+                    repo.updateStatus(recordingId, "failed")
+                }
+            }
+            return Result.failure(workDataOf(KEY_ERROR to message))
+        }
         val templateId = inputData.getString(KEY_TEMPLATE_ID)
         val retranscribe = inputData.getBoolean(KEY_RETRANSCRIBE, true)
         val overrideModel = inputData.getString(KEY_MODEL_ID)?.takeIf { it.isNotBlank() }
@@ -160,6 +177,27 @@ class RecordingProcessWorker(
         }
     }
 
+    private fun usesApiOnly(): Boolean {
+        val cfg = AiRuntimeHolder.settings?.settings?.value ?: return false
+        return cfg.transcriptionMode == ComputeMode.Api && cfg.summaryMode == ComputeMode.Api &&
+            cfg.diarizationMode == ComputeMode.Api
+    }
+
+    /** A plain notification (no foreground service needed) so the user knows why a long job may stop. */
+    private fun notifyRefusedStart() {
+        runCatching {
+            ensureProcessingChannel(applicationContext)
+            val nm = applicationContext.getSystemService(NotificationManager::class.java) ?: return
+            val n = NotificationCompat.Builder(applicationContext, PROCESSING_CHANNEL_ID)
+                .setContentTitle(applicationContext.getString(R.string.velum_processing_refused_title))
+                .setContentText(applicationContext.getString(R.string.velum_processing_refused_body))
+                .setSmallIcon(android.R.drawable.stat_sys_warning)
+                .setAutoCancel(true)
+                .build()
+            nm.notify(PROCESSING_REFUSED_NOTIFICATION_ID, n)
+        }
+    }
+
     private fun buildForegroundInfo(): ForegroundInfo {
         ensureProcessingChannel(applicationContext)
         val notification = NotificationCompat.Builder(applicationContext, PROCESSING_CHANNEL_ID)
@@ -191,6 +229,10 @@ class RecordingProcessWorker(
         const val KEY_ERROR = "error"
         const val STATUS_PAUSED_THERMAL = "paused_thermal"
         const val MAX_HOLDER_RETRIES = 5
+        /** Reruns of a job that could not be promoted to the foreground before it fails with a message. */
+        const val MAX_UNPROMOTED_RUNS = 1
+        private const val TAG = "RecordingWorker"
+        const val PROCESSING_REFUSED_NOTIFICATION_ID = 0x56454C03
         const val PROCESSING_CHANNEL_ID = "velum_recording_processing"
         const val PROCESSING_NOTIFICATION_ID = 0x56454C02
 
