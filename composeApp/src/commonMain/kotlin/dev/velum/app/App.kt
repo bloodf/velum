@@ -145,6 +145,9 @@ private fun VelumRoot(container: AppContainer) {
     // recompose until idle — latch hides FirstRun on the same frame (#106).
     val firstRunPending by container.firstRunPending.collectAsState()
     var firstRunDismissed by remember { mutableStateOf(false) }
+    // (needed, free) bytes when the recommended pack does not fit; resolved to copy at render so a language change applies.
+    var firstRunShort by remember { mutableStateOf<Pair<Long, Long>?>(null) }
+    var firstRunDownloading by remember { mutableStateOf(false) }
     val showFirstRun = firstRunPending && !firstRunDismissed
     fun dismissFirstRun() {
         firstRunDismissed = true
@@ -681,6 +684,11 @@ private fun VelumRoot(container: AppContainer) {
         }
 
         if (showFirstRun) {
+            // Same numbers the Download tap checks: models already Ready are not counted.
+            val packIds = remember(strings.localeTag) { ModelCatalogUi.recommendedModelIds(strings.localeTag) }
+            val modelStates by container.localModelManager.states.collectAsState()
+            val recommendedTotal = remember(modelStates, packIds) { container.localModelManager.downloadBytesFor(packIds) }
+            val recommendedNeeded = remember(modelStates, packIds) { container.localModelManager.bytesNeededFor(packIds) }
             FirstRunScreen(
                 onPhoneMic = {
                     dismissFirstRun()
@@ -698,13 +706,29 @@ private fun VelumRoot(container: AppContainer) {
                     dismissFirstRun()
                     navController.navigate(Routes.MODEL_MANAGER)
                 },
+                recommendedTotalBytes = recommendedTotal,
+                recommendedNeededBytes = recommendedNeeded,
+                notice = firstRunShort?.let { (needed, free) ->
+                    ModelCatalogUi.fill(strings.firstRun.notEnoughSpaceFormat, ModelCatalogUi.formatBytes(needed), ModelCatalogUi.formatBytes(free))
+                },
                 onDownloadRecommended = {
-                    dismissFirstRun()
-                    val downloads = container.localModelManager.startDownloads(
-                        ModelCatalogUi.recommendedModelIds(languageHint = strings.localeTag),
+                    if (firstRunDownloading) return@FirstRunScreen // a second tap must not start or navigate twice
+                    firstRunDownloading = true
+                    val ids = ModelCatalogUi.recommendedModelIds(
+                        languageHint = strings.localeTag,
                     )
                     scope.launch {
-                        downloads.join()
+                        // Disk queries stay off the main thread.
+                        val (needed, free) = withContext(Dispatchers.Default) {
+                            container.localModelManager.bytesNeededFor(ids) to container.localModelManager.freeSpaceBytes()
+                        }
+                        if (free != null && free < needed) {
+                            firstRunShort = needed to free
+                            firstRunDownloading = false
+                            return@launch
+                        }
+                        dismissFirstRun()
+                        container.localModelManager.startDownloads(ids).join()
                         navController.navigate(Routes.MODEL_MANAGER)
                     }
                 },

@@ -25,6 +25,15 @@ actual class ModelStoreDir actual constructor(absolutePath: String) {
     actual fun exists(): Boolean =
         NSFileManager.defaultManager.fileExistsAtPath(absolutePath)
 
+    actual fun freeSpaceBytes(): Long? {
+        val fm = NSFileManager.defaultManager
+        var path = absolutePath
+        while (path.isNotEmpty() && !fm.fileExistsAtPath(path)) path = path.substringBeforeLast('/', "")
+        if (path.isEmpty()) path = "/"
+        val attrs = fm.attributesOfFileSystemForPath(path, error = null) ?: return null
+        return (attrs["NSFileSystemFreeSize"] as? NSNumber)?.longLongValue
+    }
+
     actual fun isDirectory(): Boolean {
         val fm = NSFileManager.defaultManager
         if (!fm.fileExistsAtPath(absolutePath)) return false
