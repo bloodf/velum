@@ -172,7 +172,10 @@ class FileDecryptDeviceTest {
         )
         for ((name, case) in cases) {
             val raw = runCatching {
-                val c = Cipher.getInstance("ChaCha20-Poly1305")
+                // Same names, same order as production; API 28 only resolves the full one.
+                val c = listOf("ChaCha20/Poly1305/NoPadding", "ChaCha20-Poly1305").firstNotNullOfOrNull { n ->
+                    runCatching { Cipher.getInstance(n) }.getOrNull()
+                } ?: Cipher.getInstance("ChaCha20/Poly1305/NoPadding")
                 c.init(Cipher.DECRYPT_MODE, SecretKeySpec(case.first, "ChaCha20"), IvParameterSpec(openNonce))
                 c.updateAAD(case.second)
                 c.doFinal(case.third)

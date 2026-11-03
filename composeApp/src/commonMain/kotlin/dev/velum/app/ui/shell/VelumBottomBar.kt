@@ -6,6 +6,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.defaultMinSize
@@ -60,7 +63,8 @@ fun VelumBottomBar(
 ) {
     val strings = LocalStrings.current
     val haptics = LocalHaptics.current
-    Box(modifier = Modifier.fillMaxWidth().background(VelumSurface)) {
+    // The bar paints behind the navigation bar and keeps its content above it (3-button or gesture), #299.
+    Box(modifier = Modifier.fillMaxWidth().background(VelumSurface).windowInsetsPadding(WindowInsets.navigationBars)) {
         HorizontalDivider(thickness = 0.5.dp, color = VelumDivider)
         Row(
             modifier = Modifier

@@ -71,7 +71,7 @@ class ConscryptProviderTest {
     }
 
     @Test fun session_cipher_matches_the_rfc_aead_vector_under_conscrypt() = withConscryptFirst {
-        assertEquals("Conscrypt", Cipher.getInstance("ChaCha20-Poly1305").provider.name)
+        assertEquals("Conscrypt", Cipher.getInstance("ChaCha20/Poly1305/NoPadding").provider.name)
         val key = ByteArray(32) { (0x80 + it).toByte() }
         val nonce = hex("070000004041424344454647")
         val aad = hex("50515253c0c1c2c3c4c5c6c7")

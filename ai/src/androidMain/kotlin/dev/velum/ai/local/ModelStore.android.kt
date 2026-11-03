@@ -14,6 +14,9 @@ actual class ModelStoreDir actual constructor(absolutePath: String) {
 
     actual fun exists(): Boolean = file.exists()
 
+    actual fun freeSpaceBytes(): Long? =
+        generateSequence(file) { it.parentFile }.firstOrNull { it.exists() }?.usableSpace
+
     actual fun isDirectory(): Boolean = file.isDirectory
 
     actual fun createDirectories() {

@@ -66,6 +66,7 @@ import androidx.compose.ui.unit.sp
 import dev.velum.app.di.AppContainer
 import dev.velum.app.i18n.LocalStrings
 import dev.velum.app.importing.AudioImportPipeline
+import dev.velum.app.platform.PlatformBackHandler
 import dev.velum.app.platform.HapticKind
 import dev.velum.app.platform.LocalHaptics
 import dev.velum.app.platform.shareText
@@ -153,6 +154,9 @@ fun FilesScreen(
         selectionMode = false
         selectedIds = emptySet()
     }
+
+    // Back leaves selection mode instead of the app (#300).
+    PlatformBackHandler(enabled = selectionMode, onBack = ::exitSelection)
 
     fun enterSelection(id: String) {
         selectionMode = true

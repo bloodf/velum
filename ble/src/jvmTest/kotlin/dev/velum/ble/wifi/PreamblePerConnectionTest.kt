@@ -1,5 +1,6 @@
 package dev.velum.ble.wifi
 
+import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.URI
 import java.nio.ByteBuffer
@@ -29,7 +30,7 @@ import org.java_websocket.handshake.ServerHandshake
 class PreamblePerConnectionTest {
     private val preamble = WifiTransferPreamble.defaultToken("per-conn")
 
-    private fun freePort(): Int = ServerSocket(0).use { it.localPort }
+    private fun freePort(): Int = ServerSocket(0, 1, InetAddress.getByName("127.0.0.1")).use { it.localPort }
 
     private suspend fun withServer(block: suspend (JavaWebsocketTransferServer, Int) -> Unit) {
         val server = JavaWebsocketTransferServer()
@@ -61,7 +62,9 @@ class PreamblePerConnectionTest {
         @Suppress("UNCHECKED_CAST")
         val flow = server.incomingEncryptedFrames() as SharedFlow<ByteArray>
         launch(start = CoroutineStart.UNDISPATCHED) {
-            flow.onSubscription { subscribed.complete(Unit) }.collect { recorder.frames += it.toList() }
+            flow.onSubscription { subscribed.complete(Unit) }.collect {
+                if (it !== WifiTransferServer.PEER_CLOSED_FRAME) recorder.frames += it.toList()
+            }
         }
         subscribed.await()
         return recorder

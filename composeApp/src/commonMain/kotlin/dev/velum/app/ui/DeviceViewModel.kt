@@ -59,6 +59,8 @@ data class DeviceSessionUi(
     val downloadingSessionId: Long? = null,
     val downloadProgress: Float? = null,
     val lastDownloadedRecordingId: String? = null,
+    /** CRC result of the last download's final transfer; null until one completes. A resumed save can report a kept mismatch in its status message instead. */
+    val lastDownloadCrc: CrcStatus? = null,
     /** Device sessions already in the library (#113); their action re-downloads into the same row. */
     val librarySessionIds: Set<Long> = emptySet(),
 )
@@ -66,6 +68,9 @@ data class DeviceSessionUi(
 /** Real device serial for the #113 dedup key, or null (dedup off) when none is known. */
 internal fun dedupDeviceSerial(keySerial: String?, advertisedSerial: String?): String? =
     keySerial?.takeIf { it.isNotBlank() } ?: advertisedSerial?.takeIf { it.isNotBlank() }
+
+/** A complete partial that cannot be read back this many times in a row is discarded and downloaded again (#212). */
+internal const val MAX_READ_FAILURES = 3
 
 data class DownloadedSessionAudio(
     val sessionId: Long,
@@ -105,6 +110,9 @@ class DeviceViewModel(
 
     private var client: PlaudDeviceClient? = null
     private var connectedSerial: String? = null
+
+    /** Set when a download attempt discarded its partial after repeated read errors; picks the failure text. */
+    private var discardedUnreadablePartial = false
     private var connectedDeviceId: String? = null
     private var downloadJob: Job? = null
     private var cancelledJob: Job? = null
@@ -173,6 +181,11 @@ class DeviceViewModel(
         }
     }
 
+    internal suspend fun awaitDownloadEnd() {
+        cancelledJob?.join()
+        downloadJob?.join()
+    }
+
     fun cancelDownload() {
         val locale = localeTag()
         downloadJob?.let { it.cancel(); cancelledJob = it }
@@ -229,6 +242,7 @@ class DeviceViewModel(
     }
 
     private suspend fun runDownloadSession(sessionId: Long) {
+        discardedUnreadablePartial = false
         val locale = localeTag()
         val entry = _sessionUi.value.sessions.firstOrNull { it.sessionId == sessionId }
         if (entry == null) {
@@ -252,6 +266,7 @@ class DeviceViewModel(
             downloadProgress = 0f,
             statusMessage = DeviceUiCopy.downloadingSession(locale, sessionId),
             lastDownloadedRecordingId = null,
+            lastDownloadCrc = null,
         )
         DownloadProgressNotifier.ensureChannel()
         DownloadProgressNotifier.setCancelHandler(DownloadNotifyKind.DeviceSession) { cancelDownload() }
@@ -287,6 +302,7 @@ class DeviceViewModel(
                 downloadingSessionId = null,
                 downloadProgress = null,
                 lastDownloadedRecordingId = outcome.recordingId,
+                lastDownloadCrc = outcome.crc,
                 statusMessage = if (outcome.crcMismatch) {
                     DeviceUiCopy.downloadedSessionCrcMismatch(localeTag(), sessionId)
                 } else {
@@ -304,7 +320,11 @@ class DeviceViewModel(
             _sessionUi.value = _sessionUi.value.copy(
                 downloadingSessionId = null,
                 downloadProgress = null,
-                statusMessage = DeviceUiCopy.downloadFailed(localeTag()),
+                statusMessage = if (discardedUnreadablePartial) {
+                    DeviceUiCopy.savedDownloadUnreadable(localeTag())
+                } else {
+                    DeviceUiCopy.downloadFailed(localeTag())
+                },
             )
         }
     }
@@ -371,7 +391,7 @@ class DeviceViewModel(
                     encrypted.copyOfRange(position.toInt(), position.toInt() + length)
                 },
             )
-            return DownloadOutcome(recordingId, c, crcMismatch = false)
+            return DownloadOutcome(recordingId, c, crcMismatch = false, crc = CrcStatus.NotProvided)
         }
         // A transfer failure or cancellation keeps the partial for the next attempt.
         client = null // the download owns it now: it may close it and reconnect
@@ -400,15 +420,34 @@ class DeviceViewModel(
             persistDownloadedSession(persist(partial.length()) { position, length -> partial.read(position, length) })
         } catch (e: Throwable) {
             adoptClient(finished)
-            // Only bytes that can't be decrypted are useless. A read error, full disk or database error can be retried.
-            if (undecryptable) partial.delete() else partial.close()
+            // Only bytes that can't be decrypted are useless. A read error, full disk or database error can be retried,
+            // but a read error that repeats would make every Re-download fail the same way until the 7-day sweep.
+            when {
+                undecryptable -> partial.delete()
+                readFailed -> {
+                    val failures = runCatching { partial.readFailures() }.getOrDefault(0) + 1
+                    if (failures >= MAX_READ_FAILURES) {
+                        partial.delete()
+                        discardedUnreadablePartial = true
+                    } else {
+                        runCatching { partial.setReadFailures(failures) }
+                        partial.close()
+                    }
+                }
+                else -> {
+                    // The partial read back fine this time (the failure was a save, database or cancel), so any
+                    // earlier read errors were not permanent.
+                    runCatching { partial.setReadFailures(0) }
+                    partial.close()
+                }
+            }
             throw e
         }
         partial.delete()
-        return DownloadOutcome(recordingId, finished, crcMismatch)
+        return DownloadOutcome(recordingId, finished, crcMismatch, result.crc)
     }
 
-    private class DownloadOutcome(val recordingId: String, val client: PlaudDeviceClient?, val crcMismatch: Boolean)
+    private class DownloadOutcome(val recordingId: String, val client: PlaudDeviceClient?, val crcMismatch: Boolean, val crc: CrcStatus)
 
     /** New link and client for a resume attempt; [ResumableSessionDownload] unlocks it. */
     private suspend fun reconnect(keys: DeviceIdentityKeys, deviceId: String?): PlaudDeviceClient {

@@ -74,7 +74,7 @@ Phone-only / external (no Plaud required):
 - [x] Live record UI with partial Markdown (mic when permitted; with no streaming model the pane says so and the audio is saved)
 - [x] Mind-map from summary H2 + list items ("Mapa mental" sheet)
 - [x] Local diarization + cosine voice profiles (`VoiceProfileStore`); preferred embedding `3dspeaker-eres2net-base`
-- [x] Local LLM LiteRT-LM on Android when Gemma Ready (default catalog id `gemma-4-e4b`)
+- [x] Local LLM LiteRT-LM on Android when Gemma Ready (with no model selected: the best downloaded Gemma, else `gemma-4-e2b`, which the first-run recommendation downloads)
 - [x] Ask AI on recording notes via local/`AiTaskRouter` LLM (no Plaud ask endpoints)
 - [x] Compose Markdown preview for Fontes / Notas (deterministic Compose renderer: bold speakers, timestamps, headings/lists, task checkboxes; Roborazzi fixtures seed diarized transcript + summary)
 - [x] Summary/template H2 headings follow output language (pt-BR / en pinned; other langs via LLM instruction) — `SummaryLocalization`
@@ -157,6 +157,7 @@ Phone-only / external (no Plaud required):
 ## Confirm only on owner’s real Plaud Note Pro
 
 - Live BLE advertise `portVersion` / project 881, unlock with owner keys, battery notify
+- Screen-off and background download on real hardware. **Simulated only** (#94): `DownloadBackgroundDeviceTest` runs a paced simulated transfer on an emulator under the download service. An emulator can't show Doze, CPU suspend or a real BLE link, and instrumentation keeps the process alive, so it doesn't show the service is what keeps a real download running
 - Full multi-hour download resume + CRC. **Simulated only** (#94): `ResumableSessionDownloadTest` and `TransferIntegrityTest` (`:ble:jvmTest`) cover a 2-hour synthetic transfer, resume after disconnects and integrity failures, and CRC handling against the fake peripheral. `DeviceResumeRestartTest` (`:composeApp:testDebugUnitTest`) covers resuming through `DeviceViewModel` from a partial left by an earlier process, kept in `filesDir/downloads`. Still unconfirmed on hardware (#6): whether a Note Pro honours a non-zero SYNC_FILE_START offset, whether chunk offsets are absolute (community protocol notes say so), how it answers SYNC_FILE_STOP and which CRC it reports (the only capture shows `0xFFFF`), real transfer time and battery drain. Offset gaps and short transfers are hard failures everywhere, because decryption is positional; real-device CRC mismatches are report-only. One real download under #6 should check the stop reply and the Ogg page CRCs of the result, and whether a resumed file decrypts: joining bytes across attempts assumes the device's encrypted file is the same on each transfer. Repeated chunks are compared with the stored bytes, but a device that honours the start offset sends none, so nothing checks the join on such a device except the CRC and the decrypt. It should also check that a hung Kable write honours cancellation, which the write timeouts depend on.
 - On-device Parakeet/Whisper/Gemma quality + thermal throttling on physical silicon
 - Whether FE10 alone works with E2EE off (no FE11) after one-time key import

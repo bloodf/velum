@@ -358,6 +358,10 @@ data class FirstRunStrings(
     val recommendedModelLabel: String,
     val recommendedPackHint: String,
     val downloadRecommended: String,
+    /** %1 total download, %2 free space needed while installing. */
+    val recommendedTotalFormat: String,
+    /** %1 space needed, %2 space free. */
+    val notEnoughSpaceFormat: String,
     val download: String,
     val useApi: String,
     val skip: String,
@@ -376,6 +380,8 @@ data class UxStrings(
     val modelKindDiarization: String,
     val modelKindEmbedding: String,
     val modelKindLlm: String,
+    /** Shown instead of a raw storage error when a model download runs out of space. */
+    val modelStorageFull: String,
     val mindMapEmpty: String,
     val noRecordingsHint: String,
     val searchUnavailable: String,
@@ -576,6 +582,7 @@ data class UxStrings(
     val copiedToClipboard: String,
     val pausePlayback: String,
     val failedProcessing: String,
+    val localModelNotReady: String,
     val retryProcessing: String,
     val waveformA11y: String,
 )
@@ -829,6 +836,8 @@ val PtBr = Strings(
         recommendedModelLabel = "Transcrição recomendada",
         recommendedPackHint = "Inclui transcrição, identificação de oradores e resumos leves. Você pode baixar outros modelos depois em Ajustes.",
         downloadRecommended = "Baixar modelos recomendados",
+        recommendedTotalFormat = "Download total: cerca de %1. Precisa de cerca de %2 livres durante a instalação.",
+        notEnoughSpaceFormat = "Não há espaço suficiente: os modelos recomendados precisam de cerca de %1 e este aparelho tem %2 livres. Libere espaço ou escolha um modelo menor no Gerenciador de modelos.",
         download = "Ver todos os modelos",
         useApi = "Usar API",
         skip = "Pular",
@@ -942,6 +951,7 @@ val PtBr = Strings(
         modelKindDiarization = "Oradores",
         modelKindEmbedding = "Perfis de voz",
         modelKindLlm = "Resumo e perguntas",
+        modelStorageFull = "Sem espaço suficiente no aparelho para este modelo. Libere espaço e tente de novo.",
         mindMapEmpty = "Nenhum heading H2 no resumo.",
         noRecordingsHint = "Toque em gravar para capturar áudio no aparelho, ou importe um arquivo.",
         searchUnavailable = "A busca avançada falhou — mostrando resultados básicos.",
@@ -1141,6 +1151,7 @@ val PtBr = Strings(
         copiedToClipboard = "Copiado",
         pausePlayback = "Pausar",
         failedProcessing = "Não foi possível processar esta gravação.",
+        localModelNotReady = "Falta baixar um modelo necessário para esta etapa. Baixe-o em Gerenciador de modelos ou mude esta etapa para API em Processamento de IA.",
         retryProcessing = "Tentar de novo",
         waveformA11y = "Progresso da reprodução",
     ),)
@@ -1394,6 +1405,8 @@ val En = Strings(
         recommendedModelLabel = "Recommended transcription",
         recommendedPackHint = "Includes transcription, speaker matching, and light summaries. You can download more later in Settings.",
         downloadRecommended = "Download recommended models",
+        recommendedTotalFormat = "Total download: about %1. Needs about %2 free while installing.",
+        notEnoughSpaceFormat = "Not enough space: the recommended models need about %1 and this device has %2 free. Free up space or pick a smaller model in Model manager.",
         download = "See all models",
         useApi = "Use API",
         skip = "Skip",
@@ -1507,6 +1520,7 @@ val En = Strings(
         modelKindDiarization = "Speakers",
         modelKindEmbedding = "Voice profiles",
         modelKindLlm = "Summary & Ask",
+        modelStorageFull = "Not enough free space on this device for this model. Free up space and try again.",
         mindMapEmpty = "No H2 headings in the summary.",
         noRecordingsHint = "Tap record to capture on-device audio, or import a file.",
         searchUnavailable = "Advanced search failed — showing basic results.",
@@ -1706,6 +1720,7 @@ val En = Strings(
         copiedToClipboard = "Copied",
         pausePlayback = "Pause",
         failedProcessing = "Could not process this recording.",
+        localModelNotReady = "A model this step needs isn't downloaded yet. Download it in Model manager, or switch this step to API in AI processing.",
         retryProcessing = "Try again",
         waveformA11y = "Playback progress",
     ),)

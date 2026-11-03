@@ -304,6 +304,26 @@ class ResumableSessionDownloadTest {
         assertEquals(listOf(2_000L), rig.peripheral.syncStartOffsets)
     }
 
+    @Test fun a_leftover_chunk_without_a_session_id_does_not_wipe_a_good_partial() = runTest {
+        // Protocol < 7 has no session id on recording data, so another session's leftover chunk cannot be
+        // told from the repeat the guard compares. One unattributable mismatch must not cost the partial (#212).
+        val file = Random(32).nextBytes(5_000)
+        val rig = rig(file, TransferFaults(legacyProtocol = true, leftoverBeforeStream = true))
+        val store = storeHolding(file.copyOf(2_000))
+        downloader(rig, CrcPolicy.Enforce).download(SESSION, file.size.toLong(), store)
+        assertContentEquals(file, store.bytes)
+        assertEquals(listOf(2_000L), rig.peripheral.syncStartOffsets)
+    }
+
+    @Test fun repeated_mismatching_chunks_without_a_session_id_still_restart_from_zero() = runTest {
+        val file = Random(33).nextBytes(5_000)
+        val rig = rig(file, TransferFaults(legacyProtocol = true, ignoreStartOffset = true))
+        val store = storeHolding(ByteArray(2_000) { 0x11 })
+        downloader(rig, CrcPolicy.ReportOnly).download(SESSION, file.size.toLong(), store)
+        assertContentEquals(file, store.bytes)
+        assertEquals(listOf(2_000L, 0L), rig.peripheral.syncStartOffsets)
+    }
+
     @Test fun stored_bytes_are_compared_once_per_attempt() = runTest {
         val file = Random(29).nextBytes(5_000)
         val rig = rig(file, TransferFaults(ignoreStartOffset = true), StopCrc.NotProvided)

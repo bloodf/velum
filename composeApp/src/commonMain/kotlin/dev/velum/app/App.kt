@@ -5,6 +5,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
@@ -145,6 +146,9 @@ private fun VelumRoot(container: AppContainer) {
     // recompose until idle — latch hides FirstRun on the same frame (#106).
     val firstRunPending by container.firstRunPending.collectAsState()
     var firstRunDismissed by remember { mutableStateOf(false) }
+    // (needed, free) bytes when the recommended pack does not fit; resolved to copy at render so a language change applies.
+    var firstRunShort by remember { mutableStateOf<Pair<Long, Long>?>(null) }
+    var firstRunDownloading by remember { mutableStateOf(false) }
     val showFirstRun = firstRunPending && !firstRunDismissed
     fun dismissFirstRun() {
         firstRunDismissed = true
@@ -314,7 +318,10 @@ private fun VelumRoot(container: AppContainer) {
         else -> ShellTab.Files
     }
 
-    Box(Modifier.fillMaxSize()) {
+    // The window is edge-to-edge, so adjustResize no longer shrinks it: lift the whole shell above the keyboard so
+    // focused fields stay visible (#305). imePadding consumes the keyboard inset, which the Scaffold and the
+    // navigation-bar padding of the bottom bar (#299) exclude, so nothing is padded twice.
+    Box(Modifier.fillMaxSize().imePadding()) {
         Scaffold(
             snackbarHost = { SnackbarHost(snackbar) },
             bottomBar = {
@@ -681,6 +688,11 @@ private fun VelumRoot(container: AppContainer) {
         }
 
         if (showFirstRun) {
+            // Same numbers the Download tap checks: models already Ready are not counted.
+            val packIds = remember(strings.localeTag) { ModelCatalogUi.recommendedModelIds(strings.localeTag) }
+            val modelStates by container.localModelManager.states.collectAsState()
+            val recommendedTotal = remember(modelStates, packIds) { container.localModelManager.downloadBytesFor(packIds) }
+            val recommendedNeeded = remember(modelStates, packIds) { container.localModelManager.bytesNeededFor(packIds) }
             FirstRunScreen(
                 onPhoneMic = {
                     dismissFirstRun()
@@ -698,13 +710,33 @@ private fun VelumRoot(container: AppContainer) {
                     dismissFirstRun()
                     navController.navigate(Routes.MODEL_MANAGER)
                 },
+                recommendedTotalBytes = recommendedTotal,
+                recommendedNeededBytes = recommendedNeeded,
+                notice = firstRunShort?.let { (needed, free) ->
+                    ModelCatalogUi.fill(strings.firstRun.notEnoughSpaceFormat, ModelCatalogUi.formatBytes(needed), ModelCatalogUi.formatBytes(free))
+                },
                 onDownloadRecommended = {
-                    dismissFirstRun()
-                    val downloads = container.localModelManager.startDownloads(
-                        ModelCatalogUi.recommendedModelIds(languageHint = strings.localeTag),
+                    if (firstRunDownloading) return@FirstRunScreen // a second tap must not start or navigate twice
+                    firstRunDownloading = true
+                    val ids = ModelCatalogUi.recommendedModelIds(
+                        languageHint = strings.localeTag,
                     )
                     scope.launch {
-                        downloads.join()
+                        // Disk queries stay off the main thread.
+                        val (needed, free) = withContext(Dispatchers.Default) {
+                            container.localModelManager.bytesNeededFor(ids) to container.localModelManager.freeSpaceBytes()
+                        }
+                        if (free != null && free < needed) {
+                            firstRunShort = needed to free
+                            firstRunDownloading = false
+                            return@launch
+                        }
+                        // Skip or Use API during the disk check already left first run: do not start the pack then.
+                        if (firstRunDismissed) return@launch
+                        dismissFirstRun()
+                        // The downloads outlive this screen; Model manager shows their progress and any failure.
+                        // Navigating right away (not after they end) cannot pull the user back later.
+                        container.localModelManager.startDownloads(ids)
                         navController.navigate(Routes.MODEL_MANAGER)
                     }
                 },
