@@ -88,8 +88,17 @@ a closed app as an owner decision rather than automatic go or no-go, because Pla
 
 **Unreconciled source conflict (Limitless crypto):** MAkcanca/pendant-cli's file tree describes `crypto.py` as "ECDH-P256 + HKDF-SHA256 + AES-GCM-128", while sdelcore/pendant-cli's README says "X25519 key exchange with ChaCha20-Poly1305". Both claim to derive from the same closed app, and no source found reconciles them (different firmware, a different layer, or one of them is wrong). The roadmap does not pick one; a driver would need independent verification first.
 
-Result: no device is marked go, so no driver task was opened from #20. Gaps worth a future pass: Viaim's own site, Sandbar's vendor site, TicNote
-developer docs, iFlytek and DingTalk developer portals.
+Result: no device is marked go, so no driver task was opened from #20.
+
+### Second pass (2026-11-03, public search only)
+
+Closes the gaps the first pass listed. Still no repository, SDK, protocol write-up or developer documentation for any of these; every decision stays no-go on current evidence.
+
+- **Viaim:** store pages ([RecDot](https://store.viaim.ai/collections/all/products/viaim-recdot), [OpenNote](https://store.viaim.ai/collections/all/products/viaim-opennote)) list Bluetooth 5.2/5.3 and standard audio codecs only. The vendor's help centre says recording can be started only from the Viaim phone app ([support article](https://intercom.help/hong-kong-future-intelligent-technology-co-ltd/en/articles/12762009-download-the-viaim-app)), so there is no device-side recording protocol to build on. NoteKit is a USB-dongle variant of the same hardware. A search for an SDK, API or GitHub project found nothing.
+- **Sandbar Stream ring:** a [TechCrunch launch article](https://techcrunch.com/2025/11/05/former-meta-employees-launch-a-ring-to-take-voice-notes-and-control-music/) and retail listings describe an iOS-first app with preorders and shipping planned for summer 2026; processing is split between ring, phone and cloud. No developer programme, SDK or protocol was found, and shipping has still not been confirmed by a source other than the vendor's plans.
+- **TicNote (Mobvoi):** App Store and retailer listings only. No API reference, developer portal or BLE information turned up beyond the launch-time mention of an API for AI assistants.
+- **iFlytek / DingTalk A1:** DingTalk's own pages describe on-device speech-to-text and "open APIs" to external systems, and a March 2026 launch of the A1 Pro and the H1 wearable ([DingTalk release](https://www.dingtalk-global.com/news/activity/dingtalk-new-ai-hardware-release-260319)). The open APIs are DingTalk cloud APIs behind an account. No SDK, BLE protocol or iFlytek recorder developer programme was found; the Chinese-language developer portals (open.dingtalk.com, iFlytek's open platform) were not read in full.
+- **Limitless Pendant (feeds #18):** Meta acquired Limitless on 2025-12-05 and new pendant sales ended; existing owners were promised support for at least one year ([TechCrunch](https://www.techcrunch.com/2025/12/05/meta-acquires-ai-device-startup-limitless/), [Neowin](https://www.neowin.net/news/meta-acquires-ai-startup-limitless-ending-sales-of-its-popular-pendant-wearable)). The [MAkcanca/pendant-cli](https://github.com/MAkcanca/pendant-cli) README (MIT, 9 commits) lists commands including StartRecording, StopRecording, DownloadFlashPages, DeleteFlashPage, ClearPendantStorage, FactoryResetPendant, ResetDevice and UnpairBluetooth, and was tested against firmware v1.1.20 only.
 
 ## Driver architecture
 
