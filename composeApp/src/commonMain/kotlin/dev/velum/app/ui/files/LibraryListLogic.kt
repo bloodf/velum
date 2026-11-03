@@ -17,6 +17,23 @@ enum class LibrarySort {
 /** Pure sort / highlight helpers for the library list (unit-tested). */
 object LibraryListLogic {
 
+    /** Whole minutes from 1 min up; under a minute the seconds, so a 36 s file never reads "0 min". */
+    fun durationLabel(seconds: Long, strings: dev.velum.app.i18n.Strings): String {
+        val s = seconds.coerceAtLeast(0L)
+        return if (s < 60L) {
+            strings.durationSecondsFormat.replace("%d", s.toString())
+        } else {
+            strings.durationMinutesFormat.replace("%d", (s / 60L).toString())
+        }
+    }
+
+    /** Accessibility name of the source icon; imports and shares are not "headphones audio". */
+    fun sourceA11y(source: String, strings: dev.velum.app.i18n.Strings): String = when (source) {
+        "note_pro" -> strings.ux.noteProMicA11y
+        "import", "share" -> strings.ux.importedAudioA11y
+        else -> strings.ux.headphonesA11y
+    }
+
     fun compareRecordings(a: Recording, b: Recording, sort: LibrarySort): Int =
         when (sort) {
             LibrarySort.Newest -> b.started_at.compareTo(a.started_at).thenById(a, b)
