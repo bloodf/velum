@@ -37,13 +37,13 @@ import platform.darwin.NSObject
 private var activeDelegate: AudioPickerDelegate? = null
 private val importScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
-private class AudioPickerDelegate(val onPicked: (String) -> Unit) : NSObject(), UIDocumentPickerDelegateProtocol {
+private class AudioPickerDelegate(val onPicked: (String) -> Unit, val onFailed: () -> Unit) : NSObject(), UIDocumentPickerDelegateProtocol {
     override fun documentPicker(controller: UIDocumentPickerViewController, didPickDocumentsAtURLs: List<*>) {
         activeDelegate = null
         val url = didPickDocumentsAtURLs.firstOrNull() as? NSURL ?: return
         importScope.launch {
             val path = withContext(Dispatchers.IO) { moveIntoImports(url) }
-            if (path != null) onPicked(path)
+            if (path != null) onPicked(path) else onFailed()
         }
     }
 
@@ -55,11 +55,11 @@ private class AudioPickerDelegate(val onPicked: (String) -> Unit) : NSObject(), 
 /** Opens the Files picker for audio. `asCopy` gives an app-owned copy, so no security-scoped access is needed. */
 @Composable
 actual fun rememberAudioImporter(onFailed: () -> Unit, onPicked: (path: String) -> Unit): () -> Unit =
-    remember(onPicked) {
+    remember(onPicked, onFailed) {
         {
             val presenter = topViewController()
             if (presenter != null) {
-                val delegate = AudioPickerDelegate(onPicked)
+                val delegate = AudioPickerDelegate(onPicked, onFailed)
                 activeDelegate = delegate
                 val picker = UIDocumentPickerViewController(forOpeningContentTypes = listOf(UTTypeAudio), asCopy = true)
                 picker.delegate = delegate
@@ -70,7 +70,7 @@ actual fun rememberAudioImporter(onFailed: () -> Unit, onPicked: (path: String) 
 
 /**
  * Moves the picker's temporary copy into `Caches/imports` so it is not left behind. Failures are logged
- * and return null; there is no error channel in the shared importer contract (Android also drops them).
+ * and return null, which the delegate reports through `onFailed`.
  */
 @OptIn(ExperimentalForeignApi::class)
 private fun moveIntoImports(source: NSURL): String? {
