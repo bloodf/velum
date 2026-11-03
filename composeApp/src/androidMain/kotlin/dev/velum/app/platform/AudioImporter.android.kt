@@ -10,12 +10,13 @@ import androidx.compose.ui.platform.LocalContext
 import java.io.File
 import java.io.FileOutputStream
 import java.util.UUID
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @Composable
-actual fun rememberAudioImporter(onPicked: (path: String) -> Unit): () -> Unit {
+actual fun rememberAudioImporter(onFailed: () -> Unit, onPicked: (path: String) -> Unit): () -> Unit {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val launcher = rememberLauncherForActivityResult(
@@ -28,17 +29,14 @@ actual fun rememberAudioImporter(onPicked: (path: String) -> Unit): () -> Unit {
                 val name = sanitizeImportFileName(displayName, "${UUID.randomUUID()}.audio")
                 val dest = File(context.cacheDir, "imports").apply { mkdirs() }
                 val outFile = File(dest, "${System.currentTimeMillis()}_$name")
-                context.contentResolver.openInputStream(uri)?.use { input ->
-                    FileOutputStream(outFile).use { output -> input.copyTo(output) }
-                }
-                if (outFile.exists() && outFile.length() > 0L) {
+                if (copyToCache({ context.contentResolver.openInputStream(uri) }, outFile)) {
                     dev.velum.app.importing.ImportDisplayNames.put(outFile.absolutePath, displayName)
                     outFile.absolutePath
                 } else {
                     null
                 }
             }
-            if (path != null) onPicked(path)
+            if (path != null) onPicked(path) else onFailed()
         }
     }
     return remember(launcher) {
@@ -51,6 +49,25 @@ actual fun rememberAudioImporter(onPicked: (path: String) -> Unit): () -> Unit {
 actual fun deleteImportCopies() {
     val context = appContextOrNull() ?: return
     File(context.cacheDir, "imports").deleteRecursively()
+}
+
+/**
+ * Copies a picked document into the cache. A provider error (offline Drive, revoked grant) or an empty
+ * stream returns false and leaves no partial file; cancellation still propagates.
+ */
+internal fun copyToCache(open: () -> java.io.InputStream?, outFile: File): Boolean {
+    try {
+        open()?.use { input -> FileOutputStream(outFile).use { output -> input.copyTo(output) } }
+    } catch (cancelled: CancellationException) {
+        outFile.delete()
+        throw cancelled
+    } catch (failure: Exception) {
+        outFile.delete()
+        return false
+    }
+    if (outFile.exists() && outFile.length() > 0L) return true
+    outFile.delete()
+    return false
 }
 
 /** The provider's display name ("two-speakers.wav"); the last path segment is an opaque id ("msf:1000000063") for document providers. */

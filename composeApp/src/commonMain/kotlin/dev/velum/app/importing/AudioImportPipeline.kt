@@ -98,7 +98,11 @@ class AudioImportPipeline(
                 apiModelOverride = match?.let { AutoFlowResolve.modelOverride(it) },
             )
             ImportResult.Created(id, normalized.wavPath, contentHash)
-        }.getOrElse { ImportResult.Failed(it.message ?: it::class.simpleName ?: "import_failed") }
+        }.getOrElse {
+            // A cancelled import is not a failed one: let the cancellation through (and the normalizer clean up).
+            if (it is kotlinx.coroutines.CancellationException) throw it
+            ImportResult.Failed(it.message ?: it::class.simpleName ?: "import_failed")
+        }
     }
 }
 
