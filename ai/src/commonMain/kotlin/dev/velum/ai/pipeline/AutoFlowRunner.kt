@@ -243,7 +243,8 @@ class AutoFlowRunner internal constructor(
             }
             CalendarLookupResult.PermissionDenied -> {
                 // Every status change runs a new pass: ask once until the answer changes, not on each pass.
-                if (calendarPermissionAsked.compareAndSet(expect = false, update = true)) {
+                // With no collector (no composition) the action would drop, so leave it for a later pass.
+                if (_actions.subscriptionCount.value > 0 && calendarPermissionAsked.compareAndSet(expect = false, update = true)) {
                     _actions.tryEmit(
                         AutoFlowUiAction.BlockedOnPermission(
                             "READ_CALENDAR",
