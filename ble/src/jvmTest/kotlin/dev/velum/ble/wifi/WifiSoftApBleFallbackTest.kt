@@ -47,7 +47,7 @@ class WifiSoftApBleFallbackTest {
     private val fixture = ByteArray(64 * 1024) { ((it * 17 + 3) and 0xFF).toByte() }
     private val wifiChunks = fixture.toList().chunked(4 * 1024).map { it.toByteArray() }
 
-    private fun runTest20(block: suspend CoroutineScope.() -> Unit) {
+    private fun runBoundedTest(block: suspend CoroutineScope.() -> Unit) {
         runBlocking { withTimeout(20_000) { block() } }
     }
 
@@ -118,7 +118,7 @@ class WifiSoftApBleFallbackTest {
         val frames = s.server.incomingEncryptedFrames() as SharedFlow<ByteArray>
         frames.onSubscription { subscribed.complete(Unit) }
             .transformWhile<ByteArray, Unit> { sealed ->
-                out.write(s.openIncoming(sealed) ?: error("wifi_frame_rejected"))
+                out.write(s.openIncoming(sealed) ?: throw WifiTransferFailure("wifi_frame_rejected"))
                 out.size() < total
             }.collect { }
         return out.toByteArray()
@@ -170,7 +170,7 @@ class WifiSoftApBleFallbackTest {
     private suspend fun <T> coroutineScope2(block: suspend CoroutineScope.() -> T): T = kotlinx.coroutines.coroutineScope(block)
 
     @Test
-    fun aeadFailureMidTransfer_fallsBackToRealBleDownload_withExactBytes() = runTest20 {
+    fun aeadFailureMidTransfer_fallsBackToRealBleDownload_withExactBytes() = runBoundedTest {
         val (outcome, ble, joiner) = transfer(wifiTimeoutMs = 10_000, good = 2, corruptNext = true)
         assertIs<WifiTransferCoordinator.Outcome.BleFallback>(outcome)
         assertEquals("wifi_frame_rejected", outcome.reason)
@@ -182,7 +182,7 @@ class WifiSoftApBleFallbackTest {
     }
 
     @Test
-    fun droppedLinkMidTransfer_timesOutAndFallsBackToRealBleDownload_withExactBytes() = runTest20 {
+    fun droppedLinkMidTransfer_timesOutAndFallsBackToRealBleDownload_withExactBytes() = runBoundedTest {
         val (outcome, ble, joiner) = transfer(wifiTimeoutMs = 1_500, good = 2, corruptNext = false)
         assertIs<WifiTransferCoordinator.Outcome.BleFallback>(outcome)
         assertTrue(outcome.reason.startsWith("wifi_timeout"), outcome.reason)

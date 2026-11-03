@@ -149,7 +149,7 @@ class AndroidWifiTransferServerTest {
         val frames = s.server.incomingEncryptedFrames() as SharedFlow<ByteArray>
         frames.onSubscription { subscribed.complete(Unit) }
             .transformWhile<ByteArray, Unit> { sealed ->
-                out.write(s.openIncoming(sealed) ?: error("wifi_frame_rejected"))
+                out.write(s.openIncoming(sealed) ?: throw WifiTransferFailure("wifi_frame_rejected"))
                 out.size() < total
             }.collect { }
         return out.toByteArray()
@@ -160,15 +160,20 @@ class AndroidWifiTransferServerTest {
         subscribed: CompletableDeferred<Unit>,
         mode: WifiPayloadCipher,
         chunks: List<ByteArray>,
+        tolerateFailure: Boolean = false,
     ) = launch(Dispatchers.IO) {
-        val d = connectDevice(port)
         try {
-            subscribed.await() // SharedFlow has no replay; send only once the collector is attached.
-            d.send(preamble)
-            val c = cipher(mode)
-            chunks.forEachIndexed { i, chunk -> d.send(c.seal(i.toLong(), chunk)) }
-        } finally {
-            d.close()
+            val d = connectDevice(port)
+            try {
+                subscribed.await() // SharedFlow has no replay; send only once the collector is attached.
+                d.send(preamble)
+                val c = cipher(mode)
+                chunks.forEachIndexed { i, chunk -> d.send(c.seal(i.toLong(), chunk)) }
+            } finally {
+                d.close()
+            }
+        } catch (t: Exception) {
+            if (!tolerateFailure) throw t
         }
     }
 
@@ -203,7 +208,6 @@ class AndroidWifiTransferServerTest {
     @Test
     fun noNetwork_noBinding_serverStillDeliversFrames() = runTest {
         val port = freePort()
-        val untouched = RecordingNetwork() // never handed to the server: must stay unbound
         val failures = mutableListOf<Throwable>()
         val server = AndroidWifiTransferServer(onBindFailure = { failures += it })
         server.start(port, "127.0.0.1", preamble)
@@ -219,7 +223,6 @@ class AndroidWifiTransferServerTest {
             withContext(Dispatchers.IO) { d.send(preamble); d.send(byteArrayOf(5)) }
             assertContentEquals(byteArrayOf(5), first.await())
             d.close()
-            assertEquals(0, untouched.boundCount)
             assertTrue(failures.isEmpty(), "no network, so nothing to bind or report")
         } finally {
             server.stop()
@@ -330,16 +333,25 @@ class AndroidWifiTransferServerTest {
         val joiner = RecordingJoiner()
         val server = AndroidWifiTransferServer(softApNetwork = { network.network })
         val subscribed = CompletableDeferred<Unit>()
-        val device = launchDevice(port, subscribed, WifiPayloadCipher.ChaCha20Poly1305, chunks.take(8)) // then closes
+        var arrived: ByteArray? = null
+        // The device may fail to connect or send if the timeout wins the race and stops the server; the
+        // `arrived` assertion below is what proves the drop happened mid-transfer.
+        val device = launchDevice(port, subscribed, WifiPayloadCipher.ChaCha20Poly1305, chunks.take(8), tolerateFailure = true) // then closes
         val outcome = WifiTransferCoordinator(
             sessionFactory = { session(WifiPayloadCipher.ChaCha20Poly1305, server, joiner) },
             bleDownload = { fixture },
-            wifiTimeout = 3_000.milliseconds,
+            wifiTimeout = 10_000.milliseconds,
         ).transferOrFallback(
             "PLAUD-FAKE", "password12", port = port, preamble = preamble, bindHost = "127.0.0.1",
-            assemble = { assembleExact(it, fixture.size, subscribed) },
+            assemble = {
+                // The first 8 chunks must really arrive; then the device is gone and nothing more comes.
+                arrived = assembleExact(it, 8 * CHUNK, subscribed)
+                kotlinx.coroutines.awaitCancellation()
+            },
         )
+        subscribed.complete(Unit) // never leave the device waiting if the timeout fired before subscription
         device.join()
+        assertContentEquals(fixture.copyOf(8 * CHUNK), arrived, "the 8 frames sent before the drop arrived intact")
         assertIs<WifiTransferCoordinator.Outcome.BleFallback>(outcome)
         assertTrue(outcome.reason.startsWith("wifi_timeout"), outcome.reason)
         assertContentEquals(fixture, outcome.bytes) // BLE result is whole: no partial Wi-Fi bytes mixed in
