@@ -1084,11 +1084,33 @@ private fun SourcesPane(
     }
 }
 
+/**
+ * Cue header as drawn: the stored `**Name** · 0:00` without its Markdown markers, and the generated
+ * English "Speaker N" in the app language. The stored text and exports are unchanged.
+ */
+/**
+ * A transcript line that is not a cue header, as drawn: the "## Markers" section heading in the app
+ * language and "- **0:12** label" as a plain bullet, never with their Markdown markers.
+ */
+internal fun transcriptBodyLineDisplay(line: String, strings: dev.velum.app.i18n.Strings): String {
+    val trimmed = line.trim()
+    if (trimmed == dev.velum.ai.pipeline.TranscriptFormatter.MARKERS_HEADING) return strings.ux.markersHeading
+    if (trimmed.startsWith("- **")) return "• " + trimmed.removePrefix("- ").replace("**", "")
+    return line.replace("**", "")
+}
+
+internal fun transcriptHeaderDisplay(line: String, strings: dev.velum.app.i18n.Strings): String {
+    val plain = line.trim().replace("**", "")
+    val generated = Regex("""^Speaker (\d+)(?= ·)""").find(plain) ?: return plain
+    return strings.ux.speakerLabel.replace("%d", generated.groupValues[1]) + plain.removePrefix(generated.value)
+}
+
 @Composable
 private fun SeekableTranscript(
     transcript: String,
     onSeekMs: (Long) -> Unit,
 ) {
+    val strings = LocalStrings.current
     if (transcript.isBlank()) {
         MarkdownPreview(transcript)
         return
@@ -1112,7 +1134,7 @@ private fun SeekableTranscript(
                 val seconds = match.groupValues[4].toLongOrNull() ?: 0L
                 val startMs = ((hours * 60L + minutes) * 60L + seconds) * 1000L
                 Text(
-                    line.trim(),
+                    transcriptHeaderDisplay(line, strings),
                     color = VelumInk,
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 15.sp,
@@ -1125,10 +1147,12 @@ private fun SeekableTranscript(
                         .padding(vertical = 8.dp),
                 )
             } else if (line.isNotBlank()) {
+                val isMarkersHeading = line.trim() == dev.velum.ai.pipeline.TranscriptFormatter.MARKERS_HEADING
                 Text(
-                    line,
+                    transcriptBodyLineDisplay(line, strings),
                     color = VelumInk,
                     fontSize = 15.sp,
+                    fontWeight = if (isMarkersHeading) FontWeight.SemiBold else null,
                     modifier = Modifier.padding(bottom = 6.dp),
                 )
             } else {
