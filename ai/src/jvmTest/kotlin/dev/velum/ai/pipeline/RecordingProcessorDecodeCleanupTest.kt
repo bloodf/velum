@@ -312,6 +312,14 @@ class RecordingProcessorDecodeCleanupTest {
     }
 
     @Test
+    fun wrapped_provider_error_text_is_not_reported_as_local_storage() {
+        val remote = dev.velum.ai.AiApiException(507, "No space left on device")
+        // RuntimeException(cause) copies cause.toString() into its own message.
+        assertFalse(isOutOfStorage(RuntimeException(remote)))
+        assertFalse(isOutOfStorage(IllegalStateException("provider failed: $remote", remote)))
+    }
+
+    @Test
     fun cancellation_check_aborts_ogg_decode_between_packets() {
         val packet = dev.velum.ai.audio.SyntheticOgg.audioPacket(stereo = false)
         val dir = java.nio.file.Files.createTempDirectory("velum-86-cancel").toFile()
