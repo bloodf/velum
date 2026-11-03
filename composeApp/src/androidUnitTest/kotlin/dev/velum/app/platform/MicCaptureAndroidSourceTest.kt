@@ -23,6 +23,6 @@ class MicCaptureAndroidSourceTest {
             src.contains("MicMarkerResult.Ok(MicMarker(offsetMs = 0"),
             "addMarker timeout must not invent Ok(offset 0)",
         )
-        assertTrue(src.contains("return MicMarkerResult.Failed(context.getString(R.string.mic_recording_capture_failed))"))
+        assertTrue(src.contains("return MicMarkerResult.Failed(context.inAppLanguage().getString(R.string.mic_recording_capture_failed))"))
     }
 }

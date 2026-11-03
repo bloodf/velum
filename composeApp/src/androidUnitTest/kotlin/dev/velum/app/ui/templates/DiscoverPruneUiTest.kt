@@ -62,13 +62,17 @@ class DiscoverPruneUiTest {
         try {
             compose.waitUntil(10_000, condition)
         } catch (e: androidx.compose.ui.test.ComposeTimeoutException) {
-            val tree = compose.onRoot().printToString(maxDepth = 12).take(6000)
-            throw AssertionError("Timed out waiting for $what\n$tree", e)
+            // An open search sheet is a second root, which makes onRoot() throw and hide the timeout.
+            val tree = runCatching { compose.onAllNodes(androidx.compose.ui.test.isRoot()).printToString(maxDepth = 12).take(6000) }
+                .getOrElse { "diagnostic failed: $it" }
+            throw AssertionError("Timed out waiting for $what\n${queryLog.dump()}\n$tree", e)
         }
     }
 
     // Chips appear once the facets loaded, which is after the first rows: wait for the chip before tapping it.
     private fun tap(tag: String) { awaitTag(tag); compose.onNodeWithTag(tag).performScrollTo().performClick() }
+
+    private val queryLog = QueryLog()
 
     private fun withScreen(block: () -> Unit) {
         val context = ApplicationProvider.getApplicationContext<Context>()
@@ -89,7 +93,7 @@ class DiscoverPruneUiTest {
         try {
             activity.get().setContent {
                 CompositionLocalProvider(LocalStrings provides PtBr) {
-                    VelumTheme(darkTheme = false) { TemplatesScreen(container, onBack = {}, onOpenTemplate = {}) }
+                    VelumTheme(darkTheme = false) { TemplatesScreen(container, onBack = {}, onOpenTemplate = {}, queries = queryLog.wrap(container)) }
                 }
             }
             await("ZQ Alpha")
@@ -122,6 +126,9 @@ class DiscoverPruneUiTest {
         tap("category:zqcat"); awaitTag("active:category")
         compose.onNodeWithContentDescription(PtBr.search).performClick()
         compose.onNode(hasSetTextAction()).performTextInput("ZQ")
+        // The search is debounced: switching tier before it applies would load facets for a blank search, which may
+        // legitimately prune. Wait until the debounce has applied, i.e. a facets load for "ZQ" has started.
+        waiting("debounced search applied") { queryLog.dump().contains("start facets(search='ZQ'") }
         tap("tier:featured")
         Thread.sleep(1500)
         compose.waitForIdle()

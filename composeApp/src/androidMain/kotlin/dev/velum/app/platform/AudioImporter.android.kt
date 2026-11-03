@@ -24,13 +24,19 @@ actual fun rememberAudioImporter(onPicked: (path: String) -> Unit): () -> Unit {
         if (uri == null) return@rememberLauncherForActivityResult
         scope.launch {
             val path = withContext(Dispatchers.IO) {
-                val name = sanitizeImportFileName(uri.lastPathSegment, "${UUID.randomUUID()}.audio")
+                val displayName = displayNameOf(context, uri)
+                val name = sanitizeImportFileName(displayName, "${UUID.randomUUID()}.audio")
                 val dest = File(context.cacheDir, "imports").apply { mkdirs() }
                 val outFile = File(dest, "${System.currentTimeMillis()}_$name")
                 context.contentResolver.openInputStream(uri)?.use { input ->
                     FileOutputStream(outFile).use { output -> input.copyTo(output) }
                 }
-                if (outFile.exists() && outFile.length() > 0L) outFile.absolutePath else null
+                if (outFile.exists() && outFile.length() > 0L) {
+                    dev.velum.app.importing.ImportDisplayNames.put(outFile.absolutePath, displayName)
+                    outFile.absolutePath
+                } else {
+                    null
+                }
             }
             if (path != null) onPicked(path)
         }
@@ -46,3 +52,11 @@ actual fun deleteImportCopies() {
     val context = appContextOrNull() ?: return
     File(context.cacheDir, "imports").deleteRecursively()
 }
+
+/** The provider's display name ("two-speakers.wav"); the last path segment is an opaque id ("msf:1000000063") for document providers. */
+internal fun displayNameOf(context: android.content.Context, uri: Uri): String? =
+    runCatching {
+        context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+            if (c.moveToFirst()) c.getString(0) else null
+        }
+    }.getOrNull()?.takeIf { it.isNotBlank() } ?: uri.lastPathSegment
