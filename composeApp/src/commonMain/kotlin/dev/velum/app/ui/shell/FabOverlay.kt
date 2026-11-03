@@ -34,6 +34,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.velum.app.platform.PlatformBackHandler
 import dev.velum.app.i18n.LocalStrings
 import dev.velum.app.ui.motion.Motion
 import dev.velum.app.ui.motion.pressableScale
@@ -47,6 +48,8 @@ fun FabOverlay(
     isCapturing: Boolean = false,
 ) {
     val strings = LocalStrings.current
+    // System Back closes the menu instead of leaving the app (#300); only while it is open.
+    PlatformBackHandler(enabled = visible, onBack = onDismiss)
     val onScrim = Color.White
     val reduce = Motion.reduceMotion()
     AnimatedVisibility(
