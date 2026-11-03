@@ -22,7 +22,7 @@ F-Droid keeps using it. A phone downloading its own ABI APK gets 63% less.
 
 | Part | MiB in APK |
 |---|---|
-| `lib/arm64-v8a` (onnxruntime 21.2, litertlm 20.5, sherpa-onnx 9.3, sqlite3x 1.8, c++ 1.7, rest) | 56.2 |
+| `lib/arm64-v8a` (onnxruntime 21.2, litertlm 20.5, sherpa-onnx 9.2, sqlite3x 1.8, c++ 1.7, rest) | 56.2 |
 | `plaud_templates_full.jsonl.gz` (already gzip) | 7.6 |
 | `res/` | 3.8 |
 | `classes.dex` | 3.4 |

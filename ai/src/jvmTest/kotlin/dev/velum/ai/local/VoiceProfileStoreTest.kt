@@ -3,6 +3,7 @@ package dev.velum.ai.local
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -52,6 +53,38 @@ class VoiceProfileStoreTest {
         assertEquals(1, store.listProfiles().size)
         store.wipeAll()
         assertTrue(store.listProfiles().isEmpty())
+    }
+
+    @Test
+    fun importEncrypted_rejectsNonBackupTextAsInvalid() {
+        val store = tempStore()
+        for (text in listOf("", "not json", "[]", """{"version":1,"profiles":[{"id":"a"}]}""")) {
+            assertFailsWith<InvalidVoiceProfileBackupException>(text) { store.importEncrypted(text) }
+        }
+        assertTrue(store.listProfiles().isEmpty())
+    }
+
+    @Test
+    fun importEncrypted_badBase64IsInvalid_notAnUnhandledError() {
+        val store = tempStore()
+        store.upsert("A", floatArrayOf(1f, 0f))
+        val broken = store.exportEncrypted().replace(Regex("\"embeddingB64\": \"[^\"]*\""), "\"embeddingB64\": \"***\"")
+        assertFailsWith<InvalidVoiceProfileBackupException> { store.importEncrypted(broken) }
+    }
+
+    @Test
+    fun importEncrypted_badSecondEntry_writesNothing() {
+        val store = tempStore()
+        store.upsert("A", floatArrayOf(1f, 0f))
+        store.upsert("B", floatArrayOf(0f, 1f))
+        val export = store.exportEncrypted()
+        store.wipeAll()
+        // Corrupt only the second entry's embedding.
+        val marker = "\"embeddingB64\": \""
+        val second = export.indexOf(marker, export.indexOf(marker) + 1) + marker.length
+        val broken = export.substring(0, second) + "***" + export.substring(second)
+        assertFailsWith<InvalidVoiceProfileBackupException> { store.importEncrypted(broken) }
+        assertTrue(store.listProfiles().isEmpty(), "entry 1 must not be saved when entry 2 is bad")
     }
 
     @Test
