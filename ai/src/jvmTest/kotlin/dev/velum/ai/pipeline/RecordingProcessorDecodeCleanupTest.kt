@@ -446,13 +446,18 @@ class RecordingProcessorDecodeCleanupTest {
         val src = tempAudio(".wav", wav(ByteArray(64_000)))
         h.insert("rec-324-late-cancel", src)
         h.repo.updateStatus("rec-324-late-cancel", "imported") // the status a wrongful restore would write back
+        var cancelled = false
         val job = launch(Dispatchers.Default) {
             h.processor.process("rec-324-late-cancel", templateId = "velum.meeting", apiModelOverride = API).collect {
                 // The success write and the audio delete are done; stop the collector at the next emit.
-                if (it is JobProgress.Running && it.message.startsWith("Removed")) throw CancellationException("collector gone")
+                if (it is JobProgress.Running && it.message.startsWith("Removed")) {
+                    cancelled = true
+                    throw CancellationException("collector gone")
+                }
             }
         }
         job.join()
+        assertTrue(cancelled, "the collector was never stopped, so the late-cancel path did not run")
         assertEquals("ready", h.repo.getRecording("rec-324-late-cancel")!!.status, "a late cancel restored the earlier status")
         assertFalse(src.exists(), "the audio was deleted before the emit")
     }
