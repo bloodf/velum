@@ -194,27 +194,29 @@ class DeviceWalkUiTest {
             }
             shellReady || skipVisible
         }
-        if (firstRunSkipVisible() || firstRunChromeVisible()) {
-            // Real Skip tap only — OutlineButton CD + role Button (#106 a11y).
-            // Coordinate fallback OK; never bypass via markFirstRunDone (#115).
-            if (!firstRunSkipVisible()) {
-                val w = device.displayWidth
-                val h = device.displayHeight
-                device.swipe(w / 2, (h * 0.75).toInt(), w / 2, (h * 0.25).toInt(), 30)
-                SystemClock.sleep(400)
+        // CI capture (#160): repeating "Pixel Launcher isn't responding" dialogs cover the app and swallow taps, leaving
+        // FirstRun on screen with Skip visible. Retry the tap while confirming the app is in front, instead of waiting longer.
+        // The shell bar can briefly exist before the FirstRun overlay is composed, so "ready" also requires no Skip/chrome.
+        // Real Skip tap only (#106 a11y), through Compose's input dispatcher: UiDevice injection can return before Compose
+        // consumes the gesture under its test clock. Never bypass via markFirstRunDone (#115).
+        waitUntil(150_000, "First run was not dismissed and the Files shell never became ready") {
+            lastAnrCheckMs = 0L
+            dismissSystemAnrDialog()
+            if (device.currentPackageName != appContext.packageName) return@waitUntil false
+            when {
+                firstRunSkipVisible() -> {
+                    val label = if (uiExists("Skip")) "Skip" else "Pular"
+                    runCatching { composeRule.onNodeWithContentDescription(label, useUnmergedTree = true).performClick() }
+                    covered += "first-run-skip"
+                    SystemClock.sleep(1_000)
+                }
+                !onFilesShellReady() && firstRunChromeVisible() -> {
+                    device.swipe(device.displayWidth / 2, (device.displayHeight * 0.75).toInt(), device.displayWidth / 2, (device.displayHeight * 0.25).toInt(), 30)
+                    SystemClock.sleep(400)
+                }
             }
-            waitUntil(20_000) { firstRunSkipVisible() || onFilesShellReady() }
-            if (!onFilesShellReady()) {
-                // Click the real button through Compose's synchronized input
-                // dispatcher. UiDevice injection can return before Compose
-                // consumes the gesture under its test clock.
-                val label = if (uiExists("Skip")) "Skip" else "Pular"
-                composeRule.onNodeWithContentDescription(label, useUnmergedTree = true).performClick()
-                covered += "first-run-skip"
-                waitUntil(45_000) { onFilesShellReady() }
-            }
+            onFilesShellReady() && !firstRunSkipVisible() && !firstRunChromeVisible()
         }
-        waitUntil(60_000) { onFilesShellReady() }
         restoreAllFilesFilterSoft()
         dismissSystemPermissionDialogs()
     }
