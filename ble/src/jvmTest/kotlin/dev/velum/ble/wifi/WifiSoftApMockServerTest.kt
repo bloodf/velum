@@ -392,6 +392,7 @@ class WifiSoftApMockServerTest {
     fun portInUse_failsAtOnceAndFallsBackToBle_withoutJoiningSoftAp() = runBoundedTest {
         ServerSocket(0, 50, InetAddress.getByName("127.0.0.1")).use { occupied ->
             val joiner = FakeWifiSoftApJoiner()
+            val started = System.nanoTime()
             val outcome = WifiTransferCoordinator(
                 sessionFactory = { session(WifiPayloadCipher.ChaCha20Poly1305, JavaWebsocketTransferServer(), joiner) },
                 bleDownload = { fixture },
@@ -403,6 +404,8 @@ class WifiSoftApMockServerTest {
             assertIs<WifiTransferCoordinator.Outcome.BleFallback>(outcome)
             assertEquals(JavaWebsocketTransferServer.BIND_FAILURE_CODE, outcome.reason)
             assertEquals(0, joiner.joinCount, "SoftAP must not be joined without a listener")
+            // 5 s is the server's limit for a wait that went wrong: the listener's own error must end it sooner.
+            assertTrue(System.nanoTime() - started < 5_000_000_000L, "the bind failure must be noticed, not waited out")
         }
     }
 }

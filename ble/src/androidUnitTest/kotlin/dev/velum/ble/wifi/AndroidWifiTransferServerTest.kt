@@ -419,10 +419,13 @@ class AndroidWifiTransferServerTest {
     @Test
     fun portInUse_failsStart() = runTest {
         ServerSocket(0, 50, InetAddress.getByName("127.0.0.1")).use { occupied ->
+            val started = System.nanoTime()
             val failure = assertFailsWith<WifiTransferFailure> {
                 AndroidWifiTransferServer().start(occupied.localPort, "127.0.0.1", WifiTransferPreamble.defaultToken("bind-219"))
             }
             assertEquals(AndroidWifiTransferServer.BIND_FAILURE_CODE, failure.code)
+            // 5 s is the server's limit for a wait that went wrong: the listener's own error must end it sooner.
+            assertTrue(System.nanoTime() - started < 5_000_000_000L, "the bind failure must be noticed, not waited out")
         }
     }
 }
