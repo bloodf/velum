@@ -67,3 +67,8 @@ internal fun reloadLimit(pages: Int, sameFilterRowCount: Int, pageSize: Int): In
 
 /** Upper bound on a single tick reload, so a very deep scroll of the ~16k catalog never re-queries thousands of rows. */
 internal const val MAX_RELOAD_PAGES = 10
+
+/** Facets together with the (debounced) search they were loaded for, so the pair is replaced atomically. */
+internal class LoadedFacets(val facets: DiscoverFacets, val search: String)
+
+internal val NoFacets = DiscoverFacets(emptyList(), emptyList(), emptyList())

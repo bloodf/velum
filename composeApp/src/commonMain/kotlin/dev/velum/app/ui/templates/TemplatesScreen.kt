@@ -165,11 +165,13 @@ internal fun TemplatesScreen(
         else -> DiscoverTier.All
     }
     // Facet values come from catalog metadata for the current tier + search (+ category for tags/langs).
-    // `facetsLoaded` stays false until a load succeeds; a failed load keeps the previous facets and never prunes.
-    var facets by remember { mutableStateOf(DiscoverFacets(emptyList(), emptyList(), emptyList())) }
-    var facetsLoaded by remember { mutableStateOf(false) }
+    // `loadedFacets` stays null until a load succeeds; a failed load keeps the previous facets and never prunes.
+    // One state object, written once per load: the facets and the search they were loaded for must never be
+    // observed out of step (a recomposition between two separate writes pruned a selection against new facets while
+    // the old blank search still allowed pruning).
+    var loadedFacets by remember { mutableStateOf<LoadedFacets?>(null) }
+    val facets = loadedFacets?.facets ?: NoFacets
     // Search the current facets were loaded for: only a blank-search load may prune selections (#102).
-    var facetsSearch by remember { mutableStateOf<String?>(null) }
     // Debounced so each keystroke does not re-run the facet and page queries.
     var debouncedQuery by remember { mutableStateOf(searchQuery) }
     LaunchedEffect(searchQuery) {
@@ -184,9 +186,7 @@ internal fun TemplatesScreen(
         if (!tickReady) return@LaunchedEffect
         facetsLoading = true
         try {
-            facets = queries.facets(DiscoverFilter(tier, debouncedQuery, selectedCategory))
-            facetsLoaded = true
-            facetsSearch = debouncedQuery
+            loadedFacets = LoadedFacets(queries.facets(DiscoverFilter(tier, debouncedQuery, selectedCategory)), debouncedQuery)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
@@ -194,7 +194,7 @@ internal fun TemplatesScreen(
         }
         facetsLoading = false
     }
-    val canPrune = tab == 1 && facetsLoaded && facetsSearch?.isBlank() == true
+    val canPrune = tab == 1 && loadedFacets?.search?.isBlank() == true
     // The selected category stays listed even when the current search has no hit in it (#102).
     val categoryTabs = remember(facets, selectedCategory) {
         val categories = facets.categories.let { c -> if (selectedCategory != null && selectedCategory !in c) c + selectedCategory!! else c }
