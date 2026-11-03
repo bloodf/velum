@@ -97,6 +97,9 @@ class FakePlaudPeripheral(
     private var secret: Protocol20SessionSecret? = null
     private var appRecvSeq: Long = 2
     private var deviceSendSeq: Long = 0
+
+    /** Sealed packets sent so far (tests use it to bound how long a client keeps listening). */
+    val framesSent: Long get() = deviceSendSeq
     private var unlocked = false
     private var handshakeFailed = false
 

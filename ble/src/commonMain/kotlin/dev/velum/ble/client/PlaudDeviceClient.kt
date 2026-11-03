@@ -279,12 +279,14 @@ class PlaudDeviceClient(
         if (startRsp.refused) throw TransferIntegrityException("Sync start refused status=${startRsp.status}")
 
         var next = startOffset
-        var ignoredFrames = 0
-        var smallestChunk = Int.MAX_VALUE
+        var otherIgnoredFrames = 0 // frames without new data that are not part of a prefix replay
+        var replayedBytes = 0L
+        var lastIgnoredOffset = -1L
         var resumeCheck = if (startOffset > 0) storedBytes else null
         try {
             while (true) {
                 val before = next
+                var replayingPrefix = false
                 val raw = awaitDecryptedFrame(responseTimeout) { true }
                 when (val inboundPacket = Framing.decodeInbound(raw)) {
                     is InboundPacket.RecordingData -> {
@@ -292,7 +294,12 @@ class PlaudDeviceClient(
                             is RecordingDataPacket.Chunk -> {
                                 val end = data.offset + data.data.size
                                 val ignored = isStray(data.sessionId, sessionId) || end <= next
-                                if (!isStray(data.sessionId, sessionId)) smallestChunk = minOf(smallestChunk, data.data.size)
+                                if (!isStray(data.sessionId, sessionId) && end <= next) {
+                                    // A device ignoring the start offset resends the stored prefix once, offsets rising.
+                                    replayingPrefix = lastIgnoredOffset >= 0 && data.offset > lastIgnoredOffset
+                                    lastIgnoredOffset = data.offset
+                                    if (replayingPrefix) replayedBytes += data.data.size
+                                }
                                 resumeCheck?.let { stored ->
                                     if (!isStray(data.sessionId, sessionId) && data.data.isNotEmpty()) {
                                         resumeCheck = null
@@ -326,12 +333,20 @@ class PlaudDeviceClient(
                 }
                 if (sizeBytes > 0 && next >= sizeBytes) break
                 // Every frame restarts the response timeout, so a device stuck repeating needs its own limit.
-                ignoredFrames = if (next != before) 0 else ignoredFrames + 1
-                // A device ignoring the start offset resends from 0, so the limit must allow a full catch-up.
-                // Rising offsets alone don't reset the count: a device looping through the file must still stop.
-                val limit = maxOf(MAX_CONSECUTIVE_IGNORED_FRAMES.toLong(), next / smallestChunk.coerceAtLeast(1))
-                if (ignoredFrames > limit) {
-                    throw TransferIntegrityException("No new data in $ignoredFrames frames at offset $next")
+                // A device ignoring the start offset resends the stored prefix from 0: rising offsets, at most
+                // `next` bytes. That replay may take many frames and is not counted. Every other frame without
+                // new data (a repeat, a loop back, a stray, anything else) counts against the fixed limit, so a
+                // stray mid catch-up costs one frame, and a stuck device stops at any offset or chunk size.
+                if (next != before) {
+                    otherIgnoredFrames = 0
+                    replayedBytes = 0L
+                    lastIgnoredOffset = -1L
+                } else if (!replayingPrefix) {
+                    otherIgnoredFrames++
+                }
+                // One chunk of slack: a tolerated leftover can sit just inside the replayed range.
+                if (otherIgnoredFrames > MAX_CONSECUTIVE_IGNORED_FRAMES || replayedBytes > next + MAX_CHUNK_BYTES) {
+                    throw TransferIntegrityException("No new data in $otherIgnoredFrames frames at offset $next")
                 }
             }
             if (sizeBytes > 0 && next != sizeBytes) {
@@ -484,6 +499,7 @@ class PlaudDeviceClient(
 
         /** Frames in a row that add no bytes before a transfer is abandoned (about 1 MiB of 255-byte chunks). */
         const val MAX_CONSECUTIVE_IGNORED_FRAMES: Int = 4096
+        private const val MAX_CHUNK_BYTES = 255 // the chunk length is one byte on the wire
 
         /** Hard cap for a single session download (512 MiB). */
         const val MAX_SESSION_DOWNLOAD_BYTES: Long = 512L * 1024 * 1024
