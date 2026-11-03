@@ -1,6 +1,7 @@
 package dev.velum.ble.wifi
 
 import android.net.Network
+import android.util.Log
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -21,6 +22,8 @@ import java.util.concurrent.atomic.AtomicReference
  */
 class AndroidWifiTransferServer(
     private val softApNetwork: () -> Network? = { null },
+    /** Called when binding an accepted socket to the SoftAP network fails (class only, never data). */
+    private val onBindFailure: (Throwable) -> Unit = { Log.w(TAG, "SoftAP socket bind failed (${it::class.simpleName})") },
 ) : WifiTransferServer {
     private val incoming = MutableSharedFlow<ByteArray>(extraBufferCapacity = 64)
     private val running = AtomicBoolean(false)
@@ -106,7 +109,7 @@ class AndroidWifiTransferServer(
 
     private fun bindClientToSoftAp(conn: WebSocket, network: Network?) {
         if (network == null) return
-        runCatching {
+        try {
             val method = conn.javaClass.methods.firstOrNull {
                 it.name == "getChannel" && it.parameterCount == 0
             }
@@ -115,10 +118,13 @@ class AndroidWifiTransferServer(
             if (socket != null) {
                 network.bindSocket(socket)
             }
+        } catch (t: Throwable) {
+            onBindFailure(t)
         }
     }
 
     companion object {
+        private const val TAG = "AndroidWifiServer"
         const val MAX_FRAME_BYTES: Int = 8 * 1024 * 1024
     }
 }

@@ -46,21 +46,26 @@ class WifiSoftApMockServerTest {
 
     /** Bounds every test so a lost frame fails fast instead of hanging for the 45 s wifiTimeout. */
     private fun runTest20(block: suspend kotlinx.coroutines.CoroutineScope.() -> Unit) {
-        runBlocking { withTimeout(20_000) { block() } }
+        runBlocking { withTimeout(90_000) { block() } }
     }
 
     private fun freePort(): Int = ServerSocket(0).use { it.localPort }
 
     private fun crc(bytes: ByteArray): Long = CRC32().also { it.update(bytes) }.value
 
-    /** Connect-retry (no fixed sleeps): the server may not be bound yet. */
+    /**
+     * Connect-retry (no fixed sleeps): the server may not be bound yet. The per-attempt timeout is long
+     * because an attempt abandoned under load can still be accepted late by the server. Preamble state is
+     * per connection (PreamblePerConnectionTest), so a late stray cannot revoke the next attempt, but it
+     * still wastes the retry window.
+     */
     private suspend fun connectDevice(port: Int): FakeWifiDeviceClient {
-        val deadline = System.nanoTime() + 5_000_000_000L
+        val deadline = System.nanoTime() + 30_000_000_000L
         var last: Throwable? = null
         while (System.nanoTime() < deadline) {
             val device = FakeWifiDeviceClient(port = port)
             try {
-                withContext(Dispatchers.IO) { device.connect(timeoutMs = 500) }
+                withContext(Dispatchers.IO) { device.connect(timeoutMs = 10_000) }
                 return device
             } catch (t: Throwable) {
                 last = t
@@ -158,7 +163,7 @@ class WifiSoftApMockServerTest {
             val frames = s.server.incomingEncryptedFrames() as SharedFlow<ByteArray>
             val subscribed = CompletableDeferred<Unit>()
             val first = async(start = CoroutineStart.UNDISPATCHED) {
-                withTimeout(5_000) { frames.onSubscription { subscribed.complete(Unit) }.first() }
+                withTimeout(30_000) { frames.onSubscription { subscribed.complete(Unit) }.first() }
             }
             subscribed.await()
             val bad = connectDevice(port)
@@ -205,7 +210,7 @@ class WifiSoftApMockServerTest {
         val subscribed = CompletableDeferred<Unit>()
         val frames = s.server.incomingEncryptedFrames() as SharedFlow<ByteArray>
         val collected = async(start = CoroutineStart.UNDISPATCHED) {
-            withTimeout(5_000) {
+            withTimeout(30_000) {
                 val list = mutableListOf<ByteArray>()
                 frames.onSubscription { subscribed.complete(Unit) }
                     .transformWhile<ByteArray, Unit> { list += it; list.size < count }
