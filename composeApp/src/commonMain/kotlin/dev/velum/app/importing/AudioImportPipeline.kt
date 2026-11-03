@@ -47,7 +47,7 @@ class AudioImportPipeline(
                 container.repository.setMeta("import_sha256_$sourceHash", existingByContent)
                 return@withContext ImportResult.Duplicate(existingByContent, contentHash)
             }
-            val title = titleHint ?: name.substringBeforeLast('.').ifBlank { null }
+            val title = titleHint?.let(::importedTitle) ?: importedTitle(name)
             val durationSeconds = (normalized.durationMs / 1000L).coerceAtLeast(0L)
             val id = container.createLocalRecording(
                 title = title,
@@ -85,3 +85,10 @@ class AudioImportPipeline(
         }.getOrElse { ImportResult.Failed(it.message ?: it::class.simpleName ?: "import_failed") }
     }
 }
+
+/**
+ * Readable title from a copied file name: drops the extension and the `<epochMillis>_` prefix the importers add to
+ * make cache names unique. Null when nothing readable is left.
+ */
+internal fun importedTitle(fileName: String): String? =
+    fileName.substringBeforeLast('.').replace(Regex("^\\d{10,}_"), "").trim().ifBlank { null }

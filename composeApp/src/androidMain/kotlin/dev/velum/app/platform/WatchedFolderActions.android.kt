@@ -19,7 +19,7 @@ actual suspend fun syncWatchedFolders(pipeline: AudioImportPipeline): List<Impor
                 results += pipeline.importFile(
                     absolutePath = entry.absoluteCopyPath,
                     source = "watched",
-                    titleHint = entry.displayName.substringBeforeLast('.'),
+                    titleHint = entry.displayName,
                     startedAtEpochSeconds = entry.lastModifiedMs / 1000L,
                 )
             }
