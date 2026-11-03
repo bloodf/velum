@@ -9,12 +9,11 @@ import dev.velum.ai.engine.AiTask
 import dev.velum.ai.engine.AiTaskRouter
 import dev.velum.ai.engine.AudioInput
 import dev.velum.ai.engine.DEFAULT_LOCAL_DIARIZATION_MODEL_ID
-import dev.velum.ai.engine.DEFAULT_LOCAL_LLM_MODEL_ID
 import dev.velum.ai.engine.JobProgress
 import dev.velum.ai.engine.Transcriber
 import dev.velum.ai.engine.TranscriptionResult
 import dev.velum.ai.engine.LlmRequest
-import dev.velum.ai.engine.requiredLocalModelId
+import dev.velum.ai.engine.requiredLocalAsrModelId
 import dev.velum.ai.local.ModelNotReadyException
 import dev.velum.ai.local.ModelStoreDir
 import dev.velum.ai.local.defaultModelStoreRoot
@@ -215,7 +214,7 @@ class RecordingProcessor(
                     )
                     val asr = aiRouter.transcriber()
                     val asrModel = when (cfg.transcriptionMode) {
-                        ComputeMode.Local -> requiredLocalModelId(AiTask.Transcription, cfg)
+                        ComputeMode.Local -> requiredLocalAsrModelId(cfg)
                         ComputeMode.Api -> ""
                     }
                     val transcription = transcribeWindowed(
@@ -354,8 +353,8 @@ class RecordingProcessor(
             )
             val llm = aiRouter.llm()
             val llmModel = when (cfg.summaryMode) {
-                ComputeMode.Local ->
-                    cfg.localLlmModelId?.takeIf { it.isNotBlank() } ?: DEFAULT_LOCAL_LLM_MODEL_ID
+                // Blank lets the engine resolve it, as Ask AI does.
+                ComputeMode.Local -> cfg.localLlmModelId.orEmpty()
                 ComputeMode.Api -> ""
             }
             val summary = summarizeWithMapReduce(

@@ -84,6 +84,7 @@ import dev.velum.app.export.copyToClipboard
 import dev.velum.app.export.shareBytes
 import dev.velum.app.i18n.LocalStrings
 import dev.velum.app.i18n.formatFixed
+import dev.velum.app.i18n.processingFailureText
 import dev.velum.app.platform.AudioPlayer
 import dev.velum.app.platform.MicInputSource
 import dev.velum.app.platform.MicMarkerResult
@@ -441,7 +442,7 @@ fun RecordingDetailScreen(
                     color = Color(0xFFB45309),
                     fontSize = 14.sp,
                 )
-                lastFailure?.let {
+                processingFailureText(lastFailure, strings)?.let {
                     Text(it, color = VelumInkSecondary, fontSize = 12.sp)
                 }
                 Spacer(Modifier.height(8.dp))

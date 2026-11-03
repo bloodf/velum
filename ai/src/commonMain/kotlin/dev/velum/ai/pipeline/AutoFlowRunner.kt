@@ -65,6 +65,7 @@ class AutoFlowRunner internal constructor(
     )
 
     private val job = MutableStateFlow<Job?>(null)
+    private val calendarPermissionAsked = MutableStateFlow(false)
     private val processedIds = mutableSetOf<String>()
     private var seeded = false
 
@@ -235,18 +236,23 @@ class AutoFlowRunner internal constructor(
     private suspend fun maybeApplyCalendarTitle(recording: Recording) {
         when (val result = calendar.currentOrNextEvent(nowEpochMs())) {
             is CalendarLookupResult.Ok -> {
+                calendarPermissionAsked.value = false
                 val title = result.currentOrNext?.title?.trim().orEmpty()
                 if (title.isNotEmpty() && recording.title.startsWith("Recording ")) {
                     repository.updateRecordingTitle(recording.id, title)
                 }
             }
             CalendarLookupResult.PermissionDenied -> {
-                _actions.tryEmit(
-                    AutoFlowUiAction.BlockedOnPermission(
-                        "READ_CALENDAR",
-                        "Calendar permission missing — cannot name recording from current event.",
-                    ),
-                )
+                // Every status change runs a new pass: ask once until the answer changes, not on each pass.
+                // With no collector (no composition) the action would drop, so leave it for a later pass.
+                if (_actions.subscriptionCount.value > 0 && calendarPermissionAsked.compareAndSet(expect = false, update = true)) {
+                    _actions.tryEmit(
+                        AutoFlowUiAction.BlockedOnPermission(
+                            "READ_CALENDAR",
+                            "Calendar permission missing — cannot name recording from current event.",
+                        ),
+                    )
+                }
             }
             is CalendarLookupResult.Unavailable -> Unit
         }

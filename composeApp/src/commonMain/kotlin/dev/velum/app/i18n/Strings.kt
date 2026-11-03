@@ -580,6 +580,7 @@ data class UxStrings(
     val copiedToClipboard: String,
     val pausePlayback: String,
     val failedProcessing: String,
+    val localModelNotReady: String,
     val retryProcessing: String,
     val waveformA11y: String,
 )
@@ -1146,6 +1147,7 @@ val PtBr = Strings(
         copiedToClipboard = "Copiado",
         pausePlayback = "Pausar",
         failedProcessing = "Não foi possível processar esta gravação.",
+        localModelNotReady = "Falta baixar um modelo necessário para esta etapa. Baixe-o em Gerenciador de modelos ou mude esta etapa para API em Processamento de IA.",
         retryProcessing = "Tentar de novo",
         waveformA11y = "Progresso da reprodução",
     ),)
@@ -1712,6 +1714,7 @@ val En = Strings(
         copiedToClipboard = "Copied",
         pausePlayback = "Pause",
         failedProcessing = "Could not process this recording.",
+        localModelNotReady = "A model this step needs isn't downloaded yet. Download it in Model manager, or switch this step to API in AI processing.",
         retryProcessing = "Try again",
         waveformA11y = "Playback progress",
     ),)

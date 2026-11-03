@@ -20,23 +20,37 @@ sealed class ModeResolution {
 const val DEFAULT_LOCAL_ASR_MODEL_ID = "parakeet-tdt-0.6b-v3-int8"
 const val DEFAULT_LOCAL_DIARIZATION_MODEL_ID = "pyannote-segmentation-3.0"
 const val DEFAULT_LOCAL_EMBEDDING_MODEL_ID = "3dspeaker-eres2net-base"
-const val DEFAULT_LOCAL_LLM_MODEL_ID = "gemma-4-e4b"
 
-fun requiredLocalModelId(task: AiTask, settings: AiProviderSettings): String = when (task) {
-    AiTask.Transcription ->
-        settings.localAsrModelId?.takeIf { it.isNotBlank() }
-            ?: LocalAsrRouter.chooseModelId(
-                languageHint = settings.audioLanguage,
-                tier = parseAsrTier(settings.asrSizeTier),
-                deviceClass = detectDeviceComputeClass(),
-            )
+/** The model to offer when none is usable; the first-run recommendation downloads this one too. */
+const val DEFAULT_LOCAL_LLM_MODEL_ID = "gemma-4-e2b"
+
+/** Models the on-device runtime can load, best first. It reads .litertlm or .task, so a GGUF model can't be picked here. */
+private val AUTOMATIC_LOCAL_LLM_MODEL_IDS = listOf("gemma-4-e4b", DEFAULT_LOCAL_LLM_MODEL_ID)
+
+/**
+ * The one place that decides which local LLM runs (#260). A selected model is used as chosen, and is never
+ * swapped for another one. With nothing selected, it is the best one already downloaded, else the default.
+ */
+fun resolveLocalLlmModelId(selected: String?, modelManager: LocalModelManager): String =
+    selected?.takeIf { it.isNotBlank() }
+        ?: AUTOMATIC_LOCAL_LLM_MODEL_IDS.firstOrNull { modelManager.isReady(it) }
+        ?: DEFAULT_LOCAL_LLM_MODEL_ID
+
+fun requiredLocalModelId(task: AiTask, settings: AiProviderSettings, modelManager: LocalModelManager): String = when (task) {
+    AiTask.Transcription -> requiredLocalAsrModelId(settings)
     AiTask.Diarization ->
         settings.localDiarizationModelId?.takeIf { it.isNotBlank() }
             ?: DEFAULT_LOCAL_DIARIZATION_MODEL_ID
-    AiTask.Summary ->
-        settings.localLlmModelId?.takeIf { it.isNotBlank() }
-            ?: DEFAULT_LOCAL_LLM_MODEL_ID
+    AiTask.Summary -> resolveLocalLlmModelId(settings.localLlmModelId, modelManager)
 }
+
+fun requiredLocalAsrModelId(settings: AiProviderSettings): String =
+    settings.localAsrModelId?.takeIf { it.isNotBlank() }
+        ?: LocalAsrRouter.chooseModelId(
+            languageHint = settings.audioLanguage,
+            tier = parseAsrTier(settings.asrSizeTier),
+            deviceClass = detectDeviceComputeClass(),
+        )
 
 fun parseAsrTier(raw: String?): AsrSizeTier = when (raw?.lowercase()) {
     "tiny" -> AsrSizeTier.Tiny
@@ -62,7 +76,7 @@ fun resolveModeOrPrompt(
     }
     if (mode == ComputeMode.Api) return ModeResolution.Proceed(ComputeMode.Api)
 
-    val modelId = requiredLocalModelId(task, settings)
+    val modelId = requiredLocalModelId(task, settings, modelManager)
     if (!modelManager.isReady(modelId)) {
         val name = modelManager.stateFor(modelId)?.spec?.displayName ?: modelId
         return ModeResolution.NeedLocalModel(task, modelId, name)

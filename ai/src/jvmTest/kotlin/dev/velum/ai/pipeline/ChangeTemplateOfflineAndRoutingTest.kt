@@ -15,6 +15,7 @@ import dev.velum.ai.engine.TranscriptionResult
 import dev.velum.ai.engine.DEFAULT_LOCAL_LLM_MODEL_ID
 import dev.velum.ai.engine.ModeResolution
 import dev.velum.ai.engine.resolveModeOrPrompt
+import dev.velum.ai.local.LOCAL_MODEL_NOT_READY_MESSAGE
 import dev.velum.ai.local.LocalLlmEngine
 import dev.velum.ai.local.LocalModelKind
 import dev.velum.ai.local.LocalModelManager
@@ -298,6 +299,40 @@ class ChangeTemplateOfflineAndRoutingTest {
         assertEquals(before, repo.getRecording("rec")!!.summary_markdown)
         assertEquals(1, repo.getSummaryVersions("rec").size)
         assertTrue(repo.getProcessingError("rec").orEmpty().contains("Model manager"), "actionable: ${repo.getProcessingError("rec")}")
+    }
+
+    @Test
+    fun a_summary_with_no_model_selected_uses_whichever_gemma_is_downloaded() = runBlocking<Unit> {
+        val dir = File.createTempFile("velum-260", "").also { it.delete(); it.mkdirs() }
+        // Not the offered default: a route that hard-codes the default would call this one missing.
+        File(dir, "gemma-4-e4b/weights.litertlm").apply { parentFile.mkdirs(); writeBytes(ByteArray(2048)) }
+        val manager = LocalModelManager(
+            storeRoot = ModelStoreDir(dir.absolutePath),
+            httpClient = HttpClient(MockEngine { respond("") }),
+            catalog = listOf(
+                LocalModelSpec(
+                    id = "gemma-4-e4b", displayName = "Local LLM", kind = LocalModelKind.Llm, approxBytes = 1,
+                    license = "test", notes = "", languages = "en", downloadUrl = "https://example.test/m", sha256 = "00",
+                    archiveFileName = "weights.litertlm",
+                ),
+            ),
+        )
+        val net = Network()
+        val repo = VelumRepository(createDatabase(DriverFactory()))
+        val settings = SettingsRepository(InMemorySecureStore()).also { it.load(); it.setSummaryMode(ComputeMode.Local) }
+        val router = AiTaskRouter(
+            settings = settings.settings,
+            localTranscriber = noopAsr, apiTranscriber = noopAsr, localDiarizer = noopDiar, apiDiarizer = noopDiar,
+            localLlm = LocalLlmEngine(manager), apiLlm = OpenAiLlmEngine(net.client, settings),
+        )
+        repo.insertRecording(
+            id = "rec", sessionId = null, folderId = null, title = "t", source = "phone", deviceSerial = null,
+            startedAt = 1, durationSeconds = 60, sizeBytes = 0, localPath = null,
+            transcript = transcript, summaryMarkdown = null, status = "ready",
+        )
+        RecordingProcessor(router, repo, settings).process("rec", "velum.meeting", retranscribe = false).last()
+        // The JVM runtime can't run the model, so it fails later, for its own reason: never "model missing".
+        assertTrue(repo.getProcessingError("rec") != LOCAL_MODEL_NOT_READY_MESSAGE, repo.getProcessingError("rec").orEmpty())
     }
 
     @Test
