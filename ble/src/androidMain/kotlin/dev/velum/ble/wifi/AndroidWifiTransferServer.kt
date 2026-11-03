@@ -2,6 +2,7 @@ package dev.velum.ble.wifi
 
 import android.net.Network
 import android.util.Log
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -30,6 +31,7 @@ class AndroidWifiTransferServer(
     private val incoming = MutableSharedFlow<ByteArray>(extraBufferCapacity = 64)
     private val failures = MutableSharedFlow<String>(extraBufferCapacity = 8)
     private val running = AtomicBoolean(false)
+    private val bindFailed = AtomicBoolean(false)
     private val serverRef = AtomicReference<WebSocketServer?>(null)
     private val clientRef = AtomicReference<WebSocket?>(null)
     private val expectedPreamble = AtomicReference(WifiTransferPreamble.defaultToken())
@@ -40,6 +42,7 @@ class AndroidWifiTransferServer(
         preamble: ByteArray,
     ) {
         stop()
+        bindFailed.set(false)
         expectedPreamble.set(preamble)
         val address = if (bindHost != null) {
             InetSocketAddress(bindHost, port)
@@ -86,7 +89,13 @@ class AndroidWifiTransferServer(
                 }
             }
 
-            override fun onError(conn: WebSocket?, ex: Exception) = Unit
+            override fun onError(conn: WebSocket?, ex: Exception) {
+                // A null connection before onStart means the listener never came up, such as a port in use.
+                if (conn == null && !running.get()) {
+                    Log.w(TAG, "Wi-Fi transfer listener failed to start (${ex::class.simpleName})")
+                    bindFailed.set(true)
+                }
+            }
 
             override fun onStart() {
                 running.set(true)
@@ -95,10 +104,15 @@ class AndroidWifiTransferServer(
         serverRef.set(server)
         server.isReuseAddr = true
         server.start()
-        var spins = 0
-        while (!running.get() && spins < 50) {
-            Thread.sleep(10)
-            spins++
+        // onStart or onError(null) always follows a bind attempt. The limit only ends a wait that went wrong.
+        var waits = 0
+        while (!running.get() && !bindFailed.get() && waits < BIND_MAX_WAITS) {
+            delay(BIND_WAIT_MS)
+            waits++
+        }
+        if (!running.get()) {
+            stop()
+            throw WifiTransferFailure(BIND_FAILURE_CODE)
         }
     }
 
@@ -143,5 +157,8 @@ class AndroidWifiTransferServer(
     companion object {
         private const val TAG = "AndroidWifiServer"
         const val MAX_FRAME_BYTES: Int = 8 * 1024 * 1024
+        const val BIND_FAILURE_CODE: String = "wifi_bind_failed"
+        private const val BIND_WAIT_MS = 10L
+        private const val BIND_MAX_WAITS = 500
     }
 }
