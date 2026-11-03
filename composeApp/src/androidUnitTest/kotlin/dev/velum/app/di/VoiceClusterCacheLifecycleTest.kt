@@ -67,4 +67,18 @@ class VoiceClusterCacheLifecycleTest {
             withTimeout(10_000) { while (orphan.exists()) delay(20) }
         }
     }
+
+    @Test fun wipe_all_data_deletes_every_recordings_speaker_embeddings() {
+        val root = ModelStoreDir(Files.createTempDirectory("velum-cluster-wipe").toString())
+        withContainer(root) { container ->
+            container.voiceProfileStore.withReady {
+                cacheClusterEmbedding("rec-1", "speaker", floatArrayOf(1f, 0f))
+                cacheClusterEmbedding("rec-2", "speaker", floatArrayOf(0f, 1f))
+            }
+            val cache = root.resolve("voices/cluster-cache")
+            assertTrue(cache.exists())
+            container.wipeAllData()
+            assertFalse(cache.exists(), "speaker embeddings survived the wipe")
+        }
+    }
 }
