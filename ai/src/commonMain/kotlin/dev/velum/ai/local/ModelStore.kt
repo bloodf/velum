@@ -20,6 +20,8 @@ expect class ModelStoreDir(absolutePath: String) {
     fun deleteRecursively()
     fun listChildren(): List<ModelStoreDir>
     fun length(): Long
+    /** Free bytes on the volume holding this path (nearest existing parent), or null when unknown. */
+    fun freeSpaceBytes(): Long?
     /** Last modification time in epoch milliseconds, or 0 when the path does not exist. */
     fun lastModifiedMillis(): Long
     /**

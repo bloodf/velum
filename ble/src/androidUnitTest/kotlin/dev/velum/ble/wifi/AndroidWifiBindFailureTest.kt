@@ -7,6 +7,7 @@ import android.net.wifi.WifiNetworkSpecifier
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.io.IOException
+import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
 import java.net.URI
@@ -76,7 +77,7 @@ class AndroidWifiBindFailureTest {
 
     @Test
     fun bindFailureIsReported_andTheDeviceIsStillServed() = runTest {
-        val port = ServerSocket(0).use { it.localPort }
+        val port = ServerSocket(0, 1, InetAddress.getByName("127.0.0.1")).use { it.localPort }
         val failures = CopyOnWriteArrayList<Throwable>()
         val server = AndroidWifiTransferServer(softApNetwork = { ShadowNetwork.newInstance(7) }, onBindFailure = { failures += it })
         server.start(port, "127.0.0.1", preamble)
