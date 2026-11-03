@@ -46,6 +46,10 @@ class TransferFaults(
     internal val disconnectEveryPassAt: Long? = null,
     /** Never send the chunk at these offsets, on any pass (a persistent gap). */
     internal val dropAlwaysAt: Set<Long> = emptySet(),
+    /** Speak a protocol older than 7: handshake reports version 6 and recording data carries no session id. */
+    internal val legacyProtocol: Boolean = false,
+    /** At the start of a resume, first send a chunk of another session just before the start offset. */
+    internal val leftoverBeforeStream: Boolean = false,
     /** Deliver the previous session-list reply's sealed packet again before each new one. */
     internal val replayStaleListReply: Boolean = false,
 ) {
