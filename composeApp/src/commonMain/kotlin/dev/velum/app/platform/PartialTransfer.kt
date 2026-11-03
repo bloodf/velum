@@ -13,6 +13,11 @@ interface PartialTransfer : PartialTransferStore {
     /** Records or clears the mismatch durably, so a retry after a failed save still reports it. */
     fun setCrcMismatch(mismatch: Boolean)
 
+    /** Consecutive failed attempts to read this complete partial back (kept across restarts). */
+    fun readFailures(): Int
+
+    fun setReadFailures(count: Int)
+
     fun close()
 
     /** Close and remove the partial data. */

@@ -173,4 +173,17 @@ class ModelStorageTest {
         assertTrue(dir.resolve("tokens.txt").exists())
         root.deleteRecursively()
     }
+
+    // The race: a caller read "not Ready", the other download finished, then this one registered. download() must
+    // re-check, whatever the caller did, and must not touch a Ready model.
+    @Test fun download_of_a_ready_model_fetches_nothing_and_keeps_the_files() = runTest {
+        val bytes = zip(); val root = newRoot(); val requests = AtomicInteger()
+        val dir = root.resolve(id).also { it.createDirectories() }
+        files.forEach { (name, text) -> dir.resolve(name.substringAfter('/')).writeBytes(text.encodeToByteArray()) }
+        val manager = LocalModelManager(root, HttpClient(MockEngine { requests.incrementAndGet(); respond("", HttpStatusCode.InternalServerError) }), listOf(spec(bytes)))
+        assertEquals(LocalModelStatus.Ready, manager.download(id).toList().last().status)
+        assertEquals(0, requests.get())
+        assertTrue(dir.resolve("tokens.txt").exists())
+        root.deleteRecursively()
+    }
 }

@@ -72,6 +72,9 @@ data class DeviceSessionUi(
 internal fun dedupDeviceSerial(keySerial: String?, advertisedSerial: String?): String? =
     keySerial?.takeIf { it.isNotBlank() } ?: advertisedSerial?.takeIf { it.isNotBlank() }
 
+/** A complete partial that cannot be read back this many times in a row is discarded and downloaded again (#212). */
+internal const val MAX_READ_FAILURES = 3
+
 data class DownloadedSessionAudio(
     val sessionId: Long,
     val deviceSerial: String?,
@@ -113,6 +116,9 @@ class DeviceViewModel(
 
     private var client: PlaudDeviceClient? = null
     private var connectedSerial: String? = null
+
+    /** Set when a download attempt discarded its partial after repeated read errors; picks the failure text. */
+    private var discardedUnreadablePartial = false
     private var connectedDeviceId: String? = null
     private var downloadJob: Job? = null
     // Parent of every unfinished download: a cancelled one can still be unwinding after a newer one replaced downloadJob.
@@ -259,6 +265,7 @@ class DeviceViewModel(
     }
 
     private suspend fun runDownloadSession(sessionId: Long) {
+        discardedUnreadablePartial = false
         val locale = localeTag()
         val entry = _sessionUi.value.sessions.firstOrNull { it.sessionId == sessionId }
         if (entry == null) {
@@ -338,7 +345,11 @@ class DeviceViewModel(
             _sessionUi.value = _sessionUi.value.copy(
                 downloadingSessionId = null,
                 downloadProgress = null,
-                statusMessage = DeviceUiCopy.downloadFailed(localeTag()),
+                statusMessage = if (discardedUnreadablePartial) {
+                    DeviceUiCopy.savedDownloadUnreadable(localeTag())
+                } else {
+                    DeviceUiCopy.downloadFailed(localeTag())
+                },
             )
         }
     }
@@ -434,8 +445,27 @@ class DeviceViewModel(
             persistDownloadedSession(persist(partial.length()) { position, length -> partial.read(position, length) })
         } catch (e: Throwable) {
             adoptClient(finished)
-            // Only bytes that can't be decrypted are useless. A read error, full disk or database error can be retried.
-            if (undecryptable) partial.delete() else partial.close()
+            // Only bytes that can't be decrypted are useless. A read error, full disk or database error can be retried,
+            // but a read error that repeats would make every Re-download fail the same way until the 7-day sweep.
+            when {
+                undecryptable -> partial.delete()
+                readFailed -> {
+                    val failures = runCatching { partial.readFailures() }.getOrDefault(0) + 1
+                    if (failures >= MAX_READ_FAILURES) {
+                        partial.delete()
+                        discardedUnreadablePartial = true
+                    } else {
+                        runCatching { partial.setReadFailures(failures) }
+                        partial.close()
+                    }
+                }
+                else -> {
+                    // The partial read back fine this time (the failure was a save, database or cancel), so any
+                    // earlier read errors were not permanent.
+                    runCatching { partial.setReadFailures(0) }
+                    partial.close()
+                }
+            }
             throw e
         }
         partial.delete()

@@ -35,6 +35,7 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
@@ -130,6 +131,19 @@ class DeviceResumeRestartTest {
     @Volatile private var running: DeviceViewModel? = null
     private val owner = ViewModelStore()
 
+    /**
+     * Waits for a cancelled download to finish unwinding before removing Main. Some tests hold it in NonCancellable
+     * work, and resuming it with Main gone is an uncaught exception that fails the next runTest in this JVM.
+     */
+    private fun tearDown() {
+        try {
+            owner.clear()
+            runBlocking { withTimeout(30_000) { running?.awaitDownloads() } }
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
     private fun peripheral(
         faults: TransferFaults = TransferFaults(),
         stopCrc: FakePlaudPeripheral.StopCrc = FakePlaudPeripheral.StopCrc.NotProvided,
@@ -149,7 +163,7 @@ class DeviceResumeRestartTest {
             assertEquals(listOf(checkpoint.toLong()), fake.syncStartOffsets, "must not restart the whole download")
             assertContentEquals(plaintext, assertNotNull(saved))
             assertFalse(partials.list()!!.any { it.endsWith(".partial") || it.endsWith(".offset") }, "partial is removed once persisted")
-        } finally { owner.clear(); Dispatchers.resetMain() }
+        } finally { tearDown() }
     }
 
     @Test fun lost_link_during_a_download_resumes_in_the_same_run() {
@@ -160,7 +174,7 @@ class DeviceResumeRestartTest {
             assertEquals(listOf(0L, 15_000L), fake.syncStartOffsets)
             assertContentEquals(plaintext, assertNotNull(saved))
             assertEquals(1, vm.sessionUi.value.sessions.size, "session list still works on the reconnected client")
-        } finally { owner.clear(); Dispatchers.resetMain() }
+        } finally { tearDown() }
     }
 
     @Test fun a_matching_device_crc_is_reported_as_verified() {
@@ -168,14 +182,14 @@ class DeviceResumeRestartTest {
             val vm = run(peripheral(stopCrc = FakePlaudPeripheral.StopCrc.Ccitt))
             assertEquals(CrcStatus.Verified, vm.sessionUi.value.lastDownloadCrc)
             assertContentEquals(plaintext, assertNotNull(saved))
-        } finally { owner.clear(); Dispatchers.resetMain() }
+        } finally { tearDown() }
     }
 
     @Test fun a_device_with_no_crc_is_reported_as_not_provided() {
         try {
             val vm = run(peripheral())
             assertEquals(CrcStatus.NotProvided, vm.sessionUi.value.lastDownloadCrc)
-        } finally { owner.clear(); Dispatchers.resetMain() }
+        } finally { tearDown() }
     }
 
     @Test fun real_device_crc_mismatch_keeps_the_recording_and_says_so() {
@@ -185,7 +199,7 @@ class DeviceResumeRestartTest {
             assertEquals("rec-synthetic", vm.sessionUi.value.lastDownloadedRecordingId)
             assertEquals(DeviceUiCopy.downloadedSessionCrcMismatch("en", session), vm.sessionUi.value.statusMessage)
             assertContentEquals(plaintext, assertNotNull(saved))
-        } finally { owner.clear(); Dispatchers.resetMain() }
+        } finally { tearDown() }
     }
 
     @Test fun crc_mismatch_is_stored_on_the_recording_and_survives_a_failed_save() {
@@ -213,7 +227,7 @@ class DeviceResumeRestartTest {
             assertEquals(listOf<String?>(ProcessingWarning.DEVICE_CRC_MISMATCH, ProcessingWarning.DEVICE_CRC_MISMATCH), warnings)
             assertEquals(DeviceUiCopy.downloadedSessionCrcMismatch("en", session), vm.sessionUi.value.statusMessage)
             assertFalse(partials.list()!!.any { it.endsWith(".crcmismatch") }, "mark removed with the partial")
-        } finally { owner.clear(); Dispatchers.resetMain() }
+        } finally { tearDown() }
     }
 
     @Test fun a_failing_mark_write_is_not_fatal_and_the_warning_is_still_stored() {
@@ -233,7 +247,7 @@ class DeviceResumeRestartTest {
                 },
             )
             assertEquals(listOf<String?>(ProcessingWarning.DEVICE_CRC_MISMATCH), warnings)
-        } finally { owner.clear(); Dispatchers.resetMain() }
+        } finally { tearDown() }
     }
 
     @Test fun a_verified_transfer_stores_no_warning() {
@@ -244,7 +258,7 @@ class DeviceResumeRestartTest {
                 val out = ByteArrayOutputStream(); audio.writeDecryptedAudio { out.write(it) }; saved = out.toByteArray(); "rec-synthetic"
             })
             assertEquals(listOf<String?>(null), warnings)
-        } finally { owner.clear(); Dispatchers.resetMain() }
+        } finally { tearDown() }
     }
 
     @Test fun without_a_durable_store_a_failed_download_can_be_retried_on_the_same_client() {
@@ -267,7 +281,7 @@ class DeviceResumeRestartTest {
             awaitOutcome(vm)
             assertEquals("rec-synthetic", vm.sessionUi.value.lastDownloadedRecordingId)
             assertContentEquals(plaintext, assertNotNull(saved))
-        } finally { owner.clear(); Dispatchers.resetMain() }
+        } finally { tearDown() }
     }
 
     @Test fun failed_save_keeps_the_complete_partial_and_a_retry_needs_no_new_transfer() {
@@ -291,7 +305,7 @@ class DeviceResumeRestartTest {
             assertEquals("rec-synthetic", vm.sessionUi.value.lastDownloadedRecordingId)
             assertContentEquals(plaintext, assertNotNull(saved))
             assertEquals(listOf(0L), fake.syncStartOffsets, "nothing is transferred again")
-        } finally { owner.clear(); Dispatchers.resetMain() }
+        } finally { tearDown() }
     }
 
     /** Lets the VM's connection collector see Connected before connect() returns, as a real Main dispatcher does. */
@@ -326,7 +340,7 @@ class DeviceResumeRestartTest {
             vm.downloadSession(session)
             awaitOutcome(vm)
             assertEquals(listOf<String?>("881FAKE1", "881FAKE1"), opened)
-        } finally { owner.clear(); Dispatchers.resetMain() }
+        } finally { tearDown() }
     }
 
     /** Counts connect() calls and records any made while [unwinding] is set. */
@@ -367,7 +381,7 @@ class DeviceResumeRestartTest {
             }
             assertEquals(0, probe!!.connectsWhileUnwinding.get(), "connect must wait for the cancelled download to finish")
             assertEquals(2, probe!!.connects.get(), "and then connect")
-        } finally { owner.clear(); Dispatchers.resetMain() }
+        } finally { tearDown() }
     }
 
     @Test fun a_queued_download_does_not_block_connect_forever_nor_get_replaced_mid_transfer() {
@@ -398,7 +412,7 @@ class DeviceResumeRestartTest {
             assertEquals(2, persists.get(), "both the cancelled and the queued download ran")
             assertEquals(0, probe!!.connectsWhileUnwinding.get(), "connect must not run while either download uses the client")
             assertEquals(2, probe!!.connects.get(), "the explicit connect must not be ignored by a job that has not started")
-        } finally { owner.clear(); Dispatchers.resetMain() }
+        } finally { tearDown() }
     }
 
     @Test fun connect_that_cannot_wait_for_a_stuck_download_says_so() {
@@ -424,7 +438,7 @@ class DeviceResumeRestartTest {
                 assertEquals(DeviceUiCopy.connectBusy("en"), vm.sessionUi.value.statusMessage)
             }
             assertEquals(1, probe!!.connects.get(), "no second connect while the download is still unwinding")
-        } finally { owner.clear(); Dispatchers.resetMain() }
+        } finally { tearDown() }
     }
 
     /** Starts a download held in NonCancellable saving, cancels it, then queues and cancels a second behind it. */
@@ -458,7 +472,7 @@ class DeviceResumeRestartTest {
             val vm = cancelledTwice(hold = { delay(1_000); finished.set(true) })
             runBlocking { assertEquals(DownloadWipeResult.Clean, vm.wipePartialDownloads()) }
             assertTrue(finished.get(), "the wipe finished while the first download was still saving")
-        } finally { owner.clear(); Dispatchers.resetMain() }
+        } finally { tearDown() }
     }
 
     @Test fun connect_waits_for_a_download_cancelled_before_a_queued_one() {
@@ -478,7 +492,7 @@ class DeviceResumeRestartTest {
                 release.complete(Unit)
                 withTimeout(30_000) { vm.awaitDownloads() }
             }
-        } finally { owner.clear(); Dispatchers.resetMain() }
+        } finally { tearDown() }
     }
 
     @Test fun cancel_stops_every_queued_download() {
@@ -505,7 +519,7 @@ class DeviceResumeRestartTest {
                 val restarted = withTimeoutOrNull(1_500) { vm.sessionUi.first { it.downloadingSessionId != null } }
                 assertEquals(null, restarted, "a cancelled queued download started anyway")
             }
-        } finally { owner.clear(); Dispatchers.resetMain() }
+        } finally { tearDown() }
     }
 
     private fun heldInSaving(
@@ -539,7 +553,7 @@ class DeviceResumeRestartTest {
                 withTimeout(60_000) { vm.sessionUi.first { it.lastDownloadedRecordingId == "rec-synthetic" } }
             }
             assertContentEquals(plaintext, assertNotNull(saved))
-        } finally { owner.clear(); Dispatchers.resetMain() }
+        } finally { tearDown() }
     }
 
     @Test fun a_tap_during_a_wipe_starts_nothing() {
@@ -556,7 +570,7 @@ class DeviceResumeRestartTest {
                 vm.awaitDownloads()
             }
             assertEquals(1, saves.get(), "only the download from before the wipe saved")
-        } finally { owner.clear(); Dispatchers.resetMain() }
+        } finally { tearDown() }
     }
 
     @Test fun a_download_queued_before_a_wipe_does_not_start_during_it() {
@@ -573,7 +587,7 @@ class DeviceResumeRestartTest {
                 }
             }
             assertEquals(1, saves.get(), "the queued download started during the wipe")
-        } finally { owner.clear(); Dispatchers.resetMain() }
+        } finally { tearDown() }
     }
 
     @Test fun a_failed_wipe_lets_downloads_start_again() {
@@ -586,7 +600,7 @@ class DeviceResumeRestartTest {
                 withTimeout(30_000) { vm.awaitDownloads() }
             }
             assertEquals(2, saves.get())
-        } finally { owner.clear(); Dispatchers.resetMain() }
+        } finally { tearDown() }
     }
 
     @Test fun disconnect_does_not_wait_forever_for_a_hung_download() {
@@ -599,7 +613,7 @@ class DeviceResumeRestartTest {
                 release.complete(Unit)
                 withTimeout(30_000) { vm.awaitDownloads() }
             }
-        } finally { owner.clear(); Dispatchers.resetMain() }
+        } finally { tearDown() }
     }
 
     @Test fun connect_during_a_download_is_ignored() {
@@ -630,7 +644,7 @@ class DeviceResumeRestartTest {
             awaitOutcome(vm)
             assertEquals("rec-synthetic", vm.sessionUi.value.lastDownloadedRecordingId)
             assertEquals(listOf(0L), fake.syncStartOffsets)
-        } finally { owner.clear(); Dispatchers.resetMain() }
+        } finally { tearDown() }
     }
 
     @Test fun wipe_deletes_partials_off_the_callers_thread() {
@@ -640,7 +654,7 @@ class DeviceResumeRestartTest {
             runBlocking { vm.wipePartialDownloads() }
             assertNotNull(deleteThread)
             assertFalse(deleteThread === Thread.currentThread(), "partial deletion must not run on the caller's thread (#237)")
-        } finally { owner.clear(); Dispatchers.resetMain() }
+        } finally { tearDown() }
     }
 
     @Test fun wipe_stops_a_running_download_and_deletes_the_partials() {
@@ -652,7 +666,7 @@ class DeviceResumeRestartTest {
             }
             assertFalse(partials.exists(), "no partial or salt survives a wipe")
             assertEquals(DeviceUiCopy.downloadCancelled("en"), vm.sessionUi.value.statusMessage)
-        } finally { owner.clear(); Dispatchers.resetMain() }
+        } finally { tearDown() }
     }
 
     @Test fun wipe_deletes_the_partials_even_if_the_download_ignores_cancellation() {
@@ -675,14 +689,14 @@ class DeviceResumeRestartTest {
                 withTimeout(30_000) { vm.awaitDownloads() }
             }
             assertFalse(partials.exists())
-        } finally { owner.clear(); Dispatchers.resetMain() }
+        } finally { tearDown() }
     }
 
     @Test fun wipe_reports_partials_it_could_not_delete_instead_of_failing() {
         try {
             val vm = run(peripheral(), deletePartials = { error("synthetic delete failure") })
             assertEquals(DownloadWipeResult.PartialsLeft, runBlocking { vm.wipePartialDownloads() })
-        } finally { owner.clear(); Dispatchers.resetMain() }
+        } finally { tearDown() }
     }
 
     @Test fun first_unlock_on_a_hung_link_ends_in_a_failure_status() {
@@ -697,7 +711,7 @@ class DeviceResumeRestartTest {
                     while (vm.sessionUi.value.statusMessage != DeviceUiCopy.unlockFailed("en")) delay(50)
                 }
             }
-        } finally { owner.clear(); Dispatchers.resetMain() }
+        } finally { tearDown() }
     }
 
     @Test fun read_error_on_a_complete_partial_keeps_it_and_a_retry_needs_no_new_transfer() {
@@ -721,7 +735,89 @@ class DeviceResumeRestartTest {
             assertEquals("rec-synthetic", vm.sessionUi.value.lastDownloadedRecordingId)
             assertContentEquals(plaintext, assertNotNull(saved))
             assertEquals(listOf(0L), fake.syncStartOffsets, "nothing is transferred again")
-        } finally { owner.clear(); Dispatchers.resetMain() }
+        } finally { tearDown() }
+    }
+
+    private fun readFailCount(): Int? =
+        partials.listFiles()!!.firstOrNull { it.name.endsWith(".readfail") }?.readText()?.trim()?.toIntOrNull()
+
+    /** Also waits for the attempt to end: downloadSession ignores a call while one is still running. */
+    private fun awaitReadFailCount(vm: DeviceViewModel, n: Int) = runBlocking {
+        withTimeout(20_000) {
+            while (readFailCount() != n || vm.sessionUi.value.downloadingSessionId != null) delay(5)
+        }
+    }
+
+    @Test fun a_read_error_that_repeats_discards_the_partial_and_the_next_download_starts_fresh() {
+        try {
+            var failing = true
+            val fake = peripheral()
+            val vm = run(fake, open = { id, sn ->
+                val store = PartialTransferFileStore.open(partials, id, sn)
+                object : PartialTransfer by store {
+                    override fun read(offset: Long, length: Int): ByteArray {
+                        if (failing) throw IOException("synthetic permanent read failure")
+                        return store.read(offset, length)
+                    }
+                }
+            })
+            assertEquals(DeviceUiCopy.downloadFailed("en"), vm.sessionUi.value.statusMessage)
+            assertTrue(partials.list()!!.any { it.endsWith(".partial") }, "the first failure keeps the transfer")
+            assertEquals(1, readFailCount(), "and counts it")
+            vm.downloadSession(session)
+            awaitReadFailCount(vm, 2)
+            vm.downloadSession(session) // the third failure in a row
+            runBlocking { withTimeout(20_000) { while (partials.list()!!.any { it.endsWith(".partial") }) delay(5) } }
+            runBlocking { withTimeout(20_000) { while (vm.sessionUi.value.statusMessage != DeviceUiCopy.savedDownloadUnreadable("en")) delay(5) } }
+            // After the status, which is set once the delete has finished: .partial goes first, so it says nothing.
+            assertNull(readFailCount(), "the count goes with the partial")
+            failing = false
+            vm.downloadSession(session)
+            awaitOutcome(vm)
+            assertEquals("rec-synthetic", vm.sessionUi.value.lastDownloadedRecordingId)
+            assertContentEquals(plaintext, assertNotNull(saved))
+            assertEquals(listOf(0L, 0L), fake.syncStartOffsets, "the third failure discarded it, so the file came again")
+        } finally { tearDown() }
+    }
+
+    @Test fun a_good_read_resets_the_count_so_scattered_errors_never_discard() {
+        try {
+            var readFails = true
+            var saveFails = false
+            val fake = peripheral()
+            val vm = run(
+                fake,
+                persist = { audio ->
+                    val out = ByteArrayOutputStream()
+                    audio.writeDecryptedAudio {
+                        check(!saveFails) { "synthetic full disk" }
+                        out.write(it)
+                    }
+                    saved = out.toByteArray()
+                    "rec-synthetic"
+                },
+                open = { id, sn ->
+                    val store = PartialTransferFileStore.open(partials, id, sn)
+                    object : PartialTransfer by store {
+                        override fun read(offset: Long, length: Int): ByteArray {
+                            if (readFails) throw IOException("synthetic read failure")
+                            return store.read(offset, length)
+                        }
+                    }
+                },
+            )
+            assertEquals(1, readFailCount())
+            readFails = false; saveFails = true // this attempt reads fine and fails to save
+            vm.downloadSession(session)
+            runBlocking { withTimeout(20_000) { while (readFailCount() != null || vm.sessionUi.value.downloadingSessionId != null) delay(5) } }
+            assertTrue(partials.list()!!.any { it.endsWith(".partial") }, "still kept")
+            readFails = true; saveFails = false
+            vm.downloadSession(session)
+            awaitReadFailCount(vm, 1) // counting restarted at 1, not 2
+            vm.downloadSession(session)
+            awaitReadFailCount(vm, 2)
+            assertTrue(partials.list()!!.any { it.endsWith(".partial") }, "two scattered errors never reached the limit")
+        } finally { tearDown() }
     }
 
     @Test fun cancel_during_decrypt_keeps_the_partial_and_a_retry_needs_no_new_transfer() {
@@ -767,7 +863,7 @@ class DeviceResumeRestartTest {
             assertEquals("rec-synthetic", vm.sessionUi.value.lastDownloadedRecordingId)
             assertContentEquals(longPlain, assertNotNull(saved))
             assertEquals(listOf(0L), fake.syncStartOffsets, "nothing is transferred again")
-        } finally { owner.clear(); Dispatchers.resetMain() }
+        } finally { tearDown() }
     }
 
     @Test fun wrong_key_on_a_complete_partial_deletes_it_without_starting_a_transfer() {
@@ -783,7 +879,7 @@ class DeviceResumeRestartTest {
             assertEquals(DeviceUiCopy.downloadFailed("en"), vm.sessionUi.value.statusMessage)
             assertEquals(emptyList(), fake.syncStartOffsets)
             assertTrue(partials.list()!!.none { it.endsWith(".partial") || it.endsWith(".offset") })
-        } finally { owner.clear(); Dispatchers.resetMain() }
+        } finally { tearDown() }
     }
 
     @Test fun undecryptable_download_clears_the_partial_so_a_retry_starts_over() {
@@ -791,6 +887,6 @@ class DeviceResumeRestartTest {
             val vm = run(peripheral(file = ByteArray(encrypted.size) { 0x5A }))
             assertEquals(DeviceUiCopy.downloadFailed("en"), vm.sessionUi.value.statusMessage)
             assertTrue(partials.list()!!.none { it.endsWith(".partial") || it.endsWith(".offset") })
-        } finally { owner.clear(); Dispatchers.resetMain() }
+        } finally { tearDown() }
     }
 }
