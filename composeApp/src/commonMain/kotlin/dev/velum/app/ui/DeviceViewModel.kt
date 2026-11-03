@@ -307,6 +307,7 @@ class DeviceViewModel(
         val job = currentCoroutineContext()[Job]
         val decryptor = createFileDecryptor()
         var saveFailed = false
+        var readFailed = false
         var undecryptable = false
         val deviceId = connectedDeviceId
         fun persist(size: Long, readAt: (Long, Int) -> ByteArray) = DownloadedSessionAudio(
@@ -315,7 +316,15 @@ class DeviceViewModel(
             startedAtEpochSeconds = startedAtEpochSeconds,
             writeDecryptedAudio = { sink ->
                 try {
-                    PlaudFileCrypto.decryptStream(size, readAt, keys.privateKeyPem, decryptor) {
+                    val checkedRead = { position: Long, length: Int ->
+                        try {
+                            readAt(position, length)
+                        } catch (e: Exception) {
+                            readFailed = true
+                            throw e
+                        }
+                    }
+                    PlaudFileCrypto.decryptStream(size, checkedRead, keys.privateKeyPem, decryptor) {
                         job?.ensureActive()
                         try {
                             sink(it)
@@ -325,7 +334,7 @@ class DeviceViewModel(
                         }
                     }
                 } catch (e: Exception) {
-                    if (!saveFailed && e !is CancellationException) undecryptable = true
+                    if (!saveFailed && !readFailed && e !is CancellationException) undecryptable = true
                     throw e
                 }
             },
@@ -359,7 +368,7 @@ class DeviceViewModel(
             persistDownloadedSession(persist(partial.length()) { position, length -> partial.read(position, length) })
         } catch (e: Throwable) {
             client = finished
-            // Only bytes that can't be decrypted are useless. A full disk or database error can be retried.
+            // Only bytes that can't be decrypted are useless. A read error, full disk or database error can be retried.
             if (undecryptable) partial.delete() else partial.close()
             throw e
         }
