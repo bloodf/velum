@@ -27,4 +27,16 @@ class CatalogFormatsTest {
         val llms = DefaultLocalCatalog.filter { it.kind == LocalModelKind.Llm }.map { it.id }
         assertEquals(listOf("gemma-4-e4b", "gemma-4-e2b"), llms)
     }
+
+    @Test fun gguf_bin_and_tflite_are_never_layouts_or_ready_llm_weights() {
+        for (name in listOf("x.gguf", "x.bin", "x.tflite")) {
+            val spec = LocalModelSpec("x", "X", LocalModelKind.Llm, 1, "MIT", "", "", archiveFileName = name)
+            assertEquals(ModelLayout.OpaqueFile, ModelReadiness.layoutFor(spec), name)
+        }
+        assertEquals("*.litertlm / *.task", ModelLayout.LlmWeights.describe())
+    }
+
+    @Test fun retired_ids_are_not_in_the_catalog() {
+        assertTrue(RetiredModels.ids.none { id -> DefaultLocalCatalog.any { it.id == id } })
+    }
 }

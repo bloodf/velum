@@ -75,6 +75,11 @@ class VelumApplication : Application() {
                     if (spills > 0) Log.i(TAG, "Removed $spills orphaned PCM spill dir(s)")
                 }.onFailure { t -> Log.w(TAG, "PCM spill sweep failed (${t::class.simpleName})") }
                 val modelsDir = File(filesDir, "models")
+                // A GGUF Qwen the catalog no longer offers can still sit in models/ (~2.5 GB) with no way to remove it (#273).
+                runCatching {
+                    val removed = dev.velum.ai.local.RetiredModels.sweep(ModelStoreDir(modelsDir.absolutePath))
+                    if (removed.isNotEmpty()) Log.i(TAG, "Removed retired model dir(s): $removed")
+                }.onFailure { t -> Log.w(TAG, "Retired model sweep failed (${t::class.simpleName})") }
                 val built = AppContainer(
                     secureStore = AndroidSecureStore(appContext),
                     driverFactory = DriverFactory(appContext),

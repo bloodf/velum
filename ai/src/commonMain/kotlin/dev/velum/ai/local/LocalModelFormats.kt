@@ -18,3 +18,26 @@ object LocalModelFormats {
         return if (spec.kind == LocalModelKind.Llm) isLoadableLlmWeights(name) else otherArtifacts.any { name.endsWith(it) }
     }
 }
+
+/**
+ * Models that were offered once and no longer are. A device that downloaded one keeps its weights (about 2.5 GB for
+ * Qwen3 GGUF, #273) in `models/<id>` with no UI to remove it, so the app deletes these directories at startup.
+ * Iterating is idempotent: once gone, nothing is left to do. Call off the main thread.
+ *
+ * Local LLMs run only on Android (LiteRT-LM); the iOS and JVM runtimes throw UnsupportedOperationException, so no
+ * platform other than Android has an LLM format to load.
+ */
+object RetiredModels {
+    val ids: List<String> = listOf("qwen3-4b-instruct-2507")
+
+    /** Deletes each retired model directory under [storeRoot]; returns the ids that were removed. */
+    fun sweep(storeRoot: ModelStoreDir): List<String> = ids.filter { id ->
+        val dir = storeRoot.resolve(id)
+        if (dir.exists()) {
+            dir.deleteRecursively()
+            true
+        } else {
+            false
+        }
+    }
+}
