@@ -24,6 +24,7 @@ class GattArchitectureTest {
         "ble/src/commonMain/kotlin/dev/velum/ble/StubBleTransport.kt",
         "ble/src/mobileMain/kotlin/dev/velum/ble/KableBleTransport.kt",
         "ble/src/jvmTest/kotlin/dev/velum/ble/gatt/GuardedLinkTest.kt",
+        "ble/src/jvmTest/kotlin/dev/velum/ble/gatt/PocketProfileTest.kt", // counting double, cannot build writes
         "ble/src/jvmTest/kotlin/dev/velum/ble/gatt/OmiProfileTest.kt", // recording double, cannot build writes
         "ble-testing/src/commonMain/kotlin/dev/velum/ble/fake/FakeBleTransport.kt",
         recordingDouble,
