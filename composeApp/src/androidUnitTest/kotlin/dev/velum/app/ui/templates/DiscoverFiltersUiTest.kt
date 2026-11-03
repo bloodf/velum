@@ -88,6 +88,8 @@ class DiscoverFiltersUiTest {
     }
 
     /** waitUntil that fails with the semantics tree so a timeout is diagnosable. */
+    private val queryLog = QueryLog()
+
     private fun waiting(what: String, condition: () -> Boolean) {
         try {
             compose.waitUntil(10_000, condition)
@@ -98,7 +100,7 @@ class DiscoverFiltersUiTest {
                 "${chipState("tag:agenda")}\n${chipState("active:tag:agenda")}\n" +
                     compose.onAllNodes(isRoot()).printToString(maxDepth = Int.MAX_VALUE)
             }.getOrElse { "diagnostic failed: $it" }
-            throw AssertionError("Timed out waiting for $what\n$diagnostics", e)
+            throw AssertionError("Timed out waiting for $what\n${queryLog.dump()}\n$diagnostics", e)
         }
     }
 
@@ -146,7 +148,7 @@ class DiscoverFiltersUiTest {
         try {
             activity.get().setContent {
                 CompositionLocalProvider(LocalStrings provides PtBr) {
-                    VelumTheme(darkTheme = false) { TemplatesScreen(container, onBack = {}, onOpenTemplate = {}) }
+                    VelumTheme(darkTheme = false) { TemplatesScreen(container, onBack = {}, onOpenTemplate = {}, queries = queryLog.wrap(container)) }
                 }
             }
             // No empty-state flash before the first load finishes.
@@ -244,7 +246,7 @@ class DiscoverFiltersUiTest {
         try {
             activity.get().setContent {
                 CompositionLocalProvider(LocalStrings provides PtBr) {
-                    VelumTheme(darkTheme = false) { TemplatesScreen(container, onBack = {}, onOpenTemplate = {}) }
+                    VelumTheme(darkTheme = false) { TemplatesScreen(container, onBack = {}, onOpenTemplate = {}, queries = queryLog.wrap(container)) }
                 }
             }
             await("ZQ Fail")
@@ -291,7 +293,7 @@ class DiscoverFiltersUiTest {
         try {
             activity.get().setContent {
                 CompositionLocalProvider(LocalStrings provides PtBr) {
-                    VelumTheme(darkTheme = false) { TemplatesScreen(container, onBack = {}, onOpenTemplate = {}) }
+                    VelumTheme(darkTheme = false) { TemplatesScreen(container, onBack = {}, onOpenTemplate = {}, queries = queryLog.wrap(container)) }
                 }
             }
             val grid = { compose.onNodeWithTag("templates:grid") }
@@ -339,7 +341,7 @@ class DiscoverFiltersUiTest {
         try {
             activity.get().setContent {
                 CompositionLocalProvider(LocalStrings provides PtBr) {
-                    VelumTheme(darkTheme = false) { TemplatesScreen(container, onBack = {}, onOpenTemplate = {}) }
+                    VelumTheme(darkTheme = false) { TemplatesScreen(container, onBack = {}, onOpenTemplate = {}, queries = queryLog.wrap(container)) }
                 }
             }
             await("TG 0")
@@ -379,7 +381,7 @@ class DiscoverFiltersUiTest {
         try {
             activity.get().setContent {
                 CompositionLocalProvider(LocalStrings provides PtBr) {
-                    VelumTheme(darkTheme = false) { TemplatesScreen(container, onBack = {}, onOpenTemplate = {}) }
+                    VelumTheme(darkTheme = false) { TemplatesScreen(container, onBack = {}, onOpenTemplate = {}, queries = queryLog.wrap(container)) }
                 }
             }
             val grid = { compose.onNodeWithTag("templates:grid") }
@@ -420,7 +422,7 @@ class DiscoverFiltersUiTest {
         try {
             activity.get().setContent {
                 CompositionLocalProvider(LocalStrings provides PtBr) {
-                    VelumTheme(darkTheme = false) { TemplatesScreen(container, onBack = {}, onOpenTemplate = {}) }
+                    VelumTheme(darkTheme = false) { TemplatesScreen(container, onBack = {}, onOpenTemplate = {}, queries = queryLog.wrap(container)) }
                 }
             }
             val grid = { compose.onNodeWithTag("templates:grid") }
