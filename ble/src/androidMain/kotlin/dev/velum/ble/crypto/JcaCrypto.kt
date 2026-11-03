@@ -1,6 +1,7 @@
 package dev.velum.ble.crypto
 
 import dev.velum.protocol.Bytes
+import dev.velum.protocol.ChaCha20
 import dev.velum.protocol.FileDecryptor
 import dev.velum.protocol.Protocol20SessionSecret
 import dev.velum.protocol.SessionCipher
@@ -11,7 +12,6 @@ import java.security.spec.PKCS8EncodedKeySpec
 import java.security.spec.X509EncodedKeySpec
 import java.util.Base64
 import javax.crypto.Cipher
-import javax.crypto.spec.ChaCha20ParameterSpec
 import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
@@ -117,7 +117,7 @@ class JcaFileDecryptor : FileDecryptor {
     ): ByteArray {
         if (ciphertext.isEmpty()) return ByteArray(0)
         if (segmentSize <= 0L) {
-            return chacha20Once(key, nonce, initialCounter, ciphertext)
+            return ChaCha20.xor(key, nonce, initialCounter, ciphertext)
         }
         val seg = segmentSize.toInt()
         val out = ByteArray(ciphertext.size)
@@ -126,7 +126,7 @@ class JcaFileDecryptor : FileDecryptor {
             val end = minOf(offset + seg, ciphertext.size)
             val chunk = ciphertext.copyOfRange(offset, end)
             // Segmented Note files reset the block counter to 0 per segment.
-            val plain = chacha20Once(key, nonce, 0L, chunk)
+            val plain = ChaCha20.xor(key, nonce, 0L, chunk)
             plain.copyInto(out, offset)
             offset = end
         }
@@ -145,7 +145,7 @@ class JcaFileDecryptor : FileDecryptor {
         require(nonce.size == 12)
         val keyCipher = session.rsaEncryptPkcs1(publicKeyPem, contentKey)
         require(keyCipher.size == 256)
-        val body = chacha20Once(contentKey, nonce, 1L, plaintextBody)
+        val body = ChaCha20.xor(contentKey, nonce, 1L, plaintextBody)
         val file = ByteArray(dev.velum.protocol.PlaudFile.HEADER_SIZE + body.size)
         dev.velum.protocol.PlaudFile.MAGIC.copyInto(file, 0)
         Bytes.u16Le(1).copyInto(file, dev.velum.protocol.PlaudFile.OFF_VERSION)
@@ -161,22 +161,6 @@ class JcaFileDecryptor : FileDecryptor {
         keyCipher.copyInto(file, dev.velum.protocol.PlaudFile.OFF_KEY_CIPHER)
         body.copyInto(file, dev.velum.protocol.PlaudFile.HEADER_SIZE)
         return file
-    }
-
-    private fun chacha20Once(
-        key: ByteArray,
-        nonce: ByteArray,
-        counter: Long,
-        data: ByteArray,
-    ): ByteArray {
-        val cipher = Cipher.getInstance("ChaCha20")
-        cipher.init(
-            Cipher.ENCRYPT_MODE,
-            SecretKeySpec(key, "ChaCha20"),
-            ChaCha20ParameterSpec(nonce, counter.toInt()),
-        )
-        // ENCRYPT_MODE xor stream == decrypt for a stream cipher.
-        return cipher.doFinal(data)
     }
 }
 
