@@ -31,6 +31,7 @@ import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
@@ -494,6 +495,13 @@ fun TemplatesScreen(
                         }
                         Spacer(Modifier.height(16.dp))
                         DisplayTitle(strings.categories)
+                    }
+                }
+            }
+            if (showLoadingState(visible, loadFailed)) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Box(Modifier.fillMaxWidth().padding(vertical = 48.dp).testTag("templates:loading"), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
                     }
                 }
             }
