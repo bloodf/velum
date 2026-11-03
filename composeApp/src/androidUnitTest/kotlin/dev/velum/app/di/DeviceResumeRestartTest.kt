@@ -477,6 +477,15 @@ class DeviceResumeRestartTest {
         } finally { tearDown() }
     }
 
+    @Test fun wipe_after_the_download_finished_says_done() {
+        try {
+            val vm = run(peripheral())
+            assertEquals("rec-synthetic", vm.sessionUi.value.lastDownloadedRecordingId)
+            runBlocking { withTimeout(20_000) { while (vm.sessionUi.value.downloadingSessionId != null) delay(5) } }
+            assertTrue(runBlocking { vm.wipePartialDownloads() }, "nothing was running")
+        } finally { tearDown() }
+    }
+
     @Test fun wipe_stops_a_running_download_and_deletes_the_partials() {
         try {
             val vm = run(peripheral(), persist = { awaitCancellation() }, await = false)
