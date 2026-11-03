@@ -3,7 +3,6 @@ package dev.velum.app
 import dev.velum.ble.crypto.JcaFileDecryptor
 import dev.velum.ble.crypto.JcaSessionCipher
 import dev.velum.ble.crypto.rsaKeyPairToPem
-import java.security.Provider
 import java.security.Security
 import javax.crypto.Cipher
 import javax.crypto.spec.ChaCha20ParameterSpec
@@ -13,22 +12,20 @@ import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import org.junit.Assume.assumeTrue
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 
 /**
- * Production crypto with Conscrypt as provider 1, whatever ran before this. Conscrypt is Android's default
- * provider, in the version Robolectric brings. Its jar has no macOS arm64 library, so this skips there; on Linux
- * x64, where CI runs, a failure to load it fails the test so the coverage can't silently disappear.
+ * Production crypto with Conscrypt as provider 1, which Robolectric installs for every test it runs, so this
+ * doesn't depend on test order. Conscrypt is Android's default provider, in the version Robolectric brings. Its
+ * jar has no macOS arm64 library, so this skips there; on Linux x64, where CI runs, Conscrypt missing fails the
+ * test so the coverage can't silently disappear. Loading Conscrypt by hand outside Robolectric's sandbox isn't an
+ * option: it would bind the native library to the wrong class loader for every later Robolectric test.
  */
+@RunWith(RobolectricTestRunner::class)
 class ConscryptProviderTest {
-    private fun loadConscrypt(): Provider? = try {
-        Class.forName("org.conscrypt.OpenSSLProvider").getDeclaredConstructor().newInstance() as Provider
-    } catch (e: Throwable) {
-        val mustLoad = System.getProperty("os.name") == "Linux" && System.getProperty("os.arch") == "amd64"
-        if (mustLoad) throw AssertionError("Conscrypt must load on Linux x64", e)
-        null
-    }
-
     private fun hex(text: String): ByteArray =
         text.filterNot { it.isWhitespace() }.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
 
@@ -38,18 +35,12 @@ class ConscryptProviderTest {
         ).encodeToByteArray()
 
     private fun withConscryptFirst(block: () -> Unit) {
-        val existing = Security.getProvider("Conscrypt")
-        val conscrypt = existing ?: loadConscrypt()
-        assumeTrue("Conscrypt has no native library for this platform", conscrypt != null)
-        val position = Security.getProviders().indexOfFirst { it.name == "Conscrypt" } + 1
-        Security.removeProvider("Conscrypt")
-        Security.insertProviderAt(conscrypt!!, 1)
-        try {
-            block()
-        } finally {
-            Security.removeProvider("Conscrypt")
-            if (existing != null) Security.insertProviderAt(existing, position)
+        val present = Security.getProviders().firstOrNull()?.name == "Conscrypt"
+        if (System.getProperty("os.name") == "Linux" && System.getProperty("os.arch") == "amd64") {
+            assertTrue(present, "Conscrypt must be the first provider on Linux x64: ${Security.getProviders().map { it.name }}")
         }
+        assumeTrue("Conscrypt has no native library for this platform", present)
+        block()
     }
 
     @Test fun plain_chacha20_from_conscrypt_ignores_the_spec_which_is_why_production_avoids_it() = withConscryptFirst {
