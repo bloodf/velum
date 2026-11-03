@@ -5,7 +5,9 @@ import dev.velum.core.integrations.WebhookSigner
 enum class LanRejectReason { Disabled, UnknownDevice, Revoked, KeyMismatch }
 
 sealed class LanAdmission {
-    data class Accept(val device: PairedDevice) : LanAdmission()
+    /** Only [LanSyncGate.admit] issues this; transport code takes the device from here and nowhere else. */
+    @ConsistentCopyVisibility
+    data class Accept internal constructor(val device: PairedDevice) : LanAdmission()
     data class Reject(val reason: LanRejectReason) : LanAdmission()
 }
 
@@ -21,7 +23,7 @@ sealed class LanAdmission {
  * soon as the paired list changes, otherwise a revoked device keeps syncing until it reconnects.
  */
 object LanSyncGate {
-    /** [enabled] is the user's explicit opt-in setting, false until they turn it on. */
+    /** [enabled] is the user's explicit opt-in. There is no default here: callers pass false until the user turns LAN sync on. */
     fun mayListenOrAdvertise(enabled: Boolean, devices: PairedDevices): Boolean =
         enabled && devices.active.isNotEmpty()
 
@@ -35,11 +37,20 @@ object LanSyncGate {
         devices: PairedDevices,
         claimedId: String,
         authenticatedKeyHex: String,
+    ): LanAdmission = admit(enabled, devices, claimedId, authenticatedKeyHex, WebhookSigner::constantTimeEquals)
+
+    // [keysEqual] is injectable so a test can prove a compare always runs, even for unknown ids.
+    internal fun admit(
+        enabled: Boolean,
+        devices: PairedDevices,
+        claimedId: String,
+        authenticatedKeyHex: String,
+        keysEqual: (String, String) -> Boolean,
     ): LanAdmission {
         if (!enabled) return LanAdmission.Reject(LanRejectReason.Disabled)
         val device = devices.find(claimedId)
         // Compare against a dummy key for unknown ids so timing does not reveal which ids are paired.
-        val keyMatches = WebhookSigner.constantTimeEquals(device?.publicKeyHex ?: DUMMY_KEY, authenticatedKeyHex)
+        val keyMatches = keysEqual(device?.publicKeyHex ?: DUMMY_KEY, authenticatedKeyHex)
         if (device == null) return LanAdmission.Reject(LanRejectReason.UnknownDevice)
         if (device.revoked) return LanAdmission.Reject(LanRejectReason.Revoked)
         if (!keyMatches) return LanAdmission.Reject(LanRejectReason.KeyMismatch)

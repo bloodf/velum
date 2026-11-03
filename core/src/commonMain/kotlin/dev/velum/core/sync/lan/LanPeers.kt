@@ -16,7 +16,8 @@ private fun String.strictInt(maxLength: Int): Int? =
 
 /** What a peer announces over mDNS/NSD: a hint to dial, never proof of identity. */
 @ProvisionalLanIdentity
-data class LanAdvertisement(val deviceId: String, val port: Int) {
+@ConsistentCopyVisibility
+data class LanAdvertisement private constructor(val deviceId: String, val port: Int) {
     init {
         require(deviceId.matches(PairedDevice.DEVICE_ID)) { "Invalid device id" }
         require(port in 1..65535) { "Invalid port" }
@@ -28,8 +29,11 @@ data class LanAdvertisement(val deviceId: String, val port: Int) {
         const val SERVICE_TYPE = "_velum-sync._tcp"
         const val VERSION = 1
 
+        /** This device's own announcement. */
+        fun forSelf(deviceId: String, port: Int) = LanAdvertisement(deviceId, port)
+
         /** Strict parse of a TXT map from the network; null for anything malformed or from another version. */
-        fun fromTxt(txt: Map<String, String>): LanAdvertisement? {
+        internal fun fromTxt(txt: Map<String, String>): LanAdvertisement? {
             if (txt["v"] != VERSION.toString()) return null
             val id = txt["id"]?.takeIf { it.matches(PairedDevice.DEVICE_ID) } ?: return null
             val port = txt["port"]?.strictInt(5)?.takeIf { it in 1..65535 } ?: return null
@@ -39,7 +43,8 @@ data class LanAdvertisement(val deviceId: String, val port: Int) {
 }
 
 /** A manually entered peer address, for networks that block mDNS (guest/corporate Wi-Fi). */
-data class LanEndpoint(val host: String, val port: Int) {
+@ConsistentCopyVisibility
+data class LanEndpoint private constructor(val host: String, val port: Int) {
     init {
         require(parseHost(host) != null) { "Host must be a private or link-local IPv4 literal" }
         require(port in 1..65535) { "Invalid port" }
@@ -47,7 +52,7 @@ data class LanEndpoint(val host: String, val port: Int) {
 
     companion object {
         /** `a.b.c.d:port`; anything that is not an acceptable private IPv4 literal plus port is null. */
-        fun parse(input: String): LanEndpoint? {
+        internal fun parse(input: String): LanEndpoint? {
             val parts = input.trim().split(":")
             if (parts.size != 2) return null
             val host = parseHost(parts[0]) ?: return null
@@ -68,7 +73,8 @@ data class LanEndpoint(val host: String, val port: Int) {
                 (n[0] == 192 && n[1] == 168) ||
                 (n[0] == 169 && n[1] == 254)
             if (!private || n[3] == 0 || n[3] == 255) return null
-            if (n == listOf(169, 254, 169, 254)) return null
+            // Cloud/container metadata services: 169.254.169.0/24 (AWS, GCP) and 169.254.170.0/24 (ECS).
+            if (n[0] == 169 && n[1] == 254 && n[2] in 169..170) return null
             return octets.joinToString(".")
         }
     }
@@ -76,14 +82,14 @@ data class LanEndpoint(val host: String, val port: Int) {
 
 object LanPeers {
     /**
-     * Only advertisements from an active paired device are worth dialing; unknown and revoked ids are dropped
+     * Raw TXT records off the network go in; only advertisements from an active paired device are worth dialing; unknown and revoked ids are dropped
      * before any connection, and nothing is returned while LAN sync is off.
      */
     @OptIn(ProvisionalLanIdentity::class)
-    fun dialable(enabled: Boolean, devices: PairedDevices, seen: List<LanAdvertisement>): List<LanAdvertisement> {
+    fun dialable(enabled: Boolean, devices: PairedDevices, seenTxt: List<Map<String, String>>): List<LanAdvertisement> {
         if (!LanSyncGate.mayListenOrAdvertise(enabled, devices)) return emptyList()
         val active = devices.active.map { it.id }.toSet()
-        return seen.filter { it.deviceId in active }
+        return seenTxt.mapNotNull { LanAdvertisement.fromTxt(it) }.filter { it.deviceId in active }
     }
 
     /** A typed address may be dialed only under the same gate as discovery; the handshake still authenticates it. */
