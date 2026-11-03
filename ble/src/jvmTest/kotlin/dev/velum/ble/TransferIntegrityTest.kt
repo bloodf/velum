@@ -48,8 +48,9 @@ class TransferIntegrityTest {
     private suspend fun clientFor(
         faults: TransferFaults,
         stopReply: FakePlaudPeripheral.StopReply = FakePlaudPeripheral.StopReply.Cmd29,
+        sessionFile: ByteArray = file,
     ): PlaudDeviceClient {
-        val fake = FakePlaudPeripheral(cipher, keys, file, chunkSize = 200, faults = faults, stopReply = stopReply)
+        val fake = FakePlaudPeripheral(cipher, keys, sessionFile, chunkSize = 200, faults = faults, stopReply = stopReply)
         peripheral = fake
         val ble = FakeBleTransport(fake)
         ble.connect("fake-note-pro")
@@ -179,6 +180,32 @@ class TransferIntegrityTest {
         client.close()
     }
 
+    @Test fun exactly_the_limit_of_repeats_does_not_end_the_transfer() = runTest {
+        val client = clientFor(TransferFaults(repeatBurstAt = mapOf(2_000L to 4096)))
+        val sink = Sink()
+        client.downloadSessionTo(SESSION, file.size.toLong(), sink)
+        assertContentEquals(file, sink.out.toByteArray())
+        client.close()
+    }
+
+    @Test fun one_repeat_past_the_limit_ends_the_transfer() = runTest {
+        val client = clientFor(TransferFaults(repeatBurstAt = mapOf(2_000L to 4097)))
+        val sink = Sink()
+        assertFailsWith<TransferIntegrityException> { client.downloadSessionTo(SESSION, file.size.toLong(), sink) }
+        assertContentEquals(file.copyOf(2_000), sink.out.toByteArray())
+        client.close()
+    }
+
+    @Test fun resume_catches_up_on_a_device_that_ignores_the_start_offset() = runTest {
+        // 5,000 chunks of repeats before the first new byte, more than the 4,096 floor of the limit.
+        val big = Random(8).nextBytes(1_200_000)
+        val client = clientFor(TransferFaults(ignoreStartOffset = true), sessionFile = big)
+        val sink = Sink()
+        client.downloadSessionTo(SESSION, big.size.toLong(), sink, startOffset = 1_000_000L)
+        assertContentEquals(big.copyOfRange(1_000_000, big.size), sink.out.toByteArray())
+        client.close()
+    }
+
     /** A real transport's write suspends, and takes an hour of test time once [hang] is set. */
     private class WriteGate {
         var hang = false
@@ -222,6 +249,24 @@ class TransferIntegrityTest {
         assertTrue(testScheduler.currentTime - started <= 5_000, "bounded by the response timeout")
         assertEquals(PlaudDeviceClient.NO_DEVICE_CRC, crc)
         assertContentEquals(file, sink.out.toByteArray())
+        client.close()
+    }
+
+    @Test fun a_hanging_command_write_is_bounded() = runTest(timeout = 30.seconds) {
+        val (client, link) = linkClient()
+        link.hang = true
+        val started = testScheduler.currentTime
+        assertFailsWith<TimeoutCancellationException> { client.listSessions() }
+        assertEquals(5_000L, testScheduler.currentTime - started)
+        client.close()
+    }
+
+    @Test fun a_hanging_sync_start_write_is_bounded() = runTest(timeout = 30.seconds) {
+        val (client, link) = linkClient()
+        link.hang = true
+        val started = testScheduler.currentTime
+        assertFailsWith<TimeoutCancellationException> { client.downloadSessionTo(SESSION, file.size.toLong(), Sink()) }
+        assertEquals(5_000L, testScheduler.currentTime - started)
         client.close()
     }
 

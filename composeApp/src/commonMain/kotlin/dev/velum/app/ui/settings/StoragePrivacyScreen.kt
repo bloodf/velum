@@ -64,6 +64,7 @@ fun StoragePrivacyScreen(
                     onClick = {
                         confirmWipe = false
                         container.settingsViewModel.runStorageAction {
+                            val partialsDeleted = container.deviceViewModel.wipePartialDownloads()
                             container.repository.wipeAllUserData { path ->
                                 deleteFileAtPath(path)
                             }
@@ -72,7 +73,7 @@ fun StoragePrivacyScreen(
                             container.deviceKeyImporter.clearKeys()
                             container.webhookSettings.clear()
                             container.integrationAuth.clearTokens()
-                            status = strings.settingsUi.wipeAllDataDone
+                            status = if (partialsDeleted) strings.settingsUi.wipeAllDataDone else strings.settingsUi.wipeAllDataPartialsLeft
                             val usage = container.repository.storageUsage()
                             usageLabel = strings.settingsUi.storageUsageFormat
                                 .replace("%d", usage.recordingCount.toString())

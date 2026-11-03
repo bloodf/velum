@@ -100,6 +100,11 @@ object DeviceUiCopy {
     fun redownload(localeTag: String): String =
         if (isPt(localeTag)) "Baixar de novo" else "Re-download"
 
+    /** Kept, but the device's checksum did not match; never reported as verified (#94). */
+    fun downloadedSessionCrcMismatch(localeTag: String, sessionId: Long): String =
+        if (isPt(localeTag)) "Sessão #$sessionId baixada, mas a verificação de integridade não confere"
+        else "Downloaded session #$sessionId, but its integrity check did not match"
+
     fun downloadFailed(localeTag: String): String =
         if (isPt(localeTag)) "Falha no download. Verifique a conexão e tente de novo."
         else "Download failed. Check the connection and try again."

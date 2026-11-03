@@ -95,7 +95,7 @@ class BleFakesNotInProductionTest {
 
     private companion object {
         val declaration = Regex("""\b(?:class|object)\s+(\w+)""")
-        val fakePeripheral = Regex("""class\s+Fake(?:\w*Peripheral|Wifi\w*)\b""")
+        val fakePeripheral = Regex("""\b(?:class|object)\s+Fake\w*(?:Ble|Plaud|Wifi|Transport|Peripheral)\w*\b""")
         val fakePackage = Regex("""^\s*(package|import)\s+dev\.velum\.ble\.fake\b""", RegexOption.MULTILINE)
         val sourceSetOpener = Regex("""\b(\w+(?:Main|Test))\b[^{]*\{\s*$""")
     }

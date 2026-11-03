@@ -34,13 +34,13 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.ClosedSendChannelException
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
-import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Protocol-20 client over [BleTransport].
@@ -55,6 +55,8 @@ class PlaudDeviceClient(
     private val keys: DeviceIdentityKeys,
     private val responseTimeout: Duration = 10.seconds,
     private val protocolVersionHint: Int = 20,
+    /** Where notifications are collected. Defaults to the first caller's scope, which then waits for [close]. */
+    private val notificationScope: CoroutineScope? = null,
 ) {
     private val link = GuardedLink(ble)
     private val inbound = Channel<ByteArray>(capacity = 128)
@@ -71,9 +73,13 @@ class PlaudDeviceClient(
 
     suspend fun start() {
         if (notifyJob != null) return
-        val scope = CoroutineScope(coroutineContext)
+        val scope = notificationScope ?: CoroutineScope(coroutineContext)
         notifyJob = scope.launch(start = CoroutineStart.UNDISPATCHED) {
-            ble.notifications().collect { inbound.send(it) }
+            try {
+                ble.notifications().collect { inbound.send(it) }
+            } catch (_: ClosedSendChannelException) {
+                // close() may run on another thread between cancelling this job and closing the channel.
+            }
         }
     }
 
@@ -247,6 +253,10 @@ class PlaudDeviceClient(
      * transfer and is ignored. Absolute offsets come from community protocol notes (docs/protocol) and are
      * unverified on the owner's device (#6).
      *
+     * On a resume, the first chunk of this session is compared with [storedBytes] if it is a repeat. That
+     * catches a device whose offsets don't mean what we assume, such as relative ones, before any of its
+     * bytes land on the expected offset. It runs once because a durable store's read flushes.
+     *
      * [onProgress] reports the absolute byte offset reached. Returns the device's stop CRC, or
      * [NO_DEVICE_CRC] when there is none: the stop reply is best-effort, so a transfer holding all its
      * bytes is never lost to a missing tail. Verifying the CRC is the caller's job.
@@ -257,6 +267,7 @@ class PlaudDeviceClient(
         sink: SessionByteSink,
         onProgress: ((receivedBytes: Long) -> Unit)? = null,
         startOffset: Long = 0L,
+        storedBytes: ((offset: Long, length: Int) -> ByteArray)? = null,
     ): Int {
         require(sizeBytes in 0..MAX_SESSION_DOWNLOAD_BYTES) {
             "Session sizeBytes=$sizeBytes exceeds cap of $MAX_SESSION_DOWNLOAD_BYTES"
@@ -265,10 +276,12 @@ class PlaudDeviceClient(
         val start = Sessions.encodeSyncStart(sessionId, startOffset, sizeBytes)
         val startPayload = transactCommand(Commands.SYNC_FILE_START, start)
         val startRsp = Sessions.parseSyncStartResponse(startPayload)
-        require(!startRsp.refused) { "Sync start refused status=${startRsp.status}" }
+        if (startRsp.refused) throw TransferIntegrityException("Sync start refused status=${startRsp.status}")
 
         var next = startOffset
         var ignoredFrames = 0
+        var smallestChunk = Int.MAX_VALUE
+        var resumeCheck = if (startOffset > 0) storedBytes else null
         try {
             while (true) {
                 val before = next
@@ -279,6 +292,15 @@ class PlaudDeviceClient(
                             is RecordingDataPacket.Chunk -> {
                                 val end = data.offset + data.data.size
                                 val ignored = isStray(data.sessionId, sessionId) || end <= next
+                                if (!isStray(data.sessionId, sessionId)) smallestChunk = minOf(smallestChunk, data.data.size)
+                                resumeCheck?.let { stored ->
+                                    if (!isStray(data.sessionId, sessionId) && data.data.isNotEmpty()) {
+                                        resumeCheck = null
+                                        if (end <= next && !stored(data.offset, data.data.size).contentEquals(data.data)) {
+                                            throw TransferIntegrityException("Repeated chunk at offset ${data.offset} differs from the stored bytes")
+                                        }
+                                    }
+                                }
                                 if (!ignored) {
                                     if (data.offset != next) {
                                         throw TransferIntegrityException("Chunk at offset ${data.offset}, expected $next")
@@ -305,7 +327,10 @@ class PlaudDeviceClient(
                 if (sizeBytes > 0 && next >= sizeBytes) break
                 // Every frame restarts the response timeout, so a device stuck repeating needs its own limit.
                 ignoredFrames = if (next != before) 0 else ignoredFrames + 1
-                if (ignoredFrames > MAX_CONSECUTIVE_IGNORED_FRAMES) {
+                // A device ignoring the start offset resends from 0, so the limit must allow a full catch-up.
+                // Rising offsets alone don't reset the count: a device looping through the file must still stop.
+                val limit = maxOf(MAX_CONSECUTIVE_IGNORED_FRAMES.toLong(), next / smallestChunk.coerceAtLeast(1))
+                if (ignoredFrames > limit) {
                     throw TransferIntegrityException("No new data in $ignoredFrames frames at offset $next")
                 }
             }
@@ -326,7 +351,7 @@ class PlaudDeviceClient(
 
     /** All bytes are stored, so nothing here may fail the transfer, except the caller's own cancellation. */
     private suspend fun stopCrcBestEffort(): Int = try {
-        withTimeout(responseTimeout) { writeOutbound(Sessions.encodeSyncStop()) }
+        writeOutbound(Sessions.encodeSyncStop())
         val raw = awaitDecryptedFrame(responseTimeout) { frame ->
             val decoded = runCatching { Framing.decodeInbound(frame) }.getOrNull()
             decoded is InboundPacket.CommandResponse && isStopReply(decoded.cmd)
@@ -346,7 +371,7 @@ class PlaudDeviceClient(
     /** Ask the device to stop streaming when a transfer is abandoned; no reply is awaited. */
     private suspend fun sendStopBestEffort() {
         withContext(NonCancellable) {
-            runCatching { withTimeoutOrNull(responseTimeout) { writeOutbound(Sessions.encodeSyncStop()) } }
+            runCatching { writeOutbound(Sessions.encodeSyncStop()) }
         }
     }
 
@@ -388,7 +413,7 @@ class PlaudDeviceClient(
     }
 
     private suspend fun writePlain(packet: ByteArray, withoutResponse: Boolean) =
-        link.write(GattProfiles.PLAUD_WRITE, packet, withoutResponse)
+        withTimeout(responseTimeout) { link.write(GattProfiles.PLAUD_WRITE, packet, withoutResponse) }
 
     private suspend fun writeOutbound(packet: ByteArray) {
         writeMutex.withLock {
@@ -397,10 +422,14 @@ class PlaudDeviceClient(
                 writePlain(packet, withoutResponse = false)
             } else {
                 // Guard runs on the plaintext inside GuardedLink; sendSeq advances only after it passes.
-                link.write(GattProfiles.PLAUD_WRITE, packet, withoutResponse = false) {
-                    val sealed = cipher.sealPacket(sec, sendSeq, it)
-                    sendSeq += 1
-                    sealed
+                // A write that times out leaves sendSeq advanced. Later commands then fail on a device that
+                // requires exact sequence numbers (unverified, #6) until a reconnect brings a new client.
+                withTimeout(responseTimeout) {
+                    link.write(GattProfiles.PLAUD_WRITE, packet, withoutResponse = false) {
+                        val sealed = cipher.sealPacket(sec, sendSeq, it)
+                        sendSeq += 1
+                        sealed
+                    }
                 }
             }
         }

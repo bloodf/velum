@@ -6,4 +6,5 @@
     <exclude domain="database" />
     <exclude domain="file" path="models/" />
     <exclude domain="file" path="recordings/" />
+    <exclude domain="file" path="downloads/" />
 </full-backup-content>
