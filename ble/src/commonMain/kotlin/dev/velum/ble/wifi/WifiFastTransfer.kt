@@ -50,13 +50,13 @@ interface WifiTransferServer {
 
     suspend fun stop()
 
-    /** Encrypted frames from the device (still sealed — open with [WifiFrameCipher]). */
+    /** Encrypted frames from the device (still sealed — open with [WifiFrameCipher]), and [PEER_CLOSED_FRAME]. */
     fun incomingEncryptedFrames(): Flow<ByteArray>
 
     suspend fun sendEncryptedFrame(bytes: ByteArray)
 
     /**
-     * Fixed codes ([FAILURE_PEER_CLOSED], [FAILURE_FRAME_OVERFLOW]) for events that make the Wi-Fi path
+     * Fixed codes for events that make the Wi-Fi path
      * unusable before [WifiTransferCoordinator]'s timeout. Hot: subscribe before [start]. The default never emits.
      */
     fun pathFailures(): Flow<String> = flow { awaitCancellation() }
@@ -67,6 +67,16 @@ interface WifiTransferServer {
 
         /** A frame was dropped because the consumer fell behind the receive buffer; the stream has a gap. */
         const val FAILURE_FRAME_OVERFLOW: String = "wifi_frame_overflow"
+
+        /**
+         * Put in [incomingEncryptedFrames] after a peer close, so frames delivered before the close are handled
+         * first, however slow the consumer. On a clean WebSocket close that is every frame the device sent. On a raw
+         * connection loss the library can drop frames still queued, which then shows up as an incomplete file.
+         * Compared by identity, so a device sending an empty frame can't forge it.
+         * [WifiFastTransferSession.openIncoming] turns it into [FAILURE_PEER_CLOSED]. If no consumer has read frames
+         * yet, servers use [pathFailures] instead. If one read frames and left, nothing is signalled.
+         */
+        val PEER_CLOSED_FRAME: ByteArray = ByteArray(0)
 
         const val DEFAULT_PORT: Int = 8081
     }
@@ -142,7 +152,11 @@ class WifiFastTransferSession(
         server.sendEncryptedFrame(sealed)
     }
 
+    /** Null for a frame that doesn't open. Throws if the peer closed: see [WifiTransferServer.PEER_CLOSED_FRAME]. */
     fun openIncoming(ciphertextAndTag: ByteArray): ByteArray? {
+        if (ciphertextAndTag === WifiTransferServer.PEER_CLOSED_FRAME) {
+            throw WifiTransferFailure(WifiTransferServer.FAILURE_PEER_CLOSED)
+        }
         val opened = frameCipher.open(recvSeq, ciphertextAndTag) ?: return null
         recvSeq = opened.first + 1
         return opened.second

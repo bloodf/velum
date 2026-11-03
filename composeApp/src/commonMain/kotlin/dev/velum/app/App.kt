@@ -61,6 +61,7 @@ import dev.velum.app.platform.shareText
 import dev.velum.app.platform.syncWatchedFolders
 import dev.velum.app.platform.systemLanguageTag
 import dev.velum.app.platform.writeMarkdownToExportFolder
+import dev.velum.app.ui.settings.ModelDownloadNotification
 import dev.velum.core.integrations.MarkdownNoteExport
 import dev.velum.app.ui.DeviceScreen
 import dev.velum.app.ui.importing.ImportHubScreen
@@ -144,6 +145,9 @@ private fun VelumRoot(container: AppContainer) {
     // recompose until idle — latch hides FirstRun on the same frame (#106).
     val firstRunPending by container.firstRunPending.collectAsState()
     var firstRunDismissed by remember { mutableStateOf(false) }
+    // (needed, free) bytes when the recommended pack does not fit; resolved to copy at render so a language change applies.
+    var firstRunShort by remember { mutableStateOf<Pair<Long, Long>?>(null) }
+    var firstRunDownloading by remember { mutableStateOf(false) }
     val showFirstRun = firstRunPending && !firstRunDismissed
     fun dismissFirstRun() {
         firstRunDismissed = true
@@ -188,6 +192,7 @@ private fun VelumRoot(container: AppContainer) {
             runCatching { syncWatchedFolders(importPipeline) }
         }
     }
+    ModelDownloadNotification(container)
     val activeMicOwner by container.micRecordings.owner.collectAsState()
     val activeMicId = activeMicOwner?.recordingId
     LaunchedEffect(container) {
@@ -679,6 +684,11 @@ private fun VelumRoot(container: AppContainer) {
         }
 
         if (showFirstRun) {
+            // Same numbers the Download tap checks: models already Ready are not counted.
+            val packIds = remember(strings.localeTag) { ModelCatalogUi.recommendedModelIds(strings.localeTag) }
+            val modelStates by container.localModelManager.states.collectAsState()
+            val recommendedTotal = remember(modelStates, packIds) { container.localModelManager.downloadBytesFor(packIds) }
+            val recommendedNeeded = remember(modelStates, packIds) { container.localModelManager.bytesNeededFor(packIds) }
             FirstRunScreen(
                 onPhoneMic = {
                     dismissFirstRun()
@@ -696,17 +706,29 @@ private fun VelumRoot(container: AppContainer) {
                     dismissFirstRun()
                     navController.navigate(Routes.MODEL_MANAGER)
                 },
+                recommendedTotalBytes = recommendedTotal,
+                recommendedNeededBytes = recommendedNeeded,
+                notice = firstRunShort?.let { (needed, free) ->
+                    ModelCatalogUi.fill(strings.firstRun.notEnoughSpaceFormat, ModelCatalogUi.formatBytes(needed), ModelCatalogUi.formatBytes(free))
+                },
                 onDownloadRecommended = {
-                    dismissFirstRun()
+                    if (firstRunDownloading) return@FirstRunScreen // a second tap must not start or navigate twice
+                    firstRunDownloading = true
+                    val ids = ModelCatalogUi.recommendedModelIds(
+                        languageHint = strings.localeTag,
+                    )
                     scope.launch {
-                        val ids = ModelCatalogUi.recommendedModelIds(
-                            languageHint = strings.localeTag,
-                        )
-                        ids.forEach { id ->
-                            runCatching {
-                                container.localModelManager.download(id).collect()
-                            }
+                        // Disk queries stay off the main thread.
+                        val (needed, free) = withContext(Dispatchers.Default) {
+                            container.localModelManager.bytesNeededFor(ids) to container.localModelManager.freeSpaceBytes()
                         }
+                        if (free != null && free < needed) {
+                            firstRunShort = needed to free
+                            firstRunDownloading = false
+                            return@launch
+                        }
+                        dismissFirstRun()
+                        container.localModelManager.startDownloads(ids).join()
                         navController.navigate(Routes.MODEL_MANAGER)
                     }
                 },

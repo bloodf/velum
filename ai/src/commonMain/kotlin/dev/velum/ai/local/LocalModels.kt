@@ -10,19 +10,28 @@ import io.ktor.utils.io.ByteReadChannel
 import io.ktor.utils.io.readAvailable
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.getAndUpdate
+import kotlinx.coroutines.flow.mapNotNull
+import kotlinx.coroutines.flow.transformWhile
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.job
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 enum class LocalModelKind {
@@ -244,19 +253,8 @@ val DefaultLocalCatalog: List<LocalModelSpec> = listOf(
         sha256 = "181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c",
         archiveFileName = "gemma-4-E2B-it.litertlm",
     ),
-    LocalModelSpec(
-        id = "qwen3-4b-instruct-2507",
-        displayName = "Qwen3-4B-Instruct-2507",
-        kind = LocalModelKind.Llm,
-        approxBytes = 2500L * 1024 * 1024,
-        license = "Apache-2.0",
-        notes = "Alternate on-device summaries. ~2.5 GB.",
-        languages = "Many languages",
-        downloadUrl =
-            "https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
-        sha256 = "3605803b982cb64aead44f6c1b2ae36e3acdb41d8e46c8a94c6533bc4c67e597",
-        archiveFileName = "Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
-    ),
+    // Qwen3-4B-Instruct-2507 (GGUF, llama.cpp) is not offered: no shipping runtime loads GGUF (#273).
+    // Re-add it together with a runtime that does; CatalogFormatsTest fails until both exist.
 )
 
 data class LocalModelState(
@@ -265,6 +263,17 @@ data class LocalModelState(
     val progress: Float = 0f,
     val error: String? = null,
 )
+
+/** Marker stored in [LocalModelState.error]; the UI shows localized plain copy for it, never errno text. */
+object LocalModelErrors {
+    const val StorageFull = "storage_full"
+
+    fun isStorageFull(t: Throwable): Boolean =
+        generateSequence(t) { it.cause }.take(8).any {
+            val m = it.message.orEmpty()
+            m.contains("ENOSPC", ignoreCase = true) || m.contains("No space left", ignoreCase = true)
+        }
+}
 
 fun createLocalModelManager(
     storeRoot: ModelStoreDir = defaultModelStoreRoot(),
@@ -277,15 +286,20 @@ class LocalModelManager(
     private val httpClient: HttpClient,
     catalog: List<LocalModelSpec> = DefaultLocalCatalog,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val extractArchive: (archive: ModelStoreDir, destDir: ModelStoreDir) -> Unit = ModelArchiveExtractor::extract,
+    private val freeSpace: () -> Long? = { storeRoot.freeSpaceBytes() },
 ) {
     private val _states = MutableStateFlow(
         catalog.map { initialState(it) },
     )
     val states: StateFlow<List<LocalModelState>> = _states.asStateFlow()
 
+    init { reclaimExtractedArchives() }
+
     // Atomic CAS map (common; `synchronized` is JVM-only), same pattern as cancelRequested.
     private val downloadJobs = MutableStateFlow<Map<String, Job>>(emptyMap())
     private val cancelRequested = MutableStateFlow(setOf<String>())
+    private val downloadScope = CoroutineScope(SupervisorJob() + ioDispatcher)
 
     fun stateFor(id: String): LocalModelState? = _states.value.firstOrNull { it.spec.id == id }
 
@@ -300,7 +314,30 @@ class LocalModelManager(
     }
 
     fun refreshFromDisk() {
+        reclaimExtractedArchives()
         _states.update { list -> list.map { initialState(it.spec) } }
+    }
+
+    fun freeSpaceBytes(): Long? = freeSpace()
+
+    /** Bytes still to download for [ids]: models that are not Ready yet. */
+    fun downloadBytesFor(ids: List<String>): Long =
+        ids.mapNotNull { stateFor(it) }.filter { it.status != LocalModelStatus.Ready }.sumOf { it.spec.approxBytes }
+
+    /** Free space needed to install [ids]: the downloads plus room to extract the largest archive beside its archive. */
+    fun bytesNeededFor(ids: List<String>): Long {
+        val pending = ids.mapNotNull { stateFor(it) }.filter { it.status != LocalModelStatus.Ready }
+        val extractHeadroom = pending.filter { it.spec.usesArchiveExtract() }.maxOfOrNull { it.spec.approxBytes } ?: 0L
+        return pending.sumOf { it.spec.approxBytes } + extractHeadroom
+    }
+
+    /** The archive is only needed to extract; once the model is Ready it is dead weight (Parakeet kept ~487 MB). */
+    private fun reclaimExtractedArchives() {
+        _states.value.forEach { state ->
+            val spec = state.spec
+            if (state.status != LocalModelStatus.Ready || !spec.usesArchiveExtract()) return@forEach
+            runCatching { storeRoot.resolve(spec.id).resolve(spec.archiveFileName).deleteFile() }
+        }
     }
 
     /** Cancel an in-flight [download] for [id], if any. */
@@ -311,12 +348,44 @@ class LocalModelManager(
     }
 
     /**
+     * Downloads [ids] in order in a scope that outlives the caller, so leaving a screen doesn't throw away a
+     * large transfer. [cancelDownload] on the current model ends the whole sequence.
+     */
+    fun startDownloads(ids: List<String>): Job = downloadScope.launch {
+        for (id in ids) {
+            // A model already on disk is never fetched again: a failed re-download must not cost the working copy.
+            if (isReady(id)) continue
+            try {
+                download(id).collect()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (e: Exception) {
+                // Nothing above this scope would handle it, and it must not end the app.
+                update(id) {
+                    it.copy(
+                        status = LocalModelStatus.Failed, progress = 0f,
+                        error = if (LocalModelErrors.isStorageFull(e)) LocalModelErrors.StorageFull else e.message ?: e.toString(),
+                    )
+                }
+            }
+        }
+    }
+
+    /**
      * Safe to collect on any dispatcher: the transfer, hashing, rename and extraction run on [ioDispatcher] (#237).
      * The collector's job stays registered, so [cancelDownload] still ends the caller's coroutine.
      */
     fun download(id: String): Flow<LocalModelState> = flow {
         val collectorJob = currentCoroutineContext().job
-        downloadJobs.update { it + (id to collectorJob) }
+        // Single flight: two bodies would write the same directory. A later caller follows the running one.
+        val running = downloadJobs.getAndUpdate { if (id in it) it else it + (id to collectorJob) }
+        if (id in running) {
+            emitAll(
+                states.mapNotNull { list -> list.firstOrNull { it.spec.id == id } }
+                    .transformWhile { emit(it); it.status == LocalModelStatus.Downloading },
+            )
+            return@flow
+        }
         cancelRequested.update { it - id }
         try {
             emitAll(downloadBody(id).flowOn(ioDispatcher))
@@ -364,6 +433,24 @@ class LocalModelManager(
             return@flow
         }
 
+        // Nothing here resumes, so a .partial, a half-extracted tree or a stale archive from an earlier
+        // attempt is dead weight: clear it before measuring, or a retry would blame space it is holding itself.
+        withContext(ioDispatcher) {
+            val modelDir = storeRoot.resolve(id)
+            if (!modelDir.exists()) return@withContext
+            // Only this model's temp files: a model already on disk stays usable if the attempt is cancelled or fails.
+            modelDir.resolve("${current.spec.archiveFileName}.partial").deleteRecursively()
+            modelDir.resolve(ModelReadiness.STAGING_DIR).deleteRecursively()
+            if (current.spec.usesArchiveExtract()) modelDir.resolve(current.spec.archiveFileName).deleteFile()
+        }
+        val free = withContext(ioDispatcher) { freeSpace() }
+        val needed = current.spec.approxBytes * (if (current.spec.usesArchiveExtract()) 2 else 1)
+        if (free != null && free < needed) {
+            update(id) { it.copy(status = LocalModelStatus.Failed, progress = 0f, error = LocalModelErrors.StorageFull) }
+            emit(requireNotNull(stateFor(id)))
+            return@flow
+        }
+
         update(id) { it.copy(status = LocalModelStatus.Downloading, progress = 0f, error = null) }
         emit(requireNotNull(stateFor(id)))
 
@@ -372,6 +459,8 @@ class LocalModelManager(
         val dest = dir.resolve(current.spec.archiveFileName)
         val partial = dir.resolve("${current.spec.archiveFileName}.partial")
         if (partial.exists()) partial.deleteRecursively()
+        var filesInPlace = false
+        var complete = false
 
         try {
             val digest = createSha256Digest()
@@ -409,6 +498,7 @@ class LocalModelManager(
             }
 
             // renameTo replaces a file target atomically and an existing directory by delete+move.
+            filesInPlace = true
             if (!partial.renameTo(dest)) {
                 // Never load multi-hundred-MB archives fully into heap on rename failure.
                 streamCopyModelFile(partial, dest)
@@ -420,7 +510,27 @@ class LocalModelManager(
                     it.copy(status = LocalModelStatus.Downloading, progress = 0.99f, error = null)
                 }
                 emit(requireNotNull(stateFor(id)))
-                ModelArchiveExtractor.extract(dest, dir)
+                // Extract beside the final location and move finished files in: a full disk or a kill while
+                // writing leaves a stale temp tree (ignored and cleared later), never truncated weights in place.
+                val staging = dir.resolve(ModelReadiness.STAGING_DIR)
+                staging.deleteRecursively()
+                extractArchive(dest, staging)
+                // Extraction can't be interrupted, so a cancel during it only lands here.
+                currentCoroutineContext().ensureActive()
+                val stagedMissing = ModelReadiness.missingRequirements(current.spec, staging)
+                if (stagedMissing.isNotEmpty()) {
+                    staging.deleteRecursively()
+                    throw IllegalStateException(
+                        "Model '$id' downloaded but not Ready — missing ${stagedMissing.joinToString(", ")}. " +
+                            "Expected layout: ${ModelReadiness.layoutFor(current.spec).describe()}",
+                    )
+                }
+                staging.listChildren().forEach { child ->
+                    if (!child.renameTo(dir.resolve(child.name))) throw IllegalStateException("Could not move ${child.name} into place")
+                }
+                staging.deleteRecursively()
+                // Only after the weights are in place: the archive is not read again.
+                if (ModelReadiness.missingRequirements(current.spec, dir).isEmpty()) runCatching { dest.deleteFile() }
             }
 
             val missing = ModelReadiness.missingRequirements(current.spec, dir)
@@ -432,9 +542,12 @@ class LocalModelManager(
             }
 
             update(id) { it.copy(status = LocalModelStatus.Ready, progress = 1f, error = null) }
+            complete = true
             emit(requireNotNull(stateFor(id)))
         } catch (t: CancellationException) {
-            runCatching { partial.deleteRecursively() }
+            if (complete) throw t // A finished download stays: a late cancel must not cost the data again.
+            // Once the archive is in place a refresh could call the leftovers Ready, so remove them all.
+            runCatching { if (filesInPlace) dir.deleteRecursively() else partial.deleteRecursively() }
             update(id) {
                 it.copy(
                     status = statusForMissingUrl(it.spec),
@@ -445,12 +558,12 @@ class LocalModelManager(
             emit(requireNotNull(stateFor(id)))
             throw t
         } catch (t: Throwable) {
-            runCatching { partial.deleteRecursively() }
+            runCatching { if (filesInPlace) dir.deleteRecursively() else partial.deleteRecursively() }
             update(id) {
                 it.copy(
                     status = LocalModelStatus.Failed,
                     progress = 0f,
-                    error = t.message ?: t.toString(),
+                    error = if (LocalModelErrors.isStorageFull(t)) LocalModelErrors.StorageFull else t.message ?: t.toString(),
                 )
             }
             emit(requireNotNull(stateFor(id)))
@@ -460,8 +573,11 @@ class LocalModelManager(
     suspend fun delete(id: String) {
         cancelDownload(id)
         val dir = storeRoot.resolve(id)
-        withContext(ioDispatcher) { if (dir.exists()) dir.deleteRecursively() }
-        update(id) { initialState(it.spec).copy(status = statusForMissingUrl(it.spec)) }
+        // NonCancellable: stopping between the delete and the state update would show Ready with no files.
+        withContext(NonCancellable + ioDispatcher) {
+            if (dir.exists()) dir.deleteRecursively()
+            update(id) { initialState(it.spec).copy(status = statusForMissingUrl(it.spec)) }
+        }
     }
 
     private fun initialState(spec: LocalModelSpec): LocalModelState {

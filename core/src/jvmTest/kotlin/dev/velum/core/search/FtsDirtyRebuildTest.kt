@@ -22,7 +22,7 @@ import kotlinx.coroutines.runBlocking
  */
 class FtsDirtyRebuildTest {
     // Shared-cache memory DB: the SQLDelight JDBC driver runs BEGIN/COMMIT on separate pooled connections
-    // for file URLs, which breaks FtsIndex.inTransaction. The anchor connection keeps the database alive
+    // for file URLs, which breaks FTS writes made in a transaction. The anchor connection keeps the database alive
     // across the three simulated launches.
     private val url = "jdbc:sqlite:file:velum_fts_dirty?mode=memory&cache=shared"
     private val anchor = DriverManager.getConnection(url)

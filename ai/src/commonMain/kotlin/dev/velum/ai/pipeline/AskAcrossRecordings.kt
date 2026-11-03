@@ -1,5 +1,6 @@
 package dev.velum.ai.pipeline
 
+import dev.velum.core.data.TranscriptMarkers
 import dev.velum.ai.MissingApiKeyException
 import dev.velum.ai.engine.AiTaskRouter
 import dev.velum.ai.engine.LlmRequest
@@ -111,10 +112,10 @@ class AskAcrossRecordings(
         val fromFts = ftsIds.mapNotNull { byId[it] }
         if (fromFts.isNotEmpty()) return fromFts
         val tokens = tokenize(question)
-        if (tokens.isEmpty()) return recordings.filter { !it.transcript.isNullOrBlank() }.take(5)
+        if (tokens.isEmpty()) return recordings.filter { !TranscriptMarkers.spoken(it.transcript).isNullOrBlank() }.take(5)
         return recordings
             .map { rec ->
-                val hay = listOf(rec.title, rec.transcript.orEmpty(), rec.summary_markdown.orEmpty())
+                val hay = listOf(rec.title, TranscriptMarkers.spoken(rec.transcript).orEmpty(), rec.summary_markdown.orEmpty())
                     .joinToString("\n")
                     .lowercase()
                 rec to tokens.count { hay.contains(it) }
@@ -125,7 +126,7 @@ class AskAcrossRecordings(
     }
 
     private fun extractSnippets(rec: Recording, question: String): List<Citation> {
-        val transcript = rec.transcript.orEmpty()
+        val transcript = TranscriptMarkers.spoken(rec.transcript).orEmpty()
         if (transcript.isBlank()) {
             val summary = rec.summary_markdown.orEmpty()
             if (summary.isBlank()) return emptyList()

@@ -9,6 +9,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ApplicationProvider
 import dev.velum.ai.engine.StreamingTranscriber
@@ -16,7 +17,9 @@ import dev.velum.ai.local.ModelStoreDir
 import dev.velum.ai.pipeline.RecordingJobScheduler
 import dev.velum.app.di.AppContainer
 import dev.velum.app.i18n.LocalStrings
+import dev.velum.app.i18n.En
 import dev.velum.app.i18n.PtBr
+import dev.velum.app.i18n.Strings
 import dev.velum.app.ui.recording.LIVE_PCM_BACKLOG_CHUNKS
 import dev.velum.app.ui.recording.LiveTranscriptPane
 import dev.velum.app.ui.recording.savableLiveTranscript
@@ -63,6 +66,7 @@ class LiveTranscriberHandoffTest {
     private var queued = 0
     private val opens = AtomicInteger()
     @Volatile private var modelMissing = false
+    private val uiStrings = androidx.compose.runtime.mutableStateOf<Strings>(PtBr)
 
     @Before fun setUp() {
         val context = ApplicationProvider.getApplicationContext<Application>()
@@ -90,7 +94,7 @@ class LiveTranscriberHandoffTest {
         destroyed = false
         activity = Robolectric.buildActivity(ComponentActivity::class.java).setup()
         activity.get().setContent {
-            CompositionLocalProvider(LocalStrings provides PtBr) {
+            CompositionLocalProvider(LocalStrings provides uiStrings.value) {
                 VelumTheme(darkTheme = false) {
                     // As in App: the failure observer lives in the composition.
                     if (reportedFailures != null) LaunchedEffect(Unit) { observeMicFailures(container) { reportedFailures += it } }
@@ -230,7 +234,7 @@ class LiveTranscriberHandoffTest {
     // #196: with no usable streaming model the pane says so, shows no stand-in text, and saves the audio only.
     @Test fun no_streaming_model_shows_a_message_not_fake_text_and_saves_audio_only() {
         showPane(open = { opens.incrementAndGet(); null })
-        compose.waitUntil(10_000) { compose.onAllNodesWithText(PtBr.ux.liveNoModel).fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(10_000) { compose.onAllNodesWithText(PtBr.ux.liveNoModelNoApi).fetchSemanticsNodes().isNotEmpty() }
         mic.onPcmChunk!!.invoke(ByteArray(1024))
         listOf("partial", "chunk", "final").forEach {
             assertTrue(compose.onAllNodesWithText(it, substring = true, ignoreCase = true).fetchSemanticsNodes().isEmpty(), "fake text '$it' shown")
@@ -247,7 +251,7 @@ class LiveTranscriberHandoffTest {
     // The shipped opener, with no model in the empty store: the same message, no fake text.
     @Test fun the_real_opener_with_no_ready_model_shows_the_no_model_message() {
         showPane(realOpener = true)
-        compose.waitUntil(10_000) { compose.onAllNodesWithText(PtBr.ux.liveNoModel).fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(10_000) { compose.onAllNodesWithText(PtBr.ux.liveNoModelNoApi).fetchSemanticsNodes().isNotEmpty() }
         assertTrue(compose.onAllNodesWithText("chunk", substring = true).fetchSemanticsNodes().isEmpty())
         compose.onNodeWithContentDescription(PtBr.stopRecording).performClick()
         compose.waitUntil(10_000) { queued == 1 }
@@ -257,7 +261,7 @@ class LiveTranscriberHandoffTest {
     @Test fun a_model_that_fails_to_start_says_unavailable_not_missing() {
         showPane(open = { error("synthetic start failure") })
         compose.waitUntil(10_000) { compose.onAllNodesWithText(PtBr.ux.liveModelUnavailable).fetchSemanticsNodes().isNotEmpty() }
-        assertTrue(compose.onAllNodesWithText(PtBr.ux.liveNoModel).fetchSemanticsNodes().isEmpty())
+        assertTrue(compose.onAllNodesWithText(PtBr.ux.liveNoModelNoApi).fetchSemanticsNodes().isEmpty())
     }
 
     @Test fun a_mic_error_is_not_followed_by_a_claim_that_recording_continues() {
@@ -268,7 +272,126 @@ class LiveTranscriberHandoffTest {
         compose.waitForIdle()
         Thread.sleep(500) // the notice, if it were shown, is set right after the open returns null
         compose.waitForIdle()
+        assertTrue(compose.onAllNodesWithText(PtBr.ux.liveNoModelNoApi).fetchSemanticsNodes().isEmpty())
+    }
+
+    // #205: a stop from the notification ends the session without this screen's Stop.
+    @Test fun a_stop_from_the_notification_removes_the_recording_continues_notice() {
+        showPane(open = { null })
+        compose.waitUntil(10_000) { compose.onAllNodesWithText(PtBr.ux.liveNoModelNoApi).fetchSemanticsNodes().isNotEmpty() }
+        mic.sessions.value = MicSessionState.Stopped("/synthetic.wav", 1, 64, 1)
+        compose.waitUntil(10_000) { compose.onAllNodesWithText(PtBr.ux.liveNoModelNoApi).fetchSemanticsNodes().isEmpty() }
+    }
+
+    @Test fun the_pane_says_the_model_is_loading_instead_of_staying_blank() {
+        showPane()
+        compose.waitUntil(10_000) { compose.onAllNodesWithText(PtBr.ux.liveModelLoading).fetchSemanticsNodes().isNotEmpty() }
+    }
+
+    @Test fun the_loading_line_goes_away_once_the_model_is_ready_even_with_no_text_yet() {
+        showPane()
+        compose.waitUntil(10_000) { compose.onAllNodesWithText(PtBr.ux.liveModelLoading).fetchSemanticsNodes().isNotEmpty() }
+        modelLoad.countDown()
+        compose.waitUntil(10_000) { transcriber.starts.get() == 1 }
+        compose.waitUntil(10_000) { compose.onAllNodesWithText(PtBr.ux.liveModelLoading).fetchSemanticsNodes().isEmpty() }
+    }
+
+    @Test fun the_notice_clears_when_stop_begins_even_before_the_mic_has_stopped() {
+        mic.stopGate = kotlinx.coroutines.CompletableDeferred()
+        showPane(open = { null })
+        compose.waitUntil(10_000) { compose.onAllNodesWithText(PtBr.ux.liveNoModelNoApi).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithContentDescription(PtBr.stopRecording).performClick()
+        // The mic session is still Recording here (stop is held), so only the stopping flag can clear it.
+        compose.waitUntil(10_000) { compose.onAllNodesWithText(PtBr.ux.liveNoModelNoApi).fetchSemanticsNodes().isEmpty() }
+        assertTrue(mic.sessions.value is MicSessionState.Recording)
+        mic.stopGate.complete(Unit)
+        compose.waitUntil(10_000) { queued == 1 }
+    }
+
+    @Test fun the_notice_follows_an_api_key_added_while_the_pane_is_open() {
+        showPane(open = { null })
+        compose.waitUntil(10_000) { compose.onAllNodesWithText(PtBr.ux.liveNoModelNoApi).fetchSemanticsNodes().isNotEmpty() }
+        runBlocking { container.settingsRepository.setApiKey("synthetic-key") }
+        compose.waitUntil(10_000) { compose.onAllNodesWithText(PtBr.ux.liveNoModel).fetchSemanticsNodes().isNotEmpty() }
+    }
+
+    @Test fun a_mic_error_re_translates_on_a_language_change() {
+        mic.startResult = MicStartResult.PermissionRequired
+        showPane(open = { null }, awaitAttach = false)
+        compose.waitUntil(10_000) { compose.onAllNodesWithText(PtBr.micPermissionRationale).fetchSemanticsNodes().isNotEmpty() }
+        compose.runOnIdle { uiStrings.value = En }
+        compose.waitUntil(10_000) { compose.onAllNodesWithText(En.micPermissionRationale).fetchSemanticsNodes().isNotEmpty() }
+    }
+
+    @Test fun the_no_model_notice_does_not_promise_an_api_that_is_not_set() {
+        showPane(open = { null })
+        compose.waitUntil(10_000) { compose.onAllNodesWithText(PtBr.ux.liveNoModelNoApi).fetchSemanticsNodes().isNotEmpty() }
         assertTrue(compose.onAllNodesWithText(PtBr.ux.liveNoModel).fetchSemanticsNodes().isEmpty())
+    }
+
+    @Test fun with_an_api_key_the_notice_mentions_the_api() {
+        runBlocking { container.settingsRepository.setApiKey("synthetic-key") }
+        showPane(open = { null })
+        compose.waitUntil(10_000) { compose.onAllNodesWithText(PtBr.ux.liveNoModel).fetchSemanticsNodes().isNotEmpty() }
+    }
+
+    @Test fun a_language_change_mid_recording_re_resolves_the_notice() {
+        showPane(open = { null })
+        compose.waitUntil(10_000) { compose.onAllNodesWithText(PtBr.ux.liveNoModelNoApi).fetchSemanticsNodes().isNotEmpty() }
+        compose.runOnIdle { uiStrings.value = En }
+        compose.waitUntil(10_000) { compose.onAllNodesWithText(En.ux.liveNoModelNoApi).fetchSemanticsNodes().isNotEmpty() }
+        assertTrue(compose.onAllNodesWithText(PtBr.ux.liveNoModelNoApi).fetchSemanticsNodes().isEmpty())
+    }
+
+    // #205: markers have no other copy, so they are saved when dropped, not only at Stop.
+    @Test fun a_marker_is_saved_the_moment_it_is_dropped() {
+        showPane()
+        compose.onNodeWithContentDescription(PtBr.ux.liveMark).performClick()
+        waitOnMainLooper { recordingRow().transcript?.contains("## Markers") == true }
+        assertTrue(recordingRow().transcript!!.contains("1:05"))
+        assertEquals("recording", recordingRow().status)
+    }
+
+    // #205: a stop from the notification used to leave the row "recording" forever.
+    @Test fun a_stop_from_the_notification_finalizes_the_row() {
+        showPane(reportedFailures = mutableListOf())
+        mic.sessions.value = MicSessionState.Stopped(File(recordingsDirectoryPath(), "$recordingId.wav").path, 1, 64, mic.starts.toLong())
+        waitOnMainLooper { queued == 1 }
+        assertEquals("queued", recordingRow().status)
+    }
+
+    // The in-app Stop keeps finalizing itself with the live text; the observer must not pre-empt it.
+    // The live text the pane holds is kept when the notification stops the mic.
+    @Test fun a_notification_stop_keeps_the_live_text_the_pane_holds() {
+        showPane(reportedFailures = mutableListOf())
+        modelLoad.countDown()
+        compose.waitUntil(10_000) { transcriber.starts.get() == 1 }
+        transcriber.onPartial("Words heard live")
+        compose.waitUntil(10_000) { container.micRecordings.liveText(recordingId) == "Words heard live" }
+        mic.sessions.value = MicSessionState.Stopped(File(recordingsDirectoryPath(), "$recordingId.wav").path, 1, 64, mic.starts.toLong())
+        waitOnMainLooper { queued == 1 }
+        assertEquals("Words heard live", recordingRow().transcript)
+    }
+
+    // A marker dropped just before Stop must not overwrite the final live text.
+    @Test fun a_marker_write_after_finalize_does_not_overwrite_the_final_text() {
+        showPane()
+        compose.onNodeWithContentDescription(PtBr.stopRecording).performClick()
+        modelLoad.countDown()
+        compose.waitUntil(10_000) { queued == 1 }
+        val finalText = recordingRow().transcript
+        mic.currentMarkers = mic.currentMarkers + MicMarker(offsetMs = 90_000, label = "late marker")
+        runBlocking { persistLiveMarkers(container, recordingId) }
+        assertEquals(finalText, recordingRow().transcript)
+    }
+
+    @Test fun the_in_app_stop_is_not_pre_empted_by_the_stop_observer() {
+        showPane(reportedFailures = mutableListOf())
+        compose.onNodeWithContentDescription(PtBr.stopRecording).performClick()
+        modelLoad.countDown()
+        compose.waitUntil(10_000) { queued == 1 }
+        assertEquals(SyntheticTranscriber.FINAL, recordingRow().transcript)
+        assertEquals(1, queued)
     }
 
     @Test fun a_stuck_load_cannot_hold_stop_past_the_limit_and_is_still_finished_later() {
@@ -456,6 +579,7 @@ class LiveTranscriberHandoffTest {
         @Volatile var currentMarkers = emptyList<MicMarker>()
         @Volatile var stopFailure: String? = null
         @Volatile var startResult: MicStartResult? = null
+        @Volatile var stopGate = kotlinx.coroutines.CompletableDeferred<Unit>().also { it.complete(Unit) }
         override var onPcmChunk: ((ByteArray) -> Unit)? = null
         @Volatile var starts = 0
         @Volatile var stops = 0
@@ -470,6 +594,7 @@ class LiveTranscriberHandoffTest {
         }
         override suspend fun stop(): MicStopResult {
             val current = session!!
+            stopGate.await()
             stopFailure?.let { message ->
                 sessions.value = MicSessionState.Failed(message, session = current)
                 return MicStopResult.Failed(message)
@@ -481,6 +606,10 @@ class LiveTranscriberHandoffTest {
         }
         override suspend fun pause() = MicPauseResult.Ok
         override suspend fun resume() = MicPauseResult.Ok
-        override suspend fun addMarker(label: String) = MicMarkerResult.NotCapturing
+        override suspend fun addMarker(label: String): MicMarkerResult {
+            val marker = MicMarker(offsetMs = 65_000, label = label)
+            currentMarkers = currentMarkers + marker
+            return MicMarkerResult.Ok(marker)
+        }
     }
 }

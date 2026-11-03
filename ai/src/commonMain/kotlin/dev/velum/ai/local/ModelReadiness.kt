@@ -7,6 +7,9 @@ object ModelReadiness {
     fun isReady(spec: LocalModelSpec, modelDir: ModelStoreDir): Boolean =
         missingRequirements(spec, modelDir).isEmpty()
 
+    /** Temp directory an archive is extracted into before its files are moved into the model directory. */
+    const val STAGING_DIR = ".extracting"
+
     fun missingRequirements(spec: LocalModelSpec, modelDir: ModelStoreDir): List<String> {
         if (!modelDir.exists() || !modelDir.isDirectory()) {
             return listOf("model directory missing: ${modelDir.absolutePath}")
@@ -50,19 +53,20 @@ object ModelReadiness {
             }
             else -> Unit
         }
-        return modelDir.walkDirectories().firstOrNull { layout.missing(it).isEmpty() }
+        // The staging tree holds unfinished extraction output; never treat it as weights.
+        return modelDir.walkDirectories()
+            .filter { dir -> !dir.absolutePath.removePrefix(modelDir.absolutePath).contains("/$STAGING_DIR") }
+            .firstOrNull { layout.missing(it).isEmpty() }
     }
 
     fun layoutFor(spec: LocalModelSpec): ModelLayout {
         val name = spec.archiveFileName.lowercase()
-        // Single-file catalog artifacts (.onnx embeddings, .litertlm / .gguf LLMs).
+        // Single-file catalog artifacts (.onnx embeddings, .litertlm / .task LLMs).
         if (!spec.usesArchiveExtract()) {
             return when {
                 name.endsWith(".onnx") -> ModelLayout.SingleOnnxFile(spec.archiveFileName)
                 name.endsWith(".cact") -> ModelLayout.SingleCactFile(spec.archiveFileName)
-                name.endsWith(".litertlm") || name.endsWith(".gguf") ||
-                    name.endsWith(".task") || name.endsWith(".tflite") ->
-                    ModelLayout.SingleLlmFile(spec.archiveFileName)
+                LocalModelFormats.isLoadableLlmWeights(name) -> ModelLayout.SingleLlmFile(spec.archiveFileName)
                 else -> ModelLayout.OpaqueFile
             }
         }
@@ -162,20 +166,16 @@ sealed class ModelLayout {
     }
 
     data object LlmWeights : ModelLayout() {
-        override fun describe(): String = "*.litertlm / *.task / *.gguf / *.bin"
+        override fun describe(): String = LocalModelFormats.llmWeights.joinToString(" / ") { "*$it" }
 
         override fun missing(dir: ModelStoreDir): List<String> {
             val files = dir.walkFiles().map { it.name.lowercase() }
-            val ok = files.any {
-                it.endsWith(".litertlm") || it.endsWith(".task") ||
-                    it.endsWith(".gguf") || it.endsWith(".bin") ||
-                    it.endsWith(".tflite")
-            }
+            val ok = files.any { LocalModelFormats.isLoadableLlmWeights(it) }
             return if (ok) emptyList() else listOf(describe())
         }
     }
 
-    /** Direct download of one LLM weight file (.litertlm / .gguf / …). */
+    /** Direct download of one LLM weight file (.litertlm / .task). */
     data class SingleLlmFile(val fileName: String) : ModelLayout() {
         override fun describe(): String = fileName
         override fun missing(dir: ModelStoreDir): List<String> {

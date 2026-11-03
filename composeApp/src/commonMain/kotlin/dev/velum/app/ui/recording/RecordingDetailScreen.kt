@@ -93,6 +93,7 @@ import dev.velum.app.platform.createAudioPlayer
 import dev.velum.app.platform.MicStopResult
 import dev.velum.app.i18n.processingWarningText
 import dev.velum.app.platform.finalizeMicRecording
+import dev.velum.app.platform.persistLiveMarkers
 import dev.velum.app.platform.localizedLabel
 import dev.velum.app.platform.HapticKind
 import dev.velum.app.platform.LocalHaptics
@@ -468,7 +469,8 @@ fun RecordingDetailScreen(
                     container = container,
                     recordingId = recordingId,
                     title = recording?.title.orEmpty(),
-                    initialTranscript = recording?.transcript,
+                    // Markers are not speech: a markers-only transcript must not count as a seeded one.
+                    initialTranscript = dev.velum.core.data.TranscriptMarkers.spoken(recording?.transcript),
                     initialElapsedSeconds = recording?.duration_seconds ?: 0L,
                     onStoppedAndQueued = { /* status observed via Flow */ },
                 )
@@ -479,7 +481,7 @@ fun RecordingDetailScreen(
                 transcript = recording?.transcript,
                 durationSeconds = recording?.duration_seconds ?: 0,
                 hasLocalAudio = !recording?.local_path.isNullOrBlank(),
-                generating = generating && recording?.transcript.isNullOrBlank(),
+                generating = generating && dev.velum.core.data.TranscriptMarkers.spoken(recording?.transcript).isNullOrBlank(),
                 transportMessage = processError?.takeIf { it.startsWith("playback:") }?.removePrefix("playback:"),
                 onGenerate = { showGenerate = true },
                 onAskAi = { showAskAi = true },
@@ -562,12 +564,15 @@ fun RecordingDetailScreen(
                 ExportOption(strings.ux.exportDocx) {
                     showExport = false
                     val safe = title.replace(Regex("[^a-zA-Z0-9._-]"), "_").ifBlank { "velum" }
-                    shareBytes("$safe.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", RecordingExport.docxMinimal(md))
+                    scope.launch {
+                        val docx = withContext(Dispatchers.Default) { RecordingExport.docxMinimal(md) }
+                        shareBytes("$safe.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", docx)
+                    }
                 }
                 if (canExportPdf()) {
                     ExportOption(strings.ux.exportPdf) {
                         showExport = false
-                        sharePdf(title, RecordingExport.plainText(md))
+                        scope.launch { sharePdf(title, RecordingExport.plainText(md)) }
                     }
                 }
                 ExportOption(strings.ux.copyTranscript) {
@@ -1165,7 +1170,16 @@ internal fun LiveTranscriptPane(
     var ownedSession by remember(recordingId) { mutableStateOf<dev.velum.app.platform.MicSessionIdentity?>(null) }
     var pcmSubscription by remember(recordingId) { mutableStateOf<dev.velum.app.platform.MicPcmSubscription?>(null) }
     var stopping by remember { mutableStateOf(false) }
-    var micError by remember { mutableStateOf<String?>(null) }
+    // Kept as a kind (platform text aside) so a language change mid-recording re-translates it.
+    var micErrorState by remember { mutableStateOf<MicError?>(null) }
+    val micError: String? = micErrorState?.let {
+        when (it) {
+            MicError.StartFailed -> strings.micStartFailed
+            MicError.Unsupported -> strings.micUnsupported
+            MicError.Permission -> strings.micPermissionRationale
+            is MicError.Platform -> it.message
+        }
+    }
     var inputSource by remember {
         val preferred = container.settingsRepository.preferences.value.defaultMicInput
         mutableStateOf(
@@ -1193,7 +1207,11 @@ internal fun LiveTranscriptPane(
         "${recordingsDirectoryPath()}/$recordingId.wav"
     }
     // No usable streaming model: recording and the WAV go on, the pane says so instead of showing text.
-    var liveNotice by remember(recordingId) { mutableStateOf<String?>(null) }
+    // Kept as a kind, not a string, so a language change mid-recording re-resolves it.
+    var liveReady by remember(recordingId) { mutableStateOf(false) }
+    var liveNotice by remember(recordingId) { mutableStateOf<LiveNotice?>(null) }
+    val hasApiKey = container.settingsRepository.settings.collectAsState().value.hasApiKey
+    val micSession by container.micCapture.sessions.collectAsState()
     // Seeded transcript (Roborazzi / resume) — keep it visible; keep the stored text.
     val preserveSeeded = seededTranscript != null
 
@@ -1222,8 +1240,9 @@ internal fun LiveTranscriptPane(
                     pcm = pcmQueue,
                     languageHint = container.settingsRepository.settings.value.audioLanguage,
                     onPartial = { md -> partial = md },
+                    onReady = { liveReady = true },
                     onNoTranscriber = { modelFailed ->
-                        liveNotice = if (modelFailed) strings.ux.liveModelUnavailable else strings.ux.liveNoModel
+                        liveNotice = if (modelFailed) LiveNotice.Unavailable else LiveNotice.NoModel
                     },
                 ),
             )
@@ -1241,25 +1260,30 @@ internal fun LiveTranscriptPane(
             if (!preserveSeeded) pcmQueue.trySend(pcm)
         }
 
-        micError = null
+        micErrorState = null
         if (!preserveSeeded || container.activeMicRecordingId == recordingId) {
             when (val started = container.micRecordings.startOrAttach(recordingId, wavPath, inputSource)) {
                 is MicStartResult.Started -> {
                     ownedSession = started.session
                     pcmSubscription = container.micRecordings.attach(recordingId, started.session, push)
                     usingMic = pcmSubscription != null
-                    if (!usingMic && !alreadyStopped) micError = strings.micStartFailed
+                    if (!usingMic && !alreadyStopped) micErrorState = MicError.StartFailed
                     markerCount = container.micCapture.markers.size
                     pausedUi = container.micCapture.isPaused || alreadyStopped
                 }
-                MicStartResult.Unsupported -> { usingMic = false; micError = strings.micUnsupported }
-                MicStartResult.PermissionRequired -> { usingMic = false; micError = strings.micPermissionRationale }
-                is MicStartResult.Failed -> { usingMic = false; micError = started.message.ifBlank { strings.micStartFailed } }
+                MicStartResult.Unsupported -> { usingMic = false; micErrorState = MicError.Unsupported }
+                MicStartResult.PermissionRequired -> { usingMic = false; micErrorState = MicError.Permission }
+                is MicStartResult.Failed -> { usingMic = false; micErrorState = started.message.takeIf { it.isNotBlank() }?.let { MicError.Platform(it) } ?: MicError.StartFailed }
             }
         } else {
             usingMic = false
-            if (container.micCapture.isCapturing) micError = strings.micStartFailed
+            if (container.micCapture.isCapturing) micErrorState = MicError.StartFailed
         }
+    }
+    // Publish the savable live text so a Stop from the notification, with this pane open or not, keeps it.
+    val publishedGap = previewHasGap.value
+    LaunchedEffect(partial, publishedGap) {
+        container.micRecordings.publishLiveText(recordingId, if (publishedGap) null else savableLiveTranscript(partial))
     }
     DisposableEffect(recordingId) {
         onDispose {
@@ -1360,8 +1384,12 @@ internal fun LiveTranscriptPane(
                     {
                         scope.launch {
                             when (ownedSession?.let { container.micCapture.addMarker(it) }) {
-                                is MicMarkerResult.Ok ->
+                                is MicMarkerResult.Ok -> {
                                     markerCount = container.micCapture.markers.size
+                                    // Markers have no other copy: save now, not only at Stop (process death loses them).
+                                    runCatching { persistLiveMarkers(container, recordingId) }
+                                        .onFailure { println("VelumLivePcm: marker save failed: ${it::class.simpleName}") }
+                                }
                                 else -> Unit
                             }
                         }
@@ -1397,11 +1425,16 @@ internal fun LiveTranscriptPane(
                 Spacer(Modifier.height(8.dp))
             }
             val notice = liveNotice
+            // "Recording continues" is only true while the mic really is capturing (a stop from the
+            // notification ends the session without this screen's Stop); a mic error is shown above.
+            val capturing = usingMic && micError == null && !stopping && micSession is dev.velum.app.platform.MicSessionState.Recording
             if (notice != null) {
-                // "Recording continues" is only true while the mic really is capturing; a mic error is shown above.
-                if (usingMic && micError == null) {
+                if (capturing) {
                     Text(
-                        notice,
+                        when (notice) {
+                            LiveNotice.Unavailable -> strings.ux.liveModelUnavailable
+                            LiveNotice.NoModel -> if (hasApiKey) strings.ux.liveNoModel else strings.ux.liveNoModelNoApi
+                        },
                         color = VelumInkSecondary,
                         fontSize = 14.sp,
                         modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
@@ -1409,6 +1442,14 @@ internal fun LiveTranscriptPane(
                 }
             } else if (savableLiveTranscript(partial) != null) {
                 MarkdownPreview(partial)
+            } else if (capturing && !liveReady) {
+                // The model is still loading: say so rather than leave the pane blank.
+                Text(
+                    strings.ux.liveModelLoading,
+                    color = VelumInkSecondary,
+                    fontSize = 14.sp,
+                    modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                )
             }
         }
         BlackButton(
@@ -1418,10 +1459,11 @@ internal fun LiveTranscriptPane(
                 val requested = ownedSession
                 val owner = container.micRecordings.owner.value
                 if (container.micCapture.isSupported && (requested == null || owner?.recordingId != recordingId || owner.session != requested)) {
-                    micError = strings.micStartFailed
+                    micErrorState = MicError.StartFailed
                     return@BlackButton
                 }
                 stopping = true
+                container.micRecordings.beginUiStop(recordingId)
                 // Undispatched and NonCancellable: leaving the screen must not abandon a Stop in progress.
                 scope.launch(start = CoroutineStart.UNDISPATCHED) { withContext(NonCancellable) {
                     val marks = container.micCapture.markers
@@ -1440,7 +1482,7 @@ internal fun LiveTranscriptPane(
                                 is MicStopResult.Stopped -> Unit // Finalizer queued the verified audio.
                                 is MicStopResult.Failed -> {
                                     usingMic = false
-                                    micError = stopped.message.ifBlank { strings.micStartFailed }
+                                    micErrorState = stopped.message.takeIf { it.isNotBlank() }?.let { MicError.Platform(it) } ?: MicError.StartFailed
                                 }
                                 else -> Unit
                             }
@@ -1461,6 +1503,15 @@ internal fun LiveTranscriptPane(
 // ponytail: live preview only, the WAV never depends on it. At 40-130 ms per chunk this holds a slow
 // model load (about 40 s or more); older audio is dropped from the preview past that.
 internal const val LIVE_PCM_BACKLOG_CHUNKS = 1024
+
+private enum class LiveNotice { NoModel, Unavailable }
+
+private sealed interface MicError {
+    data object StartFailed : MicError
+    data object Unsupported : MicError
+    data object Permission : MicError
+    data class Platform(val message: String) : MicError
+}
 
 // Stop must not hang on a stuck native load. The queued recording is retranscribed from the WAV anyway.
 private const val LIVE_FINISH_WAIT_MS = 30_000L
@@ -1484,6 +1535,8 @@ private suspend fun transcribeQueuedPcm(
     pcm: ReceiveChannel<ByteArray>,
     languageHint: String?,
     onPartial: (String) -> Unit,
+    /** Called once the transcriber has started and audio is being transcribed. */
+    onReady: () -> Unit,
     /** Called when no live text can come: true when a model exists but failed, false when none is usable. */
     onNoTranscriber: (modelFailed: Boolean) -> Unit,
 ): String? {
@@ -1499,6 +1552,7 @@ private suspend fun transcribeQueuedPcm(
         streamer.onPartial = onPartial
         streamer.start(16_000, languageHint, null)
     }.onFailure { logFailure("start", it) }.isSuccess
+    if (started) onReady()
     if (!started) {
         pcm.cancel()
         onNoTranscriber(true)

@@ -14,6 +14,9 @@ actual class ModelStoreDir actual constructor(absolutePath: String) {
 
     actual fun exists(): Boolean = file.exists()
 
+    actual fun freeSpaceBytes(): Long? =
+        generateSequence(file) { it.parentFile }.firstOrNull { it.exists() }?.usableSpace
+
     actual fun isDirectory(): Boolean = file.isDirectory
 
     actual fun createDirectories() {
@@ -55,6 +58,8 @@ actual class ModelStoreDir actual constructor(absolutePath: String) {
         file.listFiles()?.map { ModelStoreDir(it.absolutePath) } ?: emptyList()
 
     actual fun length(): Long = if (file.isFile) file.length() else 0L
+
+    actual fun lastModifiedMillis(): Long = file.lastModified()
 
     actual fun renameTo(dest: ModelStoreDir): Boolean {
         val target = File(dest.absolutePath)

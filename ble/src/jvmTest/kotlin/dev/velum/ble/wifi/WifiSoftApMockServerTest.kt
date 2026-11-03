@@ -3,11 +3,13 @@ package dev.velum.ble.wifi
 import dev.velum.ble.crypto.createSessionCipher
 import dev.velum.protocol.Protocol20SessionSecret
 import java.io.ByteArrayOutputStream
+import java.net.InetAddress
 import java.net.ServerSocket
 import java.util.zip.CRC32
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -49,7 +51,7 @@ class WifiSoftApMockServerTest {
         runBlocking { withTimeout(90_000) { block() } }
     }
 
-    private fun freePort(): Int = ServerSocket(0).use { it.localPort }
+    private fun freePort(): Int = ServerSocket(0, 1, InetAddress.getByName("127.0.0.1")).use { it.localPort }
 
     private fun crc(bytes: ByteArray): Long = CRC32().also { it.update(bytes) }.value
 
@@ -300,6 +302,32 @@ class WifiSoftApMockServerTest {
     }
 
     @Test
+    fun anEmptyFrameFromTheDevice_isNotAPeerClose() {
+        val s = session(WifiPayloadCipher.ChaCha20Poly1305)
+        assertNull(s.openIncoming(ByteArray(0)))
+        val closed = assertFailsWith<WifiTransferFailure> { s.openIncoming(WifiTransferServer.PEER_CLOSED_FRAME) }
+        assertEquals(WifiTransferServer.FAILURE_PEER_CLOSED, closed.code)
+    }
+
+    @Test
+    fun aCloseWithNobodyReadingFrames_stillFallsBackAtOnce() = runBoundedTest {
+        val port = freePort()
+        val ready = CompletableDeferred(Unit)
+        val device = launchDevice(port, ready, WifiPayloadCipher.ChaCha20Poly1305, emptyList()) // preamble, then closes
+        val outcome = WifiTransferCoordinator(
+            sessionFactory = { session(WifiPayloadCipher.ChaCha20Poly1305) },
+            bleDownload = { fixture },
+            wifiTimeout = 60_000.milliseconds, // far above the test's limit: only the close can end this
+        ).transferOrFallback(
+            "PLAUD-FAKE", "password12", port = port, preamble = preamble, bindHost = "127.0.0.1",
+            assemble = { kotlinx.coroutines.awaitCancellation() },
+        )
+        device.join()
+        assertIs<WifiTransferCoordinator.Outcome.BleFallback>(outcome)
+        assertEquals(WifiTransferServer.FAILURE_PEER_CLOSED, outcome.reason)
+    }
+
+    @Test
     fun disconnectMidTransfer_fallsBackToBleAtOnce_thenReleasesPort() = runBoundedTest {
         val port = freePort()
         val server = JavaWebsocketTransferServer()
@@ -400,7 +428,7 @@ class WifiSoftApMockServerTest {
         var last: Throwable? = null
         while (System.nanoTime() < deadline) {
             try {
-                ServerSocket(port).close()
+                ServerSocket(port, 1, InetAddress.getByName("127.0.0.1")).close()
                 return
             } catch (t: Throwable) {
                 last = t
@@ -423,5 +451,26 @@ class WifiSoftApMockServerTest {
 
     private companion object {
         const val CHUNK = 16 * 1024
+    }
+
+    @Test
+    fun portInUse_failsAtOnceAndFallsBackToBle_withoutJoiningSoftAp() = runBoundedTest {
+        ServerSocket(0, 50, InetAddress.getByName("127.0.0.1")).use { occupied ->
+            val joiner = FakeWifiSoftApJoiner()
+            val started = System.nanoTime()
+            val outcome = WifiTransferCoordinator(
+                sessionFactory = { session(WifiPayloadCipher.ChaCha20Poly1305, JavaWebsocketTransferServer(), joiner) },
+                bleDownload = { fixture },
+                wifiTimeout = 600_000.milliseconds, // far above the test's limit: only the bind failure can end this
+            ).transferOrFallback(
+                "PLAUD-FAKE", "password12", port = occupied.localPort, preamble = preamble, bindHost = "127.0.0.1",
+                assemble = { error("the transfer must not start") },
+            )
+            assertIs<WifiTransferCoordinator.Outcome.BleFallback>(outcome)
+            assertEquals(JavaWebsocketTransferServer.BIND_FAILURE_CODE, outcome.reason)
+            assertEquals(0, joiner.joinCount, "SoftAP must not be joined without a listener")
+            // 5 s is the server's limit for a wait that went wrong: the listener's own error must end it sooner.
+            assertTrue(System.nanoTime() - started < 5_000_000_000L, "the bind failure must be noticed, not waited out")
+        }
     }
 }

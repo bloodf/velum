@@ -48,7 +48,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
  * and decode failure, cancellation and a full disk leave no temp PCM and keep the recording file.
  */
 class RecordingProcessorDecodeCleanupTest {
-    private class Harness(val transcribe: suspend (AudioInput) -> Unit, readFileBytes: ((String) -> ByteArray)? = null,
+    private class Harness(val transcribe: suspend (AudioInput) -> Unit,
         thermal: ThermalPolicy = NoOpThermalPolicy,
         opusDecoder: (() -> dev.velum.ai.audio.OpusDecoder)? = null,
     ) {
@@ -89,7 +89,6 @@ class RecordingProcessorDecodeCleanupTest {
             ),
             repo,
             settings,
-            readFileBytes = readFileBytes ?: { path -> ModelStoreDir(path).readBytes() },
             thermal = thermal,
             opusDecoder = opusDecoder ?: ::createOpusDecoder,
         )
@@ -140,6 +139,105 @@ class RecordingProcessorDecodeCleanupTest {
     }
 
     @Test
+    fun device_crc_mismatch_warning_survives_processing_and_wins_over_truncation() = runBlocking {
+        val pcm = ByteArray(16_000 * 2) // 1 s
+        val h = Harness({ })
+        val src = tempAudio(".wav", wav(pcm))
+        h.insert("rec-212-crc", src)
+        h.repo.setProcessingWarning("rec-212-crc", dev.velum.core.model.ProcessingWarning.DEVICE_CRC_MISMATCH)
+        val events = h.processor.process("rec-212-crc", templateId = "velum.meeting", apiModelOverride = API).toList()
+        assertTrue(events.last() is JobProgress.Succeeded, "last=${events.last()}")
+        assertEquals(dev.velum.core.model.ProcessingWarning.DEVICE_CRC_MISMATCH, h.repo.getRecording("rec-212-crc")!!.processing_warning)
+    }
+
+    @Test
+    fun a_crc_mismatch_written_while_the_job_runs_is_not_overwritten() = runBlocking {
+        val src = tempAudio(".wav", wav(ByteArray(16_000 * 2)))
+        lateinit var h: Harness
+        // The thermal check runs after the job read its row and before it writes the warning.
+        var first = true // only the first check precedes the warning write; later stages must not rewrite it
+        val thermal = object : ThermalPolicy {
+            override fun isHot(): Boolean {
+                if (first) runBlocking { h.repo.setProcessingWarning("rec-212-late", dev.velum.core.model.ProcessingWarning.DEVICE_CRC_MISMATCH) }
+                first = false
+                return false
+            }
+            override suspend fun awaitCool(onPaused: suspend (message: String) -> Unit) = Unit
+        }
+        h = Harness({ }, thermal = thermal)
+        h.insert("rec-212-late", src)
+        val events = h.processor.process("rec-212-late", templateId = "velum.meeting", apiModelOverride = API).toList()
+        assertTrue(events.last() is JobProgress.Succeeded, "last=${events.last()}")
+        assertEquals(dev.velum.core.model.ProcessingWarning.DEVICE_CRC_MISMATCH, h.repo.getRecording("rec-212-late")!!.processing_warning)
+    }
+
+    @Test
+    fun unknown_extension_with_ogg_bytes_streams_through_the_path_decoder() = runBlocking {
+        var decodedPath: String? = null
+        val decoder = object : dev.velum.ai.audio.OpusDecoder {
+            override fun decodeToPcm(oggBytes: ByteArray) = error("the whole file must not be read")
+            override fun decodeToPcmFile(oggBytes: ByteArray, dest: ModelStoreDir) = error("the whole file must not be read")
+            override fun decodePathToPcmFile(path: String, dest: ModelStoreDir, checkCancelled: () -> Unit): dev.velum.ai.audio.SpilledPcmMeta {
+                decodedPath = path
+                dest.writeBytes(ByteArray(640))
+                return dev.velum.ai.audio.SpilledPcmMeta(sampleRateHz = 16_000, channels = 1, sizeBytes = 640)
+            }
+        }
+        val captured = mutableListOf<AudioInput>()
+        val h = Harness({ captured += it }, opusDecoder = { decoder })
+        val src = tempAudio(".bin", "OggS".toByteArray() + ByteArray(60))
+        h.insert("rec-86-sniff-ogg", src)
+        val events = h.processor.process("rec-86-sniff-ogg", templateId = "velum.meeting", apiModelOverride = API).toList()
+        assertTrue(events.last() is JobProgress.Succeeded, "last=${events.last()}")
+        assertEquals(src.path, decodedPath)
+        assertEquals(640, captured.single().bytes.size)
+    }
+
+    @Test
+    fun unknown_extension_with_wav_bytes_copies_the_pcm_in_slices() = runBlocking {
+        val pcm = ByteArray(20 * 16_000 * 2) { (it % 251).toByte() }
+        val captured = mutableListOf<AudioInput>()
+        val h = Harness({ captured += it })
+        val src = tempAudio(".bin", wav(pcm))
+        h.insert("rec-86-sniff-wav", src)
+        val events = h.processor.process("rec-86-sniff-wav", templateId = "velum.meeting", apiModelOverride = API).toList()
+        assertTrue(events.last() is JobProgress.Succeeded, "last=${events.last()}")
+        assertContentEquals(pcm, captured.single().bytes)
+        assertEquals(16_000, captured.single().sampleRateHz)
+        assertFalse(spillDir("rec-86-sniff-wav").exists())
+    }
+
+    @Test
+    fun unknown_extension_with_no_container_is_copied_as_raw_16k_pcm_across_slices() = runBlocking {
+        val raw = ByteArray(300_000) { (it % 97).toByte() } // more than one 256 KiB slice
+        val captured = mutableListOf<AudioInput>()
+        val h = Harness({ captured += it })
+        val src = tempAudio(".bin", raw)
+        h.insert("rec-86-raw", src)
+        val events = h.processor.process("rec-86-raw", templateId = "velum.meeting", apiModelOverride = API).toList()
+        assertTrue(events.last() is JobProgress.Succeeded, "last=${events.last()}")
+        assertContentEquals(raw, captured.single().bytes)
+        assertEquals(16_000, captured.single().sampleRateHz)
+    }
+
+    @Test
+    fun a_file_over_the_spill_limit_fails_before_any_pcm_is_written() = runBlocking {
+        // Sparse: setLength reserves no disk. The size check must reject it before the slice copy starts.
+        val huge = File.createTempFile("velum-86-huge", ".bin").apply {
+            deleteOnExit()
+            java.io.RandomAccessFile(this, "rw").use { it.setLength(PcmAudioBuffer.MAX_SPILL_BYTES + 1) }
+        }
+        val h = Harness({ error("ASR must not run") })
+        h.insert("rec-86-huge", huge)
+        val events = h.processor.process("rec-86-huge", templateId = "velum.meeting", apiModelOverride = API).toList()
+        val failed = events.last() as JobProgress.Failed
+        assertTrue(failed.message.contains("too large"), failed.message)
+        assertFalse(File(spillDir("rec-86-huge"), "pcm.s16le").exists() && File(spillDir("rec-86-huge"), "pcm.s16le").length() > 0)
+        assertFalse(spillDir("rec-86-huge").exists())
+        assertTrue(huge.isFile, "source recording preserved")
+    }
+
+    @Test
     fun corrupt_ogg_fails_explicitly_cleans_temp_pcm_and_keeps_source() = runBlocking {
         // Valid header + one page of audio, then a page with a bad magic: PCM is written before the failure.
         val packet = dev.velum.ai.audio.SyntheticOgg.audioPacket(stereo = false)
@@ -186,11 +284,14 @@ class RecordingProcessorDecodeCleanupTest {
     @Test
     fun full_disk_reports_insufficient_storage_and_keeps_source() = runBlocking {
         val bytes = ByteArray(1024) { 1 }
-        val h = Harness(
-            { error("ASR must not run") },
-            readFileBytes = { throw IOException("write failed: ENOSPC (No space left on device)") },
-        )
-        val src = tempAudio(".bin", bytes)
+        val full = object : dev.velum.ai.audio.OpusDecoder {
+            override fun decodeToPcm(oggBytes: ByteArray) = error("unused")
+            override fun decodeToPcmFile(oggBytes: ByteArray, dest: ModelStoreDir) = error("unused")
+            override fun decodePathToPcmFile(path: String, dest: ModelStoreDir, checkCancelled: () -> Unit): dev.velum.ai.audio.SpilledPcmMeta =
+                throw IOException("write failed: ENOSPC (No space left on device)")
+        }
+        val h = Harness({ error("ASR must not run") }, opusDecoder = { full })
+        val src = tempAudio(".ogg", bytes)
         h.insert("rec-86-enospc", src)
         val events = h.processor.process("rec-86-enospc", templateId = "velum.meeting", apiModelOverride = API).toList()
         assertEquals(INSUFFICIENT_STORAGE_MESSAGE, (events.last() as JobProgress.Failed).message)
@@ -283,16 +384,27 @@ class RecordingProcessorDecodeCleanupTest {
     }
 
     @Test
-    fun sweep_removes_orphan_pcm_spill_dirs_only() {
-        val root = java.nio.file.Files.createTempDirectory("velum-197-root").toFile()
+    fun sweep_removes_only_stale_spill_dirs_and_keeps_a_running_jobs_file() {
+        val root = java.nio.file.Files.createTempDirectory("velum-198-root").toFile()
         try {
-            File(root, "tmp/pcm-a").apply { mkdirs(); File(this, "pcm.s16le").writeBytes(ByteArray(8)) }
-            File(root, "tmp/pcm-b").mkdirs()
-            File(root, "tmp/keep").mkdirs()
-            assertEquals(2, sweepOrphanPcmSpill(ModelStoreDir(root.path)))
-            assertFalse(File(root, "tmp/pcm-a").exists())
+            val now = 1_000_000_000_000L
+            val cutoff = now - STALE_PCM_SPILL_AGE_MS
+            val old = cutoff - 60_000
+            fun spill(name: String, fileMtime: Long, dirMtime: Long) = File(root, "tmp/$name").also { dir ->
+                dir.mkdirs()
+                File(dir, "pcm.s16le").apply { writeBytes(ByteArray(8)); setLastModified(fileMtime) }
+                dir.setLastModified(dirMtime)
+            }
+            spill("pcm-stale", old, old)
+            spill("pcm-running", fileMtime = now, dirMtime = old) // old dir, file still being appended to
+            spill("pcm-fresh", now, now)
+            File(root, "tmp/keep").apply { mkdirs(); setLastModified(old) } // not a spill dir
+            assertEquals(1, sweepOrphanPcmSpill(cutoff, ModelStoreDir(root.path)))
+            assertFalse(File(root, "tmp/pcm-stale").exists(), "stale spill removed")
+            assertTrue(File(root, "tmp/pcm-running/pcm.s16le").isFile, "a running job's file is kept")
+            assertTrue(File(root, "tmp/pcm-fresh").isDirectory)
             assertTrue(File(root, "tmp/keep").isDirectory)
-            assertEquals(0, sweepOrphanPcmSpill(ModelStoreDir(File(root, "absent").path)))
+            assertEquals(0, sweepOrphanPcmSpill(cutoff, ModelStoreDir(File(root, "absent").path)))
         } finally {
             root.deleteRecursively()
         }
