@@ -24,10 +24,12 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -144,6 +146,66 @@ class LocalModelDownloadThreadingTest {
         assertFalse(root.resolve("tiny").exists(), "archive and extracted files must not survive a cancel")
         manager.refreshFromDisk()
         assertEquals(LocalModelStatus.NotDownloaded, manager.stateFor("tiny")?.status)
+    }
+
+    @Test fun failed_extraction_leaves_nothing_a_later_launch_could_call_ready() = runBlocking {
+        val client = HttpClient(MockEngine {
+            respond(payload, HttpStatusCode.OK, headersOf(HttpHeaders.ContentLength, payload.size.toString()))
+        })
+        val manager = archiveManager(client) { _, dir ->
+            dir.resolve("weights.litertlm").writeBytes(ByteArray(2048))
+            throw java.io.IOException("synthetic: no space left")
+        }
+        manager.download("tiny").collect()
+        assertEquals(LocalModelStatus.Failed, manager.stateFor("tiny")?.status)
+        assertFalse(root.resolve("tiny").exists(), "leftovers must not survive a failed extraction")
+        manager.refreshFromDisk()
+        assertEquals(LocalModelStatus.NotDownloaded, manager.stateFor("tiny")?.status)
+    }
+
+    @Test fun cancel_at_the_final_emit_keeps_the_complete_model() = runBlocking {
+        val client = HttpClient(MockEngine {
+            respond(payload, HttpStatusCode.OK, headersOf(HttpHeaders.ContentLength, payload.size.toString()))
+        })
+        val manager = manager(client)
+        // Unconfined: runs inside the state update, so the cancel lands before the emit that follows it.
+        val canceller = CoroutineScope(Dispatchers.Unconfined).launch {
+            manager.states.first { list -> list.single().status == LocalModelStatus.Ready }
+            manager.cancelDownload("tiny")
+        }
+        val job = CoroutineScope(caller.asCoroutineDispatcher()).launch { manager.download("tiny").collect() }
+        withTimeout(10_000) { job.join() }
+        canceller.cancel()
+        assertEquals(LocalModelStatus.Ready, manager.stateFor("tiny")?.status)
+        assertTrue(root.resolve("tiny").resolve("tiny.bin").exists(), "a finished download must not be thrown away")
+    }
+
+    @Test fun a_started_download_outlives_its_caller_and_can_still_be_cancelled() = runBlocking {
+        val body = ByteChannel(autoFlush = true)
+        val client = HttpClient(MockEngine { respond(body, HttpStatusCode.OK, headersOf(HttpHeaders.ContentLength, payload.size.toString())) })
+        val manager = manager(client)
+        val screen = CoroutineScope(caller.asCoroutineDispatcher())
+        var started: kotlinx.coroutines.Job? = null
+        screen.launch { started = manager.startDownloads(listOf("tiny")) }.join()
+        withTimeout(10_000) { while (manager.stateFor("tiny")?.status != LocalModelStatus.Downloading) delay(5) }
+
+        screen.coroutineContext[kotlinx.coroutines.Job]?.cancel() // leaving the screen
+        body.writeFully(payload)
+        body.close()
+        withTimeout(10_000) { started!!.join() }
+        assertEquals(LocalModelStatus.Ready, manager.stateFor("tiny")?.status)
+    }
+
+    @Test fun cancel_ends_a_started_download() = runBlocking {
+        val body = ByteChannel(autoFlush = true)
+        val client = HttpClient(MockEngine { respond(body, HttpStatusCode.OK, headersOf(HttpHeaders.ContentLength, "1000")) })
+        val manager = manager(client)
+        val job = manager.startDownloads(listOf("tiny"))
+        withTimeout(10_000) { while (manager.stateFor("tiny")?.status != LocalModelStatus.Downloading) delay(5) }
+        manager.cancelDownload("tiny")
+        withTimeout(10_000) { job.join() }
+        assertEquals(LocalModelStatus.NotDownloaded, manager.stateFor("tiny")?.status)
+        body.close()
     }
 
     @Test fun cancel_during_a_transfer_keeps_a_model_already_on_disk() = runBlocking {

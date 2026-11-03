@@ -10,9 +10,11 @@ import io.ktor.utils.io.ByteReadChannel
 import io.ktor.utils.io.readAvailable
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -20,6 +22,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
@@ -28,6 +31,7 @@ import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.transformWhile
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.job
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 enum class LocalModelKind {
@@ -292,6 +296,7 @@ class LocalModelManager(
     // Atomic CAS map (common; `synchronized` is JVM-only), same pattern as cancelRequested.
     private val downloadJobs = MutableStateFlow<Map<String, Job>>(emptyMap())
     private val cancelRequested = MutableStateFlow(setOf<String>())
+    private val downloadScope = CoroutineScope(SupervisorJob() + ioDispatcher)
 
     fun stateFor(id: String): LocalModelState? = _states.value.firstOrNull { it.spec.id == id }
 
@@ -314,6 +319,23 @@ class LocalModelManager(
         cancelRequested.update { it + id }
         val job = downloadJobs.value[id]
         job?.cancel()
+    }
+
+    /**
+     * Downloads [ids] in order in a scope that outlives the caller, so leaving a screen doesn't throw away a
+     * large transfer. [cancelDownload] on the current model ends the whole sequence.
+     */
+    fun startDownloads(ids: List<String>): Job = downloadScope.launch {
+        for (id in ids) {
+            try {
+                download(id).collect()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (e: Exception) {
+                // Nothing above this scope would handle it, and it must not end the app.
+                update(id) { it.copy(status = LocalModelStatus.Failed, progress = 0f, error = e.message ?: e.toString()) }
+            }
+        }
     }
 
     /**
@@ -387,6 +409,7 @@ class LocalModelManager(
         val partial = dir.resolve("${current.spec.archiveFileName}.partial")
         if (partial.exists()) partial.deleteRecursively()
         var filesInPlace = false
+        var complete = false
 
         try {
             val digest = createSha256Digest()
@@ -450,8 +473,10 @@ class LocalModelManager(
             }
 
             update(id) { it.copy(status = LocalModelStatus.Ready, progress = 1f, error = null) }
+            complete = true
             emit(requireNotNull(stateFor(id)))
         } catch (t: CancellationException) {
+            if (complete) throw t // A finished download stays: a late cancel must not cost the data again.
             // Once the archive is in place a refresh could call the leftovers Ready, so remove them all.
             runCatching { if (filesInPlace) dir.deleteRecursively() else partial.deleteRecursively() }
             update(id) {
@@ -464,7 +489,7 @@ class LocalModelManager(
             emit(requireNotNull(stateFor(id)))
             throw t
         } catch (t: Throwable) {
-            runCatching { partial.deleteRecursively() }
+            runCatching { if (filesInPlace) dir.deleteRecursively() else partial.deleteRecursively() }
             update(id) {
                 it.copy(
                     status = LocalModelStatus.Failed,
