@@ -396,29 +396,4 @@ compose.desktop {
 }
 
 
-// Robolectric 4.14.1 downloads its instrumented android-all jars at test time with no retry, so one
-// Maven Central hiccup fails whole tests (MavenArtifactFetcher IOException). Resolve them through
-// Gradle (cached, retried, checksummed) and run Robolectric offline from that directory.
-// Versions are Robolectric 4.14.1's SDK 34 and 35 (tests default to targetSdk 35, @Config pins 34);
-// change them together with libs.versions.robolectric. A missing jar fails offline with its name.
-// One configuration per SDK: two versions of one module in a single configuration would conflict-resolve to one.
-val robolectricAndroidAll = listOf("14-robolectric-10818077-i7", "15-robolectric-12650502-i7").map { version ->
-    configurations.create("robolectricAndroidAll${version.substringBefore('-')}") {
-        isTransitive = false
-        dependencies.add(project.dependencies.create("org.robolectric:android-all-instrumented:$version"))
-    }
-}
-val syncRobolectricAndroidAll by tasks.registering(Sync::class) {
-    robolectricAndroidAll.forEach { from(it) }
-    into(layout.buildDirectory.dir("robolectric-android-all"))
-}
-tasks.withType<Test>().configureEach {
-    if (name.endsWith("UnitTest")) {
-        dependsOn(syncRobolectricAndroidAll)
-        val dir = syncRobolectricAndroidAll.flatMap { it.destinationDir.let { d -> providers.provider { d } } }
-        systemProperty("robolectric.offline", "true")
-        jvmArgumentProviders += CommandLineArgumentProvider {
-            listOf("-Drobolectric.dependency.dir=${dir.get().absolutePath}")
-        }
-    }
-}
+apply(from = rootProject.file("gradle/robolectric-offline.gradle.kts"))

@@ -102,3 +102,5 @@ tasks.matching { it.name == "jvmTest" }.configureEach {
         },
     ).withPathSensitivity(PathSensitivity.RELATIVE).withPropertyName("sourceGuardScanSources")
 }
+
+apply(from = rootProject.file("gradle/robolectric-offline.gradle.kts"))
