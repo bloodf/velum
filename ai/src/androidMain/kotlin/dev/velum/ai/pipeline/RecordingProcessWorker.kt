@@ -314,11 +314,16 @@ class RecordingProcessWorker(
             return !(policy == ExistingWorkPolicy.KEEP && hasActiveWork(manager, recordingId, excluding = request.id))
         }
 
-        private fun hasActiveWork(manager: WorkManager, recordingId: String, excluding: java.util.UUID): Boolean =
-            runCatching {
+        private fun hasActiveWork(manager: WorkManager, recordingId: String, excluding: java.util.UUID): Boolean {
+            if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) return false
+            return runCatching {
                 manager.getWorkInfosForUniqueWork(UNIQUE_PREFIX + recordingId).get(2, TimeUnit.SECONDS)
                     .any { !it.state.isFinished && it.id != excluding }
-            }.getOrDefault(false)
+            }.getOrElse {
+                Log.w(TAG, "active-work lookup failed; reporting the enqueue as started", it)
+                false
+            }
+        }
 
         /**
          * True when the unique work for [recordingId] is queued or running and carries [paramsTag]. The params live in

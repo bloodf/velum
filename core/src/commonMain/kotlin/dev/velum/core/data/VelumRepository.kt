@@ -530,31 +530,27 @@ class VelumRepository(
     }
 
     /**
-     * Sets [status] unless the recording is already `ready`/`failed` (a job that just finished) or gone. Returns
-     * whether it wrote, so a caller can tell the work ended before it acted (#324).
+     * Sets [status] unless the recording is already `ready`/`failed` (a job that just finished) or gone, in one
+     * statement. Returns whether a row changed, so a caller can tell the work ended before it acted (#324).
      */
     suspend fun updateStatusIfActive(id: String, status: String): Boolean = withContext(dbContext) {
         db.transactionWithResult {
-            val current = q.selectRecordingById(id).executeAsOneOrNull()?.status
-            if (current == null || current == "ready" || current == "failed") {
-                false
-            } else {
-                q.updateStatus(status, id)
-                true
-            }
+            q.updateStatusIfActive(status, id)
+            q.lastChanges().executeAsOne() > 0L
         }
     }
 
-    /** Sets [to] only while the status is still [from]; returns whether it wrote. */
+    /** Sets [to] only while the status is still [from], in one statement; returns whether a row changed. */
     suspend fun updateStatusIfEquals(id: String, from: String, to: String): Boolean = withContext(dbContext) {
         db.transactionWithResult {
-            if (q.selectRecordingById(id).executeAsOneOrNull()?.status == from) {
-                q.updateStatus(to, id)
-                true
-            } else {
-                false
-            }
+            q.updateStatusIfEquals(to, id, from)
+            q.lastChanges().executeAsOne() > 0L
         }
+    }
+
+    /** The template id of the recording's active summary version, or null when it has none. */
+    suspend fun activeSummaryTemplateId(recordingId: String): String? = withContext(dbContext) {
+        q.getActiveVersion(recordingId).executeAsOneOrNull()?.template_id
     }
 
     /** [code] is a [dev.velum.core.model.ProcessingWarning] constant, or null to clear. */

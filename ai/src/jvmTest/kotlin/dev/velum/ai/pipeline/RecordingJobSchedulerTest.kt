@@ -51,9 +51,10 @@ class RecordingJobSchedulerTest {
         val o = ApiModelOverride(profileId = "work", modelId = "m")
         assertTrue(recordingWorkParamsMatch("velum.meeting", true, o, "velum.meeting", true, ApiModelOverride(profileId = "work", modelId = "m")))
         assertTrue(recordingWorkParamsMatch(null, true, null, "", true, ApiModelOverride()), "blank equals null")
-        // The processor turns a blank template into the default meeting template, and legacy ids into their survivors.
+        // The processor turns a blank template into the default meeting template.
         assertTrue(recordingWorkParamsMatch("velum.meeting", true, null, null, true, null))
-        assertTrue(recordingWorkParamsMatch("tpl-meeting", true, null, "velum.meeting", true, null))
+        // An alias is a different template (an edited tpl-meeting must not be kept against the built-in).
+        assertFalse(recordingWorkParamsMatch("tpl-meeting", true, null, "velum.meeting", true, null))
         assertFalse(recordingWorkParamsMatch("velum.general", true, null, "velum.meeting", true, null))
         assertFalse(recordingWorkParamsMatch("velum.meeting", true, ApiModelOverride(profileId = "a"), "velum.meeting", true, ApiModelOverride(profileId = "b")))
         assertFalse(recordingWorkParamsMatch("velum.meeting", true, o, "velum.meeting", true, ApiModelOverride(profileId = "work", modelId = "other")))

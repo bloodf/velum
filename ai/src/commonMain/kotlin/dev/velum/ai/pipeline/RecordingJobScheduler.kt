@@ -65,9 +65,16 @@ fun recordingWorkParamsMatch(
     overrideB: ApiModelOverride?,
 ): Boolean =
     retranscribeA == retranscribeB &&
-        BuiltinTemplateCatalog.resolveId(templateA) == BuiltinTemplateCatalog.resolveId(templateB) &&
+        effectiveTemplate(templateA) == effectiveTemplate(templateB) &&
         overrideA?.modelId.orEmpty() == overrideB?.modelId.orEmpty() &&
         overrideA?.profileId.orEmpty() == overrideB?.profileId.orEmpty()
+
+/**
+ * Only a blank template is folded into the default: the processor treats it that way. Aliases are not merged, because
+ * an edited `tpl-meeting` is a different template from the built-in `velum.meeting` and must not be kept against it.
+ */
+private fun effectiveTemplate(templateId: String?): String =
+    templateId?.takeIf { it.isNotBlank() } ?: BuiltinTemplateCatalog.DEFAULT_ID
 
 /** Stable tag form of the params, readable from a queued WorkManager item's tags. */
 fun recordingWorkParamsTag(
@@ -76,7 +83,7 @@ fun recordingWorkParamsTag(
     apiModelOverride: ApiModelOverride?,
     requiresNetwork: Boolean = false,
 ): String =
-    "velum-params:${BuiltinTemplateCatalog.resolveId(templateId)}|${apiModelOverride?.modelId.orEmpty()}|" +
+    "velum-params:${effectiveTemplate(templateId)}|${apiModelOverride?.modelId.orEmpty()}|" +
         "${apiModelOverride?.profileId.orEmpty()}|$retranscribe|net=$requiresNetwork"
 
 /**

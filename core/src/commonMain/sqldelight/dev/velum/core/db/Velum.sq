@@ -125,6 +125,15 @@ UPDATE recording SET summary_markdown = ? WHERE id = ?;
 updateStatus:
 UPDATE recording SET status = ? WHERE id = ?;
 
+updateStatusIfActive:
+UPDATE recording SET status = ? WHERE id = ? AND status NOT IN ('ready', 'failed');
+
+updateStatusIfEquals:
+UPDATE recording SET status = ? WHERE id = ? AND status = ?;
+
+lastChanges:
+SELECT changes();
+
 updateProcessingWarning:
 UPDATE recording SET processing_warning = ? WHERE id = ?;
 

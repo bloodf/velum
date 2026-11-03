@@ -6,6 +6,7 @@ import dev.velum.core.autoflow.AutoFlowMatcher
 import dev.velum.core.autoflow.AutoFlowPostAction
 import dev.velum.core.autoflow.AutoFlowResolve
 import dev.velum.core.calendar.CalendarEventProvider
+import dev.velum.core.templates.BuiltinTemplateCatalog
 import dev.velum.core.time.VelumDateTime
 import dev.velum.core.calendar.CalendarLookupResult
 import dev.velum.core.calendar.createCalendarEventProvider
@@ -189,14 +190,18 @@ class AutoFlowRunner internal constructor(
     ): Boolean {
         val scheduler = jobScheduler
         if (scheduler != null) {
-            // Always move off terminal status before enqueue so awaitReadyStatus
-            // cannot treat a pre-existing `ready` as "this job finished" (that
-            // fired post-actions before WorkManager started). Marking queued also
-            // seeds sawInFlight for synchronous test schedulers that finish before
-            // the first poll.
-            // Conditional: a job that just finished leaves the row ready/failed, and a late "queued" write plus a
-            // dropped (kept) enqueue would strand it on queued. Nothing left to do then; the row is terminal.
-            if (!repository.markQueuedIfActive(recordingId)) {
+            // Move off the current status before enqueue so awaitReadyStatus cannot treat a pre-existing `ready` as
+            // "this job finished" (that fired post-actions before WorkManager started); "queued" also seeds
+            // sawInFlight for synchronous test schedulers that finish before the first poll. The write is
+            // conditional: a job that just finished leaves the row ready/failed, and a late "queued" plus a kept
+            // enqueue would strand it on queued.
+            val before = repository.getRecording(recordingId)
+            val priorStatus = before?.status
+            if (before?.status == "ready" && !isThisFlowsWork(before, templateId)) {
+                // Finished, but by other work (another template): this flow still has to run.
+                repository.updateStatus(recordingId, "queued")
+            } else if (!repository.markQueuedIfActive(recordingId)) {
+                // The job that was running finished before we acted: nothing left to enqueue.
                 return repository.getRecording(recordingId)?.status == "ready"
             }
             val started = scheduler.enqueueReportingStart(
@@ -205,8 +210,11 @@ class AutoFlowRunner internal constructor(
                 retranscribe = true,
                 apiModelOverride = apiModelOverride,
             )
-            // The running job was kept: give the row back its "generating" so the UI still shows work in progress.
-            if (!started) repository.restoreGeneratingIfQueued(recordingId)
+            // The running job was kept: give the row back the status it had (generating, paused_thermal, ...), not a
+            // hardcoded one, since the kept job may not have started yet.
+            if (!started && priorStatus != null && priorStatus != "queued") {
+                repository.restoreStatusIfQueued(recordingId, priorStatus)
+            }
             return awaitReadyStatus(recordingId, alreadyInFlight = true)
         }
         var succeeded = false
@@ -214,6 +222,13 @@ class AutoFlowRunner internal constructor(
             if (progress is JobProgress.Succeeded) succeeded = true
         }
         return succeeded || repository.getRecording(recordingId)?.status == "ready"
+    }
+
+    /** True when the ready row's active summary came from the template this flow asks for. */
+    private suspend fun isThisFlowsWork(recording: Recording, flowTemplateId: String?): Boolean {
+        val done = repository.activeSummaryTemplateId(recording.id)
+        val wanted = flowTemplateId?.takeIf { it.isNotBlank() } ?: BuiltinTemplateCatalog.DEFAULT_ID
+        return done == wanted
     }
 
     private suspend fun awaitReadyStatus(
@@ -347,8 +362,10 @@ internal interface AutoFlowRecordingStore {
     suspend fun updateStatus(id: String, status: String)
     /** Marks the row queued unless it is already ready/failed; false when it was terminal. */
     suspend fun markQueuedIfActive(id: String): Boolean
-    /** queued -> generating, only while the row is still queued. */
-    suspend fun restoreGeneratingIfQueued(id: String): Boolean
+    /** queued -> [status], only while the row is still queued. */
+    suspend fun restoreStatusIfQueued(id: String, status: String): Boolean
+    /** Template id of the recording's active summary version, or null. */
+    suspend fun activeSummaryTemplateId(id: String): String?
     suspend fun updateRecordingTitle(id: String, title: String)
 }
 
@@ -358,7 +375,8 @@ internal class RepositoryAutoFlowRecordingStore(private val repository: VelumRep
     override suspend fun getRecording(id: String) = repository.getRecording(id)
     override suspend fun updateStatus(id: String, status: String) { repository.updateStatus(id, status) }
     override suspend fun markQueuedIfActive(id: String) = repository.updateStatusIfActive(id, "queued")
-    override suspend fun restoreGeneratingIfQueued(id: String) = repository.updateStatusIfEquals(id, "queued", "generating")
+    override suspend fun restoreStatusIfQueued(id: String, status: String) = repository.updateStatusIfEquals(id, "queued", status)
+    override suspend fun activeSummaryTemplateId(id: String) = repository.activeSummaryTemplateId(id)
     override suspend fun updateRecordingTitle(id: String, title: String) { repository.updateRecordingTitle(id, title) }
 }
 

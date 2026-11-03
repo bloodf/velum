@@ -56,9 +56,18 @@ class RecordingWorkKeepTest {
     }
 
     @Test fun aBlankTemplateAndTheDefaultMeetingTemplateAreTheSameWork() {
-        enqueueOffMain("rec-default", null)
-        enqueueOffMain("rec-default", "tpl-meeting") // legacy id of the default meeting template
-        assertEquals(1, infos("rec-default").size)
+        assertEquals(true, enqueueOffMain("rec-default", "velum.meeting"))
+        val first = infos("rec-default").single().id
+        // A blank template means the default meeting template, so this enqueue asks for the same work.
+        assertEquals(false, enqueueOffMain("rec-default", "  "), "kept")
+        assertEquals(listOf(first), infos("rec-default").map { it.id })
+    }
+
+    @Test fun aLegacyAliasIsADifferentTemplateAndReplacesTheQueuedWork() {
+        enqueueOffMain("rec-alias", "velum.meeting")
+        val first = infos("rec-alias").single().id
+        assertEquals(true, enqueueOffMain("rec-alias", "tpl-meeting"), "an edited tpl-meeting is not the built-in")
+        assertEquals(WorkInfo.State.ENQUEUED, infos("rec-alias").single { it.id != first }.state)
     }
 
     @Test fun aLaterIdenticalEnqueueAfterTheWorkFinishedStartsNewWork() {
