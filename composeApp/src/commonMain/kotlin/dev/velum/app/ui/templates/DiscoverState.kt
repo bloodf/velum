@@ -63,4 +63,7 @@ internal fun VelumRepository.discoverQueries() = DiscoverQueries(
  * paged in, so a deep scroll does not collapse back to one page.
  */
 internal fun reloadLimit(pages: Int, sameFilterRowCount: Int, pageSize: Int): Int =
-    if (pages == 1) maxOf(pageSize, sameFilterRowCount) else pageSize
+    if (pages == 1) minOf(maxOf(pageSize, sameFilterRowCount), pageSize * MAX_RELOAD_PAGES) else pageSize
+
+/** Upper bound on a single tick reload, so a very deep scroll of the ~16k catalog never re-queries thousands of rows. */
+internal const val MAX_RELOAD_PAGES = 10

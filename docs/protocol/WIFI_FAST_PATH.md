@@ -9,13 +9,14 @@
 | SoftAP | Phone joins device SoftAP via `WifiNetworkSpecifier` (WPA2) |
 | Transport | Phone runs **WebSocket server on `:8081`** (`org.java_websocket`, same as Plaud) |
 | Crypto | Same BLE session **key / nonce / aad**; ChaCha20-Poly1305, or **AES-GCM** when cmd 138 bit `0x08` |
-| Nonce | **Fixed for the whole session** — **required** for Note Pro; do not rotate. **Accepted risk (review S13):** rotating per-message would break Plaud SoftAP parity; BLE session isolation + SoftAP preamble + BLE fallback mitigate exposure. Revisit only after owner hardware SoftAP confirms a compatible alternative. |
+| Nonce | **Fixed for the whole session** — **required** for Note Pro; do not rotate. **Review S13: Open, pending owner decision: BLE, files and Wi-Fi. An earlier document called the Wi-Fi case accepted on 2026-10-27; no owner decision is on record.** Rotating per-message would break Plaud SoftAP parity. The SoftAP preamble limits who can connect on Wi-Fi, but it doesn't protect the frames. BLE uses the same fixed nonce, and BLE fallback isn't a mitigation. Revisit only after owner hardware SoftAP confirms a compatible alternative. |
 | Seq | Each WS binary frame uses its own seq (`seq ‖ packet` plaintext) |
 | BLE | Active BLE session required; Wi-Fi is an acceleration path |
 
 ## Velum additions (safe)
 
 - **Socket-level SoftAP bind, attempted not proven:** `AndroidWifiTransferServer` tries `Network.bindSocket` on each accepted socket and never uses `bindProcessToNetwork`. On real Android the accepted-socket bind is expected to throw, so see the known platform limit in the test instructions below.
+- **Early failure signals (#219):** servers publish `pathFailures()` codes. `wifi_peer_closed` (the authenticated device closed its socket) falls back to BLE at once, after a short `peerClosedGrace` that lets `assemble` finish from frames already received; `wifi_frame_overflow` (the consumer fell 64 frames behind and a frame was dropped, so the sequence has a gap) falls back immediately and closes the socket with 1013. Neither waits for the 45 s `wifiTimeout`.
 - **Preamble** first WS binary message (`VELUM-WIFI-v1:<bindToken>`) so a random SoftAP client is rejected.
 - **Per-connection preamble, latest authenticated wins:** authorization is tracked per WebSocket connection. A valid preamble from a new connection replaces the current peer (the old socket is closed with 1001); an invalid one is closed with 1008; an unauthenticated close changes nothing. **Unverified (#8 hardware validation):** how the Note Pro reacts to a 1008/1001 close, and whether it ever opens parallel sockets.
 - **BLE fallback** (`WifiTransferCoordinator` / `PlaudDeviceClient.downloadSessionPreferWifi`) on timeout, SoftAP failure, preamble mismatch, or cipher errors.

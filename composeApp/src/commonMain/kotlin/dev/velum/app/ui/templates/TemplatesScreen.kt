@@ -107,7 +107,10 @@ internal fun TemplatesScreen(
 ) {
     val strings = LocalStrings.current
     val templateChanges = remember(container) { container.repository.observeTemplateChanges() }
-    val templateTick by templateChanges.collectAsState(0L)
+    // null until the flow delivers its first value: loading before that would run every query twice (tick 0, then 1).
+    val templateTickOrNull by templateChanges.collectAsState(null as Long?)
+    val tickReady = templateTickOrNull != null
+    val templateTick = templateTickOrNull ?: 0L
     var tab by remember { mutableStateOf(1) } // 0 my space, 1 discover
     /** Discover tier: true = Featured builtins, false = All builtins. */
     var discoverFeaturedOnly by remember { mutableStateOf(true) }
@@ -177,7 +180,8 @@ internal fun TemplatesScreen(
     // True while a facets reload is in flight: the chip rows may reflow when it lands, so they are not tappable
     // until then (a tap aimed at the old layout would otherwise hit a neighbouring chip).
     var facetsLoading by remember { mutableStateOf(false) }
-    LaunchedEffect(tier, debouncedQuery, selectedCategory, templateTick) {
+    LaunchedEffect(tier, debouncedQuery, selectedCategory, templateTick, tickReady) {
+        if (!tickReady) return@LaunchedEffect
         facetsLoading = true
         try {
             facets = queries.facets(DiscoverFilter(tier, debouncedQuery, selectedCategory))
@@ -232,7 +236,8 @@ internal fun TemplatesScreen(
     var loadFailed by remember { mutableStateOf(false) }
     // Bumped by the retry button after a failed load.
     var retryTick by remember { mutableStateOf(0) }
-    LaunchedEffect(filter, pages, templateTick, retryTick) {
+    LaunchedEffect(filter, pages, templateTick, retryTick, tickReady) {
+        if (!tickReady) return@LaunchedEffect
         // Snapshot before the first suspension: the tick may move while the queries run.
         val loadTick = templateTick
         // A different filter must not keep the previous filter's rows (or its paging sentinel) on screen.
@@ -271,7 +276,8 @@ internal fun TemplatesScreen(
     val rows = visible.orEmpty()
     // Weekly ranking uses Featured builtins only.
     var ranking by remember { mutableStateOf<List<Template>>(emptyList()) }
-    LaunchedEffect(templateTick) {
+    LaunchedEffect(templateTick, tickReady) {
+        if (!tickReady) return@LaunchedEffect
         ranking = try {
             queries.page(DiscoverFilter(DiscoverTier.Featured), 5, 0)
         } catch (cancelled: CancellationException) {

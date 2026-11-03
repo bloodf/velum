@@ -35,6 +35,9 @@ import dev.velum.app.ui.components.ToggleRow
 import dev.velum.app.ui.theme.VelumInk
 import dev.velum.app.ui.theme.VelumInkSecondary
 import dev.velum.app.ui.theme.VelumSurface
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
+import kotlinx.coroutines.withContext
 
 @Composable
 fun StoragePrivacyScreen(
@@ -68,7 +71,7 @@ fun StoragePrivacyScreen(
                             container.repository.wipeAllUserData { path ->
                                 deleteFileAtPath(path)
                             }
-                            container.voiceProfileStore.wipeAll()
+                            withContext(Dispatchers.IO) { container.voiceProfileStore.wipeAll() }
                             container.settingsRepository.clearAllApiKeys()
                             container.deviceKeyImporter.clearKeys()
                             container.webhookSettings.clear()
