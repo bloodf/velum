@@ -3,6 +3,9 @@ package dev.velum.app.ui.settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.semantics.Role
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -53,7 +56,7 @@ import dev.velum.app.ui.theme.VelumSurface
 import dev.velum.app.ui.theme.VelumWarningContainer
 import dev.velum.core.model.ComputeMode
 
-private data class LangOption(val code: String, val label: String)
+internal data class LangOption(val code: String, val label: String)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -321,7 +324,7 @@ fun AiProcessingScreen(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun LanguagePickerSheet(
+internal fun LanguagePickerSheet(
     title: String,
     options: List<LangOption>,
     selected: String,
@@ -341,7 +344,8 @@ private fun LanguagePickerSheet(
                     opt.label,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { onSelect(opt.code) }
+                        .selectable(selected = opt.code == selected, role = Role.RadioButton) { onSelect(opt.code) }
+                        .heightIn(min = 48.dp)
                         .padding(vertical = 14.dp),
                     color = if (opt.code == selected) VelumInk else VelumInkSecondary,
                     fontWeight = if (opt.code == selected) FontWeight.SemiBold else FontWeight.Normal,

@@ -5,6 +5,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class ImportFileNameTest {
+    @Test fun spaces_become_underscores_so_titles_keep_their_words() = assertEquals("Team_standup_v2.wav", sanitizeImportFileName("Team standup (v2).wav"))
     @Test fun keeps_plain_names() = assertEquals("memo-1_final.m4a", sanitizeImportFileName("memo-1_final.m4a"))
 
     @Test fun drops_directories_and_traversal() {

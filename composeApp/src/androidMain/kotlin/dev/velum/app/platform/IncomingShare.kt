@@ -22,7 +22,8 @@ object IncomingShare {
             Intent.ACTION_VIEW -> intent.data
             else -> intent.data
         } ?: return
-        val name = sanitizeImportFileName(uri.lastPathSegment, "${java.util.UUID.randomUUID()}.audio")
+        val displayName = displayNameOf(context, uri)
+        val name = sanitizeImportFileName(displayName, "${java.util.UUID.randomUUID()}.audio")
         if (!ImportAudioFormats.isSupportedFileName(name) &&
             intent.type?.startsWith("audio/") != true &&
             intent.type != "application/ogg"
@@ -37,6 +38,7 @@ object IncomingShare {
             }
         }
         if (outFile.exists() && outFile.length() > 0L) {
+            dev.velum.app.importing.ImportDisplayNames.put(outFile.absolutePath, displayName)
             pendingPath.set(outFile.absolutePath)
         }
     }
