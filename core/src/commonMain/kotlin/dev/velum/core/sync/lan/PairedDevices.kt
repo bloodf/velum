@@ -7,7 +7,7 @@ import dev.velum.core.integrations.WebhookSigner
  * it is what a later handshake must prove, so the id alone never grants anything.
  *
  * The constructor and `copy` are private: a revoked device cannot be flipped back to active by copying it.
- * Use [create] for a fresh pairing and [restore] only when reading persisted state.
+ * Use [create] for a fresh pairing. [restore] is internal to this module and only for the persistence layer.
  */
 @ConsistentCopyVisibility
 data class PairedDevice private constructor(
@@ -37,13 +37,20 @@ data class PairedDevice private constructor(
         /** A device from a completed pairing ceremony: always active. */
         fun create(id: String, name: String, publicKeyHex: String) = PairedDevice(id, name, publicKeyHex, false)
 
-        /** Persistence only: rebuilds a stored row, revocation included. Never call this to re-trust a device. */
-        fun restore(id: String, name: String, publicKeyHex: String, revoked: Boolean) =
+        /**
+         * Persistence only: rebuilds a stored row, revocation included. Never call this to re-trust a device.
+         * Stored state must live in SecureStore or other authenticated storage; a store anyone can edit could
+         * clear revocations, so the persistence layer must also reject a retired-key set that shrank.
+         */
+        internal fun restore(id: String, name: String, publicKeyHex: String, revoked: Boolean) =
             PairedDevice(id, name, publicKeyHex, revoked)
 
         /**
-         * Drops control, format (bidi, zero-width, ALM, tag characters), line/paragraph separators and
-         * unpaired or tag surrogates; caps at 64 UTF-16 units without splitting a surrogate pair; then trims.
+         * Drops everything that can spoof or blank a name: control and format characters (bidi, zero-width, ALM,
+         * tag characters, supplementary format such as U+1D173), variation selectors including U+E0100, filler
+         * and blank glyphs (U+3164, U+FFA0, U+115F, U+1160, U+2800, U+034F, U+17B4, U+17B5), line/paragraph
+         * separators and unpaired surrogates. Caps at 64 UTF-16 units without splitting a surrogate pair, then
+         * trims. A name that ends up blank is rejected by [create] and ignored by rename.
          */
         fun cleanName(raw: String): String {
             val kept = StringBuilder()
@@ -53,13 +60,14 @@ data class PairedDevice private constructor(
                 val pair = c.isHighSurrogate() && i + 1 < raw.length && raw[i + 1].isLowSurrogate()
                 when {
                     pair -> {
-                        // U+E0000..U+E007F (tag characters) are DB40 DC00..DC7F.
-                        if (!(c.code == 0xDB40 && raw[i + 1].code in 0xDC00..0xDC7F)) kept.append(c).append(raw[i + 1])
+                        val cp = 0x10000 + ((c.code - 0xD800) shl 10) + (raw[i + 1].code - 0xDC00)
+                        if (!isInvisibleSupplementary(cp)) kept.append(c).append(raw[i + 1])
                         i += 2
                     }
                     c.isSurrogate() -> i++
                     c.isISOControl() || c.category == CharCategory.FORMAT ||
-                        c.category == CharCategory.LINE_SEPARATOR || c.category == CharCategory.PARAGRAPH_SEPARATOR -> i++
+                        c.category == CharCategory.LINE_SEPARATOR || c.category == CharCategory.PARAGRAPH_SEPARATOR ||
+                        c.code in INVISIBLE_BMP -> i++
                     else -> { kept.append(c); i++ }
                 }
             }
@@ -67,6 +75,13 @@ data class PairedDevice private constructor(
             if (s.isNotEmpty() && s.last().isHighSurrogate()) s = s.dropLast(1)
             return s.trim()
         }
+
+        private val INVISIBLE_BMP: Set<Int> =
+            (0xFE00..0xFE0F).toSet() + (0x180B..0x180F) + setOf(0x3164, 0xFFA0, 0x115F, 0x1160, 0x2800, 0x034F, 0x17B4, 0x17B5)
+
+        private fun isInvisibleSupplementary(cp: Int): Boolean =
+            cp in 0x1D173..0x1D17A || cp in 0xE0000..0xE007F || cp in 0xE0100..0xE01EF ||
+                cp in 0x13430..0x13440 || cp in 0x1BCA0..0x1BCA3
     }
 }
 
@@ -74,7 +89,7 @@ data class PairedDevice private constructor(
  * Immutable list of paired devices plus every key that was ever trusted and then revoked or replaced
  * ([retiredKeys]). A key is unique across all rows and never comes back from the retired set, so re-trusting a
  * device means a new pairing ceremony with a new key. The constructor and `copy` are private; persistence goes
- * through [restore].
+ * through the internal [restore].
  */
 @ConsistentCopyVisibility
 data class PairedDevices private constructor(val all: List<PairedDevice>, val retiredKeys: Set<String>) {
@@ -124,8 +139,12 @@ data class PairedDevices private constructor(val all: List<PairedDevice>, val re
     companion object {
         val EMPTY = PairedDevices(emptyList(), emptySet())
 
-        /** Persistence only: rebuilds stored state, validating that no retired key is active again. */
-        fun restore(all: List<PairedDevice>, retiredKeys: Set<String>): PairedDevices =
+        /**
+         * Persistence only: rebuilds stored state, validating that no retired key is active again. The state
+         * must come from SecureStore or other authenticated storage, and the caller must reject a [retiredKeys]
+         * that is smaller than the one it saved last: shrinking it would re-trust a revoked key.
+         */
+        internal fun restore(all: List<PairedDevice>, retiredKeys: Set<String>): PairedDevices =
             PairedDevices(all, retiredKeys + all.filter { it.revoked }.map { it.publicKeyHex })
     }
 }

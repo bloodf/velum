@@ -101,7 +101,7 @@ class LanSyncGateTest {
             base + ("v" to "2"), base - "v", base + ("id" to "a b"), base + ("id" to "short"),
             base + ("port" to "0"), base + ("port" to "65536"), base + ("port" to "-1"),
             base + ("port" to "99999999999"), base + ("port" to "4a"), base - "port", base + ("port" to ""),
-            base + ("port" to "04242"), base + ("port" to "٤٢٤٢"),
+            base + ("port" to "04242"), base + ("port" to "\u0664\u0662\u0664\u0662"),
         )
         bad.forEach { assertNull(LanAdvertisement.fromTxt(it), it.toString()) }
         assertFailsWith<IllegalArgumentException> { LanAdvertisement.forSelf(phoneId, 70_000) }
@@ -127,7 +127,7 @@ class LanSyncGateTest {
         listOf(
             "8.8.8.8:80", "172.32.0.1:80", "192.169.1.1:80", "example.com:80", "192.168.1.5", "192.168.1.5:0",
             "192.168.1.5:65536", "192.168.1.256:80", "[fe80::1]:80", "192.168.1:80", "192.168.1.5:80:1", "",
-            "192.168.1.5:", "192.168.1.5:٤٢", "192.168.1.٥:80", "192.168.01.5:80", "192.168.1.5:080",
+            "192.168.1.5:", "192.168.1.5:\u0664\u0662", "192.168.1.\u0665:80", "192.168.01.5:80", "192.168.1.5:080",
             "169.254.169.254:80", "169.254.169.1:80", "169.254.170.2:80", "192.168.1.0:80", "192.168.1.255:80",
             "10.0.0.255:80", "255.255.255.255:80",
         ).forEach { assertNull(LanEndpoint.parse(it), it) }
@@ -147,22 +147,33 @@ class LanSyncGateTest {
     }
 
     @Test fun names_are_cleaned_of_spoofing_characters() {
-        assertEquals("Phone", PairedDevice.cleanName("‮Pho\u0000ne⁦ "))
-        assertEquals("AB", PairedDevice.cleanName("A؜B"))                   // Arabic letter mark
-        assertEquals("AB", PairedDevice.cleanName("A B "))             // line/paragraph separators
-        assertEquals("AB", PairedDevice.cleanName("A​‌‍⁠﻿B")) // zero-width
-        assertEquals("AB", PairedDevice.cleanName("A󠁁B"))             // tag character (U+E0041)
+        assertEquals("Phone", PairedDevice.cleanName("\u202EPho\u0000ne\u2066 "))
+        assertEquals("AB", PairedDevice.cleanName("A\u061CB"))                   // Arabic letter mark
+        assertEquals("AB", PairedDevice.cleanName("A\u2028B\u2029"))             // line/paragraph separators
+        assertEquals("AB", PairedDevice.cleanName("A\u200B\u200C\u200D\u2060\uFEFFB")) // zero-width
+        assertEquals("AB", PairedDevice.cleanName("A\uDB40\uDC41B"))             // tag character (U+E0041)
         assertEquals("AB", PairedDevice.cleanName("A\uD800B\uDC00"))             // unpaired surrogates
-        assertEquals("A😀", PairedDevice.cleanName("A😀"))   // a real emoji survives
+        assertEquals("A\uD83D\uDE00", PairedDevice.cleanName("A\uD83D\uDE00"))   // a real emoji survives
         // 63 units then an emoji pair: the cap must not leave half a pair.
-        val long = "x".repeat(63) + "😀"
+        val long = "x".repeat(63) + "\uD83D\uDE00"
         assertEquals("x".repeat(63), PairedDevice.cleanName(long))
         // Trim happens after the cap.
         assertEquals("x".repeat(63), PairedDevice.cleanName("x".repeat(63) + " tail"))
-        assertEquals("Desk", devices.rename(phoneId, "‮ Desk\n").find(phoneId)?.name)
-        assertEquals("Phone", devices.rename(phoneId, "‮").find(phoneId)?.name) // blank result keeps the old name
-        assertFailsWith<IllegalArgumentException> { PairedDevice.create(phoneId, "‮evil", keyA) }
-        assertFailsWith<IllegalArgumentException> { PairedDevice.create(phoneId, "‮", keyA) }
+        assertEquals("Desk", devices.rename(phoneId, "\u202E Desk\n").find(phoneId)?.name)
+        assertEquals("Phone", devices.rename(phoneId, "\u202E").find(phoneId)?.name) // blank result keeps the old name
+        // Supplementary format, variation selectors and blank-looking fillers.
+        assertEquals("AB", PairedDevice.cleanName("A\uD834\uDD73B"))             // U+1D173 musical begin beam
+        assertEquals("AB", PairedDevice.cleanName("A\uDB40\uDD00B"))             // U+E0100 variation selector
+        assertEquals("AB", PairedDevice.cleanName("A\uFE0F\u180B\u034FB"))      // variation selectors, CGJ
+        assertEquals("AB", PairedDevice.cleanName("A\u3164\uFFA0\u115F\u1160\u17B4B"))
+        assertEquals("AB", PairedDevice.cleanName("A\u2800B"))                    // braille blank
+        listOf("\u3164", "\u2800", "\uDB40\uDD00", " \u3164\u2800 ", "\uFFA0").forEach { blank ->
+            assertEquals("", PairedDevice.cleanName(blank), blank)
+            assertEquals("Phone", devices.rename(phoneId, blank).find(phoneId)?.name)
+            assertFailsWith<IllegalArgumentException> { PairedDevice.create(phoneId, blank, keyA) }
+        }
+        assertFailsWith<IllegalArgumentException> { PairedDevice.create(phoneId, "\u202Eevil", keyA) }
+        assertFailsWith<IllegalArgumentException> { PairedDevice.create(phoneId, "\u202E", keyA) }
     }
 
     @Test fun find_matches_exactly_and_misses_cleanly() {

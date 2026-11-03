@@ -62,7 +62,8 @@ data class LanEndpoint private constructor(val host: String, val port: Int) {
 
         /**
          * Canonical dotted quad for an RFC 1918 or link-local address, else null. No leading zeros, no network
-         * (.0) or broadcast (.255) addresses, and not the 169.254.169.254 cloud-metadata address.
+         * (.0) or broadcast (.255) addresses, and not the cloud/container metadata ranges 169.254.169.0/24 and
+         * 169.254.170.0/24.
          */
         private fun parseHost(host: String): String? {
             val octets = host.split(".")
