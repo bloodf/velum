@@ -30,6 +30,7 @@ import dev.velum.app.platform.MicCapture
 import dev.velum.app.platform.createMicCapture
 import dev.velum.app.platform.DOWNLOAD_PART_SUFFIX
 import dev.velum.app.platform.deleteFileAtPath
+import dev.velum.app.platform.isSamePath
 import dev.velum.app.platform.isSupersededOwnAudio
 import dev.velum.app.platform.recordingsDirectoryPath
 import dev.velum.app.platform.streamToFileAtomically
@@ -60,6 +61,7 @@ import dev.velum.core.settings.SettingsRepository
 import dev.velum.core.time.VelumDateTime
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -285,60 +287,78 @@ class AppContainer(
         val dir = recordingsDirectoryPath()
         // Stream into a fsynced .part and atomically rename once complete (#86), so a crash,
         // cancellation or full disk never leaves a truncated recording under its final name.
-        val (path, sizeBytes) = withContext(Dispatchers.IO) {
-            streamToFileAtomically(
-                partPath = "$dir/$id$DOWNLOAD_PART_SUFFIX",
-                headBytes = 12,
-                finalPathFor = { head ->
-                    val ext = when {
-                        looksLikeOgg(head) -> "ogg"
-                        looksLikeWav(head) -> "wav"
-                        else -> "bin"
-                    }
-                    "$dir/$id.$ext"
-                },
-            ) { sink -> session.writeDecryptedAudio(sink) }
-        }
-        if (existing != null) {
-            repository.replaceDeviceSessionAudio(id, path, sizeBytes, session.processingWarning)
-            // Only this row's own superseded file in the recordings dir (e.g. .ogg -> .wav).
-            val previousPath = existing.local_path
-            if (previousPath != null && isSupersededOwnAudio(previousPath, path, dir, id)) deleteFileAtPath(previousPath)
-            // Re-process only a row that never produced a transcript; never overwrite user content.
-            if (existing.transcript.isNullOrBlank() && existing.summary_markdown.isNullOrBlank()) {
-                repository.updateStatus(id, "queued")
-                enqueueDownloadedSession(id, existing.title)
+        // A cancellation or failure after the rename but before the row exists would leave a decrypted file under
+        // its final name that no row points to, so a wipe (which deletes by row) would not remove it.
+        var finalPath: String? = null
+        try {
+            val (path, sizeBytes) = withContext(Dispatchers.IO) {
+                streamToFileAtomically(
+                    partPath = "$dir/$id$DOWNLOAD_PART_SUFFIX",
+                    headBytes = 12,
+                    finalPathFor = { head ->
+                        val ext = when {
+                            looksLikeOgg(head) -> "ogg"
+                            looksLikeWav(head) -> "wav"
+                            else -> "bin"
+                        }
+                        "$dir/$id.$ext"
+                    },
+                ) { sink -> session.writeDecryptedAudio(sink) }.also { finalPath = it.first }
             }
-            return@withLock id
+            if (existing != null) {
+                repository.replaceDeviceSessionAudio(id, path, sizeBytes, session.processingWarning)
+                // Only this row's own superseded file in the recordings dir (e.g. .ogg -> .wav).
+                val previousPath = existing.local_path
+                if (previousPath != null && isSupersededOwnAudio(previousPath, path, dir, id)) deleteFileAtPath(previousPath)
+                // Re-process only a row that never produced a transcript; never overwrite user content.
+                if (existing.transcript.isNullOrBlank() && existing.summary_markdown.isNullOrBlank()) {
+                    repository.updateStatus(id, "queued")
+                    enqueueDownloadedSession(id, existing.title)
+                }
+                return@withLock id
+            }
+            val started = if (session.startedAtEpochSeconds > 1_000_000_000L) {
+                session.startedAtEpochSeconds
+            } else {
+                epochSecondsNow()
+            }
+            val title = formatRecordingTitle(started)
+            repository.insertDeviceSessionRecording(
+                Recording(
+                    id = id,
+                    session_id = session.sessionId,
+                    folder_id = null,
+                    title = title,
+                    source = "note_pro",
+                    device_serial = serial,
+                    started_at = started,
+                    duration_seconds = 0,
+                    size_bytes = sizeBytes,
+                    local_path = path,
+                    transcript = null,
+                    summary_markdown = null,
+                    status = "queued",
+                    trashed = 0,
+                    created_at = epochSecondsNow(),
+                    processing_warning = session.processingWarning,
+                ),
+            )
+            enqueueDownloadedSession(id, title)
+            id
+        } catch (t: Throwable) {
+            val orphan = finalPath
+            if (orphan != null && existing?.local_path?.let { isSamePath(it, orphan) } != true) {
+                // Ask the database, not a flag: a cancel can land right after the row commits. If the check
+                // itself fails the file is kept (unknown is not orphaned), and the original [t] is rethrown.
+                runCatching {
+                    withContext(NonCancellable) {
+                        val rowPath = repository.getRecording(id)?.local_path
+                        if (rowPath == null || !isSamePath(rowPath, orphan)) deleteFileAtPath(orphan)
+                    }
+                }
+            }
+            throw t
         }
-        val started = if (session.startedAtEpochSeconds > 1_000_000_000L) {
-            session.startedAtEpochSeconds
-        } else {
-            epochSecondsNow()
-        }
-        val title = formatRecordingTitle(started)
-        repository.insertDeviceSessionRecording(
-            Recording(
-                id = id,
-                session_id = session.sessionId,
-                folder_id = null,
-                title = title,
-                source = "note_pro",
-                device_serial = serial,
-                started_at = started,
-                duration_seconds = 0,
-                size_bytes = sizeBytes,
-                local_path = path,
-                transcript = null,
-                summary_markdown = null,
-                status = "queued",
-                trashed = 0,
-                created_at = epochSecondsNow(),
-                processing_warning = session.processingWarning,
-            ),
-        )
-        enqueueDownloadedSession(id, title)
-        id
     }
 
     private suspend fun enqueueDownloadedSession(id: String, title: String) {
