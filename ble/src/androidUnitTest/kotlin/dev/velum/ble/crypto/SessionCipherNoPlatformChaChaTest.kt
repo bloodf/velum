@@ -5,6 +5,7 @@ import java.security.Provider
 import java.security.Security
 import javax.crypto.Cipher
 import kotlin.test.assertContentEquals
+import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -45,17 +46,52 @@ class SessionCipherNoPlatformChaChaTest {
     private fun <T> withoutPlatformChaCha(block: () -> T): T {
         val removed = mutableListOf<Pair<Int, Provider>>()
         Security.getProviders().forEachIndexed { i, p ->
-            if (p.getService("Cipher", "ChaCha20-Poly1305") != null) removed += (i + 1) to p
+            if (PLATFORM_CHACHA_TRANSFORMATIONS.any { name -> p.getService("Cipher", name) != null }) removed += (i + 1) to p
         }
         removed.forEach { Security.removeProvider(it.second.name) }
         try {
-            assertFailsWith<java.security.NoSuchAlgorithmException>("platform ChaCha must be gone") {
-                Cipher.getInstance("ChaCha20-Poly1305")
+            for (name in PLATFORM_CHACHA_TRANSFORMATIONS) {
+                assertFailsWith<java.security.NoSuchAlgorithmException>("platform ChaCha '$name' must be gone") {
+                    Cipher.getInstance(name)
+                }
             }
             return block()
         } finally {
             removed.sortedBy { it.first }.forEach { (pos, p) -> Security.insertProviderAt(p, pos) }
         }
+    }
+
+    /**
+     * What an API 28 image does: only the documented full name resolves, the bare alias throws. The JDK stands in
+     * for the platform cipher behind the full name; [asked] records every name the code requests, in order.
+     */
+    private fun api28Resolver(asked: MutableList<String>): (String) -> Cipher = { name ->
+        asked += name
+        if (name == "ChaCha20/Poly1305/NoPadding") Cipher.getInstance("ChaCha20-Poly1305")
+        else throw java.security.NoSuchAlgorithmException(name)
+    }
+
+    @Test
+    fun theFullTransformationNameIsAskedFirstAndSelectsThePlatformCipher() {
+        val asked = mutableListOf<String>()
+        val cipher = JcaSessionCipher(api28Resolver(asked))
+        assertTrue(cipher.usesPlatformChaCha, "the full name must select the platform path")
+        assertEquals("ChaCha20/Poly1305/NoPadding", asked.first())
+        assertContentEquals(sealed, cipher.chacha20Poly1305Seal(key, nonce, aad, plain))
+        assertContentEquals(plain, cipher.chacha20Poly1305Open(key, nonce, aad, sealed))
+        assertNull(cipher.chacha20Poly1305Open(key, nonce, aad, sealed.copyOf().also { it[0] = (it[0].toInt() xor 1).toByte() }))
+        assertTrue("ChaCha20-Poly1305" !in asked, "the alias must not be asked once the full name works: $asked")
+    }
+
+    @Test
+    fun theAliasIsTheFallbackWhenTheFullNameIsMissing() {
+        val asked = mutableListOf<String>()
+        val cipher = JcaSessionCipher { name ->
+            asked += name
+            if (name == "ChaCha20-Poly1305") Cipher.getInstance(name) else throw java.security.NoSuchAlgorithmException(name)
+        }
+        assertTrue(cipher.usesPlatformChaCha)
+        assertEquals(listOf("ChaCha20/Poly1305/NoPadding", "ChaCha20-Poly1305"), asked.take(2))
     }
 
     @Test
