@@ -147,7 +147,8 @@ class WifiFastTransferSession(
         // Start WS listener first so the device can connect as soon as SoftAP is up.
         server.start(port = port, bindHost = bindHost, preamble = preamble)
         softAp.join(ssid, password, ssidIsPattern)
-        sendSeq = 0
+        // Under the send lock, so a send in flight cannot take a sequence number from the old run.
+        sendMutex.withLock { sendSeq = 0 }
         recvSeq = 0
     }
 

@@ -17,6 +17,11 @@ import kotlinx.coroutines.test.runTest
 
 /** #350: the Wi-Fi send path applies the same forbidden opcode / setting check as BLE writes. Synthetic only. */
 class WifiSendGuardTest {
+    private object NoopJoiner : WifiSoftApJoiner {
+        override suspend fun join(ssid: String, password: String, ssidIsPattern: Boolean) = Unit
+        override suspend fun leave() = Unit
+    }
+
     private class RecordingServer : WifiTransferServer {
         val sent = mutableListOf<ByteArray>()
         override suspend fun start(port: Int, bindHost: String?, preamble: ByteArray) = Unit
@@ -44,7 +49,7 @@ class WifiSendGuardTest {
 
     private val server = RecordingServer()
     private val cipher = CountingCipher()
-    private val session = WifiFastTransferSession(UnsupportedWifiSoftApJoiner, server, cipher)
+    private val session = WifiFastTransferSession(NoopJoiner, server, cipher)
 
     private fun frames(opcode: Int): List<ByteArray> = buildList {
         add(byteArrayOf(Framing.APP_PREFIX, (opcode and 0xFF).toByte(), (opcode shr 8).toByte())) // [01, lo, hi]
@@ -91,5 +96,13 @@ class WifiSendGuardTest {
         cipher.beforeSeal = { packet[1] = ForbiddenOpcodes.OTA.toByte() }
         session.sendPacket(packet)
         assertContentEquals(Framing.encodeCommand(0x40), server.sent.single(), "the checked bytes are the sent bytes")
+    }
+
+    @Test fun restarting_the_session_restarts_the_sequence_at_zero() = runTest {
+        session.sendPacket(Framing.encodeCommand(0x40))
+        session.sendPacket(Framing.encodeCommand(0x41))
+        session.start("ssid", "password")
+        session.sendPacket(Framing.encodeCommand(0x42))
+        assertEquals(listOf(0L, 1L, 0L), cipher.sequences)
     }
 }
