@@ -165,18 +165,8 @@ actual class LocalAsrRuntime actual constructor() {
                 spans = spans,
                 embeddingModelPath = embModel.absolutePath,
             )
-            val named = mutableMapOf<String, String>()
-            if (voiceProfiles != null) {
-                voiceProfiles.withReady {
-                    if (recordingId != null) voiceProfiles.replaceClusterEmbeddings(recordingId, embeddingsBySpeaker)
-                    for ((speakerId, embedding) in embeddingsBySpeaker) {
-                        val match = voiceProfiles.match(embedding, threshold = matchThreshold)
-                        if (match != null) {
-                            named[speakerId] = match.profile.displayName
-                        }
-                    }
-                }
-            }
+            val named = voiceProfiles?.cacheAndNameSpeakers(recordingId, embeddingsBySpeaker, matchThreshold)
+                ?: emptyMap()
             return DiarizationResult(
                 spans = spans,
                 namedSpeakers = named,

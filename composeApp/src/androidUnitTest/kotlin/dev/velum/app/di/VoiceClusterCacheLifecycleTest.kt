@@ -48,13 +48,36 @@ class VoiceClusterCacheLifecycleTest {
         }
     }
 
-    @Test fun startup_removes_plaintext_speaker_embeddings() {
+    /**
+     * The recording exists (a first container wrote its row), so the orphan sweep must keep its directory and
+     * only the purge removes the plaintext copy; the encrypted copy next to it survives.
+     */
+    @Test fun startup_removes_plaintext_speaker_embeddings_but_keeps_encrypted_ones_of_live_recordings() {
         val root = ModelStoreDir(Files.createTempDirectory("velum-cluster-purge").toString())
-        val legacy = root.resolve("voices/cluster-cache/rec-old")
-        legacy.createDirectories()
-        val plaintext = legacy.resolve("speaker.f32").apply { writeBytes(ByteArray(8) { 1 }) }
-        withContainer(root) {
-            withTimeout(10_000) { while (plaintext.exists()) delay(20) }
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        context.deleteDatabase("velum.db")
+        val first = AppContainer(InMemorySecureStore(), DriverFactory(context), modelStoreRoot = root)
+        runBlocking {
+            first.repository.insertRecording(
+                id = "rec-old", sessionId = null, folderId = null, title = "Synthetic", source = "phone",
+                deviceSerial = null, startedAt = 1_700_000_000L, durationSeconds = 60, sizeBytes = 0, localPath = null,
+                transcript = null, summaryMarkdown = null, status = "ready",
+            )
+        }
+        first.databaseHandle.driver.close()
+        val dir = root.resolve("voices/cluster-cache/rec-old")
+        dir.createDirectories()
+        val plaintext = dir.resolve("speaker.f32").apply { writeBytes(ByteArray(8) { 1 }) }
+        val encrypted = dir.resolve("speaker.enc").apply { writeBytes(ByteArray(8) { 2 }) }
+        val second = AppContainer(InMemorySecureStore(), DriverFactory(context), modelStoreRoot = root)
+        try {
+            runBlocking { withTimeout(10_000) { while (plaintext.exists()) delay(20) } }
+            // The sweep runs right after the purge; give it the time it would need to wrongly delete the directory.
+            runBlocking { delay(500) }
+            assertTrue(encrypted.exists(), "the live recording's encrypted embedding was deleted")
+        } finally {
+            second.databaseHandle.driver.close()
+            root.deleteRecursively()
         }
     }
 

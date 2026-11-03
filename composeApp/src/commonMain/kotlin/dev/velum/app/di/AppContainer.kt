@@ -231,6 +231,7 @@ class AppContainer(
         appScope.launch(Dispatchers.IO) {
             runCatching {
                 voiceProfileStore.purgePlaintextClusterCache()
+                voiceProfileStore.migrateLegacyPlaintextProfiles()
                 // Listed before reading the recordings: a recording is stored before its processing caches anything.
                 val cached = voiceProfileStore.cachedRecordingIds()
                 val live = repository.recordingIds()

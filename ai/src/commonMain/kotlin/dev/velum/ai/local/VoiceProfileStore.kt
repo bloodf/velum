@@ -3,6 +3,7 @@ package dev.velum.ai.local
 import kotlin.concurrent.Volatile
 import dev.velum.core.security.SecureKeys
 import dev.velum.core.security.SecureStore
+import dev.velum.core.security.SecureStoreUnavailableException
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlinx.coroutines.CancellationException
@@ -402,7 +403,7 @@ class VoiceProfileStore(
         val enc = cipher().encrypt(floatsToBytes(embedding))
         val dir = cacheDir.resolve(recordingId)
         dir.createDirectories()
-        dir.resolve("${slug(speakerId)}.enc").writeBytes(enc)
+        writeAtomically(dir, "${slug(speakerId)}.enc", enc)
         // Encrypted only (#320); an older plaintext copy of this speaker goes too.
         dir.resolve("${slug(speakerId)}.f32").deleteFile()
     }
@@ -434,10 +435,54 @@ class VoiceProfileStore(
     fun cachedClusterEmbedding(recordingId: String, speakerId: String): FloatArray? {
         val encFile = cacheDir.resolve(recordingId).resolve("${slug(speakerId)}.enc")
         if (encFile.exists()) {
-            return bytesToFloats(cipher().decrypt(encFile.readBytes()))
+            // A truncated or foreign file (crash mid-write, other key) is a miss: the cache is only a convenience.
+            return try {
+                bytesToFloats(cipher().decrypt(encFile.readBytes()))
+            } catch (_: ProfileCiphertextUnreadableException) {
+                null
+            }
         }
         // Plaintext copies from earlier versions are never read (#320).
         return null
+    }
+
+    /**
+     * Caches this run's speaker embeddings and names the speakers that match a saved profile. A missing or
+     * unreadable key only costs the names and the cache: the diarization spans and transcript stay valid, and
+     * nothing is written in plaintext.
+     */
+    suspend fun cacheAndNameSpeakers(
+        recordingId: String?,
+        embeddingsBySpeaker: Map<String, FloatArray>,
+        matchThreshold: Float,
+    ): Map<String, String> = try {
+        withReady {
+            if (recordingId != null) replaceClusterEmbeddings(recordingId, embeddingsBySpeaker)
+            buildMap {
+                for ((speakerId, embedding) in embeddingsBySpeaker) {
+                    match(embedding, threshold = matchThreshold)?.let { put(speakerId, it.profile.displayName) }
+                }
+            }
+        }
+    } catch (_: VoiceProfileKeyUnavailableException) {
+        emptyMap()
+    } catch (_: SecureStoreUnavailableException) {
+        emptyMap()
+    }
+
+    /**
+     * Re-encrypts profiles still stored as plaintext `.f32` by earlier versions. Needs the key only when such
+     * a file exists, so a fresh install creates no key here. Returns how many profiles were converted.
+     */
+    suspend fun migrateLegacyPlaintextProfiles(): Int {
+        if (!profilesDir.exists() || profilesDir.listChildren().none { it.name.endsWith(".f32") }) return 0
+        return withReady {
+            val plaintextIds = profilesDir.listChildren().filter { it.name.endsWith(".f32") }
+                .map { it.name.removeSuffix(".f32") }.toSet()
+            val readable = inspectProfiles().profiles.filter { it.id in plaintextIds && !profilesDir.resolve("${it.id}.enc").exists() }
+            readable.forEach { writeProfile(it) }
+            readable.size
+        }
     }
 
     fun promoteCached(
@@ -529,9 +574,7 @@ class VoiceProfileStore(
         val packed = packSamples(profile.sampleEmbeddings.ifEmpty { listOf(profile.embedding) })
         val encrypted = cipher().encrypt(packed)
         profilesDir.createDirectories()
-        val meta = profilesDir.resolve("${profile.id}.json")
-        val enc = profilesDir.resolve("${profile.id}.enc")
-        meta.writeBytes(
+        writeAtomically(profilesDir, "${profile.id}.json",
             json.encodeToString(
                 VoiceProfileFile(
                     id = profile.id,
@@ -547,9 +590,20 @@ class VoiceProfileStore(
                 ),
             ).encodeToByteArray(),
         )
-        enc.writeBytes(encrypted)
+        writeAtomically(profilesDir, "${profile.id}.enc", encrypted)
         // Remove legacy plaintext if present.
         profilesDir.resolve("${profile.id}.f32").deleteRecursively()
+    }
+
+    /** Temp file then rename, so a crash leaves the old file or the new one, never a truncated one. */
+    private fun writeAtomically(dir: ModelStoreDir, fileName: String, bytes: ByteArray) {
+        val tmp = dir.resolve("$fileName.tmp")
+        try {
+            tmp.writeBytes(bytes)
+            check(tmp.renameTo(dir.resolve(fileName))) { "Unable to publish $fileName." }
+        } finally {
+            if (tmp.exists()) tmp.deleteFile()
+        }
     }
 
     companion object {
