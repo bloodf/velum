@@ -6,6 +6,8 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import dev.velum.ai.local.ModelStoreDir
 import dev.velum.ai.pipeline.RecordingJobScheduler
 import dev.velum.app.di.AppContainer
+import dev.velum.app.platform.AudioNormalizer
+import dev.velum.app.platform.NormalizedAudio
 import dev.velum.app.platform.sha256File
 import dev.velum.core.data.DriverFactory
 import dev.velum.core.security.InMemorySecureStore
@@ -14,8 +16,10 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.file.Files
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
+import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -86,6 +90,44 @@ class ReimportAfterDeleteTest {
         val retagged = silentWav(File(wav.parentFile, "retagged.wav"), extraChunk = true)
         assertNotEquals(sha256File(wav.path), sha256File(retagged.path))
         assertIs<ImportResult.Deleted>(pipeline.importFile(retagged.path, source = "watched"))
+    }
+
+    /** Real normalizing, counted, keeping the outputs. */
+    private class CountingNormalize {
+        val outputs = mutableListOf<String>()
+        val call: suspend (String) -> NormalizedAudio = { path ->
+            AudioNormalizer().normalizeToWav(path).also { outputs += it.wavPath }
+        }
+    }
+
+    @Test fun a_retagged_copy_of_a_deleted_recording_is_only_decoded_once() = withPipeline { container, _, wav ->
+        val normalize = CountingNormalize()
+        val pipeline = AudioImportPipeline(container, normalize = normalize.call)
+        val first = assertIs<ImportResult.Created>(pipeline.importFile(wav.path, source = "watched"))
+        container.repository.deleteRecordingHard(first.recordingId)
+        val retagged = silentWav(File(wav.parentFile, "retagged.wav"), extraChunk = true)
+        assertIs<ImportResult.Deleted>(pipeline.importFile(retagged.path, source = "watched"))
+        assertEquals(2, normalize.outputs.size)
+        assertFalse(File(normalize.outputs[1]).exists(), "decoding the copy recreated audio the user deleted")
+
+        assertIs<ImportResult.Deleted>(pipeline.importFile(retagged.path, source = "watched"))
+        assertEquals(2, normalize.outputs.size, "every sync decodes the deleted copy again")
+    }
+
+    @Test fun a_retagged_copy_of_a_live_recording_is_a_duplicate_and_leaves_no_second_file() = withPipeline { container, _, wav ->
+        val normalize = CountingNormalize()
+        val pipeline = AudioImportPipeline(container, normalize = normalize.call)
+        val first = assertIs<ImportResult.Created>(pipeline.importFile(wav.path))
+        val retagged = silentWav(File(wav.parentFile, "retagged.wav"), extraChunk = true)
+
+        val duplicate = assertIs<ImportResult.Duplicate>(pipeline.importFile(retagged.path))
+        assertEquals(first.recordingId, duplicate.existingRecordingId)
+        assertEquals(first.recordingId, container.repository.getMeta("import_sha256_${sha256File(retagged.path)}"))
+        assertTrue(File(first.wavPath).exists(), "the original recording lost its audio")
+        assertFalse(File(normalize.outputs[1]).exists(), "the duplicate's normalized copy was left behind")
+
+        assertIs<ImportResult.Duplicate>(pipeline.importFile(retagged.path))
+        assertEquals(2, normalize.outputs.size, "a known copy was decoded again")
     }
 
     private fun silentWav(file: File, sampleRate: Int = 16_000, durationMs: Int = 200, sample: Short = 0, extraChunk: Boolean = false): File {

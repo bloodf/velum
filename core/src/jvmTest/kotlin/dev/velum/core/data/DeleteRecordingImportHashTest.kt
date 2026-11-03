@@ -49,7 +49,7 @@ class DeleteRecordingImportHashTest {
         repo.deleteRecordingHard("rec-a")
         val deletedAt = assertNotNull(repo.getMeta("import_deleted_source-a")).toLongOrNull()
         assertNotNull(deletedAt, "the tombstone holds no time")
-        assertTrue(deletedAt >= before, "tombstone time $deletedAt is before the delete at $before")
+        assertTrue(deletedAt in before..epochSecondsNow(), "tombstone time $deletedAt is not in epoch seconds around $before")
     }
 
     @Test fun a_delete_that_fails_part_way_changes_nothing() = runBlocking {

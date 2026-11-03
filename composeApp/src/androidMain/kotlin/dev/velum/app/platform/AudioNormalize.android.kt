@@ -45,7 +45,7 @@ actual class AudioNormalizer actual constructor() {
         val hash = sha256File(sourcePath)
         val mime = guessMime(source.name)
         val outDir = File(source.parentFile, "normalized").apply { mkdirs() }
-        // The content hash is part of the name: two different sources that share a file name (two shares called
+        // The source hash is part of the name: two different sources that share a file name (two shares called
         // audio.wav) get different outputs, while the same source maps to the same one (#319).
         val outFile = File(outDir, normalizedFileName(source.nameWithoutExtension, targetSampleRateHz, hash))
         sweepStalePartFiles(outDir, System.currentTimeMillis() - STALE_PART_AGE_MS)
@@ -75,6 +75,8 @@ actual class AudioNormalizer actual constructor() {
                 writer.pcmBytesWritten
             }
             checkCancelled()
+            // Of the normalized audio, so the same audio in another container is recognised (#327).
+            val contentHash = sha256File(temp.absolutePath)
             java.nio.file.Files.move(
                 temp.toPath(), outFile.toPath(),
                 java.nio.file.StandardCopyOption.REPLACE_EXISTING, java.nio.file.StandardCopyOption.ATOMIC_MOVE,
@@ -90,8 +92,7 @@ actual class AudioNormalizer actual constructor() {
                     durationMs.coerceAtLeast(durationHintMs(sourcePath))
                 },
                 sourceMime = mime,
-                // Of the normalized audio, so the same audio in another container is recognised (#327).
-                contentSha256 = sha256File(outFile.absolutePath),
+                contentSha256 = contentHash,
             )
         } catch (t: Throwable) {
             temp.delete() // never leave a half-written WAV that a later import could trust
@@ -232,8 +233,8 @@ private const val WAV_SLICE_BYTES = 256 * 1024
 /** A temp `.part` older than this belongs to a process that died; a live normalize keeps writing to its own. */
 internal const val STALE_PART_AGE_MS = 30L * 60L * 1000L
 
-internal fun normalizedFileName(baseName: String, targetRateHz: Int, contentSha256: String): String =
-    "${baseName}_${targetRateHz}_${contentSha256.take(12)}.wav"
+internal fun normalizedFileName(baseName: String, targetRateHz: Int, sourceSha256: String): String =
+    "${baseName}_${targetRateHz}_${sourceSha256.take(12)}.wav"
 
 private val PART_FILE_NAME = Regex(""".+\.wav\.\d+\.part""")
 
