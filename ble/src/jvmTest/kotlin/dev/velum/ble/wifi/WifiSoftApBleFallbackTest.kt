@@ -122,7 +122,7 @@ class WifiSoftApBleFallbackTest {
     ): ByteArray {
         val out = ByteArrayOutputStream()
         @Suppress("UNCHECKED_CAST")
-        val frames = s.server.incomingEncryptedFrames() as SharedFlow<ByteArray>
+        val frames = s.incomingEncryptedFrames() as SharedFlow<ByteArray>
         frames.onSubscription { subscribed.complete(Unit) }
             .transformWhile<ByteArray, Unit> { sealed ->
                 if (out.size() == 0) delay(consumerStallMs)
@@ -138,6 +138,7 @@ class WifiSoftApBleFallbackTest {
         subscribed: CompletableDeferred<Unit>,
         good: Int,
         corruptNext: Boolean,
+        delivered: DeliveredFrames,
     ) = launch(Dispatchers.IO) {
         val device = connectDevice(port)
         try {
@@ -148,6 +149,7 @@ class WifiSoftApBleFallbackTest {
             if (corruptNext) {
                 device.sendBinary(c.seal(good.toLong(), wifiChunks[good]).also { it[0] = (it[0].toInt() xor 0x55).toByte() })
             }
+            delivered.await(good + if (corruptNext) 1 else 0)
         } finally {
             device.close()
         }
@@ -163,9 +165,11 @@ class WifiSoftApBleFallbackTest {
         val subscribed = CompletableDeferred<Unit>()
         val ble = newBle()
         val joiner = FakeWifiSoftApJoiner()
-        val device = launchDevice(port, subscribed, good, corruptNext)
+        val server = JavaWebsocketTransferServer()
+        val delivered = DeliveredFrames(server, this)
+        val device = launchDevice(port, subscribed, good, corruptNext, delivered)
         val outcome = WifiTransferCoordinator(
-            sessionFactory = { WifiFastTransferSession(joiner, JavaWebsocketTransferServer(), wifiCipher()) },
+            sessionFactory = { WifiFastTransferSession(joiner, server, wifiCipher()) },
             bleDownload = bleDownloadOf(ble),
             wifiTimeout = wifiTimeoutMs.milliseconds,
         ).transferOrFallback(
@@ -173,6 +177,7 @@ class WifiSoftApBleFallbackTest {
             assemble = { assembleExact(it, fixture.size, subscribed, consumerStallMs) },
         )
         device.join()
+        delivered.stop()
         Triple(outcome, ble, joiner)
     }
 
@@ -271,7 +276,7 @@ class WifiSoftApBleFallbackTest {
             assemble = { s ->
                 val out = ByteArrayOutputStream()
                 @Suppress("UNCHECKED_CAST")
-                (s.server.incomingEncryptedFrames() as SharedFlow<ByteArray>)
+                (s.incomingEncryptedFrames() as SharedFlow<ByteArray>)
                     .onSubscription { subscribed.complete(Unit) }
                     .transformWhile<ByteArray, Unit> { sealed ->
                         if (out.size() == 0) {

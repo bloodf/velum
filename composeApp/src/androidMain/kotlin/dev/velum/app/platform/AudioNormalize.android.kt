@@ -45,20 +45,29 @@ actual class AudioNormalizer actual constructor() {
         val hash = sha256File(sourcePath)
         val mime = guessMime(source.name)
         // The only copy of an imported recording: it lives with the other recordings, never in the evictable cache.
-        // No row points here until the import succeeds, and a failure deletes it below.
+        // No row points here until the import succeeds; a failed or duplicate import deletes it.
         val outDir = File(recordingsDirectoryPath()).apply { mkdirs() }
-        val outFile = File(outDir, "import_${source.nameWithoutExtension}_$targetSampleRateHz.wav")
-        onOutput(outFile)
+        // The content hash is part of the name: two different sources that share a file name (two shares called
+        // audio.wav) get different outputs, while the same source maps to the same one (#319).
+        val outFile = File(outDir, "import_" + normalizedFileName(source.nameWithoutExtension, targetSampleRateHz, hash))
+        sweepStalePartFiles(outDir, System.currentTimeMillis() - STALE_PART_AGE_MS)
 
+        // Fast path: PCM16 mono WAV at the target rate is streamed through, never read whole (#319). The header is
+        // read before anything is created, so a failure here can never touch an earlier import of the same name.
+        val fast = if (source.extension.equals("wav", true) || source.extension.equals("wave", true)) {
+            readWavHeader(source)
+        } else {
+            null
+        }
+        val usesFastPath = fast != null && fast.sampleRateHz == targetSampleRateHz && fast.channels == 1
+        // The WAV is written under a name only this call uses and renamed on success, so two imports that map to
+        // the same output name (a retry right after a cancel, two copies of one file name) never delete or
+        // overwrite each other's half-written file (#319).
+        val temp = File(outDir, "${outFile.name}.${System.nanoTime()}.part")
+        onOutput(temp) // reported for a late cancel, and deleted on any failure
         try {
-            // Fast path: PCM16 mono WAV at the target rate is streamed through, never read whole (#319).
-            val fast = if (source.extension.equals("wav", true) || source.extension.equals("wave", true)) {
-                readWavHeader(source)
-            } else {
-                null
-            }
-            val pcmBytes = MonoPcmWavWriter(outFile, targetSampleRateHz).use { writer ->
-                if (fast != null && fast.sampleRateHz == targetSampleRateHz && fast.channels == 1) {
+            val pcmBytes = MonoPcmWavWriter(temp, targetSampleRateHz).use { writer ->
+                if (usesFastPath && fast != null) {
                     writer.setFormat(fast.sampleRateHz, fast.channels)
                     streamWavData(source, fast, writer, checkCancelled)
                 } else {
@@ -67,11 +76,17 @@ actual class AudioNormalizer actual constructor() {
                 writer.finish()
                 writer.pcmBytesWritten
             }
+            checkCancelled()
+            java.nio.file.Files.move(
+                temp.toPath(), outFile.toPath(),
+                java.nio.file.StandardCopyOption.REPLACE_EXISTING, java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+            )
+            onOutput(outFile) // the temp name is gone; a cancel that lands after this removes the final file
             val durationMs = (pcmBytes / 2.0 / targetSampleRateHz * 1000.0).toLong()
             return NormalizedAudio(
                 wavPath = outFile.absolutePath,
                 sampleRateHz = targetSampleRateHz,
-                durationMs = if (fast != null && fast.sampleRateHz == targetSampleRateHz && fast.channels == 1) {
+                durationMs = if (usesFastPath) {
                     durationMs
                 } else {
                     durationMs.coerceAtLeast(durationHintMs(sourcePath))
@@ -80,19 +95,21 @@ actual class AudioNormalizer actual constructor() {
                 contentSha256 = hash,
             )
         } catch (t: Throwable) {
-            outFile.delete() // never leave a half-written WAV that a later import could trust
+            temp.delete() // never leave a half-written WAV that a later import could trust
             throw t
         }
     }
 
     private fun durationHintMs(path: String): Long {
-        return runCatching {
-            val r = MediaMetadataRetriever()
+        val r = MediaMetadataRetriever()
+        return try {
             r.setDataSource(path)
-            val ms = r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()
-            r.release()
-            ms ?: 0L
-        }.getOrDefault(0L)
+            r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+        } catch (_: Throwable) {
+            0L
+        } finally {
+            releaseAll({ r.release() }) // also when setDataSource or extractMetadata throws
+        }
     }
 
     private fun decodeWithMediaCodec(
@@ -213,11 +230,31 @@ actual class AudioNormalizer actual constructor() {
 
 private const val WAV_SLICE_BYTES = 256 * 1024
 
-internal data class WavHeader(val sampleRateHz: Int, val channels: Int, val dataOffset: Long, val dataSize: Long)
+/** A temp `.part` older than this belongs to a process that died; a live normalize keeps writing to its own. */
+internal const val STALE_PART_AGE_MS = 30L * 60L * 1000L
+
+internal fun normalizedFileName(baseName: String, targetRateHz: Int, contentSha256: String): String =
+    "${baseName}_${targetRateHz}_${contentSha256.take(12)}.wav"
+
+private val PART_FILE_NAME = Regex(""".+\.wav\.\d+\.part""")
+
+/** Deletes `*.wav.<n>.part` files in [dir] last modified before [olderThanEpochMs]; returns how many. */
+internal fun sweepStalePartFiles(dir: File, olderThanEpochMs: Long): Int =
+    dir.listFiles().orEmpty().count { f ->
+        f.isFile && PART_FILE_NAME.matches(f.name) && f.lastModified() < olderThanEpochMs && f.delete()
+    }
+
+internal data class WavHeader(
+    val sampleRateHz: Int,
+    val channels: Int,
+    val dataOffset: Long,
+    val dataSize: Long,
+)
 
 /**
- * Walks the RIFF chunks with seeks (no full read). Null when the file is not RIFF/WAVE, so another decoder gets it;
- * throws like the former in-memory parser for a WAV with no data chunk or a bit depth other than 16.
+ * Walks the RIFF chunks with seeks (no full read). Null when the file is not RIFF/WAVE, has no data chunk or
+ * is not 16-bit PCM, so the decoder gets it instead of the import failing (#319). The caller streams only mono at the
+ * target rate.
  */
 internal fun readWavHeader(file: File): WavHeader? = RandomAccessFile(file, "r").use { raf ->
     val length = raf.length()
@@ -228,6 +265,8 @@ internal fun readWavHeader(file: File): WavHeader? = RandomAccessFile(file, "r")
     var sampleRate = 16_000
     var channels = 1
     var bits = 16
+    var audioFormat = 1
+    var subFormat = 1 // only read for WAVE_FORMAT_EXTENSIBLE with a full fmt chunk
     var dataOffset = -1L
     var dataSize = 0L
     val chunk = ByteArray(8)
@@ -238,9 +277,13 @@ internal fun readWavHeader(file: File): WavHeader? = RandomAccessFile(file, "r")
         val size = ByteBuffer.wrap(chunk, 4, 4).order(ByteOrder.LITTLE_ENDIAN).int.toLong() and 0xFFFF_FFFFL
         when (id) {
             "fmt " -> if (size >= 16) {
-                val fmt = ByteArray(16).also { raf.readFully(it) }
+                // 40 bytes cover the WAVE_FORMAT_EXTENSIBLE sub-format code when the chunk has it.
+                val fmt = ByteArray(if (size >= 40) 40 else 16).also { raf.readFully(it) }
+                if (fmt.size == 40) {
+                    subFormat = (fmt[24].toInt() and 0xFF) or ((fmt[25].toInt() and 0xFF) shl 8)
+                }
                 val bb = ByteBuffer.wrap(fmt).order(ByteOrder.LITTLE_ENDIAN)
-                bb.short // format
+                audioFormat = bb.short.toInt() and 0xFFFF
                 channels = bb.short.toInt() and 0xFFFF
                 sampleRate = bb.int
                 bb.int // byte rate
@@ -254,8 +297,11 @@ internal fun readWavHeader(file: File): WavHeader? = RandomAccessFile(file, "r")
         }
         offset += 8 + size + (size and 1L)
     }
-    require(dataOffset >= 0) { "WAV missing data chunk" }
-    require(bits == 16) { "Only PCM16 WAV supported in fast path (got $bits-bit)" }
+    // No data chunk: nothing to stream here; the decoder gets the file and reports what is wrong with it.
+    // PCM (1), or WAVE_FORMAT_EXTENSIBLE (0xFFFE) whose sub-format is PCM; anything else (float, ADPCM, A-law,
+    // extensible float) goes to the decoder.
+    val pcm = audioFormat == 1 || (audioFormat == 0xFFFE && subFormat == 1)
+    if (dataOffset < 0 || bits != 16 || !pcm) return null
     WavHeader(sampleRate, channels, dataOffset, dataSize)
 }
 

@@ -82,18 +82,18 @@ object WatchedFolderStore {
                         val key = fileKey(child.uri.toString(), child.lastModified(), child.length())
                         // Already imported: the cache copy is deleted after an import, so do not copy it again.
                         if (key in imported) return@forEach
-                        val dest = File(destRoot, "${child.lastModified()}_$name")
+                        val dest = File(destRoot, watchedCopyName(child.uri.toString(), child.lastModified(), name))
                         // One unreadable file (card pulled mid-copy, revoked grant) must not stop the others.
                         val copied = runCatching {
                             copyWholeFile(dest, child.length()) { context.contentResolver.openInputStream(child.uri) }
                         }.getOrDefault(false)
                         if (copied) {
+                            removeLegacyWatchedCopy(destRoot, child.lastModified(), name, dest)
                             out += WatchedFolderEntry(
                                 displayName = name,
                                 uriString = child.uri.toString(),
                                 absoluteCopyPath = dest.absolutePath,
                                 lastModifiedMs = child.lastModified(),
-                                fileKey = key,
                             )
                         }
                     }
@@ -141,4 +141,24 @@ fun rememberWatchedFolderPicker(onPicked: (treeUri: String) -> Unit): () -> Unit
         }
     }
     return remember(launcher) { { launcher.launch(null) } }
+}
+
+/**
+ * Name of the private copy of a watched-folder file. The document URI is hashed in, so two folders (or sub-folders)
+ * holding a same-named file with the same modification time no longer share, and overwrite, one copy (#319).
+ */
+internal fun watchedCopyName(documentUri: String, lastModified: Long, name: String): String {
+    val digest = java.security.MessageDigest.getInstance("SHA-256").digest(documentUri.encodeToByteArray())
+    val short = digest.take(6).joinToString("") { (it.toInt() and 0xFF).toString(16).padStart(2, '0') }
+    // Sanitised like every other imported name: a long or odd document name must not exceed the 255-byte limit.
+    return "${lastModified}_${short}_${sanitizeImportFileName(name)}"
+}
+
+/**
+ * Before the document-URI hash, a copy was named `<lastModified>_<name>`. Once the new copy exists the old one is
+ * dead weight (and would otherwise double the folder), so remove it. Never removes [current] itself.
+ */
+internal fun removeLegacyWatchedCopy(destRoot: File, lastModified: Long, name: String, current: File): Boolean {
+    val legacy = File(destRoot, "${lastModified}_$name")
+    return legacy.isFile && legacy.canonicalFile != current.canonicalFile && legacy.delete()
 }

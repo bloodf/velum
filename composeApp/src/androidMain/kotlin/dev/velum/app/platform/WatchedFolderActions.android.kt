@@ -3,6 +3,7 @@ package dev.velum.app.platform
 import androidx.compose.runtime.Composable
 import dev.velum.app.importing.AudioImportPipeline
 import dev.velum.app.importing.ImportResult
+import dev.velum.app.importing.WATCHED_SOURCE
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -18,7 +19,7 @@ actual suspend fun syncWatchedFolders(pipeline: AudioImportPipeline): List<Impor
             WatchedFolderStore.scanNewAudio(context, uri).forEach { entry ->
                 val result = pipeline.importFile(
                     absolutePath = entry.absoluteCopyPath,
-                    source = "watched",
+                    source = WATCHED_SOURCE,
                     titleHint = entry.displayName.substringBeforeLast('.'),
                     startedAtEpochSeconds = entry.lastModifiedMs / 1000L,
                 )

@@ -10,6 +10,10 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.test.core.app.ApplicationProvider
@@ -91,11 +95,59 @@ class AccessibilitySemanticsTest {
         try {
             show { dev.velum.app.ui.templates.TemplatesScreen(container, onBack = {}, onOpenTemplate = {}) }
             val density = context.resources.displayMetrics.density
-            val back = compose.onAllNodes(hasContentDescription(En.ux.back) and hasClickAction()).fetchSemanticsNodes().first()
+            val back = compose.onAllNodes(hasContentDescription(En.ux.back) and hasClickAction()).fetchSemanticsNodes()
+                .minByOrNull { it.boundsInRoot.top }!! // the top-left control
+            assertEquals(Role.Button, back.config.getOrNull(SemanticsProperties.Role))
             assertTrue(back.size.width / density >= 48f && back.size.height / density >= 48f, "back target ${back.size} px at density $density")
         } finally {
             container.databaseHandle.driver.close()
             root.deleteRecursively()
         }
+    }
+
+    private fun withContainer(block: (AppContainer, Float) -> Unit) {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        context.deleteDatabase("velum.db")
+        val root = ModelStoreDir(Files.createTempDirectory("velum-a11y-rows").toString())
+        val container = AppContainer(InMemorySecureStore(), DriverFactory(context), modelStoreRoot = root)
+        try {
+            block(container, context.resources.displayMetrics.density)
+        } finally {
+            container.databaseHandle.driver.close()
+            root.deleteRecursively()
+        }
+    }
+
+    @Test fun memory_glossary_row_without_a_definition_is_at_least_48dp() = withContainer { container, density ->
+        kotlinx.coroutines.runBlocking { container.repository.addGlossaryTerm("g1", "OKR") }
+        show { dev.velum.app.ui.settings.MemoryScreen(container, onBack = {}) }
+        compose.waitUntil(5_000) { compose.onAllNodes(hasText("OKR")).fetchSemanticsNodes().isNotEmpty() }
+        val row = compose.onAllNodes(hasText("OKR") and hasClickAction()).fetchSemanticsNodes().first()
+        assertTrue(row.size.height / density >= 48f, "glossary row height ${row.size.height / density} dp")
+    }
+
+    @Test fun model_picker_row_without_an_owner_is_at_least_48dp() {
+        show {
+            dev.velum.app.ui.settings.TaskModelPicker(
+                title = "Summary",
+                selectedId = "gpt-x",
+                models = listOf(dev.velum.core.model.AiModelInfo("gpt-x")),
+                onSelect = {},
+            )
+        }
+        val density = ApplicationProvider.getApplicationContext<Context>().resources.displayMetrics.density
+        val row = compose.onAllNodes(hasText("gpt-x") and hasClickAction()).fetchSemanticsNodes().first()
+        assertTrue(row.size.height / density >= 48f, "model row height ${row.size.height / density} dp")
+    }
+
+    @Test fun autoflow_search_row_keeps_its_height_when_typing() {
+        show { dev.velum.app.ui.autoflow.AutoFlowTemplateLibraryScreen(onBack = {}, onUseTemplate = {}) }
+        // The category chips sit directly below the search row, so any change of the row height moves them.
+        fun chipTop() = compose.onAllNodes(hasText(En.everything)).fetchSemanticsNodes().first().boundsInRoot.top
+        val before = chipTop()
+        compose.onNode(hasSetTextAction()).performTextInput("a")
+        compose.waitForIdle()
+        assertTrue(compose.onAllNodes(hasContentDescription(En.clearSearch)).fetchSemanticsNodes().isNotEmpty(), "clear shown")
+        assertEquals(before, chipTop(), "the chips moved when the clear button appeared")
     }
 }

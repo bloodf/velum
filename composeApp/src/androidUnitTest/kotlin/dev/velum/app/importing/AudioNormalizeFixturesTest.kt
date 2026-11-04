@@ -9,6 +9,7 @@ import dev.velum.app.platform.sha256File
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -29,10 +30,14 @@ class AudioNormalizeFixturesTest {
 
     private lateinit var dir: File
 
+    /** #318: normalized output lives with the other recordings, not beside the (cache) source. */
+    private lateinit var outDir: File
+
     @Before
     fun setUp() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         dev.velum.app.platform.installRecordingFilesDir(java.nio.file.Files.createTempDirectory("velum-norm").toFile().path)
+        outDir = File(dev.velum.app.platform.recordingsDirectoryPath()).apply { mkdirs() }
         dir = File(context.cacheDir, "import_fixtures").apply {
             deleteRecursively()
             mkdirs()
@@ -50,6 +55,131 @@ class AudioNormalizeFixturesTest {
         assertTrue(File(normalized.wavPath).exists())
         assertEquals(hash1, sha256File(wav.absolutePath))
         assertTrue(normalized.contentSha256.isNotBlank())
+    }
+
+    @Test
+    fun wavFastPath_streamsExactPcmAcrossSlicesWithAnOddTail() = runBlocking {
+        val src = File(dir, "ramp.wav")
+        // 700,001 data bytes: three 256 KiB slices and an odd last byte, which is not a whole sample.
+        val pcm = ByteArray(700_001) { (it * 13).toByte() }
+        val header = ByteBuffer.allocate(44).order(ByteOrder.LITTLE_ENDIAN)
+        header.put("RIFF".toByteArray()).putInt(36 + pcm.size).put("WAVE".toByteArray()).put("fmt ".toByteArray()).putInt(16)
+        header.putShort(1).putShort(1).putInt(16_000).putInt(32_000).putShort(2).putShort(16)
+        header.put("data".toByteArray()).putInt(pcm.size)
+        src.writeBytes(header.array() + pcm)
+        val out = File(AudioNormalizer().normalizeToWav(src.absolutePath, 16_000).wavPath).readBytes()
+        val whole = pcm.size - 1 // the dangling byte is dropped, like any partial frame
+        assertEquals(44 + whole, out.size)
+        org.junit.Assert.assertArrayEquals(pcm.copyOf(whole), out.copyOfRange(44, out.size))
+        assertEquals(whole, ByteBuffer.wrap(out).order(ByteOrder.LITTLE_ENDIAN).getInt(40))
+        assertEquals(36 + whole, ByteBuffer.wrap(out).order(ByteOrder.LITTLE_ENDIAN).getInt(4))
+        assertTrue("no temp file is left beside the output", outDir.list()!!.none { it.endsWith(".part") })
+    }
+
+    @Test
+    fun aCutOffFmtChunkFailsButNeverTouchesAnEarlierOutputOfTheSameName() = runBlocking {
+        val bad = File(dir, "bad.wav")
+        val b = ByteBuffer.allocate(12 + 8 + 6).order(ByteOrder.LITTLE_ENDIAN) // fmt claims 16 bytes, 6 follow
+        b.put("RIFF".toByteArray()).putInt(26).put("WAVE".toByteArray()).put("fmt ".toByteArray()).putInt(16).putShort(1).putShort(1).putShort(0)
+        bad.writeBytes(b.array())
+        // The exact name this source would be normalized to, holding an earlier good import of it.
+        val old = File(outDir, "import_" + dev.velum.app.platform.normalizedFileName("bad", 16_000, dev.velum.app.platform.sha256File(bad.absolutePath)))
+            .apply { parentFile!!.mkdirs(); writeText("an earlier good import") }
+        org.junit.Assert.assertThrows(java.io.IOException::class.java) {
+            runBlocking { AudioNormalizer().normalizeToWav(bad.absolutePath, 16_000) }
+        }
+        assertEquals("an earlier good import", old.readText())
+    }
+
+    @Test
+    fun aFailedNormalizeLeavesNoPartFileAndKeepsEarlierOutputsOfTheSameAndOtherNames() = runBlocking {
+        val other = File(outDir, "import_keep_16000.wav").apply { parentFile!!.mkdirs(); writeText("an earlier import") }
+        val bad = File(dir, "bad.wav")
+        // PCM16 stereo header with a data chunk: not the fast path, so the (unavailable under Robolectric) decoder runs.
+        val b = ByteBuffer.allocate(44 + 8).order(ByteOrder.LITTLE_ENDIAN)
+        b.put("RIFF".toByteArray()).putInt(44).put("WAVE".toByteArray()).put("fmt ".toByteArray()).putInt(16)
+        b.putShort(1).putShort(2).putInt(44_100).putInt(176_400).putShort(4).putShort(16)
+        b.put("data".toByteArray()).putInt(8)
+        bad.writeBytes(b.array())
+        val sameName = File(outDir, "import_" + dev.velum.app.platform.normalizedFileName("bad", 16_000, dev.velum.app.platform.sha256File(bad.absolutePath)))
+            .apply { writeText("an earlier good import of this name") }
+        try {
+            AudioNormalizer().normalizeToWav(bad.absolutePath, 16_000)
+            org.junit.Assert.fail("the decoder cannot decode this under a unit test")
+        } catch (_: Throwable) {
+        }
+        assertTrue("no half-written file may remain", outDir.list()!!.none { it.endsWith(".part") })
+        assertEquals("a failed retry must not destroy the earlier good output", "an earlier good import of this name", sameName.readText())
+        assertEquals("an earlier import", other.readText())
+    }
+
+    @Test
+    fun cancelling_mid_copy_of_a_large_wav_throws_and_leaves_no_output() = runBlocking {
+        val big = File(dir, "huge.wav")
+        val dataBytes = 128L * 1024 * 1024
+        java.io.RandomAccessFile(big, "rw").use { raf ->
+            val h = ByteBuffer.allocate(44).order(ByteOrder.LITTLE_ENDIAN)
+            h.put("RIFF".toByteArray()).putInt((36 + dataBytes).toInt()).put("WAVE".toByteArray()).put("fmt ".toByteArray()).putInt(16)
+            h.putShort(1).putShort(1).putInt(16_000).putInt(32_000).putShort(2).putShort(16)
+            h.put("data".toByteArray()).putInt(dataBytes.toInt())
+            raf.write(h.array())
+            raf.setLength(44 + dataBytes) // zero PCM, no disk used for the source
+        }
+        val normalizedDir = outDir
+        fun mine() = normalizedDir.listFiles().orEmpty().filter { it.name.startsWith("import_huge_16000") }
+        val job = this.async(kotlinx.coroutines.Dispatchers.Default) {
+            AudioNormalizer().normalizeToWav(big.absolutePath, 16_000)
+        }
+        // The copy has started once the output holds bytes; cancel while it is still going.
+        kotlinx.coroutines.withTimeout(60_000) { while (mine().none { it.length() > 0L }) kotlinx.coroutines.delay(1) }
+        var largest = 0L
+        val watcher = Thread { while (!job.isCompleted) { largest = maxOf(largest, mine().maxOfOrNull { it.length() } ?: 0L); Thread.sleep(0, 200_000) } }
+        watcher.start()
+        job.cancel()
+        try {
+            job.await()
+            org.junit.Assert.fail("the import should have been cancelled")
+        } catch (_: kotlinx.coroutines.CancellationException) {
+        }
+        watcher.join(10_000)
+        assertTrue("a cancelled import must not leave its WAV or temp file", mine().isEmpty())
+        // It stopped at the next slice instead of copying everything and noticing afterwards.
+        assertTrue("the copy ran on after the cancel ($largest of $dataBytes bytes written)", largest < dataBytes / 2)
+    }
+
+    private fun monoWav(file: File, pcm: ByteArray): File {
+        val header = ByteBuffer.allocate(44).order(ByteOrder.LITTLE_ENDIAN)
+        header.put("RIFF".toByteArray()).putInt(36 + pcm.size).put("WAVE".toByteArray()).put("fmt ".toByteArray()).putInt(16)
+        header.putShort(1).putShort(1).putInt(16_000).putInt(32_000).putShort(2).putShort(16)
+        header.put("data".toByteArray()).putInt(pcm.size)
+        file.parentFile!!.mkdirs()
+        file.writeBytes(header.array() + pcm)
+        return file
+    }
+
+    @Test
+    fun twoDifferentSourcesWithTheSameNameNeverOverwriteEachOthersFinishedWav() = runBlocking {
+        // Same directory, same base name, different content:
+        val shared = File(dir, "shared").apply { mkdirs() }
+        val x = monoWav(File(shared, "audio.wav"), ByteArray(4_000) { 3 })
+        val firstShared = AudioNormalizer().normalizeToWav(x.absolutePath, 16_000)
+        monoWav(x, ByteArray(4_000) { 4 }) // a different source arrives under the same name
+        val secondShared = AudioNormalizer().normalizeToWav(x.absolutePath, 16_000)
+        assertTrue("different content, different output", firstShared.wavPath != secondShared.wavPath)
+        assertEquals(3, File(firstShared.wavPath).readBytes()[44].toInt())
+        assertEquals(4, File(secondShared.wavPath).readBytes()[44].toInt())
+        // The same content again maps to the same output (a retry).
+        assertEquals(secondShared.wavPath, AudioNormalizer().normalizeToWav(x.absolutePath, 16_000).wavPath)
+    }
+
+    @Test
+    fun staleTempFilesFromADeadProcessAreSweptButFreshOnesAreKept() {
+        val d = File(dir, "normalized").apply { mkdirs() }
+        val stale = File(d, "x_16000_abc.wav.123.part").apply { writeText("dead"); setLastModified(System.currentTimeMillis() - 2 * dev.velum.app.platform.STALE_PART_AGE_MS) }
+        val fresh = File(d, "y_16000_abc.wav.456.part").apply { writeText("running") }
+        val finished = File(d, "z_16000_abc.wav").apply { writeText("done"); setLastModified(0L) }
+        assertEquals(1, dev.velum.app.platform.sweepStalePartFiles(d, System.currentTimeMillis() - dev.velum.app.platform.STALE_PART_AGE_MS))
+        assertTrue(!stale.exists() && fresh.isFile && finished.isFile)
     }
 
     @Test

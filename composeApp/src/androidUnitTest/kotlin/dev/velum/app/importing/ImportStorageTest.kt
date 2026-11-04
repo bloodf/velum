@@ -10,7 +10,7 @@ import dev.velum.app.platform.installRecordingFilesDir
 import dev.velum.app.platform.isImportScratchPath
 import dev.velum.app.platform.migrateCachedImports
 import dev.velum.app.platform.recordingsDirectoryPath
-import dev.velum.app.platform.wipeImportScratch
+import dev.velum.app.platform.deleteImportCopies
 import dev.velum.core.data.DriverFactory
 import dev.velum.core.security.InMemorySecureStore
 import java.io.File
@@ -111,11 +111,12 @@ class ImportStorageTest {
         assertTrue(mine.exists())
     }
 
-    @Test fun the_wipe_removes_imports_and_share_residue() {
-        wav(File(cache, "imports/x.wav")); wav(File(cache, "imports/watched/y.wav")); wav(File(cache, "share/z.wav"))
-        wipeImportScratch()
+    @Test fun the_wipe_removes_every_cache_copy_and_leaves_no_audio_outside_the_recordings_dir() = runBlocking {
+        wav(File(cache, "imports/x.wav")); wav(File(cache, "imports/share_1_z.wav")); wav(File(cache, "imports/watched/y.wav"))
+        val id = (AudioImportPipeline(container).importFile(wav(File(cache, "imports/w.wav"), 3).path) as ImportResult.Created).recordingId
+        assertTrue(File(container.repository.getRecording(id)!!.local_path!!).isFile)
+        deleteImportCopies()
         assertFalse(File(cache, "imports").exists())
-        assertFalse(File(cache, "share").exists())
     }
 
     @Test fun existing_rows_with_audio_in_the_cache_are_moved_and_repointed_once() = runBlocking {
@@ -126,7 +127,7 @@ class ImportStorageTest {
         val evicted = container.createLocalRecording(title = "Gone", source = "import", localPath = File(cache, "imports/normalized/gone.wav").path, status = "ready")
         val bytes = cached.readBytes()
 
-        assertEquals(1, migrateCachedImports(container.repository, File(recordingsDirectoryPath()), cache))
+        assertEquals(1, migrateCachedImports(container.repository, File(recordingsDirectoryPath()), cache, nowMs = System.currentTimeMillis() + 2 * 24L * 3600 * 1000))
         val row = container.repository.getRecording(id)!!
         assertTrue(inRecordings(row.local_path!!))
         assertEquals(12L, row.duration_seconds); assertEquals(3200L, row.size_bytes)
@@ -136,5 +137,37 @@ class ImportStorageTest {
 
         assertEquals(0, migrateCachedImports(container.repository, File(recordingsDirectoryPath()), cache))
         assertTrue(File(container.repository.getRecording(id)!!.local_path!!).isFile)
+    }
+
+    // A share or pick may be waiting to be imported at the moment the migration runs at startup.
+    @Test fun the_migration_keeps_a_recent_unreferenced_incoming_copy() = runBlocking {
+        val pending = wav(File(cache, "imports/share_999_pending.wav"), 8)
+        migrateCachedImports(container.repository, File(recordingsDirectoryPath()), cache)
+        assertTrue(pending.exists())
+    }
+
+    // A crash between the normalized WAV and its row leaves an unreferenced import_ file the recordings sweep ignores.
+    @Test fun a_day_old_unreferenced_import_output_is_swept_but_a_referenced_or_recent_one_is_kept() = runBlocking {
+        val dir = File(recordingsDirectoryPath()).also { it.mkdirs() }
+        val kept = wav(File(dir, "import_kept_16000_aaaaaaaaaaaa.wav"), 1)
+        val id = container.createLocalRecording(title = "T", source = "import", localPath = kept.path, status = "ready")
+        val orphan = wav(File(dir, "import_orphan_16000_bbbbbbbbbbbb.wav"), 2)
+        val recent = wav(File(dir, "import_recent_16000_cccccccccccc.wav"), 3)
+        val dayAgo = System.currentTimeMillis() - 2 * 24L * 3600 * 1000
+        kept.setLastModified(dayAgo); orphan.setLastModified(dayAgo)
+        migrateCachedImports(container.repository, dir, cache)
+        assertTrue(kept.exists()); assertFalse(orphan.exists()); assertTrue(recent.exists())
+        assertEquals(kept.path, container.repository.getRecording(id)!!.local_path)
+    }
+
+    // If the move fails partway, the row and its cache file are exactly as before: nothing is lost.
+    @Test fun a_failed_move_leaves_the_row_and_the_cache_file_untouched() = runBlocking {
+        val cached = wav(File(cache, "imports/normalized/stuck_16000.wav"), 4)
+        val id = container.createLocalRecording(title = "S", source = "import", localPath = cached.path, status = "ready")
+        val dir = File(recordingsDirectoryPath()).also { it.mkdirs() }
+        File(dir, "$id.wav").mkdirs() // a directory where the file must go: the move cannot succeed
+        assertEquals(0, migrateCachedImports(container.repository, dir, cache, nowMs = System.currentTimeMillis() + 2 * 24L * 3600 * 1000))
+        assertEquals(cached.path, container.repository.getRecording(id)!!.local_path)
+        assertTrue(cached.isFile)
     }
 }

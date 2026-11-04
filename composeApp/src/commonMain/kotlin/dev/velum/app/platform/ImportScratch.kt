@@ -5,6 +5,3 @@ package dev.velum.app.platform
  * Only such a copy may be deleted after an import; a path the user chose must never be.
  */
 expect fun isImportScratchPath(absolutePath: String): Boolean
-
-/** Deletes every leftover incoming-file copy (privacy wipe). */
-expect fun wipeImportScratch()

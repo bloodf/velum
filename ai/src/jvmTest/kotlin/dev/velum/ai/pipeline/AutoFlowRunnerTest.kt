@@ -3,6 +3,7 @@ package dev.velum.ai.pipeline
 import dev.velum.ai.engine.JobProgress
 import dev.velum.core.autoflow.AutoFlowPostAction
 import dev.velum.core.calendar.CalendarEventProvider
+import dev.velum.core.time.VelumDateTime
 import dev.velum.core.calendar.CalendarEventSummary
 import dev.velum.core.calendar.CalendarLookupResult
 import dev.velum.core.data.DriverFactory
@@ -168,7 +169,7 @@ class AutoFlowRunnerTest {
     @Test
     fun repositoryCalendarTitleThrows_marksFailed_andProcessesNextRecording() = runTest {
         recovery { f ->
-            f.lookup = { CalendarLookupResult.Ok(CalendarEventSummary("Synthetic event", 0, 1)) }
+            f.lookup = { CalendarLookupResult.Ok(CalendarEventSummary("Synthetic event", 0, Long.MAX_VALUE)) }
             f.store.beforeTitle = { id -> if (id == "bad") error("synthetic title write failure") }
         }
     }
@@ -203,7 +204,7 @@ class AutoFlowRunnerTest {
         assertEquals("ready", f.row("bad").status)
         assertEquals("ready", f.row("good").status)
         assertEquals(1, f.actions.count { it === AutoFlowUiAction.ProcessingFailed })
-        assertEquals(listOf("Recording good"), f.actions.filterIsInstance<AutoFlowUiAction.InsertCalendarEvent>().map { it.title })
+        assertEquals(listOf(recording("good").title), f.actions.filterIsInstance<AutoFlowUiAction.InsertCalendarEvent>().map { it.title })
         f.publish(recording("later"))
         assertEquals("ready", f.row("later").status)
     }
@@ -550,9 +551,10 @@ class AutoFlowRunnerTest {
         var enqueue: (String) -> Unit = { complete(it) }
         var process: (String) -> Flow<JobProgress> = { id -> flow { complete(id); emit(JobProgress.Succeeded()) } }
         var lookup: suspend () -> CalendarLookupResult = { CalendarLookupResult.Ok(null) }
+        var calendarAround: suspend (Long) -> CalendarLookupResult = { lookup() }
         val runner = AutoFlowRunner(
             store, { id, _, _ -> process(id) }, test.backgroundScope,
-            calendar = object : CalendarEventProvider { override suspend fun currentOrNextEvent(aroundEpochMs: Long) = lookup() },
+            calendar = object : CalendarEventProvider { override suspend fun currentOrNextEvent(aroundEpochMs: Long) = calendarAround(aroundEpochMs) },
             jobScheduler = if (scheduler) RecordingJobScheduler { id, template, _, override ->
                 enqueued += id
                 templates += template
@@ -613,9 +615,62 @@ class AutoFlowRunnerTest {
         }
     }
 
+    @Test
+    fun calendarRenamesProductionDefaultTitlesInBothLocales_andKeepsEditedTitles() = runTest {
+        val f = Fixture(this)
+        f.lookup = { CalendarLookupResult.Ok(CalendarEventSummary("Planning", 0, Long.MAX_VALUE)) }
+        f.start()
+        f.publish(
+            recording("pt").copy(started_at = 1_792_000_000, title = defaultTitle(1_792_000_000, "pt-BR")),
+            recording("en").copy(started_at = 1_792_000_000, title = defaultTitle(1_792_000_000, "en")),
+            recording("edited").copy(started_at = 1_792_000_000, title = "My own title"),
+        )
+        assertEquals("Planning", f.row("pt").title)
+        assertEquals("Planning", f.row("en").title)
+        assertEquals("My own title", f.row("edited").title)
+    }
+
+    @Test
+    fun calendarRenameOnlyAcceptsAnEventThatOverlapsTheRecording() = runTest {
+        val f = Fixture(this)
+        val start = 1_792_000_000L
+        val ms = start * 1000
+        var event: CalendarEventSummary? = null
+        f.calendarAround = { CalendarLookupResult.Ok(event) }
+        f.start()
+        fun rec(id: String) = recording(id).copy(started_at = start, duration_seconds = 600, title = defaultTitle(start, "en"))
+        event = CalendarEventSummary("Running", ms - 5 * 60_000, ms + 30 * 60_000) // on at the start
+        f.publish(rec("running"))
+        event = CalendarEventSummary("Soon", ms + 4 * 60_000, ms + 35 * 60_000) // begins within the grace after the start
+        f.publish(rec("soon"))
+        event = CalendarEventSummary("Later", ms + 5 * 3600_000, ms + 6 * 3600_000) // a meeting hours after the start
+        f.publish(rec("later"))
+        event = CalendarEventSummary("Tomorrow", ms + 20 * 3600_000, ms + 21 * 3600_000) // a day-ahead "next" event
+        f.publish(rec("tomorrow"))
+        event = CalendarEventSummary("Earlier", ms - 3 * 3600_000, ms - 2 * 3600_000) // ended before the start
+        f.publish(rec("earlier"))
+        assertEquals("Running", f.row("running").title)
+        assertEquals("Soon", f.row("soon").title)
+        assertEquals(defaultTitle(start, "en"), f.row("later").title)
+        assertEquals(defaultTitle(start, "en"), f.row("tomorrow").title)
+        assertEquals(defaultTitle(start, "en"), f.row("earlier").title)
+    }
+
+    @Test
+    fun calendarLookupUsesTheRecordingStartNotNow() = runTest {
+        val f = Fixture(this)
+        val asked = mutableListOf<Long>()
+        f.calendarAround = { asked += it; CalendarLookupResult.Ok(null) }
+        f.start()
+        f.publish(recording("old").copy(started_at = 1_700_000_000, title = defaultTitle(1_700_000_000, "en")))
+        assertEquals(listOf(1_700_000_000_000L), asked.distinct())
+    }
+
     companion object {
+        private fun defaultTitle(startedAt: Long, locale: String) = VelumDateTime.formatFriendlyTitle(startedAt, locale)
+
         private fun recording(id: String, status: String = "imported", duration: Long = 10) = Recording(
-            id = id, session_id = null, folder_id = null, title = "Recording $id",
+            id = id, session_id = null, folder_id = null, title = defaultTitle(1, "en"),
             source = "note_pro", device_serial = null, started_at = 1, duration_seconds = duration,
             size_bytes = 0, local_path = null, transcript = null, summary_markdown = null,
             status = status, trashed = 0, created_at = 1, processing_warning = null,
