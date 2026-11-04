@@ -24,8 +24,8 @@ class IncomingShareTest {
     private val context: Context = ApplicationProvider.getApplicationContext()
     private val own = "dev.velum.app.fileprovider"
 
-    // The channel is process-wide; other test classes in this JVM may have left shares in it.
-    @org.junit.Before fun drain() = kotlinx.coroutines.runBlocking { while (kotlinx.coroutines.withTimeoutOrNull(300) { IncomingShare.next() } != null) Unit }
+    // The channel is process-wide: take what this class's own tests queued so the next test starts empty.
+    @org.junit.After fun drain() = kotlinx.coroutines.runBlocking { while (kotlinx.coroutines.withTimeoutOrNull(300) { IncomingShare.next() } != null) Unit }
     private fun accept(action: String?, uri: String?) = IncomingShare.acceptedUri(action, uri?.let(Uri::parse), own)
 
     @Test fun only_send_and_view_are_accepted() {

@@ -13,25 +13,29 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
+import org.junit.After
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 
-/** #405: a share copied by a process that died before importing it is offered again once, and not forever. */
+/** #405: a share copied by a process that died before importing it is offered again, within limits. */
 @RunWith(AndroidJUnit4::class)
 @Config(sdk = [34])
 class PendingShareTest {
     private val context: Context = ApplicationProvider.getApplicationContext()
-    private val now = 1_000_000_000_000L
+    private val prefs get() = context.getSharedPreferences("velum_pending_shares", Context.MODE_PRIVATE)
 
     @Before fun clean() {
-        context.getSharedPreferences("velum_pending_shares", Context.MODE_PRIVATE).edit().clear().commit()
+        prefs.edit().clear().commit()
         File(context.cacheDir, "imports").deleteRecursively()
         installAppContext(context)
+        IncomingShare.resetProcessMemory()
         drain()
     }
+
+    @After fun leaveNothingBehind() { drain() }
 
     private fun drain() = runBlocking { while (withTimeoutOrNull(300) { IncomingShare.next() } != null) Unit }
 
@@ -41,53 +45,103 @@ class PendingShareTest {
         return assertNotNull(IncomingShare.copyShare(context, u))
     }
 
-    @Test fun a_copied_share_is_re_offered_after_the_process_restarts() {
-        val path = copyOne("died") // copied, then the process died before the import ran
-        drain() // the new process starts with an empty channel and no memory of the share
-        assertEquals(listOf(path), IncomingShare.recoverPending(context, System.currentTimeMillis()))
-        val shared = runBlocking { withTimeout(5_000) { IncomingShare.next() } }
-        assertEquals(SharedFile.Ready(path), shared)
+    /** A new process: no memory of what the old one marked, nothing in the channel. */
+    private fun restart() { IncomingShare.resetProcessMemory(); drain() }
+
+    private fun recover(nowMs: Long = System.currentTimeMillis()) = IncomingShare.recoverPending(context, nowMs)
+
+    private fun offers(): List<SharedFile> = runBlocking {
+        val out = mutableListOf<SharedFile>()
+        while (true) out += withTimeoutOrNull(300) { IncomingShare.next() } ?: break
+        out
+    }
+
+    @Test fun a_copied_share_is_re_offered_once_after_the_process_restarts_and_flagged_recovered() {
+        val path = copyOne("died")
+        restart()
+        assertEquals(listOf(path), recover())
+        val shared = offers().single() as SharedFile.Ready
+        assertEquals(path, shared.path)
+        assertNotNull(shared.recoveredAtMs, "a recovered share must be flagged so the UI stays quiet")
+    }
+
+    @Test fun a_share_this_process_just_copied_is_not_offered_a_second_time() {
+        copyOne("cold-start") // copied by this process: it is already in flight
+        drain()
+        assertEquals(emptyList(), recover())
+        restart()
+        assertEquals(1, recover().size)
     }
 
     @Test fun a_handled_share_is_not_re_offered() {
         val path = copyOne("done")
-        markShareHandled(path) // imported, duplicate, failed or refused in this process
-        drain()
-        assertEquals(emptyList(), IncomingShare.recoverPending(context, System.currentTimeMillis()))
-    }
-
-    @Test fun a_missing_copy_and_an_expired_one_are_dropped_and_the_expired_file_deleted() {
-        val gone = copyOne("gone").also { File(it).delete() } // wiped or cache cleared
-        val old = copyOne("old")
-        val later = System.currentTimeMillis() + IncomingShare.MAX_PENDING_AGE_MS + 1
-        drain()
-        assertEquals(emptyList(), IncomingShare.recoverPending(context, later))
-        assertFalse(File(old).exists(), "an expired copy must not stay in the cache")
-        assertFalse(File(gone).exists())
-        assertEquals(emptyList(), IncomingShare.recoverPending(context, later), "dropped entries must not come back")
-    }
-
-    @Test fun re_offering_runs_once_per_start_and_the_marker_stays_until_handled() {
-        val path = copyOne("twice")
-        drain()
-        assertEquals(listOf(path), IncomingShare.recoverPending(context, System.currentTimeMillis()))
-        drain()
-        // A second death before the import finished: still pending, still offered (hash dedupe makes this safe).
-        assertEquals(listOf(path), IncomingShare.recoverPending(context, System.currentTimeMillis()))
         markShareHandled(path)
-        drain()
-        assertTrue(IncomingShare.recoverPending(context, System.currentTimeMillis()).isEmpty())
+        restart()
+        assertEquals(emptyList(), recover())
     }
 
-    @Test fun pending_paths_lists_only_unhandled_unexpired_copies_after_recovery() {
-        val keep = copyOne("keep")
-        val handled = copyOne("handled").also { markShareHandled(it) }
-        val old = copyOne("expiring")
-        assertEquals(setOf(keep, old), IncomingShare.pendingPaths(context).toSet()) // before recovery both are marked
-        val later = System.currentTimeMillis() + IncomingShare.MAX_PENDING_AGE_MS - 1_000
-        File(old).setLastModified(0)
-        IncomingShare.recoverPending(context, later + 2_000) // expires every entry (all older than the window at this time)
+    @Test fun a_missing_copy_is_dropped_and_an_expired_or_future_one_is_dropped_with_its_copy() {
+        val gone = copyOne("gone").also { File(it).delete() }
+        val old = copyOne("old")
+        val future = copyOne("future")
+        restart()
+        val now = System.currentTimeMillis()
+        // 'old' is more than a day behind the clock, 'future' more than a day ahead (the clock was set back).
+        assertEquals(emptyList(), recover(now + IncomingShare.MAX_PENDING_AGE_MS + 1))
+        assertFalse(File(old).exists(), "an expired copy must not stay in the cache")
+        assertFalse(File(future).exists())
+        assertFalse(File(gone).exists())
         assertEquals(emptyList(), IncomingShare.pendingPaths(context))
-        assertFalse(handled in IncomingShare.pendingPaths(context))
+        restart()
+        assertEquals(emptyList(), recover(now))
+    }
+
+    @Test fun a_share_whose_import_keeps_dying_is_dropped_with_its_copy_after_three_starts() {
+        val path = copyOne("poison")
+        repeat(2) { IncomingShare.markAttempt(context, path) } // two imports started and never finished
+        restart()
+        assertEquals(listOf(path), recover(), "two attempts are still allowed")
+        repeat(1) { IncomingShare.markAttempt(context, path) } // the third start also died
+        restart()
+        assertEquals(emptyList(), recover())
+        assertFalse(File(path).exists(), "the copy of a share that keeps killing the app must go")
+        assertEquals(emptyList(), IncomingShare.pendingPaths(context))
+    }
+
+    @Test fun re_offering_is_not_counted_as_an_attempt() {
+        val path = copyOne("offered")
+        repeat(5) { restart(); assertEquals(listOf(path), recover()) } // offered five times, never started
+    }
+
+    @Test fun a_wipe_clears_every_pending_share() {
+        val path = copyOne("wiped")
+        clearPendingShares()
+        restart()
+        assertEquals(emptyList(), recover(), "a wiped share must not come back")
+        assertTrue(File(path).exists().let { true }) // the wipe deletes the copy elsewhere; recovery must not need it
+    }
+
+    @Test fun a_path_that_is_not_our_own_copy_is_dropped_and_never_deleted() {
+        val foreignDir = File(context.cacheDir, "elsewhere").apply { mkdirs() }
+        val outside = File(foreignDir, "share_x.mp3").apply { writeBytes(ByteArray(10)) } // right name, wrong directory
+        val noPrefix = File(File(context.cacheDir, "imports").apply { mkdirs() }, "note.mp3").apply { writeBytes(ByteArray(10)) }
+        val traversal = File(File(context.cacheDir, "imports"), "../elsewhere/share_x.mp3").path
+        val now = System.currentTimeMillis()
+        for (stamp in listOf(now, now - IncomingShare.MAX_PENDING_AGE_MS - 5_000)) { // fresh and expired
+            prefs.edit().putStringSet(
+                "pending",
+                setOf("$stamp|0|${outside.path}", "$stamp|0|${noPrefix.path}", "$stamp|0|$traversal", "$stamp|0|/data/data/dev.velum.app/databases/velum.db"),
+            ).commit()
+            restart()
+            assertEquals(emptyList(), recover(now), "stamp $stamp")
+            assertTrue(outside.exists() && noPrefix.exists(), "a foreign path must never be deleted (stamp $stamp)")
+            assertEquals(emptyList(), IncomingShare.pendingPaths(context))
+        }
+    }
+
+    @Test fun pending_paths_lists_only_the_copies_still_marked() {
+        val keep = copyOne("keep")
+        copyOne("handled").also { markShareHandled(it) }
+        assertEquals(listOf(keep), IncomingShare.pendingPaths(context))
     }
 }

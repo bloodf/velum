@@ -21,59 +21,103 @@ object IncomingShare {
     private const val PREFS = "velum_pending_shares"
     private const val KEY = "pending"
 
-    /** A pending share older than this is dropped with its copy: the user has moved on. */
+    /** A pending share older than this (or stamped this far in the future) is dropped with its copy: the user has moved on. */
     internal const val MAX_PENDING_AGE_MS = 24L * 60 * 60 * 1000
+
+    /** An import that started this many times without finishing is a share that kills the process: drop it and its copy. */
+    internal const val MAX_ATTEMPTS = 3
 
     private fun prefs(context: Context) = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-    // Entries are "<epochMs>|<absolute path>". Synchronous commit so the marker is on disk before the path is offered: a kill right
-    // after the copy must still find it. IO thread only.
+    // Entries are "<epochMs>|<attempts>|<absolute path>". Every write is a synchronous commit so a marker is on disk before the
+    // path is offered (a kill right after the copy must still find it). Preference I/O: IO thread only, never the main thread.
     private val lock = Any()
 
+    /** Paths marked by this process. Recovery runs once at process start and must not re-offer what this process just copied. */
+    private val markedThisProcess = mutableSetOf<String>()
+
+    private class Entry(val at: Long, val attempts: Int, val path: String) {
+        fun encode() = "$at|$attempts|$path"
+    }
+
+    private fun parse(raw: String): Entry? {
+        val parts = raw.split('|', limit = 3)
+        if (parts.size != 3 || parts[2].isEmpty()) return null
+        return Entry(parts[0].toLongOrNull() ?: return null, parts[1].toIntOrNull() ?: return null, parts[2])
+    }
+
+    private fun entries(context: Context): List<Entry> = prefs(context).getStringSet(KEY, emptySet()).orEmpty().mapNotNull(::parse)
+
+    private fun save(context: Context, list: Collection<Entry>) {
+        if (!prefs(context).edit().putStringSet(KEY, list.map(Entry::encode).toSet()).commit()) {
+            android.util.Log.w("VelumShare", "pending share state was not saved") // recovery after a kill may miss it
+        }
+    }
+
+    /** Only copies this class made: directly in `cacheDir/imports` with a `share_` name. A path read back from disk is not trusted. */
+    private fun isOwnCopy(context: Context, file: File): Boolean = runCatching {
+        val dir = File(context.cacheDir, "imports").canonicalFile
+        val canonical = file.canonicalFile
+        canonical.parentFile == dir && canonical.name.startsWith("share_")
+    }.getOrDefault(false)
+
     private fun mark(context: Context, path: String, nowMs: Long) = synchronized(lock) {
-        val p = prefs(context)
-        p.edit().putStringSet(KEY, (p.getStringSet(KEY, emptySet()).orEmpty()) + "$nowMs|$path").commit()
+        markedThisProcess += path
+        save(context, entries(context).filterNot { it.path == path } + Entry(nowMs, 0, path))
+    }
+
+    /** Counts an import start for [path], durably. A native crash or a kill mid-import never reaches [markHandled], so this is how it is noticed. */
+    internal fun markAttempt(context: Context, path: String) = synchronized(lock) {
+        save(context, entries(context).map { if (it.path == path) Entry(it.at, it.attempts + 1, it.path) else it })
     }
 
     /** Forgets [path]; call once the share was handled (imported, duplicate, failed, refused). */
     internal fun markHandled(context: Context, path: String) = synchronized(lock) {
-        val p = prefs(context)
-        val now = p.getStringSet(KEY, emptySet()).orEmpty()
-        p.edit().putStringSet(KEY, now.filterNot { it.substringAfter('|') == path }.toSet()).commit()
+        markedThisProcess -= path
+        save(context, entries(context).filterNot { it.path == path })
     }
+
+    /** Forgets every pending share (a wipe: audio the user wiped must not come back). Their copies are deleted by the wipe. */
+    internal fun clearPending(context: Context) = synchronized(lock) {
+        markedThisProcess.clear()
+        if (!prefs(context).edit().remove(KEY).commit()) android.util.Log.w("VelumShare", "pending share state was not cleared")
+    }
+
+    /** Test hook: forget what this process marked, as a new process would. */
+    internal fun resetProcessMemory() = synchronized(lock) { markedThisProcess.clear() }
 
     /**
      * Paths of copies still marked pending (read after [recoverPending] has expired the stale ones). A startup sweep of
      * orphaned import copies must skip these: recovery owns their expiry and deletion. IO thread only.
      */
-    internal fun pendingPaths(context: Context): List<String> = synchronized(lock) {
-        prefs(context).getStringSet(KEY, emptySet()).orEmpty().map { it.substringAfter('|', "") }.filter { it.isNotEmpty() }
-    }
+    internal fun pendingPaths(context: Context): List<String> = synchronized(lock) { entries(context).map { it.path } }
 
     /**
      * Once per process start (IO thread): re-offers shares copied by a process that died before importing them, relying on
-     * the import's hash dedupe if one had in fact finished. Entries whose copy is gone (a wipe, a cache clear) or older than
-     * [MAX_PENDING_AGE_MS] are dropped, and an expired copy is deleted. Returns the paths re-offered.
+     * the import's hash dedupe if one had in fact finished. Dropped (and an owned copy deleted) when older than
+     * [MAX_PENDING_AGE_MS] in either direction, or after [MAX_ATTEMPTS] imports that never finished. Dropped without deleting
+     * anything when the path is not one of our own `share_` copies. Dropped when the copy is gone. Shares this process marked
+     * itself are left alone. The offer is flagged recovered with its marker time, so the UI stays quiet and a deletion made
+     * after the marker wins. Returns the paths re-offered.
      */
     fun recoverPending(context: Context, nowMs: Long = System.currentTimeMillis()): List<String> = synchronized(lock) {
-        val p = prefs(context)
-        val entries = p.getStringSet(KEY, emptySet()).orEmpty()
-        val keep = mutableSetOf<String>()
-        val offered = mutableListOf<String>()
-        for (entry in entries) {
-            val at = entry.substringBefore('|').toLongOrNull()
-            val path = entry.substringAfter('|', "")
-            val file = File(path)
+        val keep = mutableListOf<Entry>()
+        val offered = mutableListOf<Entry>()
+        for (e in entries(context)) {
+            val file = File(e.path)
+            val own = isOwnCopy(context, file)
+            val age = nowMs - e.at
             when {
-                at == null || path.isEmpty() -> Unit // corrupt: drop
-                nowMs - at > MAX_PENDING_AGE_MS -> file.delete()
+                !own -> Unit // not ours: drop the entry, touch nothing
+                e.path in markedThisProcess -> keep += e
+                age > MAX_PENDING_AGE_MS || age < -MAX_PENDING_AGE_MS || e.attempts >= MAX_ATTEMPTS -> file.delete()
                 !file.isFile || file.length() == 0L -> Unit
-                else -> { keep += entry; offered += path }
+                else -> { keep += e; offered += e }
             }
         }
-        p.edit().putStringSet(KEY, keep).commit()
-        offered.forEach { enqueue(SharedFile.Ready(it)) }
-        offered
+        save(context, keep)
+        offered.forEach { enqueue(SharedFile.Ready(it.path, recoveredAtMs = it.at)) }
+        offered.map { it.path }
     }
 
     /** Queues a finished share. Used by the copy and by tests. */
@@ -142,6 +186,8 @@ object IncomingShare {
             return null
         }
         dev.velum.app.importing.ImportDisplayNames.put(outFile.absolutePath, displayName)
+        // Flush the copy to disk before the marker says it exists.
+        runCatching { java.io.FileOutputStream(outFile, true).use { it.fd.sync() } }
         mark(context, outFile.absolutePath, System.currentTimeMillis())
         return outFile.absolutePath
     }
