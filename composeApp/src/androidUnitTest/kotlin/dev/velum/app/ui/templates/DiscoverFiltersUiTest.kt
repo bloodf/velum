@@ -91,17 +91,15 @@ class DiscoverFiltersUiTest {
     private val queryLog = QueryLog()
 
     private fun waiting(what: String, condition: () -> Boolean) {
-        try {
-            compose.waitUntil(10_000, condition)
-        } catch (e: androidx.compose.ui.test.ComposeTimeoutException) {
+        compose.waitWhileBusy(queryLog, onTimeout = { reason, e ->
             // Full tree, once: a truncated dump hid the rows below the category chips in a past flake.
             // Diagnostics must never replace the timeout; a second root (open sheet) makes onRoot() throw.
             val diagnostics = runCatching {
                 "${chipState("tag:agenda")}\n${chipState("active:tag:agenda")}\n" +
                     compose.onAllNodes(isRoot()).printToString(maxDepth = Int.MAX_VALUE)
             }.getOrElse { "diagnostic failed: $it" }
-            throw AssertionError("Timed out waiting for $what\n${queryLog.dump()}\n$diagnostics", e)
-        }
+            throw AssertionError("Timed out waiting for $what ($reason)\n${queryLog.dump()}\n$diagnostics", e)
+        }, condition = condition)
     }
 
     /** One line on whether a tagged node exists and reports Selected, for timeout messages. */
@@ -258,8 +256,10 @@ class DiscoverFiltersUiTest {
             compose.onNode(hasSetTextAction()).performTextInput("zq")
             // The failed query is observable: the load error shows before we check the selections.
             await(PtBr.ux.genericError)
-            // Give the facets effect (a separate coroutine) time to fail and any pruning time to run.
-            repeat(10) { Thread.sleep(100); compose.waitForIdle() }
+            // The facets effect is a separate coroutine from the page load: wait for its own failure, or the window
+            // below could pass without the facets query ever having failed.
+            waiting("facets failed") { queryLog.count("FAIL  facets(search='zq'") > 0 && queryLog.inFlight() == 0 }
+            repeat(10) { compose.mainClock.advanceTimeBy(100); compose.waitForIdle() }
             assertTrue(hasTag("active:category") && hasTag("active:tag:agenda"), "selections pruned after failed facets load")
             // A failed load also keeps the previous facet options on screen (not an empty facet row).
             assertTrue(
@@ -432,7 +432,7 @@ class DiscoverFiltersUiTest {
             container.databaseHandle.driver.close()
             grid().performScrollToKey("pg-059")
             await(PtBr.ux.genericError)
-            repeat(5) { Thread.sleep(100); compose.waitForIdle() }
+            repeat(5) { compose.mainClock.advanceTimeBy(100); compose.waitForIdle() }
             assertTrue(runCatching { grid().performScrollToKey("pg-030") }.isSuccess, "page 1 rows were wiped by the failed page")
             assertTrue(!hasTag("templates:empty"), "empty state shown beside the error")
         } finally {

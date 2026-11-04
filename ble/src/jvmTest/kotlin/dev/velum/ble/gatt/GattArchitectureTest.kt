@@ -29,6 +29,10 @@ class GattArchitectureTest {
         "ble-testing/src/commonMain/kotlin/dev/velum/ble/fake/FakeBleTransport.kt",
         recordingDouble,
     )
+    private val wifiSendCallers = setOf(
+        "ble/src/commonMain/kotlin/dev/velum/ble/wifi/WifiFastTransfer.kt",
+        "ble/src/jvmTest/kotlin/dev/velum/ble/wifi/PreamblePerConnectionTest.kt",
+    )
     private val allowedRoots = setOf("ble", "ble-testing")
 
     private fun repoRoot(): File {
@@ -61,6 +65,12 @@ class GattArchitectureTest {
             path !in implementers && (if (path.endsWith(".java")) "writeRaw(" in text else "fun writeRaw" in text)
         }.map { it.first }
         assertTrue(overriders.isEmpty(), "writeRaw implemented outside transports: $overriders")
+        // The Wi-Fi socket write: only the session (which guards and checks before it) and the one test that
+        // exercises a server directly may call it. Servers and fakes may declare it, not call it.
+        val wifiCallers = files.filter { (path, text) ->
+            path !in wifiSendCallers && ".sendEncryptedFrame(" in text
+        }.map { it.first }
+        assertTrue(wifiCallers.isEmpty(), "Only WifiFastTransferSession may call sendEncryptedFrame: $wifiCallers")
     }
 
     @Test

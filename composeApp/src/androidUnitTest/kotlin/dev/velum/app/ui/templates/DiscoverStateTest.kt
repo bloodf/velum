@@ -71,4 +71,74 @@ class DiscoverStateTest {
         assertEquals(liveSearch, "")
         assertEquals(LoadedFacets(narrow, "foo"), loaded)
     }
+
+    private fun plan(
+        discoverTab: Boolean = true, featuredOnly: Boolean = true, hasRanking: Boolean = true, searchBlank: Boolean = true,
+        noFacetSelected: Boolean = true, shown: List<dev.velum.core.db.Template>? = emptyList(), fullImportRunning: Boolean = false,
+        loadFailed: Boolean = false, shownTick: Long = 1, currentTick: Long = 1, loadedTarget: Int = 60, totalMatches: Long = 0,
+    ) = discoverGridPlan(
+        discoverTab, featuredOnly, hasRanking, searchBlank, noFacetSelected, shown, fullImportRunning, loadFailed,
+        shownTick, currentTick, loadedTarget, totalMatches,
+    )
+
+    @Test fun grid_plan_ranking_needs_every_condition() {
+        assertTrue(plan().showRanking)
+        assertFalse(plan(discoverTab = false).showRanking)
+        assertFalse(plan(featuredOnly = false).showRanking)
+        assertFalse(plan(hasRanking = false).showRanking)
+        assertFalse(plan(searchBlank = false).showRanking)
+        assertFalse(plan(noFacetSelected = false).showRanking)
+    }
+
+    @Test fun grid_plan_blocks_follow_the_load_state() {
+        assertTrue(plan(shown = null).showLoading)
+        assertFalse(plan(shown = null, loadFailed = true).showLoading)
+        assertTrue(plan(shown = null, loadFailed = true).showRetry)
+        assertTrue(plan(shown = emptyList()).showEmpty)
+        assertFalse(plan(shown = emptyList(), fullImportRunning = true).showEmpty)
+        assertFalse(plan(shown = null).showEmpty)
+    }
+
+    @Test fun grid_plan_paging_sentinel_matches_the_rule() {
+        val rows = List(60) { t("r$it") }
+        assertTrue(plan(shown = rows, loadedTarget = 60, totalMatches = 100).showPagingSentinel)
+        assertFalse(plan(shown = rows, loadedTarget = 60, totalMatches = 60).showPagingSentinel)
+        assertFalse(plan(shown = rows, shownTick = 0, currentTick = 1, totalMatches = 100).showPagingSentinel)
+        assertFalse(plan(shown = rows.take(10), loadedTarget = 60, totalMatches = 100).showPagingSentinel)
+    }
+
+    @Test fun grid_scope_reads_the_plan_not_live_state() {
+        val src = listOf(
+            java.io.File("src/commonMain/kotlin/dev/velum/app/ui/templates/TemplatesScreen.kt"),
+            java.io.File("composeApp/src/commonMain/kotlin/dev/velum/app/ui/templates/TemplatesScreen.kt"),
+        ).first { it.isFile }.readText()
+        // Only the grid's DSL scope: from its opening brace to the end of the grid, before the search sheet. A moved
+        // marker yields "" here (missingDelimiterValue), so the length check fails instead of the guard going quiet.
+        val scope = src.substringAfter("LazyVerticalGrid(", "").substringAfter(") {\n            // Filter rows scroll", "")
+            .substringBefore("\n    if (showSearch)", "")
+        assertTrue(scope.length > 500, "the guard does not cover the grid scope any more; update its markers")
+        val code = scope.lines().filterNot { it.trim().startsWith("//") }
+        val dsl = code.filter { it.startsWith("            ") && !it.startsWith("             ") } // the scope's own level
+        // The optional blocks: exactly the plan's five, each a bare `if (plan.x) {`.
+        val planIfs = dsl.filter { Regex("""^ {12}if \(plan\.\w+\) \{$""").matches(it) }
+        assertTrue(planIfs.size >= 5, "expected the five plan blocks, found ${planIfs.size}")
+        val otherControl = dsl.filter { Regex("""^ {12}(if|when|for|while)\b""").containsMatchIn(it) } - planIfs.toSet()
+        assertTrue(otherControl.isEmpty(), "the grid scope branches on something other than the plan: $otherControl")
+        val badItems = dsl.filter { it.trim().startsWith("items(") && !it.trim().startsWith("items(rows,") }
+        assertTrue(badItems.isEmpty(), "the grid items must come from the captured rows: $badItems")
+        // No state a screen writes may appear on a scope-level line, even outside an if (a `when`, an argument).
+        val stateNames = listOf(
+            "loadFailed", "shownTick", "templateTick", "totalMatches", "pages", "ranking", "searchQuery", "selectedCategory",
+            "selectedTags", "selectedLang", "tab", "shown", "visible", "fullImportRunning", "discoverFeaturedOnly",
+        )
+        for (line in dsl) for (name in stateNames) {
+            assertFalse(Regex("\\b$name\\b").containsMatchIn(line), "scope-level line reads state '$name': ${line.trim()}")
+        }
+        // The old helper calls and a bare `ranking` read must be gone from the whole scope.
+        val text = code.joinToString("\n")
+        for (stateRead in listOf("showLoadingState(", "showEmptyState(", "showPagingSentinel(", "if (loadFailed)", "ranking.", "ranking)")) {
+            assertFalse(text.contains(stateRead), "the grid scope must not read $stateRead; use the plan")
+        }
+        assertTrue(text.contains("plan.showRanking") && text.contains("plan.showPagingSentinel"))
+    }
 }
