@@ -864,10 +864,12 @@ class UnreadableVoiceProfile internal constructor(
     val canRemove: Boolean get() = files != null
 }
 
+/** Saved as the processing error when the previous speaker cache cannot be removed; the UI matches this exact text to translate it (#348). */
+const val SPEAKER_CACHE_NOT_DROPPED_MESSAGE =
+    "The saved speaker voices could not be cleared, so the recording was left unchanged. Try again."
+
 /** The previous run's speaker cache could not be removed, so the recording was left as it was. */
-class SpeakerCacheNotDroppedException : IllegalStateException(
-    "The saved speaker voices could not be cleared, so the recording was left unchanged. Try again.",
-)
+class SpeakerCacheNotDroppedException : IllegalStateException(SPEAKER_CACHE_NOT_DROPPED_MESSAGE)
 
 /** The pasted text is not a Voice Profiles backup (not JSON, wrong shape, or bad base64). */
 class InvalidVoiceProfileBackupException(cause: Throwable) : IllegalArgumentException(
