@@ -4,6 +4,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import dev.velum.app.i18n.En
 import dev.velum.app.i18n.PtBr
+import dev.velum.app.ui.recording.speakerNameChanged
 import dev.velum.app.ui.recording.transcriptBodyLineDisplay
 import dev.velum.app.ui.recording.transcriptHeaderDisplay
 import kotlin.test.assertEquals
@@ -49,6 +50,15 @@ class ImportedRecordingDisplayTest {
         assertEquals("• 0:12 budget", transcriptBodyLineDisplay("- **0:12** budget", En))
         assertEquals("• 1:05", transcriptBodyLineDisplay("- **1:05**", PtBr))
         assertEquals("plain **bold** line".replace("**", ""), transcriptBodyLineDisplay("plain **bold** line", En))
+    }
+
+    @Test
+    fun onlyANameTheUserChangedCountsAsChanged() {
+        assertEquals(false, speakerNameChanged(null, "S1", "Orador 1", PtBr))
+        assertEquals(false, speakerNameChanged("", "S2", "Speaker 2", En))
+        assertEquals(false, speakerNameChanged("Synthetic Alice", "S1", "Synthetic Alice", En))
+        assertEquals(true, speakerNameChanged(null, "S1", "Synthetic Alice", En))
+        assertEquals(true, speakerNameChanged("Synthetic Alice", "S1", "Synthetic Bob", PtBr))
     }
 
     @Test

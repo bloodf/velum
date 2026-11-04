@@ -4,6 +4,7 @@ import dev.velum.ai.engine.DEFAULT_LOCAL_LLM_MODEL_ID
 import dev.velum.ai.local.DefaultLocalCatalog
 import dev.velum.ai.local.DeviceComputeClass
 import dev.velum.ai.local.LOCAL_MODEL_NOT_READY_MESSAGE
+import dev.velum.ai.pipeline.SPEAKER_NAMES_KEPT_MESSAGE
 import dev.velum.ai.local.LocalAsrRouter
 import dev.velum.ai.local.detectDeviceComputeClass
 import dev.velum.ai.local.SPEAKER_CACHE_NOT_DROPPED_MESSAGE
@@ -193,6 +194,7 @@ internal fun processingFailureText(raw: String?, strings: Strings): String? {
         raw == LOCAL_MODEL_NOT_READY_MESSAGE || LEGACY_MODEL_NOT_READY.containsMatchIn(raw) -> ux.localModelNotReady
         raw == INSUFFICIENT_STORAGE_MESSAGE -> ux.insufficientStorage
         raw == SPEAKER_CACHE_NOT_DROPPED_MESSAGE -> strings.added.speakerCacheNotDropped
+        raw == SPEAKER_NAMES_KEPT_MESSAGE -> strings.speakerNamesKept
         raw.startsWith("Unsupported audio format (") -> ux.processingFailedUnsupportedFormat
         raw == NO_TRANSCRIPT_TO_SUMMARIZE_MESSAGE -> ux.processingFailedNoTranscript
         raw == NO_AUDIO_OR_TRANSCRIPT_MESSAGE -> ux.processingFailedNoAudio

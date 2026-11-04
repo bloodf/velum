@@ -167,13 +167,8 @@ actual class LocalAsrRuntime actual constructor() {
             )
             // Naming only: the embeddings go back to the caller, which caches them with the speaker rows (#399).
             val naming = voiceProfiles?.nameSpeakers(embeddingsBySpeaker, matchThreshold)
-            return DiarizationResult(
-                spans = spans,
-                namedSpeakers = naming?.names.orEmpty(),
-                speakerNamesUnavailable = naming?.unavailable == true,
-                engineId = "local-diarizer",
-                modelId = modelId,
-                embeddings = embeddingsBySpeaker,
+            return VoiceProfileStore.SpeakerNaming.resultFor(
+                spans, naming, engineId = "local-diarizer", modelId = modelId, embeddings = embeddingsBySpeaker,
             )
         } finally {
             diarizer.release()
