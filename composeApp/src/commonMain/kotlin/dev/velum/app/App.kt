@@ -253,18 +253,8 @@ private fun VelumRoot(container: AppContainer) {
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     LaunchedEffect(container, lifecycleOwner) {
       lifecycleOwner.lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
-        // Each share is copied off the main thread and arrives here when ready; null means this platform has none.
-        while (true) {
-            val shared = awaitIncomingSharePath() ?: break
-            val path = when (shared) {
-                is SharedFile.Ready -> shared.path
-                SharedFile.CopyFailed -> {
-                    snackbar.showSnackbar(strings.ux.importCopyFailed)
-                    continue
-                }
-            }
-            // The import itself is owned by the container, so recreating this screen cannot cancel it; navigation is skipped then.
-            when (val result = importPipeline.importSharedDetached(path)) {
+        suspend fun report(result: ImportResult) {
+            when (result) {
                 is ImportResult.Created -> navController.navigate(Routes.recording(result.recordingId))
                 is ImportResult.Duplicate -> {
                     snackbar.showSnackbar(strings.ux.importDuplicate)
@@ -273,6 +263,32 @@ private fun VelumRoot(container: AppContainer) {
                 is ImportResult.Failed -> snackbar.showSnackbar(strings.ux.genericError)
                 is ImportResult.Deleted -> Unit // watched-folder sync only
             }
+        }
+        // Each share is copied off the main thread and arrives here when ready; null means this platform has none.
+        while (true) {
+            // An import started before this collector (re)started, or finished while the app was stopped, is reported once.
+            container.pendingShare?.let { pending ->
+                val result = try {
+                    pending.await()
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    if (!pending.isCancelled) throw e // this collector was cancelled
+                    null // the import itself was cancelled (a wipe); nothing to report
+                }
+                if (container.pendingShare === pending) {
+                    container.pendingShare = null
+                    result?.let { report(it) }
+                }
+            }
+            val shared = awaitIncomingSharePath() ?: break
+            val path = when (shared) {
+                is SharedFile.Ready -> shared.path
+                SharedFile.CopyFailed -> {
+                    snackbar.showSnackbar(strings.ux.importCopyFailed)
+                    continue
+                }
+            }
+            // The import is owned by the container, so recreating this screen cannot cancel it.
+            container.pendingShare = importPipeline.startSharedDetached(path)
         }
       }
     }

@@ -132,6 +132,16 @@ class AppContainer(
      */
     fun <T> runDetached(block: suspend () -> T): kotlinx.coroutines.Deferred<T> = appScope.async { block() }
 
+    /**
+     * The share import currently running or just finished and not yet reported to the user. Held here, not by the screen,
+     * because the screen's collector is cancelled at every ON_STOP and a result nobody saw would otherwise vanish.
+     * Read and written on the main thread only (from the Compose effect).
+     */
+    var pendingShare: kotlinx.coroutines.Deferred<dev.velum.app.importing.ImportResult>? = null
+
+    /** One share import at a time across every instance of the activity (the pipeline is recreated per composition). */
+    val shareImportMutex = Mutex()
+
     /** Dismiss FirstRun in memory immediately; persist on [appScope]. */
     fun markFirstRunDone() {
         _firstRunPending.value = false

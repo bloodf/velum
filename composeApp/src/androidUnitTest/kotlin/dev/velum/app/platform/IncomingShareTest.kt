@@ -11,6 +11,7 @@ import java.io.InputStream
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlinx.coroutines.launch
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Shadows.shadowOf
@@ -127,5 +128,35 @@ class IncomingShareTest {
     @Test fun a_hostile_display_name_is_capped_and_cleaned() {
         assertEquals("abc", dev.velum.app.importing.ImportTitles.fromDisplayName("a\u0000b\nc.mp3"))
         assertEquals(dev.velum.app.importing.ImportTitles.MAX_TITLE_CHARS, dev.velum.app.importing.ImportTitles.fromDisplayName("x".repeat(5_000) + ".mp3")?.length)
+    }
+
+    @Test fun an_alias_authority_of_this_package_is_rejected_by_the_provider_lookup() {
+        val alias = "dev.velum.app.someotherprovider"
+        shadowOf(context.packageManager).addOrUpdateProvider(
+            android.content.pm.ProviderInfo().apply { authority = alias; name = "x.Other"; packageName = context.packageName },
+        )
+        val u = Uri.parse("content://$alias/f/x.mp3")
+        shadowOf(context.contentResolver).registerInputStream(u, java.io.ByteArrayInputStream(ByteArray(10) { 1 }))
+        IncomingShare.offerFromIntent(context, Intent(Intent.ACTION_SEND).putExtra(Intent.EXTRA_STREAM, u))
+        assertNull(nothingArrives(), "a provider of this package must not be importable, whatever its authority")
+    }
+
+    @Test fun a_hostile_provider_name_is_cleaned_before_it_is_stored() {
+        assertEquals("recgnp.mp3", IncomingShare.cleanName("rec\u202Eg\u0000n\u200Bp.mp3"))
+        assertEquals(120, IncomingShare.cleanName("x".repeat(5_000))?.length)
+        assertNull(IncomingShare.cleanName("\u202E\u0000"))
+        assertNull(IncomingShare.cleanName(null))
+    }
+
+    @Test fun a_share_taken_by_a_receiver_cancelled_at_that_moment_is_requeued_not_lost() {
+        val dispatcher = kotlinx.coroutines.test.StandardTestDispatcher()
+        val scope = kotlinx.coroutines.CoroutineScope(dispatcher)
+        val job = scope.launch { IncomingShare.next() }
+        dispatcher.scheduler.runCurrent() // the receiver is now suspended in next()
+        IncomingShare.enqueue(SharedFile.Ready("/tmp/requeued"))
+        job.cancel() // cancelled before it could run with the element
+        dispatcher.scheduler.advanceUntilIdle()
+        val again = kotlinx.coroutines.runBlocking { kotlinx.coroutines.withTimeout(5_000) { IncomingShare.next() } }
+        assertEquals(SharedFile.Ready("/tmp/requeued"), again)
     }
 }

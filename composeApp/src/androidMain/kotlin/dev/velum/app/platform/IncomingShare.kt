@@ -14,9 +14,14 @@ import kotlinx.coroutines.launch
 object IncomingShare {
     private const val MAX_DISPLAY_NAME = 120
 
-    // A path nobody received (the process dies, or the channel is dropped) would strand its copy in the import cache.
-    private val paths = Channel<SharedFile>(Channel.UNLIMITED, onUndeliveredElement = { if (it is SharedFile.Ready) File(it.path).delete() })
+    // receive() cancelled right after an element was taken (the screen stops) must not lose or delete that share: requeue it.
+    private val paths: Channel<SharedFile> = Channel(Channel.UNLIMITED, onUndeliveredElement = { shared -> paths.trySend(shared) })
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    /** Queues a finished share. Used by the copy and by tests. */
+    internal fun enqueue(shared: SharedFile) {
+        paths.trySend(shared)
+    }
 
     /** The next copied share; suspends until one is ready. */
     suspend fun next(): SharedFile = paths.receive()
@@ -49,7 +54,7 @@ object IncomingShare {
     private fun isOwnProvider(context: Context, uri: Uri): Boolean = runCatching {
         val authority = uri.authority?.substringAfterLast('@') ?: return@runCatching false
         context.packageManager.resolveContentProvider(authority, 0)?.packageName == context.packageName
-    }.getOrDefault(false)
+    }.getOrDefault(true) // fail closed: if the provider lookup throws, do not import
 
     /** Never blocks the caller: the copy runs on IO and the path is queued when complete. */
     fun offerFromIntent(context: Context, intent: Intent?) {
@@ -63,10 +68,14 @@ object IncomingShare {
         scope.launch { paths.trySend(copyShare(app, uri)?.let(SharedFile::Ready) ?: SharedFile.CopyFailed) }
     }
 
+    /** A provider-supplied name made safe to store and show: no control or invisible formatting characters, at most 120 chars. */
+    internal fun cleanName(raw: String?): String? =
+        raw?.let(dev.velum.app.importing.ImportTitles::cleanDisplayName)?.take(MAX_DISPLAY_NAME)?.ifBlank { null }
+
     /** Copies [uri] into `cacheDir/imports` (via [copyToCache]); a failed or empty copy leaves no file and returns null. */
     internal fun copyShare(context: Context, uri: Uri): String? {
         // A provider query: IO thread only. Another app controls the name, so cap it and drop control characters.
-        val displayName = displayNameOf(context, uri)?.filterNot { it.isISOControl() }?.take(MAX_DISPLAY_NAME)?.ifBlank { null }
+        val displayName = cleanName(displayNameOf(context, uri))
         val name = sanitizeImportFileName(displayName, "${java.util.UUID.randomUUID()}.audio")
         val dest = File(context.cacheDir, "imports").apply { mkdirs() }
         val outFile = File(dest, "share_${System.currentTimeMillis()}_$name")
