@@ -674,6 +674,8 @@ fun RecordingDetailScreen(
                                 current = { container.repository.getSpeakers(recordingId) },
                                 renames = renames,
                                 enrol = { row, trimmed ->
+                                // Only a name the user actually changed counts: the sheet hands back every row.
+                                val changed = speakerNameChanged(row.display_name, row.label, trimmed, strings)
                                 var cacheMissed = false
                                 // The name is already saved; a voice that cannot be enrolled is reported like a missing sample.
                                 try {
@@ -701,7 +703,7 @@ fun RecordingDetailScreen(
                                 } catch (_: Exception) {
                                     cacheMissed = true
                                 }
-                                if (cacheMissed) processError = strings.ux.voiceProfilesNoCachedVoice
+                                if (cacheMissed && changed) processError = strings.ux.voiceProfilesNoCachedVoice
                                 },
                                 rename = { row, trimmed -> container.repository.renameSpeakerIfUnchanged(recordingId, row, trimmed) },
                             )
@@ -1103,10 +1105,12 @@ private fun SourcesPane(
     }
 }
 
-/**
- * Cue header as drawn: the stored `**Name** · 0:00` without its Markdown markers, and the generated
- * English "Speaker N" in the app language. The stored text and exports are unchanged.
- */
+/** Whether [typed] differs from what the speaker sheet showed for this row: its saved name, else the default label. */
+internal fun speakerNameChanged(storedName: String?, label: String, typed: String, strings: dev.velum.app.i18n.Strings): Boolean {
+    val defaultName = strings.ux.speakerLabel.replace("%d", (label.trimStart('S', 's').toIntOrNull() ?: 1).toString())
+    return typed != (storedName?.takeIf { it.isNotBlank() } ?: defaultName)
+}
+
 /**
  * A transcript line that is not a cue header, as drawn: the "## Markers" section heading in the app
  * language and "- **0:12** label" as a plain bullet, never with their Markdown markers.
@@ -1118,6 +1122,10 @@ internal fun transcriptBodyLineDisplay(line: String, strings: dev.velum.app.i18n
     return line.replace("**", "")
 }
 
+/**
+ * Cue header as drawn: the stored `**Name** · 0:00` without its Markdown markers, and the generated
+ * English "Speaker N" in the app language. The stored text and exports are unchanged.
+ */
 internal fun transcriptHeaderDisplay(line: String, strings: dev.velum.app.i18n.Strings): String {
     val plain = line.trim().replace("**", "")
     val generated = Regex("""^Speaker (\d+)(?= ·)""").find(plain) ?: return plain

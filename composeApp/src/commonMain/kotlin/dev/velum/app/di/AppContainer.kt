@@ -139,6 +139,9 @@ class AppContainer(
      */
     var pendingShare: kotlinx.coroutines.Deferred<dev.velum.app.importing.ImportResult>? = null
 
+    /** True when [pendingShare] is a share found pending after a restart: reported with a snackbar, never by navigating. */
+    var pendingShareRecovered: Boolean = false
+
     /** One share import at a time across every instance of the activity (the pipeline is recreated per composition). */
     val shareImportMutex = Mutex()
 
@@ -343,6 +346,8 @@ class AppContainer(
                 stopMicCapture()
                 // Only now: if an earlier step fails, recordings stay and still need their queued work.
                 recordingJobs.cancelAll()
+                // First, before any data goes: if the process dies mid-wipe, no pending share copy may be offered after a restart.
+                withContext(Dispatchers.IO) { dev.velum.app.platform.clearPendingShares() }
                 repository.wipeAllUserData { path -> deleteFileAtPath(path) }
                 withContext(Dispatchers.IO) {
                     voiceProfileStore.wipeAll()
