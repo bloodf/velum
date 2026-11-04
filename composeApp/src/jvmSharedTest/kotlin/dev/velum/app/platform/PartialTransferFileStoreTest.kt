@@ -22,6 +22,21 @@ class PartialTransferFileStoreTest {
     private fun open(session: Long = 1L, serial: String? = "SYNTH-SN-1", checkpointBytes: Int = 1_000) =
         PartialTransferFileStore.open(root, session, serial, checkpointBytes)
 
+    @Test fun a_writer_still_unwinding_after_a_delete_leaves_nothing_a_later_open_uses() {
+        val writer = open()
+        writer.write(ByteArray(10))
+        writer.length()
+        open().delete()
+        writer.write(ByteArray(5_000)) // past the checkpoint size: it writes a new .offset for the removed file
+        writer.close()
+        assertTrue(File(root.listFiles()!!.first { it.name.endsWith(".offset") }.path).readText().toLong() > 0)
+
+        val next = open()
+        assertEquals(0L, next.length(), "a late .offset must be ignored")
+        assertEquals(emptyList(), root.listFiles()!!.filter { it.name.endsWith(".offset") }, "and removed, so a later crash can't trust it")
+        next.close()
+    }
+
     @Test fun length_reports_all_written_bytes_because_it_flushes() {
         val store = open()
         store.write(ByteArray(10) { 1 })

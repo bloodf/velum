@@ -76,7 +76,10 @@ class DeleteDuringTransferTest {
         }
     }
 
-    private inner class Fixture(val container: AppContainer, val vm: DeviceViewModel, val gate: TransferGate) {
+    private inner class Fixture(val container: AppContainer, val vm: DeviceViewModel, val gate: TransferGate, val partials: java.io.File) {
+        fun partialFiles() = partials.listFiles().orEmpty().filter { it.name.endsWith(".partial") || it.name.endsWith(".offset") }
+        fun openPartial() = PartialTransferFileStore.open(partials, session, keys.serialNumber)
+
         suspend fun row() = container.repository.findDeviceSessionRecording(session, keys.serialNumber)
 
         suspend fun download() {
@@ -125,7 +128,7 @@ class DeleteDuringTransferTest {
             runBlocking {
                 vm.connect("fake-note-pro")
                 withTimeout(20_000) { while (vm.sessionUi.value.sessions.isEmpty()) delay(5) }
-                withTimeout(120_000) { Fixture(container, vm, gate).body() }
+                withTimeout(120_000) { Fixture(container, vm, gate, partials).body() }
             }
         } finally {
             owner.clear()
@@ -142,8 +145,10 @@ class DeleteDuringTransferTest {
         download()
         val first = assertNotNull(row())
         val release = redownloadHeld()
+        assertTrue(partialFiles().isNotEmpty(), "the held transfer has a partial")
 
         assertTrue(container.deleteRecordingForever(first.id, vm))
+        assertTrue(partialFiles().isEmpty(), "the audio must not stay recoverable from the partial")
         release.complete(Unit)
         vm.awaitDownloads()
 
@@ -152,9 +157,22 @@ class DeleteDuringTransferTest {
         assertEquals(0, container.repository.storageUsage().recordingCount)
         assertNull(vm.sessionUi.value.downloadingSessionId)
 
+        // Nothing is left to resume from, so the Re-download starts from zero and reads the device again.
+        assertEquals(0L, openPartial().run { length().also { close() } })
         gate.held = null
         download()
         assertNotEquals(first.id, assertNotNull(row(), "an explicit Re-download must still work").id)
+    }
+
+    @Test fun a_partial_with_no_download_running_is_removed_too() = fixture {
+        download()
+        val first = assertNotNull(row())
+        openPartial().run { write(ByteArray(10)); length(); close() }
+        assertTrue(partialFiles().isNotEmpty())
+
+        assertTrue(container.deleteRecordingForever(first.id, vm))
+
+        assertTrue(partialFiles().isEmpty())
     }
 
     @Test fun a_download_still_waiting_to_start_is_stopped_too() = fixture {
@@ -166,11 +184,44 @@ class DeleteDuringTransferTest {
         vm.downloadSession(session) // queued behind it; not yet the session shown as downloading
         assertNull(vm.sessionUi.value.downloadingSessionId)
 
-        container.deleteRecordingForever(first, vm)
+        assertTrue(container.deleteRecordingForever(first, vm))
         release.complete(Unit)
         vm.awaitDownloads()
 
         assertNull(row(), "the queued download must not bring the recording back")
+    }
+
+    @Test fun with_two_downloads_queued_deleting_the_earlier_one_stops_it() = fixture {
+        download()
+        val first = assertNotNull(row()).id
+        val release = redownloadHeld()
+        vm.cancelDownload()
+        gate.held = null
+        vm.downloadSession(session)
+        vm.downloadSession(session + 1) // the newest request is another session
+
+        assertTrue(container.deleteRecordingForever(first, vm))
+        release.complete(Unit)
+        vm.awaitDownloads()
+
+        assertNull(row(), "the earlier queued download must not bring the recording back")
+    }
+
+    @Test fun with_two_downloads_queued_deleting_the_later_one_leaves_the_earlier_running() = fixture {
+        download()
+        val other = assertNotNull(row()).copy(id = "rec-other", session_id = session + 1)
+        container.repository.insertDeviceSessionRecording(other)
+        val release = redownloadHeld()
+        vm.cancelDownload()
+        gate.held = null
+        vm.downloadSession(session)
+        vm.downloadSession(other.session_id!!)
+
+        assertTrue(container.deleteRecordingForever(other.id, vm))
+        release.complete(Unit)
+        vm.awaitDownloads()
+
+        assertNotNull(vm.sessionUi.value.lastDownloadedRecordingId, "this session's queued download must still finish")
     }
 
     @Test fun deleting_a_recording_of_another_session_leaves_the_transfer_running() = fixture {
@@ -179,7 +230,7 @@ class DeleteDuringTransferTest {
         container.repository.insertDeviceSessionRecording(other)
         val release = redownloadHeld()
 
-        container.deleteRecordingForever(other.id, vm)
+        assertTrue(container.deleteRecordingForever(other.id, vm))
         release.complete(Unit)
         vm.awaitDownloads()
 

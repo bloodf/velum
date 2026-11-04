@@ -294,13 +294,15 @@ class AppContainer(
      * Deletes a recording for good. False when a step failed: the recording stays, though its audio may already be
      * gone, and trying again finishes the job. Not cancellable, so leaving the screen can't stop it halfway. It waits
      * for a running device save, so it sees the file that save writes. A running or queued download of this recording's
-     * session is cancelled first.
+     * session is cancelled first, and that session's partial is removed, since the audio could be recovered from it.
      */
     suspend fun deleteRecordingForever(id: String, device: DeviceViewModel = deviceViewModel): Boolean = try {
         withContext(NonCancellable + Dispatchers.IO) {
             // Before the row goes: a cancelled download can't save, and a running one would find no row and add it back (#407).
-            repository.getRecording(id)?.session_id?.let(device::cancelDownloadOf)
+            val row = repository.getRecording(id)
+            row?.session_id?.let(device::cancelDownloadOf)
             downloadPersistMutex.withLock {
+                row?.session_id?.let { device.deletePartialOf(it, row.device_serial) }
                 val audio = repository.getRecording(id)?.local_path
                 val others = repository.getAllRecordingFileRefs().filter { it.first != id }.mapNotNull { it.second }
                 // Copies first: if one fails, the recording still has its audio.

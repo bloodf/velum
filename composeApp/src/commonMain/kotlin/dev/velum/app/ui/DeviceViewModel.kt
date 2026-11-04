@@ -30,6 +30,7 @@ import dev.velum.recorder.RecorderDriverRegistry
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.Job
@@ -122,8 +123,8 @@ class DeviceViewModel(
     private var discardedUnreadablePartial = false
     private var connectedDeviceId: String? = null
     private var downloadJob: Job? = null
-    /** The session of the newest download request, from the tap on, including while it waits for an older one to unwind. */
-    @Volatile private var requestedSessionId: Long? = null
+    /** The session of every unfinished download, from the tap on, including one waiting for an older one to unwind. */
+    private val unfinishedDownloads = MutableStateFlow<Map<Job, Long>>(emptyMap())
     // Parent of every unfinished download: a cancelled one can still be unwinding after a newer one replaced downloadJob.
     private val downloads = SupervisorJob(viewModelScope.coroutineContext[Job])
     private val downloadMutex = Mutex()
@@ -201,26 +202,42 @@ class DeviceViewModel(
     }
 
     /**
-     * Stops the download of [sessionId], if that is the one requested, because its recording is being deleted for good
-     * and the download would add it back when it ends (#407). The partial stays, so a later Re-download can resume.
+     * Stops every download of [sessionId], and no other, because its recording is being deleted for good and the
+     * download would add it back when it ends (#407).
      * ponytail: matches on session id alone, which is the session's start time; two devices sharing one only costs a
      * cancelled download. Compare the serial too if that ever matters.
      */
     fun cancelDownloadOf(sessionId: Long) {
-        if (requestedSessionId == sessionId) cancelDownload()
+        val jobs = unfinishedDownloads.value.filterValues { it == sessionId }.keys
+        jobs.forEach { it.cancel() }
+        if (_sessionUi.value.downloadingSessionId == sessionId) {
+            DownloadProgressNotifier.dismiss(DownloadNotifyKind.DeviceSession)
+            DownloadProgressNotifier.setCancelHandler(DownloadNotifyKind.DeviceSession, null)
+        }
+        showDownloadCancelled { it == sessionId }
+    }
+
+    /**
+     * Removes [sessionId]'s partial, because the audio can be recovered from it, so a later Re-download starts from zero.
+     * Throws if it can't be opened. A download still unwinding keeps writing to the removed file, and what it leaves
+     * behind is ignored on the next open.
+     */
+    fun deletePartialOf(sessionId: Long, deviceSerial: String?) {
+        openPartialTransfer(sessionId, deviceSerial)?.delete()
     }
 
     fun cancelDownload() {
-        val locale = localeTag()
         downloads.cancelChildren()
         DownloadProgressNotifier.dismiss(DownloadNotifyKind.DeviceSession)
         DownloadProgressNotifier.setCancelHandler(DownloadNotifyKind.DeviceSession, null)
-        if (_sessionUi.value.downloadingSessionId != null) {
-            _sessionUi.value = _sessionUi.value.copy(
-                downloadingSessionId = null,
-                downloadProgress = null,
-                statusMessage = DeviceUiCopy.downloadCancelled(locale),
-            )
+        showDownloadCancelled { true }
+    }
+
+    private fun showDownloadCancelled(matches: (Long) -> Boolean) {
+        val message = DeviceUiCopy.downloadCancelled(localeTag())
+        _sessionUi.update { ui ->
+            val session = ui.downloadingSessionId
+            if (session == null || !matches(session)) ui else ui.copy(downloadingSessionId = null, downloadProgress = null, statusMessage = message)
         }
     }
 
@@ -258,8 +275,8 @@ class DeviceViewModel(
         if (wipes.value > 0) return
         if (downloadJob?.isActive == true && _sessionUi.value.downloadingSessionId != null) return
         val previous = downloadJob
-        requestedSessionId = sessionId
-        val started = viewModelScope.launch(downloads) {
+        // Started only once registered, so a delete can't miss it.
+        val started = viewModelScope.launch(downloads, start = CoroutineStart.LAZY) {
             previous?.join()
             try {
                 downloadMutex.withLock {
@@ -277,12 +294,12 @@ class DeviceViewModel(
             }
         }
         downloadJob = started
+        unfinishedDownloads.update { it + (started to sessionId) }
         started.invokeOnCompletion {
-            if (downloadJob === started) {
-                downloadJob = null
-                requestedSessionId = null
-            }
+            unfinishedDownloads.update { it - started }
+            if (downloadJob === started) downloadJob = null
         }
+        started.start()
     }
 
     private suspend fun runDownloadSession(sessionId: Long) {
