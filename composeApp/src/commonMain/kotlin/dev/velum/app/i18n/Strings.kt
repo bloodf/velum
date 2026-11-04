@@ -245,6 +245,8 @@ data class Strings(
     // Nested: keep Strings primary ctor under the JVM/Robolectric 255-arg limit.
     val settingsUi: SettingsUiStrings,
     val ux: UxStrings,
+    // Add new strings to MoreStrings, not here: Strings and UxStrings are at the JVM constructor limit.
+    val added: MoreStrings,
 )
 
 data class SettingsUiStrings(
@@ -1236,7 +1238,9 @@ val PtBr = Strings(
         processingFailedWithDetail = "O processamento falhou (%s).",
         retryProcessing = "Tentar de novo",
         waveformA11y = "Progresso da reprodução",
-    ),)
+    ),
+    added = MoreStrings(),
+)
 
 val En = Strings(
     localeTag = "en",
@@ -1844,7 +1848,9 @@ val En = Strings(
         processingFailedWithDetail = "Processing failed (%s).",
         retryProcessing = "Try again",
         waveformA11y = "Playback progress",
-    ),)
+    ),
+    added = MoreStrings(),
+)
 
 val LocalStrings = staticCompositionLocalOf { PtBr }
 

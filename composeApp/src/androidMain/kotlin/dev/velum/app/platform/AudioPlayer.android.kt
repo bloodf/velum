@@ -72,7 +72,7 @@ private class AndroidAudioPlayer : AudioPlayer {
         var old: MediaPlayer? = null
         try {
             onMain {
-                stopPolling() // a tick must not write the old player's position after the reset
+                stopPolling() // the old poll job must not stay scheduled behind the new player
                 _isPlaying.value = false
                 _positionMs.value = 0L
                 _durationMs.value = 0L
@@ -132,6 +132,9 @@ private class AndroidAudioPlayer : AudioPlayer {
                 withContext(NonCancellable + Dispatchers.Main.immediate) {
                     if (created != null && player === created) {
                         player = null
+                        stopPolling()
+                        _isPlaying.value = false
+                        _positionMs.value = 0L
                         _durationMs.value = 0L
                         wavFile = null
                         wavSource = null
@@ -209,13 +212,10 @@ private class AndroidAudioPlayer : AudioPlayer {
     }
 
     private fun releasePlayerOnly() {
-        try {
-            player?.reset()
-            player?.release()
-        } catch (_: Throwable) {
-            // ignore
-        }
+        val mp = player
         player = null
+        runCatching { mp?.reset() }
+        runCatching { mp?.release() }
     }
 
     private fun startPolling() {

@@ -1,6 +1,7 @@
 package dev.velum.app
 
 import android.content.Context
+import android.util.Log
 import dev.velum.ai.pipeline.inAppLanguage
 
 /**
@@ -33,4 +34,7 @@ internal fun dispositionForHandoffCancellation(
  */
 internal fun Context.fatalStartText(): String =
     runCatching { inAppLanguage().getString(R.string.fatal_start_failed) }
-        .getOrElse { getString(R.string.fatal_start_failed) }
+        .getOrElse { t ->
+            Log.w("VelumMain", "Fatal text language lookup failed (${t::class.simpleName})")
+            getString(R.string.fatal_start_failed)
+        }
