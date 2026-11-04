@@ -19,6 +19,8 @@ fun main() = application {
         driverFactory = DriverFactory(),
         integrationConfig = IntegrationConfig.fromEnv { key -> System.getenv(key) },
     )
+    // Jobs live in this process: every restart strands the rows that were queued.
+    container.runDetached { container.requeueStrandedRecordings() }
     Window(
         onCloseRequest = ::exitApplication,
         title = "Velum",

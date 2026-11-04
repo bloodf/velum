@@ -250,6 +250,9 @@ DELETE FROM summary_version;
 selectAllRecordingIds:
 SELECT id FROM recording;
 
+selectQueuedRecordingIds:
+SELECT id FROM recording WHERE status = 'queued' AND trashed = 0;
+
 selectAutoflows:
 SELECT * FROM autoflow ORDER BY name ASC;
 

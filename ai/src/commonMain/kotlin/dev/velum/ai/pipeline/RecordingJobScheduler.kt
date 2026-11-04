@@ -38,6 +38,12 @@ fun interface RecordingJobScheduler {
         return true
     }
 
+    /**
+     * True when work for [recordingId] is queued or running. A caller that wants to start work only if none exists
+     * (startup recovery) asks first: an enqueue with other parameters would replace the job. Unknown counts as true.
+     */
+    fun hasActiveWork(recordingId: String): Boolean = false
+
     /** Drops work that is queued or waiting to retry. A job already running is stopped through its [dev.velum.core.data.WipeGate]. */
     fun cancelAll() = Unit
 }
@@ -111,6 +117,8 @@ fun createCoroutineRecordingJobScheduler(
         override fun enqueue(recordingId: String, templateId: String?, retranscribe: Boolean, apiModelOverride: ApiModelOverride?) {
             enqueueReportingStart(recordingId, templateId, retranscribe, apiModelOverride)
         }
+
+        override fun hasActiveWork(recordingId: String): Boolean = inFlight.value[recordingId]?.job?.isActive == true
 
         override fun enqueueReportingStart(
             recordingId: String,

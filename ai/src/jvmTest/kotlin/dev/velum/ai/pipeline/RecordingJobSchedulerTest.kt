@@ -130,8 +130,10 @@ class RecordingJobSchedulerTest {
         val processor = RecordingProcessor(router, repo, settings)
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val scheduler = createCoroutineRecordingJobScheduler(processor, scope)
+        assertFalse(scheduler.hasActiveWork("rec-dedupe"))
         scheduler.enqueue("rec-dedupe", null, true, null)
         delay(80)
+        assertTrue(scheduler.hasActiveWork("rec-dedupe"), "the running job must be reported")
         scheduler.enqueue(
             "rec-dedupe",
             "velum.meeting",
@@ -145,6 +147,7 @@ class RecordingJobSchedulerTest {
         withTimeout(10_000) {
             while (repo.getRecording("rec-dedupe")?.status != "ready") delay(50)
         }
+        withTimeout(5_000) { while (scheduler.hasActiveWork("rec-dedupe")) delay(20) }
     }
 
     @Test

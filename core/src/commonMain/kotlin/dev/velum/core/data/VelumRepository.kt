@@ -762,6 +762,11 @@ class VelumRepository(
         q.selectMetaMatching(globPrefix("$IMPORT_COPY_PREFIX$recordingId:")).executeAsList().map { it.value_ }
     }
 
+    /** Ids of recordings waiting for a processing job (trash excluded). */
+    suspend fun queuedRecordingIds(): List<String> = withContext(dbContext) {
+        q.selectQueuedRecordingIds().executeAsList()
+    }
+
     /** Every recording id, including those in the trash. */
     suspend fun recordingIds(): Set<String> = withContext(dbContext) {
         q.selectAllRecordingIds().executeAsList().toSet()
