@@ -80,6 +80,7 @@ class AudioImportPipeline(
         source: String,
         titleHint: String?,
         startedAtEpochSeconds: Long?,
+        recoveredAtMs: Long?,
     ): ImportResult {
         var normalizedPath: String? = null
         var result: ImportResult? = null
