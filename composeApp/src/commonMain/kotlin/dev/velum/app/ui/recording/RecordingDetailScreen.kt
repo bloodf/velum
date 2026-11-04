@@ -668,6 +668,10 @@ fun RecordingDetailScreen(
                                 val trimmed = name.trim()
                                 if (trimmed.isEmpty()) continue
                                 val row = speakers.firstOrNull { it.id == speakerId } ?: continue
+                                // Only a name the user actually changed counts: the sheet hands back every row.
+                                val current = row.display_name?.takeIf { it.isNotBlank() }
+                                val defaultName = strings.ux.speakerLabel.replace("%d", (row.label.trimStart('S', 's').toIntOrNull() ?: 1).toString())
+                                val changed = trimmed != (current ?: defaultName)
                                 var cacheMissed = false
                                 container.voiceProfileStore.withReady {
                                     val emb = cachedClusterEmbedding(
@@ -689,7 +693,7 @@ fun RecordingDetailScreen(
                                     }
                                 }
                                 container.repository.renameSpeaker(recordingId, speakerId, trimmed)
-                                if (cacheMissed) processError = strings.ux.voiceProfilesNoCachedVoice
+                                if (cacheMissed && changed) processError = strings.ux.voiceProfilesNoCachedVoice
                             }
                             showSpeakers = false
                         } catch (cancelled: kotlinx.coroutines.CancellationException) {

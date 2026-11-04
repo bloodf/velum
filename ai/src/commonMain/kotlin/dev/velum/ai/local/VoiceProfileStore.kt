@@ -12,6 +12,7 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -211,11 +212,30 @@ class VoiceProfileStore(
         }
         // A wrong but well-formed key and a damaged blob are indistinguishable when
         // nothing authenticates. Never label all existing encrypted profiles corrupt.
-        if (authenticationFailures > 0 && authenticated == 0) throw VoiceProfileKeyUnavailableException()
+        // The key check file tells them apart: if it authenticates, the key is right and the files that did not
+        // are damaged individually, so they are listed as unreadable instead of blocking every profile.
+        if (authenticationFailures > 0 && authenticated == 0 && !keyCheckAuthenticates(profileCipher)) {
+            throw VoiceProfileKeyUnavailableException()
+        }
         return VoiceProfileInventory(
             readable.sortedBy { it.displayName.lowercase() },
             unreadable.sortedBy { it.displayName.lowercase() },
         )
+    }
+
+    private fun keyCheckFile() = root.resolve("voices").resolve(KEY_CHECK_FILE)
+
+    private fun keyCheckAuthenticates(c: ProfileCipher): Boolean = try {
+        val file = keyCheckFile()
+        file.exists() && c.decrypt(file.readBytes()).contentEquals(KEY_CHECK_PLAINTEXT)
+    } catch (_: ProfileCiphertextUnreadableException) {
+        false
+    }
+
+    /** Written with the next profile write (inspection stays read-only), so later damage can be told apart from a wrong key. */
+    private fun writeKeyCheckIfMissing(c: ProfileCipher) {
+        if (keyCheckFile().exists()) return
+        runCatching { writeAtomically(root.resolve("voices"), KEY_CHECK_FILE, c.encrypt(KEY_CHECK_PLAINTEXT)) }
     }
 
     /** Strict compatibility API: exports/old callers must not silently omit unreadable data. */
@@ -351,8 +371,15 @@ class VoiceProfileStore(
         PROFILE_SUFFIXES.forEach { profilesDir.resolve("$id$it.tmp").deleteRecursively() }
     }
 
+    /**
+     * Deletes every voice profile and cached embedding without needing the key, so it works when the key is
+     * lost for good or the only profile is corrupt (the recovery path of the voice profiles screen).
+     */
+    suspend fun wipeVoiceData() = withContext(ioDispatcher) { accessMutex.withLock { wipeAll() } }
+
     fun wipeAll() {
         if (profilesDir.exists()) profilesDir.deleteRecursively()
+        keyCheckFile().deleteRecursively()
         // Cluster embeddings from processed recordings are voice data too.
         if (cacheDir.exists()) cacheDir.deleteRecursively()
         profilesDir.createDirectories()
@@ -454,7 +481,23 @@ class VoiceProfileStore(
     }
 
     /** Names and availability of one diarization run's speaker naming. */
-    class SpeakerNaming(val names: Map<String, String>, val unavailable: Boolean)
+    class SpeakerNaming(val names: Map<String, String>, val unavailable: Boolean) {
+        /** The result a diarizer returns for [spans], carrying the naming outcome (null: no profile store). */
+        companion object {
+            fun resultFor(
+                spans: List<dev.velum.ai.engine.SpeakerSpan>,
+                naming: SpeakerNaming?,
+                engineId: String,
+                modelId: String,
+            ) = dev.velum.ai.engine.DiarizationResult(
+                spans = spans,
+                namedSpeakers = naming?.names.orEmpty(),
+                engineId = engineId,
+                modelId = modelId,
+                speakerNamesUnavailable = naming?.unavailable == true,
+            )
+        }
+    }
 
     /**
      * Caches this run's speaker embeddings and names the speakers that match a saved profile. When the key is
@@ -488,10 +531,31 @@ class VoiceProfileStore(
      * The old cache must not outlive a run that could not replace it: once the key is back, naming "S1" would
      * read the previous run's "S1", which may be a different person.
      */
-    private fun speakerNamingUnavailable(recordingId: String?, cause: Exception): SpeakerNaming {
+    private suspend fun speakerNamingUnavailable(recordingId: String?, cause: Exception): SpeakerNaming {
         println("VelumVoice: speaker naming unavailable (${cause::class.simpleName})")
-        if (recordingId != null) runCatching { deleteClusterCache(recordingId) }
+        if (recordingId != null) {
+            withContext(NonCancellable + ioDispatcher) {
+                accessMutex.withLock {
+                    runCatching { deleteClusterCache(recordingId) }
+                        .onFailure { println("VelumVoice: dropping the old speaker cache failed (${it::class.simpleName})") }
+                }
+            }
+        }
         return SpeakerNaming(emptyMap(), unavailable = true)
+    }
+
+    /**
+     * Whether speaker naming can run now: the key is there and the saved profiles authenticate or are only
+     * individually damaged. Checked before a long transcription so a rerun that would have to be thrown away
+     * fails early.
+     */
+    suspend fun speakerNamingReady(): Boolean = try {
+        withReady { inspectProfiles() }
+        true
+    } catch (_: VoiceProfileKeyUnavailableException) {
+        false
+    } catch (_: SecureStoreUnavailableException) {
+        false
     }
 
     /**
@@ -506,14 +570,14 @@ class VoiceProfileStore(
             val plaintextIds = profilesDir.listChildren().filter { it.name.endsWith(".f32") }
                 .map { it.name.removeSuffix(".f32") }.toSet()
             val readable = inspectProfiles().profiles.filter { it.id in plaintextIds }
-            readable.forEach { profile ->
+            readable.count { profile ->
                 if (profilesDir.resolve("${profile.id}.enc").exists()) {
                     profilesDir.resolve("${profile.id}.f32").deleteFile()
                 } else {
                     writeProfile(profile) // durable .enc first, then it removes the .f32
+                    !profilesDir.resolve("${profile.id}.f32").exists()
                 }
             }
-            readable.size
         }
     }
 
@@ -630,6 +694,7 @@ class VoiceProfileStore(
             ).encodeToByteArray(),
         )
         writeAtomically(profilesDir, "${profile.id}.enc", encrypted)
+        writeKeyCheckIfMissing(cipher())
         // Remove legacy plaintext if present.
         profilesDir.resolve("${profile.id}.f32").deleteRecursively()
     }
@@ -648,6 +713,8 @@ class VoiceProfileStore(
     }
 
     companion object {
+        private const val KEY_CHECK_FILE = ".keycheck.enc"
+        private val KEY_CHECK_PLAINTEXT = "velum-voice-key-check-v1".encodeToByteArray()
         // Shared across instances: two cold-start containers must not overwrite one another's key.
         private val keyInitializationMutex = Mutex()
         private val PROFILE_SUFFIXES = listOf(".json", ".enc", ".f32")

@@ -163,6 +163,9 @@ fun VoiceProfilesScreen(
                     Text(status.orEmpty(), color = VelumInkSecondary)
                     Spacer(Modifier.height(8.dp))
                     OutlineButton(strings.ux.retryProcessing, { launchAction { container.voiceProfileStore.reloadKey(); refresh(); status = null } })
+                    // Recovery when the key is lost for good: wiping needs no key (and asks for confirmation).
+                    Spacer(Modifier.height(8.dp))
+                    OutlineButton(strings.ux.voiceProfilesWipe, { showWipeConfirm = true }, modifier = Modifier.fillMaxWidth())
                 } else if (profiles.isEmpty() && unreadable.isEmpty()) {
                     Text(strings.ux.voiceProfilesEmpty, color = VelumInkSecondary)
                 } else {
@@ -388,7 +391,7 @@ fun VoiceProfilesScreen(
                     onClick = {
                         showWipeConfirm = false
                         launchAction {
-                            container.voiceProfileStore.withReady { wipeAll() }
+                            container.voiceProfileStore.wipeVoiceData()
                             selected = null
                             refresh()
                             status = strings.ux.voiceProfilesWiped

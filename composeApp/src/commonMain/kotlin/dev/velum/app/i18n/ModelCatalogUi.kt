@@ -5,6 +5,7 @@ import dev.velum.ai.local.DefaultLocalCatalog
 import dev.velum.ai.local.DeviceComputeClass
 import dev.velum.ai.local.LOCAL_MODEL_NOT_READY_MESSAGE
 import dev.velum.ai.pipeline.INSUFFICIENT_STORAGE_MESSAGE
+import dev.velum.ai.pipeline.SPEAKER_NAMES_KEPT_MESSAGE
 import dev.velum.ai.local.LocalAsrRouter
 import dev.velum.ai.local.detectDeviceComputeClass
 
@@ -181,6 +182,7 @@ internal fun processingFailureText(raw: String?, strings: Strings): String? = wh
     raw == null -> null
     raw == LOCAL_MODEL_NOT_READY_MESSAGE || LEGACY_MODEL_NOT_READY.containsMatchIn(raw) -> strings.ux.localModelNotReady
     raw == INSUFFICIENT_STORAGE_MESSAGE -> strings.ux.insufficientStorage
+    raw == SPEAKER_NAMES_KEPT_MESSAGE -> strings.ux.speakerNamesKept
     else -> raw
 }
 

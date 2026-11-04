@@ -106,6 +106,9 @@ interface StreamingTranscriber {
 interface Diarizer {
     val engineId: String
     suspend fun diarize(input: AudioInput, modelId: String): DiarizationResult
+
+    /** False when speaker naming cannot run (voice key unavailable). Asked before a long transcription. */
+    suspend fun speakerNamingReady(): Boolean = true
 }
 
 interface LlmEngine {

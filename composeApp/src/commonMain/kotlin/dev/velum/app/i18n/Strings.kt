@@ -614,6 +614,7 @@ data class UxStrings(
     val failedProcessing: String,
     val localModelNotReady: String,
     val insufficientStorage: String,
+    val speakerNamesKept: String,
     val retryProcessing: String,
     val waveformA11y: String,
 )
@@ -1095,7 +1096,7 @@ val PtBr = Strings(
         voiceProfilesFilesChanged = "Os arquivos do perfil mudaram. A lista foi atualizada e nada foi removido.",
         voiceProfilesExportBlocked = "Revise os perfis ilegíveis antes de exportar.",
         voiceProfilesChangeBlocked = "Este perfil não pôde ser lido. Revise seus arquivos antes de substituí-lo.",
-        voiceProfilesNoCachedVoice = "Renomeado, mas a amostra de voz desta gravação não está mais disponível, então nenhum perfil de voz foi salvo.",
+        voiceProfilesNoCachedVoice = "Renomeado. Nenhum perfil de voz foi salvo: esta gravação não tem amostra de voz (pode ser anterior aos perfis de voz, ou a amostra foi removida).",
         voiceProfilesEmpty = "Nenhum perfil ainda. Nomeie um orador em uma gravação para cadastrar.",
         voiceProfilesSaved = "Perfil salvo",
         voiceProfilesDeleted = "Perfil removido",
@@ -1212,6 +1213,7 @@ val PtBr = Strings(
         failedProcessing = "Não foi possível processar esta gravação.",
         localModelNotReady = "Falta baixar um modelo necessário para esta etapa. Baixe-o em Gerenciador de modelos ou mude esta etapa para API em Processamento de IA.",
         insufficientStorage = "Não há espaço livre suficiente para processar esta gravação. Libere espaço e tente de novo.",
+        speakerNamesKept = "A chave de voz não está disponível, então os falantes não podem ser nomeados de novo. Seus nomes foram mantidos; tente outra vez depois de desbloquear.",
         retryProcessing = "Tentar de novo",
         waveformA11y = "Progresso da reprodução",
     ),)
@@ -1693,7 +1695,7 @@ val En = Strings(
         voiceProfilesFilesChanged = "The profile’s files changed. The list was refreshed and nothing was removed.",
         voiceProfilesExportBlocked = "Review the unreadable profiles before exporting.",
         voiceProfilesChangeBlocked = "This profile could not be read. Review its files before replacing it.",
-        voiceProfilesNoCachedVoice = "Renamed, but this recording's voice sample is no longer available, so no voice profile was saved.",
+        voiceProfilesNoCachedVoice = "Renamed. No voice profile was saved: this recording has no voice sample (it may predate voice profiles, or the sample was removed).",
         voiceProfilesEmpty = "No profiles yet — name a speaker in a recording to enroll.",
         voiceProfilesSaved = "Profile saved",
         voiceProfilesDeleted = "Profile deleted",
@@ -1810,6 +1812,7 @@ val En = Strings(
         failedProcessing = "Could not process this recording.",
         localModelNotReady = "A model this step needs isn't downloaded yet. Download it in Model manager, or switch this step to API in AI processing.",
         insufficientStorage = "Not enough free storage to process this recording. Free up space and try again.",
+        speakerNamesKept = "The voice key is unavailable, so speakers can\'t be named again. Your names were kept; try again after unlocking.",
         retryProcessing = "Try again",
         waveformA11y = "Playback progress",
     ),)

@@ -151,4 +151,85 @@ class VoiceClusterCacheFollowupTest {
         store.sweepTemporaryFiles()
         assertTrue((profiles.walkFiles() + cache.walkFiles()).none { it.name.endsWith(".tmp") })
     }
+
+    @Test fun wipe_voice_data_works_without_a_key_and_with_a_corrupt_only_profile() = runTest {
+        store(this).withReady { upsert("Synthetic Only", embedding, id = "only") }
+        val enc = profiles.resolve("only.enc")
+        enc.writeBytes(enc.readBytes().copyOf(4))
+        cache.resolve("rec-9").createDirectories()
+        cache.resolve("rec-9").resolve("speaker.enc").writeBytes(ByteArray(8))
+        val noKey = store(this, InMemorySecureStore())
+        assertFailsWith<VoiceProfileKeyUnavailableException> { noKey.withReady { inspectProfiles() } }
+        noKey.wipeVoiceData()
+        assertTrue(profiles.walkFiles().isEmpty(), "profile files survived the wipe")
+        assertFalse(cache.exists() && cache.walkFiles().isNotEmpty(), "cached embeddings survived the wipe")
+    }
+
+    @Test fun one_corrupt_only_profile_is_listed_as_unreadable_when_the_key_is_right() = runTest {
+        val store = store(this)
+        store.withReady { upsert("Synthetic Only", embedding, id = "only") }
+        val enc = profiles.resolve("only.enc")
+        enc.writeBytes(enc.readBytes().copyOf(4))
+        val inventory = store.withReady { inspectProfiles() } // does not throw: the key check file authenticates
+        assertEquals(listOf("only"), inventory.unreadable.map { it.id })
+        assertTrue(inventory.profiles.isEmpty())
+    }
+
+    @Test fun a_wrong_key_still_blocks_everything() = runTest {
+        store(this).withReady { upsert("Synthetic Only", embedding, id = "only") }
+        val wrongKey = store(this, InMemorySecureStore())
+        assertFailsWith<VoiceProfileKeyUnavailableException> { wrongKey.withReady { inspectProfiles() } }
+    }
+
+    @Test fun a_corrupt_enc_keeps_the_plaintext() = runTest {
+        val store = store(this)
+        store.withReady { upsert("Synthetic Good", embedding, id = "good") }
+        profiles.resolve("bad.json").writeBytes(
+            """{"id":"bad","displayName":"Synthetic Bad","dim":3,"sampleCount":1,"encrypted":true}""".encodeToByteArray(),
+        )
+        profiles.resolve("bad.enc").writeBytes(ByteArray(4))
+        profiles.resolve("bad.f32").writeBytes(VoiceProfileStore.floatsToBytes(embedding))
+        assertEquals(0, store.migrateLegacyPlaintextProfiles())
+        assertTrue(profiles.resolve("bad.f32").exists(), "the only readable copy of a profile was deleted")
+    }
+
+    @Test fun a_wrong_key_keeps_the_plaintext_and_the_call_throws() = runTest {
+        store(this).withReady { upsert("Synthetic Good", embedding, id = "good") }
+        profiles.resolve("legacy.json").writeBytes(
+            """{"id":"legacy","displayName":"Synthetic Legacy","dim":3,"sampleCount":1,"encrypted":false}""".encodeToByteArray(),
+        )
+        profiles.resolve("legacy.f32").writeBytes(VoiceProfileStore.floatsToBytes(embedding))
+        val wrongKey = store(this, InMemorySecureStore())
+        assertFailsWith<VoiceProfileKeyUnavailableException> { wrongKey.migrateLegacyPlaintextProfiles() }
+        assertTrue(profiles.resolve("legacy.f32").exists())
+    }
+
+    @Test fun naming_readiness_follows_the_key() = runTest {
+        val secure = InMemorySecureStore()
+        store(this, secure).withReady { upsert("Synthetic Good", embedding, id = "good") }
+        assertTrue(store(this, secure).speakerNamingReady())
+        assertFalse(store(this, InMemorySecureStore()).speakerNamingReady())
+    }
+
+    @Test fun the_diarization_result_carries_the_naming_outcome() {
+        val span = dev.velum.ai.engine.SpeakerSpan("S1", 0, 10)
+        val ok = VoiceProfileStore.SpeakerNaming.resultFor(listOf(span), VoiceProfileStore.SpeakerNaming(mapOf("S1" to "Synthetic"), false), "e", "m")
+        assertEquals(mapOf("S1" to "Synthetic"), ok.namedSpeakers)
+        assertFalse(ok.speakerNamesUnavailable)
+        val unavailable = VoiceProfileStore.SpeakerNaming.resultFor(listOf(span), VoiceProfileStore.SpeakerNaming(emptyMap(), true), "e", "m")
+        assertTrue(unavailable.speakerNamesUnavailable)
+        assertFalse(VoiceProfileStore.SpeakerNaming.resultFor(listOf(span), null, "e", "m").speakerNamesUnavailable)
+    }
+
+    @Test fun a_durable_write_leaves_no_temp_file_and_replaces_the_old_one() {
+        val dir = root.resolve("durable").also { it.createDirectories() }
+        val target = dir.resolve("file.bin")
+        target.writeBytes(byteArrayOf(1))
+        val tmp = dir.resolve("file.bin.tmp")
+        tmp.writeBytesDurably(byteArrayOf(2, 3))
+        assertTrue(tmp.renameTo(target))
+        dir.syncDirectory()
+        assertContentEquals(byteArrayOf(2, 3), target.readBytes())
+        assertTrue(dir.listChildren().map { it.name } == listOf("file.bin"), "stray files: ${dir.listChildren().map { it.name }}")
+    }
 }

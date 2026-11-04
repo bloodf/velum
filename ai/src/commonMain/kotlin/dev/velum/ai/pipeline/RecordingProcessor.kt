@@ -51,6 +51,13 @@ private const val SNIFF_BYTES = 16
 const val INSUFFICIENT_STORAGE_MESSAGE =
     "Not enough free storage to process this recording. Free up space and try again."
 
+/** Stored as the failure text when a rerun can't name speakers; shown translated by the app. */
+const val SPEAKER_NAMES_KEPT_MESSAGE =
+    "The voice key is unavailable, so speakers can't be named again. Your names were kept; try again after unlocking."
+
+/** A rerun that must not overwrite names the user typed because the voice key is unavailable. */
+class SpeakerNamesUnavailableException : IllegalStateException(SPEAKER_NAMES_KEPT_MESSAGE)
+
 /** True when [t] or a cause reports a full disk (ENOSPC); message text is all common code can see. */
 internal fun isOutOfStorage(t: Throwable): Boolean {
     val chain = generateSequence(t) { it.cause }.take(8).toList()
@@ -247,6 +254,13 @@ class RecordingProcessor(
                     }
                     emit(JobProgress.Running(0.35f, "Using existing transcript (no audio file)"))
                 } else {
+                    // Named rows plus an unavailable voice key means this rerun would end in SpeakerNamesUnavailable
+                    // after the (possibly billed) transcription; fail first.
+                    if (repository.getSpeakers(recordingId).any { !it.display_name.isNullOrBlank() } &&
+                        !aiRouter.diarizer().speakerNamingReady()
+                    ) {
+                        throw SpeakerNamesUnavailableException()
+                    }
                     emit(JobProgress.Running(0.25f, "Transcribing"))
                     awaitThermalGate { emit(it) }
                     ensureApiKeyIfNeeded(
@@ -322,7 +336,7 @@ class RecordingProcessor(
                     if (diarization != null && diarization.speakerNamesUnavailable &&
                         repository.getSpeakers(recordingId).any { !it.display_name.isNullOrBlank() }
                     ) {
-                        throw dev.velum.ai.local.VoiceProfileKeyUnavailableException()
+                        throw SpeakerNamesUnavailableException()
                     }
 
                     val mergedSegments = if (diarization != null) {

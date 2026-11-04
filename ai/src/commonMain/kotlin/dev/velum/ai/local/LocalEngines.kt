@@ -56,6 +56,8 @@ class LocalDiarizer(
 ) : Diarizer {
     override val engineId: String = "local-diarizer"
 
+    override suspend fun speakerNamingReady(): Boolean = voiceProfiles.speakerNamingReady()
+
     override suspend fun diarize(input: AudioInput, modelId: String): DiarizationResult {
         val resolved = modelId.ifBlank { "pyannote-segmentation-3.0" }
         val state = modelManager.stateFor(resolved)

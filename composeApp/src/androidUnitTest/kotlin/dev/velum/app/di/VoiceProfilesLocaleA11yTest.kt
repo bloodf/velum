@@ -367,6 +367,12 @@ class VoiceProfilesLocaleA11yTest {
                 awaitLabel(s.ux.voiceProfilesKeyUnavailable)
                 compose.onNodeWithContentDescription(s.ux.retryProcessing).performScrollTo().assertExists()
                 assertState("$tag wrong key", s, other, seen)
+                // The recovery path: wiping needs no key and asks first.
+                tap(s.ux.voiceProfilesWipe)
+                awaitLabel(s.ux.confirmWipeProfilesBody)
+                tap(s.confirm)
+                awaitLabel(s.ux.voiceProfilesWiped)
+                assertState("$tag wiped after a lost key", s, other, seen)
             }
             val unavailable = object : SecureStore by memory {
                 override suspend fun getString(key: String): String? {
