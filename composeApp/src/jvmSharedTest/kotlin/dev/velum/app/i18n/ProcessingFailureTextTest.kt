@@ -1,10 +1,13 @@
 package dev.velum.app.i18n
 
 import dev.velum.ai.ApiErrorSanitizer
+import dev.velum.ai.pipeline.AUDIO_FILE_EMPTY_MESSAGE
+import dev.velum.ai.pipeline.AUDIO_FILE_MISSING_MESSAGE
 import dev.velum.ai.pipeline.INSUFFICIENT_STORAGE_MESSAGE
 import dev.velum.ai.pipeline.NO_AUDIO_OR_TRANSCRIPT_MESSAGE
 import dev.velum.ai.pipeline.NO_TRANSCRIPT_TO_SUMMARIZE_MESSAGE
 import dev.velum.ai.pipeline.PROCESSING_STOPPED_MESSAGE
+import dev.velum.ai.pipeline.WAV_NO_DATA_MESSAGE
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -17,7 +20,9 @@ class ProcessingFailureTextTest {
     private val cases: List<Pair<String, (Strings) -> String>> = listOf(
         INSUFFICIENT_STORAGE_MESSAGE to { s -> s.ux.insufficientStorage },
         "Unsupported audio format (WebM/Matroska). This file is not Ogg Opus, WAV or raw 16 kHz PCM, so it was not transcribed; re-download it from the device or convert it to WAV or Ogg Opus." to { s -> s.ux.processingFailedUnsupportedFormat },
-        "Unsupported audio format (WAV without audio data). The file looks damaged, so it was not transcribed; re-download it from the device or convert it to WAV or Ogg Opus." to { s -> s.ux.processingFailedUnsupportedFormat },
+        WAV_NO_DATA_MESSAGE to { s -> s.added.processingFailedWavNoData },
+        AUDIO_FILE_MISSING_MESSAGE to { s -> s.added.processingFailedAudioMissing },
+        AUDIO_FILE_EMPTY_MESSAGE to { s -> s.added.processingFailedAudioEmpty },
         "Unsupported audio format (RF64). This file is not Ogg Opus, WAV or raw 16 kHz PCM, so it was not transcribed; re-download it from the device or convert it to WAV or Ogg Opus." to { s -> s.ux.processingFailedUnsupportedFormat },
         NO_TRANSCRIPT_TO_SUMMARIZE_MESSAGE to { s -> s.ux.processingFailedNoTranscript },
         NO_AUDIO_OR_TRANSCRIPT_MESSAGE to { s -> s.ux.processingFailedNoAudio },

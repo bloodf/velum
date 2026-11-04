@@ -1236,7 +1236,11 @@ val PtBr = Strings(
         retryProcessing = "Tentar de novo",
         waveformA11y = "Progresso da reprodução",
     ),
-    added = MoreStrings(),
+    added = MoreStrings(
+        processingFailedAudioMissing = "O arquivo de áudio desta gravação não foi encontrado, então ela não foi processada.",
+        processingFailedAudioEmpty = "O arquivo de áudio desta gravação está vazio, então ela não foi processada.",
+        processingFailedWavNoData = "Este arquivo WAV não tem dados de áudio e parece danificado, então não foi transcrito. Baixe-o de novo do dispositivo ou converta para WAV ou Ogg Opus.",
+    ),
 )
 
 val En = Strings(
@@ -1845,7 +1849,11 @@ val En = Strings(
         retryProcessing = "Try again",
         waveformA11y = "Playback progress",
     ),
-    added = MoreStrings(),
+    added = MoreStrings(
+        processingFailedAudioMissing = "The audio file for this recording is missing, so it wasn't processed.",
+        processingFailedAudioEmpty = "The audio file for this recording is empty, so it wasn't processed.",
+        processingFailedWavNoData = "This WAV file has no audio data and looks damaged, so it wasn't transcribed. Download it again from the device, or convert it to WAV or Ogg Opus.",
+    ),
 )
 
 val LocalStrings = staticCompositionLocalOf { PtBr }
