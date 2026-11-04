@@ -698,6 +698,22 @@ class RecordingProcessorDecodeCleanupTest {
     }
 
     @Test
+    fun the_startup_sweep_clears_both_spill_roots() {
+        val models = ModelStoreDir(java.nio.file.Files.createTempDirectory("velum-sweep-models").toString())
+        val old = ModelStoreDir(java.nio.file.Files.createTempDirectory("velum-sweep-default").toString())
+        for (root in listOf(models, old)) {
+            val spill = root.resolve("tmp").resolve("pcm-dead")
+            spill.createDirectories()
+            spill.resolve("pcm.s16le").writeBytes(ByteArray(8))
+        }
+        assertEquals(2, sweepOrphanPcmSpill(Long.MAX_VALUE, modelsRoot = models, defaultRoot = old))
+        assertFalse(models.resolve("tmp").resolve("pcm-dead").exists(), "a dead job's audio stayed in the models folder")
+        assertFalse(old.resolve("tmp").resolve("pcm-dead").exists(), "a dead job's audio stayed under the old root")
+        models.deleteRecursively()
+        old.deleteRecursively()
+    }
+
+    @Test
     fun overlapping_runs_decode_into_separate_spill_dirs() = runBlocking {
         val enteredBoth = java.util.concurrent.atomic.AtomicInteger()
         val h = Harness({ enteredBoth.incrementAndGet(); awaitCancellation() })

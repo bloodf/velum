@@ -56,6 +56,15 @@ class LocalDiarizer(
 ) : Diarizer {
     override val engineId: String = "local-diarizer"
 
+    /** Mirrors the gate in [diarize]: without the models it never runs, so there is nothing to overwrite. */
+    override suspend fun speakerNamingReady(modelId: String): Boolean {
+        val resolved = modelId.ifBlank { "pyannote-segmentation-3.0" }
+        val wouldRun = modelManager.stateFor(resolved)?.status == LocalModelStatus.Ready &&
+            modelManager.modelPath(resolved) != null &&
+            chooseReadyEmbeddingId()?.let { modelManager.modelPath(it) } != null
+        return !wouldRun || voiceProfiles.speakerNamingReady()
+    }
+
     override suspend fun diarize(input: AudioInput, modelId: String): DiarizationResult {
         val resolved = modelId.ifBlank { "pyannote-segmentation-3.0" }
         val state = modelManager.stateFor(resolved)

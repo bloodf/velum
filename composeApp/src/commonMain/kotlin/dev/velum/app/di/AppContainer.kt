@@ -364,7 +364,8 @@ class AppContainer(
                     }
                     if (!done) complete = false
                 }
-                var downloads = DownloadWipeResult.Clean
+                // Until proven otherwise: if this step throws, a download may still be writing.
+                var downloads = DownloadWipeResult.StillRunning
                 step("downloads") { downloads = device.wipePartialDownloads(); true }
                 val nothingWriting = workStopped && downloads != DownloadWipeResult.StillRunning
                 step("device keys") { deviceKeyImporter.clearKeys(); true }
@@ -410,10 +411,10 @@ class AppContainer(
         }
 
     /** The note to hand to another app for [recordingId], read now: null if a wipe is running or the recording is gone. */
-    suspend fun noteToShare(recordingId: String): SharedNote? {
-        if (wipeGate.isWiping) return null
-        val row = repository.getRecording(recordingId) ?: return null
-        return SharedNote(row.title, row.summary_markdown.orEmpty(), shareMarkdownBody(row.title, row.summary_markdown, row.transcript))
+    suspend fun noteToShare(recordingId: String): SharedNote? = wipeGate.guard {
+        repository.getRecording(recordingId)?.let { row ->
+            SharedNote(row.title, row.summary_markdown.orEmpty(), shareMarkdownBody(row.title, row.summary_markdown, row.transcript))
+        }
     }
 
     /** Ends a mic recording in progress and deletes its file, which may not be on a recording row yet. */

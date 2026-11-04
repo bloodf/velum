@@ -39,8 +39,7 @@ actual fun deleteFileIfPresent(absolutePath: String): Boolean = runCatching {
 actual fun deleteRecordingsDirectory(): Boolean {
     val base = filesDirPath ?: return false
     val recordings = File(base, "recordings")
-    recordings.deleteRecursively()
-    return !recordings.exists()
+    return deleteTreeWithoutFollowingLinks(recordings)
 }
 
 actual fun deleteDeviceTransferTemps(): Boolean {

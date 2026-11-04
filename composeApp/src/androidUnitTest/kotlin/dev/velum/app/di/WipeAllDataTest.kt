@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModelStore
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import dev.velum.ai.local.ModelStoreDir
+import dev.velum.ai.local.defaultModelStoreRoot
 import dev.velum.app.importing.AudioImportPipeline
 import dev.velum.app.importing.ImportResult
 import dev.velum.app.platform.ExportFolderResult
@@ -462,9 +463,12 @@ class WipeAllDataTest {
     }
 
 
-    @Test fun a_wipe_leaves_the_spill_of_a_job_that_has_not_stopped() = withContainer { container, _ ->
+    @Test fun a_wipe_leaves_what_a_job_that_has_not_stopped_may_own() = withContainer { container, _ ->
         val spill = root().resolve("tmp").resolve("pcm-live")
         spill.createDirectories()
+        val recordings = File(recordingsDirectoryPath()).apply { mkdirs() }
+        val writing = File(recordings, "rec-live.wav").apply { writeBytes(ByteArray(8)) }
+        val temp = File.createTempFile("velum-ble-session-", ".bin").apply { writeBytes(ByteArray(8)) }
         val started = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
         coroutineScope {
@@ -475,11 +479,56 @@ class WipeAllDataTest {
             try {
                 assertEquals(DownloadWipeResult.StillRunning, container.wipeAllData(joinTimeout = 100.milliseconds))
                 assertTrue(spill.exists(), "the wipe deleted a directory a live job owns")
+                assertTrue(writing.exists(), "the wipe deleted a file a live job may be writing")
+                assertTrue(temp.exists(), "the wipe deleted a live transfer's temp file")
             } finally {
                 release.complete(Unit)
+                temp.delete()
             }
             job.await()
         }
+    }
+
+    @Test fun a_wipe_clears_the_old_spill_root_too() = withContainer { container, _ ->
+        val old = defaultModelStoreRoot().resolve("tmp").resolve("pcm-old")
+        old.createDirectories()
+        old.resolve("audio.pcm").writeBytes(ByteArray(8))
+        assertEquals(DownloadWipeResult.Clean, container.wipeAllData())
+        assertFalse(old.exists(), "decoded audio under the old root survived")
+    }
+
+    @Test fun a_wipe_does_not_follow_links_out_of_the_recordings_folder() = withContainer { container, _ ->
+        val outside = Files.createTempDirectory("velum-wipe-outside").toFile()
+        val kept = File(outside, "keep.wav").apply { writeBytes(ByteArray(8)) }
+        val recordings = File(recordingsDirectoryPath()).apply { mkdirs() }
+        val link = File(recordings, "linked")
+        Files.createSymbolicLink(link.toPath(), outside.toPath())
+        assertEquals(DownloadWipeResult.Clean, container.wipeAllData())
+        assertTrue(kept.exists(), "the wipe followed a link and deleted what it points at")
+        assertFalse(recordings.exists())
+        outside.deleteRecursively()
+    }
+
+    @Test fun a_symlinked_recordings_folder_loses_the_link_not_its_target() = withContainer { container, _ ->
+        val outside = Files.createTempDirectory("velum-wipe-target").toFile()
+        val kept = File(outside, "keep.wav").apply { writeBytes(ByteArray(8)) }
+        val recordings = File(recordingsDirectoryPath())
+        recordings.deleteRecursively()
+        recordings.parentFile!!.mkdirs()
+        Files.createSymbolicLink(recordings.toPath(), outside.toPath())
+        assertEquals(DownloadWipeResult.Clean, container.wipeAllData())
+        assertTrue(kept.exists(), "the wipe deleted the contents of a symlinked folder")
+        assertFalse(Files.exists(recordings.toPath(), java.nio.file.LinkOption.NOFOLLOW_LINKS))
+        outside.deleteRecursively()
+    }
+
+    @Test fun a_wipe_that_cannot_stop_downloads_keeps_the_recordings_folder() = withContainer { container, _ ->
+        val recordings = File(recordingsDirectoryPath()).apply { mkdirs() }
+        val writing = File(recordings, "rec-live.wav").apply { writeBytes(ByteArray(8)) }
+        // Cancelling asks for the locale first, so this makes the downloads step throw.
+        val broken = DeviceViewModel(container.ble, localeTag = { error("synthetic") })
+        assertEquals(DownloadWipeResult.Incomplete, container.wipeAllData(device = broken))
+        assertTrue(writing.exists(), "the folder went while a download may be writing to it")
     }
 
     @Test fun a_note_is_read_when_it_is_sent() = withContainer { container, _ ->

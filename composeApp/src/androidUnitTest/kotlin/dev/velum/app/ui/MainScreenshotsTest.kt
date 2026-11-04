@@ -637,12 +637,15 @@ private lateinit var container: AppContainer
         // Explicitly await the same cold-start readiness barrier as production (#110).
         container.voiceProfileStore.ensureKey()
         val emb = FloatArray(192) { i -> (i % 17) / 17f }
-        container.voiceProfileStore.upsert("Heitor", emb, role = "Product", company = "Velum")
-        container.voiceProfileStore.upsert(
-            "Marina",
-            FloatArray(192) { i -> ((i + 3) % 19) / 19f },
-            role = "Engineering",
-            company = "Velum",
-        )
+        // withReady: it holds the lock the startup temp sweep takes, which otherwise can delete the file mid-write.
+        container.voiceProfileStore.withReady {
+            upsert("Heitor", emb, role = "Product", company = "Velum")
+            upsert(
+                "Marina",
+                FloatArray(192) { i -> ((i + 3) % 19) / 19f },
+                role = "Engineering",
+                company = "Velum",
+            )
+        }
     }
 }
