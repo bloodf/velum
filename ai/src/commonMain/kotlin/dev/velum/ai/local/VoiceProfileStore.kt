@@ -506,30 +506,26 @@ class VoiceProfileStore(
                 naming: SpeakerNaming?,
                 engineId: String,
                 modelId: String,
+                embeddings: Map<String, FloatArray> = emptyMap(),
             ) = dev.velum.ai.engine.DiarizationResult(
                 spans = spans,
                 namedSpeakers = naming?.names.orEmpty(),
                 engineId = engineId,
                 modelId = modelId,
                 speakerNamesUnavailable = naming?.unavailable == true,
+                embeddings = embeddings,
             )
         }
     }
 
     /**
-     * Caches this run's speaker embeddings and names the speakers that match a saved profile. When the key is
-     * missing or the secure store is unavailable, no names and no cache come out of it (nothing is written in
-     * plaintext), the recording's older cache is dropped, and [SpeakerNaming.unavailable] is set so the caller
-     * can keep names the user already typed instead of overwriting them with bare labels.
+     * Names the speakers of one diarization run that match a saved profile, without touching the speaker cache. The
+     * cache is written by [cacheSpeakerEmbeddings] together with the speaker rows. When the key is missing or the
+     * secure store is unavailable nothing is named and [SpeakerNaming.unavailable] is set.
      */
-    suspend fun cacheAndNameSpeakers(
-        recordingId: String?,
-        embeddingsBySpeaker: Map<String, FloatArray>,
-        matchThreshold: Float,
-    ): SpeakerNaming = try {
+    suspend fun nameSpeakers(embeddingsBySpeaker: Map<String, FloatArray>, matchThreshold: Float): SpeakerNaming = try {
         SpeakerNaming(
             withReady {
-                if (recordingId != null) replaceClusterEmbeddings(recordingId, embeddingsBySpeaker)
                 buildMap {
                     for ((speakerId, embedding) in embeddingsBySpeaker) {
                         match(embedding, threshold = matchThreshold)?.let { put(speakerId, it.profile.displayName) }
@@ -539,26 +535,53 @@ class VoiceProfileStore(
             unavailable = false,
         )
     } catch (e: VoiceProfileKeyUnavailableException) {
-        speakerNamingUnavailable(recordingId, e)
+        println("VelumVoice: speaker naming unavailable (${e::class.simpleName})")
+        SpeakerNaming(emptyMap(), unavailable = true)
     } catch (e: SecureStoreUnavailableException) {
-        speakerNamingUnavailable(recordingId, e)
+        println("VelumVoice: speaker naming unavailable (${e::class.simpleName})")
+        SpeakerNaming(emptyMap(), unavailable = true)
+    }
+
+    /**
+     * Drops the recording's cached speaker embeddings, under the store's access lock and off the caller's thread.
+     * Called before a run's speaker numbering is written, so the old numbering never outlives the labels it described.
+     * The delete is verified: a directory that is still there (a file the platform would not remove) throws
+     * [SpeakerCacheNotDroppedException], so the caller stops before it changes anything the cache must match.
+     */
+    suspend fun dropSpeakerCache(recordingId: String) = withContext(ioDispatcher) {
+        accessMutex.withLock {
+            deleteClusterCache(recordingId)
+            if (cacheDir.resolve(recordingId).exists()) throw SpeakerCacheNotDroppedException()
+        }
+    }
+
+    /**
+     * Replaces the recording's cached speakers with this run's, to be called right after its speaker rows were
+     * written. When the cache cannot be written (no key) the old one is dropped instead: it belongs to the previous
+     * run's numbering and must not outlive the rows it described.
+     */
+    suspend fun cacheSpeakerEmbeddings(recordingId: String, embeddingsBySpeaker: Map<String, FloatArray>) {
+        try {
+            withReady { replaceClusterEmbeddings(recordingId, embeddingsBySpeaker) }
+        } catch (e: VoiceProfileKeyUnavailableException) {
+            dropCacheAfterUnavailable(recordingId, e)
+        } catch (e: SecureStoreUnavailableException) {
+            dropCacheAfterUnavailable(recordingId, e)
+        }
     }
 
     /**
      * The old cache must not outlive a run that could not replace it: once the key is back, naming "S1" would
      * read the previous run's "S1", which may be a different person.
      */
-    private suspend fun speakerNamingUnavailable(recordingId: String?, cause: Exception): SpeakerNaming {
-        println("VelumVoice: speaker naming unavailable (${cause::class.simpleName})")
-        if (recordingId != null) {
-            withContext(NonCancellable + ioDispatcher) {
-                accessMutex.withLock {
-                    runCatching { deleteClusterCache(recordingId) }
-                        .onFailure { println("VelumVoice: dropping the old speaker cache failed (${it::class.simpleName})") }
-                }
+    private suspend fun dropCacheAfterUnavailable(recordingId: String, cause: Exception) {
+        println("VelumVoice: speaker cache unavailable (${cause::class.simpleName})")
+        withContext(NonCancellable + ioDispatcher) {
+            accessMutex.withLock {
+                runCatching { deleteClusterCache(recordingId) }
+                    .onFailure { println("VelumVoice: dropping the old speaker cache failed (${it::class.simpleName})") }
             }
         }
-        return SpeakerNaming(emptyMap(), unavailable = true)
     }
 
     /**
@@ -924,6 +947,13 @@ class UnreadableVoiceProfile internal constructor(
 ) {
     val canRemove: Boolean get() = files != null
 }
+
+/** Saved as the processing error when the previous speaker cache cannot be removed; the UI matches this exact text to translate it (#348). */
+const val SPEAKER_CACHE_NOT_DROPPED_MESSAGE =
+    "The saved speaker voices could not be cleared, so the recording was left unchanged. Try again."
+
+/** The previous run's speaker cache could not be removed, so the recording was left as it was. */
+class SpeakerCacheNotDroppedException : IllegalStateException(SPEAKER_CACHE_NOT_DROPPED_MESSAGE)
 
 /** The pasted text is not a Voice Profiles backup (not JSON, wrong shape, or bad base64). */
 class InvalidVoiceProfileBackupException(cause: Throwable) : IllegalArgumentException(

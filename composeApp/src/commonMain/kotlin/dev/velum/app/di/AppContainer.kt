@@ -217,6 +217,7 @@ class AppContainer(
         settings = settingsRepository,
         thermal = thermalPolicy,
         wipeGate = wipeGate,
+        voiceProfiles = voiceProfileStore,
     )
 
     val recordingJobs: RecordingJobScheduler =
