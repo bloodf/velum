@@ -14,6 +14,7 @@ import dev.velum.ble.crypto.createFileDecryptor
 import dev.velum.ble.crypto.createSessionCipher
 import dev.velum.ble.crypto.rsaKeyPairToPem
 import dev.velum.core.model.ProcessingWarning
+import dev.velum.ble.BleConnectionState
 import dev.velum.ble.fake.FakeBleTransport
 import dev.velum.ble.fake.FakePlaudPeripheral
 import dev.velum.ble.fake.TransferFaults
@@ -659,6 +660,49 @@ class DeviceResumeRestartTest {
                     first.writeCommandForTest(dev.velum.protocol.Commands.BATTERY_LIKELY)
                 }
                 assertEquals("Client is closed", refused.message)
+            }
+        } finally { tearDown() }
+    }
+
+    @Test fun a_scan_during_a_download_is_ignored_and_the_download_finishes() {
+        try {
+            val saving = CompletableDeferred<Unit>()
+            val release = CompletableDeferred<Unit>()
+            val fake = peripheral()
+            val ble = FakeBleTransport(fake)
+            val vm = run(
+                fake,
+                persist = { audio ->
+                    saving.complete(Unit)
+                    release.await()
+                    val out = ByteArrayOutputStream()
+                    audio.writeDecryptedAudio { out.write(it) }
+                    saved = out.toByteArray()
+                    "rec-synthetic"
+                },
+                await = false,
+                transport = { ble },
+            )
+            runBlocking {
+                withTimeout(20_000) { saving.await() }
+                vm.startScan()
+                delay(200)
+                assertFalse(ble.connectionState.value is BleConnectionState.Scanning, "a scan must not start during a download")
+                release.complete(Unit)
+            }
+            awaitOutcome(vm)
+            assertEquals("rec-synthetic", vm.sessionUi.value.lastDownloadedRecordingId)
+        } finally { tearDown() }
+    }
+
+    @Test fun a_scan_without_a_download_still_starts() {
+        try {
+            val fake = peripheral()
+            val ble = FakeBleTransport(fake)
+            val vm = run(fake, transport = { ble })
+            runBlocking {
+                vm.startScan()
+                withTimeout(5_000) { while (ble.connectionState.value !is BleConnectionState.Scanning) delay(5) }
             }
         } finally { tearDown() }
     }

@@ -144,6 +144,9 @@ class DeviceViewModel(
     }
 
     fun startScan() {
+        // The same condition as connect(): the link and client belong to the running download, and a scan would publish
+        // Scanning, which closes the client below. The button is disabled too; this covers any other caller.
+        if (downloadJob?.isActive == true && _sessionUi.value.downloadingSessionId != null) return
         viewModelScope.launch { ble.startScan() }
     }
 
