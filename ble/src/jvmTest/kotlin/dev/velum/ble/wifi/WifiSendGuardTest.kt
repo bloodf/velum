@@ -44,7 +44,7 @@ class WifiSendGuardTest {
             sequences += sequence
             return packet.copyOf()
         }
-        override fun open(sequence: Long, ciphertextAndTag: ByteArray): Pair<Long, ByteArray>? = null
+        override fun open(sequence: Long, ciphertextAndTag: ByteArray): Pair<Long, ByteArray>? = sequence to ciphertextAndTag
     }
 
     private val server = RecordingServer()
@@ -104,5 +104,49 @@ class WifiSendGuardTest {
         session.start("ssid", "password")
         session.sendPacket(Framing.encodeCommand(0x42))
         assertEquals(listOf(0L, 1L, 0L), cipher.sequences)
+    }
+
+    @Test fun a_frame_that_does_not_open_to_the_checked_packet_is_never_sent() = runTest {
+        val swapping = object : WifiFrameCipher {
+            override val mode = WifiPayloadCipher.ChaCha20Poly1305
+            override fun seal(sequence: Long, packet: ByteArray) = byteArrayOf(0x01, 0x20, 0xFE.toByte())
+            override fun open(sequence: Long, ciphertextAndTag: ByteArray): Pair<Long, ByteArray>? = sequence to ciphertextAndTag
+        }
+        val s = WifiFastTransferSession(NoopJoiner, server, swapping)
+        assertFailsWith<IllegalStateException> { s.sendPacket(Framing.encodeCommand(0x40)) }
+        assertTrue(server.sent.isEmpty())
+    }
+
+    @Test fun a_refused_frame_does_not_advance_the_sequence() = runTest {
+        var swap = true
+        val flaky = object : WifiFrameCipher {
+            override val mode = WifiPayloadCipher.ChaCha20Poly1305
+            val seen = mutableListOf<Long>()
+            override fun seal(sequence: Long, packet: ByteArray): ByteArray {
+                seen += sequence
+                return if (swap) byteArrayOf(9, 9) else packet.copyOf()
+            }
+            override fun open(sequence: Long, ciphertextAndTag: ByteArray): Pair<Long, ByteArray>? = sequence to ciphertextAndTag
+        }
+        val s = WifiFastTransferSession(NoopJoiner, server, flaky)
+        assertFailsWith<IllegalStateException> { s.sendPacket(Framing.encodeCommand(0x40)) }
+        swap = false
+        s.sendPacket(Framing.encodeCommand(0x40))
+        assertEquals(listOf(0L, 0L), flaky.seen, "the retry reuses sequence 0")
+        assertEquals(1, server.sent.size)
+    }
+
+    @Test fun a_wifi_cipher_that_edits_its_input_then_seals_the_edit_is_refused() = runTest {
+        val editing = object : WifiFrameCipher {
+            override val mode = WifiPayloadCipher.ChaCha20Poly1305
+            override fun seal(sequence: Long, packet: ByteArray): ByteArray {
+                packet[1] = 0x20; packet[2] = 0xFE.toByte()
+                return packet.copyOf()
+            }
+            override fun open(sequence: Long, ciphertextAndTag: ByteArray): Pair<Long, ByteArray>? = sequence to ciphertextAndTag
+        }
+        val s = WifiFastTransferSession(NoopJoiner, server, editing)
+        assertFailsWith<IllegalStateException> { s.sendPacket(Framing.encodeCommand(0x40, byteArrayOf(1, 2, 3))) }
+        assertTrue(server.sent.isEmpty())
     }
 }

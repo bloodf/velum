@@ -415,7 +415,7 @@ fun FilesScreen(
                         haptics.perform(HapticKind.Medium)
                         confirmDeleteForever = false
                         scope.launch {
-                            selectedIds.forEach { container.repository.deleteRecordingHard(it) }
+                            selectedIds.forEach { container.deleteRecordingForever(it) }
                             exitSelection()
                         }
                     },
@@ -437,7 +437,7 @@ fun FilesScreen(
                         haptics.perform(HapticKind.Medium)
                         confirmEmptyTrash = false
                         scope.launch {
-                            trashed.forEach { container.repository.deleteRecordingHard(it.id) }
+                            trashed.forEach { container.deleteRecordingForever(it.id) }
                             exitSelection()
                         }
                     },

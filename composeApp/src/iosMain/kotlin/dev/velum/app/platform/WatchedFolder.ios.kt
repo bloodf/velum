@@ -15,3 +15,5 @@ actual suspend fun syncWatchedFolders(pipeline: AudioImportPipeline): List<Impor
 actual fun watchedFolderCount(): Int = 0
 
 actual fun clearWatchedFolders() = Unit
+
+actual fun releaseFolderGrants() = Unit

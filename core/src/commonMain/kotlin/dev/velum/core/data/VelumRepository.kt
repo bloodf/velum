@@ -529,6 +529,30 @@ class VelumRepository(
         q.updateStatus(status, id)
     }
 
+    /**
+     * Sets [status] unless the recording is already `ready`/`failed` (a job that just finished) or gone, in one
+     * statement. Returns whether a row changed, so a caller can tell the work ended before it acted (#324).
+     */
+    suspend fun updateStatusIfActive(id: String, status: String): Boolean = withContext(dbContext) {
+        db.transactionWithResult {
+            q.updateStatusIfActive(status, id)
+            q.lastChanges().executeAsOne() > 0L
+        }
+    }
+
+    /** Sets [to] only while the status is still [from], in one statement; returns whether a row changed. */
+    suspend fun updateStatusIfEquals(id: String, from: String, to: String): Boolean = withContext(dbContext) {
+        db.transactionWithResult {
+            q.updateStatusIfEquals(to, id, from)
+            q.lastChanges().executeAsOne() > 0L
+        }
+    }
+
+    /** The template id of the recording's active summary version, or null when it has none. */
+    suspend fun activeSummaryTemplateId(recordingId: String): String? = withContext(dbContext) {
+        q.getActiveVersion(recordingId).executeAsOneOrNull()?.template_id
+    }
+
     /** [code] is a [dev.velum.core.model.ProcessingWarning] constant, or null to clear. */
     suspend fun setProcessingWarning(id: String, code: String?) = withContext(dbContext) {
         q.updateProcessingWarning(code, id)
@@ -722,17 +746,26 @@ class VelumRepository(
         tryIndex { if (ftsAvailable) FtsIndex.deleteTemplate(driver, id) }
     }
 
+    /** Every recording id, including those in the trash. */
+    suspend fun recordingIds(): Set<String> = withContext(dbContext) {
+        q.selectAllRecordingIds().executeAsList().toSet()
+    }
+
     suspend fun deleteRecordingHard(id: String) = withContext(dbContext) {
-        q.deleteVersionsForRecording(id)
-        q.deleteSpeakersForRecording(id)
-        q.deleteRecordingHard(id)
-        q.deleteMeta(processingErrorKey(id))
-        q.deleteMeta("$UNPROMOTED_RUN_PREFIX$id")
-        // Import dedupe keys (import_sha256_<hash> -> id) become tombstones: a manual import of the file works
-        // again, but a watched folder does not bring the deleted recording back (#327).
-        q.selectMetaKeysWithPrefixAndValue(globPrefix(IMPORT_HASH_PREFIX), id).executeAsList().forEach { key ->
-            q.setMeta(IMPORT_DELETED_PREFIX + key.removePrefix(IMPORT_HASH_PREFIX), "1")
-            q.deleteMeta(key)
+        // One transaction: a failure can't leave a deleted recording without its tombstones.
+        db.transaction {
+            q.deleteVersionsForRecording(id)
+            q.deleteSpeakersForRecording(id)
+            q.deleteRecordingHard(id)
+            q.deleteMeta(processingErrorKey(id))
+            q.deleteMeta("$UNPROMOTED_RUN_PREFIX$id")
+            // Import dedupe keys (import_sha256_<hash> -> id) become tombstones: a manual import of the file works
+            // again, but a watched folder does not bring the deleted recording back (#327).
+            val deletedAt = epochSeconds().toString()
+            q.selectMetaKeysWithPrefixAndValue(globPrefix(IMPORT_HASH_PREFIX), id).executeAsList().forEach { key ->
+                q.setMeta(IMPORT_DELETED_PREFIX + key.removePrefix(IMPORT_HASH_PREFIX), deletedAt)
+                q.deleteMeta(key)
+            }
         }
         tryIndex { if (ftsAvailable) FtsIndex.deleteRecording(driver, id) }
     }
@@ -1137,7 +1170,7 @@ class VelumRepository(
         /** A GLOB pattern matching keys that start with [prefix] (case-sensitive; GLOB metacharacters escaped). */
         internal fun globPrefix(prefix: String): String =
             prefix.map { if (it == '*' || it == '?' || it == '[') "[$it]" else it.toString() }.joinToString("") + "*"
-        /** import_deleted_<hash>: that file's recording was permanently deleted; watched folders skip it. */
+        /** import_deleted_<hash> -> epoch seconds: that file's recording was permanently deleted; watched folders skip it. */
         const val IMPORT_DELETED_PREFIX = "import_deleted_"
     }
 }
