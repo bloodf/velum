@@ -8,4 +8,13 @@ object WebhookTestResult {
             ?: return false
         return code in 200..299
     }
+
+    /** The failure text to show: `HTTP <n>` as is, a failure code (WebhookFailure) as localized copy. */
+    fun failureText(detail: String, strings: dev.velum.app.i18n.Strings): String = when (detail) {
+        "timeout" -> strings.added.webhookFailedTimeout
+        "unresolved_host" -> strings.added.webhookFailedUnresolvedHost
+        "tls" -> strings.added.webhookFailedTls
+        "connection" -> strings.added.webhookFailedConnection
+        else -> detail
+    }
 }
