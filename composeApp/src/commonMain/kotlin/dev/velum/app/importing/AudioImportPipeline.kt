@@ -2,6 +2,8 @@ package dev.velum.app.importing
 
 import dev.velum.ai.pipeline.resolveTemplateForEnqueue
 import dev.velum.app.di.AppContainer
+import dev.velum.app.di.WipeInProgressException
+import dev.velum.core.data.RecordingIds
 import dev.velum.core.autoflow.AutoFlowResolve
 import dev.velum.app.platform.AudioNormalizer
 import dev.velum.app.platform.NormalizedAudio
@@ -83,29 +85,29 @@ class AudioImportPipeline(
             }
             val title = titleHint ?: ImportTitles.forImport(absolutePath, name)
             val durationSeconds = (normalized.durationMs / 1000L).coerceAtLeast(0L)
-            val id = container.createLocalRecording(
-                title = title,
-                source = source,
-                localPath = normalized.wavPath,
-                status = "queued",
-            )
-            if (startedAtEpochSeconds != null) {
-                // Title already set; duration/size updated below.
+            val id = RecordingIds.newId()
+            // One transaction: a concurrent import of the same audio, or a crash, can't leave two recordings or a
+            // recording without its dedupe keys. A file the user chose again is wanted again: its watched-folder
+            // tombstones go in the same step.
+            // guard returns null when a wipe refuses, so a kept id of null (inserted) is wrapped in a list.
+            val kept = container.wipeGate.guard {
+                listOf(container.repository.insertRecordingUnlessKeyed(
+                    id = id,
+                    title = title ?: container.formatRecordingTitle(epochSecondsNow()),
+                    source = source,
+                    startedAt = epochSecondsNow(),
+                    durationSeconds = durationSeconds,
+                    localPath = normalized.wavPath,
+                    status = "queued",
+                    keys = listOf(sourceHash, contentHash).distinct().map { "import_sha256_$it" },
+                    clearKeys = listOf(sourceHash, contentHash).distinct().map { IMPORT_DELETED_PREFIX + it },
+                ))
+            } ?: throw WipeInProgressException()
+            val existing = kept.single()
+            if (existing != null) {
+                discardNormalized(normalized.wavPath, keptBy = existing)
+                return@withContext ImportResult.Duplicate(existing, contentHash)
             }
-            container.repository.updateLocalPath(
-                id = id,
-                localPath = normalized.wavPath,
-                durationSeconds = durationSeconds,
-                sizeBytes = 0L,
-            )
-            // Store both keys so source-path re-imports and content-identical WAVs dedupe.
-            container.repository.setMeta("import_sha256_$sourceHash", id)
-            if (contentHash != sourceHash) {
-                container.repository.setMeta("import_sha256_$contentHash", id)
-            }
-            // A file the user chose again is wanted again: its watched-folder tombstone goes.
-            container.repository.deleteMeta(IMPORT_DELETED_PREFIX + sourceHash)
-            container.repository.deleteMeta(IMPORT_DELETED_PREFIX + contentHash)
             // Resolve AutoFlow before first enqueue so KEEP cannot drop template/model.
             val match = container.repository.findMatchingAutoflow(
                 source = source,

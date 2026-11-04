@@ -898,6 +898,56 @@ class VelumRepository(
     }
 
     /**
+     * Inserts a recording and its dedupe [keys] (meta keys, each mapped to the new id) in one transaction, unless a key
+     * already maps to a recording that exists: then nothing is inserted, every key is pointed at that recording
+     * and its id is returned. Two imports of the same audio cannot both insert, and a failure cannot leave a
+     * recording without its keys. [clearKeys] are removed in the same transaction. Returns null when inserted.
+     */
+    suspend fun insertRecordingUnlessKeyed(
+        id: String,
+        title: String,
+        source: String,
+        startedAt: Long,
+        durationSeconds: Long,
+        localPath: String,
+        status: String,
+        keys: List<String>,
+        clearKeys: List<String> = emptyList(),
+        createdAt: Long = epochSeconds(),
+    ): String? = withContext(dbContext) {
+        val existing = db.transactionWithResult {
+            val found = keys.firstNotNullOfOrNull { key ->
+                q.getMeta(key).executeAsOneOrNull()?.takeIf { it.isNotBlank() && q.selectRecordingById(it).executeAsOneOrNull() != null }
+            }
+            val owner = found ?: id
+            if (found == null) {
+                q.insertRecording(
+                    id = id,
+                    session_id = null,
+                    folder_id = null,
+                    title = title,
+                    source = source,
+                    device_serial = null,
+                    started_at = startedAt,
+                    duration_seconds = durationSeconds,
+                    size_bytes = 0,
+                    local_path = localPath,
+                    transcript = null,
+                    summary_markdown = null,
+                    status = status,
+                    trashed = 0,
+                    created_at = createdAt,
+                )
+                clearKeys.forEach { q.deleteMeta(it) }
+            }
+            keys.forEach { q.setMeta(it, owner) }
+            found
+        }
+        if (existing == null) tryIndex { indexRecording(id, title, null, null) }
+        existing
+    }
+
+    /**
      * Reindex recordings and/or templates into FTS (after seed, migration, or one-sided empty).
      * Prefer rebuilding only the empty side on cold start so an empty library does not
      * rewrite every template row.
