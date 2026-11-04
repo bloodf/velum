@@ -11,10 +11,10 @@ import io.ktor.client.HttpClient
 import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
-import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 
 /**
@@ -80,9 +80,13 @@ class WebhookDispatcher(
                 if (response.status.isSuccess()) {
                     return "HTTP ${response.status.value}"
                 }
-                lastError = "HTTP ${response.status.value}: ${response.bodyAsText().take(120)}"
+                // Status only: the reply can echo the request, and the webhook URL is itself a secret (#365).
+                lastError = "HTTP ${response.status.value}"
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (t: Throwable) {
-                lastError = t.message ?: t.toString()
+                // The exception class only: client messages quote the request URL, query string included (#365).
+                lastError = t::class.simpleName ?: "error"
             }
             if (attempt < maxAttempts - 1) {
                 delay(400L * (1L shl attempt))
