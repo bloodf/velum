@@ -121,6 +121,8 @@ class DeviceViewModel(
     private var discardedUnreadablePartial = false
     private var connectedDeviceId: String? = null
     private var downloadJob: Job? = null
+    /** The session of the newest download request, from the tap on, including while it waits for an older one to unwind. */
+    @Volatile private var requestedSessionId: Long? = null
     // Parent of every unfinished download: a cancelled one can still be unwinding after a newer one replaced downloadJob.
     private val downloads = SupervisorJob(viewModelScope.coroutineContext[Job])
     private val downloadMutex = Mutex()
@@ -193,6 +195,16 @@ class DeviceViewModel(
         downloads.children.toList().forEach { it.join() }
     }
 
+    /**
+     * Stops the download of [sessionId], if that is the one requested, because its recording is being deleted for good
+     * and the download would add it back when it ends (#407). The partial stays, so a later Re-download can resume.
+     * ponytail: matches on session id alone, which is the session's start time; two devices sharing one only costs a
+     * cancelled download. Compare the serial too if that ever matters.
+     */
+    fun cancelDownloadOf(sessionId: Long) {
+        if (requestedSessionId == sessionId) cancelDownload()
+    }
+
     fun cancelDownload() {
         val locale = localeTag()
         downloads.cancelChildren()
@@ -241,6 +253,7 @@ class DeviceViewModel(
         if (wipes.value > 0) return
         if (downloadJob?.isActive == true && _sessionUi.value.downloadingSessionId != null) return
         val previous = downloadJob
+        requestedSessionId = sessionId
         val started = viewModelScope.launch(downloads) {
             previous?.join()
             try {
@@ -260,7 +273,10 @@ class DeviceViewModel(
         }
         downloadJob = started
         started.invokeOnCompletion {
-            if (downloadJob === started) downloadJob = null
+            if (downloadJob === started) {
+                downloadJob = null
+                requestedSessionId = null
+            }
         }
     }
 

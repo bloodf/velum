@@ -284,7 +284,9 @@ class AppContainer(
     }
 
     /** Deletes a recording for good, with the speaker embeddings its processing cached (#320). */
-    suspend fun deleteRecordingForever(id: String) {
+    suspend fun deleteRecordingForever(id: String, device: DeviceViewModel = deviceViewModel) {
+        // Before the row goes: a cancelled download can't save, and a running one would find no row and add it back (#407).
+        repository.getRecording(id)?.session_id?.let(device::cancelDownloadOf)
         repository.deleteRecordingHard(id)
         withContext(Dispatchers.IO) { voiceProfileStore.deleteClusterCache(id) }
     }
