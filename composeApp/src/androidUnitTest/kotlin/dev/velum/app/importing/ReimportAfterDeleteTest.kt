@@ -176,12 +176,14 @@ class ReimportAfterDeleteTest {
         assertTrue(wav.exists(), "a file the app does not own was deleted")
     }
 
-    @Test fun a_watched_copy_goes_with_its_recording() = withPipeline { container, pipeline, wav ->
+    @Test fun a_watched_scratch_copy_goes_before_its_recording_is_deleted() = withPipeline { container, pipeline, wav ->
         val copy = ownedCopy(wav, "watched/copy.wav")
         val first = assertIs<ImportResult.Created>(pipeline.importFile(copy.path, source = "watched"))
-        assertTrue(copy.exists(), "a live watched copy is kept so the next sync does not copy it again")
+        val audio = File(container.repository.getRecording(first.recordingId)!!.local_path!!)
+        assertFalse(copy.exists(), "the watched scratch copy remained")
+        assertTrue(audio.isFile, "the recording lost its normalized audio")
         assertTrue(container.deleteRecordingForever(first.recordingId))
-        assertFalse(copy.exists(), "the watched copy stayed on disk")
+        assertFalse(audio.exists(), "the recording's audio remained after delete")
     }
 
     @Test fun a_watched_copy_of_a_deleted_recording_is_removed_by_the_sync() = withPipeline { container, pipeline, wav ->
@@ -375,7 +377,7 @@ class ReimportAfterDeleteTest {
         assertFalse(isImportCacheCopy(File(imports, "watched").path), "the directory itself")
     }
 
-    @Test fun a_watched_copy_is_kept_after_a_cancelled_sync() = withPipeline { container, _, wav ->
+    @Test fun a_watched_copy_is_removed_after_a_cancelled_sync() = withPipeline { container, _, wav ->
         val copy = ownedCopy(wav, "watched/copy.wav")
         val normalizing = CompletableDeferred<Unit>()
         val neverFinishes = CompletableDeferred<NormalizedAudio>()
@@ -385,15 +387,19 @@ class ReimportAfterDeleteTest {
             normalizing.await()
             job.cancelAndJoin()
         }
-        assertTrue(copy.exists(), "the next sync would have to copy the whole file again")
+        assertFalse(copy.exists(), "cancelled sync left its scratch copy")
+        assertTrue(container.repository.getAllRecordings().isEmpty(), "cancelled import created a recording")
     }
 
-    @Test fun a_watched_copy_is_kept_after_a_duplicate() = withPipeline { _, pipeline, wav ->
+    @Test fun a_watched_copy_is_removed_after_a_duplicate() = withPipeline { container, pipeline, wav ->
         val first = ownedCopy(wav, "watched/first.wav")
-        assertIs<ImportResult.Created>(pipeline.importFile(first.path, source = "watched"))
+        val created = assertIs<ImportResult.Created>(pipeline.importFile(first.path, source = "watched"))
+        val audio = File(container.repository.getRecording(created.recordingId)!!.local_path!!)
         val second = ownedCopy(wav, "watched/second.wav")
-        assertIs<ImportResult.Duplicate>(pipeline.importFile(second.path, source = "watched"))
-        assertTrue(second.exists(), "the next sync would have to copy the whole file again")
+        val duplicate = assertIs<ImportResult.Duplicate>(pipeline.importFile(second.path, source = "watched"))
+        assertEquals(created.recordingId, duplicate.existingRecordingId)
+        assertFalse(second.exists(), "duplicate scratch copy remained")
+        assertTrue(audio.isFile, "duplicate removed the winner's audio")
     }
 
     @Test fun a_delete_waits_for_a_running_save_and_takes_its_file() = withPipeline { container, _, _ ->

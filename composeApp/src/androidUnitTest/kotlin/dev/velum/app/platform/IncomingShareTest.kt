@@ -55,6 +55,18 @@ class IncomingShareTest {
         assertNull(accept(Intent.ACTION_VIEW, "content://${own.uppercase()}/files/secret"))
     }
 
+    @Test fun multibyte_display_name_uses_bounded_scratch_name() {
+        val name = "音".repeat(70) + ".wav"
+        val uri = Uri.parse("content://test.provider/${Uri.encode(name)}")
+        shadowOf(context.contentResolver).registerInputStream(uri, java.io.ByteArrayInputStream(byteArrayOf(1)))
+        val file = File(assertNotNull(IncomingShare.copyShare(context, uri)))
+        kotlin.test.assertTrue((file.name + ".tmp").toByteArray(Charsets.UTF_8).size <= 255)
+        assertEquals(name, dev.velum.app.importing.ImportDisplayNames.take(file.path))
+        assertEquals("wav", file.extension)
+        IncomingShare.markHandled(context, file.path)
+        file.delete()
+    }
+
     @Test fun a_failed_copy_leaves_no_file_and_returns_null() {
         File(context.cacheDir, "imports").deleteRecursively()
         val u = Uri.parse("content://test.provider/boom.mp3")

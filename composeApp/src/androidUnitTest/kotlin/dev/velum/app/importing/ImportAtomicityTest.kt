@@ -91,7 +91,7 @@ class ImportAtomicityTest {
         assertFalse(wav.exists(), "the refused copy was left behind")
     }
 
-    @Test fun a_watched_loser_hands_its_app_copy_to_the_recording_that_won() = withContainer { container, dir ->
+    @Test fun a_watched_loser_removes_its_scratch_and_keeps_the_winner_audio() = withContainer { container, dir ->
         val context = ApplicationProvider.getApplicationContext<Context>()
         val copy = File(context.cacheDir, "imports/watched/loser.wav").apply { parentFile!!.mkdirs(); writeBytes(ByteArray(64) { it.toByte() }) }
         val sourceHash = dev.velum.app.platform.sha256File(copy.path)
@@ -108,7 +108,9 @@ class ImportAtomicityTest {
         })
         val result = pipeline.importFile(copy.path, source = WATCHED_SOURCE)
         assertEquals(ImportResult.Duplicate("rec-winner", "synthetic-content-hash"), result)
-        assertEquals(listOf(copy.path), container.repository.importCopies("rec-winner"), "the copy would outlive a permanent delete")
+        assertFalse(copy.exists(), "the loser's scratch copy was left behind")
+        assertTrue(container.repository.importCopies("rec-winner").isEmpty())
+        assertEquals(winnerWav.path, container.repository.getRecording("rec-winner")!!.local_path)
         assertFalse(loserWav.exists(), "the loser's normalized audio was left behind")
         assertTrue(winnerWav.exists(), "the winner's audio was removed")
     }

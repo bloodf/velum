@@ -30,14 +30,21 @@ internal suspend fun syncWatchedFolders(
         val coroutine = currentCoroutineContext()
         val results = ArrayList<ImportResult>()
         WatchedFolderStore.list(context).forEach { uri ->
-            scan(context, uri) { coroutine.ensureActive() }.forEach { entry ->
-                coroutine.ensureActive()
-                results += pipeline.importFile(
-                    absolutePath = entry.absoluteCopyPath,
-                    source = WATCHED_SOURCE,
-                    titleHint = entry.displayName.substringBeforeLast('.'),
-                    startedAtEpochSeconds = entry.lastModifiedMs / 1000L,
-                )
+            val entries = scan(context, uri) { coroutine.ensureActive() }
+            try {
+                entries.forEach { entry ->
+                    coroutine.ensureActive()
+                    val result = pipeline.importFile(
+                        absolutePath = entry.absoluteCopyPath,
+                        source = WATCHED_SOURCE,
+                        titleHint = entry.displayName.substringBeforeLast('.'),
+                        startedAtEpochSeconds = entry.lastModifiedMs / 1000L,
+                    )
+                    if (result !is ImportResult.Failed) WatchedFolderStore.markImported(context, entry)
+                    results += result
+                }
+            } finally {
+                entries.forEach { java.io.File(it.absoluteCopyPath).delete() }
             }
         }
         results

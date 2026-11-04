@@ -18,6 +18,7 @@ import dev.velum.app.platform.installAppContext
 import dev.velum.app.platform.installMicCaptureContext
 import dev.velum.app.platform.STALE_DOWNLOAD_PART_AGE_MS
 import dev.velum.app.platform.installRecordingFilesDir
+import dev.velum.app.platform.migrateCachedImports
 import dev.velum.app.platform.sweepStaleDownloadParts
 import dev.velum.app.platform.sweepStalePartialTransfers
 import dev.velum.app.platform.recoverPartialMicRecordings
@@ -108,6 +109,14 @@ class VelumApplication : Application() {
                 }
                 built.repository.onIndexFailure = { cls -> Log.w(TAG, "FTS index write failed, index flagged stale ($cls)") }
                 built.repository.ftsRebuildFailure?.let { Log.w(TAG, "FTS rebuild failed, index stale ($it)") }
+                // Before the runtime is installed, so a cold-start worker never reads a row whose file is mid-move.
+                runCatching {
+                    val moved = migrateCachedImports(
+                        built.repository, java.io.File(recordingsDirectoryPath()), cacheDir,
+                        pendingPaths = dev.velum.app.platform.IncomingShare.pendingPaths(appContext).toSet(),
+                    )
+                    if (moved > 0) Log.i(TAG, "Moved $moved imported recording(s) out of the cache")
+                }.onFailure { t -> Log.w(TAG, "Import migration failed (${t::class.simpleName})") }
                 AiRuntimeHolder.install(
                     processor = built.recordingProcessor,
                     repository = built.repository,
