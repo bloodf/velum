@@ -189,7 +189,7 @@ class AudioImportPipeline(
                 durationSeconds = durationSeconds,
                 title = title.orEmpty(),
             )
-            container.enqueueProcessing(
+            container.enqueueSavedRecording(
                 recordingId = id,
                 templateId = resolveTemplateForEnqueue(container.repository, match?.template_id),
                 retranscribe = true,

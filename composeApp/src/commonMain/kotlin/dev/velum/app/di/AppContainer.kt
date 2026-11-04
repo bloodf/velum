@@ -340,6 +340,45 @@ class AppContainer(
         recordingJobs.enqueue(recordingId, templateId, retranscribe, apiModelOverride)
     }
 
+    /**
+     * Enqueues the job for a row already saved as `queued`. If that fails or is cancelled the row would wait for a
+     * job that does not exist, so it is marked failed (Retry shows) before the error continues (#415).
+     */
+    suspend fun enqueueSavedRecording(
+        recordingId: String,
+        templateId: String? = null,
+        retranscribe: Boolean = true,
+        apiModelOverride: ApiModelOverride? = null,
+    ) {
+        try {
+            enqueueProcessing(recordingId, templateId, retranscribe, apiModelOverride)
+        } catch (t: Throwable) {
+            withContext(NonCancellable) { runCatching { repository.updateStatusIfEquals(recordingId, "queued", "failed") } }
+            throw t
+        }
+    }
+
+    /**
+     * Startup: a row left `queued` with no job (the process died, or enqueueing failed, after the row was saved) gets
+     * its job again. The scheduler keeps work it already holds when the parameters are not AutoFlow's, so a row whose
+     * job survived is not enqueued twice. Under the wipe gate: a wipe in progress recreates no work. Returns how many
+     * rows were handed to the scheduler.
+     */
+    suspend fun requeueStrandedRecordings(): Int = wipeGate.guard {
+        var handed = 0
+        repository.queuedRecordingIds().forEach { id ->
+            try {
+                enqueueSavedRecording(id)
+                handed++
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                println("VelumStartup: requeue of a queued recording failed: ${e::class.simpleName}")
+            }
+        }
+        handed
+    } ?: 0
+
     suspend fun createLocalRecording(
         title: String? = null,
         source: String = "phone",
@@ -577,7 +616,7 @@ class AppContainer(
             durationSeconds = 0,
             title = title,
         )
-        enqueueProcessing(
+        enqueueSavedRecording(
             recordingId = id,
             templateId = resolveTemplateForEnqueue(repository, match?.template_id),
             retranscribe = true,
