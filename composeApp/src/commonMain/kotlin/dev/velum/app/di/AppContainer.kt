@@ -226,6 +226,7 @@ class AppContainer(
         notifyEnabled = { settingsRepository.preferences.value.autoflowNotify },
         calendar = calendarProvider,
         jobScheduler = recordingJobs,
+        wipeGate = wipeGate,
     )
 
     val micRecordings = dev.velum.app.platform.MicRecordingController(micCapture) { id ->
@@ -377,6 +378,11 @@ class AppContainer(
                 }
             }
         }
+
+    /** Runs [send], which hands notes to another app, unless "Wipe all data" is removing them. */
+    internal inline fun unlessWiping(send: () -> Unit) {
+        if (!wipeGate.isWiping) send()
+    }
 
     /** Ends a mic recording in progress and deletes its file, which may not be on a recording row yet. */
     private suspend fun stopMicCapture(): Boolean = micRecordings.underLock {

@@ -450,6 +450,20 @@ class WipeAllDataTest {
         }
     }
 
+    @Test fun notes_do_not_leave_the_app_during_a_wipe() = withContainer { container, _ ->
+        var sent = 0
+        container.wipeGate.wiping(1.seconds) { container.unlessWiping { sent++ } }
+        assertEquals(0, sent, "notes were shared during the wipe")
+        container.unlessWiping { sent++ }
+        assertEquals(1, sent, "sharing stayed off after the wipe")
+    }
+
+    @Test fun autoflow_share_and_calendar_go_through_the_wipe_check() {
+        val app = File("src/commonMain/kotlin/dev/velum/app/App.kt").readText()
+        assertTrue(Regex("""unlessWiping \{ shareText\(""").containsMatchIn(app), "sharing skips the wipe check")
+        assertTrue(Regex("""unlessWiping \{ openCalendarInsert\(""").containsMatchIn(app), "the calendar skips the wipe check")
+    }
+
     @Test fun a_wipe_stops_the_mic_and_deletes_its_file() {
         val audio = Files.createTempFile("velum-wipe-mic", ".wav").toFile().apply { writeBytes(ByteArray(64)) }
         val mic = RecordingCapture(audio.path)

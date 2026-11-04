@@ -10,6 +10,7 @@ import dev.velum.core.time.VelumDateTime
 import dev.velum.core.calendar.CalendarLookupResult
 import dev.velum.core.calendar.createCalendarEventProvider
 import dev.velum.core.data.VelumRepository
+import dev.velum.core.data.WipeGate
 import dev.velum.core.db.Autoflow
 import dev.velum.core.db.Recording
 import dev.velum.core.settings.ApiModelOverride
@@ -51,6 +52,7 @@ class AutoFlowRunner internal constructor(
     private val nowEpochMs: () -> Long = { epochMsNow() },
     private val jobScheduler: RecordingJobScheduler? = null,
     private val diagnostics: (String) -> Unit = {},
+    private val wipeGate: WipeGate = WipeGate(),
 ) {
     constructor(
         repository: VelumRepository,
@@ -61,10 +63,11 @@ class AutoFlowRunner internal constructor(
         nowEpochMs: () -> Long = { epochMsNow() },
         jobScheduler: RecordingJobScheduler? = null,
         diagnostics: (String) -> Unit = {},
+        wipeGate: WipeGate = WipeGate(),
     ) : this(
         RepositoryAutoFlowRecordingStore(repository),
         { id, template, override -> processor.process(id, template, true, override) },
-        scope, notifyEnabled, calendar, nowEpochMs, jobScheduler, diagnostics,
+        scope, notifyEnabled, calendar, nowEpochMs, jobScheduler, diagnostics, wipeGate,
     )
 
     private val job = MutableStateFlow<Job?>(null)
@@ -112,7 +115,8 @@ class AutoFlowRunner internal constructor(
                     .distinctUntilChanged()
                     .collect { (recordings, flows) ->
                         try {
-                            runPass(recordings, flows)
+                            // A wipe refuses or stops the pass: it holds a stale list of what the wipe is deleting.
+                            wipeGate.guard { runPass(recordings, flows) }
                         } finally {
                             _passIndex.update { it + 1 }
                         }
