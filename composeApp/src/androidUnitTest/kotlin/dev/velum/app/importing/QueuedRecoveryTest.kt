@@ -111,13 +111,26 @@ class QueuedRecoveryTest {
         } finally {
             try {
                 if (realScheduler) {
-                    val manager = WorkManager.getInstance(context)
-                    (workIds + listOfNotNull(extraWorkId)).distinct().forEach { id ->
-                        manager.cancelWorkById(id).result.get()
-                        assertTrue(manager.getWorkInfoById(id).get()?.state?.isFinished != false)
+                    var failure: Throwable? = null
+                    try {
+                        val manager = WorkManager.getInstance(context)
+                        (workIds + listOfNotNull(extraWorkId)).distinct().forEach { id ->
+                            manager.cancelWorkById(id).result.get()
+                            assertTrue(manager.getWorkInfoById(id).get()?.state?.isFinished != false)
+                        }
+                    } catch (t: Throwable) {
+                        failure = t
+                        throw t
+                    } finally {
+                        try {
+                            WorkManagerTestInitHelper.closeWorkDatabase()
+                        } catch (t: Throwable) {
+                            if (failure == null) throw t
+                            failure.addSuppressed(t)
+                        } finally {
+                            androidx.work.impl.WorkManagerImpl.setDelegate(null)
+                        }
                     }
-                    WorkManagerTestInitHelper.closeWorkDatabase()
-                    androidx.work.impl.WorkManagerImpl.setDelegate(null)
                 }
             } finally {
                 executor?.shutdown()
