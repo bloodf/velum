@@ -71,4 +71,29 @@ class StartupSequenceTest {
         val install = src.indexOf("AiRuntimeHolder.install(")
         assertTrue(sweep in 0 until install, "sweepOrphanPcmSpill must precede AiRuntimeHolder.install")
     }
+
+    /** #348: on main the saved language cannot be read, so a channel created there would get the device's language. */
+    @Test fun channels_are_first_created_off_main() {
+        val src = listOf(
+            File("src/androidMain/kotlin/dev/velum/app/VelumApplication.kt"),
+            File("composeApp/src/androidMain/kotlin/dev/velum/app/VelumApplication.kt"),
+        ).first { it.isFile }.readText()
+        val launch = src.indexOf("appScope.launch {")
+        val install = src.indexOf("AiRuntimeHolder.install(")
+        for (channel in listOf("MicRecordingService.ensureNotificationChannel(", "DownloadProgressNotifier.ensureChannel(")) {
+            assertTrue(src.indexOf(channel) in (launch + 1) until install, "$channel must run in the IO coroutine, before install")
+        }
+    }
+
+    /** #348: the fatal screen's text is resolved on the handoff thread, not in the main-thread post. */
+    @Test fun fatal_text_is_resolved_off_main() {
+        val src = listOf(
+            File("src/androidMain/kotlin/dev/velum/app/MainActivity.kt"),
+            File("composeApp/src/androidMain/kotlin/dev/velum/app/MainActivity.kt"),
+        ).first { it.isFile }.readText()
+        val handoff = src.substring(src.indexOf("HANDOFF_EXECUTOR.execute {"))
+        val resolvedBeforePost = Regex("""val fatalText = [^\n]*fatalStartText\(\)[^\n]*\n\s*mainHandler\.post \{""")
+        assertEquals(2, resolvedBeforePost.findAll(handoff).count(), "both failure paths must resolve the text before posting to main")
+        assertEquals(0, src.substring(0, src.indexOf("HANDOFF_EXECUTOR.execute {")).split("fatalStartText(").size - 1, "not on main")
+    }
 }
