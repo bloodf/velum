@@ -236,8 +236,12 @@ class AudioPlayerThreadTest {
         val player = createAudioPlayer()
         val t1 = thread { runBlocking { player.prepare(file.absolutePath) } }
         idleUntil("first prepare") { !t1.isAlive }
-        // The main looper is not run, so P2's first hop is still pending when it is cancelled.
+        // The main looper is not run, so P2's first hop stays queued; cancel only once it is queued, or the cancel
+        // could win before the hop exists and the test would check nothing.
         val job2 = launchPrepare(player, file)
+        val queueDeadline = System.currentTimeMillis() + 20_000
+        while (shadowOf(Looper.getMainLooper()).isIdle && System.currentTimeMillis() < queueDeadline) Thread.sleep(2)
+        assertTrue(!shadowOf(Looper.getMainLooper()).isIdle, "P2's first hop was never queued")
         job2.cancel()
         idleUntil("P2 finished") { job2.isCompleted }
         assertTrue(job2.isCancelled)
@@ -255,9 +259,17 @@ class AudioPlayerThreadTest {
         val jobRef = java.util.concurrent.atomic.AtomicReference<Job>()
         val thrown = java.util.concurrent.atomic.AtomicReference<Throwable>()
         val collector = CoroutineScope(Dispatchers.Unconfined)
+        val writers = CopyOnWriteArrayList<Pair<String, Thread>>()
+        val mainThread = Thread.currentThread()
+        // Unconfined: every collector resumes on whichever thread writes, so a rollback off Main shows up here.
+        collector.launch(start = CoroutineStart.UNDISPATCHED) { player.isPlaying.collect { writers += "playing" to Thread.currentThread() } }
+        collector.launch(start = CoroutineStart.UNDISPATCHED) { player.positionMs.collect { writers += "position" to Thread.currentThread() } }
         // 1500 is published by the last hop, after the player is installed: cancel there.
         collector.launch(start = CoroutineStart.UNDISPATCHED) {
-            player.durationMs.collect { if (it == 1500L) { player.play(); jobRef.get()?.cancel() } } // playing when the cancel lands
+            player.durationMs.collect {
+                writers += "duration" to Thread.currentThread()
+                if (it == 1500L) { player.play(); jobRef.get()?.cancel() } // playing when the cancel lands
+            }
         }
         val job = CoroutineScope(Dispatchers.IO).launch {
             try { player.prepare(file.absolutePath) } catch (e: kotlinx.coroutines.CancellationException) { thrown.set(e); throw e }
@@ -268,12 +280,38 @@ class AudioPlayerThreadTest {
         assertTrue(thrown.get() != null, "the cancellation must reach the caller, not be turned into a result")
         assertEquals(State.END, stateOf(players[0]))
         assertEquals(0L, player.durationMs.value, "the half-installed duration is rolled back")
+        assertTrue(writers.count { it.first == "playing" } >= 3, "expected initial, playing and the rollback, saw ${writers.map { it.first }}")
+        assertTrue(writers.all { it.second === mainThread }, "state written off the main thread: ${writers.map { it.first to it.second.name }}")
         assertEquals(false, player.isPlaying.value, "playing is rolled back with the install")
         assertEquals(0L, player.positionMs.value)
         shadowOf(Looper.getMainLooper()).idleFor(500, TimeUnit.MILLISECONDS)
         assertEquals(java.time.Duration.ZERO, shadowOf(Looper.getMainLooper()).nextScheduledTaskTime, "the poll started by that play must be stopped")
         player.play()
         assertEquals(false, player.isPlaying.value, "the released player is no longer installed")
+        player.release()
+    }
+
+    @Test fun a_rollback_that_finds_its_player_taken_by_a_newer_call_does_not_release_it_again() {
+        val file1 = wav("player-taken-1")
+        val file2 = wav("player-taken-2", durationMs = 900)
+        recordPlayers()
+        val player = createAudioPlayer()
+        val job1Ref = java.util.concurrent.atomic.AtomicReference<Job>()
+        val collector = CoroutineScope(Dispatchers.Unconfined)
+        // P1 is installed (1500 published) and cancelled in the same Main task; P2 is then queued ahead of P1's rollback.
+        collector.launch(start = CoroutineStart.UNDISPATCHED) {
+            player.durationMs.collect { if (it == 1500L) job1Ref.get()?.cancel() }
+        }
+        val job1 = launchPrepare(player, file1)
+        job1Ref.set(job1)
+        idleUntil("P1 finished") { job1.isCompleted }
+        collector.coroutineContext[Job]?.cancel()
+        val job2 = launchPrepare(player, file2)
+        idleUntil("P2 ready") { job2.isCompleted }
+        assertEquals(State.END, stateOf(players[0]), "P1's player is released")
+        assertTrue(stateOf(players[1]) != State.END, "P2's player is intact")
+        player.play()
+        assertEquals(State.STARTED, stateOf(players[1]))
         player.release()
     }
 }
