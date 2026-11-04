@@ -601,16 +601,29 @@ class VoiceProfileStore(
     /**
      * Re-encrypts profiles still stored as plaintext `.f32` by earlier versions and removes the plaintext. Needs
      * the key only when such a file exists, so a fresh install creates no key here. A profile whose `.enc` already
-     * exists and authenticates only has its leftover plaintext removed (a crash between the two steps). Returns
-     * how many profiles lost their plaintext copy.
+     * exists and authenticates only has its leftover plaintext removed (a crash between the two steps).
+     *
+     * A profile whose `.enc` does not authenticate but whose `.f32` is intact (a truncated `.enc` left by the old
+     * non-atomic write) is rewritten from the `.f32`, then the plaintext is removed, but only when the key check
+     * file authenticates: that proves the current key is right, so the bad `.enc` is damage and not a file made
+     * under another key. Without that proof (no key check yet, or it fails) neither file is touched.
+     *
+     * Returns how many profiles lost their plaintext copy.
      */
     suspend fun migrateLegacyPlaintextProfiles(): Int {
         if (!profilesDir.exists() || profilesDir.listChildren().none { it.name.endsWith(".f32") }) return 0
         return withReady {
             val plaintextIds = profilesDir.listChildren().filter { it.name.endsWith(".f32") }
                 .map { it.name.removeSuffix(".f32") }.toSet()
-            val readable = inspectProfiles().profiles.filter { it.id in plaintextIds }
-            readable.count { profile ->
+            val inventory = inspectProfiles()
+            val readable = inventory.profiles.filter { it.id in plaintextIds }
+            val damaged = inventory.unreadable.filter {
+                it.id in plaintextIds && it.problem == VoiceProfileReadProblem.CannotDecrypt
+            }
+            // The proof is taken before this call writes anything: migrating a lone plaintext profile writes the
+            // key check itself, which must not count as proof for the damaged files found in the same call.
+            val keyProven = damaged.isNotEmpty() && keyCheckAuthenticates(cipher())
+            val migrated = readable.count { profile ->
                 if (profilesDir.resolve("${profile.id}.enc").exists()) {
                     profilesDir.resolve("${profile.id}.f32").deleteFile()
                 } else {
@@ -618,7 +631,35 @@ class VoiceProfileStore(
                     !profilesDir.resolve("${profile.id}.f32").exists()
                 }
             }
+            if (!keyProven) return@withReady migrated
+            migrated + damaged.count { issue -> rewriteFromPlaintext(issue.id) }
         }
+    }
+
+    /** Re-encrypts [id] from its intact `.f32` over a damaged `.enc`; false (nothing touched) if the `.f32` is not intact. */
+    private fun rewriteFromPlaintext(id: String): Boolean {
+        if (!safeProfileId(id)) return false
+        val metadata = try {
+            json.decodeFromString<VoiceProfileFile>(profilesDir.resolve("$id.json").readBytes().decodeToString())
+        } catch (_: Exception) {
+            return false
+        }
+        val embedding = try {
+            bytesToFloats(profilesDir.resolve("$id.f32").readBytes())
+        } catch (_: Exception) {
+            return false
+        }
+        if (metadata.id != id || metadata.dim <= 0 || embedding.size != metadata.dim || embedding.any { !it.isFinite() }) return false
+        // An all-zero vector is what a blank or wiped file reads as; it would replace the .enc with a profile that never matches.
+        if (embedding.all { it == 0f }) return false
+        writeProfile(
+            VoiceProfile(
+                id = id, displayName = metadata.displayName, embedding = embedding, sampleEmbeddings = listOf(embedding),
+                role = metadata.role, company = metadata.company, email = metadata.email, notes = metadata.notes,
+                contactUri = metadata.contactUri, sampleCount = 1,
+            ),
+        )
+        return !profilesDir.resolve("$id.f32").exists()
     }
 
     /** Leftover `*.tmp` files of an interrupted write. A `.json.tmp` holds plaintext name, email and notes. */
