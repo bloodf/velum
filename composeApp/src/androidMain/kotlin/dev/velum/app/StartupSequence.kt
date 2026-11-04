@@ -1,6 +1,23 @@
 package dev.velum.app
 
+import android.content.Context
+import android.util.Log
+import dev.velum.ai.pipeline.RecordingProcessWorker
+import dev.velum.app.platform.DownloadProgressNotifier
+import dev.velum.app.platform.MicRecordingService
 import kotlinx.coroutines.CancellationException
+
+/**
+ * Creates or renames the notification channels in the current in-app language. A failure is logged and goes no
+ * further: these run in startup coroutines, where an exception would end the process.
+ */
+internal fun publishNotificationChannels(context: Context) {
+    runCatching {
+        MicRecordingService.ensureNotificationChannel(context)
+        DownloadProgressNotifier.ensureChannel()
+        RecordingProcessWorker.ensureProcessingChannel(context)
+    }.onFailure { t -> Log.w("VelumStartup", "Notification channel setup failed (${t::class.simpleName})") }
+}
 
 /**
  * #119: startup cleanup must finish before the container is published. Nothing can start a

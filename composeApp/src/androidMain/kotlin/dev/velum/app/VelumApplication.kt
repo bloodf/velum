@@ -12,8 +12,6 @@ import dev.velum.ai.pipeline.createWorkManagerRecordingJobScheduler
 import dev.velum.ai.pipeline.STALE_PCM_SPILL_AGE_MS
 import dev.velum.ai.pipeline.sweepOrphanPcmSpill
 import dev.velum.app.di.AppContainer
-import dev.velum.app.platform.DownloadProgressNotifier
-import dev.velum.app.platform.MicRecordingService
 import dev.velum.app.platform.ShareTextHolder
 import dev.velum.app.platform.installAppContext
 import dev.velum.app.platform.installMicCaptureContext
@@ -68,10 +66,7 @@ class VelumApplication : Application() {
         appScope.launch {
             try {
                 // Off main, where the saved language can be read, so a channel is first created in the app language (#348).
-                runCatching {
-                    MicRecordingService.ensureNotificationChannel(appContext)
-                    DownloadProgressNotifier.ensureChannel()
-                }.onFailure { t -> Log.w(TAG, "Notification channel setup failed (${t::class.simpleName})") }
+                publishNotificationChannels(appContext)
                 // filesDir / models path are disk reads — stay on Dispatchers.IO.
                 installRecordingFilesDir(filesDir.absolutePath)
                 // Before AiRuntimeHolder.install: WorkManager can re-run a killed job as soon as the
@@ -116,9 +111,7 @@ class VelumApplication : Application() {
                 // Channel names are stored by the system; re-publish them when the in-app language changes.
                 appScope.launch {
                     built.settingsRepository.preferences.map { it.appLanguage }.distinctUntilChanged().collect {
-                        MicRecordingService.ensureNotificationChannel(appContext)
-                        DownloadProgressNotifier.ensureChannel()
-                        dev.velum.ai.pipeline.RecordingProcessWorker.ensureProcessingChannel(appContext)
+                        publishNotificationChannels(appContext)
                     }
                 }
                 cleanupThenPublish(
