@@ -5,13 +5,16 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.work.Configuration
 import androidx.work.WorkManager
+import androidx.work.Operation
+import androidx.lifecycle.LiveData
+import androidx.lifecycle.MutableLiveData
+import com.google.common.util.concurrent.ListenableFuture
 import androidx.work.testing.WorkManagerTestInitHelper
 import androidx.work.impl.utils.futures.SettableFuture
 import dev.velum.ai.pipeline.RecordingProcessWorker
 import dev.velum.ai.pipeline.createWorkManagerRecordingJobScheduler
 import java.util.concurrent.Executors
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
 import dev.velum.ai.local.ModelStoreDir
 import dev.velum.ai.pipeline.RecordingJobScheduler
@@ -42,7 +45,9 @@ class QueuedRecoveryTest {
     private val enqueuedTemplates = CopyOnWriteArrayList<String?>()
     private val busy = CopyOnWriteArrayList<String>()
     private var enqueueFailure: Throwable? = null
-    private var savedOperation: SettableFuture<Void>? = null
+    private var savedOperation: SettableFuture<Operation.State.SUCCESS>? = null
+    private var beforeSubmit: (() -> Unit)? = null
+    private val submitted = kotlinx.coroutines.CompletableDeferred<Unit>()
 
     private fun withContainer(realScheduler: Boolean = false, block: suspend (AppContainer, File) -> Unit) {
         val context = ApplicationProvider.getApplicationContext<Context>()
@@ -52,6 +57,7 @@ class QueuedRecoveryTest {
         busy.clear()
         enqueueFailure = null
         savedOperation = null
+        beforeSubmit = null
         if (realScheduler) {
             WorkManagerTestInitHelper.initializeTestWorkManager(context, Configuration.Builder().setExecutor(Executors.newSingleThreadExecutor()).build())
         }
@@ -59,12 +65,18 @@ class QueuedRecoveryTest {
         val container = AppContainer(
             InMemorySecureStore(), DriverFactory(context), modelStoreRoot = root,
             recordingJobSchedulerFactory = { _, _ ->
-                if (realScheduler) createWorkManagerRecordingJobScheduler(context) else object : RecordingJobScheduler {
-                    override suspend fun enqueueSaved(recordingId: String, templateId: String?, retranscribe: Boolean, apiModelOverride: dev.velum.core.settings.ApiModelOverride?) {
-                        val operation = savedOperation
-                        if (operation == null) enqueue(recordingId, templateId, retranscribe, apiModelOverride)
-                        else runInterruptible(Dispatchers.IO) { operation.get() }
+                if (realScheduler) createWorkManagerRecordingJobScheduler(context) { manager, name, policy, request ->
+                    beforeSubmit?.invoke()
+                    val future = savedOperation
+                    if (future == null) manager.enqueueUniqueWork(name, policy, request)
+                    else {
+                        submitted.complete(Unit)
+                        object : Operation {
+                            override fun getState(): LiveData<Operation.State> = MutableLiveData()
+                            override fun getResult(): ListenableFuture<Operation.State.SUCCESS> = future
+                        }
                     }
+                } else object : RecordingJobScheduler {
                     override fun enqueue(recordingId: String, templateId: String?, retranscribe: Boolean, apiModelOverride: dev.velum.core.settings.ApiModelOverride?) {
                         enqueueFailure?.let { throw it }
                         enqueued += recordingId
@@ -101,10 +113,10 @@ class QueuedRecoveryTest {
         assertEquals("failed", container.repository.getRecording(id)!!.status)
     }
 
-    @Test fun asynchronous_enqueue_failure_after_import_marks_saved_row_failed() = withContainer { container, dir ->
+    @Test fun asynchronous_enqueue_failure_after_import_marks_saved_row_failed() = withContainer(realScheduler = true) { container, dir ->
         val source = File(dir, "async.wav").apply { writeBytes(ByteArray(64) { it.toByte() }) }
         val wav = File(dir, "async-normalized.wav").apply { writeBytes(ByteArray(64)) }
-        val operation = SettableFuture.create<Void>()
+        val operation = SettableFuture.create<Operation.State.SUCCESS>()
         savedOperation = operation
         val pipeline = AudioImportPipeline(container, normalize = { NormalizedAudio(wav.path, 16_000, 1_000, null, "async-hash") })
         kotlinx.coroutines.coroutineScope {
@@ -117,10 +129,26 @@ class QueuedRecoveryTest {
                 }
                 found
             }
+            kotlinx.coroutines.withTimeout(5_000) { submitted.await() }
             assertEquals("queued", container.repository.getRecording(id)!!.status)
             operation.setException(IllegalStateException("enqueue failed"))
             assertIs<ImportResult.Failed>(result.await())
             assertEquals("failed", container.repository.getRecording(id)!!.status)
+        }
+    }
+
+    @Test fun cancellation_after_submission_waits_for_acceptance_without_failing_row() = withContainer(realScheduler = true) { container, _ ->
+        container.row("rec-cancel-after-submit", "queued")
+        val operation = SettableFuture.create<Operation.State.SUCCESS>()
+        savedOperation = operation
+        kotlinx.coroutines.coroutineScope {
+            val job = launch(Dispatchers.Default) { container.enqueueSavedRecording("rec-cancel-after-submit") }
+            kotlinx.coroutines.withTimeout(5_000) { submitted.await() }
+            job.cancel()
+            operation.set(Operation.SUCCESS)
+            job.join()
+            assertTrue(job.isCancelled)
+            assertEquals("queued", container.repository.getRecording("rec-cancel-after-submit")!!.status)
         }
     }
 
@@ -133,12 +161,19 @@ class QueuedRecoveryTest {
             id = "real-flow", name = "Phone", enabled = true, wakePhrase = null, durationMinSeconds = 0, durationMaxSeconds = 3600,
             sourceFilter = "phone", templateId = "velum.general", autoLabelVoice = false, language = "auto", notify = false,
         )
-        withContext(Dispatchers.IO) { RecordingProcessWorker.enqueue(context, id, "velum.meeting", true, null, awaitOperation = true) }
         val name = RecordingProcessWorker.UNIQUE_PREFIX + id
-        val original = manager.getWorkInfosForUniqueWork(name).get().single().id
+        var original: java.util.UUID? = null
+        beforeSubmit = {
+            beforeSubmit = null
+            RecordingProcessWorker.enqueue(context, id, "velum.meeting", true, null, awaitOperation = true)
+            original = manager.getWorkInfosForUniqueWork(name).get().single().id
+        }
+        assertEquals(1, withContext(Dispatchers.IO) { container.requeueStrandedRecordings() })
+        val kept = requireNotNull(original)
+        assertEquals(listOf(kept), manager.getWorkInfosForUniqueWork(name).get().map { it.id })
         assertEquals(0, withContext(Dispatchers.IO) { container.requeueStrandedRecordings() })
-        assertEquals(listOf(original), manager.getWorkInfosForUniqueWork(name).get().map { it.id })
-        manager.cancelWorkById(original).result.get()
+        assertEquals(listOf(kept), manager.getWorkInfosForUniqueWork(name).get().map { it.id })
+        manager.cancelWorkById(kept).result.get()
         assertEquals(false, withContext(Dispatchers.IO) { RecordingProcessWorker.isWorkActive(context, id) })
     }
 

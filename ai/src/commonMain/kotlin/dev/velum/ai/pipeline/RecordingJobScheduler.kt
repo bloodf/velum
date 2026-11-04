@@ -24,7 +24,7 @@ fun interface RecordingJobScheduler {
     )
 
     /** Waits for enqueue acceptance when the platform schedules work asynchronously. */
-    suspend fun enqueueSaved(recordingId: String, templateId: String?, retranscribe: Boolean, apiModelOverride: ApiModelOverride?) {
+    suspend fun enqueueSaved(recordingId: String, templateId: String?, retranscribe: Boolean, apiModelOverride: ApiModelOverride?, keepExisting: Boolean = false) {
         enqueue(recordingId, templateId, retranscribe, apiModelOverride)
     }
 
@@ -125,11 +125,23 @@ fun createCoroutineRecordingJobScheduler(
 
         override fun hasActiveWork(recordingId: String): Boolean = inFlight.value[recordingId]?.job?.isActive == true
 
+        override suspend fun enqueueSaved(recordingId: String, templateId: String?, retranscribe: Boolean, apiModelOverride: ApiModelOverride?, keepExisting: Boolean) {
+            schedule(recordingId, templateId, retranscribe, apiModelOverride, keepExisting)
+        }
+
         override fun enqueueReportingStart(
             recordingId: String,
             templateId: String?,
             retranscribe: Boolean,
             apiModelOverride: ApiModelOverride?,
+        ): Boolean = schedule(recordingId, templateId, retranscribe, apiModelOverride, false)
+
+        private fun schedule(
+            recordingId: String,
+            templateId: String?,
+            retranscribe: Boolean,
+            apiModelOverride: ApiModelOverride?,
+            keepExisting: Boolean,
         ): Boolean {
             var previous: Job? = null
             lateinit var job: Job
@@ -150,10 +162,10 @@ fun createCoroutineRecordingJobScheduler(
             inFlight.update { current ->
                 val running = current[recordingId]
                 keepRunning = running != null && running.job.isActive &&
-                    recordingWorkParamsMatch(
+                    (keepExisting || recordingWorkParamsMatch(
                         running.templateId, running.retranscribe, running.apiModelOverride,
                         templateId, retranscribe, apiModelOverride,
-                    )
+                    ))
                 if (keepRunning) {
                     current
                 } else {
