@@ -79,6 +79,7 @@ import dev.velum.core.time.VelumDateTime
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
@@ -363,12 +364,18 @@ class AppContainer(
         retranscribe: Boolean = true,
         apiModelOverride: ApiModelOverride? = null,
     ) {
+        var accepted = false
         try {
-            enqueueProcessing(recordingId, templateId, retranscribe, apiModelOverride)
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+            withContext(NonCancellable) {
+                recordingJobs.enqueueSaved(recordingId, templateId, retranscribe, apiModelOverride)
+                accepted = true
+            }
         } catch (t: Throwable) {
-            markQueuedFailed(recordingId)
+            if (!accepted) markQueuedFailed(recordingId)
             throw t
         }
+        kotlinx.coroutines.currentCoroutineContext().ensureActive()
     }
 
     /**
@@ -382,19 +389,28 @@ class AppContainer(
         durationSeconds: Long,
         title: String,
         markFailedOnCancel: Boolean = true,
+        keepExisting: Boolean = false,
     ) {
+        var accepted = false
         try {
             val match = repository.findMatchingAutoflow(source = source, durationSeconds = durationSeconds, title = title)
-            enqueueProcessing(
-                recordingId = recordingId,
-                templateId = resolveTemplateForEnqueue(repository, match?.template_id),
-                retranscribe = true,
-                apiModelOverride = match?.let { AutoFlowResolve.modelOverride(it) },
-            )
+            val templateId = resolveTemplateForEnqueue(repository, match?.template_id)
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+            withContext(NonCancellable) {
+                recordingJobs.enqueueSaved(
+                    recordingId = recordingId,
+                    templateId = templateId,
+                    retranscribe = true,
+                    apiModelOverride = match?.let { AutoFlowResolve.modelOverride(it) },
+                    keepExisting = keepExisting,
+                )
+                accepted = true
+            }
         } catch (t: Throwable) {
-            if (markFailedOnCancel || t !is kotlinx.coroutines.CancellationException) markQueuedFailed(recordingId)
+            if (!accepted && (markFailedOnCancel || t !is kotlinx.coroutines.CancellationException)) markQueuedFailed(recordingId)
             throw t
         }
+        kotlinx.coroutines.currentCoroutineContext().ensureActive()
     }
 
     private suspend fun markQueuedFailed(recordingId: String) {
@@ -419,7 +435,7 @@ class AppContainer(
                 val row = repository.getRecording(id)?.takeIf { it.status == "queued" } ?: return@forEach
                 if (recordingJobs.hasActiveWork(id)) return@forEach
                 try {
-                    enqueueSavedWithAutoflow(id, row.source, row.duration_seconds, row.title, markFailedOnCancel = false)
+                    enqueueSavedWithAutoflow(id, row.source, row.duration_seconds, row.title, markFailedOnCancel = false, keepExisting = true)
                     handed++
                 } catch (e: kotlinx.coroutines.CancellationException) {
                     throw e
