@@ -155,6 +155,20 @@ class DeleteForeverTest {
         }
     }
 
+    @Test fun failed_scheduler_cancel_keeps_recording_and_audio() {
+        val jobs = object : RecordingJobScheduler {
+            override fun enqueue(recordingId: String, templateId: String?, retranscribe: Boolean, apiModelOverride: ApiModelOverride?) = Unit
+            override suspend fun cancel(recordingId: String) { error("cancel failed") }
+        }
+        withContainer(jobs = { _, _ -> jobs }) { container ->
+            val file = File(recordingsDirectoryPath(), "rec-a.wav").apply { parentFile!!.mkdirs(); writeBytes(ByteArray(8)) }
+            container.addRow("rec-a", path = file.path)
+            assertFalse(container.deleteRecordingForever("rec-a"))
+            assertNotNull(container.repository.getRecording("rec-a"))
+            assertTrue(file.exists())
+        }
+    }
+
     @Test fun deleting_a_recording_waits_for_its_running_job() {
         val thermal = HoldingThermal()
         withContainer(thermal = thermal) { container ->
