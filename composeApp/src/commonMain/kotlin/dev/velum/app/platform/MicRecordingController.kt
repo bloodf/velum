@@ -86,7 +86,10 @@ class MicRecordingController(private val capture: MicCapture, private val canSta
     @kotlin.concurrent.Volatile private var live: Pair<String, String?>? = null
 
     /** Latest savable live transcript the pane holds, kept after the pane is left so a notification stop can save it. */
-    fun publishLiveText(recordingId: String, text: String?) { live = recordingId to text }
+    fun publishLiveText(recordingId: String, text: String?) {
+        // A late publish after release must not keep plaintext in memory or clobber the next recording's text.
+        if (_owner.value?.recordingId == recordingId) live = recordingId to text
+    }
     fun liveText(recordingId: String): String? = live?.takeIf { it.first == recordingId }?.second
 
     /** Runs [action] under the same lock as finalize, so a write cannot interleave with Stop. */
