@@ -756,8 +756,8 @@ private fun VelumRoot(container: AppContainer) {
                     val ids = ModelCatalogUi.recommendedModelIds(
                         languageHint = strings.localeTag,
                     )
-                    scope.launch {
-                        // Disk queries stay off the main thread.
+                    scope.launch(Dispatchers.Main.immediate) {
+                        // Disk queries stay off the main thread; the writes after them are on Main (also under a test clock).
                         val (needed, free) = withContext(Dispatchers.Default) {
                             container.localModelManager.bytesNeededFor(ids) to container.localModelManager.freeSpaceBytes()
                         }
