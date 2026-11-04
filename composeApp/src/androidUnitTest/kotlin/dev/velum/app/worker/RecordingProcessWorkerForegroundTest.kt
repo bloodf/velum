@@ -9,7 +9,6 @@ import androidx.work.WorkerParameters
 import androidx.work.impl.utils.futures.SettableFuture
 import androidx.work.testing.TestListenableWorkerBuilder
 import com.google.common.util.concurrent.ListenableFuture
-import dev.velum.ai.R
 import dev.velum.ai.engine.AiTaskRouter
 import dev.velum.ai.engine.AudioInput
 import dev.velum.ai.engine.DiarizationResult
@@ -20,6 +19,7 @@ import dev.velum.ai.engine.LlmResult
 import dev.velum.ai.engine.Transcriber
 import dev.velum.ai.engine.TranscriptionResult
 import dev.velum.ai.pipeline.AiRuntimeHolder
+import dev.velum.ai.pipeline.PROCESSING_STOPPED_MESSAGE
 import dev.velum.ai.pipeline.RecordingProcessor
 import dev.velum.ai.pipeline.RecordingProcessWorker
 import dev.velum.core.data.DriverFactory
@@ -165,7 +165,7 @@ class RecordingProcessWorkerForegroundTest {
         runBlocking {
             assertEquals("failed", graph.repo.getRecording("rec-w")?.status)
             assertEquals(
-                context.getString(R.string.velum_processing_stopped_message),
+                PROCESSING_STOPPED_MESSAGE,
                 graph.repo.getProcessingError("rec-w"),
             )
         }

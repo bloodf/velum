@@ -5,5 +5,4 @@
     <string name="velum_processing_notification_body">Transcrevendo e resumindo no aparelho</string>
     <string name="velum_processing_refused_title">O processamento pode ser interrompido</string>
     <string name="velum_processing_refused_body">O Android não permitiu manter o processamento visível em segundo plano. Mantenha o Velum aberto ou tente de novo na gravação.</string>
-    <string name="velum_processing_stopped_message">O processamento foi interrompido pelo Android porque não pôde rodar em primeiro plano. Abra o Velum e tente de novo.</string>
 </resources>
