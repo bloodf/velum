@@ -2,6 +2,7 @@ package dev.velum.app.importing
 
 /** Readable recording titles for imported files. */
 object ImportTitles {
+    const val MAX_TITLE_CHARS = 120
     private val internalPrefix = Regex("""^(?:share_)?\d{9,}_""")
 
     /**
@@ -17,7 +18,7 @@ object ImportTitles {
 
     /** The name the user sees in the file picker, without its extension. */
     fun fromDisplayName(displayName: String): String? =
-        displayName.substringAfterLast('/').substringBeforeLast('.').trim().ifBlank { null }
+        displayName.filterNot { it.isISOControl() }.substringAfterLast('/').substringBeforeLast('.').trim().take(MAX_TITLE_CHARS).ifBlank { null }
 
     fun fromFileName(fileName: String): String? =
         fileName.substringBeforeLast('.')

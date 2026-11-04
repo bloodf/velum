@@ -46,6 +46,12 @@ class AudioImportPipeline(
         if (result == ImportResult.Failed(WIPE_IN_PROGRESS)) withContext(Dispatchers.IO) { deleteFileAtPath(copyPath) }
     }
 
+    /**
+     * [importShared] owned by the app, not the caller: if the screen that received the share is recreated mid-import the
+     * import still finishes and the recording exists; only this wait is cancelled. A wipe still stops it through the gate.
+     */
+    suspend fun importSharedDetached(copyPath: String): ImportResult = container.runDetached { importShared(copyPath) }.await()
+
     private suspend fun importNow(
         absolutePath: String,
         source: String,

@@ -21,6 +21,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -248,7 +249,10 @@ private fun VelumRoot(container: AppContainer) {
         }
     }
 
-    LaunchedEffect(container) {
+    // Only a started (visible) instance takes a share: with several instances (Recents) a hidden one must not import and navigate.
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    LaunchedEffect(container, lifecycleOwner) {
+      lifecycleOwner.lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
         // Each share is copied off the main thread and arrives here when ready; null means this platform has none.
         while (true) {
             val shared = awaitIncomingSharePath() ?: break
@@ -259,7 +263,8 @@ private fun VelumRoot(container: AppContainer) {
                     continue
                 }
             }
-            when (val result = importPipeline.importShared(path)) {
+            // The import itself is owned by the container, so recreating this screen cannot cancel it; navigation is skipped then.
+            when (val result = importPipeline.importSharedDetached(path)) {
                 is ImportResult.Created -> navController.navigate(Routes.recording(result.recordingId))
                 is ImportResult.Duplicate -> {
                     snackbar.showSnackbar(strings.ux.importDuplicate)
@@ -269,6 +274,7 @@ private fun VelumRoot(container: AppContainer) {
                 is ImportResult.Deleted -> Unit // watched-folder sync only
             }
         }
+      }
     }
 
     LaunchedEffect(container) {

@@ -39,6 +39,13 @@ class IncomingShareTest {
         assertNotNull(accept(Intent.ACTION_SEND, "CONTENT://media/1.mp3"))
     }
 
+    @Test fun a_user_id_or_encoded_prefix_does_not_hide_the_apps_own_provider() {
+        assertNull(accept(Intent.ACTION_VIEW, "content://0@$own/share/x.docx"))
+        assertNull(accept(Intent.ACTION_VIEW, "content://0%40$own/share/x.docx"))
+        assertNull(accept(Intent.ACTION_VIEW, "content://10@${own.uppercase()}/share/x.docx"))
+        assertNotNull(accept(Intent.ACTION_VIEW, "content://0@media/1.mp3")) // another provider with a prefix is fine
+    }
+
     @Test fun the_apps_own_provider_is_rejected() {
         assertNull(accept(Intent.ACTION_VIEW, "content://$own/files/secret"))
         assertNull(accept(Intent.ACTION_VIEW, "content://${own.uppercase()}/files/secret"))
@@ -52,7 +59,7 @@ class IncomingShareTest {
         assertEquals(emptyList(), File(context.cacheDir, "imports").listFiles().orEmpty().toList())
     }
 
-    @Test fun offering_a_share_returns_before_the_copy_and_the_path_arrives_later() {
+    @Test(timeout = 30_000) fun offering_a_share_returns_before_the_copy_and_the_path_arrives_later() {
         val gate = java.util.concurrent.CountDownLatch(1)
         val u = Uri.parse("content://test.provider/slow.mp3")
         shadowOf(context.contentResolver).registerInputStream(u, object : InputStream() {
@@ -88,5 +95,37 @@ class IncomingShareTest {
         IncomingShare.offerOnCreate(context, intent, null) // a fresh launch does
         val shared = kotlinx.coroutines.runBlocking { kotlinx.coroutines.withTimeout(10_000) { IncomingShare.next() } }
         assertEquals(10L, File((shared as SharedFile.Ready).path).length())
+    }
+
+    private fun nothingArrives() = kotlinx.coroutines.runBlocking { kotlinx.coroutines.withTimeoutOrNull(1_500) { IncomingShare.next() } }
+
+    @Test fun offering_applies_the_uri_rules_not_just_acceptedUri() {
+        // Readable streams behind rejected URIs: if the rules were skipped these would be copied and queued.
+        val ownUri = Uri.parse("content://0@$own/share/x.mp3")
+        shadowOf(context.contentResolver).registerInputStream(ownUri, java.io.ByteArrayInputStream(ByteArray(10) { 1 }))
+        IncomingShare.offerFromIntent(context, Intent(Intent.ACTION_SEND).putExtra(Intent.EXTRA_STREAM, ownUri))
+        val file = Uri.parse("file:///data/data/dev.velum.app/databases/velum.db")
+        IncomingShare.offerFromIntent(context, Intent(Intent.ACTION_SEND).putExtra(Intent.EXTRA_STREAM, file))
+        IncomingShare.offerFromIntent(context, Intent(Intent.ACTION_EDIT).setData(Uri.parse("content://test.provider/e.mp3")))
+        assertNull(nothingArrives())
+    }
+
+    @Test fun a_view_intent_is_offered_from_its_data_uri() {
+        val u = Uri.parse("content://test.provider/view.mp3")
+        shadowOf(context.contentResolver).registerInputStream(u, java.io.ByteArrayInputStream(ByteArray(10) { 1 }))
+        IncomingShare.offerFromIntent(context, Intent(Intent.ACTION_VIEW).setData(u))
+        val shared = kotlinx.coroutines.runBlocking { kotlinx.coroutines.withTimeout(10_000) { IncomingShare.next() } }
+        assertEquals(10L, File((shared as SharedFile.Ready).path).length())
+    }
+
+    @Test fun reopening_from_recents_is_not_a_new_share() {
+        val intent = readableShare("history").addFlags(Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY)
+        IncomingShare.offerOnCreate(context, intent, null)
+        assertNull(nothingArrives())
+    }
+
+    @Test fun a_hostile_display_name_is_capped_and_cleaned() {
+        assertEquals("abc", dev.velum.app.importing.ImportTitles.fromDisplayName("a\u0000b\nc.mp3"))
+        assertEquals(dev.velum.app.importing.ImportTitles.MAX_TITLE_CHARS, dev.velum.app.importing.ImportTitles.fromDisplayName("x".repeat(5_000) + ".mp3")?.length)
     }
 }

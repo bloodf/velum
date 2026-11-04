@@ -76,6 +76,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -124,6 +125,12 @@ class AppContainer(
         runBlocking { !repository.isFirstRunDone() },
     )
     val firstRunPending: StateFlow<Boolean> = _firstRunPending.asStateFlow()
+
+    /**
+     * Runs [block] in the app's own scope instead of the caller's, so work started from a screen finishes when that screen
+     * is recreated (rotation, theme or locale change). The caller may stop waiting; the work goes on.
+     */
+    fun <T> runDetached(block: suspend () -> T): kotlinx.coroutines.Deferred<T> = appScope.async { block() }
 
     /** Dismiss FirstRun in memory immediately; persist on [appScope]. */
     fun markFirstRunDone() {
