@@ -140,7 +140,8 @@ class AutoFlowRunnerTest {
         val f = Fixture(this)
         f.start()
         f.enqueue = { throw EnqueueOutcomeUnknown() }
-        f.publish(recording("rec-unknown"))
+        f.store.put(recording("rec-unknown"))
+        runCurrent() // Accepted work keeps this pass waiting until its terminal status arrives.
         assertEquals("queued", f.row("rec-unknown").status)
         assertTrue(f.actions.none { it is AutoFlowUiAction.PostWebhook })
         f.complete("rec-unknown")
