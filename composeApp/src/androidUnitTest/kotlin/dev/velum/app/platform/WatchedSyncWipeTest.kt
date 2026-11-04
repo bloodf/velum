@@ -81,6 +81,37 @@ class WatchedSyncWipeTest {
         }
     }
 
+    @Test fun cancelled_batch_removes_unprocessed_copies() = withPipeline { _, pipeline ->
+        val first = File(context.cacheDir, "imports/watched/batch-first.wav").apply { parentFile!!.mkdirs(); writeText("bad") }
+        val second = File(context.cacheDir, "imports/watched/batch-second.wav").apply { writeText("bad") }
+        coroutineScope {
+            val job = async(Dispatchers.Default) {
+                val current = kotlinx.coroutines.currentCoroutineContext()[kotlinx.coroutines.Job]!!
+                syncWatchedFolders(pipeline) { _, _, _ ->
+                    listOf(
+                        WatchedFolderEntry("first.wav", "first", first.path, 1),
+                        WatchedFolderEntry("second.wav", "second", second.path, 1),
+                    ).also { current.cancel() }
+                }
+            }
+            try { job.await() } catch (_: CancellationException) { }
+        }
+        assertFalse(first.exists())
+        assertFalse(second.exists())
+    }
+
+    @Test fun only_successful_unchanged_sources_are_remembered() {
+        WatchedFolderStore.clear(context)
+        val entry = WatchedFolderEntry("a.wav", "content://test/a", "/unused", 123, 456)
+        assertFalse(WatchedFolderStore.isUnchanged(context, entry.uriString, 123, 456))
+        WatchedFolderStore.markImported(context, entry)
+        assertTrue(WatchedFolderStore.isUnchanged(context, entry.uriString, 123, 456))
+        assertFalse(WatchedFolderStore.isUnchanged(context, entry.uriString, 124, 456))
+        assertFalse(WatchedFolderStore.isUnchanged(context, entry.uriString, 123, 457))
+        WatchedFolderStore.clear(context)
+        assertFalse(WatchedFolderStore.isUnchanged(context, entry.uriString, 123, 456))
+    }
+
     @Test fun a_stopped_walk_copies_nothing() {
         Robolectric.setupContentProvider(FakeDocumentsProvider::class.java, FakeDocumentsProvider.AUTHORITY)
         installAppContext(context)

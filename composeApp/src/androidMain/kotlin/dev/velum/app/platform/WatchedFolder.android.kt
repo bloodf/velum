@@ -21,6 +21,7 @@ data class WatchedFolderEntry(
     val uriString: String,
     val absoluteCopyPath: String,
     val lastModifiedMs: Long,
+    val sizeBytes: Long = 0,
 )
 
 /** Persistable SAF tree for USB OTG / SD / sync folders. */
@@ -48,8 +49,21 @@ object WatchedFolderStore {
     fun clear(context: Context) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit()
-            .putString(KEY_URIS, "")
+            .clear()
             .apply()
+    }
+
+    private fun identity(uri: String) = "file_" + sha256Bytes(uri.encodeToByteArray())
+
+    fun isUnchanged(context: Context, uri: String, modified: Long, size: Long): Boolean =
+        modified > 0 && size > 0 && context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(identity(uri), null) == "$modified:$size"
+
+    fun markImported(context: Context, entry: WatchedFolderEntry) {
+        if (entry.lastModifiedMs > 0 && entry.sizeBytes > 0) {
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                .putString(identity(entry.uriString), "${entry.lastModifiedMs}:${entry.sizeBytes}").commit()
+        }
     }
 
     /** [checkActive] runs before each file is copied, and throws when the scan should stop. */
@@ -65,7 +79,11 @@ object WatchedFolderStore {
                     val name = child.name.orEmpty()
                     if (ImportAudioFormats.isSupportedFileName(name)) {
                         checkActive()
-                        val dest = File(destRoot, watchedCopyName(child.uri.toString(), child.lastModified(), name))
+                        val uri = child.uri.toString()
+                        val modified = child.lastModified()
+                        val size = child.length()
+                        if (isUnchanged(context, uri, modified, size)) return@forEach
+                        val dest = File(destRoot, "${java.util.UUID.randomUUID()}_" + watchedCopyName(uri, modified, name))
                         // One unreadable file (card pulled mid-copy, revoked grant) must not stop the others.
                         val copied = runCatching {
                             copyWholeFile(dest, child.length()) { context.contentResolver.openInputStream(child.uri) }
@@ -74,17 +92,23 @@ object WatchedFolderStore {
                             removeLegacyWatchedCopy(destRoot, child.lastModified(), name, dest)
                             out += WatchedFolderEntry(
                                 displayName = name,
-                                uriString = child.uri.toString(),
+                                uriString = uri,
                                 absoluteCopyPath = dest.absolutePath,
-                                lastModifiedMs = child.lastModified(),
+                                lastModifiedMs = modified,
+                                sizeBytes = size,
                             )
                         }
                     }
                 }
             }
         }
-        walk(tree)
-        return out.sortedByDescending { it.lastModifiedMs }
+        try {
+            walk(tree)
+            return out.sortedByDescending { it.lastModifiedMs }
+        } catch (t: Throwable) {
+            out.forEach { File(it.absoluteCopyPath).delete() }
+            throw t
+        }
     }
 }
 
