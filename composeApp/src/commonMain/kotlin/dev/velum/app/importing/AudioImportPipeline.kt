@@ -6,8 +6,10 @@ import dev.velum.app.platform.AudioNormalizer
 import dev.velum.app.platform.NormalizedAudio
 import dev.velum.app.platform.ImportAudioFormats
 import dev.velum.app.platform.deleteFileAtPath
+import dev.velum.app.platform.isSamePath
 import dev.velum.app.platform.sha256File
 import dev.velum.core.data.VelumRepository.Companion.IMPORT_DELETED_PREFIX
+import dev.velum.core.data.epochSecondsNow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.withContext
@@ -68,9 +70,16 @@ class AudioImportPipeline(
             if (existingByContent != null) {
                 // Same audio after normalize — also record source hash for next lookup.
                 container.repository.setMeta("import_sha256_$sourceHash", existingByContent)
+                discardNormalized(normalized.wavPath, keptBy = existingByContent)
                 return@withContext ImportResult.Duplicate(existingByContent, contentHash)
             }
-            if (source == WATCHED_SOURCE && wasDeleted(contentHash)) return@withContext ImportResult.Deleted(contentHash)
+            if (source == WATCHED_SOURCE && wasDeleted(contentHash)) {
+                // Tombstoned by source too: later syncs skip this copy without decoding it, and a codec update
+                // that changes the hash can't bring the deleted audio back.
+                container.repository.setMeta(IMPORT_DELETED_PREFIX + sourceHash, epochSecondsNow().toString())
+                discardNormalized(normalized.wavPath, keptBy = null)
+                return@withContext ImportResult.Deleted(contentHash)
+            }
             val title = titleHint ?: ImportTitles.forImport(absolutePath, name)
             val durationSeconds = (normalized.durationMs / 1000L).coerceAtLeast(0L)
             val id = container.createLocalRecording(
@@ -114,6 +123,16 @@ class AudioImportPipeline(
             if (it is kotlinx.coroutines.CancellationException) throw it
             ImportResult.Failed(it.message ?: it::class.simpleName ?: "import_failed")
         }
+    }
+
+    /**
+     * Removes a normalized copy no recording will use. Its name carries the source hash, so it can only be another
+     * recording's file if both hashes match, which a platform hashing the source could do: [keptBy] is checked anyway.
+     */
+    private suspend fun discardNormalized(wavPath: String, keptBy: String?) {
+        val keptPath = keptBy?.let { container.repository.getRecording(it)?.local_path }
+        if (keptPath != null && isSamePath(keptPath, wavPath)) return
+        withContext(Dispatchers.IO) { deleteFileAtPath(wavPath) }
     }
 
     private suspend fun wasDeleted(hash: String) = container.repository.getMeta(IMPORT_DELETED_PREFIX + hash) != null
