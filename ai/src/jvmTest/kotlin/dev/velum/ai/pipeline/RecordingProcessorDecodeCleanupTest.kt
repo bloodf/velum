@@ -239,6 +239,7 @@ class RecordingProcessorDecodeCleanupTest {
         assertEquals(DIARIZATION_MAX_BYTES, forty.diarizationBytes)
         assertEquals(DIARIZATION_MAX_BYTES, ninety.diarizationBytes)
         // ASR windows (and the copy to disk) stay small; only the diarization array is large, and it is capped.
+        assertTrue(ninety.diarization > 50L shl 20, "the sampler saw the diarization array (${ninety.diarization shr 20} MiB)")
         assertTrue(ninety.asr < 8L shl 20, "ASR stage retained ${ninety.asr shr 20} MiB")
         // Everything before the first ASR window (decode, the copy to disk) kept the heap flat too.
         assertTrue(ninety.overallAtFirstAsr in 0 until (8L shl 20), "copy stage retained ${ninety.overallAtFirstAsr shr 20} MiB")
@@ -888,5 +889,64 @@ class RecordingProcessorDecodeCleanupTest {
     fun out_of_storage_detection_walks_causes_only() {
         assertTrue(isOutOfStorage(RuntimeException("wrap", IOException("No space left on device"))))
         assertFalse(isOutOfStorage(IOException("Permission denied")))
+    }
+
+    @Test
+    fun empty_data_chunk_followed_by_another_chunk_does_not_copy_that_chunk_as_audio() {
+        val bytes = riff(fmt16k, chunk("data", ByteArray(0)), chunk("LIST", ByteArray(4_000) { 7 }))
+        val (last, captured, _) = runAudio("rec-86-emptythenlist", ".wav", bytes)
+        assertEquals(WAV_NO_DATA_MESSAGE, (last as JobProgress.Failed).message)
+        assertTrue(captured.isEmpty(), "ASR must not receive the LIST chunk as PCM")
+    }
+
+    @Test
+    fun data_size_is_clamped_to_the_file_for_0xFFFFFFFF_and_for_a_declared_size_past_the_end() {
+        val pcm = ByteArray(32_000) { (it % 83).toByte() }
+        val streaming = riff(fmt16k) + "data".toByteArray() + byteArrayOf(-1, -1, -1, -1) + pcm
+        val (a, capturedA, _) = runAudio("rec-86-ffff", ".wav", streaming)
+        assertTrue(a is JobProgress.Succeeded, "last=$a")
+        assertContentEquals(pcm, capturedA.single().bytes)
+        val truncated = riff(fmt16k) + "data".toByteArray() + le32(1_000_000) + pcm
+        val (b, capturedB, _) = runAudio("rec-86-trunc", ".wav", truncated)
+        assertTrue(b is JobProgress.Succeeded, "last=$b")
+        assertContentEquals(pcm, capturedB.single().bytes)
+    }
+
+    @Test
+    fun more_than_4096_chunks_before_the_data_chunk_is_treated_as_no_data() {
+        val tiny = chunk("JUNK", ByteArray(0))
+        val many = ByteArray(0).let { var acc = it; repeat(4_097) { acc += tiny }; acc }
+        val bytes = riff(fmt16k) + many + chunk("data", ByteArray(3_200))
+        val (last, captured, _) = runAudio("rec-86-manychunks", ".wav", bytes)
+        assertEquals(WAV_NO_DATA_MESSAGE, (last as JobProgress.Failed).message)
+        assertTrue(captured.isEmpty())
+    }
+
+    @Test
+    fun an_empty_audio_file_does_not_silently_reuse_the_stored_transcript() = runBlocking {
+        for ((ext, bytes) in listOf(".wav" to riff(fmt16k, chunk("data", ByteArray(0))), ".bin" to ByteArray(0))) {
+            val h = Harness({ error("ASR must not run") })
+            val src = tempAudio(ext, bytes)
+            val id = "rec-86-reuse$ext"
+            h.insert(id, src)
+            h.repo.updateTranscript(id, "Speaker 1: the old transcript")
+            val last = h.processor.process(id, templateId = "velum.meeting", apiModelOverride = API).toList().last()
+            assertTrue(last is JobProgress.Failed, "$ext: last=$last")
+            assertEquals("Speaker 1: the old transcript", h.repo.getRecording(id)!!.transcript, "$ext: transcript untouched")
+        }
+    }
+
+    @Test
+    fun a_missing_audio_file_fails_without_its_path_in_the_message() = runBlocking {
+        val h = Harness({ error("ASR must not run") })
+        val gone = File.createTempFile("velum-86-gone", ".wav").also { it.delete() }
+        h.repo.insertRecording(
+            id = "rec-86-gone", sessionId = null, folderId = null, title = "T", source = "note_pro",
+            deviceSerial = null, startedAt = 1, durationSeconds = 1, sizeBytes = 0,
+            localPath = gone.path, transcript = null, summaryMarkdown = null, status = "queued",
+        )
+        val last = h.processor.process("rec-86-gone", templateId = "velum.meeting", apiModelOverride = API).toList().last()
+        assertEquals(AUDIO_FILE_MISSING_MESSAGE, (last as JobProgress.Failed).message)
+        assertFalse(gone.path in last.message)
     }
 }

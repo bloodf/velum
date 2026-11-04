@@ -165,6 +165,8 @@ class RecordingProcessor(
                     filename.endsWith(".opus", ignoreCase = true)
                 val wavByExt = filename.endsWith(".wav", ignoreCase = true)
                 val src = ModelStoreDir(localPath)
+                // Path-free: a missing file's own exception carries the absolute path into the saved error.
+                require(src.exists()) { AUDIO_FILE_MISSING_MESSAGE }
                 val fileLen = src.length()
                 // An unknown extension is sniffed from its first bytes, never read whole: the container decides.
                 val sniffed = if (oggByExt || wavByExt) {
@@ -190,7 +192,7 @@ class RecordingProcessor(
                         // No path in the message. RF64 and other RIFF flavours are named, anything else is generic.
                         throw IllegalArgumentException(unsupportedAudioMessage(unsupportedContainer(head) ?: "not a WAV file"))
                     }
-                    val header = locateWavPcmHeader(src, fileLen)
+                    val header = locateWavPcmHeader(src, fileLen) { job?.ensureActive() }
                     // No data chunk, or an empty one: reading the file as PCM would give a noise transcript and a
                     // "successful" job, and an old transcript must not be reused silently.
                     require(header.dataStart >= 0 && header.dataSize > 0) { WAV_NO_DATA_MESSAGE }
@@ -205,6 +207,8 @@ class RecordingProcessor(
                     // would give a noise transcript with no error. Anything else is raw 16 kHz mono PCM.
                     unsupportedContainer(sniffed)?.let { throw IllegalArgumentException(unsupportedAudioMessage(it)) }
                     sampleRate = 16_000
+                    // An empty file must not fall through to "reuse the existing transcript" as if it were fine.
+                    require(fileLen > 0) { AUDIO_FILE_EMPTY_MESSAGE }
                     requireSpillable(fileLen)
                     copyFileRangeToPcm(src, 0L, fileLen, pcmFile) { job?.ensureActive() }
                     pcmBuffer = PcmAudioBuffer.fromExistingFile(pcmFile, fileLen)
@@ -642,19 +646,17 @@ class RecordingProcessor(
     )
 
     /**
-     * Parse WAV fmt/data from a header probe. Does **not** clamp
-     * dataSize to the probe length — callers stream the full payload from disk.
-     */
-    /**
      * Walks the RIFF chunks on disk. Sizes are unsigned 32-bit (read as a signed Int, 0xFFFFFFF8 is -8 and the walk
-     * would never advance). A data size of 0 or one past the end of the file (a writer that never finished the
-     * header) means "to the end of the file".
+     * would never advance). A data size past the end of the file is clamped to it. A data size of 0 means "to the end
+     * of the file" (a writer that never finished the header) unless another chunk header follows, which makes it an
+     * empty data chunk.
      */
-    private fun locateWavPcmHeader(src: ModelStoreDir, fileLength: Long): WavPcmHeader {
+    private fun locateWavPcmHeader(src: ModelStoreDir, fileLength: Long, checkCancelled: () -> Unit): WavPcmHeader {
         var offset = 12L
         var sampleRate = 16_000
         var steps = 0
         while (offset + 8 <= fileLength && steps++ < MAX_WAV_CHUNKS) {
+            checkCancelled()
             val head = src.readRange(offset, 8)
             val id = fourCc(head, 0)
             val size = u32le(head, 4).toLong() and 0xFFFF_FFFFL
@@ -663,12 +665,26 @@ class RecordingProcessor(
                 "fmt " -> if (body + 16 <= fileLength) sampleRate = u32le(src.readRange(body, 16), 4)
                 "data" -> {
                     val rest = (fileLength - body).coerceAtLeast(0L)
-                    return WavPcmHeader(body, if (size == 0L) rest else size.coerceAtMost(rest), sampleRate)
+                    val dataSize = when {
+                        size != 0L -> size.coerceAtMost(rest)
+                        followedByAChunk(src, body, fileLength) -> 0L
+                        else -> rest
+                    }
+                    return WavPcmHeader(body, dataSize, sampleRate)
                 }
             }
             offset = body + size + (size % 2)
         }
         return WavPcmHeader(-1L, -1L, sampleRate)
+    }
+
+    /** True when a plausible chunk header (printable id, size inside the file) starts at [at]. */
+    private fun followedByAChunk(src: ModelStoreDir, at: Long, fileLength: Long): Boolean {
+        if (at + 8 > fileLength) return false
+        val head = src.readRange(at, 8)
+        val printable = (0 until 4).all { head[it].toInt() in 0x20..0x7E }
+        val size = u32le(head, 4).toLong() and 0xFFFF_FFFFL
+        return printable && at + 8 + size <= fileLength
     }
 
     private fun requireSpillable(pcmBytes: Long) =
@@ -758,6 +774,12 @@ class RecordingProcessor(
         }
     }
 }
+
+/** The recording points at an audio file that is no longer there. */
+internal const val AUDIO_FILE_MISSING_MESSAGE = "The audio file for this recording is missing, so it was not processed."
+
+/** The recording's audio file is empty. */
+internal const val AUDIO_FILE_EMPTY_MESSAGE = "The audio file for this recording is empty, so it was not processed."
 
 /** The WAV file has a RIFF/WAVE header but no `data` chunk where one can be read, so it holds no audio to decode. */
 internal const val WAV_NO_DATA_MESSAGE =
