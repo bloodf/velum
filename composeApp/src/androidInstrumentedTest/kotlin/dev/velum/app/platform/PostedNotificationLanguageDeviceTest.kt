@@ -33,8 +33,8 @@ import org.junit.runner.RunWith
  * - `notifLang` = `pt-BR`, `en` or `system` sets the in-app language first; `keep` leaves what is stored (a cold start
  *   after `am force-stop` is checked with `keep`) and REQUIRES `notifExpect` = the language an earlier step stored: the
  *   test fails if the store holds anything else, so an empty store cannot pass as "kept".
- * - The language is left as set so the next step can read it back; only a step with `notifRestore=true` puts the
- *   language that was stored when that step started back.
+ * - The language is left as set so the next step can read it back; the script's last step sets `system` (the default),
+ *   so the install ends as it began.
  * - If the first start does not report Started (for example the foreground service was refused because the app was in
  *   the background), the test FAILS with that fact; it is never recorded as a language result.
  * Reports the case in the `velum.postedNotif` status line. Skipped unless `notifLang` is given.
@@ -49,7 +49,7 @@ class PostedNotificationLanguageDeviceTest {
         assumeTrue("notifLang not given", lang != null)
         val ctx = InstrumentationRegistry.getInstrumentation().targetContext
         val container = runBlocking { (ctx.applicationContext as VelumApplication).awaitContainer() }
-        val previous = runBlocking { container.settingsRepository.load(); container.settingsRepository.preferences.value.appLanguage }
+        runBlocking { container.settingsRepository.load() }
         val report = StringBuilder()
         var draftId: String? = null
         val scenario = ActivityScenario.launch(MainActivity::class.java)
@@ -112,9 +112,6 @@ class PostedNotificationLanguageDeviceTest {
             runCatching { runBlocking { container.micCapture.stop() } }
             // Clean the draft up through the app's own delete path, then put the language back.
             draftId?.let { id -> runCatching { runBlocking { container.deleteRecordingForever(id) } } }
-            if (InstrumentationRegistry.getArguments().getString("notifRestore") == "true") {
-                runCatching { runBlocking { container.settingsRepository.setAppLanguage(previous) } }
-            }
             runCatching { scenario.close() }
             InstrumentationRegistry.getInstrumentation().sendStatus(0, Bundle().apply { putString("velum.postedNotif", report.toString()) })
         }
