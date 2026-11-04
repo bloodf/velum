@@ -30,6 +30,15 @@ object IncomingShare {
         return uri
     }
 
+    /**
+     * Call from `Activity.onCreate`. A non-null [savedInstanceState] means the system is recreating the activity
+     * (rotation, process restore) and `intent` is the original launch intent: offering it again would re-copy and
+     * re-import a file the user may have since trashed (#329).
+     */
+    fun offerOnCreate(context: Context, intent: Intent?, savedInstanceState: android.os.Bundle?) {
+        if (savedInstanceState == null) offerFromIntent(context, intent)
+    }
+
     /** Never blocks the caller: the copy runs on IO and the path is queued when complete. */
     fun offerFromIntent(context: Context, intent: Intent?) {
         if (intent == null) return

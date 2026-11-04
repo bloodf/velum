@@ -39,7 +39,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         // A recreation (rotation, process restore) replays the original intent; only a fresh launch is a new share (#329).
-        if (savedInstanceState == null) IncomingShare.offerFromIntent(this, intent)
+        IncomingShare.offerOnCreate(this, intent, savedInstanceState)
         // Compose hierarchy immediately for AndroidComposeTestRule (#106).
         // When the process-scoped container is already ready (later instrumented
         // cells), seed App on the first frame — do not wait on a Main coroutine

@@ -73,4 +73,20 @@ class IncomingShareTest {
         val shared = kotlinx.coroutines.runBlocking { kotlinx.coroutines.withTimeout(10_000) { IncomingShare.next() } }
         assertEquals(SharedFile.CopyFailed, shared)
     }
+
+    private fun readableShare(name: String): Intent {
+        val u = Uri.parse("content://test.provider/$name.mp3")
+        shadowOf(context.contentResolver).registerInputStream(u, java.io.ByteArrayInputStream(ByteArray(10) { 1 }))
+        return Intent(Intent.ACTION_SEND).putExtra(Intent.EXTRA_STREAM, u)
+    }
+
+    @Test fun a_recreated_activity_does_not_offer_the_original_share_again() {
+        val intent = readableShare("rotate")
+        IncomingShare.offerOnCreate(context, intent, android.os.Bundle()) // rotation: savedInstanceState present
+        val none = kotlinx.coroutines.runBlocking { kotlinx.coroutines.withTimeoutOrNull(1_500) { IncomingShare.next() } }
+        assertNull(none, "rotation must not re-import the share")
+        IncomingShare.offerOnCreate(context, intent, null) // a fresh launch does
+        val shared = kotlinx.coroutines.runBlocking { kotlinx.coroutines.withTimeout(10_000) { IncomingShare.next() } }
+        assertEquals(10L, File((shared as SharedFile.Ready).path).length())
+    }
 }
