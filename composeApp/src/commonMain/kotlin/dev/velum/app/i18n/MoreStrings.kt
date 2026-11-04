@@ -9,5 +9,14 @@ package dev.velum.app.i18n
  * Do not move existing fields: many open changes touch them.
  */
 data class MoreStrings(
+    val webhookFailedTimeout: String,
+    val webhookFailedUnresolvedHost: String,
+    val webhookFailedTls: String,
+    val webhookFailedConnection: String,
+    val speakerCacheNotDropped: String,
+    val processingFailedAudioMissing: String,
+    val processingFailedAudioEmpty: String,
+    val processingFailedWavNoData: String,
     val deleteForeverFailed: String,
+    val speakersChangedWhileOpen: String,
 )

@@ -30,6 +30,9 @@ import kotlinx.coroutines.runBlocking
 
 /** #320: with the voice key unavailable, a first run keeps going with bare labels; a rerun must not wipe typed names. */
 class RecordingProcessorSpeakerNamingTest {
+    private var transcribeCalls = 0
+    private var namingReady = true
+
     private suspend fun process(
         repo: VelumRepository,
         namesUnavailable: Boolean,
@@ -43,11 +46,14 @@ class RecordingProcessorSpeakerNamingTest {
         }
         val asr = object : Transcriber {
             override val engineId = "synthetic-asr"
-            override suspend fun transcribe(input: AudioInput, modelId: String) =
-                TranscriptionResult(text = "Synthetic new words", engineId = engineId, modelId = modelId)
+            override suspend fun transcribe(input: AudioInput, modelId: String): TranscriptionResult {
+                transcribeCalls++
+                return TranscriptionResult(text = "Synthetic new words", engineId = engineId, modelId = modelId)
+            }
         }
         val diar = object : Diarizer {
             override val engineId = "synthetic-diar"
+            override suspend fun speakerNamingReady(modelId: String) = namingReady
             override suspend fun diarize(input: AudioInput, modelId: String) = DiarizationResult(
                 spans = listOf(SpeakerSpan("S1", 0, 1_000)),
                 engineId = engineId,
@@ -96,6 +102,23 @@ class RecordingProcessorSpeakerNamingTest {
         assertIs<JobProgress.Failed>(process(repo, namesUnavailable = true))
         assertEquals(listOf("Synthetic Alice"), repo.getSpeakers("rec").map { it.display_name })
         assertEquals("Typed earlier", repo.getRecording("rec")!!.transcript)
+    }
+
+    @Test fun a_rerun_with_named_speakers_and_no_key_fails_before_the_transcription_is_paid_for() = runBlocking<Unit> {
+        val repo = recording(named = true)
+        namingReady = false
+        val result = process(repo, namesUnavailable = true)
+        assertIs<JobProgress.Failed>(result)
+        assertEquals(0, transcribeCalls, "the transcription ran before the key was checked")
+        assertEquals(SPEAKER_NAMES_KEPT_MESSAGE, result.message)
+        assertEquals("Typed earlier", repo.getRecording("rec")!!.transcript)
+    }
+
+    @Test fun a_first_run_does_not_wait_for_the_key_probe() = runBlocking<Unit> {
+        val repo = recording(named = false)
+        namingReady = false
+        assertIs<JobProgress.Succeeded>(process(repo, namesUnavailable = true))
+        assertEquals(1, transcribeCalls)
     }
 
     @Test fun a_rerun_with_the_key_replaces_the_speakers_as_before() = runBlocking<Unit> {

@@ -201,11 +201,12 @@ fun RecordingDetailScreen(
         val path = localPath
         if (!path.isNullOrBlank()) {
             val ok = audioPlayer.prepare(path)
-            if (!ok) {
-                processError = "playback:" + strings.ux.playbackUnavailable
-            } else if (seekSeconds > 0) {
-                audioPlayer.seekTo(seekSeconds * 1000L)
-            }
+            afterPrepare(
+                ok = ok,
+                seekMs = seekSeconds * 1000L,
+                seekTo = audioPlayer::seekTo,
+                onUnavailable = { processError = "playback:" + strings.ux.playbackUnavailable },
+            )
         }
     }
     val isLiveRecording = recording?.status == "recording"
@@ -671,6 +672,8 @@ fun RecordingDetailScreen(
                                 val trimmed = name.trim()
                                 if (trimmed.isEmpty()) continue
                                 val row = speakers.firstOrNull { it.id == speakerId } ?: continue
+                                // Only a name the user actually changed counts: the sheet hands back every row.
+                                val changed = speakerNameChanged(row.display_name, row.label, trimmed, strings)
                                 var cacheMissed = false
                                 container.voiceProfileStore.withReady {
                                     val emb = cachedClusterEmbedding(
@@ -692,7 +695,7 @@ fun RecordingDetailScreen(
                                     }
                                 }
                                 container.repository.renameSpeaker(recordingId, speakerId, trimmed)
-                                if (cacheMissed) processError = strings.ux.voiceProfilesNoCachedVoice
+                                if (cacheMissed && changed) processError = strings.ux.voiceProfilesNoCachedVoice
                             }
                             showSpeakers = false
                         } catch (cancelled: kotlinx.coroutines.CancellationException) {
@@ -1090,10 +1093,12 @@ private fun SourcesPane(
     }
 }
 
-/**
- * Cue header as drawn: the stored `**Name** · 0:00` without its Markdown markers, and the generated
- * English "Speaker N" in the app language. The stored text and exports are unchanged.
- */
+/** Whether [typed] differs from what the speaker sheet showed for this row: its saved name, else the default label. */
+internal fun speakerNameChanged(storedName: String?, label: String, typed: String, strings: dev.velum.app.i18n.Strings): Boolean {
+    val defaultName = strings.ux.speakerLabel.replace("%d", (label.trimStart('S', 's').toIntOrNull() ?: 1).toString())
+    return typed != (storedName?.takeIf { it.isNotBlank() } ?: defaultName)
+}
+
 /**
  * A transcript line that is not a cue header, as drawn: the "## Markers" section heading in the app
  * language and "- **0:12** label" as a plain bullet, never with their Markdown markers.
@@ -1105,6 +1110,10 @@ internal fun transcriptBodyLineDisplay(line: String, strings: dev.velum.app.i18n
     return line.replace("**", "")
 }
 
+/**
+ * Cue header as drawn: the stored `**Name** · 0:00` without its Markdown markers, and the generated
+ * English "Speaker N" in the app language. The stored text and exports are unchanged.
+ */
 internal fun transcriptHeaderDisplay(line: String, strings: dev.velum.app.i18n.Strings): String {
     val plain = line.trim().replace("**", "")
     val generated = Regex("""^Speaker (\d+)(?= ·)""").find(plain) ?: return plain
