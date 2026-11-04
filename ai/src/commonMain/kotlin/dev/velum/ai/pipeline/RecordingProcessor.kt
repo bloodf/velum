@@ -155,16 +155,17 @@ class RecordingProcessor(
         }
         // Registered before it starts, so a delete arriving now still finds it.
         runs.update { it + (recordingId to (it[recordingId].orEmpty() + run)) }
+        run.invokeOnCompletion {
+            runs.update { current ->
+                val left = current[recordingId].orEmpty() - run
+                if (left.isEmpty()) current - recordingId else current + (recordingId to left)
+            }
+        }
         try {
             run.await()
         } catch (stopped: RunStopped) {
             // The recording is being deleted: the flow just ends, its collector is not cancelled.
             ensureActive()
-        } finally {
-            runs.update { current ->
-                val left = current[recordingId].orEmpty() - run
-                if (left.isEmpty()) current - recordingId else current + (recordingId to left)
-            }
         }
     }.buffer(Channel.RENDEZVOUS)
 

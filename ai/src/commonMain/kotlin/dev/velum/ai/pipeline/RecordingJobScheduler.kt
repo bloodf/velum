@@ -48,7 +48,7 @@ fun interface RecordingJobScheduler {
     fun cancelAll() = Unit
 
     /** Drops the queued or retrying work of one recording, which is being deleted. */
-    fun cancel(recordingId: String) = Unit
+    suspend fun cancel(recordingId: String) = Unit
 }
 
 /**
@@ -164,7 +164,7 @@ fun createCoroutineRecordingJobScheduler(
             return !keepRunning
         }
 
-        override fun cancel(recordingId: String) {
+        override suspend fun cancel(recordingId: String) {
             inFlight.value[recordingId]?.job?.cancel()
         }
     }

@@ -319,7 +319,8 @@ class AppContainer(
                 println("VelumDelete: recording processing did not stop")
                 return@withContext false
             }
-            val micFile = stopMicRecording(id)
+            val (micStopped, micFile) = stopMicRecording(id)
+            if (!micStopped) return@withContext false
             downloadPersistMutex.withLock {
                 // First: if it stays, the recording stays too, and trying again finishes the job.
                 if (row?.session_id?.let { device.deletePartialOf(it, row.device_serial) } == false) {
@@ -563,11 +564,19 @@ class AppContainer(
         }
     }
 
-    private suspend fun stopMicRecording(recordingId: String): String? = micRecordings.underLock {
-        val owned = micRecordings.owner.value?.takeIf { it.recordingId == recordingId } ?: return@underLock null
-        if (micCapture.isCapturing) micCapture.stop(owned.session)
+    private suspend fun stopMicRecording(recordingId: String): Pair<Boolean, String?> = micRecordings.underLock {
+        val owned = micRecordings.owner.value?.takeIf { it.recordingId == recordingId } ?: return@underLock (true to null)
+        val state = micCapture.sessions.value
+        if (state !is dev.velum.app.platform.MicSessionState.Stopped || state.session != owned.session) {
+            val stopped = kotlinx.coroutines.withTimeoutOrNull(WIPE_JOIN_TIMEOUT) { micCapture.stop(owned.session) }
+            val terminal = micCapture.sessions.value
+            if (stopped !is dev.velum.app.platform.MicStopResult.Stopped ||
+                terminal !is dev.velum.app.platform.MicSessionState.Stopped || terminal.session != owned.session) {
+                return@underLock (false to null)
+            }
+        }
         micRecordings.release(owned)
-        owned.session.absolutePath
+        true to owned.session.absolutePath
     }
 
     /** Ends a mic recording in progress and deletes its file, which may not be on a recording row yet. */

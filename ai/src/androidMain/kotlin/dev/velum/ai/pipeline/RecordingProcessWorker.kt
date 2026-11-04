@@ -26,6 +26,8 @@ import dev.velum.core.model.ComputeMode
 import dev.velum.core.settings.ApiModelOverride
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * Runs [RecordingProcessor] for one recording under WorkManager with thermal backoff.
@@ -401,9 +403,11 @@ fun createWorkManagerRecordingJobScheduler(context: Context): RecordingJobSchedu
 
         override fun hasActiveWork(recordingId: String): Boolean = RecordingProcessWorker.isWorkActive(context.applicationContext, recordingId)
 
-        override fun cancel(recordingId: String) {
-            WorkManager.getInstance(context.applicationContext)
-                .cancelUniqueWork(RecordingProcessWorker.UNIQUE_PREFIX + recordingId)
+        override suspend fun cancel(recordingId: String) {
+            withContext(Dispatchers.IO) {
+                WorkManager.getInstance(context.applicationContext)
+                    .cancelUniqueWork(RecordingProcessWorker.UNIQUE_PREFIX + recordingId).result.get()
+            }
         }
 
         // WorkManager tags every request with its worker class.

@@ -76,6 +76,7 @@ class DeleteForeverTest {
         override val markers = emptyList<MicMarker>()
         override var onPcmChunk: ((ByteArray) -> Unit)? = null
         var stops = 0
+        var failStop = false
         override suspend fun start(absolutePath: String, inputSource: MicInputSource): MicStartResult {
             val session = MicSessionIdentity(1, absolutePath)
             sessions.value = MicSessionState.Recording(absolutePath, 0, session.token)
@@ -83,6 +84,7 @@ class DeleteForeverTest {
         }
         override suspend fun stop(): MicStopResult {
             stops++
+            if (failStop) return MicStopResult.Failed("stop failed")
             val path = (sessions.value as MicSessionState.Recording).absolutePath
             sessions.value = MicSessionState.Stopped(path, 1, 0, token = 1)
             return MicStopResult.Stopped(path, 1, 0)
@@ -144,7 +146,7 @@ class DeleteForeverTest {
         val cancelled = mutableListOf<String>()
         val jobs = object : RecordingJobScheduler {
             override fun enqueue(recordingId: String, templateId: String?, retranscribe: Boolean, apiModelOverride: ApiModelOverride?) = Unit
-            override fun cancel(recordingId: String) { cancelled += recordingId }
+            override suspend fun cancel(recordingId: String) { cancelled += recordingId }
         }
         withContainer(jobs = { _, _ -> jobs }) { container ->
             container.addRow("rec-a")
@@ -182,6 +184,19 @@ class DeleteForeverTest {
             assertEquals(1, mic.stops, "the mic kept recording a deleted recording")
             assertEquals(null, container.micRecordings.owner.value, "the deleted recording still owns the mic")
             assertFalse(file.exists(), "the capture's file stayed")
+        }
+    }
+
+    @Test fun failed_mic_stop_keeps_owner_recording_and_audio() {
+        val mic = FakeCapture().apply { failStop = true }
+        withContainer(mic = mic) { container ->
+            val file = File(recordingsDirectoryPath(), "rec-a.wav").apply { parentFile!!.mkdirs(); writeBytes(ByteArray(8)) }
+            container.addRow("rec-a", status = "recording")
+            container.micRecordings.startOrAttach("rec-a", file.path)
+            assertFalse(container.deleteRecordingForever("rec-a"))
+            assertNotNull(container.micRecordings.owner.value)
+            assertNotNull(container.repository.getRecording("rec-a"))
+            assertTrue(file.exists())
         }
     }
 
