@@ -175,7 +175,7 @@ class VelumApplication : Application() {
                     Log.e(TAG, "Partial mic recovery failed", t)
                 }
                 // A row left queued with no job (the process died, or enqueueing failed, after the row was saved) (#415).
-                runCatching { built.requeueStrandedRecordings() }
+                runCatching { built.runDetached { built.requeueStrandedRecordings() } }
                     .onFailure { t -> Log.w(TAG, "Requeue of stranded recordings failed (${t::class.simpleName})") }
             } catch (t: Throwable) {
                 Log.e(TAG, "AppContainer init failed", t)

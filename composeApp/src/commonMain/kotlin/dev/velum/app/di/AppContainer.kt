@@ -93,6 +93,7 @@ import dev.velum.ai.pipeline.deleteAllPcmSpill
 import dev.velum.ai.pipeline.shareMarkdownBody
 import dev.velum.core.settings.SettingsLoadState
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
@@ -353,31 +354,70 @@ class AppContainer(
         try {
             enqueueProcessing(recordingId, templateId, retranscribe, apiModelOverride)
         } catch (t: Throwable) {
-            withContext(NonCancellable) { runCatching { repository.updateStatusIfEquals(recordingId, "queued", "failed") } }
+            markQueuedFailed(recordingId)
             throw t
         }
     }
 
     /**
-     * Startup: a row left `queued` with no job (the process died, or enqueueing failed, after the row was saved) gets
-     * its job again. The scheduler keeps work it already holds when the parameters are not AutoFlow's, so a row whose
-     * job survived is not enqueued twice. Under the wipe gate: a wipe in progress recreates no work. Returns how many
-     * rows were handed to the scheduler.
+     * [enqueueSavedRecording] for a row whose AutoFlow template and model come from the matching flow. The match and
+     * the template lookup are inside the same guard, so a cancel there cannot strand the row either. With
+     * [markFailedOnCancel] false a cancellation leaves the row queued (startup recovery: the next start retries it).
      */
-    suspend fun requeueStrandedRecordings(): Int = wipeGate.guard {
-        var handed = 0
-        repository.queuedRecordingIds().forEach { id ->
-            try {
-                enqueueSavedRecording(id)
-                handed++
-            } catch (e: kotlinx.coroutines.CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                println("VelumStartup: requeue of a queued recording failed: ${e::class.simpleName}")
-            }
+    suspend fun enqueueSavedWithAutoflow(
+        recordingId: String,
+        source: String,
+        durationSeconds: Long,
+        title: String,
+        markFailedOnCancel: Boolean = true,
+    ) {
+        try {
+            val match = repository.findMatchingAutoflow(source = source, durationSeconds = durationSeconds, title = title)
+            enqueueProcessing(
+                recordingId = recordingId,
+                templateId = resolveTemplateForEnqueue(repository, match?.template_id),
+                retranscribe = true,
+                apiModelOverride = match?.let { AutoFlowResolve.modelOverride(it) },
+            )
+        } catch (t: Throwable) {
+            if (markFailedOnCancel || t !is kotlinx.coroutines.CancellationException) markQueuedFailed(recordingId)
+            throw t
         }
-        handed
-    } ?: 0
+    }
+
+    private suspend fun markQueuedFailed(recordingId: String) {
+        withContext(NonCancellable) { runCatching { repository.updateStatusIfEquals(recordingId, "queued", "failed") } }
+    }
+
+    /**
+     * Startup: a row left `queued` with no job (the process died, or enqueueing failed, after the row was saved) gets
+     * its job again, with the template and model of the AutoFlow that matches it. A row that already has work is left
+     * alone, so a job still held (WorkManager) or running (in-process) is never replaced. Waits for the settings to
+     * load first: a job started on unloaded defaults would pick the wrong model and language. Under the wipe gate: a
+     * wipe in progress recreates no work. A template picked by hand for a lost job cannot be recovered. Returns how
+     * many rows were handed to the scheduler.
+     */
+    suspend fun requeueStrandedRecordings(): Int {
+        settingsRepository.loadState.first {
+            it == SettingsLoadState.Ready || it == SettingsLoadState.Unavailable
+        }
+        return wipeGate.guard {
+            var handed = 0
+            repository.queuedRecordingIds().forEach { id ->
+                val row = repository.getRecording(id)?.takeIf { it.status == "queued" } ?: return@forEach
+                if (recordingJobs.hasActiveWork(id)) return@forEach
+                try {
+                    enqueueSavedWithAutoflow(id, row.source, row.duration_seconds, row.title, markFailedOnCancel = false)
+                    handed++
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    println("VelumStartup: requeue of a queued recording failed: ${e::class.simpleName}")
+                }
+            }
+            handed
+        } ?: 0
+    }
 
     suspend fun createLocalRecording(
         title: String? = null,
@@ -610,18 +650,8 @@ class AppContainer(
     }
 
     private suspend fun enqueueDownloadedSession(id: String, title: String) {
-        // Resolve AutoFlow before first enqueue so KEEP cannot drop template/model.
-        val match = repository.findMatchingAutoflow(
-            source = "note_pro",
-            durationSeconds = 0,
-            title = title,
-        )
-        enqueueSavedRecording(
-            recordingId = id,
-            templateId = resolveTemplateForEnqueue(repository, match?.template_id),
-            retranscribe = true,
-            apiModelOverride = match?.let { AutoFlowResolve.modelOverride(it) },
-        )
+        // AutoFlow is resolved before the first enqueue so KEEP cannot drop template/model.
+        enqueueSavedWithAutoflow(id, source = "note_pro", durationSeconds = 0, title = title)
     }
 
     private fun looksLikeOgg(bytes: ByteArray): Boolean =

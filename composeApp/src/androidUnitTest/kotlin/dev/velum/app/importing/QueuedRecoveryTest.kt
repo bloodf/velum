@@ -17,6 +17,7 @@ import kotlin.time.Duration.Companion.seconds
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.Test
@@ -28,20 +29,32 @@ import org.robolectric.annotation.Config
 @Config(application = android.app.Application::class, sdk = [34])
 class QueuedRecoveryTest {
     private val enqueued = CopyOnWriteArrayList<String>()
+    private val enqueuedTemplates = CopyOnWriteArrayList<String?>()
+    private val busy = CopyOnWriteArrayList<String>()
     private var enqueueFailure: Throwable? = null
 
     private fun withContainer(block: suspend (AppContainer, File) -> Unit) {
         val context = ApplicationProvider.getApplicationContext<Context>()
         context.deleteDatabase("velum.db")
         enqueued.clear()
+        enqueuedTemplates.clear()
+        busy.clear()
         enqueueFailure = null
         val root = ModelStoreDir(Files.createTempDirectory("velum-queued").toString())
         val container = AppContainer(
             InMemorySecureStore(), DriverFactory(context), modelStoreRoot = root,
             recordingJobSchedulerFactory = { _, _ ->
-                RecordingJobScheduler { id, _, _, _ -> enqueueFailure?.let { throw it }; enqueued += id }
+                object : RecordingJobScheduler {
+                    override fun enqueue(recordingId: String, templateId: String?, retranscribe: Boolean, apiModelOverride: dev.velum.core.settings.ApiModelOverride?) {
+                        enqueueFailure?.let { throw it }
+                        enqueued += recordingId
+                        enqueuedTemplates += templateId
+                    }
+                    override fun hasActiveWork(recordingId: String) = recordingId in busy
+                }
             },
         )
+        runBlocking { container.settingsRepository.load() }
         val dir = File(context.cacheDir, "queued-fixtures").apply { deleteRecursively(); mkdirs() }
         try {
             runBlocking { block(container, dir) }
@@ -52,8 +65,8 @@ class QueuedRecoveryTest {
         }
     }
 
-    private suspend fun AppContainer.row(id: String, status: String, trashed: Long = 0) = repository.insertRecording(
-        id = id, sessionId = null, folderId = null, title = "Synthetic", source = "import", deviceSerial = null,
+    private suspend fun AppContainer.row(id: String, status: String, trashed: Long = 0, source: String = "import") = repository.insertRecording(
+        id = id, sessionId = null, folderId = null, title = "Synthetic", source = source, deviceSerial = null,
         startedAt = 1, durationSeconds = 1, sizeBytes = 0, localPath = "/synthetic/$id.wav", transcript = null,
         summaryMarkdown = null, status = status, trashed = trashed,
     )
@@ -115,5 +128,64 @@ class QueuedRecoveryTest {
         }
         assertEquals(0, handed)
         assertTrue(enqueued.isEmpty(), "work was created during a wipe")
+    }
+
+    @Test fun a_row_that_already_has_work_is_left_alone() = withContainer { container, _ ->
+        container.row("rec-busy", "queued")
+        container.row("rec-idle", "queued")
+        busy += "rec-busy"
+        assertEquals(1, container.requeueStrandedRecordings())
+        assertEquals(listOf("rec-idle"), enqueued.toList(), "a job that is running would have been replaced")
+    }
+
+    @Test fun startup_waits_for_the_settings_before_it_starts_any_job() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        context.deleteDatabase("velum.db")
+        enqueued.clear()
+        val storeOpen = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val inner = InMemorySecureStore()
+        // The settings load reads the store first, so holding the store holds the load.
+        val slowStore = object : dev.velum.core.security.SecureStore by inner {
+            override suspend fun getString(key: String): String? { storeOpen.await(); return inner.getString(key) }
+            override suspend fun contains(key: String): Boolean { storeOpen.await(); return inner.contains(key) }
+        }
+        val root = ModelStoreDir(Files.createTempDirectory("velum-queued").toString())
+        val container = AppContainer(
+            slowStore, DriverFactory(context), modelStoreRoot = root,
+            recordingJobSchedulerFactory = { _, _ -> RecordingJobScheduler { id, _, _, _ -> enqueued += id } },
+        )
+        try {
+            container.row("rec-queued", "queued")
+            val requeue = async(kotlinx.coroutines.Dispatchers.Default) { container.requeueStrandedRecordings() }
+            kotlinx.coroutines.delay(300)
+            assertTrue(enqueued.isEmpty(), "a job was started on settings that were not loaded")
+            storeOpen.complete(Unit)
+            assertEquals(1, requeue.await())
+            assertEquals(listOf("rec-queued"), enqueued.toList())
+        } finally {
+            container.databaseHandle.driver.close()
+            root.deleteRecursively()
+        }
+    }
+
+    @Test fun a_recovered_row_gets_the_template_of_the_flow_that_matches_it() = withContainer { container, _ ->
+        container.repository.upsertAutoflow(
+            id = "flow-phone", name = "Phone", enabled = true, wakePhrase = null, durationMinSeconds = 0, durationMaxSeconds = 3600,
+            sourceFilter = "phone", templateId = "velum.general", autoLabelVoice = false, language = "auto", notify = false,
+        )
+        container.row("rec-phone", "queued", source = "phone")
+        container.row("rec-import", "queued", source = "import")
+        assertEquals(2, container.requeueStrandedRecordings())
+        assertEquals(mapOf("rec-phone" to "velum.general", "rec-import" to null), enqueued.zip(enqueuedTemplates).toMap())
+    }
+
+    @Test fun a_cancelled_startup_leaves_the_row_queued_for_the_next_start() = withContainer { container, _ ->
+        container.row("rec-queued", "queued")
+        enqueueFailure = CancellationException("synthetic cancel")
+        try {
+            container.requeueStrandedRecordings()
+        } catch (_: CancellationException) {
+        }
+        assertEquals("queued", container.repository.getRecording("rec-queued")!!.status)
     }
 }
