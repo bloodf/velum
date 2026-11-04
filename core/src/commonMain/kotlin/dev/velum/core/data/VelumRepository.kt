@@ -791,9 +791,26 @@ class VelumRepository(
      * Local wipe: recordings, custom templates, AutoFlows, memory, glossary. Built-ins reseed.
      * [deleteLocalFile] removes on-disk audio for each recording's `local_path` (privacy).
      */
+    /**
+     * Deletes every user row. Returns false when the search index could not be cleared or rebuilt: normal-use indexing
+     * swallows such failures (the row is the only copy, so the index is flagged stale and rebuilt later), but a wipe must
+     * say that index text may remain.
+     */
     suspend fun wipeAllUserData(
         deleteLocalFile: (absolutePath: String) -> Unit = {},
-    ) = withContext(dbContext) {
+    ): Boolean = withContext(dbContext) {
+        var indexClean = true
+        fun wipeIndex(block: () -> Unit) {
+            try {
+                block()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                indexClean = false
+                q.setMeta(META_FTS_DIRTY, "1")
+                onIndexFailure?.invoke(e::class.simpleName ?: "Exception")
+            }
+        }
         val audioPaths = q.selectAllRecordingIds().executeAsList().mapNotNull { id ->
             q.selectRecordingById(id).executeAsOneOrNull()?.local_path?.takeIf { it.isNotBlank() }
         }
@@ -806,12 +823,14 @@ class VelumRepository(
             q.deleteVersionsForRecording(id)
             q.deleteSpeakersForRecording(id)
             q.deleteRecordingHard(id)
-            tryIndex { if (ftsAvailable) FtsIndex.deleteRecording(driver, id) }
+            wipeIndex { if (ftsAvailable) FtsIndex.deleteRecording(driver, id) }
         }
         q.deleteAllCustomTemplates()
         q.deleteAllAutoflows()
         q.deleteAllMemories()
         q.deleteAllGlossary()
+        // Folders hold user-chosen names; the seed below puts the defaults back.
+        q.deleteAllFolders()
         // By table, not per recording: a job that finished after its recording was deleted leaves orphans.
         q.deleteAllSpeakers()
         q.deleteAllSummaryVersions()
@@ -823,10 +842,11 @@ class VelumRepository(
         // Clear seed marker so maybeSeed re-inserts default AutoFlow + builtins.
         SeedData.clearSeedMarker(db)
         SeedData.maybeSeed(db)
-        tryIndex { if (ftsAvailable) rebuildFtsIndex() }
+        wipeIndex { if (ftsAvailable) rebuildFtsIndex() }
         audioPaths.forEach { path ->
             runCatching { deleteLocalFile(path) }
         }
+        indexClean
     }
 
     /**
@@ -837,9 +857,18 @@ class VelumRepository(
      */
     suspend fun compactAfterWipe(): Boolean = withContext(dbContext) {
         try {
+            // DELETE only tombstones FTS5 entries; the words stay in the index segments (and VACUUM keeps them as live
+            // data). 'optimize' merges every segment, which drops the deleted entries, so run it before the rewrite.
+            if (ftsAvailable) FtsIndex.optimize(driver)
             driver.execute(null, "VACUUM", 0)
-            driver.executeQuery(null, "PRAGMA wal_checkpoint(TRUNCATE)", { it.next(); QueryResult.Unit }, 0).value
-            true
+            // (busy, log, checkpointed): busy != 0 means another connection held the WAL and it was not emptied.
+            val busy = driver.executeQuery(
+                null,
+                "PRAGMA wal_checkpoint(TRUNCATE)",
+                { c -> QueryResult.Value(if (c.next().value) c.getLong(0) ?: 0L else 0L) },
+                0,
+            ).value
+            busy == 0L
         } catch (e: Exception) {
             println("VelumWipe: database compaction failed: ${e::class.simpleName}")
             false

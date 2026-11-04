@@ -192,6 +192,9 @@ SELECT COUNT(*) FROM recording WHERE trashed = 0;
 selectAllFolders:
 SELECT * FROM folder ORDER BY name ASC;
 
+deleteAllFolders:
+DELETE FROM folder;
+
 insertFolder:
 INSERT OR REPLACE INTO folder(id, name, created_at) VALUES (?, ?, ?);
 

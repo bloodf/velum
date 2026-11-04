@@ -113,6 +113,9 @@ class AppContainer(
 ) {
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
+    /** Replaces the last wipe step (the database rewrite) in tests, to count it or make it fail. Null in the app. */
+    internal var compactDatabaseForTest: (suspend () -> Boolean)? = null
+
     /** Stops background work that writes user data during "Wipe all data"; see [wipeAllData]. */
     val wipeGate = WipeGate()
 
@@ -408,8 +411,8 @@ class AppContainer(
                 step("queued jobs") { recordingJobs.cancelAll(); true }
                 step("recordings") {
                     val left = mutableSetOf<String>()
-                    repository.wipeAllUserData { path -> if (deleteFileIfPresent(path)) left -= path else left += path }
-                    left.isEmpty()
+                    val indexClean = repository.wipeAllUserData { path -> if (deleteFileIfPresent(path)) left -= path else left += path }
+                    left.isEmpty() && indexClean
                 }
                 step("voice data") { withContext(Dispatchers.IO) { voiceProfileStore.wipeAll() } }
                 step("watched folders") { withContext(Dispatchers.IO) { clearWatchedFolders() }; true }
@@ -437,7 +440,7 @@ class AppContainer(
                 step("webhook") { webhookSettings.clear(); true }
                 step("integrations") { integrationAuth.clearTokens(); true }
                 // Last: every step above that deletes rows has run, and VACUUM rewrites the file without them.
-                step("database") { repository.compactAfterWipe() }
+                step("database") { (compactDatabaseForTest ?: repository::compactAfterWipe)() }
                 when {
                     !complete -> DownloadWipeResult.Incomplete
                     !nothingWriting -> DownloadWipeResult.StillRunning
