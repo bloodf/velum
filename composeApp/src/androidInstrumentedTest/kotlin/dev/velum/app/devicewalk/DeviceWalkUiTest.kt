@@ -140,6 +140,29 @@ class DeviceWalkUiTest {
     fun deviceWalk_en_dark() = runMatrix(lang = "en", theme = "dark")
 
     private fun runMatrix(lang: String, theme: String) {
+        try {
+            runMatrixSteps(lang, theme)
+        } catch (t: Throwable) {
+            // #345: "Detected multithreaded access to SnapshotStateObserver: previousThreadId=N" names a thread id and
+            // nothing else. Log every live thread (id, name, top frames) so the next failure can say who thread N is.
+            logThreads("failure ${t::class.java.simpleName}", stacks = true)
+            throw t
+        }
+    }
+
+    /** One logcat line per ~1000 chars: `id:name` for every live thread, plus top frames when [stacks]. */
+    private fun logThreads(label: String, stacks: Boolean = false) {
+        runCatching {
+            val all = Thread.getAllStackTraces().entries.sortedBy { it.key.id }
+            val text = all.joinToString(if (stacks) "\n" else " ") { (thread, frames) ->
+                val head = "${thread.id}:${thread.name}"
+                if (stacks) head + " [" + frames.take(8).joinToString(" < ") { "${it.className.substringAfterLast('.')}.${it.methodName}" } + "]" else head
+            }
+            text.chunked(1000).forEachIndexed { i, chunk -> Log.i("VelumDeviceWalk", "threads $label main=${android.os.Looper.getMainLooper().thread.id} test=${Thread.currentThread().id} [$i] $chunk") }
+        }
+    }
+
+    private fun runMatrixSteps(lang: String, theme: String) {
         val tag = "${lang}_$theme"
         waitForShell(lang)
         covered += "onboarding:$tag"
@@ -1339,6 +1362,7 @@ class DeviceWalkUiTest {
     }
 
     private fun shot(name: String) {
+        logThreads(name) // the ids alive at each step, in case the offending thread is gone by the failure
         runCatching {
             device.takeScreenshot(File(shotDir, "$name.png"))
         }

@@ -72,7 +72,7 @@ private class AndroidAudioPlayer : AudioPlayer {
         var old: MediaPlayer? = null
         try {
             onMain {
-                stopPolling() // a tick must not write the old player's position after the reset
+                stopPolling() // the old poll job must not stay scheduled behind the new player
                 _isPlaying.value = false
                 _positionMs.value = 0L
                 _durationMs.value = 0L
@@ -86,8 +86,7 @@ private class AndroidAudioPlayer : AudioPlayer {
         } finally {
             // Taken out of `player` on Main, so it is released here even if the call was cancelled right after the
             // hop: nothing else can reach it any more. These are plain calls, safe from a cancelled coroutine on IO.
-            runCatching { old?.reset() }
-            runCatching { old?.release() }
+            quietRelease(old)
         }
         ensureActive()
         if (path.isBlank()) {
@@ -98,6 +97,7 @@ private class AndroidAudioPlayer : AudioPlayer {
             return@withContext false
         }
         var created: MediaPlayer? = null
+        var installed = false // set on Main in the last hop; read on IO in the catch, after that hop has returned
         try {
             val mp = MediaPlayer()
             created = mp
@@ -120,25 +120,34 @@ private class AndroidAudioPlayer : AudioPlayer {
             // No data is read for a WAV here: skip-silence opens it on demand.
             onMain {
                 player = mp
+                installed = true
                 _durationMs.value = durationMs
                 if (isWav) wavFile = file
             }
             true
         } catch (t: Throwable) {
-            // Only the player this call made: `player` may already be a newer call's. Uninstall it first, then
-            // release it, so nothing reads a released player. The hop returns by throwing when this call was
-            // cancelled (its block has run by then), so the release sits in `finally`.
+            // Only the player this call made. It is released here unless it was installed and has since been taken
+            // out of `player` by a newer call's first hop or by release(), which release it (never release one player
+            // twice). The hop returns by throwing when this call was cancelled (its block has run by then), so the
+            // release is in `finally`.
+            var owns = !installed
             try {
                 withContext(NonCancellable + Dispatchers.Main.immediate) {
                     if (created != null && player === created) {
+                        owns = true
                         player = null
+                        stopPolling()
+                        _isPlaying.value = false
+                        _positionMs.value = 0L
                         _durationMs.value = 0L
+                        skipScan?.cancel()
+                        skipScan = null
                         wavFile = null
                         wavSource = null
                     }
                 }
             } finally {
-                runCatching { created?.release() }
+                if (owns) quietRelease(created)
             }
             if (t is CancellationException) throw t
             false
@@ -209,13 +218,15 @@ private class AndroidAudioPlayer : AudioPlayer {
     }
 
     private fun releasePlayerOnly() {
-        try {
-            player?.reset()
-            player?.release()
-        } catch (_: Throwable) {
-            // ignore
-        }
+        val mp = player
         player = null
+        quietRelease(mp)
+    }
+
+    /** Two steps, so a failing `reset` does not skip `release`. */
+    private fun quietRelease(mp: MediaPlayer?) {
+        runCatching { mp?.reset() }
+        runCatching { mp?.release() }
     }
 
     private fun startPolling() {

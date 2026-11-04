@@ -7,6 +7,7 @@ import com.juul.kable.State
 import com.juul.kable.WriteType
 import com.juul.kable.characteristicOf
 import dev.velum.ble.gatt.GattProfiles
+import dev.velum.ble.gatt.requireTransportAllowed
 import dev.velum.ble.gatt.GattWrite
 import dev.velum.core.model.ConnectedDevice
 import dev.velum.protocol.PlaudAdvertisement
@@ -167,6 +168,7 @@ class KableBleTransport : BleTransport {
     override suspend fun writeRaw(write: GattWrite) {
         val p = peripheral ?: error("Not connected")
         require(write.char in GattProfiles.Plaud.writes) { "Unsupported write characteristic ${write.char}" }
+        requireTransportAllowed(write)
         val type = if (write.withoutResponse) WriteType.WithoutResponse else WriteType.WithResponse
         p.write(writeCharacteristic, write.bytes, type)
     }

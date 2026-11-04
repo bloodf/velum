@@ -38,6 +38,8 @@ import dev.velum.app.platform.MicCapture
 import dev.velum.app.platform.createMicCapture
 import dev.velum.app.platform.DOWNLOAD_PART_SUFFIX
 import dev.velum.app.platform.deleteFileAtPath
+import dev.velum.app.platform.deleteFileIfPresent
+import dev.velum.app.platform.isAppOwnedAudioPath
 import dev.velum.app.platform.isSamePath
 import dev.velum.app.platform.isSupersededOwnAudio
 import dev.velum.app.platform.recordingsDirectoryPath
@@ -84,6 +86,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
 import kotlin.time.Duration.Companion.seconds
 
@@ -138,6 +141,9 @@ class AppContainer(
      * Read and written on the main thread only (from the Compose effect).
      */
     var pendingShare: kotlinx.coroutines.Deferred<dev.velum.app.importing.ImportResult>? = null
+
+    /** True when [pendingShare] is a share found pending after a restart: reported with a snackbar, never by navigating. */
+    var pendingShareRecovered: Boolean = false
 
     /** One share import at a time across every instance of the activity (the pipeline is recreated per composition). */
     val shareImportMutex = Mutex()
@@ -214,6 +220,7 @@ class AppContainer(
         settings = settingsRepository,
         thermal = thermalPolicy,
         wipeGate = wipeGate,
+        voiceProfiles = voiceProfileStore,
     )
 
     val recordingJobs: RecordingJobScheduler =
@@ -283,12 +290,39 @@ class AppContainer(
         }
     }
 
-    /** Deletes a recording for good, with the speaker embeddings its processing cached (#320). */
-    suspend fun deleteRecordingForever(id: String, device: DeviceViewModel = deviceViewModel) {
-        // Before the row goes: a cancelled download can't save, and a running one would find no row and add it back (#407).
-        repository.getRecording(id)?.session_id?.let(device::cancelDownloadOf)
-        repository.deleteRecordingHard(id)
-        withContext(Dispatchers.IO) { voiceProfileStore.deleteClusterCache(id) }
+    /**
+     * Deletes a recording for good. False when a step failed: the recording stays, though its audio may already be
+     * gone, and trying again finishes the job. Not cancellable, so leaving the screen can't stop it halfway. It waits
+     * for a running device save, so it sees the file that save writes. A running or queued download of this recording's
+     * session is cancelled first.
+     */
+    suspend fun deleteRecordingForever(id: String, device: DeviceViewModel = deviceViewModel): Boolean = try {
+        withContext(NonCancellable + Dispatchers.IO) {
+            // Before the row goes: a cancelled download can't save, and a running one would find no row and add it back (#407).
+            repository.getRecording(id)?.session_id?.let(device::cancelDownloadOf)
+            downloadPersistMutex.withLock {
+                val audio = repository.getRecording(id)?.local_path
+                val others = repository.getAllRecordingFileRefs().filter { it.first != id }.mapNotNull { it.second }
+                // Copies first: if one fails, the recording still has its audio.
+                val deleted = (repository.importCopies(id) + listOfNotNull(audio))
+                    .filter { path -> isAppOwnedAudioPath(path) && others.none { it == path || isSamePath(it, path) } }
+                    .all { deleteFileIfPresent(it) }
+                if (deleted) {
+                    repository.deleteRecordingHard(id)
+                    // The row is gone, so this can't fail the delete. Startup removes caches with no recording.
+                    runCatching { voiceProfileStore.deleteClusterCache(id) }
+                        .onFailure { println("VelumDelete: cluster cache delete failed: ${it::class.simpleName}") }
+                } else {
+                    println("VelumDelete: a recording's audio could not be deleted")
+                }
+                deleted
+            }
+        }
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (e: Exception) {
+        println("VelumDelete: deleting a recording failed: ${e::class.simpleName}")
+        false
     }
 
     fun enqueueProcessing(
@@ -345,6 +379,8 @@ class AppContainer(
                 stopMicCapture()
                 // Only now: if an earlier step fails, recordings stay and still need their queued work.
                 recordingJobs.cancelAll()
+                // First, before any data goes: if the process dies mid-wipe, no pending share copy may be offered after a restart.
+                withContext(Dispatchers.IO) { dev.velum.app.platform.clearPendingShares() }
                 repository.wipeAllUserData { path -> deleteFileAtPath(path) }
                 withContext(Dispatchers.IO) {
                     voiceProfileStore.wipeAll()

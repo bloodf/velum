@@ -58,6 +58,12 @@ data class DiarizationResult(
      * empty for that reason, not because nobody matched, so names already typed by the user must be kept.
      */
     val speakerNamesUnavailable: Boolean = false,
+    /**
+     * speakerId → voice embedding of this run, for the voice-profile cache. The diarizer only reports them: the caller
+     * writes them next to the speaker rows (see RecordingProcessor), so a run that fails in between cannot leave this
+     * run's embeddings beside the previous run's rows.
+     */
+    val embeddings: Map<String, FloatArray> = emptyMap(),
 )
 
 data class LlmRequest(
@@ -106,6 +112,13 @@ interface StreamingTranscriber {
 interface Diarizer {
     val engineId: String
     suspend fun diarize(input: AudioInput, modelId: String): DiarizationResult
+
+    /**
+     * False when this engine would run [modelId] but speaker naming cannot (voice key unavailable). True when
+     * it would not run at all (model not downloaded), because nothing is named then and nothing is overwritten.
+     * Asked before a long transcription.
+     */
+    suspend fun speakerNamingReady(modelId: String): Boolean = true
 }
 
 interface LlmEngine {

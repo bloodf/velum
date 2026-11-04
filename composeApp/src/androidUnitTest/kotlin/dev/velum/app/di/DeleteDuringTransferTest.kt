@@ -24,9 +24,11 @@ import java.nio.file.Files
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -138,20 +140,21 @@ class DeleteDuringTransferTest {
 
     @Test fun a_recording_deleted_during_its_transfer_stays_deleted_and_re_download_works() = fixture {
         download()
-        val first = assertNotNull(row()).id
+        val first = assertNotNull(row())
         val release = redownloadHeld()
 
-        container.deleteRecordingForever(first, vm)
+        assertTrue(container.deleteRecordingForever(first.id, vm))
         release.complete(Unit)
         vm.awaitDownloads()
 
         assertNull(row(), "the transfer must not bring the recording back")
+        assertFalse(java.io.File(assertNotNull(first.local_path)).exists(), "nor its audio")
         assertEquals(0, container.repository.storageUsage().recordingCount)
         assertNull(vm.sessionUi.value.downloadingSessionId)
 
         gate.held = null
         download()
-        assertNotEquals(first, assertNotNull(row(), "an explicit Re-download must still work").id)
+        assertNotEquals(first.id, assertNotNull(row(), "an explicit Re-download must still work").id)
     }
 
     @Test fun a_download_still_waiting_to_start_is_stopped_too() = fixture {
