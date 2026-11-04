@@ -87,6 +87,9 @@ class GattArchitectureTest {
             path != guardedLink && ("PlainWrite(" in text || "SealedWrite(" in text)
         }.map { it.first }
         assertTrue(builders.isEmpty(), "Only GuardedLink.kt may build writes: $builders")
+        // The fakes module is test support for other modules: it may not build a GuardedLink or supply a guard either.
+        val fakesUsingGuardApi = files.filter { (path, text) -> path.startsWith("ble-testing/") && referencesGuardApi(text) }.map { it.first }
+        assertTrue(fakesUsingGuardApi.isEmpty(), "ble-testing must not use the guard API: $fakesUsingGuardApi")
         // The forwarding test double is exempt from the writeRaw CALL ban by exact path only.
         val callers = files.filter { (path, text) ->
             path != guardedLink && path != recordingDouble && ".writeRaw(" in text

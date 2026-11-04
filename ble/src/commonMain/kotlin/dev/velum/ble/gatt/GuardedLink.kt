@@ -32,7 +32,7 @@ class GuardedLink(
         val declared = requireNotNull(profile.writes[char]) {
             "No write guard declared for ${char.characteristic} in profile ${profile.id}"
         }
-        val guard = if (char == GattProfiles.PLAUD_WRITE) PlaudWriteGuard else declared
+        val guard = if (char.isPlaudWrite) PlaudWriteGuard else declared
         // Copy first, then check and use the same copy: the caller cannot mutate the bytes between
         // the guard and the write.
         val p = plaintext.copyOf()
@@ -55,5 +55,5 @@ internal fun requireTransportAllowed(write: GattWrite) =
     requireTransportAllowed(write.char, write.bytes, sealed = write is SealedWrite)
 
 internal fun requireTransportAllowed(char: GattChar, bytes: ByteArray, sealed: Boolean) {
-    if (!sealed && char == GattProfiles.PLAUD_WRITE) PlaudWriteGuard.check(bytes)
+    if (!sealed && char.isPlaudWrite) PlaudWriteGuard.check(bytes)
 }

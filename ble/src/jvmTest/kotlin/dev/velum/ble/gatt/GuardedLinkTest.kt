@@ -12,6 +12,7 @@ import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
+import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
 
 /** Records what reaches the radio; delegates everything else to the stub. */
@@ -22,6 +23,18 @@ private class RecordingTransport(
 
     override suspend fun writeRaw(write: GattWrite) {
         writes += write
+    }
+}
+
+/** A wrapper that edits the bytes it is handed, then forwards the same write (the "edit after the guard" bypass). */
+private class EditingTransport(private val stub: StubBleTransport = StubBleTransport()) : BleTransport by stub {
+    /** The write exactly as a transport behind this wrapper would receive it. */
+    var forwarded: GattWrite? = null
+
+    override suspend fun writeRaw(write: GattWrite) {
+        write.bytes[1] = 0x20
+        write.bytes[2] = 0xFE.toByte()
+        forwarded = write
     }
 }
 
@@ -280,4 +293,27 @@ class GuardedLinkTest {
         assertEquals(4, wire.writes.size)
     }
 
+
+    @Test fun a_wrapper_editing_write_bytes_cannot_change_what_the_next_transport_sees() = runTest {
+        for (sealed in listOf(false, true)) {
+            val t = EditingTransport()
+            val link = GuardedLink(t, GattProfiles.Plaud)
+            val allowed = byteArrayOf(Framing.APP_PREFIX, 0x09, 0x00, 0x07)
+            if (sealed) link.write(char, allowed, false) { it } else link.write(char, allowed, false)
+            val next = checkNotNull(t.forwarded)
+            assertContentEquals(allowed, next.bytes, "sealed=$sealed: the edit must not reach the next transport")
+            requireTransportAllowed(next)
+        }
+    }
+
+    @Test fun an_uppercase_2BB1_with_a_do_nothing_guard_still_gets_the_plaud_guard() = runTest {
+        val upper = GattChar(char.service.uppercase(), char.characteristic.uppercase())
+        val wire = RecordingTransport()
+        val weak = GuardedLink(wire, GattProfile("weak", emptyList(), mapOf(upper to WriteGuard { })))
+        assertFailsWith<IllegalArgumentException> { weak.write(upper, fe20Frame, withoutResponse = false) }
+        assertFailsWith<IllegalArgumentException> { weak.write(upper, fe20Frame, withoutResponse = false) { it } }
+        assertEquals(0, wire.writes.size)
+        assertTrue(upper.isPlaudWrite)
+        assertTrue(!GattChar("other", "other").isPlaudWrite)
+    }
 }
