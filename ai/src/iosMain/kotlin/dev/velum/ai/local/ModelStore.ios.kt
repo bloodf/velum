@@ -63,9 +63,15 @@ actual class ModelStoreDir actual constructor(absolutePath: String) {
         }
         bytes.usePinned { pinned ->
             val data = NSData.dataWithBytes(pinned.addressOf(0), bytes.size.toULong())
-            data.writeToFile(absolutePath, atomically = true)
+            check(data.writeToFile(absolutePath, atomically = true)) { "Unable to write a file." }
         }
     }
+
+    // writeToFile(atomically) writes a temporary file and renames it; the system flushes it. There is no
+    // portable fsync here, so durability is whatever that gives.
+    actual fun writeBytesDurably(bytes: ByteArray) = writeBytes(bytes)
+
+    actual fun syncDirectory() = Unit
 
     actual fun appendBytes(bytes: ByteArray) {
         val existing = if (exists()) readBytes() else ByteArray(0)
@@ -121,9 +127,6 @@ actual class ModelStoreDir actual constructor(absolutePath: String) {
 
     actual fun renameTo(dest: ModelStoreDir): Boolean {
         val fm = NSFileManager.defaultManager
-        if (fm.fileExistsAtPath(dest.absolutePath)) {
-            fm.removeItemAtPath(dest.absolutePath, error = null)
-        }
         val parent = dest.absolutePath.substringBeforeLast('/', missingDelimiterValue = "")
         if (parent.isNotEmpty()) {
             fm.createDirectoryAtPath(
@@ -133,8 +136,13 @@ actual class ModelStoreDir actual constructor(absolutePath: String) {
                 error = null,
             )
         }
-        return fm.moveItemAtPath(absolutePath, toPath = dest.absolutePath, error = null)
+        // A directory target is removed first (as documented); a file target is replaced by rename(2),
+        // which is atomic, so a failure leaves the old file instead of deleting it first.
+        if (isDirectoryAt(dest.absolutePath)) fm.removeItemAtPath(dest.absolutePath, error = null)
+        return platform.posix.rename(absolutePath, dest.absolutePath) == 0
     }
+
+    private fun isDirectoryAt(path: String): Boolean = ModelStoreDir(path).isDirectory()
 }
 
 actual fun defaultModelStoreRoot(): ModelStoreDir {

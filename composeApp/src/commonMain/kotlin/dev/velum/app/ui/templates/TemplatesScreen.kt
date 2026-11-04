@@ -286,6 +286,23 @@ internal fun TemplatesScreen(
             emptyList()
         }
     }
+    // Every optional block of the grid, fixed for this composition. The grid scope below reads only these plain
+    // values: state read inside it could change between the grid's reads of the item count (#202).
+    val rankingNow = ranking
+    val plan = discoverGridPlan(
+        discoverTab = tab == 1,
+        featuredOnly = discoverFeaturedOnly,
+        hasRanking = rankingNow.isNotEmpty(),
+        searchBlank = searchQuery.isBlank(),
+        noFacetSelected = selectedCategory == null && selectedTags.isEmpty() && selectedLang == null,
+        shown = visible,
+        fullImportRunning = fullImportRunning,
+        loadFailed = loadFailed,
+        shownTick = shownTick,
+        currentTick = templateTick,
+        loadedTarget = PAGE_SIZE * pages,
+        totalMatches = totalMatches,
+    )
     fun clearFilters() {
         selectedCategory = null
         selectedTags = emptySet()
@@ -507,9 +524,7 @@ internal fun TemplatesScreen(
 
                 }
             }
-            if (tab == 1 && discoverFeaturedOnly && ranking.isNotEmpty() && searchQuery.isBlank() &&
-                selectedCategory == null && selectedTags.isEmpty() && selectedLang == null
-            ) {
+            if (plan.showRanking) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     Column {
                         DisplayTitle(strings.weeklyRanking)
@@ -518,7 +533,7 @@ internal fun TemplatesScreen(
                             Modifier.horizontalScroll(rememberScrollState()),
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
-                            ranking.forEachIndexed { index, tpl ->
+                            rankingNow.forEachIndexed { index, tpl ->
                                 RankingCard(tpl, index + 1, languageTag) { onOpenTemplate(tpl.id) }
                             }
                         }
@@ -527,14 +542,14 @@ internal fun TemplatesScreen(
                     }
                 }
             }
-            if (showLoadingState(visible, loadFailed)) {
+            if (plan.showLoading) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     Box(Modifier.fillMaxWidth().padding(vertical = 48.dp).testTag("templates:loading"), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator()
                     }
                 }
             }
-            if (showEmptyState(visible, fullImportRunning, loadFailed)) {
+            if (plan.showEmpty) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     Box(
                         Modifier.fillMaxWidth().padding(vertical = 48.dp).testTag("templates:empty"),
@@ -568,14 +583,14 @@ internal fun TemplatesScreen(
                 ) { onOpenTemplate(tpl.id) }
             }
             // Retry sits after the rows so a failed later page is retried where the user is looking.
-            if (loadFailed) {
+            if (plan.showRetry) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     Box(Modifier.fillMaxWidth().padding(vertical = 12.dp), contentAlignment = Alignment.Center) {
                         CategoryChip(label = strings.ux.retryProcessing, selected = false, testTag = "templates:retry") { retryTick += 1 }
                     }
                 }
             }
-            if (showPagingSentinel(shownTick, templateTick, rows.size, PAGE_SIZE * pages, totalMatches)) {
+            if (plan.showPagingSentinel) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     // Composed only when scrolled to the end: load the next page.
                     LaunchedEffect(rows.size) { pages += 1 }
