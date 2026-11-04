@@ -31,6 +31,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -48,6 +49,7 @@ class QueuedRecoveryTest {
     private var enqueueFailure: Throwable? = null
     private var savedOperation: SettableFuture<Operation.State.SUCCESS>? = null
     private var beforeSubmit: (() -> Unit)? = null
+    private var extraWorkId: java.util.UUID? = null
     private var submitRealBeforeDelay = false
     private val submitted = kotlinx.coroutines.CompletableDeferred<Unit>()
 
@@ -60,20 +62,30 @@ class QueuedRecoveryTest {
         enqueueFailure = null
         savedOperation = null
         beforeSubmit = null
+        extraWorkId = null
         submitRealBeforeDelay = false
-        if (realScheduler) {
-            WorkManagerTestInitHelper.initializeTestWorkManager(context, Configuration.Builder().setExecutor(Executors.newSingleThreadExecutor()).build())
+        val workIds = CopyOnWriteArrayList<java.util.UUID>()
+        var appJob: kotlinx.coroutines.Job? = null
+        val executor = if (realScheduler) Executors.newSingleThreadExecutor() else null
+        if (executor != null) {
+            WorkManagerTestInitHelper.initializeTestWorkManager(context, Configuration.Builder().setExecutor(executor).build())
         }
         val root = ModelStoreDir(Files.createTempDirectory("velum-queued").toString())
         val container = AppContainer(
             InMemorySecureStore(), DriverFactory(context), modelStoreRoot = root,
-            recordingJobSchedulerFactory = { _, _ ->
+            recordingJobSchedulerFactory = { _, scope ->
+                appJob = scope.coroutineContext[kotlinx.coroutines.Job]
                 if (realScheduler) createWorkManagerRecordingJobScheduler(context) { manager, name, policy, request ->
                     beforeSubmit?.invoke()
                     val future = savedOperation
-                    if (future == null) manager.enqueueUniqueWork(name, policy, request)
-                    else {
-                        if (submitRealBeforeDelay) manager.enqueueUniqueWork(name, policy, request).result.get()
+                    if (future == null) {
+                        workIds += request.id
+                        manager.enqueueUniqueWork(name, policy, request)
+                    } else {
+                        if (submitRealBeforeDelay) {
+                            workIds += request.id
+                            manager.enqueueUniqueWork(name, policy, request).result.get()
+                        }
                         submitted.complete(Unit)
                         object : Operation {
                             override fun getState(): LiveData<Operation.State> = MutableLiveData()
@@ -91,14 +103,54 @@ class QueuedRecoveryTest {
                 }
             },
         )
-        runBlocking { container.settingsRepository.load() }
+        runBlocking {
+            container.settingsRepository.load()
+            if (realScheduler) {
+                // Stop only AutoFlow, not the app scope that owns pending scheduler cancellation.
+                val field = dev.velum.ai.pipeline.AutoFlowRunner::class.java.getDeclaredField("job").apply { isAccessible = true }
+                val jobs = field.get(container.autoFlowRunner) as kotlinx.coroutines.flow.StateFlow<*>
+                kotlinx.coroutines.withTimeout(5_000) {
+                    while (jobs.value !is kotlinx.coroutines.Job) kotlinx.coroutines.yield()
+                }
+                val observer = jobs.value as kotlinx.coroutines.Job
+                container.autoFlowRunner.stop()
+                observer.join()
+            }
+        }
         val dir = File(context.cacheDir, "queued-fixtures").apply { deleteRecursively(); mkdirs() }
         try {
             runBlocking { block(container, dir) }
         } finally {
-            container.databaseHandle.driver.close()
-            root.deleteRecursively()
-            dir.deleteRecursively()
+            try {
+                if (realScheduler) {
+                    var failure: Throwable? = null
+                    try {
+                        val manager = WorkManager.getInstance(context)
+                        (workIds + listOfNotNull(extraWorkId)).distinct().forEach { id ->
+                            manager.cancelWorkById(id).result.get()
+                            assertTrue(manager.getWorkInfoById(id).get()?.state?.isFinished != false)
+                        }
+                    } catch (t: Throwable) {
+                        failure = t
+                        throw t
+                    } finally {
+                        try {
+                            WorkManagerTestInitHelper.closeWorkDatabase()
+                        } catch (t: Throwable) {
+                            if (failure == null) throw t
+                            failure.addSuppressed(t)
+                        } finally {
+                            androidx.work.impl.WorkManagerImpl.setDelegate(null)
+                        }
+                    }
+                }
+            } finally {
+                runBlocking { appJob?.cancelAndJoin() }
+                executor?.shutdown()
+                container.databaseHandle.driver.close()
+                root.deleteRecursively()
+                dir.deleteRecursively()
+            }
         }
     }
 
@@ -201,7 +253,7 @@ class QueuedRecoveryTest {
     @Test fun recovery_keeps_existing_work_even_when_autoflow_template_differs() = withContainer(realScheduler = true) { container, _ ->
         val context = ApplicationProvider.getApplicationContext<Context>()
         val manager = WorkManager.getInstance(context)
-        val id = "rec-real-keep"
+        val id = "rec-real-keep-${java.util.UUID.randomUUID()}"
         container.row(id, "queued", source = "phone")
         container.repository.upsertAutoflow(
             id = "real-flow", name = "Phone", enabled = true, wakePhrase = null, durationMinSeconds = 0, durationMaxSeconds = 3600,
@@ -209,12 +261,22 @@ class QueuedRecoveryTest {
         )
         val name = RecordingProcessWorker.UNIQUE_PREFIX + id
         var original: java.util.UUID? = null
+        var submissionFailure: Throwable? = null
         beforeSubmit = {
             beforeSubmit = null
-            RecordingProcessWorker.enqueue(context, id, "velum.meeting", true, null)
-            original = manager.getWorkInfosForUniqueWork(name).get().single().id
+            try {
+                RecordingProcessWorker.enqueue(context, id, "velum.meeting", true, null)
+                original = manager.getWorkInfosForUniqueWork(name).get().single().id
+                extraWorkId = original
+            } catch (failure: Throwable) {
+                submissionFailure = failure
+                throw failure
+            }
         }
-        assertEquals(1, withContext(Dispatchers.IO) { container.requeueStrandedRecordings() })
+        val handed = withContext(Dispatchers.IO) { container.requeueStrandedRecordings() }
+        submissionFailure?.let { throw AssertionError("Concurrent work submission failed", it) }
+        assertEquals(1, handed)
+        assertTrue(beforeSubmit == null, "recovery must reach WorkManager submission")
         val kept = requireNotNull(original)
         assertEquals(listOf(kept), manager.getWorkInfosForUniqueWork(name).get().map { it.id })
         assertEquals(0, withContext(Dispatchers.IO) { container.requeueStrandedRecordings() })
