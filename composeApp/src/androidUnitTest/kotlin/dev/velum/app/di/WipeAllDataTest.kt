@@ -440,9 +440,12 @@ class WipeAllDataTest {
                 container.wipeGate.guard { withContext(NonCancellable) { started.complete(Unit); release.await() } }
             }
             started.await()
-            assertEquals(DownloadWipeResult.StillRunning, container.wipeAllData(joinTimeout = 100.milliseconds))
-            assertTrue(spill.exists(), "the wipe deleted a directory a live job owns")
-            release.complete(Unit)
+            try {
+                assertEquals(DownloadWipeResult.StillRunning, container.wipeAllData(joinTimeout = 100.milliseconds))
+                assertTrue(spill.exists(), "the wipe deleted a directory a live job owns")
+            } finally {
+                release.complete(Unit)
+            }
             job.await()
         }
     }
