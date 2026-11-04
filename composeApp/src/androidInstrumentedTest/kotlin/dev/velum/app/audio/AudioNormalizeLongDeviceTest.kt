@@ -45,9 +45,13 @@ class AudioNormalizeLongDeviceTest {
     private val args = InstrumentationRegistry.getArguments()
 
     @Test(timeout = 5_400_000) fun long_stereo_m4a_normalizes_in_linear_time_with_bounded_heap() {
-        val minutes = args.getString("normMinutes").orEmpty().split(',').mapNotNull { it.trim().toIntOrNull() }
-        assumeTrue("normMinutes not given", minutes.isNotEmpty())
-        assumeTrue("need two lengths spanning at least 4x for the linearity check", minutes.max() >= 4 * minutes.min())
+        val raw = args.getString("normMinutes")
+        assumeTrue("normMinutes not given", raw != null)
+        val minutes = raw.orEmpty().split(',').map { it.trim().toIntOrNull() }
+        // A given but malformed argument must fail, not silently skip the whole check.
+        assertTrue("normMinutes '$raw' must be comma separated positive integers", minutes.isNotEmpty() && minutes.all { it != null && it > 0 })
+        val minutes2 = minutes.filterNotNull()
+        assumeTrue("need two lengths spanning at least 4x for the linearity check", minutes2.max() >= 4 * minutes2.min())
         positiveControl()
         val ctx = InstrumentationRegistry.getInstrumentation().targetContext
         val dir = File(ctx.cacheDir, "norm319").apply { deleteRecursively(); mkdirs() }
@@ -55,7 +59,7 @@ class AudioNormalizeLongDeviceTest {
         val rates = mutableListOf<Double>()
         val growth = mutableListOf<Long>()
         try {
-            for (m in minutes) {
+            for (m in minutes2) {
                 val src = File(dir, "stereo-${m}min.m4a")
                 val encodeMs = time { encodeStereoM4a(src, m * 60) }
                 val baseline = heapAfterGc()
@@ -64,7 +68,7 @@ class AudioNormalizeLongDeviceTest {
                 val sampler = Thread {
                     while (running.get()) {
                         peak.accumulateAndGet(heapAfterGc() - baseline) { a, b -> maxOf(a, b) }
-                        Thread.sleep(100)
+                        Thread.sleep(SAMPLE_EVERY_MS)
                     }
                 }.apply { isDaemon = true; start() }
                 var normalized: dev.velum.app.platform.NormalizedAudio? = null
@@ -94,12 +98,11 @@ class AudioNormalizeLongDeviceTest {
         assertTrue("time per audio minute not linear: $rates", rates.max() <= rates.min() * MAX_RATE_RATIO)
     }
 
-    /** Heap in use after the most recent GC, from the JVM's own bookkeeping (uncollected garbage is not counted). */
+    /** Java heap in use right after a forced GC (java.lang.management does not exist on Android). */
     private fun heapAfterGc(): Long {
         System.gc()
-        return java.lang.management.ManagementFactory.getMemoryPoolMXBeans()
-            .filter { it.type == java.lang.management.MemoryType.HEAP }
-            .sumOf { it.collectionUsage?.used ?: 0L }
+        val rt = Runtime.getRuntime()
+        return rt.totalMemory() - rt.freeMemory()
     }
 
     /** The probe must see a retained PCM-sized array, otherwise a low reading means nothing. */
@@ -121,14 +124,16 @@ class AudioNormalizeLongDeviceTest {
             setInteger(MediaFormat.KEY_BIT_RATE, 64_000)
             setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 16 * 1024)
         }
-        val codec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_AUDIO_AAC)
-        val muxer = MediaMuxer(dest.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+        var codec: MediaCodec? = null
+        var muxer: MediaMuxer? = null
         var track = -1
         var muxerStarted = false
         val info = MediaCodec.BufferInfo()
-        codec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
-        codec.start()
         try {
+            val c = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_AUDIO_AAC).also { codec = it }
+            val mux = MediaMuxer(dest.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4).also { muxer = it }
+            c.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+            c.start()
             val framesPerChunk = 2048
             val totalFrames = seconds.toLong() * rate
             var frame = 0L
@@ -137,10 +142,10 @@ class AudioNormalizeLongDeviceTest {
             val chunk = ByteBuffer.allocate(framesPerChunk * 4).order(ByteOrder.LITTLE_ENDIAN)
             while (!outputDone) {
                 if (!inputDone) {
-                    val i = codec.dequeueInputBuffer(10_000)
+                    val i = c.dequeueInputBuffer(10_000)
                     if (i >= 0) {
                         val n = minOf(framesPerChunk.toLong(), totalFrames - frame).toInt()
-                        val buf = codec.getInputBuffer(i)!!
+                        val buf = c.getInputBuffer(i)!!
                         buf.clear()
                         chunk.clear()
                         for (k in 0 until n) {
@@ -153,24 +158,24 @@ class AudioNormalizeLongDeviceTest {
                         val pts = frame * 1_000_000L / rate
                         frame += n
                         inputDone = frame >= totalFrames
-                        codec.queueInputBuffer(i, 0, n * 4, pts, if (inputDone) MediaCodec.BUFFER_FLAG_END_OF_STREAM else 0)
+                        c.queueInputBuffer(i, 0, n * 4, pts, if (inputDone) MediaCodec.BUFFER_FLAG_END_OF_STREAM else 0)
                     }
                 }
-                val o = codec.dequeueOutputBuffer(info, 10_000)
+                val o = c.dequeueOutputBuffer(info, 10_000)
                 when {
-                    o == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> { track = muxer.addTrack(codec.outputFormat); muxer.start(); muxerStarted = true }
+                    o == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> { track = mux.addTrack(c.outputFormat); mux.start(); muxerStarted = true }
                     o >= 0 -> {
-                        val out = codec.getOutputBuffer(o)!!
+                        val out = c.getOutputBuffer(o)!!
                         if (info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG != 0) info.size = 0
-                        if (info.size > 0 && muxerStarted) { out.position(info.offset); out.limit(info.offset + info.size); muxer.writeSampleData(track, out, info) }
-                        codec.releaseOutputBuffer(o, false)
+                        if (info.size > 0 && muxerStarted) { out.position(info.offset); out.limit(info.offset + info.size); mux.writeSampleData(track, out, info) }
+                        c.releaseOutputBuffer(o, false)
                         if (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) outputDone = true
                     }
                 }
             }
         } finally {
-            runCatching { codec.stop() }; codec.release()
-            runCatching { if (muxerStarted) muxer.stop() }; muxer.release()
+            runCatching { codec?.stop() }; codec?.release()
+            runCatching { if (muxerStarted) muxer?.stop() }; muxer?.release()
         }
         assertEquals(true, dest.length() > 0)
     }
@@ -178,6 +183,8 @@ class AudioNormalizeLongDeviceTest {
     private companion object {
         const val TAG = "VelumNorm319"
         const val MAX_HEAP_GROWTH_BYTES = 32L * 1024 * 1024 // the 60 min input is ~110 MiB of 16 kHz PCM, 635 MB at 44.1 kHz stereo
+        // Each sample forces a GC, which pauses decoding, so sample rarely: a retained PCM array stays visible.
+        const val SAMPLE_EVERY_MS = 2_000L
         const val MAX_RATE_RATIO = 2.0
         const val MAX_MS_PER_AUDIO_MINUTE = 20_000.0 // observed ~6,600 on the emulator
     }
