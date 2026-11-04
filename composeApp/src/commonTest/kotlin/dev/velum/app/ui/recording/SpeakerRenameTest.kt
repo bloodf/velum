@@ -20,6 +20,7 @@ class SpeakerRenameTest {
     private class Store(var rows: List<Speaker>) {
         val enrolled = mutableListOf<String>()
         val renamed = mutableListOf<Pair<String, String>>()
+        var onRename: () -> Unit = {}
         suspend fun current() = rows
         fun enrol(row: Speaker, @Suppress("UNUSED_PARAMETER") name: String) { enrolled += row.id }
         fun rename(row: Speaker, name: String): Boolean {
@@ -27,6 +28,7 @@ class SpeakerRenameTest {
             if (stored.label != row.label || stored.talk_seconds != row.talk_seconds) return false
             rows = rows.map { if (it.id == row.id) it.copy(display_name = name) else it }
             renamed += row.id to name
+            onRename()
             return true
         }
     }
@@ -56,15 +58,28 @@ class SpeakerRenameTest {
         val ok = store.confirm(shown) { if (first) { first = false; store.rows = run(1, 2) } }
         assertFalse(ok)
         assertEquals(listOf("rec-1-S1"), store.enrolled)
-        assertEquals(emptyList(), store.renamed, "the rename re-checks and refuses the replaced row")
+        assertEquals(listOf("rec-1-S1" to "Alex"), store.renamed, "the second rename never ran")
     }
 
-    @Test fun a_swap_between_the_last_check_and_the_rename_is_reported() = runTest {
+    @Test fun a_refused_rename_enrols_nothing() = runTest {
         val shown = run(300, 200)
         val store = Store(shown)
-        val ok = store.confirm(shown, mapOf("rec-1-S1" to "Alex")) { store.rows = run(1, 2) }
+        store.rows = run(1, 2) // replaced after the tap; the atomic rename refuses it
+        // current() would also notice, so call the loop with a current that still looks unchanged.
+        val ok = confirmSpeakerNames(shown, { shown }, typed, { r, n -> store.enrol(r, n) }, store::rename)
         assertFalse(ok)
+        assertEquals(emptyList(), store.enrolled)
         assertEquals(emptyList(), store.renamed)
+    }
+
+    @Test fun a_swap_between_the_rename_and_the_enrol_keeps_the_name_and_skips_the_voice() = runTest {
+        val shown = run(300, 200)
+        val store = Store(shown)
+        store.onRename = { store.rows = run(1, 2).map { it.copy(display_name = "Alex") } }
+        val ok = store.confirm(shown, mapOf("rec-1-S1" to "Alex"))
+        assertFalse(ok)
+        assertEquals(listOf("rec-1-S1" to "Alex"), store.renamed)
+        assertEquals(emptyList(), store.enrolled, "no voice may be enrolled against the new run")
     }
 
     @Test fun unchanged_rows_skip_blank_and_unknown_ids() = runTest {

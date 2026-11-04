@@ -675,6 +675,8 @@ fun RecordingDetailScreen(
                                 renames = renames,
                                 enrol = { row, trimmed ->
                                 var cacheMissed = false
+                                // The name is already saved; a voice that cannot be enrolled is reported like a missing sample.
+                                try {
                                 container.voiceProfileStore.withReady {
                                     val emb = cachedClusterEmbedding(
                                         recordingId,
@@ -694,12 +696,18 @@ fun RecordingDetailScreen(
                                             )
                                     }
                                 }
+                                } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                                    throw cancelled
+                                } catch (_: Exception) {
+                                    cacheMissed = true
+                                }
                                 if (cacheMissed) processError = strings.ux.voiceProfilesNoCachedVoice
                                 },
                                 rename = { row, trimmed -> container.repository.renameSpeakerIfUnchanged(recordingId, row, trimmed) },
                             )
-                            // Mismatch: keep the sheet open; the rows flow re-keys it to the new run's speakers.
-                            if (applied) showSpeakers = false else processError = strings.added.speakersChangedWhileOpen
+                            // Set last, so the mismatch message wins over the missing-voice one.
+                            if (!applied) processError = strings.added.speakersChangedWhileOpen
+                            showSpeakers = false
                         } catch (cancelled: kotlinx.coroutines.CancellationException) {
                             throw cancelled
                         } catch (_: Exception) {
