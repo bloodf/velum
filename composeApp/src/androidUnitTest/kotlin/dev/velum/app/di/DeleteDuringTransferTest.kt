@@ -107,7 +107,7 @@ class DeleteDuringTransferTest {
         installRecordingFilesDir(files.path)
         val container = AppContainer(
             InMemorySecureStore(), DriverFactory(context), modelStoreRoot = root,
-            recordingJobSchedulerFactory = { _, _ -> RecordingJobScheduler { _, _, _, _ -> } },
+            recordingJobSchedulerFactory = { _, _ -> RecordingJobScheduler { _, _, _, _ -> dev.velum.ai.pipeline.EnqueueResult.STARTED_OR_REPLACED } },
         )
         val gate = TransferGate()
         val owner = ViewModelStore()

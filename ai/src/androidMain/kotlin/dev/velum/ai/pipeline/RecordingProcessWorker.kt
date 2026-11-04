@@ -28,7 +28,6 @@ import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.runInterruptible
 
 /**
  * Runs [RecordingProcessor] for one recording under WorkManager with thermal backoff.
@@ -266,7 +265,6 @@ class RecordingProcessWorker(
             templateId: String? = null,
             retranscribe: Boolean = true,
             apiModelOverride: ApiModelOverride? = null,
-            awaitOperation: Boolean = false,
             keepExisting: Boolean = false,
             submit: (WorkManager, String, ExistingWorkPolicy, androidx.work.OneTimeWorkRequest) -> androidx.work.Operation =
                 { manager, name, policy, request -> manager.enqueueUniqueWork(name, policy, request) },
@@ -319,9 +317,16 @@ class RecordingProcessWorker(
                 policy,
                 request,
             )
-            if (awaitOperation) operation.result.get()
-            // Reports "started or replaced"; KEEP over queued/running work did neither.
-            return !(policy == ExistingWorkPolicy.KEEP && hasActiveWork(manager, recordingId, excluding = request.id))
+            operation.result.get()
+            // Include terminal work: the submitted request can finish before this lookup.
+            try {
+                if (manager.getWorkInfoById(request.id).get(2, TimeUnit.SECONDS) != null) return true
+                val infos = manager.getWorkInfosForUniqueWork(UNIQUE_PREFIX + recordingId).get(2, TimeUnit.SECONDS)
+                if (policy == ExistingWorkPolicy.KEEP && infos.any { !it.state.isFinished }) return false
+            } catch (t: Exception) {
+                throw EnqueueOutcomeUnknown(t)
+            }
+            throw EnqueueOutcomeUnknown()
         }
 
         /** Queued, running or waiting to retry. A lookup that fails or runs on the main thread answers true: unknown is not "no work". */
@@ -333,17 +338,6 @@ class RecordingProcessWorker(
             }.getOrElse {
                 Log.w(TAG, "active-work lookup failed; treating the recording as having work", it)
                 true
-            }
-        }
-
-        private fun hasActiveWork(manager: WorkManager, recordingId: String, excluding: java.util.UUID): Boolean {
-            if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) return false
-            return runCatching {
-                manager.getWorkInfosForUniqueWork(UNIQUE_PREFIX + recordingId).get(2, TimeUnit.SECONDS)
-                    .any { !it.state.isFinished && it.id != excluding }
-            }.getOrElse {
-                Log.w(TAG, "active-work lookup failed; reporting the enqueue as started", it)
-                false
             }
         }
 
@@ -395,28 +389,13 @@ fun createWorkManagerRecordingJobScheduler(
         { manager, name, policy, request -> manager.enqueueUniqueWork(name, policy, request) },
 ): RecordingJobScheduler =
     object : RecordingJobScheduler {
-        override fun enqueue(recordingId: String, templateId: String?, retranscribe: Boolean, apiModelOverride: ApiModelOverride?) {
-            enqueueReportingStart(recordingId, templateId, retranscribe, apiModelOverride)
-        }
+        override suspend fun enqueue(recordingId: String, templateId: String?, retranscribe: Boolean, apiModelOverride: ApiModelOverride?): EnqueueResult =
+            enqueueSaved(recordingId, templateId, retranscribe, apiModelOverride)
 
-        override suspend fun enqueueSaved(recordingId: String, templateId: String?, retranscribe: Boolean, apiModelOverride: ApiModelOverride?, keepExisting: Boolean) {
-            runInterruptible(Dispatchers.IO) {
-                RecordingProcessWorker.enqueue(context.applicationContext, recordingId, templateId, retranscribe, apiModelOverride, awaitOperation = true, keepExisting = keepExisting, submit = submit)
+        override suspend fun enqueueSaved(recordingId: String, templateId: String?, retranscribe: Boolean, apiModelOverride: ApiModelOverride?, keepExisting: Boolean): EnqueueResult =
+            withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) {
+                if (RecordingProcessWorker.enqueue(context.applicationContext, recordingId, templateId, retranscribe, apiModelOverride, keepExisting = keepExisting, submit = submit)) EnqueueResult.STARTED_OR_REPLACED else EnqueueResult.KEPT
             }
-        }
-
-        override fun enqueueReportingStart(
-            recordingId: String,
-            templateId: String?,
-            retranscribe: Boolean,
-            apiModelOverride: ApiModelOverride?,
-        ): Boolean = RecordingProcessWorker.enqueue(
-            context = context.applicationContext,
-            recordingId = recordingId,
-            templateId = templateId,
-            retranscribe = retranscribe,
-            apiModelOverride = apiModelOverride,
-        )
 
         override fun hasActiveWork(recordingId: String): Boolean = RecordingProcessWorker.isWorkActive(context.applicationContext, recordingId)
 

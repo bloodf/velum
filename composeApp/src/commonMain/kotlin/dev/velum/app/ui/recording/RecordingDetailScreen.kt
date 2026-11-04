@@ -245,12 +245,20 @@ fun RecordingDetailScreen(
                 is ModeResolution.Proceed -> Unit
             }
         }
-        container.enqueueProcessing(
-            recordingId = recordingId,
-            templateId = templateId,
-            retranscribe = retranscribe,
-            apiModelOverride = apiModelOverride,
-        )
+        scope.launch {
+            try {
+                if (container.enqueueProcessing(
+                        recordingId = recordingId,
+                        templateId = templateId,
+                        retranscribe = retranscribe,
+                        apiModelOverride = apiModelOverride,
+                    ) == dev.velum.ai.pipeline.EnqueueResult.REJECTED) processError = strings.ux.genericError
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                processError = strings.ux.genericError
+            }
+        }
     }
 
     fun launchProcessing(

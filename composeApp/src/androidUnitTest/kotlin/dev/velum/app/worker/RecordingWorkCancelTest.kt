@@ -18,7 +18,7 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class, sdk = [34])
 class RecordingWorkCancelTest {
-    @Test fun cancel_all_cancels_queued_recording_work() {
+    @Test fun cancel_all_cancels_queued_recording_work() = kotlinx.coroutines.runBlocking {
         val context = ApplicationProvider.getApplicationContext<Context>()
         WorkManagerTestInitHelper.initializeTestWorkManager(context)
         val scheduler = createWorkManagerRecordingJobScheduler(context)

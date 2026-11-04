@@ -27,6 +27,7 @@ import java.nio.file.Files
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Duration.Companion.seconds
+import kotlin.test.assertFalse
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
@@ -80,10 +81,11 @@ class QueuedRecoveryTest {
                         }
                     }
                 } else object : RecordingJobScheduler {
-                    override fun enqueue(recordingId: String, templateId: String?, retranscribe: Boolean, apiModelOverride: dev.velum.core.settings.ApiModelOverride?) {
+                    override suspend fun enqueue(recordingId: String, templateId: String?, retranscribe: Boolean, apiModelOverride: dev.velum.core.settings.ApiModelOverride?): dev.velum.ai.pipeline.EnqueueResult {
                         enqueueFailure?.let { throw it }
                         enqueued += recordingId
                         enqueuedTemplates += templateId
+                        return dev.velum.ai.pipeline.EnqueueResult.STARTED_OR_REPLACED
                     }
                     override fun hasActiveWork(recordingId: String) = recordingId in busy
                 }
@@ -124,19 +126,55 @@ class QueuedRecoveryTest {
         val pipeline = AudioImportPipeline(container, normalize = { NormalizedAudio(wav.path, 16_000, 1_000, null, "async-hash") })
         kotlinx.coroutines.coroutineScope {
             val result = async(Dispatchers.Default) { pipeline.importFile(source.path) }
-            val id = kotlinx.coroutines.withTimeout(5_000) {
-                var found: String? = null
-                while (found == null) {
-                    found = container.repository.getMeta("import_sha256_async-hash")
-                    if (found == null) kotlinx.coroutines.delay(10)
+            val id = try {
+                val foundId = kotlinx.coroutines.withTimeout(5_000) {
+                    var found: String? = null
+                    while (found == null) {
+                        found = container.repository.getMeta("import_sha256_async-hash")
+                        if (found == null) kotlinx.coroutines.delay(10)
+                    }
+                    found
                 }
-                found
-            }
-            kotlinx.coroutines.withTimeout(5_000) { submitted.await() }
-            assertEquals("queued", container.repository.getRecording(id)!!.status)
-            operation.setException(IllegalStateException("enqueue failed"))
+                kotlinx.coroutines.withTimeout(5_000) { submitted.await() }
+                assertEquals("queued", container.repository.getRecording(foundId)!!.status)
+                foundId
+            } finally { operation.setException(IllegalStateException("enqueue failed")) }
             assertIs<ImportResult.Failed>(result.await())
             assertEquals("failed", container.repository.getRecording(id)!!.status)
+        }
+    }
+
+    @Test fun delete_waits_for_delayed_workmanager_acceptance_then_cancels_the_accepted_request() = withContainer(realScheduler = true) { container, _ ->
+        val id = "rec-delete-delayed"
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val file = File(context.cacheDir, "imports/$id.wav").apply { parentFile!!.mkdirs(); writeBytes(ByteArray(8)) }
+        container.row(id, "queued")
+        container.repository.updateLocalPath(id, file.path, 1, 8)
+        val operation = SettableFuture.create<Operation.State.SUCCESS>()
+        savedOperation = operation
+        submitRealBeforeDelay = true
+        kotlinx.coroutines.coroutineScope {
+            val enqueue = launch(Dispatchers.Default) { container.enqueueSavedRecording(id) }
+            val deletion = async(Dispatchers.Default) { submitted.await(); container.deleteRecordingForever(id) }
+            try {
+                kotlinx.coroutines.withTimeout(5_000) { submitted.await() }
+                kotlinx.coroutines.withTimeout(5_000) {
+                    while (!container.recordingProcessor.isDeleting(id)) kotlinx.coroutines.yield()
+                }
+                assertTrue(file.exists())
+                assertEquals("queued", container.repository.getRecording(id)?.status)
+                assertFalse(deletion.isCompleted)
+            } finally { operation.set(Operation.SUCCESS) }
+            enqueue.join()
+            assertTrue(deletion.await())
+            val infos = withContext(Dispatchers.IO) {
+                WorkManager.getInstance(ApplicationProvider.getApplicationContext<Context>())
+                    .getWorkInfosForUniqueWork(RecordingProcessWorker.UNIQUE_PREFIX + id).get()
+            }
+            assertEquals(listOf(androidx.work.WorkInfo.State.CANCELLED), infos.map { it.state })
+            assertFalse(file.exists())
+            assertEquals(null, container.repository.getRecording(id))
+            assertEquals(dev.velum.ai.pipeline.EnqueueResult.REJECTED, container.recordingJobs.enqueue(id, null, true, null))
         }
     }
 
@@ -148,9 +186,11 @@ class QueuedRecoveryTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         kotlinx.coroutines.coroutineScope {
             val job = launch(Dispatchers.Default) { container.enqueueSavedRecording("rec-cancel-after-submit") }
-            kotlinx.coroutines.withTimeout(5_000) { submitted.await() }
-            job.cancel()
-            operation.set(Operation.SUCCESS)
+            try {
+                kotlinx.coroutines.withTimeout(5_000) { submitted.await() }
+                job.cancel()
+                assertFalse(job.isCompleted, "cancel returned before acceptance")
+            } finally { operation.set(Operation.SUCCESS) }
             job.join()
             assertTrue(job.isCancelled)
             assertEquals("queued", container.repository.getRecording("rec-cancel-after-submit")!!.status)
@@ -171,7 +211,7 @@ class QueuedRecoveryTest {
         var original: java.util.UUID? = null
         beforeSubmit = {
             beforeSubmit = null
-            RecordingProcessWorker.enqueue(context, id, "velum.meeting", true, null, awaitOperation = true)
+            RecordingProcessWorker.enqueue(context, id, "velum.meeting", true, null)
             original = manager.getWorkInfosForUniqueWork(name).get().single().id
         }
         assertEquals(1, withContext(Dispatchers.IO) { container.requeueStrandedRecordings() })
@@ -254,7 +294,7 @@ class QueuedRecoveryTest {
         val root = ModelStoreDir(Files.createTempDirectory("velum-queued").toString())
         val container = AppContainer(
             slowStore, DriverFactory(context), modelStoreRoot = root,
-            recordingJobSchedulerFactory = { _, _ -> RecordingJobScheduler { id, _, _, _ -> enqueued += id } },
+            recordingJobSchedulerFactory = { _, _ -> RecordingJobScheduler { id, _, _, _ -> enqueued += id; dev.velum.ai.pipeline.EnqueueResult.STARTED_OR_REPLACED } },
         )
         try {
             container.row("rec-queued", "queued")

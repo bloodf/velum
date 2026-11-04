@@ -236,9 +236,12 @@ class AppContainer(
         voiceProfiles = voiceProfileStore,
     )
 
-    val recordingJobs: RecordingJobScheduler =
+    val recordingJobs: RecordingJobScheduler = dev.velum.ai.pipeline.admittingRecordingJobScheduler(
+        recordingProcessor,
+        appScope,
         recordingJobSchedulerFactory?.invoke(recordingProcessor, appScope)
-            ?: createCoroutineRecordingJobScheduler(recordingProcessor, appScope)
+            ?: createCoroutineRecordingJobScheduler(recordingProcessor, appScope),
+    )
 
     val askAiChat = AskAiChat(
         aiRouter = aiRouter,
@@ -262,7 +265,7 @@ class AppContainer(
     )
 
     val micRecordings = dev.velum.app.platform.MicRecordingController(micCapture) { id ->
-        !wipeGate.isWiping && repository.getRecording(id)?.let { it.source == "phone" && it.status == "recording" } == true
+        !wipeGate.isWiping && !recordingProcessor.isDeleting(id) && repository.getRecording(id)?.let { it.source == "phone" && it.status == "recording" } == true
     }
     val activeMicRecordingId: String? get() = micRecordings.owner.value?.recordingId
 
@@ -317,12 +320,16 @@ class AppContainer(
             // Before the row goes: a cancelled download can't save, and a running one would find no row and add it back (#407).
             val row = repository.getRecording(id)
             row?.session_id?.let(device::cancelDownloadOf)
-            recordingJobs.cancel(id)
+            if (kotlinx.coroutines.withTimeoutOrNull(WIPE_JOIN_TIMEOUT) { recordingJobs.cancel(id); true } != true) {
+                println("VelumDelete: recording scheduling did not stop")
+                return@withContext false
+            }
             if (!recordingProcessor.stopRuns(id, WIPE_JOIN_TIMEOUT)) {
                 println("VelumDelete: recording processing did not stop")
                 return@withContext false
             }
-            micRecordings.underLock {
+            // Scheduler lock is released before taking the mic lock: finalize enqueues while holding it.
+            micRecordings.underLock(WIPE_JOIN_TIMEOUT) {
             val (micStopped, micFile) = stopMicRecording(id)
             if (!micStopped) return@underLock false
             downloadPersistMutex.withLock {
@@ -361,14 +368,13 @@ class AppContainer(
         false
     }
 
-    fun enqueueProcessing(
+    suspend fun enqueueProcessing(
         recordingId: String,
         templateId: String? = null,
         retranscribe: Boolean = true,
         apiModelOverride: ApiModelOverride? = null,
-    ) {
+    ): dev.velum.ai.pipeline.EnqueueResult =
         recordingJobs.enqueue(recordingId, templateId, retranscribe, apiModelOverride)
-    }
 
     /**
      * Enqueues the job for a row already saved as `queued`. If that fails or is cancelled the row would wait for a
@@ -384,11 +390,12 @@ class AppContainer(
         try {
             kotlinx.coroutines.currentCoroutineContext().ensureActive()
             withContext(NonCancellable) {
-                recordingJobs.enqueueSaved(recordingId, templateId, retranscribe, apiModelOverride)
+                val result = recordingJobs.enqueueSaved(recordingId, templateId, retranscribe, apiModelOverride)
+                if (result == dev.velum.ai.pipeline.EnqueueResult.REJECTED) throw dev.velum.ai.pipeline.RecordingEnqueueRejected()
                 accepted = true
             }
         } catch (t: Throwable) {
-            if (!accepted) markQueuedFailed(recordingId)
+            if (!accepted && t !is dev.velum.ai.pipeline.EnqueueOutcomeUnknown) markQueuedFailed(recordingId)
             throw t
         }
         kotlinx.coroutines.currentCoroutineContext().ensureActive()
@@ -413,17 +420,18 @@ class AppContainer(
             val templateId = resolveTemplateForEnqueue(repository, match?.template_id)
             kotlinx.coroutines.currentCoroutineContext().ensureActive()
             withContext(NonCancellable) {
-                recordingJobs.enqueueSaved(
+                val result = recordingJobs.enqueueSaved(
                     recordingId = recordingId,
                     templateId = templateId,
                     retranscribe = true,
                     apiModelOverride = match?.let { AutoFlowResolve.modelOverride(it) },
                     keepExisting = keepExisting,
                 )
+                if (result == dev.velum.ai.pipeline.EnqueueResult.REJECTED) throw dev.velum.ai.pipeline.RecordingEnqueueRejected()
                 accepted = true
             }
         } catch (t: Throwable) {
-            if (!accepted && (markFailedOnCancel || t !is kotlinx.coroutines.CancellationException)) markQueuedFailed(recordingId)
+            if (!accepted && t !is dev.velum.ai.pipeline.EnqueueOutcomeUnknown && (markFailedOnCancel || t !is kotlinx.coroutines.CancellationException)) markQueuedFailed(recordingId)
             throw t
         }
         kotlinx.coroutines.currentCoroutineContext().ensureActive()

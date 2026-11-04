@@ -78,7 +78,7 @@ class LiveTranscriberHandoffTest {
         installRecordingFilesDir(root.path)
         container = AppContainer(InMemorySecureStore(), DriverFactory(context),
             modelStoreRoot = ModelStoreDir(File(root, "models").path), micCapture = mic,
-            recordingJobSchedulerFactory = { _, _ -> RecordingJobScheduler { _, _, _, _ -> queued++ } })
+            recordingJobSchedulerFactory = { _, _ -> RecordingJobScheduler { _, _, _, _ -> queued++; dev.velum.ai.pipeline.EnqueueResult.STARTED_OR_REPLACED } })
         recordingId = runBlocking { container.createLocalRecording(status = "recording") }
     }
 

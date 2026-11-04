@@ -48,6 +48,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -77,6 +78,7 @@ class DeleteForeverTest {
         override var onPcmChunk: ((ByteArray) -> Unit)? = null
         var stops = 0
         var failStop = false
+        var timeoutStop = false
         override suspend fun start(absolutePath: String, inputSource: MicInputSource): MicStartResult {
             val session = MicSessionIdentity(1, absolutePath)
             sessions.value = MicSessionState.Recording(absolutePath, 0, session.token)
@@ -84,6 +86,7 @@ class DeleteForeverTest {
         }
         override suspend fun stop(): MicStopResult {
             stops++
+            if (timeoutStop) awaitCancellation()
             if (failStop) return MicStopResult.Failed("stop failed")
             val path = (sessions.value as MicSessionState.Recording).absolutePath
             sessions.value = MicSessionState.Stopped(path, 1, 0, token = 1)
@@ -97,17 +100,18 @@ class DeleteForeverTest {
     /** Holds a processing run at its first thermal check, until it is cancelled. */
     private class HoldingThermal : ThermalPolicy {
         val held = CompletableDeferred<Unit>()
+        val cleaned = CompletableDeferred<Unit>()
         override fun isHot() = true
         override suspend fun awaitCool(onPaused: suspend (message: String) -> Unit) {
             held.complete(Unit)
-            awaitCancellation()
+            try { awaitCancellation() } finally { cleaned.complete(Unit) }
         }
     }
 
     private fun withContainer(
         mic: MicCapture? = null,
         thermal: ThermalPolicy? = null,
-        jobs: ((RecordingProcessor, CoroutineScope) -> RecordingJobScheduler)? = { _, _ -> RecordingJobScheduler { _, _, _, _ -> } },
+        jobs: ((RecordingProcessor, CoroutineScope) -> RecordingJobScheduler)? = { _, _ -> RecordingJobScheduler { _, _, _, _ -> dev.velum.ai.pipeline.EnqueueResult.STARTED_OR_REPLACED } },
         block: suspend (AppContainer) -> Unit,
     ) {
         Dispatchers.setMain(Dispatchers.Unconfined)
@@ -142,10 +146,139 @@ class DeleteForeverTest {
             transcript = "**Ana** · 0:00\nSynthetic transcript.", summaryMarkdown = null, status = status,
         )
 
+    @Test fun admission_rejects_missing_deleted_and_deleting_rows_without_submitting() {
+        val submitted = mutableListOf<String>()
+        withContainer(jobs = { _, _ -> RecordingJobScheduler { id, _, _, _ ->
+            submitted += id
+            dev.velum.ai.pipeline.EnqueueResult.STARTED_OR_REPLACED
+        } }) { container ->
+            val jobs = container.recordingJobs
+            assertEquals(dev.velum.ai.pipeline.EnqueueResult.REJECTED, jobs.enqueue("rec-missing", null, true, null))
+            container.addRow("rec-a")
+            container.addRow("rec-other")
+            assertTrue(container.recordingProcessor.beginDeletion("rec-a"))
+            try {
+                assertEquals(dev.velum.ai.pipeline.EnqueueResult.REJECTED, jobs.enqueue("rec-a", null, true, null))
+                assertEquals(dev.velum.ai.pipeline.EnqueueResult.STARTED_OR_REPLACED, jobs.enqueue("rec-other", null, true, null))
+            } finally { container.recordingProcessor.endDeletion("rec-a") }
+            assertEquals(dev.velum.ai.pipeline.EnqueueResult.STARTED_OR_REPLACED, jobs.enqueue("rec-a", null, true, null))
+            assertTrue(container.deleteRecordingForever("rec-a"))
+            assertEquals(dev.velum.ai.pipeline.EnqueueResult.REJECTED, jobs.enqueue("rec-a", null, true, null))
+            assertEquals(listOf("rec-other", "rec-a"), submitted)
+        }
+    }
+
+    @Test fun deletion_waits_for_submission_acceptance_and_leaves_other_recordings_free() {
+        val entered = CompletableDeferred<Unit>()
+        val accepted = CompletableDeferred<Unit>()
+        val cancelled = CompletableDeferred<Unit>()
+        val jobs = object : RecordingJobScheduler {
+            override suspend fun enqueue(recordingId: String, templateId: String?, retranscribe: Boolean, apiModelOverride: ApiModelOverride?): dev.velum.ai.pipeline.EnqueueResult {
+                if (recordingId == "rec-a") { entered.complete(Unit); accepted.await() }
+                return dev.velum.ai.pipeline.EnqueueResult.STARTED_OR_REPLACED
+            }
+            override suspend fun cancel(recordingId: String) { cancelled.complete(Unit) }
+        }
+        withContainer(jobs = { _, _ -> jobs }) { container ->
+            val file = File(recordingsDirectoryPath(), "rec-a.wav").apply { parentFile!!.mkdirs(); writeBytes(ByteArray(8)) }
+            container.addRow("rec-a", path = file.path)
+            container.addRow("rec-other")
+            coroutineScope {
+                val enqueue = launch(Dispatchers.Default) { container.enqueueSavedRecording("rec-a") }
+                entered.await()
+                val deletion = async(Dispatchers.Default) { container.deleteRecordingForever("rec-a") }
+                try {
+                    kotlinx.coroutines.withTimeout(5_000) {
+                        while (!container.recordingProcessor.isDeleting("rec-a")) kotlinx.coroutines.yield()
+                    }
+                    assertFalse(cancelled.isCompleted, "cancel overtook pending acceptance")
+                    assertTrue(file.exists())
+                    assertNotNull(container.repository.getRecording("rec-a"))
+                    assertEquals(dev.velum.ai.pipeline.EnqueueResult.STARTED_OR_REPLACED, container.recordingJobs.enqueue("rec-other", null, true, null))
+                } finally { accepted.complete(Unit) }
+                enqueue.join()
+                assertTrue(deletion.await())
+                assertTrue(cancelled.isCompleted)
+                assertFalse(file.exists())
+                assertEquals(dev.velum.ai.pipeline.EnqueueResult.REJECTED, container.recordingJobs.enqueue("rec-a", null, true, null))
+            }
+        }
+    }
+
+    @Test fun unresolved_cancellation_retains_audio_and_row_until_retry() {
+        val entered = CompletableDeferred<Unit>()
+        val finish = CompletableDeferred<Unit>()
+        val jobs = object : RecordingJobScheduler {
+            override suspend fun enqueue(recordingId: String, templateId: String?, retranscribe: Boolean, apiModelOverride: ApiModelOverride?) =
+                dev.velum.ai.pipeline.EnqueueResult.STARTED_OR_REPLACED
+            override suspend fun cancel(recordingId: String) { entered.complete(Unit); finish.await() }
+        }
+        withContainer(jobs = { _, _ -> jobs }) { container ->
+            val file = File(recordingsDirectoryPath(), "rec-a.wav").apply { parentFile!!.mkdirs(); writeBytes(ByteArray(8)) }
+            container.addRow("rec-a", path = file.path)
+            try {
+                assertFalse(container.deleteRecordingForever("rec-a"))
+                assertTrue(entered.isCompleted)
+                assertTrue(file.exists())
+                assertNotNull(container.repository.getRecording("rec-a"))
+                assertFalse(container.recordingProcessor.isDeleting("rec-a"))
+            } finally { finish.complete(Unit) }
+            assertTrue(container.deleteRecordingForever("rec-a"))
+            assertFalse(file.exists())
+        }
+    }
+
+    @Test fun cancellation_keeps_admission_locked_after_its_waiter_stops_waiting() {
+        val cancelling = CompletableDeferred<Unit>()
+        val finishCancel = CompletableDeferred<Unit>()
+        val jobs = object : RecordingJobScheduler {
+            override suspend fun enqueue(recordingId: String, templateId: String?, retranscribe: Boolean, apiModelOverride: ApiModelOverride?) =
+                dev.velum.ai.pipeline.EnqueueResult.STARTED_OR_REPLACED
+            override suspend fun cancel(recordingId: String) { cancelling.complete(Unit); finishCancel.await() }
+        }
+        withContainer(jobs = { _, _ -> jobs }) { container ->
+            container.addRow("rec-a")
+            container.addRow("rec-other")
+            coroutineScope {
+                val waiter = launch { container.recordingJobs.cancel("rec-a") }
+                cancelling.await()
+                waiter.cancel()
+                waiter.join()
+                val enqueue = async(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+                    container.recordingJobs.enqueue("rec-a", null, true, null)
+                }
+                try {
+                    assertFalse(enqueue.isCompleted)
+                    assertEquals(dev.velum.ai.pipeline.EnqueueResult.STARTED_OR_REPLACED, container.recordingJobs.enqueue("rec-other", null, true, null))
+                } finally { finishCancel.complete(Unit) }
+                assertEquals(dev.velum.ai.pipeline.EnqueueResult.STARTED_OR_REPLACED, enqueue.await())
+            }
+        }
+    }
+
+    @Test fun rejected_saved_enqueue_marks_a_surviving_queued_row_failed() = withContainer { container ->
+        container.addRow("rec-a", status = "queued")
+        assertTrue(container.recordingProcessor.beginDeletion("rec-a"))
+        try {
+            val failure = runCatching { container.enqueueSavedRecording("rec-a") }.exceptionOrNull()
+            assertTrue(failure is dev.velum.ai.pipeline.RecordingEnqueueRejected)
+            assertEquals("failed", container.repository.getRecording("rec-a")?.status)
+        } finally { container.recordingProcessor.endDeletion("rec-a") }
+    }
+
+    @Test fun unknown_accepted_outcome_does_not_mark_a_possible_job_failed() {
+        withContainer(jobs = { _, _ -> RecordingJobScheduler { _, _, _, _ -> throw dev.velum.ai.pipeline.EnqueueOutcomeUnknown() } }) { container ->
+            container.addRow("rec-a", status = "queued")
+            val failure = runCatching { container.enqueueSavedRecording("rec-a") }.exceptionOrNull()
+            assertTrue(failure is dev.velum.ai.pipeline.EnqueueOutcomeUnknown)
+            assertEquals("queued", container.repository.getRecording("rec-a")?.status)
+        }
+    }
+
     @Test fun deleting_a_recording_drops_its_queued_work() {
         val cancelled = mutableListOf<String>()
         val jobs = object : RecordingJobScheduler {
-            override fun enqueue(recordingId: String, templateId: String?, retranscribe: Boolean, apiModelOverride: ApiModelOverride?) = Unit
+            override suspend fun enqueue(recordingId: String, templateId: String?, retranscribe: Boolean, apiModelOverride: ApiModelOverride?): dev.velum.ai.pipeline.EnqueueResult = dev.velum.ai.pipeline.EnqueueResult.STARTED_OR_REPLACED
             override suspend fun cancel(recordingId: String) { cancelled += recordingId }
         }
         withContainer(jobs = { _, _ -> jobs }) { container ->
@@ -157,7 +290,7 @@ class DeleteForeverTest {
 
     @Test fun failed_scheduler_cancel_keeps_recording_and_audio() {
         val jobs = object : RecordingJobScheduler {
-            override fun enqueue(recordingId: String, templateId: String?, retranscribe: Boolean, apiModelOverride: ApiModelOverride?) = Unit
+            override suspend fun enqueue(recordingId: String, templateId: String?, retranscribe: Boolean, apiModelOverride: ApiModelOverride?): dev.velum.ai.pipeline.EnqueueResult = dev.velum.ai.pipeline.EnqueueResult.STARTED_OR_REPLACED
             override suspend fun cancel(recordingId: String) { error("cancel failed") }
         }
         withContainer(jobs = { _, _ -> jobs }) { container ->
@@ -180,7 +313,8 @@ class DeleteForeverTest {
                 thermal.held.await()
                 try {
                     assertTrue(container.deleteRecordingForever("rec-a"))
-                    assertTrue(job.isCompleted, "the row went while its job was still running")
+                    assertTrue(thermal.cleaned.isCompleted, "the row went before processor cleanup")
+                    kotlinx.coroutines.withTimeout(5_000) { job.join() }
                 } finally {
                     job.cancel()
                 }
@@ -210,6 +344,20 @@ class DeleteForeverTest {
             assertFalse(container.deleteRecordingForever("rec-a"))
             assertNotNull(container.micRecordings.owner.value)
             assertNotNull(container.repository.getRecording("rec-a"))
+            assertTrue(file.exists())
+        }
+    }
+
+    @Test fun mic_stop_timeout_keeps_owner_recording_and_audio() {
+        val mic = FakeCapture().apply { timeoutStop = true }
+        withContainer(mic = mic) { container ->
+            val file = File(recordingsDirectoryPath(), "rec-a.wav").apply { parentFile!!.mkdirs(); writeBytes(ByteArray(8)) }
+            container.addRow("rec-a", status = "recording", path = file.path)
+            container.micRecordings.startOrAttach("rec-a", file.path)
+            kotlinx.coroutines.withTimeout(20_000) { assertFalse(container.deleteRecordingForever("rec-a")) }
+            assertNotNull(container.micRecordings.owner.value)
+            assertNotNull(container.repository.getRecording("rec-a"))
+            assertFalse(container.recordingProcessor.isDeleting("rec-a"))
             assertTrue(file.exists())
         }
     }

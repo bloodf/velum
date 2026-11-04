@@ -96,7 +96,7 @@ class PartialRecordingRecoveryTest {
         val root = Files.createTempDirectory("velum-startup-wav-test").toFile()
         val container = AppContainer(InMemorySecureStore(), DriverFactory(context),
             modelStoreRoot = ModelStoreDir(File(root, "models").path),
-            recordingJobSchedulerFactory = { _, _ -> RecordingJobScheduler { _, _, _, _ -> error("Recovery must use explicit test callback") } })
+            recordingJobSchedulerFactory = { _, _ -> RecordingJobScheduler { _, _, _, _ -> error("Recovery must use explicit test callback"); dev.velum.ai.pipeline.EnqueueResult.STARTED_OR_REPLACED } })
         lateinit var id: String
         suspend fun row() = container.repository.observeRecording(id).first()!!
         fun wave(name: String, sample: Byte): File = File(root, name).also { f -> WavWriter(f.path).apply { writePcm(ByteArray(3200) { sample }) }.finish() }

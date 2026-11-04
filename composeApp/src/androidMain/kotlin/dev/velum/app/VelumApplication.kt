@@ -158,18 +158,17 @@ class VelumApplication : Application() {
                     onCleanupFailure = { t -> Log.w(TAG, "Orphan audio sweep skipped (${t::class.simpleName})") },
                 )
                 runCatching {
-                    recoverPartialMicRecordings(
-                        recordingsDirPath = recordingsDirectoryPath(),
-                        repository = built.repository,
-                        protectedRecording = built.micRecordings::protects,
-                        onRecovered = { recordingId ->
-                            built.enqueueProcessing(
-                                recordingId = recordingId,
-                                templateId = null,
-                                retranscribe = true,
-                            )
-                        },
-                    )
+                    val recovered = built.micRecordings.underLock {
+                        recoverPartialMicRecordings(
+                            recordingsDirPath = recordingsDirectoryPath(),
+                            repository = built.repository,
+                            protectedRecording = { built.micRecordings.protects(it) || built.recordingProcessor.isDeleting(it) },
+                        )
+                    }
+                    for (id in recovered.recoveredIds) built.runDetached {
+                        runCatching { built.enqueueSavedRecording(id) }
+                            .onFailure { Log.w(TAG, "Recovered recording enqueue failed (${it::class.simpleName})") }
+                    }
                     dev.velum.app.platform.reconcileInterruptedMicDrafts(built, recordingsDirectoryPath())
                 }.onFailure { t ->
                     Log.e(TAG, "Partial mic recovery failed", t)

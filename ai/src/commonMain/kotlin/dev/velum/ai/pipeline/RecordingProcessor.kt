@@ -150,6 +150,11 @@ class RecordingProcessor(
     fun endDeletion(recordingId: String) {
         admission.update { it.copy(deleting = it.deleting - recordingId) }
     }
+    fun isDeleting(recordingId: String): Boolean = recordingId in admission.value.deleting
+
+    suspend fun canSchedule(recordingId: String): Boolean =
+        !isDeleting(recordingId) && repository.getRecording(recordingId) != null
+
     private val nextRun = MutableStateFlow(0L)
     private val activeRuns = MutableStateFlow<Map<String, Long>>(emptyMap())
     private val statusLock = Mutex()

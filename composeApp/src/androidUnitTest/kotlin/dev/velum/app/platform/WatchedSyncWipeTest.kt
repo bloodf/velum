@@ -39,7 +39,7 @@ class WatchedSyncWipeTest {
         val root = ModelStoreDir(Files.createTempDirectory("velum-sync-wipe").toString())
         val container = AppContainer(
             InMemorySecureStore(), DriverFactory(context), modelStoreRoot = root,
-            recordingJobSchedulerFactory = { _, _ -> RecordingJobScheduler { _, _, _, _ -> } },
+            recordingJobSchedulerFactory = { _, _ -> RecordingJobScheduler { _, _, _, _ -> dev.velum.ai.pipeline.EnqueueResult.STARTED_OR_REPLACED } },
         )
         context.getSharedPreferences("velum_watched_folders", Context.MODE_PRIVATE).edit()
             .putString("tree_uris", FakeDocumentsProvider.treeUri().toString()).commit()
