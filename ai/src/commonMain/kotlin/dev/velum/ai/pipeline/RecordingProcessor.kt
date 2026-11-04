@@ -112,6 +112,7 @@ class RecordingProcessor(
     },
     private val thermal: ThermalPolicy = NoOpThermalPolicy,
     private val opusDecoder: () -> OpusDecoder = ::createOpusDecoder,
+    private val voiceProfiles: dev.velum.ai.local.VoiceProfileStore? = null,
     private val wipeGate: WipeGate = WipeGate(),
 ) {
     private val nextRun = MutableStateFlow(0L)
@@ -357,9 +358,15 @@ class RecordingProcessor(
                     }
                     val withSpeakers = transcription.copy(segments = mergedSegments)
                     transcriptMarkdown = TranscriptFormatter.toMarkdown(withSpeakers, diarization)
+                    val newSpeakers = diarization != null && diarization.spans.isNotEmpty()
+                    // The transcript carries this run's speaker numbering from the next line on. The cached embeddings
+                    // are numbered like the speaker rows, so the previous run's go first: from here until this run's
+                    // are cached, a cancel or crash leaves "no cached voice" (nothing to promote), never the old
+                    // numbering beside new labels, which could enroll the wrong person's voice.
+                    if (newSpeakers) voiceProfiles?.dropSpeakerCache(recordingId)
                     repository.updateTranscript(recordingId, listOfNotNull(transcriptMarkdown, storedMarkers).joinToString("\n\n"))
 
-                    if (diarization != null && diarization.spans.isNotEmpty()) {
+                    if (diarization != null && newSpeakers) {
                         val bySpeaker = diarization.spans.groupBy { it.speakerId }
                         val speakers = bySpeaker.map { (id, spans) ->
                             val talkMs = spans.sumOf { (it.endMs - it.startMs).coerceAtLeast(0) }
@@ -371,6 +378,7 @@ class RecordingProcessor(
                             )
                         }
                         repository.updateSpeakers(recordingId, speakers)
+                        voiceProfiles?.cacheSpeakerEmbeddings(recordingId, diarization.embeddings)
                     }
                 }
             }

@@ -1,6 +1,7 @@
 package dev.velum.app.i18n
 
 import dev.velum.ai.ApiErrorSanitizer
+import dev.velum.ai.local.SPEAKER_CACHE_NOT_DROPPED_MESSAGE
 import dev.velum.ai.pipeline.AUDIO_FILE_EMPTY_MESSAGE
 import dev.velum.ai.pipeline.AUDIO_FILE_MISSING_MESSAGE
 import dev.velum.ai.pipeline.INSUFFICIENT_STORAGE_MESSAGE
@@ -19,6 +20,7 @@ class ProcessingFailureTextTest {
     /** Saved text as common code and the engines write it, with synthetic paths, and the copy it must become. */
     private val cases: List<Pair<String, (Strings) -> String>> = listOf(
         INSUFFICIENT_STORAGE_MESSAGE to { s -> s.ux.insufficientStorage },
+        SPEAKER_CACHE_NOT_DROPPED_MESSAGE to { s -> s.added.speakerCacheNotDropped },
         "Unsupported audio format (WebM/Matroska). This file is not Ogg Opus, WAV or raw 16 kHz PCM, so it was not transcribed; re-download it from the device or convert it to WAV or Ogg Opus." to { s -> s.ux.processingFailedUnsupportedFormat },
         WAV_NO_DATA_MESSAGE to { s -> s.added.processingFailedWavNoData },
         AUDIO_FILE_MISSING_MESSAGE to { s -> s.added.processingFailedAudioMissing },
