@@ -146,6 +146,10 @@ class DeviceViewModel(
     }
 
     fun startScan() {
+        // A scan publishes Scanning, which closes the live client below, and competes with the transfer for the radio.
+        // Any download job still alive counts, including one that was cancelled and is unwinding (cancelDownload clears
+        // the shown id at once, the job can take a while to finish). The button is disabled too; this covers any caller.
+        if (downloads.children.any() || downloadJob?.isActive == true && _sessionUi.value.downloadingSessionId != null) return
         viewModelScope.launch { ble.startScan() }
     }
 
@@ -310,17 +314,18 @@ class DeviceViewModel(
             lastDownloadedRecordingId = null,
             lastDownloadCrc = null,
         )
-        DownloadProgressNotifier.ensureChannel()
-        DownloadProgressNotifier.setCancelHandler(DownloadNotifyKind.DeviceSession) { cancelDownload() }
-        DownloadProgressNotifier.show(
-            kind = DownloadNotifyKind.DeviceSession,
-            title = DeviceUiCopy.downloadNotificationTitle(locale),
-            body = DeviceUiCopy.downloadingSession(locale, sessionId),
-            progress = 0f,
-            cancelLabel = DeviceUiCopy.cancel(locale),
-        )
         val serial = dedupDeviceSerial(keys.serialNumber, connectedSerial)
         try {
+            // Inside the try: if the notifier throws, the shown download id is cleared by the handlers below.
+            DownloadProgressNotifier.ensureChannel()
+            DownloadProgressNotifier.setCancelHandler(DownloadNotifyKind.DeviceSession) { cancelDownload() }
+            DownloadProgressNotifier.show(
+                kind = DownloadNotifyKind.DeviceSession,
+                title = DeviceUiCopy.downloadNotificationTitle(locale),
+                body = DeviceUiCopy.downloadingSession(locale, sessionId),
+                progress = 0f,
+                cancelLabel = DeviceUiCopy.cancel(locale),
+            )
             val outcome = withContext(Dispatchers.IO) {
                 assembleDecryptAndPersist(
                     initialClient = c,
