@@ -15,6 +15,8 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -67,5 +69,22 @@ class ImportAtomicityTest {
         assertEquals(1, container.repository.storageUsage().recordingCount)
         val survivors = dir.listFiles { f -> f.name.startsWith("normalized-") }.orEmpty().map { it.path }
         assertEquals(listOf(container.repository.getRecording(created.single().recordingId)!!.local_path), survivors)
+    }
+
+    @Test fun a_watched_import_is_refused_when_its_file_is_deleted_while_it_normalizes() = withContainer { container, dir ->
+        val source = File(dir, "synthetic.wav").apply { writeBytes(ByteArray(64) { it.toByte() }) }
+        val wav = File(dir, "normalized.wav").apply { writeBytes(ByteArray(64)) }
+        val sourceHash = dev.velum.app.platform.sha256File(source.path)
+        val pipeline = AudioImportPipeline(container, normalize = {
+            // The tombstone checks that run before the insert have passed for the source (the content one is read
+            // after this returns, so only the source tombstone can land in the window); the user deletes it now.
+            container.repository.setMeta("import_deleted_$sourceHash", "1")
+            NormalizedAudio(wav.path, 16_000, 1_000, null, "synthetic-content-hash")
+        })
+        val result = pipeline.importFile(source.path, source = WATCHED_SOURCE)
+        assertEquals(ImportResult.Deleted("synthetic-content-hash"), result)
+        assertEquals(0, container.repository.storageUsage().recordingCount, "the deleted recording came back")
+        assertNotNull(container.repository.getMeta("import_deleted_$sourceHash"), "later syncs would decode this copy again")
+        assertFalse(wav.exists(), "the refused copy was left behind")
     }
 }
