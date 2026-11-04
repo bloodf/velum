@@ -3,6 +3,7 @@ package dev.velum.app.importing
 import dev.velum.ai.pipeline.resolveTemplateForEnqueue
 import dev.velum.app.di.AppContainer
 import dev.velum.app.di.WipeInProgressException
+import dev.velum.core.data.KeyedInsert
 import dev.velum.core.data.RecordingIds
 import dev.velum.core.autoflow.AutoFlowResolve
 import dev.velum.app.platform.AudioNormalizer
@@ -87,11 +88,12 @@ class AudioImportPipeline(
             val durationSeconds = (normalized.durationMs / 1000L).coerceAtLeast(0L)
             val id = RecordingIds.newId()
             // One transaction: a concurrent import of the same audio, or a crash, can't leave two recordings or a
-            // recording without its dedupe keys. A file the user chose again is wanted again: its watched-folder
-            // tombstones go in the same step.
-            // guard returns null when a wipe refuses, so a kept id of null (inserted) is wrapped in a list.
-            val kept = container.wipeGate.guard {
-                listOf(container.repository.insertRecordingUnlessKeyed(
+            // recording without its dedupe keys. A watched import is refused if a tombstone appeared since the early
+            // check (a delete in between); any other import is the user choosing the file again, so its tombstones go.
+            val hashes = listOf(sourceHash, contentHash).distinct()
+            val watched = source == WATCHED_SOURCE
+            val inserted = container.wipeGate.guard {
+                container.repository.insertRecordingUnlessKeyed(
                     id = id,
                     title = title ?: container.formatRecordingTitle(epochSecondsNow()),
                     source = source,
@@ -99,14 +101,22 @@ class AudioImportPipeline(
                     durationSeconds = durationSeconds,
                     localPath = normalized.wavPath,
                     status = "queued",
-                    keys = listOf(sourceHash, contentHash).distinct().map { "import_sha256_$it" },
-                    clearKeys = listOf(sourceHash, contentHash).distinct().map { IMPORT_DELETED_PREFIX + it },
-                ))
+                    keys = hashes.map { "import_sha256_$it" },
+                    refuseKeys = if (watched) hashes.map { IMPORT_DELETED_PREFIX + it } else emptyList(),
+                    clearKeys = if (watched) emptyList() else hashes.map { IMPORT_DELETED_PREFIX + it },
+                )
             } ?: throw WipeInProgressException()
-            val existing = kept.single()
-            if (existing != null) {
-                discardNormalized(normalized.wavPath, keptBy = existing)
-                return@withContext ImportResult.Duplicate(existing, contentHash)
+            when (inserted) {
+                is KeyedInsert.Existing -> {
+                    discardNormalized(normalized.wavPath, keptBy = inserted.recordingId)
+                    return@withContext ImportResult.Duplicate(inserted.recordingId, contentHash)
+                }
+                KeyedInsert.Refused -> {
+                    container.repository.setMeta(IMPORT_DELETED_PREFIX + sourceHash, epochSecondsNow().toString())
+                    discardNormalized(normalized.wavPath, keptBy = null)
+                    return@withContext ImportResult.Deleted(contentHash)
+                }
+                KeyedInsert.Inserted -> Unit
             }
             // Resolve AutoFlow before first enqueue so KEEP cannot drop template/model.
             val match = container.repository.findMatchingAutoflow(
@@ -129,8 +139,9 @@ class AudioImportPipeline(
     }
 
     /**
-     * Removes a normalized copy no recording will use. Its name carries the source hash, so it can only be another
-     * recording's file if both hashes match, which a platform hashing the source could do: [keptBy] is checked anyway.
+     * Removes a normalized copy no recording will use. On Android its name carries the source hash, so it can only be
+     * another recording's file if both hashes match; on desktop the name has no source hash and two sources can map to
+     * one path. Either way [keptBy] is checked, so the kept recording's file is never removed.
      */
     private suspend fun discardNormalized(wavPath: String, keptBy: String?) {
         val keptPath = keptBy?.let { container.repository.getRecording(it)?.local_path }

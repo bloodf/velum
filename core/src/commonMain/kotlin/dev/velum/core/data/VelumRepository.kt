@@ -898,10 +898,11 @@ class VelumRepository(
     }
 
     /**
-     * Inserts a recording and its dedupe [keys] (meta keys, each mapped to the new id) in one transaction, unless a key
-     * already maps to a recording that exists: then nothing is inserted, every key is pointed at that recording
-     * and its id is returned. Two imports of the same audio cannot both insert, and a failure cannot leave a
-     * recording without its keys. [clearKeys] are removed in the same transaction. Returns null when inserted.
+     * Inserts a recording and its dedupe [keys] (meta keys, each mapped to the new id) in one transaction.
+     * First, if any of [refuseKeys] is set (a watched-folder tombstone), nothing is written and it is [KeyedInsert.Refused].
+     * Then, if a key already maps to a recording that exists, nothing is inserted, every key is pointed at that
+     * recording and it is [KeyedInsert.Existing]. Otherwise the row and the keys are written and [clearKeys] removed.
+     * Two imports of the same audio cannot both insert, and a failure cannot leave a recording without its keys.
      */
     suspend fun insertRecordingUnlessKeyed(
         id: String,
@@ -912,14 +913,15 @@ class VelumRepository(
         localPath: String,
         status: String,
         keys: List<String>,
+        refuseKeys: List<String> = emptyList(),
         clearKeys: List<String> = emptyList(),
         createdAt: Long = epochSeconds(),
-    ): String? = withContext(dbContext) {
-        val existing = db.transactionWithResult {
+    ): KeyedInsert = withContext(dbContext) {
+        val result = db.transactionWithResult {
+            if (refuseKeys.any { q.getMeta(it).executeAsOneOrNull() != null }) return@transactionWithResult KeyedInsert.Refused
             val found = keys.firstNotNullOfOrNull { key ->
                 q.getMeta(key).executeAsOneOrNull()?.takeIf { it.isNotBlank() && q.selectRecordingById(it).executeAsOneOrNull() != null }
             }
-            val owner = found ?: id
             if (found == null) {
                 q.insertRecording(
                     id = id,
@@ -940,11 +942,11 @@ class VelumRepository(
                 )
                 clearKeys.forEach { q.deleteMeta(it) }
             }
-            keys.forEach { q.setMeta(it, owner) }
-            found
+            keys.forEach { q.setMeta(it, found ?: id) }
+            if (found == null) KeyedInsert.Inserted else KeyedInsert.Existing(found)
         }
-        if (existing == null) tryIndex { indexRecording(id, title, null, null) }
-        existing
+        if (result == KeyedInsert.Inserted) tryIndex { indexRecording(id, title, null, null) }
+        result
     }
 
     /**
@@ -1226,3 +1228,10 @@ class VelumRepository(
 }
 
 expect fun epochSecondsNow(): Long
+
+/** Outcome of [VelumRepository.insertRecordingUnlessKeyed]. */
+sealed interface KeyedInsert {
+    data object Inserted : KeyedInsert
+    data class Existing(val recordingId: String) : KeyedInsert
+    data object Refused : KeyedInsert
+}

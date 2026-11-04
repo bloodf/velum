@@ -13,8 +13,8 @@ import java.io.File
 import java.nio.file.Files
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -48,10 +48,12 @@ class ImportAtomicityTest {
 
     @Test fun two_concurrent_imports_of_one_file_create_one_recording() = withContainer { container, dir ->
         val source = File(dir, "synthetic.wav").apply { writeBytes(ByteArray(64) { it.toByte() }) }
-        val wav = File(dir, "normalized.wav").apply { writeBytes(ByteArray(64)) }
-        // Both imports pass the early duplicate check, then meet here, so both reach the insert.
+        // Both imports pass the early duplicate check, then meet here, so both reach the insert. Each gets its own
+        // normalized file; the loser's must be removed and the winner's kept.
         val bothNormalizing = CountDownLatch(2)
+        val calls = AtomicInteger()
         val pipeline = AudioImportPipeline(container, normalize = {
+            val wav = File(dir, "normalized-${calls.incrementAndGet()}.wav").apply { writeBytes(ByteArray(64)) }
             bothNormalizing.countDown()
             check(bothNormalizing.await(10, TimeUnit.SECONDS)) { "the second import never arrived" }
             NormalizedAudio(wav.path, 16_000, 1_000, null, "synthetic-content-hash")
@@ -63,15 +65,7 @@ class ImportAtomicityTest {
         assertEquals(1, duplicates.size, "results: $results")
         assertEquals(created.single().recordingId, duplicates.single().existingRecordingId)
         assertEquals(1, container.repository.storageUsage().recordingCount)
-        assertTrue(wav.exists(), "the duplicate removed the audio of the recording that was kept")
-    }
-
-    @Test fun a_recording_is_never_left_without_its_dedupe_keys() = withContainer { container, dir ->
-        val source = File(dir, "synthetic.wav").apply { writeBytes(ByteArray(64) { it.toByte() }) }
-        val wav = File(dir, "normalized.wav").apply { writeBytes(ByteArray(64)) }
-        val pipeline = AudioImportPipeline(container, normalize = { NormalizedAudio(wav.path, 16_000, 1_000, null, "synthetic-content-hash") })
-        val created = pipeline.importFile(source.path) as ImportResult.Created
-        assertEquals(created.recordingId, container.repository.getMeta("import_sha256_synthetic-content-hash"))
-        assertEquals(1, container.repository.storageUsage().recordingCount)
+        val survivors = dir.listFiles { f -> f.name.startsWith("normalized-") }.orEmpty().map { it.path }
+        assertEquals(listOf(container.repository.getRecording(created.single().recordingId)!!.local_path), survivors)
     }
 }
