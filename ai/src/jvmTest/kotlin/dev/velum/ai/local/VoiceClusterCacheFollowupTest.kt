@@ -33,9 +33,10 @@ class VoiceClusterCacheFollowupTest {
         // Encrypted data exists but its key is gone: ensureKey refuses to mint a new one.
         store(this).withReady { upsert("Synthetic Alice", embedding) }
         val lostKey = store(this, InMemorySecureStore())
-        val named = lostKey.cacheAndNameSpeakers("rec-1", mapOf("S1" to embedding), matchThreshold = 0.5f)
+        val named = lostKey.nameSpeakers(mapOf("S1" to embedding), matchThreshold = 0.5f)
         assertTrue(named.names.isEmpty())
         assertTrue(named.unavailable, "the caller must be told naming could not run")
+        lostKey.cacheSpeakerEmbeddings("rec-1", mapOf("S1" to embedding))
         assertFalse(cache.resolve("rec-1").exists(), "nothing may be cached without a key")
         assertTrue(cache.walkFiles().none { it.name.endsWith(".f32") }, "no plaintext fallback")
     }
@@ -47,18 +48,22 @@ class VoiceClusterCacheFollowupTest {
             override suspend fun remove(key: String) = Unit
             override suspend fun contains(key: String) = false
         }
-        val named = store(this, broken).cacheAndNameSpeakers("rec-2", mapOf("S1" to embedding), matchThreshold = 0.5f)
+        val brokenStore = store(this, broken)
+        val named = brokenStore.nameSpeakers(mapOf("S1" to embedding), matchThreshold = 0.5f)
         assertTrue(named.names.isEmpty())
         assertTrue(named.unavailable)
+        brokenStore.cacheSpeakerEmbeddings("rec-2", mapOf("S1" to embedding))
         assertFalse(cache.resolve("rec-2").exists())
     }
 
     @Test fun with_a_key_the_cache_is_written_and_matches_are_named() = runTest {
         val store = store(this)
         store.withReady { upsert("Synthetic Alice", embedding) }
-        val named = store.cacheAndNameSpeakers("rec-3", mapOf("S1" to embedding), matchThreshold = 0.5f)
+        val named = store.nameSpeakers(mapOf("S1" to embedding), matchThreshold = 0.5f)
         assertEquals(mapOf("S1" to "Synthetic Alice"), named.names)
         assertFalse(named.unavailable)
+        assertFalse(cache.resolve("rec-3").exists(), "naming alone caches nothing")
+        store.cacheSpeakerEmbeddings("rec-3", mapOf("S1" to embedding))
         assertContentEquals(embedding, store.withReady { cachedClusterEmbedding("rec-3", "S1") })
     }
 
@@ -110,8 +115,9 @@ class VoiceClusterCacheFollowupTest {
         assertTrue(cached.exists())
         // A different, empty secure store: encrypted data exists but its key is gone.
         val lostKey = store(this, InMemorySecureStore())
-        val outcome = lostKey.cacheAndNameSpeakers("rec-6", mapOf("S1" to floatArrayOf(9f, 9f, 9f)), matchThreshold = 0.5f)
+        val outcome = lostKey.nameSpeakers(mapOf("S1" to floatArrayOf(9f, 9f, 9f)), matchThreshold = 0.5f)
         assertTrue(outcome.unavailable)
+        lostKey.cacheSpeakerEmbeddings("rec-6", mapOf("S1" to floatArrayOf(9f, 9f, 9f)))
         assertFalse(cached.exists(), "the previous run's embeddings must not survive to be read as this run's speakers")
     }
 

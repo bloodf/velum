@@ -1239,7 +1239,10 @@ val PtBr = Strings(
         retryProcessing = "Tentar de novo",
         waveformA11y = "Progresso da reprodução",
     ),
-    added = MoreStrings(speakersChangedWhileOpen = "Os oradores mudaram enquanto isto estava aberto. Confira os nomes e tente de novo."),
+    added = MoreStrings(
+        speakerCacheNotDropped = "Não foi possível apagar as vozes de falantes salvas, então a gravação ficou como estava. Tente de novo.",
+        speakersChangedWhileOpen = "Os oradores mudaram enquanto isto estava aberto. Confira os nomes e tente de novo.",
+    ),
 )
 
 val En = Strings(
@@ -1849,7 +1852,10 @@ val En = Strings(
         retryProcessing = "Try again",
         waveformA11y = "Playback progress",
     ),
-    added = MoreStrings(speakersChangedWhileOpen = "Speakers changed while this was open. Check the names and try again."),
+    added = MoreStrings(
+        speakerCacheNotDropped = "The saved speaker voices could not be cleared, so the recording was left unchanged. Try again.",
+        speakersChangedWhileOpen = "Speakers changed while this was open. Check the names and try again.",
+    ),
 )
 
 val LocalStrings = staticCompositionLocalOf { PtBr }

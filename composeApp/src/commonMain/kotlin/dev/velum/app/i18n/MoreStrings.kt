@@ -9,5 +9,6 @@ package dev.velum.app.i18n
  * Do not move existing fields: many open changes touch them.
  */
 data class MoreStrings(
+    val speakerCacheNotDropped: String,
     val speakersChangedWhileOpen: String,
 )
