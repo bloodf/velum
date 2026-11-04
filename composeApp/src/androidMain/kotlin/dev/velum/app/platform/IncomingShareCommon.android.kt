@@ -1,3 +1,3 @@
 package dev.velum.app.platform
 
-actual fun consumeIncomingSharePath(): String? = IncomingShare.takePendingPath()
+actual suspend fun awaitIncomingSharePath(): SharedFile? = IncomingShare.next()

@@ -13,6 +13,7 @@ import dev.velum.core.data.VelumRepository.Companion.IMPORT_DELETED_PREFIX
 import dev.velum.core.data.epochSecondsNow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 sealed class ImportResult {
@@ -48,6 +49,19 @@ class AudioImportPipeline(
     suspend fun importShared(copyPath: String): ImportResult = importFile(copyPath, source = "share").also { result ->
         if (result == ImportResult.Failed(WIPE_IN_PROGRESS)) withContext(Dispatchers.IO) { deleteFileAtPath(copyPath) }
     }
+
+    /**
+     * [importShared] owned by the app, not the caller: if the screen that received the share is recreated mid-import the
+     * import still finishes and the recording exists; only this wait is cancelled. A wipe still stops it through the gate.
+     */
+    suspend fun importSharedDetached(copyPath: String): ImportResult = startSharedDetached(copyPath).await()
+
+    /**
+     * Starts the owned import and returns it. Imports of shares are serialized by the container's mutex, so the same file
+     * shared twice, even from two activity instances, is a Duplicate rather than two recordings and two processing jobs.
+     */
+    fun startSharedDetached(copyPath: String): kotlinx.coroutines.Deferred<ImportResult> =
+        container.runDetached { container.shareImportMutex.withLock { importShared(copyPath) } }
 
     private suspend fun importNow(
         absolutePath: String,
