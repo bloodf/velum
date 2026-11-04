@@ -7,6 +7,7 @@ import dev.velum.app.platform.PartialTransferFileStore
 import dev.velum.app.ui.DeviceViewModel
 import dev.velum.app.ui.DownloadWipeResult
 import dev.velum.app.ui.DownloadedSessionAudio
+import dev.velum.ble.BleConnectionState
 import dev.velum.ble.BleTransport
 import dev.velum.ble.client.CrcStatus
 import dev.velum.ble.crypto.JcaFileDecryptor
@@ -14,7 +15,6 @@ import dev.velum.ble.crypto.createFileDecryptor
 import dev.velum.ble.crypto.createSessionCipher
 import dev.velum.ble.crypto.rsaKeyPairToPem
 import dev.velum.core.model.ProcessingWarning
-import dev.velum.ble.BleConnectionState
 import dev.velum.ble.fake.FakeBleTransport
 import dev.velum.ble.fake.FakePlaudPeripheral
 import dev.velum.ble.fake.TransferFaults
@@ -685,13 +685,41 @@ class DeviceResumeRestartTest {
             )
             runBlocking {
                 withTimeout(20_000) { saving.await() }
-                vm.startScan()
-                delay(200)
+                vm.startScan() // the main dispatcher is Unconfined here, so a launched scan would already have run
                 assertFalse(ble.connectionState.value is BleConnectionState.Scanning, "a scan must not start during a download")
                 release.complete(Unit)
             }
             awaitOutcome(vm)
             assertEquals("rec-synthetic", vm.sessionUi.value.lastDownloadedRecordingId)
+        } finally { tearDown() }
+    }
+
+    @Test fun a_scan_right_after_a_cancel_is_ignored_while_the_download_unwinds() {
+        try {
+            val saving = CompletableDeferred<Unit>()
+            val release = CompletableDeferred<Unit>()
+            val fake = peripheral()
+            val ble = FakeBleTransport(fake)
+            val vm = run(
+                fake,
+                persist = { _ ->
+                    saving.complete(Unit)
+                    // A write that ignores cancellation: the job outlives the cancel.
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { release.await() }
+                    "rec-synthetic"
+                },
+                await = false,
+                transport = { ble },
+            )
+            runBlocking {
+                withTimeout(20_000) { saving.await() }
+                vm.cancelDownload()
+                assertEquals(null, vm.sessionUi.value.downloadingSessionId, "cancel clears the shown id at once")
+                vm.startScan()
+                assertFalse(ble.connectionState.value is BleConnectionState.Scanning, "the unwinding job still owns the link")
+                release.complete(Unit)
+                withTimeout(30_000) { vm.awaitDownloads() }
+            }
         } finally { tearDown() }
     }
 
