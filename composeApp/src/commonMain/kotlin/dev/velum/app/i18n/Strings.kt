@@ -498,6 +498,7 @@ data class UxStrings(
     val voiceProfilesChangeBlocked: String,
 
     val voiceProfilesEmpty: String,
+    val voiceProfilesNoCachedVoice: String,
     val voiceProfilesSaved: String,
     val voiceProfilesDeleted: String,
     val voiceProfilesExport: String,
@@ -1104,6 +1105,7 @@ val PtBr = Strings(
         voiceProfilesFilesChanged = "Os arquivos do perfil mudaram. A lista foi atualizada e nada foi removido.",
         voiceProfilesExportBlocked = "Revise os perfis ilegíveis antes de exportar.",
         voiceProfilesChangeBlocked = "Este perfil não pôde ser lido. Revise seus arquivos antes de substituí-lo.",
+        voiceProfilesNoCachedVoice = "Renomeado, mas a amostra de voz desta gravação não está mais disponível, então nenhum perfil de voz foi salvo.",
         voiceProfilesEmpty = "Nenhum perfil ainda. Nomeie um orador em uma gravação para cadastrar.",
         voiceProfilesSaved = "Perfil salvo",
         voiceProfilesDeleted = "Perfil removido",
@@ -1710,6 +1712,7 @@ val En = Strings(
         voiceProfilesFilesChanged = "The profile’s files changed. The list was refreshed and nothing was removed.",
         voiceProfilesExportBlocked = "Review the unreadable profiles before exporting.",
         voiceProfilesChangeBlocked = "This profile could not be read. Review its files before replacing it.",
+        voiceProfilesNoCachedVoice = "Renamed, but this recording's voice sample is no longer available, so no voice profile was saved.",
         voiceProfilesEmpty = "No profiles yet — name a speaker in a recording to enroll.",
         voiceProfilesSaved = "Profile saved",
         voiceProfilesDeleted = "Profile deleted",

@@ -53,6 +53,11 @@ data class DiarizationResult(
     val namedSpeakers: Map<String, String> = emptyMap(),
     val engineId: String,
     val modelId: String,
+    /**
+     * True when speaker naming could not run because the voice key was unavailable. [namedSpeakers] is then
+     * empty for that reason, not because nobody matched, so names already typed by the user must be kept.
+     */
+    val speakerNamesUnavailable: Boolean = false,
 )
 
 data class LlmRequest(
