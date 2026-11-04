@@ -13,7 +13,7 @@ import java.nio.file.StandardCopyOption
  * - the file is copied through a temp file that is fsynced, size-checked and renamed before the row is touched;
  * - the cache file is deleted only after the row points at the new file;
  * - an existing destination is reused only if it is byte-identical to the source (hash), else the row is left alone;
- * - a source that is already gone (moved before a crash, or evicted) with a valid destination present just repoints;
+ * - a missing source leaves its row unchanged because an existing destination has no verified provenance;
  * - rows that share one cache file each get their own copy, and the source goes once all of them succeeded;
  * Returns the number of rows repointed.
  */
@@ -62,8 +62,6 @@ private suspend fun migrateRow(
     val dest = File(recordingsDir, "$id.$ext")
     when {
         source.isFile -> placeFile(source, dest)
-        // Moved before a crash (or evicted): a complete destination is the rescued copy, so the row just follows it.
-        dest.isFile && dest.length() > 0L -> Unit
         else -> return null
     }
     repository.updateLocalPath(id, dest.absolutePath, row.duration_seconds, row.size_bytes)

@@ -168,8 +168,11 @@ class AudioNormalizeFixturesTest {
         assertTrue("different content, different output", firstShared.wavPath != secondShared.wavPath)
         assertEquals(3, File(firstShared.wavPath).readBytes()[44].toInt())
         assertEquals(4, File(secondShared.wavPath).readBytes()[44].toInt())
-        // The same content again maps to the same output (a retry).
-        assertEquals(secondShared.wavPath, AudioNormalizer().normalizeToWav(x.absolutePath, 16_000).wavPath)
+        // Every attempt owns its output, even for identical input.
+        val retry = AudioNormalizer().normalizeToWav(x.absolutePath, 16_000)
+        assertTrue(secondShared.wavPath != retry.wavPath)
+        File(retry.wavPath).delete()
+        assertTrue(File(secondShared.wavPath).isFile)
     }
 
     @Test

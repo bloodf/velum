@@ -47,9 +47,8 @@ actual class AudioNormalizer actual constructor() {
         // The only copy of an imported recording: it lives with the other recordings, never in the evictable cache.
         // No row points here until the import succeeds; a failed or duplicate import deletes it.
         val outDir = File(recordingsDirectoryPath()).apply { mkdirs() }
-        // The source hash is part of the name: two different sources that share a file name (two shares called
-        // audio.wav) get different outputs, while the same source maps to the same one (#319).
-        val outFile = File(outDir, "import_" + normalizedFileName(source.nameWithoutExtension, targetSampleRateHz, hash))
+        val name = normalizedFileName(source.nameWithoutExtension, targetSampleRateHz, hash).removeSuffix(".wav")
+        val outFile = File(outDir, "import_${name}_${java.util.UUID.randomUUID()}.wav")
         sweepStalePartFiles(outDir, System.currentTimeMillis() - STALE_PART_AGE_MS)
 
         // Fast path: PCM16 mono WAV at the target rate is streamed through, never read whole (#319). The header is
@@ -83,7 +82,7 @@ actual class AudioNormalizer actual constructor() {
             java.io.RandomAccessFile(temp, "rw").use { it.fd.sync() }
             java.nio.file.Files.move(
                 temp.toPath(), outFile.toPath(),
-                java.nio.file.StandardCopyOption.REPLACE_EXISTING, java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+                java.nio.file.StandardCopyOption.ATOMIC_MOVE,
             )
             syncDirectory(outFile.parentFile)
             onOutput(outFile) // the temp name is gone; a cancel that lands after this removes the final file

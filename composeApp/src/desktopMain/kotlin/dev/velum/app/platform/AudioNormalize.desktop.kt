@@ -20,7 +20,8 @@ actual class AudioNormalizer actual constructor() {
         require(source.isFile) { "Missing import: $sourcePath" }
         val hash = sha256File(sourcePath)
         val outDir = File(source.parentFile, "normalized").apply { mkdirs() }
-        val outFile = File(outDir, "${source.nameWithoutExtension}_$targetSampleRateHz.wav")
+        val outputId = java.util.UUID.randomUUID()
+        val outFile = File(outDir, "${source.nameWithoutExtension}_${targetSampleRateHz}_$outputId.wav")
         val name = source.name.lowercase()
         when {
             name.endsWith(".wav") || name.endsWith(".wave") -> {
@@ -38,7 +39,7 @@ actual class AudioNormalizer actual constructor() {
             }
             name.endsWith(".ogg") || name.endsWith(".opus") -> {
                 // Leave as-is for RecordingProcessor Opus path; still return a copy path + hash.
-                val dest = File(outDir, source.name)
+                val dest = File(outDir, "${source.nameWithoutExtension}_$outputId.${source.extension}")
                 source.copyTo(dest, overwrite = true)
                 NormalizedAudio(
                     wavPath = dest.absolutePath,
