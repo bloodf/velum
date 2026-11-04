@@ -33,7 +33,9 @@ import org.junit.runner.RunWith
  *   must not be Incomplete. The journal mode is reported.
  * The database is its own file (`wipe-marker-scan.db`, never velum.db), but wipeAllData also clears the app's other
  * wipeable state (recordings directory, settings): run it on a disposable install. Skipped unless `wipeMarker=true`.
- * It is expected to FAIL on a build without the VACUUM and checkpoint step (#441); that is the control.
+ * It is expected to FAIL on a build without the VACUUM, the checkpoint and the full-text optimize steps (#441): the
+ * lowercase index form survives a VACUUM alone; that is the control. The word before the title token shares no prefix
+ * with any token, so the index cannot prefix-compress one token into another.
  *
  * Run: adb -s emulator-5554 shell am instrument -w -e class dev.velum.app.wipe.WipeMarkerScanDeviceTest \
  *   -e wipeMarker true -e velumDeviceWalk false dev.velum.app.test/dev.velum.app.devicewalk.DeviceWalkTestRunner
@@ -71,7 +73,7 @@ class WipeMarkerScanDeviceTest {
                     )
                 }
                 container.repository.insertRecording(
-                    id = "rec-scan-marker", sessionId = null, folderId = null, title = "x ${tokens["title"]}", source = "phone",
+                    id = "rec-scan-marker", sessionId = null, folderId = null, title = "mark ${tokens["title"]}", source = "phone",
                     deviceSerial = null, startedAt = 1, durationSeconds = 1, sizeBytes = 0, localPath = null,
                     transcript = "Speaker 1: ${tokens["transcript"]}", summaryMarkdown = "## ${tokens["summary"]}", status = "ready",
                 )
