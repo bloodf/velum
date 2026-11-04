@@ -137,13 +137,19 @@ internal class PartialTransferFileStore private constructor(
         /**
          * Removes the session's files by name, without opening or creating anything, so it works on a full disk.
          * Only the data file decides the result: it holds the audio, and a writer still unwinding can leave a late
-         * `.offset`, which the next open ignores. With no salt, no partial with a serial can exist.
+         * `.offset`, which the next open ignores. Without a valid salt, all files for the session are removed.
          */
         fun delete(dir: File, sessionId: Long, deviceSerial: String?): Boolean {
             val serialPart = if (deviceSerial.isNullOrBlank()) {
                 NO_SERIAL
             } else {
-                val salt = File(dir, SALT_FILE).takeIf { it.isFile }?.readBytes()?.takeIf { it.size == SALT_BYTES } ?: return true
+                val salt = File(dir, SALT_FILE).takeIf { it.isFile }?.readBytes()?.takeIf { it.size == SALT_BYTES }
+                if (salt == null) {
+                    if (!dir.exists()) return true
+                    val files = dir.listFiles()?.filter { it.name.startsWith("$sessionId-") } ?: return false
+                    files.forEach { it.delete() }
+                    return files.none { it.name.endsWith(DATA_SUFFIX) && it.exists() }
+                }
                 serialHash(salt, deviceSerial)
             }
             val key = keyOf(sessionId, serialPart)
