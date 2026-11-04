@@ -235,8 +235,11 @@ class DetachedShareImportTest {
         withContainer { container, dir ->
             copyShare(context, silentWav(File(dir, "w.wav")), "w")
             assertTrue(pendingEntry(context) != null)
-            container.wipeAllData()
-            assertEquals(null, pendingEntry(context), "wiped audio must not be offered again after a restart")
+            // The database is gone, so the step that deletes rows throws: a process dying there is the case that matters.
+            // The marker must already be cleared; if the clear came after the row deletion it would survive this.
+            container.databaseHandle.driver.close()
+            runCatching { container.wipeAllData() }
+            assertEquals(null, pendingEntry(context), "a wipe that dies mid-way must not leave a share to be imported again")
         }
     }
 
@@ -251,6 +254,11 @@ class DetachedShareImportTest {
             assertEquals(0L, container.repository.storageUsage().recordingCount)
             // The marker is newer than the deletion: this is a fresh share of a once-deleted file: import it.
             assertIs<ImportResult.Created>(AudioImportPipeline(container).importShared(wav.path, recoveredAtMs = nowMs + 120_000))
+            // Equal to the second: the deletion happened in the same second as the marker, so it counts (not older).
+            container.repository.wipeAllUserData()
+            container.repository.setMeta(dev.velum.core.data.VelumRepository.IMPORT_DELETED_PREFIX + hash, "1700000000")
+            assertIs<ImportResult.Deleted>(AudioImportPipeline(container).importShared(wav.path, recoveredAtMs = 1_700_000_000_500))
+            assertIs<ImportResult.Created>(AudioImportPipeline(container).importShared(wav.path, recoveredAtMs = 1_700_000_001_000))
             // A share that was never recovered ignores tombstones, as before.
             container.repository.wipeAllUserData()
             container.repository.setMeta(dev.velum.core.data.VelumRepository.IMPORT_DELETED_PREFIX + hash, (nowMs / 1000).toString())

@@ -94,7 +94,7 @@ object IncomingShare {
 
     /**
      * Once per process start (IO thread): re-offers shares copied by a process that died before importing them, relying on
-     * the import's hash dedupe if one had in fact finished. Dropped (and an owned copy deleted) when older than
+     * the import's hash dedupe if one had in fact finished. Dedupe covers a finished import only: one that died half way (row created, hash keys not yet written) can still duplicate until #411 makes the row and its keys one transaction, and a queued row with no job is #415. Dropped (and an owned copy deleted) when older than
      * [MAX_PENDING_AGE_MS] in either direction, or after [MAX_ATTEMPTS] imports that never finished. Dropped without deleting
      * anything when the path is not one of our own `share_` copies. Dropped when the copy is gone. Shares this process marked
      * itself are left alone. The offer is flagged recovered with its marker time, so the UI stays quiet and a deletion made
@@ -103,6 +103,7 @@ object IncomingShare {
     fun recoverPending(context: Context, nowMs: Long = System.currentTimeMillis()): List<String> = synchronized(lock) {
         val keep = mutableListOf<Entry>()
         val offered = mutableListOf<Entry>()
+        var capped = 0
         for (e in entries(context)) {
             val file = File(e.path)
             val own = isOwnCopy(context, file)
@@ -110,11 +111,13 @@ object IncomingShare {
             when {
                 !own -> Unit // not ours: drop the entry, touch nothing
                 e.path in markedThisProcess -> keep += e
-                age > MAX_PENDING_AGE_MS || age < -MAX_PENDING_AGE_MS || e.attempts >= MAX_ATTEMPTS -> file.delete()
+                age > MAX_PENDING_AGE_MS || age < -MAX_PENDING_AGE_MS -> file.delete()
+                e.attempts >= MAX_ATTEMPTS -> { capped++; file.delete() }
                 !file.isFile || file.length() == 0L -> Unit
                 else -> { keep += e; offered += e }
             }
         }
+        if (capped > 0) android.util.Log.w("VelumShare", "dropped $capped share(s) whose import started $MAX_ATTEMPTS times without finishing")
         save(context, keep)
         offered.forEach { enqueue(SharedFile.Ready(it.path, recoveredAtMs = it.at)) }
         offered.map { it.path }

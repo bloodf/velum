@@ -80,20 +80,47 @@ class PendingShareTest {
         assertEquals(emptyList(), recover())
     }
 
-    @Test fun a_missing_copy_is_dropped_and_an_expired_or_future_one_is_dropped_with_its_copy() {
-        val gone = copyOne("gone").also { File(it).delete() }
-        val old = copyOne("old")
-        val future = copyOne("future")
+    /** Rewrites the marker for [path] with an exact timestamp, as an older process would have left it. */
+    private fun stamp(path: String, at: Long) {
+        prefs.edit().putStringSet("pending", prefs.getStringSet("pending", emptySet()).orEmpty().map {
+            if (it.substringAfter("|").substringAfter("|") == path) "$at|0|$path" else it
+        }.toSet()).commit()
+    }
+
+    @Test fun a_copy_that_is_gone_is_dropped() {
+        val gone = copyOne("gone").also { File(it).delete() } // wiped or cache cleared; the marker is fresh
         restart()
-        val now = System.currentTimeMillis()
-        // 'old' is more than a day behind the clock, 'future' more than a day ahead (the clock was set back).
-        assertEquals(emptyList(), recover(now + IncomingShare.MAX_PENDING_AGE_MS + 1))
-        assertFalse(File(old).exists(), "an expired copy must not stay in the cache")
-        assertFalse(File(future).exists())
+        assertEquals(emptyList(), recover())
+        assertEquals(emptyList(), IncomingShare.pendingPaths(context), "the entry for a missing copy must go")
         assertFalse(File(gone).exists())
-        assertEquals(emptyList(), IncomingShare.pendingPaths(context))
+    }
+
+    @Test fun an_entry_a_day_old_is_dropped_with_its_copy() {
+        val now = System.currentTimeMillis()
+        val old = copyOne("old")
+        stamp(old, now - IncomingShare.MAX_PENDING_AGE_MS - 1_000)
         restart()
         assertEquals(emptyList(), recover(now))
+        assertFalse(File(old).exists(), "an expired copy must not stay in the cache")
+        assertEquals(emptyList(), IncomingShare.pendingPaths(context))
+    }
+
+    @Test fun an_entry_stamped_in_the_future_is_dropped_with_its_copy() {
+        val now = System.currentTimeMillis()
+        val future = copyOne("future") // the clock was set back after this marker was written
+        stamp(future, now + IncomingShare.MAX_PENDING_AGE_MS + 1_000)
+        restart()
+        assertEquals(emptyList(), recover(now))
+        assertFalse(File(future).exists())
+        assertEquals(emptyList(), IncomingShare.pendingPaths(context))
+    }
+
+    @Test fun an_entry_exactly_at_the_age_limit_is_still_offered() {
+        val now = System.currentTimeMillis()
+        val edge = copyOne("edge")
+        stamp(edge, now - IncomingShare.MAX_PENDING_AGE_MS)
+        restart()
+        assertEquals(listOf(edge), recover(now))
     }
 
     @Test fun a_share_whose_import_keeps_dying_is_dropped_with_its_copy_after_three_starts() {
@@ -114,11 +141,11 @@ class PendingShareTest {
     }
 
     @Test fun a_wipe_clears_every_pending_share() {
-        val path = copyOne("wiped")
+        copyOne("wiped")
         clearPendingShares()
         restart()
         assertEquals(emptyList(), recover(), "a wiped share must not come back")
-        assertTrue(File(path).exists().let { true }) // the wipe deletes the copy elsewhere; recovery must not need it
+        assertEquals(emptyList(), IncomingShare.pendingPaths(context))
     }
 
     @Test fun a_path_that_is_not_our_own_copy_is_dropped_and_never_deleted() {
