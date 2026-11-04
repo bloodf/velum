@@ -229,6 +229,17 @@ class AppContainer(
     val activeMicRecordingId: String? get() = micRecordings.owner.value?.recordingId
 
     init {
+        // Earlier versions also kept every speaker embedding in plaintext, and a recording deleted while its
+        // diarization ran can leave its embeddings behind (#320).
+        appScope.launch(Dispatchers.IO) {
+            runCatching {
+                voiceProfileStore.purgePlaintextClusterCache()
+                // Listed before reading the recordings: a recording is stored before its processing caches anything.
+                val cached = voiceProfileStore.cachedRecordingIds()
+                val live = repository.recordingIds()
+                (cached - live).forEach { id -> runCatching { voiceProfileStore.deleteClusterCache(id) } }
+            }.onFailure { println("VelumStartup: voice cache cleanup failed: ${it::class.simpleName}") }
+        }
         // Template catalogs lazily read packaged assets; warm them off the main thread so the
         // composition-time lookups (template names, AutoFlow library) never hit the disk (StrictMode).
         appScope.launch(Dispatchers.IO) {
@@ -246,6 +257,12 @@ class AppContainer(
                 }
             }
         }
+    }
+
+    /** Deletes a recording for good, with the speaker embeddings its processing cached (#320). */
+    suspend fun deleteRecordingForever(id: String) {
+        repository.deleteRecordingHard(id)
+        withContext(Dispatchers.IO) { voiceProfileStore.deleteClusterCache(id) }
     }
 
     fun enqueueProcessing(

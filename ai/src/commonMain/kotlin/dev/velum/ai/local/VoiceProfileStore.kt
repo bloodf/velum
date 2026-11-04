@@ -403,8 +403,32 @@ class VoiceProfileStore(
         val dir = cacheDir.resolve(recordingId)
         dir.createDirectories()
         dir.resolve("${slug(speakerId)}.enc").writeBytes(enc)
-        // Keep legacy plaintext cache for one release of promoteCached compatibility.
-        dir.resolve("${slug(speakerId)}.f32").writeBytes(floatsToBytes(embedding))
+        // Encrypted only (#320); an older plaintext copy of this speaker goes too.
+        dir.resolve("${slug(speakerId)}.f32").deleteFile()
+    }
+
+    /**
+     * The cached speakers of [recordingId] after a diarization run: an older run's speakers go first, so a stale
+     * "S1" can't be enrolled as someone else's voice when this run numbered its speakers differently.
+     */
+    fun replaceClusterEmbeddings(recordingId: String, embeddingsBySpeaker: Map<String, FloatArray>) {
+        deleteClusterCache(recordingId)
+        embeddingsBySpeaker.forEach { (speakerId, embedding) -> cacheClusterEmbedding(recordingId, speakerId, embedding) }
+    }
+
+    /** Deletes plaintext `.f32` embeddings earlier versions wrote next to the encrypted ones (#320). No key needed. */
+    fun purgePlaintextClusterCache() {
+        cacheDir.walkFiles().filter { it.name.endsWith(".f32") }.forEach { it.deleteFile() }
+    }
+
+    /** Recordings with cached speaker embeddings, so startup can drop those whose recording is gone (#320). */
+    fun cachedRecordingIds(): Set<String> =
+        if (cacheDir.isDirectory()) cacheDir.listChildren().filter { it.isDirectory() }.map { it.name }.toSet() else emptySet()
+
+    /** The speaker embeddings of [recordingId], for when the recording is permanently deleted. */
+    fun deleteClusterCache(recordingId: String) {
+        require(safeProfileId(recordingId)) { "Invalid recording identifier." }
+        cacheDir.resolve(recordingId).deleteRecursively()
     }
 
     fun cachedClusterEmbedding(recordingId: String, speakerId: String): FloatArray? {
@@ -412,9 +436,8 @@ class VoiceProfileStore(
         if (encFile.exists()) {
             return bytesToFloats(cipher().decrypt(encFile.readBytes()))
         }
-        val file = cacheDir.resolve(recordingId).resolve("${slug(speakerId)}.f32")
-        if (!file.exists() || file.length() == 0L) return null
-        return bytesToFloats(file.readBytes())
+        // Plaintext copies from earlier versions are never read (#320).
+        return null
     }
 
     fun promoteCached(
