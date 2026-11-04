@@ -94,7 +94,7 @@ class AudioNormalizeLongDeviceTest {
                 assertTrue("wav size ${wav.length()} vs ~$expectedBytes", kotlin.math.abs(wav.length() - expectedBytes) < 16_000L * 2 * 2)
                 val line = "minutes=$m srcKiB=${src.length() shr 10} encodeMs=$encodeMs normalizeMs=$normMs " +
                     "x_realtime=${"%.1f".format(java.util.Locale.ROOT, m * 60_000.0 / normMs)} wavMiB=${wav.length() shr 20} " +
-                    "sampler=$sampling peakHeapAfterGcGrowthKiB=${if (sampling) (peak.get() shr 10).toString() else "n/a"}"
+                    "sampler=$sampling peakHeapAfterGcGrowthKiB=${if (sampling) (peak.get() shr 10).toString() else "heap-not-measured"}"
                 Log.i(TAG, line); lines += line
                 rates += normMs.toDouble() / m
                 if (sampling) growth += peak.get()
@@ -106,6 +106,8 @@ class AudioNormalizeLongDeviceTest {
             InstrumentationRegistry.getInstrumentation().sendStatus(0, Bundle().apply { putString("velum.norm319", lines.joinToString(" || ")) })
         }
         // Heap is only measured when the sampler ran (normSampler=false times the pure decode, without GC pauses).
+        // With normSampler=false growth is empty and the check below holds vacuously: the status line says
+        // "heap-not-measured" for those runs, so a pass without a sampler is not a heap result.
         assertTrue("heap growth ${growth.map { it shr 20 }} MiB exceeds ${MAX_HEAP_GROWTH_BYTES shr 20} MiB", growth.all { it < MAX_HEAP_GROWTH_BYTES })
         assertTrue("normalize took more than ${MAX_MS_PER_AUDIO_MINUTE} ms per audio minute: $rates", rates.all { it < MAX_MS_PER_AUDIO_MINUTE })
         assertTrue("time per audio minute not linear: $rates", rates.max() <= rates.min() * MAX_RATE_RATIO)
