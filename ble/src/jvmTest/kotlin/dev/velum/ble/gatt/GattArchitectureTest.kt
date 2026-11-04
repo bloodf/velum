@@ -34,6 +34,20 @@ class GattArchitectureTest {
         "ble/src/jvmTest/kotlin/dev/velum/ble/wifi/PreamblePerConnectionTest.kt",
     )
     private val allowedRoots = setOf("ble", "ble-testing")
+    // A call (`.f(`) or a bound/unbound reference (`::f`, `x::f`); a bare declaration `fun f` is not a use.
+    private val wifiSendUse = Regex("""(\.|::)\s*sendEncryptedFrame\b""")
+
+    private fun referencesWifiSend(text: String) = wifiSendUse.containsMatchIn(text)
+
+    @Test
+    fun wifiSendDetector_catchesCallsAndReferences_notDeclarations() {
+        assertTrue(referencesWifiSend("server.sendEncryptedFrame(b)"))
+        assertTrue(referencesWifiSend("val f = server::sendEncryptedFrame"))
+        assertTrue(referencesWifiSend("val g = WifiServer::sendEncryptedFrame"))
+        assertTrue(referencesWifiSend("server\n    .sendEncryptedFrame(b)"))
+        assertTrue(!referencesWifiSend("override suspend fun sendEncryptedFrame(b: ByteArray) {}"))
+        assertTrue(!referencesWifiSend("// mentions sendEncryptedFrame in prose"))
+    }
 
     private fun repoRoot(): File {
         var dir: File? = File("").absoluteFile
@@ -68,7 +82,7 @@ class GattArchitectureTest {
         // The Wi-Fi socket write: only the session (which guards and checks before it) and the one test that
         // exercises a server directly may call it. Servers and fakes may declare it, not call it.
         val wifiCallers = files.filter { (path, text) ->
-            path !in wifiSendCallers && ".sendEncryptedFrame(" in text
+            path !in wifiSendCallers && referencesWifiSend(text)
         }.map { it.first }
         assertTrue(wifiCallers.isEmpty(), "Only WifiFastTransferSession may call sendEncryptedFrame: $wifiCallers")
     }
