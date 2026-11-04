@@ -1,7 +1,10 @@
 package dev.velum.app.platform
 
 import kotlinx.cinterop.ExperimentalForeignApi
+import platform.Foundation.NSCachesDirectory
 import platform.Foundation.NSFileManager
+import platform.Foundation.NSSearchPathForDirectoriesInDomains
+import platform.Foundation.NSUserDomainMask
 
 actual fun recordingsDirectoryPath(): String = "/tmp/velum-recordings"
 
@@ -28,3 +31,18 @@ actual fun deleteRecordingsDirectory(): Boolean {
 
 /** iOS has no file-backed device transfer. */
 actual fun deleteDeviceTransferTemps(): Boolean = true
+
+actual fun isAppOwnedAudioPath(absolutePath: String): Boolean {
+    val caches = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, true).firstOrNull() as? String ?: return false
+    // No canonicalizing here: a path with ".." is not one the app wrote, so it isn't treated as owned.
+    return absolutePath.startsWith("$caches/imports/") && ".." !in absolutePath
+}
+
+actual fun isImportCacheCopy(absolutePath: String): Boolean {
+    val caches = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, true).firstOrNull() as? String ?: return false
+    val imports = "$caches/imports/"
+    if (!absolutePath.startsWith(imports) || ".." in absolutePath) return false
+    // Direct children of imports/ and imports/watched/ only, never the directories or normalized audio.
+    val name = absolutePath.removePrefix(imports).removePrefix("watched/")
+    return name.isNotEmpty() && "/" !in name && name != "watched"
+}

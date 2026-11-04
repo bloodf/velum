@@ -119,6 +119,7 @@ fun FilesScreen(
     var selectedIds by remember { mutableStateOf(setOf<String>()) }
     var confirmTrash by remember { mutableStateOf(false) }
     var confirmDeleteForever by remember { mutableStateOf(false) }
+    var deleteFailed by remember { mutableStateOf(false) }
     var confirmEmptyTrash by remember { mutableStateOf(false) }
     var renameTarget by remember { mutableStateOf<Recording?>(null) }
 
@@ -404,6 +405,13 @@ fun FilesScreen(
             },
         )
     }
+    if (deleteFailed) {
+        AlertDialog(
+            onDismissRequest = { deleteFailed = false },
+            text = { Text(strings.added.deleteForeverFailed) },
+            confirmButton = { TextButton(onClick = { deleteFailed = false }) { Text(strings.confirm) } },
+        )
+    }
     if (confirmDeleteForever) {
         AlertDialog(
             onDismissRequest = { confirmDeleteForever = false },
@@ -415,7 +423,7 @@ fun FilesScreen(
                         haptics.perform(HapticKind.Medium)
                         confirmDeleteForever = false
                         scope.launch {
-                            selectedIds.forEach { container.deleteRecordingForever(it) }
+                            deleteFailed = !selectedIds.map { container.deleteRecordingForever(it) }.all { it }
                             exitSelection()
                         }
                     },
@@ -437,7 +445,7 @@ fun FilesScreen(
                         haptics.perform(HapticKind.Medium)
                         confirmEmptyTrash = false
                         scope.launch {
-                            trashed.forEach { container.deleteRecordingForever(it.id) }
+                            deleteFailed = !trashed.map { container.deleteRecordingForever(it.id) }.all { it }
                             exitSelection()
                         }
                     },

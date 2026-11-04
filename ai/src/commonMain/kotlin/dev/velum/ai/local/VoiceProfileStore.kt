@@ -509,30 +509,26 @@ class VoiceProfileStore(
                 naming: SpeakerNaming?,
                 engineId: String,
                 modelId: String,
+                embeddings: Map<String, FloatArray> = emptyMap(),
             ) = dev.velum.ai.engine.DiarizationResult(
                 spans = spans,
                 namedSpeakers = naming?.names.orEmpty(),
                 engineId = engineId,
                 modelId = modelId,
                 speakerNamesUnavailable = naming?.unavailable == true,
+                embeddings = embeddings,
             )
         }
     }
 
     /**
-     * Caches this run's speaker embeddings and names the speakers that match a saved profile. When the key is
-     * missing or the secure store is unavailable, no names and no cache come out of it (nothing is written in
-     * plaintext), the recording's older cache is dropped, and [SpeakerNaming.unavailable] is set so the caller
-     * can keep names the user already typed instead of overwriting them with bare labels.
+     * Names the speakers of one diarization run that match a saved profile, without touching the speaker cache. The
+     * cache is written by [cacheSpeakerEmbeddings] together with the speaker rows. When the key is missing or the
+     * secure store is unavailable nothing is named and [SpeakerNaming.unavailable] is set.
      */
-    suspend fun cacheAndNameSpeakers(
-        recordingId: String?,
-        embeddingsBySpeaker: Map<String, FloatArray>,
-        matchThreshold: Float,
-    ): SpeakerNaming = try {
+    suspend fun nameSpeakers(embeddingsBySpeaker: Map<String, FloatArray>, matchThreshold: Float): SpeakerNaming = try {
         SpeakerNaming(
             withReady {
-                if (recordingId != null) replaceClusterEmbeddings(recordingId, embeddingsBySpeaker)
                 buildMap {
                     for ((speakerId, embedding) in embeddingsBySpeaker) {
                         match(embedding, threshold = matchThreshold)?.let { put(speakerId, it.profile.displayName) }
@@ -542,26 +538,53 @@ class VoiceProfileStore(
             unavailable = false,
         )
     } catch (e: VoiceProfileKeyUnavailableException) {
-        speakerNamingUnavailable(recordingId, e)
+        println("VelumVoice: speaker naming unavailable (${e::class.simpleName})")
+        SpeakerNaming(emptyMap(), unavailable = true)
     } catch (e: SecureStoreUnavailableException) {
-        speakerNamingUnavailable(recordingId, e)
+        println("VelumVoice: speaker naming unavailable (${e::class.simpleName})")
+        SpeakerNaming(emptyMap(), unavailable = true)
+    }
+
+    /**
+     * Drops the recording's cached speaker embeddings, under the store's access lock and off the caller's thread.
+     * Called before a run's speaker numbering is written, so the old numbering never outlives the labels it described.
+     * The delete is verified: a directory that is still there (a file the platform would not remove) throws
+     * [SpeakerCacheNotDroppedException], so the caller stops before it changes anything the cache must match.
+     */
+    suspend fun dropSpeakerCache(recordingId: String) = withContext(ioDispatcher) {
+        accessMutex.withLock {
+            deleteClusterCache(recordingId)
+            if (cacheDir.resolve(recordingId).exists()) throw SpeakerCacheNotDroppedException()
+        }
+    }
+
+    /**
+     * Replaces the recording's cached speakers with this run's, to be called right after its speaker rows were
+     * written. When the cache cannot be written (no key) the old one is dropped instead: it belongs to the previous
+     * run's numbering and must not outlive the rows it described.
+     */
+    suspend fun cacheSpeakerEmbeddings(recordingId: String, embeddingsBySpeaker: Map<String, FloatArray>) {
+        try {
+            withReady { replaceClusterEmbeddings(recordingId, embeddingsBySpeaker) }
+        } catch (e: VoiceProfileKeyUnavailableException) {
+            dropCacheAfterUnavailable(recordingId, e)
+        } catch (e: SecureStoreUnavailableException) {
+            dropCacheAfterUnavailable(recordingId, e)
+        }
     }
 
     /**
      * The old cache must not outlive a run that could not replace it: once the key is back, naming "S1" would
      * read the previous run's "S1", which may be a different person.
      */
-    private suspend fun speakerNamingUnavailable(recordingId: String?, cause: Exception): SpeakerNaming {
-        println("VelumVoice: speaker naming unavailable (${cause::class.simpleName})")
-        if (recordingId != null) {
-            withContext(NonCancellable + ioDispatcher) {
-                accessMutex.withLock {
-                    runCatching { deleteClusterCache(recordingId) }
-                        .onFailure { println("VelumVoice: dropping the old speaker cache failed (${it::class.simpleName})") }
-                }
+    private suspend fun dropCacheAfterUnavailable(recordingId: String, cause: Exception) {
+        println("VelumVoice: speaker cache unavailable (${cause::class.simpleName})")
+        withContext(NonCancellable + ioDispatcher) {
+            accessMutex.withLock {
+                runCatching { deleteClusterCache(recordingId) }
+                    .onFailure { println("VelumVoice: dropping the old speaker cache failed (${it::class.simpleName})") }
             }
         }
-        return SpeakerNaming(emptyMap(), unavailable = true)
     }
 
     /**
@@ -581,16 +604,29 @@ class VoiceProfileStore(
     /**
      * Re-encrypts profiles still stored as plaintext `.f32` by earlier versions and removes the plaintext. Needs
      * the key only when such a file exists, so a fresh install creates no key here. A profile whose `.enc` already
-     * exists and authenticates only has its leftover plaintext removed (a crash between the two steps). Returns
-     * how many profiles lost their plaintext copy.
+     * exists and authenticates only has its leftover plaintext removed (a crash between the two steps).
+     *
+     * A profile whose `.enc` does not authenticate but whose `.f32` is intact (a truncated `.enc` left by the old
+     * non-atomic write) is rewritten from the `.f32`, then the plaintext is removed, but only when the key check
+     * file authenticates: that proves the current key is right, so the bad `.enc` is damage and not a file made
+     * under another key. Without that proof (no key check yet, or it fails) neither file is touched.
+     *
+     * Returns how many profiles lost their plaintext copy.
      */
     suspend fun migrateLegacyPlaintextProfiles(): Int {
         if (!profilesDir.exists() || profilesDir.listChildren().none { it.name.endsWith(".f32") }) return 0
         return withReady {
             val plaintextIds = profilesDir.listChildren().filter { it.name.endsWith(".f32") }
                 .map { it.name.removeSuffix(".f32") }.toSet()
-            val readable = inspectProfiles().profiles.filter { it.id in plaintextIds }
-            readable.count { profile ->
+            val inventory = inspectProfiles()
+            val readable = inventory.profiles.filter { it.id in plaintextIds }
+            val damaged = inventory.unreadable.filter {
+                it.id in plaintextIds && it.problem == VoiceProfileReadProblem.CannotDecrypt
+            }
+            // The proof is taken before this call writes anything: migrating a lone plaintext profile writes the
+            // key check itself, which must not count as proof for the damaged files found in the same call.
+            val keyProven = damaged.isNotEmpty() && keyCheckAuthenticates(cipher())
+            val migrated = readable.count { profile ->
                 if (profilesDir.resolve("${profile.id}.enc").exists()) {
                     profilesDir.resolve("${profile.id}.f32").deleteFile()
                 } else {
@@ -598,7 +634,35 @@ class VoiceProfileStore(
                     !profilesDir.resolve("${profile.id}.f32").exists()
                 }
             }
+            if (!keyProven) return@withReady migrated
+            migrated + damaged.count { issue -> rewriteFromPlaintext(issue.id) }
         }
+    }
+
+    /** Re-encrypts [id] from its intact `.f32` over a damaged `.enc`; false (nothing touched) if the `.f32` is not intact. */
+    private fun rewriteFromPlaintext(id: String): Boolean {
+        if (!safeProfileId(id)) return false
+        val metadata = try {
+            json.decodeFromString<VoiceProfileFile>(profilesDir.resolve("$id.json").readBytes().decodeToString())
+        } catch (_: Exception) {
+            return false
+        }
+        val embedding = try {
+            bytesToFloats(profilesDir.resolve("$id.f32").readBytes())
+        } catch (_: Exception) {
+            return false
+        }
+        if (metadata.id != id || metadata.dim <= 0 || embedding.size != metadata.dim || embedding.any { !it.isFinite() }) return false
+        // An all-zero vector is what a blank or wiped file reads as; it would replace the .enc with a profile that never matches.
+        if (embedding.all { it == 0f }) return false
+        writeProfile(
+            VoiceProfile(
+                id = id, displayName = metadata.displayName, embedding = embedding, sampleEmbeddings = listOf(embedding),
+                role = metadata.role, company = metadata.company, email = metadata.email, notes = metadata.notes,
+                contactUri = metadata.contactUri, sampleCount = 1,
+            ),
+        )
+        return !profilesDir.resolve("$id.f32").exists()
     }
 
     /** Leftover `*.tmp` files of an interrupted write. A `.json.tmp` holds plaintext name, email and notes. */
@@ -927,6 +991,13 @@ class UnreadableVoiceProfile internal constructor(
 ) {
     val canRemove: Boolean get() = files != null
 }
+
+/** Saved as the processing error when the previous speaker cache cannot be removed; the UI matches this exact text to translate it (#348). */
+const val SPEAKER_CACHE_NOT_DROPPED_MESSAGE =
+    "The saved speaker voices could not be cleared, so the recording was left unchanged. Try again."
+
+/** The previous run's speaker cache could not be removed, so the recording was left as it was. */
+class SpeakerCacheNotDroppedException : IllegalStateException(SPEAKER_CACHE_NOT_DROPPED_MESSAGE)
 
 /** The pasted text is not a Voice Profiles backup (not JSON, wrong shape, or bad base64). */
 class InvalidVoiceProfileBackupException(cause: Throwable) : IllegalArgumentException(

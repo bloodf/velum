@@ -49,3 +49,19 @@ actual fun deleteDeviceTransferTemps(): Boolean {
         .map { it.delete() || !it.exists() }
         .all { it }
 }
+
+actual fun isAppOwnedAudioPath(absolutePath: String): Boolean = runCatching {
+    val file = File(absolutePath).canonicalFile
+    val roots = listOfNotNull(
+        filesDirPath?.let { File(it, "recordings") },
+        appContextOrNull()?.let { File(it.cacheDir, "imports") },
+    )
+    roots.any { file.startsWith(it.canonicalFile) && file != it.canonicalFile }
+}.getOrDefault(false)
+
+actual fun isImportCacheCopy(absolutePath: String): Boolean = runCatching {
+    val imports = File(appContextOrNull()?.cacheDir ?: return false, "imports").canonicalFile
+    val file = File(absolutePath).canonicalFile
+    // Picked and shared copies sit directly in imports/, watched ones in imports/watched/. Normalized audio does not.
+    !file.isDirectory && (file.parentFile == imports || file.parentFile == File(imports, "watched"))
+}.getOrDefault(false)

@@ -628,8 +628,8 @@ class WipeAllDataTest {
         }
     }
 
-    @Test fun a_shared_file_refused_by_a_wipe_is_deleted() = withContainer { container, _ ->
-        val copy = Files.createTempFile("velum-wipe-share", ".wav").toFile().apply { writeBytes(ByteArray(64) { 1 }) }
+    @Test fun a_shared_file_refused_by_a_wipe_is_deleted() = withContainer { container, context ->
+        val copy = File(context.cacheDir, "imports/share.wav").apply { parentFile!!.mkdirs(); writeBytes(ByteArray(64) { 1 }) }
         val result = container.wipeGate.wiping(1.seconds) { AudioImportPipeline(container).importShared(copy.path) }
         assertIs<ImportResult.Failed>(result)
         assertFalse(copy.exists(), "the shared file's copy survived the wipe")

@@ -1241,7 +1241,18 @@ val PtBr = Strings(
         retryProcessing = "Tentar de novo",
         waveformA11y = "Progresso da reprodução",
     ),
-    added = MoreStrings(),
+    added = MoreStrings(
+        webhookFailedTimeout = "tempo esgotado",
+        webhookFailedUnresolvedHost = "endereço não encontrado",
+        webhookFailedTls = "falha na conexão segura",
+        webhookFailedConnection = "sem conexão",
+        speakerCacheNotDropped = "Não foi possível apagar as vozes de falantes salvas, então a gravação ficou como estava. Tente de novo.",
+        processingFailedAudioMissing = "O arquivo de áudio desta gravação não foi encontrado, então ela não foi processada.",
+        processingFailedAudioEmpty = "O arquivo de áudio desta gravação está vazio, então ela não foi processada.",
+        processingFailedWavNoData = "Este arquivo WAV não tem dados de áudio e parece danificado, então não foi transcrito. Baixe-o de novo do dispositivo ou converta para WAV ou Ogg Opus.",
+        deleteForeverFailed = "Não foi possível apagar algumas gravações por completo. O áudio delas pode já ter sido apagado. Tente novamente.",
+        speakersChangedWhileOpen = "Os oradores mudaram enquanto isto estava aberto. Confira os nomes e tente de novo.",
+    ),
 )
 
 val En = Strings(
@@ -1852,7 +1863,18 @@ val En = Strings(
         retryProcessing = "Try again",
         waveformA11y = "Playback progress",
     ),
-    added = MoreStrings(),
+    added = MoreStrings(
+        webhookFailedTimeout = "timed out",
+        webhookFailedUnresolvedHost = "address not found",
+        webhookFailedTls = "secure connection failed",
+        webhookFailedConnection = "could not connect",
+        speakerCacheNotDropped = "The saved speaker voices could not be cleared, so the recording was left unchanged. Try again.",
+        processingFailedAudioMissing = "The audio file for this recording is missing, so it wasn't processed.",
+        processingFailedAudioEmpty = "The audio file for this recording is empty, so it wasn't processed.",
+        processingFailedWavNoData = "This WAV file has no audio data and looks damaged, so it wasn't transcribed. Download it again from the device, or convert it to WAV or Ogg Opus.",
+        deleteForeverFailed = "Some recordings could not be fully deleted. Their audio may already be gone. Try again.",
+        speakersChangedWhileOpen = "Speakers changed while this was open. Check the names and try again.",
+    ),
 )
 
 val LocalStrings = staticCompositionLocalOf { PtBr }

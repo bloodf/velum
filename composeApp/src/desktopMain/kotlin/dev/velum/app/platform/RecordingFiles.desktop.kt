@@ -40,3 +40,12 @@ actual fun deleteDeviceTransferTemps(): Boolean {
         .map { it.delete() || !it.exists() }
         .all { it }
 }
+
+actual fun isAppOwnedAudioPath(absolutePath: String): Boolean = runCatching {
+    val file = File(absolutePath).canonicalFile
+    val root = File(recordingsDirectoryPath()).canonicalFile
+    file.startsWith(root) && file != root
+}.getOrDefault(false)
+
+/** Desktop reads a picked file in place, so it never has a copy to clean up. */
+actual fun isImportCacheCopy(absolutePath: String): Boolean = false
