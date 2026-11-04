@@ -210,8 +210,8 @@ class RecordingProcessWorker(
             ensureProcessingChannel(applicationContext)
             val nm = applicationContext.getSystemService(NotificationManager::class.java) ?: return
             val n = NotificationCompat.Builder(applicationContext, PROCESSING_CHANNEL_ID)
-                .setContentTitle(applicationContext.getString(R.string.velum_processing_refused_title))
-                .setContentText(applicationContext.getString(R.string.velum_processing_refused_body))
+                .setContentTitle(applicationContext.inAppLanguage().getString(R.string.velum_processing_refused_title))
+                .setContentText(applicationContext.inAppLanguage().getString(R.string.velum_processing_refused_body))
                 .setSmallIcon(android.R.drawable.stat_sys_warning)
                 .setAutoCancel(true)
                 .setOnlyAlertOnce(true)
@@ -385,4 +385,9 @@ fun createWorkManagerRecordingJobScheduler(context: Context): RecordingJobSchedu
             retranscribe = retranscribe,
             apiModelOverride = apiModelOverride,
         )
+
+        // WorkManager tags every request with its worker class.
+        override fun cancelAll() {
+            WorkManager.getInstance(context.applicationContext).cancelAllWorkByTag(RecordingProcessWorker::class.java.name)
+        }
     }

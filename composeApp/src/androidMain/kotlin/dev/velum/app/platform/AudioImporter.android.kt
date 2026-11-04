@@ -112,3 +112,8 @@ internal fun displayNameOf(context: android.content.Context, uri: Uri): String? 
             if (c.moveToFirst()) c.getString(0) else null
         }
     }.getOrNull()?.takeIf { it.isNotBlank() } ?: uri.lastPathSegment
+
+actual fun deleteShareExports() {
+    val context = appContextOrNull() ?: return
+    File(context.cacheDir, "share").deleteRecursively()
+}

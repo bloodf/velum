@@ -123,3 +123,6 @@ actual fun deleteImportCopies() {
     val caches = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, true).firstOrNull() as? String ?: return
     NSFileManager.defaultManager.removeItemAtPath("$caches/imports", error = null)
 }
+
+/** iOS shares text only; nothing is kept in a cache. */
+actual fun deleteShareExports() = Unit

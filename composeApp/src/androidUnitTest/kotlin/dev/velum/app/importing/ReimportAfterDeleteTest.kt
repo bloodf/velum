@@ -28,7 +28,15 @@ import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
+import dev.velum.app.ui.DownloadedSessionAudio
+import java.util.concurrent.CountDownLatch
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -347,10 +355,81 @@ class ReimportAfterDeleteTest {
     }
 
     @Test fun a_refused_shared_import_removes_its_copy() = withPipeline { container, _, wav ->
+        val copy = ownedCopy(wav, "shared.wav")
         val pipeline = AudioImportPipeline(container, normalize = { throw WipeInProgressException() })
-        assertEquals(ImportResult.Failed("wipe_in_progress"), pipeline.importShared(wav.path))
-        assertFalse(wav.exists(), "the shared copy outlived the wipe")
+        assertEquals(ImportResult.Failed("wipe_in_progress"), pipeline.importShared(copy.path))
+        assertFalse(copy.exists(), "the shared copy outlived the wipe")
     }
+
+    @Test fun only_direct_copies_count_as_import_copies() = withPipeline { _, _, wav ->
+        val imports = ownedCopy(wav, "picked.wav").parentFile!!
+        val outside = Files.createTempFile("velum-outside", ".wav")
+        val link = File(imports, "link.wav").toPath()
+        Files.createSymbolicLink(link, outside)
+        assertFalse(isImportCacheCopy(link.toString()), "a link inside imports/ pointing outside")
+        assertFalse(isAppOwnedAudioPath(link.toString()), "a link inside imports/ pointing outside")
+        Files.delete(link)
+        Files.delete(outside)
+        assertFalse(isImportCacheCopy(File(imports, "watched/../../escaped.wav").path), "a path that climbs out")
+        assertFalse(isImportCacheCopy(ownedCopy(wav, "watched/normalized/x.wav").path), "deeper than watched/")
+        assertFalse(isImportCacheCopy(File(imports, "watched").path), "the directory itself")
+    }
+
+    @Test fun a_watched_copy_is_kept_after_a_cancelled_sync() = withPipeline { container, _, wav ->
+        val copy = ownedCopy(wav, "watched/copy.wav")
+        val normalizing = CompletableDeferred<Unit>()
+        val neverFinishes = CompletableDeferred<NormalizedAudio>()
+        val held = AudioImportPipeline(container, normalize = { normalizing.complete(Unit); neverFinishes.await() })
+        coroutineScope {
+            val job = launch(Dispatchers.Default) { held.importFile(copy.path, source = "watched") }
+            normalizing.await()
+            job.cancelAndJoin()
+        }
+        assertTrue(copy.exists(), "the next sync would have to copy the whole file again")
+    }
+
+    @Test fun a_watched_copy_is_kept_after_a_duplicate() = withPipeline { _, pipeline, wav ->
+        val first = ownedCopy(wav, "watched/first.wav")
+        assertIs<ImportResult.Created>(pipeline.importFile(first.path, source = "watched"))
+        val second = ownedCopy(wav, "watched/second.wav")
+        assertIs<ImportResult.Duplicate>(pipeline.importFile(second.path, source = "watched"))
+        assertTrue(second.exists(), "the next sync would have to copy the whole file again")
+    }
+
+    @Test fun a_delete_waits_for_a_running_save_and_takes_its_file() = withPipeline { container, _, _ ->
+        val session = 1_700_000_000L
+        val serial = "881FAKE1"
+        val old = File(recordingsDir(), "rec-a.ogg").also { it.parentFile!!.mkdirs(); it.writeBytes(ByteArray(8)) }
+        container.repository.insertRecording(
+            id = "rec-a", sessionId = session, folderId = null, title = "Synthetic", source = "note_pro", deviceSerial = serial,
+            startedAt = 1_700_000_000L, durationSeconds = 1, sizeBytes = 8, localPath = old.path,
+            transcript = "kept", summaryMarkdown = "kept", status = "ready",
+        )
+        val saving = CountDownLatch(1)
+        val finish = CountDownLatch(1)
+        val audio = DownloadedSessionAudio(
+            sessionId = session, deviceSerial = serial, startedAtEpochSeconds = 1_700_000_000L,
+            writeDecryptedAudio = { sink ->
+                sink("RIFFsynthetic".encodeToByteArray())
+                saving.countDown()
+                finish.await()
+                sink(ByteArray(64))
+                77L
+            },
+        )
+        coroutineScope {
+            val save = async(Dispatchers.Default) { container.persistDownloadedSession(audio) }
+            withContext(Dispatchers.IO) { saving.await() }
+            val delete = async(Dispatchers.Default) { container.deleteRecordingForever("rec-a") }
+            delay(300) // without the lock the delete is done by now, and the save below writes an orphan
+            finish.countDown()
+            save.await()
+            assertTrue(delete.await())
+        }
+        assertEquals(null, container.repository.getRecording("rec-a"))
+        assertEquals(emptyList(), recordingsDir().listFiles().orEmpty().filter { it.isFile }.map { it.name }, "the save's file outlived the delete")
+    }
+
 
     private fun failMetaWrite(container: AppContainer, key: String) {
         container.databaseHandle.driver.execute(

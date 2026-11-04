@@ -1,5 +1,6 @@
 package dev.velum.app.importing
 
+import dev.velum.ai.pipeline.resolveTemplateForEnqueue
 import dev.velum.app.di.AppContainer
 import dev.velum.core.autoflow.AutoFlowResolve
 import dev.velum.app.platform.AudioNormalizer
@@ -64,10 +65,8 @@ class AudioImportPipeline(
         if (!keep && isImportCacheCopy(path)) deleteFileIfPresent(path)
     }
 
-    /** A file shared into the app: its cache copy is deleted when a wipe refuses the import, so it can't outlive the wipe. */
-    suspend fun importShared(copyPath: String): ImportResult = importFile(copyPath, source = "share").also { result ->
-        if (result == ImportResult.Failed(WIPE_IN_PROGRESS)) withContext(Dispatchers.IO) { deleteFileAtPath(copyPath) }
-    }
+    /** A file shared into the app. Its cache copy goes when the import ends, like a picked one. */
+    suspend fun importShared(copyPath: String): ImportResult = importFile(copyPath, source = "share")
 
     private suspend fun importNow(
         absolutePath: String,
@@ -142,7 +141,7 @@ class AudioImportPipeline(
             )
             container.enqueueProcessing(
                 recordingId = id,
-                templateId = match?.template_id,
+                templateId = resolveTemplateForEnqueue(container.repository, match?.template_id),
                 retranscribe = true,
                 apiModelOverride = match?.let { AutoFlowResolve.modelOverride(it) },
             )

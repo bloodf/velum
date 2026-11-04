@@ -31,6 +31,7 @@ actual fun isImportCacheCopy(absolutePath: String): Boolean {
     val caches = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, true).firstOrNull() as? String ?: return false
     val imports = "$caches/imports/"
     if (!absolutePath.startsWith(imports) || ".." in absolutePath) return false
-    val relative = absolutePath.removePrefix(imports)
-    return relative.isNotEmpty() && !relative.startsWith("normalized/")
+    // Direct children of imports/ and imports/watched/ only, never the directories or normalized audio.
+    val name = absolutePath.removePrefix(imports).removePrefix("watched/")
+    return name.isNotEmpty() && "/" !in name && name != "watched"
 }
