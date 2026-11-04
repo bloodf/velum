@@ -65,12 +65,12 @@ class MainActivity : ComponentActivity() {
         Log.i(TAG, "Compose App set")
     }
 
-    private fun showFatal(t: Throwable) {
+    private fun showFatal(t: Throwable, text: String) {
         fatalUi.set(true)
         Log.e(TAG, "Fatal AppContainer init", t)
         setContent {
             Text(
-                text = FATAL_COPY,
+                text = text,
                 fontSize = 16.sp,
                 modifier = Modifier.padding(48.dp),
             )
@@ -96,10 +96,11 @@ class MainActivity : ComponentActivity() {
                     Result.success(runBlocking { app.awaitContainer() })
                 } catch (ce: CancellationException) {
                     Log.w(TAG, "Container handoff cancelled", ce)
+                    val fatalText = fatalStartText()
                     mainHandler.post {
                         when (dispositionForHandoffCancellation(isDestroyed)) {
                             HandoffCancelDisposition.Ignore -> Unit
-                            HandoffCancelDisposition.ShowFatal -> showFatal(ce)
+                            HandoffCancelDisposition.ShowFatal -> showFatal(ce, fatalText)
                         }
                     }
                     return@execute
@@ -115,11 +116,12 @@ class MainActivity : ComponentActivity() {
                         Result.failure(err ?: t)
                     }
                 }
+            val fatalText = if (result.isFailure) fatalStartText() else ""
             mainHandler.post {
                 if (isDestroyed) return@post
                 result.fold(
                     onSuccess = { showApp(it) },
-                    onFailure = { showFatal(it) },
+                    onFailure = { showFatal(it, fatalText) },
                 )
             }
         }
@@ -136,8 +138,5 @@ class MainActivity : ComponentActivity() {
         private val HANDOFF_EXECUTOR = Executors.newSingleThreadExecutor { r ->
             Thread(r, "velum-container-handoff").apply { isDaemon = true }
         }
-        private const val FATAL_COPY =
-            "Velum failed to start. Reinstall or clear app storage.\n" +
-                "O Velum não iniciou. Reinstale ou limpe o armazenamento do app."
     }
 }
