@@ -521,38 +521,93 @@ class LiveTranscriberHandoffTest {
         assertEquals(0, queued)
     }
 
-    /**
-     * The failure in CI (CalledFromWrongThreadException at ViewRootImpl, then an ArrayIndexOutOfBoundsException) is
-     * what an off-Main state write looks like when the Compose test clock resumes a collector inline on the writing
-     * thread. Production resumes on Main, so the screen must not depend on that: every state the pane owns is
-     * written on Main. This runs a live partial, a late model notice and a failed Stop and records any pane write
-     * made from another thread.
-     */
-    @Test fun the_pane_writes_its_state_only_on_the_main_thread() {
+    /** Runs [scenario] and returns every Compose state write made off the main thread while it ran. */
+    private fun offMainWrites(scenario: () -> Unit): List<String> {
         val mainThread = Looper.getMainLooper().thread
-        val offMain = CopyOnWriteArrayList<String>()
+        val found = CopyOnWriteArrayList<String>()
         val handle = androidx.compose.runtime.snapshots.Snapshot.registerGlobalWriteObserver {
             if (Thread.currentThread() !== mainThread) {
-                val frames = Throwable().stackTrace
-                val at = frames.indexOfFirst { it.className.contains("RecordingDetailScreen") }
-                // The state accessor frames come first; the callers that matter are the next few.
-                if (at >= 0) offMain += "${Thread.currentThread().name}: " + frames.drop(at).take(6).joinToString(" <- ")
+                // No frame filter: a write from the Compose runtime (a collector resumed inline) has none of ours.
+                val frames = Throwable().stackTrace.filterNot { it.className.startsWith("androidx.compose.runtime.snapshots") }
+                found += "${Thread.currentThread().name}: " + frames.take(8).joinToString(" <- ")
             }
         }
         try {
-            mic.stopFailure = "Synthetic stop failure"
-            showPane()
-            modelLoad.countDown()
-            // A partial arrives from the transcriber's thread, then audio is dropped from the capture thread.
-            waitUntil(10_000) { transcriber.starts.get() > 0 }
-            transcriber.onPartial("**partial** · 0:01\nSynthetic words\n")
-            repeat(LIVE_PCM_BACKLOG_CHUNKS + 8) { mic.onPcmChunk?.invoke(ByteArray(2)) }
-            compose.onNodeWithContentDescription(PtBr.stopRecording).performClick()
-            waitUntil(10_000) { compose.onAllNodesWithText("Synthetic stop failure").fetchSemanticsNodes().isNotEmpty() }
+            scenario()
         } finally {
             handle.dispose()
         }
-        assertTrue(offMain.isEmpty(), "pane state written off the main thread:\n${offMain.joinToString("\n")}")
+        return found
+    }
+
+    /** From another thread, as the transcriber and the capture thread call in; the test thread itself is Main. */
+    private fun fromAnotherThread(block: () -> Unit) {
+        var failure: Throwable? = null
+        val t = Thread { try { block() } catch (e: Throwable) { failure = e } }
+        t.start()
+        t.join(10_000)
+        failure?.let { throw it }
+    }
+
+    /**
+     * The failure in CI (CalledFromWrongThreadException at ViewRootImpl, then an ArrayIndexOutOfBoundsException) is
+     * what an off-Main state write looks like when the Compose test clock resumes a collector inline on the writing
+     * thread. Production resumes on Main, so the screen must not depend on that: it writes its state on Main.
+     * This runs a live partial from the transcriber's thread, dropped audio from the capture thread (the transcriber
+     * is held, so drops are certain) and a failed Stop, and records every off-Main state write, ours or not.
+     */
+    @Test fun the_pane_writes_no_state_off_the_main_thread_through_partials_drops_and_a_failed_stop() {
+        val offMain = offMainWrites {
+            mic.stopFailure = "Synthetic stop failure"
+            transcriber.pushGate = CountDownLatch(1) // the first push blocks, so the queue fills and drops
+            showPane()
+            modelLoad.countDown()
+            waitUntil(10_000) { transcriber.starts.get() > 0 }
+            fromAnotherThread { transcriber.onPartial("**partial** · 0:01\nSynthetic words\n") }
+            fromAnotherThread { repeat(LIVE_PCM_BACKLOG_CHUNKS + 8) { mic.onPcmChunk?.invoke(ByteArray(2)) } }
+            transcriber.pushGate.countDown()
+            compose.onNodeWithContentDescription(PtBr.stopRecording).performClick()
+            waitUntil(10_000) { compose.onAllNodesWithText("Synthetic stop failure").fetchSemanticsNodes().isNotEmpty() }
+        }
+        assertTrue(offMain.isEmpty(), "state written off the main thread:\n${offMain.joinToString("\n")}")
+    }
+
+    @Test fun pause_and_marker_taps_write_their_state_on_main() {
+        val offMain = offMainWrites {
+            showPane()
+            modelLoad.countDown()
+            waitUntil(10_000) { transcriber.starts.get() > 0 }
+            compose.onNodeWithText(PtBr.ux.livePause, useUnmergedTree = true).performClick()
+            waitUntil(10_000) { compose.onAllNodesWithText(PtBr.ux.liveResume, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithText(PtBr.ux.liveMark, useUnmergedTree = true).performClick()
+            val oneMarker = PtBr.ux.liveMarkersFormat.replace("%s", MicInputSource.Mic.localizedLabel(PtBr)).replace("%d", "1")
+            waitUntil(10_000) { compose.onAllNodesWithText(oneMarker, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
+        }
+        assertTrue(offMain.isEmpty(), "state written off the main thread:\n${offMain.joinToString("\n")}")
+    }
+
+    @Test fun a_late_no_model_notice_from_the_opener_thread_is_written_on_main() {
+        val offMain = offMainWrites {
+            modelMissing = true
+            showPane()
+            modelLoad.countDown()
+            waitUntil(10_000) { compose.onAllNodesWithText(PtBr.ux.liveModelUnavailable).fetchSemanticsNodes().isNotEmpty() }
+        }
+        assertTrue(offMain.isEmpty(), "state written off the main thread:\n${offMain.joinToString("\n")}")
+    }
+
+    @Test fun the_last_partial_is_the_fallback_even_when_the_screen_has_gone_and_the_final_text_never_comes() {
+        mic.currentMarkers = emptyList()
+        transcriber.finishGate = CountDownLatch(1) // finish() never returns within the wait
+        showPane(finishWaitMs = 1_500)
+        modelLoad.countDown()
+        waitUntil(10_000) { transcriber.starts.get() > 0 }
+        compose.onNodeWithContentDescription(PtBr.stopRecording).performClick() // Stop is now waiting for the final text
+        leaveScreen() // the screen's scope is cancelled; posts to it are dropped
+        fromAnotherThread { transcriber.onPartial("**partial** · 0:01\nLast words\n") }
+        waitOnMainLooper { recordingRow().status != "recording" }
+        transcriber.finishGate.countDown()
+        assertEquals("Last words\n", recordingRow().transcript, "the fallback text must be the transcriber's last partial")
     }
 
     @Test fun only_real_text_is_savable_and_never_with_the_preview_header() {
@@ -609,7 +664,8 @@ class LiveTranscriberHandoffTest {
             pushGate.await(30, TimeUnit.SECONDS)
             pushed += pcm16Le.toList()
         }
-        override fun finish(): String { finishes.incrementAndGet(); finished.countDown(); return FINAL }
+        @Volatile var finishGate = CountDownLatch(0)
+        override fun finish(): String { finishes.incrementAndGet(); finishGate.await(30, TimeUnit.SECONDS); finished.countDown(); return FINAL }
         companion object { const val FINAL = "Synthetic final transcript" }
     }
 
