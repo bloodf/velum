@@ -346,7 +346,7 @@ class RecordingProcessor(
             // Exact row first: an edited builtin keeps its id (builtin = 0) and must win over
             // legacy / removed-duplicate alias resolution (#99).
             val exactTemplate = templateId?.takeIf { it.isNotBlank() }?.let { repository.getTemplate(it) }
-            val resolvedTemplateId = exactTemplate?.id ?: BuiltinTemplateCatalog.resolveId(templateId)
+            val resolvedTemplateId = effectiveTemplateId(exactTemplate?.id, templateId)
             val dbTemplate = exactTemplate ?: repository.getTemplate(resolvedTemplateId)
             val catalogEntry = BuiltinTemplateCatalog.get(resolvedTemplateId)
             val baseTemplate = dbTemplate?.system_prompt

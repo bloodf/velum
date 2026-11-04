@@ -25,8 +25,8 @@ fun interface RecordingJobScheduler {
 
     /**
      * Like [enqueue], but reports whether work was started or replaced (true) or the work already queued or running
-     * with the same parameters was kept (false). A caller that moved the row to `queued` for a new job must restore
-     * `generating` when the job was kept, or the row would sit on `queued` while the old job runs (#324).
+     * with the same parameters was kept (false). A caller that moved the row to `queued` for a new job must restore the
+     * status the row had when the job was kept, or the row would sit on `queued` while the old job runs (#324).
      */
     fun enqueueReportingStart(
         recordingId: String,
