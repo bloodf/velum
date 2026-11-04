@@ -42,13 +42,11 @@ actual class AudioNormalizer actual constructor() {
     ): NormalizedAudio {
         val source = File(sourcePath)
         require(source.isFile && source.length() > 0L) { "Missing import: $sourcePath" }
-        val hash = sha256File(sourcePath)
         val mime = guessMime(source.name)
         // The only copy of an imported recording: it lives with the other recordings, never in the evictable cache.
         // No row points here until the import succeeds; a failed or duplicate import deletes it.
         val outDir = File(recordingsDirectoryPath()).apply { mkdirs() }
-        val name = normalizedFileName(source.nameWithoutExtension, targetSampleRateHz, hash).removeSuffix(".wav")
-        val outFile = File(outDir, "import_${name}_${java.util.UUID.randomUUID()}.wav")
+        val outFile = File(outDir, "import_${java.util.UUID.randomUUID()}.wav")
         sweepStalePartFiles(outDir, System.currentTimeMillis() - STALE_PART_AGE_MS)
 
         // Fast path: PCM16 mono WAV at the target rate is streamed through, never read whole (#319). The header is
@@ -59,9 +57,7 @@ actual class AudioNormalizer actual constructor() {
             null
         }
         val usesFastPath = fast != null && fast.sampleRateHz == targetSampleRateHz && fast.channels == 1
-        // The WAV is written under a name only this call uses and renamed on success, so two imports that map to
-        // the same output name (a retry right after a cancel, two copies of one file name) never delete or
-        // overwrite each other's half-written file (#319).
+        // Each attempt owns its output and temp file, including concurrent retries (#319).
         val temp = File(outDir, "${outFile.name}.${System.nanoTime()}.part")
         onOutput(temp) // reported for a late cancel, and deleted on any failure
         try {

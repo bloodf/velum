@@ -57,6 +57,34 @@ class AudioNormalizeFixturesTest {
         assertEquals(sha256File(normalized.wavPath), normalized.contentSha256)
     }
 
+    @Test fun adversarial_cancel_at_normalizer_handoff() = runBlocking {
+        val src = writeSilentWav(File(dir, "handoff.wav"), sampleRate = 16_000, durationMs = 200)
+        val queue = java.util.concurrent.LinkedBlockingQueue<Runnable>()
+        val dispatcher = object : kotlinx.coroutines.CoroutineDispatcher() {
+            override fun dispatch(context: kotlin.coroutines.CoroutineContext, block: Runnable) { queue.put(block) }
+        }
+        val job = async(dispatcher, start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+            AudioNormalizer().normalizeToWav(src.path, 16_000)
+        }
+        val continuation = queue.poll(30, java.util.concurrent.TimeUnit.SECONDS)
+        assertTrue("normalizer did not reach handoff", continuation != null)
+        assertTrue("published file missing before handoff", outDir.listFiles().orEmpty().any { it.name.endsWith(".wav") })
+        job.cancel()
+        continuation!!.run()
+        try { job.await() } catch (_: kotlinx.coroutines.CancellationException) { }
+        assertTrue("cancelled output remains", outDir.listFiles().orEmpty().none { it.name.endsWith(".wav") || it.name.endsWith(".part") })
+    }
+
+    @Test
+    fun longAsciiAndMultibyteNamesNormalize() = runBlocking {
+        for (name in listOf("a".repeat(180), "音".repeat(70))) {
+            val source = writeSilentWav(File(dir, "$name.wav"), 16_000, 100)
+            val output = File(AudioNormalizer().normalizeToWav(source.path, 16_000).wavPath)
+            assertTrue(output.isFile)
+            assertTrue(output.name.toByteArray(Charsets.UTF_8).size < 100)
+        }
+    }
+
     @Test
     fun wavFastPath_streamsExactPcmAcrossSlicesWithAnOddTail() = runBlocking {
         val src = File(dir, "ramp.wav")
@@ -126,7 +154,7 @@ class AudioNormalizeFixturesTest {
             raf.setLength(44 + dataBytes) // zero PCM, no disk used for the source
         }
         val normalizedDir = outDir
-        fun mine() = normalizedDir.listFiles().orEmpty().filter { it.name.startsWith("import_huge_16000") }
+        fun mine() = normalizedDir.listFiles().orEmpty().filter { it.name.startsWith("import_") }
         val job = this.async(kotlinx.coroutines.Dispatchers.Default) {
             AudioNormalizer().normalizeToWav(big.absolutePath, 16_000)
         }

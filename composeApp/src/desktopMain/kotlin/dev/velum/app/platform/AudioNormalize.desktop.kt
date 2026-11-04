@@ -24,7 +24,7 @@ actual class AudioNormalizer actual constructor() {
         val hash = sha256File(sourcePath)
         val outDir = File(source.parentFile, "normalized").apply { mkdirs() }
         val outputId = java.util.UUID.randomUUID()
-        val outFile = File(outDir, "${source.nameWithoutExtension}_${targetSampleRateHz}_$outputId.wav")
+        val outFile = File(outDir, "import_$outputId.wav")
         val name = source.name.lowercase()
         when {
             name.endsWith(".wav") || name.endsWith(".wave") -> {
@@ -43,7 +43,7 @@ actual class AudioNormalizer actual constructor() {
             }
             name.endsWith(".ogg") || name.endsWith(".opus") -> {
                 // Leave as-is for RecordingProcessor Opus path; still return a copy path + hash.
-                val dest = File(outDir, "${source.nameWithoutExtension}_$outputId.${source.extension}")
+                val dest = File(outDir, "import_$outputId.${source.extension.lowercase()}")
                 ownedOutput = dest
                 source.copyTo(dest, overwrite = false)
                 NormalizedAudio(
