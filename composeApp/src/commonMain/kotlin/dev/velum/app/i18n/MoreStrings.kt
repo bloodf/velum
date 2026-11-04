@@ -8,4 +8,9 @@ package dev.velum.app.i18n
  *
  * Do not move existing fields: many open changes touch them.
  */
-class MoreStrings
+data class MoreStrings(
+    val webhookFailedTimeout: String,
+    val webhookFailedUnresolvedHost: String,
+    val webhookFailedTls: String,
+    val webhookFailedConnection: String,
+)

@@ -7,6 +7,9 @@ import dev.velum.core.data.WipeGate
 import dev.velum.core.integrations.WebhookPayload
 import dev.velum.core.integrations.WebhookSettingsStore
 import dev.velum.core.integrations.WebhookSigner
+import io.ktor.client.network.sockets.ConnectTimeoutException
+import io.ktor.client.network.sockets.SocketTimeoutException
+import io.ktor.client.plugins.HttpRequestTimeoutException
 import io.ktor.client.HttpClient
 import io.ktor.client.request.header
 import io.ktor.client.request.post
@@ -85,8 +88,8 @@ class WebhookDispatcher(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (t: Throwable) {
-                // The exception class only: client messages quote the request URL, query string included (#365).
-                lastError = t::class.simpleName ?: "error"
+                // A stable code: client messages quote the request URL, query string included (#365).
+                lastError = WebhookFailure.of(t)
             }
             if (attempt < maxAttempts - 1) {
                 delay(400L * (1L shl attempt))
@@ -94,4 +97,29 @@ class WebhookDispatcher(
         }
         return lastError
     }
+}
+
+/**
+ * Why a webhook request failed, as a stable code the UI turns into localized copy ([HTTP] statuses are `HTTP <n>`).
+ * Never the exception's message, which quotes the request URL, query string included (#365), and never a class name
+ * a shrinker may rename: Ktor types are matched with `is`, platform ones (which keep their names) by name.
+ */
+object WebhookFailure {
+    const val TIMEOUT = "timeout"
+    const val UNRESOLVED_HOST = "unresolved_host"
+    const val TLS = "tls"
+    const val CONNECTION = "connection"
+
+    fun of(t: Throwable): String {
+        val chain = generateSequence(t) { it.cause }.take(6).toList()
+        return when {
+            chain.any { it is HttpRequestTimeoutException || it is ConnectTimeoutException || it is SocketTimeoutException } -> TIMEOUT
+            chain.any { it.javaName().endsWith("SocketTimeoutException") } -> TIMEOUT
+            chain.any { it.javaName().endsWith("UnknownHostException") } -> UNRESOLVED_HOST
+            chain.any { it.javaName().let { n -> "SSL" in n || "CertPath" in n || "CertificateException" in n } } -> TLS
+            else -> CONNECTION
+        }
+    }
+
+    private fun Throwable.javaName(): String = this::class.qualifiedName ?: this::class.simpleName.orEmpty()
 }

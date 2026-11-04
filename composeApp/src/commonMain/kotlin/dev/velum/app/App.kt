@@ -317,7 +317,8 @@ private fun VelumRoot(container: AppContainer) {
                         } else {
                             strings.ux.webhookFailedFormat.replace(
                                 "%s",
-                                msg ?: strings.ux.webhookNotConfigured,
+                                msg?.let { dev.velum.app.ui.integrations.WebhookTestResult.failureText(it, strings) }
+                                    ?: strings.ux.webhookNotConfigured,
                             )
                         },
                     )

@@ -1239,7 +1239,12 @@ val PtBr = Strings(
         retryProcessing = "Tentar de novo",
         waveformA11y = "Progresso da reprodução",
     ),
-    added = MoreStrings(),
+    added = MoreStrings(
+        webhookFailedTimeout = "tempo esgotado",
+        webhookFailedUnresolvedHost = "endereço não encontrado",
+        webhookFailedTls = "falha na conexão segura",
+        webhookFailedConnection = "sem conexão",
+    ),
 )
 
 val En = Strings(
@@ -1849,7 +1854,12 @@ val En = Strings(
         retryProcessing = "Try again",
         waveformA11y = "Playback progress",
     ),
-    added = MoreStrings(),
+    added = MoreStrings(
+        webhookFailedTimeout = "timed out",
+        webhookFailedUnresolvedHost = "address not found",
+        webhookFailedTls = "secure connection failed",
+        webhookFailedConnection = "could not connect",
+    ),
 )
 
 val LocalStrings = staticCompositionLocalOf { PtBr }
