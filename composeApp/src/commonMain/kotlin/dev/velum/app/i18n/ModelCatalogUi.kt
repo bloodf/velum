@@ -195,6 +195,7 @@ internal fun processingFailureText(raw: String?, strings: Strings): String? {
     return when {
         raw == LOCAL_MODEL_NOT_READY_MESSAGE || LEGACY_MODEL_NOT_READY.containsMatchIn(raw) -> ux.localModelNotReady
         raw == INSUFFICIENT_STORAGE_MESSAGE -> ux.insufficientStorage
+        raw.startsWith("API key required") -> strings.noApiKeyYet
         raw == AUDIO_FILE_MISSING_MESSAGE -> strings.added.processingFailedAudioMissing
         raw == AUDIO_FILE_EMPTY_MESSAGE -> strings.added.processingFailedAudioEmpty
         raw == WAV_NO_DATA_MESSAGE -> strings.added.processingFailedWavNoData

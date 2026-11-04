@@ -19,6 +19,8 @@ class ProcessingFailureTextTest {
     /** Saved text as common code and the engines write it, with synthetic paths, and the copy it must become. */
     private val cases: List<Pair<String, (Strings) -> String>> = listOf(
         INSUFFICIENT_STORAGE_MESSAGE to { s -> s.ux.insufficientStorage },
+        "API key required for API summaries. Add your OpenAI-compatible key in Settings → AI provider." to { s -> s.noApiKeyYet },
+        "API key required: synthetic-secret /data/user/0/private.wav" to { s -> s.noApiKeyYet },
         SPEAKER_CACHE_NOT_DROPPED_MESSAGE to { s -> s.added.speakerCacheNotDropped },
         "Unsupported audio format (WebM/Matroska). This file is not Ogg Opus, WAV or raw 16 kHz PCM, so it was not transcribed; re-download it from the device or convert it to WAV or Ogg Opus." to { s -> s.ux.processingFailedUnsupportedFormat },
         WAV_NO_DATA_MESSAGE to { s -> s.added.processingFailedWavNoData },

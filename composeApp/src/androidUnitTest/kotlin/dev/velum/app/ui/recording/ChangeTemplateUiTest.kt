@@ -179,9 +179,10 @@ class ChangeTemplateUiTest {
             await(PtBr.ux.failedProcessing)
             await(PtBr.ux.retryProcessing)
             assertTrue(
-                compose.onAllNodes(hasText("API key required", substring = true)).fetchSemanticsNodes().isNotEmpty(),
-                "the reason is shown",
+                shows(PtBr.noApiKeyYet),
+                "the reason is shown in the app language",
             )
+            assertTrue(compose.onAllNodes(hasText("API key required", substring = true)).fetchSemanticsNodes().isEmpty())
             assertTrue(shows("Prior heading"), "the previous summary must stay on screen")
             val rec = runBlocking { container.repository.getRecording("rec")!! }
             assertEquals("## Prior heading\n- prior point", rec.summary_markdown)
