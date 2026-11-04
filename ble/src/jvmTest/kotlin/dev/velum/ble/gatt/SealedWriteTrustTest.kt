@@ -153,6 +153,29 @@ class SealedWriteTrustTest {
         assertEquals(before, wire.writes, "a stale session wrote ${wire.writes - before} packet(s)")
     }
 
+    @Test fun an_unclosed_client_cannot_write_after_the_link_was_remade() = runTest {
+        val (client, wire) = connected(real)
+        client.writeCommandForTest(Commands.BATTERY_LIKELY) // fine while the link it unlocked on is up
+        wire.ble.disconnect()
+        wire.ble.connect("fake-note-pro") // same device, new link: the old secret and counter are void
+        val before = wire.writes
+        val refused = assertFailsWith<IllegalStateException> { client.writeCommandForTest(Commands.BATTERY_LIKELY) }
+        assertEquals("Link changed since unlock", refused.message)
+        assertEquals(before, wire.writes, "a stale client wrote ${wire.writes - before} packet(s)")
+        client.close()
+    }
+
+    @Test fun a_client_unlocked_again_on_the_new_link_writes_normally() = runTest {
+        val (client, wire) = connected(real)
+        wire.ble.disconnect()
+        wire.ble.connect("fake-note-pro")
+        client.unlock() // a fresh handshake on the new link is allowed
+        val before = wire.writes
+        client.writeCommandForTest(Commands.BATTERY_LIKELY)
+        assertEquals(before + 1, wire.writes)
+        client.close()
+    }
+
     @Test fun a_closed_client_cannot_unlock_again_and_hides_its_secret() = runTest {
         val (client, wire) = connected(real)
         assertTrue(client.sessionSecret != null)

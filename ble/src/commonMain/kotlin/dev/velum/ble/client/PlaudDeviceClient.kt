@@ -1,5 +1,6 @@
 package dev.velum.ble.client
 
+import dev.velum.ble.BleConnectionState
 import dev.velum.ble.BleTransport
 import dev.velum.ble.gatt.GattProfiles
 import dev.velum.ble.gatt.GuardedLink
@@ -66,6 +67,17 @@ class PlaudDeviceClient(
     private var notifyJob: Job? = null
     @Volatile private var closed = false
 
+    /**
+     * The transport's connection state object at [unlock]. Every connect publishes a new object, so a different one
+     * means the link was dropped or re-made since: this client's secret and counter belong to the old link.
+     */
+    @Volatile private var linkAtUnlock: BleConnectionState? = null
+
+    private fun checkLink() {
+        val at = linkAtUnlock
+        check(at == null || ble.connectionState.value === at) { "Link changed since unlock" }
+    }
+
     private var secret: Protocol20SessionSecret? = null
     private var sendSeq: Long = 2
     private var recvSeq: Long = 0
@@ -105,6 +117,7 @@ class PlaudDeviceClient(
      */
     suspend fun unlock() {
         check(!closed) { "Client is closed" }
+        linkAtUnlock = ble.connectionState.value
         start()
         writeMutex.withLock {
             if (protocolVersionHint >= 20) {
@@ -447,12 +460,14 @@ class PlaudDeviceClient(
 
     private suspend fun writePlain(packet: ByteArray, withoutResponse: Boolean) {
         check(!closed) { "Client is closed" }
+        checkLink()
         withTimeout(responseTimeout) { link.write(GattProfiles.PLAUD_WRITE, packet, withoutResponse) }
     }
 
     private suspend fun writeOutbound(packet: ByteArray) {
         writeMutex.withLock {
             check(!closed) { "Client is closed" }
+            checkLink()
             val sec = secret
             if (sec == null) {
                 writePlain(packet, withoutResponse = false)
