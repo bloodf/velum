@@ -662,12 +662,15 @@ fun RecordingDetailScreen(
                 },
                 onClose = { showSpeakers = false },
                 onConfirm = { renames ->
+                    // The rows the user typed against, taken at the tap: a background job may replace them while the coroutine runs.
+                    val shown = speakers
                     scope.launch {
                         try {
-                            for ((speakerId, name) in renames) {
-                                val trimmed = name.trim()
-                                if (trimmed.isEmpty()) continue
-                                val row = speakers.firstOrNull { it.id == speakerId } ?: continue
+                            confirmSpeakerNames(
+                                shown = shown,
+                                current = { container.repository.getSpeakers(recordingId) },
+                                renames = renames,
+                            ) { row, trimmed ->
                                 var cacheMissed = false
                                 container.voiceProfileStore.withReady {
                                     val emb = cachedClusterEmbedding(
@@ -688,7 +691,7 @@ fun RecordingDetailScreen(
                                             )
                                     }
                                 }
-                                container.repository.renameSpeaker(recordingId, speakerId, trimmed)
+                                container.repository.renameSpeaker(recordingId, row.id, trimmed)
                                 if (cacheMissed) processError = strings.ux.voiceProfilesNoCachedVoice
                             }
                             showSpeakers = false
