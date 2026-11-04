@@ -430,9 +430,19 @@ class AppContainer(
                     step("transfer temps") { withContext(Dispatchers.IO) { deleteDeviceTransferTemps() } }
                 }
                 step("api keys") {
+                    // Settings may not have loaded (locked keystore). Try once so the in-memory state is right;
+                    // clearing is by key prefix and does not depend on it, so a failed load is not a failed step.
+                    if (settingsRepository.loadState.value != SettingsLoadState.Ready) {
+                        try {
+                            settingsRepository.load()
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (_: Exception) {
+                            // Still locked: the removal below works without it.
+                        }
+                    }
                     settingsRepository.clearAllApiKeys()
-                    // It walks the loaded profiles: unless settings loaded, a profile's key may not have been seen.
-                    settingsRepository.loadState.value == SettingsLoadState.Ready
+                    true
                 }
                 step("webhook") { webhookSettings.clear(); true }
                 step("integrations") { integrationAuth.clearTokens(); true }

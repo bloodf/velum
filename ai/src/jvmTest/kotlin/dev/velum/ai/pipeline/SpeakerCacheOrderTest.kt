@@ -256,6 +256,7 @@ class SpeakerCacheOrderTest {
             override suspend fun putString(key: String, value: String) = throw SecureStoreUnavailableException(IllegalStateException("down"))
             override suspend fun getString(key: String): String? = throw SecureStoreUnavailableException(IllegalStateException("down"))
             override suspend fun remove(key: String) = throw SecureStoreUnavailableException(IllegalStateException("down"))
+            override suspend fun removeWithPrefix(prefix: String) = throw SecureStoreUnavailableException(IllegalStateException("down"))
             override suspend fun contains(key: String): Boolean = throw SecureStoreUnavailableException(IllegalStateException("down"))
         }
         val s = setup(id, secure = unavailable, keyless = true)
