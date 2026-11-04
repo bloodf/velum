@@ -19,8 +19,8 @@ class ProcessingFailureTextTest {
     /** Saved text as common code and the engines write it, with synthetic paths, and the copy it must become. */
     private val cases: List<Pair<String, (Strings) -> String>> = listOf(
         INSUFFICIENT_STORAGE_MESSAGE to { s -> s.ux.insufficientStorage },
-        "API key required for API summaries. Add your OpenAI-compatible key in Settings → AI provider." to { s -> s.noApiKeyYet },
-        "API key required: synthetic-secret /data/user/0/private.wav" to { s -> s.noApiKeyYet },
+        "API key required for API summaries. Add your OpenAI-compatible key in Settings → AI provider." to { s -> s.added.processingFailedApiKey },
+        "API key required: synthetic-secret /data/user/0/private.wav" to { s -> s.added.processingFailedApiKey },
         SPEAKER_CACHE_NOT_DROPPED_MESSAGE to { s -> s.added.speakerCacheNotDropped },
         "Unsupported audio format (WebM/Matroska). This file is not Ogg Opus, WAV or raw 16 kHz PCM, so it was not transcribed; re-download it from the device or convert it to WAV or Ogg Opus." to { s -> s.ux.processingFailedUnsupportedFormat },
         WAV_NO_DATA_MESSAGE to { s -> s.added.processingFailedWavNoData },
@@ -74,6 +74,14 @@ class ProcessingFailureTextTest {
     @Test fun english_copy_matches_the_stored_text_and_portuguese_is_not_english() {
         assertEquals(INSUFFICIENT_STORAGE_MESSAGE, En.ux.insufficientStorage)
         assertNotEquals(En.ux.insufficientStorage, PtBr.ux.insufficientStorage)
+    }
+
+    @Test fun missing_key_guidance_names_the_settings_destination_in_both_languages() {
+        for (strings in listOf(En, PtBr)) {
+            val shown = processingFailureText("API key required", strings).orEmpty()
+            kotlin.test.assertTrue(shown.contains(strings.settings))
+            kotlin.test.assertTrue(shown.contains(strings.aiProvider))
+        }
     }
 
     @Test fun missing_failure_shows_nothing() {

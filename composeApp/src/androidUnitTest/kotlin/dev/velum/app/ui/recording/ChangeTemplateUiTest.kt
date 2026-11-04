@@ -179,7 +179,7 @@ class ChangeTemplateUiTest {
             await(PtBr.ux.failedProcessing)
             await(PtBr.ux.retryProcessing)
             assertTrue(
-                shows(PtBr.noApiKeyYet),
+                shows(PtBr.added.processingFailedApiKey),
                 "the reason is shown in the app language",
             )
             assertTrue(compose.onAllNodes(hasText("API key required", substring = true)).fetchSemanticsNodes().isEmpty())
