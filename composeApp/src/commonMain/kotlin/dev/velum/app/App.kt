@@ -253,7 +253,17 @@ private fun VelumRoot(container: AppContainer) {
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     LaunchedEffect(container, lifecycleOwner) {
       lifecycleOwner.lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
-        suspend fun report(result: ImportResult) {
+        suspend fun report(result: ImportResult, recovered: Boolean) {
+            if (recovered) {
+                // A share re-offered after a restart can be up to a day old: say what happened, never move the user.
+                when (result) {
+                    is ImportResult.Created -> snackbar.showSnackbar(strings.ux.imported)
+                    is ImportResult.Duplicate -> snackbar.showSnackbar(strings.ux.importDuplicate)
+                    is ImportResult.Failed -> snackbar.showSnackbar(strings.ux.genericError)
+                    is ImportResult.Deleted -> Unit
+                }
+                return
+            }
             when (result) {
                 is ImportResult.Created -> navController.navigate(Routes.recording(result.recordingId))
                 is ImportResult.Duplicate -> {
@@ -276,7 +286,8 @@ private fun VelumRoot(container: AppContainer) {
                 }
                 if (container.pendingShare === pending) {
                     container.pendingShare = null
-                    result?.let { report(it) }
+                    val recovered = container.pendingShareRecovered
+                    result?.let { report(it, recovered) }
                 }
             }
             val shared = awaitIncomingSharePath() ?: break
@@ -288,7 +299,8 @@ private fun VelumRoot(container: AppContainer) {
                 }
             }
             // The import is owned by the container, so recreating this screen cannot cancel it.
-            container.pendingShare = importPipeline.startSharedDetached(path)
+            container.pendingShareRecovered = (shared as SharedFile.Ready).recoveredAtMs != null
+            container.pendingShare = importPipeline.startSharedDetached(path, shared.recoveredAtMs)
         }
       }
     }
@@ -297,10 +309,10 @@ private fun VelumRoot(container: AppContainer) {
         container.autoFlowRunner.actions.collect { action ->
             when (action) {
                 AutoFlowUiAction.ProcessingFailed -> snackbar.showSnackbar(strings.ux.genericError)
-                // Notes must not leave the app while "Wipe all data" is removing them.
-                is AutoFlowUiAction.ShareMarkdown -> container.unlessWiping { shareText(action.title, action.body) }
-                is AutoFlowUiAction.InsertCalendarEvent ->
-                    container.unlessWiping { openCalendarInsert(action.title, action.description) }
+                is AutoFlowUiAction.ShareMarkdown -> container.noteToShare(action.recordingId)
+                    ?.let { shareText(it.title, it.markdown) }
+                is AutoFlowUiAction.InsertCalendarEvent -> container.noteToShare(action.recordingId)
+                    ?.let { openCalendarInsert(it.title, it.summary) }
                 is AutoFlowUiAction.ExportMarkdownToFolder -> {
                     when (val result = container.exportRecordingToFolder(action.recordingId)) {
                         null -> snackbar.showSnackbar(strings.ux.recordingMissing)
@@ -317,7 +329,8 @@ private fun VelumRoot(container: AppContainer) {
                         } else {
                             strings.ux.webhookFailedFormat.replace(
                                 "%s",
-                                msg ?: strings.ux.webhookNotConfigured,
+                                msg?.let { dev.velum.app.ui.integrations.WebhookTestResult.failureText(it, strings) }
+                                    ?: strings.ux.webhookNotConfigured,
                             )
                         },
                     )
@@ -744,8 +757,8 @@ private fun VelumRoot(container: AppContainer) {
                     val ids = ModelCatalogUi.recommendedModelIds(
                         languageHint = strings.localeTag,
                     )
-                    scope.launch {
-                        // Disk queries stay off the main thread.
+                    scope.launch(Dispatchers.Main.immediate) {
+                        // Disk queries stay off the main thread; the writes after them are on Main (also under a test clock).
                         val (needed, free) = withContext(Dispatchers.Default) {
                             container.localModelManager.bytesNeededFor(ids) to container.localModelManager.freeSpaceBytes()
                         }

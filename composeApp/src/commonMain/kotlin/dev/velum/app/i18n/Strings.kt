@@ -80,6 +80,8 @@ data class Strings(
     val personalization: String,
     val preferences: String,
     val voiceProfiles: String,
+    /** Saved failure text of a rerun that could not name speakers; kept out of UxStrings (JVM constructor limit). */
+    val speakerNamesKept: String,
     val contentFocus: String,
     val customInstructions: String,
     val memory: String,
@@ -243,6 +245,8 @@ data class Strings(
     // Nested: keep Strings primary ctor under the JVM/Robolectric 255-arg limit.
     val settingsUi: SettingsUiStrings,
     val ux: UxStrings,
+    // Add new strings to MoreStrings, not here: Strings and UxStrings are at the JVM constructor limit.
+    val added: MoreStrings,
 )
 
 data class SettingsUiStrings(
@@ -707,6 +711,7 @@ val PtBr = Strings(
     personalization = "Personalização",
     preferences = "Preferências",
     voiceProfiles = "Perfis de voz",
+    speakerNamesKept = "A chave de voz não está disponível, então os falantes não podem ser nomeados de novo. Seus nomes foram mantidos; tente outra vez depois de desbloquear.",
     contentFocus = "Foco do conteúdo",
     customInstructions = "Instruções personalizadas",
     memory = "Memória",
@@ -936,7 +941,7 @@ val PtBr = Strings(
         wipeAllDataBody = "Remove gravações, AutoFlows, memória, glossário, templates personalizados, perfis de voz, chaves de API, tokens do aparelho e segredos de webhook. Não desfaz.",
         wipeAllDataDone = "Dados locais e segredos apagados.",
         wipeAllDataIncomplete = "A limpeza terminou, mas alguns dados ou segredos não puderam ser removidos. Tente novamente.",
-        wipeAllDataDownloadRunning = "Dados locais e segredos apagados, mas um trabalho em segundo plano não parou a tempo e ainda pode salvar dados. Apague novamente em instantes.",
+        wipeAllDataDownloadRunning = "A maior parte dos dados locais e dos segredos foi apagada, mas um trabalho em segundo plano não parou a tempo e ainda pode salvar dados. Apague novamente em instantes.",
         wipeAllDataPartialsLeft = "Dados locais e segredos apagados, mas não foi possível apagar downloads incompletos. Tente de novo.",
         aboutBody = "Processamento local + API OpenAI-compatível (BYO). Sem servidores Plaud.",
         openSourceLicenses = "Licenças de código aberto",
@@ -1107,7 +1112,7 @@ val PtBr = Strings(
         voiceProfilesFilesChanged = "Os arquivos do perfil mudaram. A lista foi atualizada e nada foi removido.",
         voiceProfilesExportBlocked = "Revise os perfis ilegíveis antes de exportar.",
         voiceProfilesChangeBlocked = "Este perfil não pôde ser lido. Revise seus arquivos antes de substituí-lo.",
-        voiceProfilesNoCachedVoice = "Renomeado, mas a amostra de voz desta gravação não está mais disponível, então nenhum perfil de voz foi salvo.",
+        voiceProfilesNoCachedVoice = "Renomeado. Nenhum perfil de voz foi salvo: esta gravação não tem amostra de voz (pode ser anterior aos perfis de voz, ou a amostra foi removida).",
         voiceProfilesEmpty = "Nenhum perfil ainda. Nomeie um orador em uma gravação para cadastrar.",
         voiceProfilesSaved = "Perfil salvo",
         voiceProfilesDeleted = "Perfil removido",
@@ -1155,7 +1160,7 @@ val PtBr = Strings(
         confirmTrashBody = "Você pode restaurar pela lixeira ou desfazer agora.",
         movedToTrash = "Movido para a lixeira",
         undo = "Desfazer",
-        confirmWipeProfilesBody = "Apaga todos os perfis de voz neste aparelho. Não dá para desfazer.",
+        confirmWipeProfilesBody = "Apaga todos os perfis de voz e as amostras de voz salvas das gravações neste aparelho. As gravações e os nomes dos oradores continuam. Não dá para desfazer.",
         confirmDeleteProfileBody = "Exclui este perfil de voz. Não dá para desfazer.",
         confirmDeleteModelBody = "Remove o modelo baixado deste aparelho. Você pode baixar de novo depois.",
         confirmDeleteMemoryBody = "Exclui este item. Não dá para desfazer.",
@@ -1235,7 +1240,20 @@ val PtBr = Strings(
         processingFailedWithDetail = "O processamento falhou (%s).",
         retryProcessing = "Tentar de novo",
         waveformA11y = "Progresso da reprodução",
-    ),)
+    ),
+    added = MoreStrings(
+        webhookFailedTimeout = "tempo esgotado",
+        webhookFailedUnresolvedHost = "endereço não encontrado",
+        webhookFailedTls = "falha na conexão segura",
+        webhookFailedConnection = "sem conexão",
+        speakerCacheNotDropped = "Não foi possível apagar as vozes de falantes salvas, então a gravação ficou como estava. Tente de novo.",
+        processingFailedAudioMissing = "O arquivo de áudio desta gravação não foi encontrado, então ela não foi processada.",
+        processingFailedAudioEmpty = "O arquivo de áudio desta gravação está vazio, então ela não foi processada.",
+        processingFailedWavNoData = "Este arquivo WAV não tem dados de áudio e parece danificado, então não foi transcrito. Baixe-o de novo do dispositivo ou converta para WAV ou Ogg Opus.",
+        deleteForeverFailed = "Não foi possível apagar algumas gravações por completo. O áudio delas pode já ter sido apagado. Tente novamente.",
+        speakersChangedWhileOpen = "Os oradores mudaram enquanto isto estava aberto. Confira os nomes e tente de novo.",
+    ),
+)
 
 val En = Strings(
     localeTag = "en",
@@ -1315,6 +1333,7 @@ val En = Strings(
     personalization = "Personalization",
     preferences = "Preferences",
     voiceProfiles = "Voice profiles",
+    speakerNamesKept = "The voice key is unavailable, so speakers can\'t be named again. Your names were kept; try again after unlocking.",
     contentFocus = "Content focus",
     customInstructions = "Custom instructions",
     memory = "Memory",
@@ -1544,7 +1563,7 @@ val En = Strings(
         wipeAllDataBody = "Deletes recordings, AutoFlows, memory, glossary, custom templates, voice profiles, API keys, device tokens, and webhook secrets. This cannot be undone.",
         wipeAllDataDone = "Local data and secrets wiped.",
         wipeAllDataIncomplete = "The wipe finished, but some data or secrets could not be removed. Try again.",
-        wipeAllDataDownloadRunning = "Local data and secrets wiped, but some background work did not stop in time and may still save data. Wipe again in a moment.",
+        wipeAllDataDownloadRunning = "Most local data and secrets wiped, but some background work did not stop in time and may still save data. Wipe again in a moment.",
         wipeAllDataPartialsLeft = "Local data and secrets wiped, but incomplete downloads could not be deleted. Try again.",
         aboutBody = "On-device processing + OpenAI-compatible API (BYO). No Plaud servers.",
         openSourceLicenses = "Open-source licenses",
@@ -1715,7 +1734,7 @@ val En = Strings(
         voiceProfilesFilesChanged = "The profile’s files changed. The list was refreshed and nothing was removed.",
         voiceProfilesExportBlocked = "Review the unreadable profiles before exporting.",
         voiceProfilesChangeBlocked = "This profile could not be read. Review its files before replacing it.",
-        voiceProfilesNoCachedVoice = "Renamed, but this recording's voice sample is no longer available, so no voice profile was saved.",
+        voiceProfilesNoCachedVoice = "Renamed. No voice profile was saved: this recording has no voice sample (it may predate voice profiles, or the sample was removed).",
         voiceProfilesEmpty = "No profiles yet — name a speaker in a recording to enroll.",
         voiceProfilesSaved = "Profile saved",
         voiceProfilesDeleted = "Profile deleted",
@@ -1763,7 +1782,7 @@ val En = Strings(
         confirmTrashBody = "You can restore from Trash or undo now.",
         movedToTrash = "Moved to trash",
         undo = "Undo",
-        confirmWipeProfilesBody = "Deletes all voice profiles on this device. This cannot be undone.",
+        confirmWipeProfilesBody = "Deletes all voice profiles and the voice samples saved from recordings on this device. Recordings and speaker names stay. This cannot be undone.",
         confirmDeleteProfileBody = "Deletes this voice profile. This cannot be undone.",
         confirmDeleteModelBody = "Removes the downloaded model from this device. You can download it again later.",
         confirmDeleteMemoryBody = "Deletes this item. This cannot be undone.",
@@ -1843,7 +1862,20 @@ val En = Strings(
         processingFailedWithDetail = "Processing failed (%s).",
         retryProcessing = "Try again",
         waveformA11y = "Playback progress",
-    ),)
+    ),
+    added = MoreStrings(
+        webhookFailedTimeout = "timed out",
+        webhookFailedUnresolvedHost = "address not found",
+        webhookFailedTls = "secure connection failed",
+        webhookFailedConnection = "could not connect",
+        speakerCacheNotDropped = "The saved speaker voices could not be cleared, so the recording was left unchanged. Try again.",
+        processingFailedAudioMissing = "The audio file for this recording is missing, so it wasn't processed.",
+        processingFailedAudioEmpty = "The audio file for this recording is empty, so it wasn't processed.",
+        processingFailedWavNoData = "This WAV file has no audio data and looks damaged, so it wasn't transcribed. Download it again from the device, or convert it to WAV or Ogg Opus.",
+        deleteForeverFailed = "Some recordings could not be fully deleted. Their audio may already be gone. Try again.",
+        speakersChangedWhileOpen = "Speakers changed while this was open. Check the names and try again.",
+    ),
+)
 
 val LocalStrings = staticCompositionLocalOf { PtBr }
 

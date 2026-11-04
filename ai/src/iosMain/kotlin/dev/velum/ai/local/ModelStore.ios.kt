@@ -67,11 +67,34 @@ actual class ModelStoreDir actual constructor(absolutePath: String) {
         }
     }
 
-    // writeToFile(atomically) writes a temporary file and renames it; the system flushes it. There is no
-    // portable fsync here, so durability is whatever that gives.
-    actual fun writeBytesDurably(bytes: ByteArray) = writeBytes(bytes)
+    actual fun writeBytesDurably(bytes: ByteArray) {
+        val parentPath = absolutePath.substringBeforeLast('/', missingDelimiterValue = "")
+        if (parentPath.isNotEmpty()) {
+            NSFileManager.defaultManager.createDirectoryAtPath(parentPath, withIntermediateDirectories = true, attributes = null, error = null)
+        }
+        val fd = platform.posix.open(absolutePath, platform.posix.O_WRONLY or platform.posix.O_CREAT or platform.posix.O_TRUNC, 0x1A4)
+        check(fd >= 0) { "Unable to open a file for writing." }
+        try {
+            var written = 0
+            bytes.usePinned { pinned ->
+                while (written < bytes.size) {
+                    val n = platform.posix.write(fd, pinned.addressOf(written), (bytes.size - written).toULong())
+                    check(n > 0) { "Unable to write a file." }
+                    written += n.toInt()
+                }
+            }
+            check(platform.posix.fsync(fd) == 0) { "Unable to flush a file." }
+        } finally {
+            platform.posix.close(fd)
+        }
+    }
 
-    actual fun syncDirectory() = Unit
+    actual fun syncDirectory() {
+        val fd = platform.posix.open(absolutePath, platform.posix.O_RDONLY, 0)
+        if (fd < 0) return
+        platform.posix.fsync(fd)
+        platform.posix.close(fd)
+    }
 
     actual fun appendBytes(bytes: ByteArray) {
         val existing = if (exists()) readBytes() else ByteArray(0)

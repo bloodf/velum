@@ -15,6 +15,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -28,6 +29,10 @@ import org.robolectric.annotation.Config
 @RunWith(AndroidJUnit4::class)
 @Config(application = android.app.Application::class, sdk = [34])
 class DetachedShareImportTest {
+    @org.junit.After fun drainSharedChannel() = runBlocking {
+        while (kotlinx.coroutines.withTimeoutOrNull(300) { dev.velum.app.platform.IncomingShare.next() } != null) Unit
+    }
+
     @Test fun cancelling_the_collector_mid_normalize_still_creates_the_recording() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         context.deleteDatabase("velum.db")
@@ -146,5 +151,118 @@ class DetachedShareImportTest {
         val result = runCatching { withTimeout(30_000) { pending.await() } }
         assertTrue(result.exceptionOrNull() is kotlinx.coroutines.CancellationException || result.getOrNull() is ImportResult.Failed, result.toString())
         assertEquals(0L, container.repository.storageUsage().recordingCount)
+    }
+
+    @Test fun a_finished_share_import_clears_its_pending_marker() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        dev.velum.app.platform.installAppContext(context)
+        context.getSharedPreferences("velum_pending_shares", Context.MODE_PRIVATE).edit().clear().commit()
+        withContainer { container, dir ->
+            val wav = silentWav(File(dir, "marked.wav"))
+            val u = android.net.Uri.parse("content://test.provider/marked.wav")
+            org.robolectric.Shadows.shadowOf(context.contentResolver).registerInputStream(u, java.io.ByteArrayInputStream(wav.readBytes()))
+            val copy = checkNotNull(dev.velum.app.platform.IncomingShare.copyShare(context, u))
+            assertEquals(listOf(copy), dev.velum.app.platform.IncomingShare.pendingPaths(context)) // marker present while pending
+            AudioImportPipeline(container).startSharedDetached(copy).await()
+            assertEquals(emptyList(), dev.velum.app.platform.IncomingShare.pendingPaths(context), "the marker must go with the import")
+        }
+    }
+
+    private fun copyShare(context: Context, wav: File, name: String): String {
+        val u = android.net.Uri.parse("content://test.provider/$name.wav")
+        org.robolectric.Shadows.shadowOf(context.contentResolver).registerInputStream(u, java.io.ByteArrayInputStream(wav.readBytes()))
+        return checkNotNull(dev.velum.app.platform.IncomingShare.copyShare(context, u))
+    }
+
+    private fun pendingEntry(context: Context): String? =
+        context.getSharedPreferences("velum_pending_shares", Context.MODE_PRIVATE).getStringSet("pending", emptySet()).orEmpty().singleOrNull()
+
+    private fun freshMarkers(context: Context) {
+        dev.velum.app.platform.installAppContext(context)
+        dev.velum.app.platform.IncomingShare.resetProcessMemory()
+        context.getSharedPreferences("velum_pending_shares", Context.MODE_PRIVATE).edit().clear().commit()
+    }
+
+    @Test fun the_attempt_is_counted_before_the_import_does_any_work() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        freshMarkers(context)
+        withContainer { container, dir ->
+            val started = CompletableDeferred<Unit>()
+            val gate = CompletableDeferred<Unit>()
+            val copy = copyShare(context, silentWav(File(dir, "count.wav")), "count")
+            val pipeline = AudioImportPipeline(container, normalize = { started.complete(Unit); gate.await(); error("never finishes") })
+            val pending = pipeline.startSharedDetached(copy)
+            withTimeout(30_000) { started.await() }
+            assertTrue(pendingEntry(context)!!.split('|')[1] == "1", "the start must be counted while the import is still running: ${pendingEntry(context)}")
+            gate.complete(Unit)
+            runCatching { pending.await() }
+        }
+    }
+
+    @Test fun failed_and_wipe_refused_imports_clear_their_marker() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        freshMarkers(context)
+        withContainer { container, dir ->
+            val failing = AudioImportPipeline(container, normalize = { error("bad audio") })
+            val bad = copyShare(context, silentWav(File(dir, "bad.wav")), "bad")
+            assertIs<ImportResult.Failed>(failing.startSharedDetached(bad).await())
+            assertEquals(null, pendingEntry(context), "a failed import must clear its marker")
+
+            val refused = copyShare(context, silentWav(File(dir, "refused.wav")), "refused")
+            container.wipeGate.wiping(1.seconds) { assertIs<ImportResult.Failed>(AudioImportPipeline(container).startSharedDetached(refused).await()) }
+            assertEquals(null, pendingEntry(context), "an import refused by a wipe must clear its marker")
+        }
+    }
+
+    @Test fun a_cancelled_import_clears_its_marker() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        freshMarkers(context)
+        withContainer { container, dir ->
+            val started = CompletableDeferred<Unit>()
+            val copy = copyShare(context, silentWav(File(dir, "cancel.wav")), "cancel")
+            val pipeline = AudioImportPipeline(container, normalize = { started.complete(Unit); awaitCancellation() })
+            val pending = pipeline.startSharedDetached(copy)
+            withTimeout(30_000) { started.await() }
+            pending.cancel()
+            runCatching { pending.await() }
+            withTimeout(30_000) { while (pendingEntry(context) != null) kotlinx.coroutines.delay(50) }
+        }
+    }
+
+    @Test fun a_wipe_clears_pending_shares_before_it_deletes_anything() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        freshMarkers(context)
+        withContainer { container, dir ->
+            copyShare(context, silentWav(File(dir, "w.wav")), "w")
+            assertTrue(pendingEntry(context) != null)
+            // The database is gone, so the step that deletes rows throws: a process dying there is the case that matters.
+            // The marker must already be cleared; if the clear came after the row deletion it would survive this.
+            container.databaseHandle.driver.close()
+            runCatching { container.wipeAllData() }
+            assertEquals(null, pendingEntry(context), "a wipe that dies mid-way must not leave a share to be imported again")
+        }
+    }
+
+    @Test fun a_recovered_share_deleted_after_its_marker_is_not_brought_back_but_an_older_deletion_is_ignored() {
+        withContainer { container, dir ->
+            val wav = silentWav(File(dir, "tomb.wav"))
+            val hash = dev.velum.app.platform.sha256File(wav.path)
+            val nowMs = System.currentTimeMillis()
+            container.repository.setMeta(dev.velum.core.data.VelumRepository.IMPORT_DELETED_PREFIX + hash, (nowMs / 1000).toString())
+            // The marker is older than the deletion: the user trashed it after the share: stay deleted.
+            assertIs<ImportResult.Deleted>(AudioImportPipeline(container).importShared(wav.path, recoveredAtMs = nowMs - 60_000))
+            assertEquals(0L, container.repository.storageUsage().recordingCount)
+            // The marker is newer than the deletion: this is a fresh share of a once-deleted file: import it.
+            assertIs<ImportResult.Created>(AudioImportPipeline(container).importShared(wav.path, recoveredAtMs = nowMs + 120_000))
+            // Equal to the second: the deletion happened in the same second as the marker, so it counts (not older).
+            container.repository.wipeAllUserData()
+            container.repository.setMeta(dev.velum.core.data.VelumRepository.IMPORT_DELETED_PREFIX + hash, "1700000000")
+            assertIs<ImportResult.Deleted>(AudioImportPipeline(container).importShared(wav.path, recoveredAtMs = 1_700_000_000_500))
+            assertIs<ImportResult.Created>(AudioImportPipeline(container).importShared(wav.path, recoveredAtMs = 1_700_000_001_000))
+            // A share that was never recovered ignores tombstones, as before.
+            container.repository.wipeAllUserData()
+            container.repository.setMeta(dev.velum.core.data.VelumRepository.IMPORT_DELETED_PREFIX + hash, (nowMs / 1000).toString())
+            assertIs<ImportResult.Created>(AudioImportPipeline(container).importShared(wav.path))
+        }
     }
 }

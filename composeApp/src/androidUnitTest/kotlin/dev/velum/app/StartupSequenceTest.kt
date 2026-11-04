@@ -80,8 +80,12 @@ class StartupSequenceTest {
         ).first { it.isFile }.readText()
         val launch = src.indexOf("appScope.launch {")
         val install = src.indexOf("AiRuntimeHolder.install(")
-        for (channel in listOf("MicRecordingService.ensureNotificationChannel(", "DownloadProgressNotifier.ensureChannel(")) {
-            assertTrue(src.indexOf(channel) in (launch + 1) until install, "$channel must run in the IO coroutine, before install")
+        val publish = "publishNotificationChannels(appContext)"
+        assertTrue(src.indexOf(publish) in (launch + 1) until install, "the first publish must run in the IO coroutine, before install")
+        assertTrue(src.lastIndexOf(publish) in (install + 1) until src.indexOf("cleanupThenPublish("), "the only other publish is the language collector")
+        assertEquals(3, src.split(publish).size, "exactly two publishes")
+        for (direct in listOf("ensureNotificationChannel(", "ensureChannel(", "ensureProcessingChannel(")) {
+            assertEquals(-1, src.indexOf(direct), "$direct must go through the guarded publishNotificationChannels")
         }
     }
 
@@ -94,6 +98,8 @@ class StartupSequenceTest {
         val handoff = src.substring(src.indexOf("HANDOFF_EXECUTOR.execute {"))
         val resolvedBeforePost = Regex("""val fatalText = [^\n]*fatalStartText\(\)[^\n]*\n\s*mainHandler\.post \{""")
         assertEquals(2, resolvedBeforePost.findAll(handoff).count(), "both failure paths must resolve the text before posting to main")
-        assertEquals(0, src.substring(0, src.indexOf("HANDOFF_EXECUTOR.execute {")).split("fatalStartText(").size - 1, "not on main")
+        assertTrue(src.indexOf("fatalStartText(") > src.indexOf("HANDOFF_EXECUTOR.execute {"), "not on main before the handoff")
+        assertTrue(src.lastIndexOf("fatalStartText(") < src.indexOf("override fun onNewIntent"), "not on main after it")
+        assertEquals(3, src.split("fatalStartText(").size, "only those two calls")
     }
 }

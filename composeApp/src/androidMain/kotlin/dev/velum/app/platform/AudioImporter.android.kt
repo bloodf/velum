@@ -113,7 +113,7 @@ internal fun displayNameOf(context: android.content.Context, uri: Uri): String? 
 actual fun deleteShareExports(): Boolean = deleteCacheDir("share")
 
 private fun deleteCacheDir(name: String): Boolean {
-    val context = appContextOrNull() ?: return true
+    val context = appContextOrNull() ?: return false
     val dir = File(context.cacheDir, name)
     dir.deleteRecursively()
     return !dir.exists()

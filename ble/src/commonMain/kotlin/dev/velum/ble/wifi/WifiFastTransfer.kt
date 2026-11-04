@@ -157,6 +157,9 @@ class WifiFastTransferSession(
         server.stop()
     }
 
+    // Note: unlike the BLE client, this does no link check. The session has no BLE link or session secret to compare against
+    // (it holds a frame cipher only), and nothing builds it outside tests today (no production caller of sendPacket). If it is
+    // wired, bind it to the Wi-Fi socket's own lifetime and add the check then.
     suspend fun sendPacket(packet: ByteArray) {
         // The same plaintext guard as every BLE write: forbidden opcodes and settings never leave the app (#350).
         // Before sealing, so a rejected packet neither uses a sequence number nor reaches the server.

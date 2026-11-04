@@ -31,7 +31,8 @@ import dev.velum.app.platform.ExportFolderStore
 import dev.velum.app.platform.clearWatchedFolders
 import dev.velum.app.platform.deleteFileIfPresent
 import dev.velum.app.platform.deleteImportCopies
-import dev.velum.app.platform.deleteOrphanQuarantine
+import dev.velum.app.platform.deleteDeviceTransferTemps
+import dev.velum.app.platform.deleteRecordingsDirectory
 import dev.velum.app.platform.deleteShareExports
 import dev.velum.app.platform.releaseFolderGrants
 import dev.velum.app.platform.writeMarkdownToExportFolder
@@ -40,6 +41,8 @@ import dev.velum.app.platform.MicCapture
 import dev.velum.app.platform.createMicCapture
 import dev.velum.app.platform.DOWNLOAD_PART_SUFFIX
 import dev.velum.app.platform.deleteFileAtPath
+import dev.velum.app.platform.deleteFileIfPresent
+import dev.velum.app.platform.isAppOwnedAudioPath
 import dev.velum.app.platform.isSamePath
 import dev.velum.app.platform.isSupersededOwnAudio
 import dev.velum.app.platform.recordingsDirectoryPath
@@ -87,6 +90,8 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import dev.velum.ai.pipeline.deleteAllPcmSpill
+import dev.velum.ai.pipeline.shareMarkdownBody
+import dev.velum.core.settings.SettingsLoadState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
 import kotlin.time.Duration
@@ -143,6 +148,9 @@ class AppContainer(
      * Read and written on the main thread only (from the Compose effect).
      */
     var pendingShare: kotlinx.coroutines.Deferred<dev.velum.app.importing.ImportResult>? = null
+
+    /** True when [pendingShare] is a share found pending after a restart: reported with a snackbar, never by navigating. */
+    var pendingShareRecovered: Boolean = false
 
     /** One share import at a time across every instance of the activity (the pipeline is recreated per composition). */
     val shareImportMutex = Mutex()
@@ -219,6 +227,8 @@ class AppContainer(
         settings = settingsRepository,
         thermal = thermalPolicy,
         wipeGate = wipeGate,
+        pcmSpillRoot = modelStoreRoot,
+        voiceProfiles = voiceProfileStore,
     )
 
     val recordingJobs: RecordingJobScheduler =
@@ -289,10 +299,36 @@ class AppContainer(
         }
     }
 
-    /** Deletes a recording for good, with the speaker embeddings its processing cached (#320). */
-    suspend fun deleteRecordingForever(id: String) {
-        repository.deleteRecordingHard(id)
-        withContext(Dispatchers.IO) { voiceProfileStore.deleteClusterCache(id) }
+    /**
+     * Deletes a recording for good. False when a step failed: the recording stays, though its audio may already be
+     * gone, and trying again finishes the job. Not cancellable, so leaving the screen can't stop it halfway. It waits
+     * for a running device save, so it sees the file that save writes.
+     */
+    suspend fun deleteRecordingForever(id: String): Boolean = try {
+        withContext(NonCancellable + Dispatchers.IO) {
+            downloadPersistMutex.withLock {
+                val audio = repository.getRecording(id)?.local_path
+                val others = repository.getAllRecordingFileRefs().filter { it.first != id }.mapNotNull { it.second }
+                // Copies first: if one fails, the recording still has its audio.
+                val deleted = (repository.importCopies(id) + listOfNotNull(audio))
+                    .filter { path -> isAppOwnedAudioPath(path) && others.none { it == path || isSamePath(it, path) } }
+                    .all { deleteFileIfPresent(it) }
+                if (deleted) {
+                    repository.deleteRecordingHard(id)
+                    // The row is gone, so this can't fail the delete. Startup removes caches with no recording.
+                    runCatching { voiceProfileStore.deleteClusterCache(id) }
+                        .onFailure { println("VelumDelete: cluster cache delete failed: ${it::class.simpleName}") }
+                } else {
+                    println("VelumDelete: a recording's audio could not be deleted")
+                }
+                deleted
+            }
+        }
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (e: Exception) {
+        println("VelumDelete: deleting a recording failed: ${e::class.simpleName}")
+        false
     }
 
     fun enqueueProcessing(
@@ -360,47 +396,61 @@ class AppContainer(
                     }
                     if (!done) complete = false
                 }
-                val downloads = device.wipePartialDownloads()
+                // Until proven otherwise: if this step throws, a download may still be writing.
+                var downloads = DownloadWipeResult.StillRunning
+                step("downloads") { downloads = device.wipePartialDownloads(); true }
+                val nothingWriting = workStopped && downloads != DownloadWipeResult.StillRunning
+                // Before any data goes: if the process dies mid-wipe, no pending share copy may be offered again.
+                step("pending shares") { withContext(Dispatchers.IO) { dev.velum.app.platform.clearPendingShares() }; true }
                 step("device keys") { deviceKeyImporter.clearKeys(); true }
                 step("mic") { stopMicCapture() }
+                // Before the rows: a worker WorkManager starts in between is refused, and consumes its work.
+                step("queued jobs") { recordingJobs.cancelAll(); true }
                 step("recordings") {
                     val left = mutableSetOf<String>()
                     repository.wipeAllUserData { path -> if (deleteFileIfPresent(path)) left -= path else left += path }
-                    // Only now: if the rows stayed, they still need their queued work. The gate refuses it meanwhile.
-                    recordingJobs.cancelAll()
                     left.isEmpty()
                 }
                 step("voice data") { withContext(Dispatchers.IO) { voiceProfileStore.wipeAll() } }
-                step("folders") {
-                    withContext(Dispatchers.IO) {
-                        clearWatchedFolders()
-                        ExportFolderStore.clear()
-                        releaseFolderGrants()
+                step("watched folders") { withContext(Dispatchers.IO) { clearWatchedFolders() }; true }
+                step("export folder") { withContext(Dispatchers.IO) { ExportFolderStore.clear() }; true }
+                step("folder grants") { withContext(Dispatchers.IO) { releaseFolderGrants() } }
+                step("import copies") { withContext(Dispatchers.IO) { deleteImportCopies() } }
+                step("share exports") { withContext(Dispatchers.IO) { deleteShareExports() } }
+                // A job or download that has not stopped may own these; StillRunning reports that case.
+                if (nothingWriting) {
+                    step("decoded audio") {
+                        withContext(Dispatchers.IO) {
+                            val current = deleteAllPcmSpill(recordingProcessor.pcmSpillRoot)
+                            // Earlier versions spilled under the default root.
+                            deleteAllPcmSpill(defaultModelStoreRoot()) && current
+                        }
                     }
+                    step("recordings folder") { withContext(Dispatchers.IO) { deleteRecordingsDirectory() } }
+                    step("transfer temps") { withContext(Dispatchers.IO) { deleteDeviceTransferTemps() } }
                 }
-                step("cached files") {
-                    withContext(Dispatchers.IO) {
-                        // A job that has not stopped may own a spill directory; StillRunning reports that case.
-                        val spill = !workStopped || deleteAllPcmSpill(modelStoreRoot)
-                        listOf(spill, deleteImportCopies(), deleteShareExports(), deleteOrphanQuarantine()).all { it }
-                    }
+                step("api keys") {
+                    settingsRepository.clearAllApiKeys()
+                    // It walks the loaded profiles: unless settings loaded, a profile's key may not have been seen.
+                    settingsRepository.loadState.value == SettingsLoadState.Ready
                 }
-                step("api keys") { settingsRepository.clearAllApiKeys(); true }
                 step("webhook") { webhookSettings.clear(); true }
                 step("integrations") { integrationAuth.clearTokens(); true }
                 // Last: every step above that deletes rows has run, and VACUUM rewrites the file without them.
                 step("database") { repository.compactAfterWipe() }
                 when {
-                    !workStopped || downloads == DownloadWipeResult.StillRunning -> DownloadWipeResult.StillRunning
                     !complete -> DownloadWipeResult.Incomplete
+                    !nothingWriting -> DownloadWipeResult.StillRunning
                     else -> downloads
                 }
             }
         }
 
-    /** Runs [send], which hands notes to another app, unless "Wipe all data" is removing them. */
-    internal inline fun unlessWiping(send: () -> Unit) {
-        if (!wipeGate.isWiping) send()
+    /** The note to hand to another app for [recordingId], read now: null if a wipe is running or the recording is gone. */
+    suspend fun noteToShare(recordingId: String): SharedNote? = wipeGate.guard {
+        repository.getRecording(recordingId)?.let { row ->
+            SharedNote(row.title, row.summary_markdown.orEmpty(), shareMarkdownBody(row.title, row.summary_markdown, row.transcript))
+        }
     }
 
     /** Ends a mic recording in progress and deletes its file, which may not be on a recording row yet. */
@@ -562,3 +612,6 @@ private val WIPE_JOIN_TIMEOUT = 15.seconds
 
 /** A new recording row was refused because "Wipe all data" is running. */
 class WipeInProgressException : IllegalStateException("Wipe all data is in progress")
+
+/** What AutoFlow hands to another app, read when it is sent. */
+data class SharedNote(val title: String, val summary: String, val markdown: String)
