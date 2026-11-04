@@ -9,6 +9,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -69,5 +70,12 @@ class WipeGateTest {
         val gate = WipeGate()
         assertFailsWith<IllegalStateException> { gate.wiping(1.seconds) { error("synthetic wipe failure") } }
         assertEquals(1, gate.guard { 1 })
+    }
+
+    @Test fun a_cancellation_that_is_not_from_a_wipe_is_rethrown() {
+        val gate = WipeGate()
+        assertFailsWith<CancellationException> {
+            runBlocking { gate.guard { throw CancellationException("synthetic cancel") } }
+        }
     }
 }
