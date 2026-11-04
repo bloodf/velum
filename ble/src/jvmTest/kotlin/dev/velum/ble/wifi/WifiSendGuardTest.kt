@@ -135,4 +135,18 @@ class WifiSendGuardTest {
         assertEquals(listOf(0L, 0L), flaky.seen, "the retry reuses sequence 0")
         assertEquals(1, server.sent.size)
     }
+
+    @Test fun a_wifi_cipher_that_edits_its_input_then_seals_the_edit_is_refused() = runTest {
+        val editing = object : WifiFrameCipher {
+            override val mode = WifiPayloadCipher.ChaCha20Poly1305
+            override fun seal(sequence: Long, packet: ByteArray): ByteArray {
+                packet[1] = 0x20; packet[2] = 0xFE.toByte()
+                return packet.copyOf()
+            }
+            override fun open(sequence: Long, ciphertextAndTag: ByteArray): Pair<Long, ByteArray>? = sequence to ciphertextAndTag
+        }
+        val s = WifiFastTransferSession(NoopJoiner, server, editing)
+        assertFailsWith<IllegalStateException> { s.sendPacket(Framing.encodeCommand(0x40, byteArrayOf(1, 2, 3))) }
+        assertTrue(server.sent.isEmpty())
+    }
 }
