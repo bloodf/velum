@@ -56,7 +56,7 @@ class WatchedSyncWipeTest {
     @Test fun a_sync_does_not_start_during_a_wipe() = withPipeline { container, pipeline ->
         var scanned = false
         val results = container.wipeGate.wiping(1.seconds) {
-            syncWatchedFolders(pipeline) { _, _, _ -> scanned = true; emptyList() }
+            syncWatchedFolders(pipeline) { _, _, _, _ -> scanned = true }
         }
         assertFalse(scanned, "the sync scanned and copied during the wipe")
         assertEquals(emptyList(), results)
@@ -66,14 +66,13 @@ class WatchedSyncWipeTest {
         val scanning = CompletableDeferred<Unit>()
         coroutineScope {
             val sync = async(Dispatchers.Default) {
-                syncWatchedFolders(pipeline) { _, _, checkActive ->
+                syncWatchedFolders(pipeline) { _, _, checkActive, _ ->
                     scanning.complete(Unit)
                     // Bounded, so a scan that ignores the stop fails this test instead of hanging it.
                     repeat(4_000) {
                         checkActive()
                         Thread.sleep(5)
                     }
-                    emptyList()
                 }
             }
             scanning.await()
@@ -82,24 +81,53 @@ class WatchedSyncWipeTest {
         }
     }
 
-    @Test fun cancelled_batch_removes_unprocessed_copies() = withPipeline { _, pipeline ->
-        val first = File(context.cacheDir, "imports/watched/batch-first.wav").apply { parentFile!!.mkdirs(); writeText("bad") }
-        val second = File(context.cacheDir, "imports/watched/batch-second.wav").apply { writeText("bad") }
-        coroutineScope {
-            val job = async(Dispatchers.Default) {
-                val current = kotlinx.coroutines.currentCoroutineContext()[kotlinx.coroutines.Job]!!
-                syncWatchedFolders(pipeline) { _, _, _ ->
-                    listOf(
-                        WatchedFolderEntry("first.wav", "first", first.path, 1),
-                        WatchedFolderEntry("second.wav", "second", second.path, 1),
-                    ).also { current.cancel() }
-                }
-            }
-            try { job.await() } catch (_: CancellationException) { }
+    private suspend fun withSyntheticProvider(block: suspend () -> Unit) {
+        Robolectric.setupContentProvider(FakeDocumentsProvider::class.java, FakeDocumentsProvider.AUTHORITY)
+        val source = File(context.cacheDir, "scanner-provider.wav").apply { writeBytes(ByteArray(64)) }
+        FakeDocumentsProvider.audioFile = source
+        try {
+            block()
+        } finally {
+            FakeDocumentsProvider.audioFile = null
+            source.delete()
         }
-        assertFalse(first.exists())
-        assertFalse(second.exists())
     }
+
+    @Test fun cancelled_consumer_removes_current_copy_and_does_not_stage_next() = withPipeline { _, _ ->
+        withSyntheticProvider {
+            var copied: File? = null
+            var visits = 0
+            try {
+                WatchedFolderStore.scanNewAudio(context, FakeDocumentsProvider.treeUri().toString(), {}) { entry ->
+                    copied = File(entry.absoluteCopyPath)
+                    assertTrue(copied!!.exists())
+                    visits++
+                    throw CancellationException("synthetic")
+                }
+            } catch (_: CancellationException) { }
+            assertEquals(1, visits)
+            assertFalse(copied!!.exists())
+            assertTrue(File(context.cacheDir, "imports/watched").listFiles().orEmpty().isEmpty())
+        }
+    }
+
+    @Test fun each_copy_is_removed_before_the_next_source_is_consumed() = withPipeline { _, _ ->
+        withSyntheticProvider {
+            var previous: File? = null
+            var visits = 0
+            WatchedFolderStore.scanNewAudio(context, FakeDocumentsProvider.treeUri().toString(), {}) { entry ->
+                assertFalse(previous?.exists() ?: false)
+                val current = File(entry.absoluteCopyPath)
+                assertEquals(listOf(current), current.parentFile!!.listFiles().orEmpty().toList())
+                assertTrue(current.exists())
+                previous = current
+                visits++
+        }
+        assertEquals(2, visits)
+        assertFalse(previous!!.exists())
+        }
+    }
+
 
     @Test fun watched_multibyte_name_scans_and_imports() = withPipeline { container, pipeline ->
         Robolectric.setupContentProvider(FakeDocumentsProvider::class.java, FakeDocumentsProvider.AUTHORITY)
@@ -113,10 +141,10 @@ class WatchedSyncWipeTest {
         FakeDocumentsProvider.displayName = "$name.wav"
         FakeDocumentsProvider.audioFile = wav
         try {
-            val results = syncWatchedFolders(pipeline) { context, uri, check ->
-                WatchedFolderStore.scanNewAudio(context, uri, check).also { entries ->
-                    assertTrue(entries.any { it.displayName == "$name.wav" })
-                    entries.forEach { assertTrue((File(it.absoluteCopyPath).name + ".tmp").toByteArray(Charsets.UTF_8).size <= 255) }
+            val results = syncWatchedFolders(pipeline) { context, uri, check, consume ->
+                WatchedFolderStore.scanNewAudio(context, uri, check) { entry ->
+                    assertTrue((File(entry.absoluteCopyPath).name + ".tmp").toByteArray(Charsets.UTF_8).size <= 255)
+                    consume(entry)
                 }
             }
             assertTrue(results.any { it is dev.velum.app.importing.ImportResult.Created }, "$results")
@@ -146,14 +174,14 @@ class WatchedSyncWipeTest {
             assertEquals(1, first.count { it is dev.velum.app.importing.ImportResult.Created })
             assertEquals(1, container.repository.getAllRecordings().size)
 
-            val unchanged = syncWatchedFolders(pipeline)
-            assertTrue(unchanged.all { it is dev.velum.app.importing.ImportResult.Duplicate }, "$unchanged")
-            assertEquals(2, unchanged.size)
-            assertEquals(1, container.repository.getAllRecordings().size)
-
             wav.writeBytes(audio(1))
             val changed = syncWatchedFolders(pipeline)
             assertEquals(1, changed.count { it is dev.velum.app.importing.ImportResult.Created }, "$changed")
+            assertEquals(2, container.repository.getAllRecordings().size)
+
+            val unchanged = syncWatchedFolders(pipeline)
+            assertTrue(unchanged.all { it is dev.velum.app.importing.ImportResult.Duplicate }, "$unchanged")
+            assertEquals(2, unchanged.size)
             assertEquals(2, container.repository.getAllRecordings().size)
 
             wav.writeBytes(ByteArray(64))
@@ -178,9 +206,11 @@ class WatchedSyncWipeTest {
         val checks = AtomicInteger()
         var stopped = false
         try {
-            WatchedFolderStore.scanNewAudio(context, FakeDocumentsProvider.treeUri().toString()) {
-                checks.incrementAndGet()
-                throw CancellationException("synthetic")
+            runBlocking {
+                WatchedFolderStore.scanNewAudio(context, FakeDocumentsProvider.treeUri().toString(), {
+                    checks.incrementAndGet()
+                    throw CancellationException("synthetic")
+                }) { error("stopped walk consumed a copy") }
             }
         } catch (_: CancellationException) {
             stopped = true

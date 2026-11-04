@@ -53,50 +53,46 @@ object WatchedFolderStore {
             .apply()
     }
 
-    /** [checkActive] runs before each file is copied, and throws when the scan should stop. */
-    fun scanNewAudio(context: Context, treeUriString: String, checkActive: () -> Unit = {}): List<WatchedFolderEntry> {
-        val tree = DocumentFile.fromTreeUri(context, Uri.parse(treeUriString)) ?: return emptyList()
-        val out = ArrayList<WatchedFolderEntry>()
-        val destRoot = File(context.cacheDir, "imports/watched").apply { mkdirs() }
+    /** Copies one source at a time; its scratch copy lives only until [consume] returns. */
+    suspend fun scanNewAudio(
+        context: Context,
+        treeUriString: String,
+        checkActive: () -> Unit,
+        consume: suspend (WatchedFolderEntry) -> Unit,
+    ) {
+        val tree = DocumentFile.fromTreeUri(context, Uri.parse(treeUriString)) ?: return
+        val sources = ArrayList<DocumentFile>()
         fun walk(dir: DocumentFile) {
             dir.listFiles().forEach { child ->
-                if (child.isDirectory) {
-                    walk(child)
-                } else if (child.isFile) {
-                    val name = child.name.orEmpty()
-                    if (ImportAudioFormats.isSupportedFileName(name)) {
-                        checkActive()
-                        val uri = child.uri.toString()
-                        val modified = child.lastModified()
-                        val size = child.length()
-                        val extension = name.substringAfterLast('.').lowercase()
-                        val dest = File(destRoot, "${java.util.UUID.randomUUID()}.$extension")
-                        // One unreadable file (card pulled mid-copy, revoked grant) must not stop the others.
-                        val copied = runCatching {
-                            copyWholeFile(dest, child.length()) { context.contentResolver.openInputStream(child.uri) }
-                        }.getOrDefault(false)
-                        if (copied) {
-                            removeLegacyWatchedCopy(destRoot, child.lastModified(), name, dest)
-                            out += WatchedFolderEntry(
-                                displayName = name,
-                                uriString = uri,
-                                absoluteCopyPath = dest.absolutePath,
-                                lastModifiedMs = modified,
-                                sizeBytes = size,
-                            )
-                        }
-                    }
-                }
+                checkActive()
+                if (child.isDirectory) walk(child)
+                else if (child.isFile && ImportAudioFormats.isSupportedFileName(child.name.orEmpty())) sources += child
             }
         }
-        try {
-            walk(tree)
-            return out.sortedByDescending { it.lastModifiedMs }
-        } catch (t: Throwable) {
-            out.forEach { File(it.absoluteCopyPath).delete() }
-            throw t
+        walk(tree)
+        val destRoot = File(context.cacheDir, "imports/watched").apply { mkdirs() }
+        sources.sortedByDescending { it.lastModified() }.forEach { child ->
+            checkActive()
+            val name = child.name.orEmpty()
+            val modified = child.lastModified()
+            val size = child.length()
+            val extension = name.substringAfterLast('.').lowercase()
+            val dest = File(destRoot, "${java.util.UUID.randomUUID()}.$extension")
+            try {
+                val copied = runCatching {
+                    copyWholeFile(dest, size) { context.contentResolver.openInputStream(child.uri) }
+                }.getOrDefault(false)
+                if (copied) {
+                    removeLegacyWatchedCopy(destRoot, modified, name, dest)
+                    checkActive()
+                    consume(WatchedFolderEntry(name, child.uri.toString(), dest.absolutePath, modified, size))
+                }
+            } finally {
+                dest.delete()
+            }
         }
     }
+
 }
 
 /**
