@@ -6,6 +6,7 @@ import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import dev.velum.core.db.VelumDatabase
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
@@ -46,17 +47,18 @@ class WipeFoldersAndIndexTest {
             durationSeconds = 0, sizeBytes = 0, localPath = null, transcript = "words", summaryMarkdown = null, status = "ready",
         )
         driver.armed = true
-        assertFalse(repo.wipeAllUserData(), "index text may remain: the wipe must say so")
+        assertFailsWith<IllegalStateException>("index text may remain: the wipe must say so") { repo.wipeAllUserData() }
+        assertEquals(emptyList(), repo.getAllRecordings().map { it.id }, "the rows are gone before the throw")
     }
 
     @Test fun a_failed_index_rebuild_makes_the_wipe_report_failure() = runTest {
         val (repo, driver) = repoFailing { it == "DELETE FROM recording_fts" }
         driver.armed = true
-        assertFalse(repo.wipeAllUserData())
+        assertFailsWith<IllegalStateException> { repo.wipeAllUserData() }
     }
 
-    @Test fun a_wipe_with_a_working_index_reports_clean() = runTest {
+    @Test fun a_wipe_with_a_working_index_does_not_throw() = runTest {
         val (repo, _) = repoFailing { true } // never armed: nothing fails
-        assertTrue(repo.wipeAllUserData())
+        repo.wipeAllUserData()
     }
 }

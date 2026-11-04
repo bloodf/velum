@@ -790,15 +790,14 @@ class VelumRepository(
     /**
      * Local wipe: recordings, custom templates, AutoFlows, memory, glossary. Built-ins reseed.
      * [deleteLocalFile] removes on-disk audio for each recording's `local_path` (privacy).
-     */
-    /**
-     * Deletes every user row. Returns false when the search index could not be cleared or rebuilt: normal-use indexing
-     * swallows such failures (the row is the only copy, so the index is flagged stale and rebuilt later), but a wipe must
-     * say that index text may remain.
+     *
+     * Throws [IllegalStateException] at the very end, after every row is gone, when the search index could not be
+     * cleared or rebuilt: normal-use indexing swallows such failures (the row is the only copy, so the index is flagged
+     * stale and rebuilt later), but a wipe must say that index text may remain.
      */
     suspend fun wipeAllUserData(
         deleteLocalFile: (absolutePath: String) -> Unit = {},
-    ): Boolean = withContext(dbContext) {
+    ) = withContext(dbContext) {
         var indexClean = true
         fun wipeIndex(block: () -> Unit) {
             try {
@@ -846,7 +845,7 @@ class VelumRepository(
         audioPaths.forEach { path ->
             runCatching { deleteLocalFile(path) }
         }
-        indexClean
+        check(indexClean) { "The search index could not be cleared" }
     }
 
     /**

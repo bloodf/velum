@@ -74,7 +74,7 @@ class WipeCompactionTest {
         repo.seed()
         val before = leftIn(dir)
         for (m in markers) assertTrue(before.any { it.endsWith(":$m") }, "marker $m must be on disk before the wipe: $before")
-        assertTrue(repo.wipeAllUserData())
+        repo.wipeAllUserData()
         if (compact) assertTrue(repo.compactAfterWipe())
         val left = leftIn(dir)
         if (compact) assertEquals(emptyList(), left, "markers left (wal=$wal)")
@@ -89,7 +89,7 @@ class WipeCompactionTest {
     @Test fun a_plain_vacuum_leaves_deleted_words_in_the_fts_index_and_the_merge_removes_them() = withDb(wal = false) { repo, dir ->
         repo.seed()
         assertTrue(ftsHas(dir, titleWord) && ftsHas(dir, summaryWord) && ftsHas(dir, transcriptWord), "words are in the FTS data")
-        assertTrue(repo.wipeAllUserData())
+        repo.wipeAllUserData()
         JdbcSqliteDriver("jdbc:sqlite:${File(dir, "velum.db").path}").use { it.execute(null, "VACUUM", 0) }
         assertTrue(listOf(titleWord, summaryWord, transcriptWord).any { ftsHas(dir, it) }, "VACUUM alone keeps FTS words (the bug)")
         assertTrue(repo.compactAfterWipe())
@@ -98,7 +98,7 @@ class WipeCompactionTest {
 
     @Test fun a_checkpoint_that_could_not_empty_the_wal_reports_false() = withDb(wal = true) { repo, dir ->
         repo.seed()
-        assertTrue(repo.wipeAllUserData())
+        repo.wipeAllUserData()
         // A second reader keeps its snapshot open, so the truncating checkpoint comes back busy and the WAL keeps old pages.
         val other = java.sql.DriverManager.getConnection("jdbc:sqlite:${File(dir, "velum.db").path}")
         try {

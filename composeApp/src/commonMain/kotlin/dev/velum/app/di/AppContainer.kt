@@ -411,8 +411,9 @@ class AppContainer(
                 step("queued jobs") { recordingJobs.cancelAll(); true }
                 step("recordings") {
                     val left = mutableSetOf<String>()
-                    val indexClean = repository.wipeAllUserData { path -> if (deleteFileIfPresent(path)) left -= path else left += path }
-                    left.isEmpty() && indexClean
+                    // Throws at its very end if the search index could not be cleared; step() turns that into Incomplete.
+                    repository.wipeAllUserData { path -> if (deleteFileIfPresent(path)) left -= path else left += path }
+                    left.isEmpty()
                 }
                 step("voice data") { withContext(Dispatchers.IO) { voiceProfileStore.wipeAll() } }
                 step("watched folders") { withContext(Dispatchers.IO) { clearWatchedFolders() }; true }
