@@ -6,6 +6,7 @@ import android.util.Log
 import androidx.annotation.Keep
 import androidx.annotation.VisibleForTesting
 import dev.velum.ai.local.ModelStoreDir
+import dev.velum.ai.local.defaultModelStoreRoot
 import dev.velum.ai.pipeline.AiRuntimeHolder
 import dev.velum.ai.pipeline.ThermalMonitor
 import dev.velum.ai.pipeline.createWorkManagerRecordingJobScheduler
@@ -23,6 +24,7 @@ import dev.velum.app.platform.sweepStalePartialTransfers
 import dev.velum.app.platform.recoverPartialMicRecordings
 import dev.velum.app.platform.recordingsDirectoryPath
 import dev.velum.app.platform.sweepOrphanRecordingAudio
+import dev.velum.app.platform.sweepStaleImportCopies
 import dev.velum.core.calendar.installCalendarContext
 import dev.velum.core.data.DriverFactory
 import dev.velum.core.integrations.IntegrationConfig
@@ -72,7 +74,11 @@ class VelumApplication : Application() {
                 // Before AiRuntimeHolder.install: WorkManager can re-run a killed job as soon as the
                 // holder is set, and it would race this sweep for its own tmp/pcm-<id> (#197).
                 runCatching {
-                    val spills = sweepOrphanPcmSpill(System.currentTimeMillis() - STALE_PCM_SPILL_AGE_MS)
+                    val spills = sweepOrphanPcmSpill(
+                        System.currentTimeMillis() - STALE_PCM_SPILL_AGE_MS,
+                        modelsRoot = ModelStoreDir(File(filesDir, "models").absolutePath),
+                        defaultRoot = defaultModelStoreRoot(),
+                    )
                     if (spills > 0) Log.i(TAG, "Removed $spills orphaned PCM spill dir(s)")
                 }.onFailure { t -> Log.w(TAG, "PCM spill sweep failed (${t::class.simpleName})") }
                 val modelsDir = File(filesDir, "models")
@@ -139,6 +145,15 @@ class VelumApplication : Application() {
                             val swept = sweepStalePartialTransfers(System.currentTimeMillis())
                             if (swept > 0) Log.i(TAG, "Removed $swept stale partial download file(s)")
                         }.onFailure { t -> Log.w(TAG, "Partial download sweep failed (${t::class.simpleName})") }
+                        runCatching {
+                            val swept = sweepStaleImportCopies(
+                                File(appContext.cacheDir, "imports"),
+                                c.repository.getAllRecordingFileRefs().map { it.second },
+                                // recoverPending ran before the container was built: what is still marked is its to expire.
+                                pendingShares = dev.velum.app.platform.IncomingShare.pendingPaths(appContext),
+                            )
+                            if (swept > 0) Log.i(TAG, "Removed $swept stale import copie(s)")
+                        }.onFailure { t -> Log.w(TAG, "Import copy sweep failed (${t::class.simpleName})") }
                         val report = sweepOrphanRecordingAudio(recordingsDirectoryPath(), c.repository::getAllRecordingFileRefs)
                         Log.i(TAG, "Orphan audio sweep: quarantined=${report.quarantined} purged=${report.purged} staleTemps=${report.staleTemps} failedMoves=${report.failedMoves}")
                     },

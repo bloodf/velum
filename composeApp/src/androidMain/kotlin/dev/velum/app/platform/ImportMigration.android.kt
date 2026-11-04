@@ -130,7 +130,10 @@ private fun sweepResidue(recordingsDir: File, importsRoot: File, referenced: Set
         .filter { old(it) && it.canonicalPath !in referenced }
         .forEach { it.delete() }
     val pendingCanonical = pending.mapNotNullTo(HashSet()) { runCatching { File(it).canonicalPath }.getOrNull() }
+    // imports/watched holds the watched-folder copies the import deliberately keeps until their recording goes.
+    val watchedRoot = File(importsRoot, "watched").path + File.separator
     importsRoot.walkBottomUp()
         .filter { it.isFile && old(it) && it.canonicalPath !in referenced && it.canonicalPath !in pendingCanonical }
+        .filter { !it.canonicalPath.startsWith(watchedRoot) }
         .forEach { it.delete() }
 }

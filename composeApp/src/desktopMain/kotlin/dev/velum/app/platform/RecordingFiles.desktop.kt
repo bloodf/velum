@@ -21,3 +21,31 @@ actual fun isSupersededOwnAudio(previousPath: String, newPath: String, dir: Stri
             previous.parentFile == File(dir).canonicalFile &&
             previous.name.startsWith("$id.")
     }.getOrDefault(false)
+
+actual fun deleteFileIfPresent(absolutePath: String): Boolean = runCatching {
+    val file = File(absolutePath)
+    if (file.isFile) file.delete()
+    !file.exists()
+}.getOrDefault(false)
+
+actual fun deleteRecordingsDirectory(): Boolean {
+    val recordings = File(recordingsDirectoryPath())
+    return deleteTreeWithoutFollowingLinks(recordings)
+}
+
+actual fun deleteDeviceTransferTemps(): Boolean {
+    val temp = File(System.getProperty("java.io.tmpdir") ?: return false)
+    return temp.listFiles().orEmpty()
+        .filter { it.name.startsWith("velum-ble-session-") }
+        .map { it.delete() || !it.exists() }
+        .all { it }
+}
+
+actual fun isAppOwnedAudioPath(absolutePath: String): Boolean = runCatching {
+    val file = File(absolutePath).canonicalFile
+    val root = File(recordingsDirectoryPath()).canonicalFile
+    file.startsWith(root) && file != root
+}.getOrDefault(false)
+
+/** Desktop reads a picked file in place, so it never has a copy to clean up. */
+actual fun isImportCacheCopy(absolutePath: String): Boolean = false

@@ -5,10 +5,11 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
@@ -18,7 +19,6 @@ import kotlinx.coroutines.withTimeoutOrNull
 class WipeGate {
     private val holds = MutableStateFlow(0)
     private val running = MutableStateFlow<Set<Deferred<*>>>(emptySet())
-    private val cancelledByWipe = MutableStateFlow<Set<Deferred<*>>>(emptySet())
 
     val isWiping: Boolean get() = holds.value > 0
 
@@ -27,8 +27,8 @@ class WipeGate {
      * so a long-lived caller (an action collector, a worker) keeps running. Null when refused or stopped by a wipe;
      * any other cancellation reaches the caller as usual.
      */
-    suspend fun <T> guard(block: suspend () -> T): T? = coroutineScope {
-        val work = async(start = CoroutineStart.LAZY) { block() }
+    suspend fun <T> guard(block: suspend () -> T): T? = supervisorScope {
+        val work = async(start = CoroutineStart.LAZY) { runStoppingForWipe(block) }
         // Registered before the check: a wipe that starts in between still finds and cancels it.
         running.update { it + work }
         try {
@@ -40,14 +40,29 @@ class WipeGate {
                     work.await()
                 } catch (cancelled: CancellationException) {
                     ensureActive() // the caller itself was cancelled: keep that
-                    if (work !in cancelledByWipe.value) throw cancelled
+                    if (cancelled !is WipeCancelled) throw cancelled
                     null
                 }
             }
         } finally {
             running.update { it - work }
-            cancelledByWipe.update { it - work }
         }
+    }
+
+    /** A failure while a wipe stops the work (a status restore on a closing database) is not the caller's to handle. */
+    private suspend fun <T> runStoppingForWipe(block: suspend () -> T): T? = try {
+        block()
+    } catch (failure: Throwable) {
+        if (failure is CancellationException || !stoppedByWipe()) throw failure
+        println("VelumWipe: work stopped by a wipe failed while unwinding: ${failure::class.simpleName}")
+        null
+    }
+
+    private suspend fun stoppedByWipe(): Boolean = try {
+        currentCoroutineContext().ensureActive()
+        false
+    } catch (cancelled: CancellationException) {
+        cancelled is WipeCancelled
     }
 
     /**
@@ -58,8 +73,7 @@ class WipeGate {
         holds.update { it + 1 }
         try {
             val work = running.value
-            cancelledByWipe.update { it + work }
-            work.forEach { it.cancel() }
+            work.forEach { it.cancel(WipeCancelled()) }
             val allStopped = withTimeoutOrNull(joinTimeout) { work.forEach { it.join() } } != null
             return block(allStopped)
         } finally {
@@ -67,3 +81,6 @@ class WipeGate {
         }
     }
 }
+
+/** The cause a wipe cancels work with, which tells its cancellation from any other. */
+private class WipeCancelled : CancellationException("Stopped by Wipe all data")

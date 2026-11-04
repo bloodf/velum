@@ -21,7 +21,7 @@ actual fun rememberAudioImporter(onFailed: () -> Unit, onPicked: (path: String) 
 }
 
 /** Desktop imports read the picked file in place; there are no copies. */
-actual fun deleteImportCopies() = Unit
+actual fun deleteImportCopies(): Boolean = true
 
-/** Desktop exports go where the user chooses; nothing is kept in a cache. */
-actual fun deleteShareExports() = Unit
+/** Desktop exports are written to the home folder and nothing tracks them, so a wipe can't remove them. */
+actual fun deleteShareExports(): Boolean = true

@@ -16,4 +16,4 @@ actual fun watchedFolderCount(): Int = 0
 
 actual fun clearWatchedFolders() = Unit
 
-actual fun releaseFolderGrants() = Unit
+actual fun releaseFolderGrants(): Boolean = true

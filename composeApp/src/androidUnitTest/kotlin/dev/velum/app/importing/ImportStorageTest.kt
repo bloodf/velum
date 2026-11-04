@@ -7,7 +7,7 @@ import dev.velum.ai.pipeline.RecordingJobScheduler
 import dev.velum.app.di.AppContainer
 import dev.velum.app.platform.installAppContext
 import dev.velum.app.platform.installRecordingFilesDir
-import dev.velum.app.platform.isImportScratchPath
+import dev.velum.app.platform.isImportCacheCopy
 import dev.velum.app.platform.migrateCachedImports
 import dev.velum.app.platform.recordingsDirectoryPath
 import dev.velum.app.platform.NormalizedAudio
@@ -79,15 +79,16 @@ class ImportStorageTest {
         var seed = 0
         for ((source, file) in sources) {
             wav(file, seed++)
-            assertTrue("$source not treated as scratch", isImportScratchPath(file.path))
+            assertTrue("$source not treated as scratch", isImportCacheCopy(file.path))
             val result = AudioImportPipeline(container).importFile(file.path, source = source)
             assertTrue("$source: $result", result is ImportResult.Created)
             val row = container.repository.getRecording((result as ImportResult.Created).recordingId)!!
             assertTrue("$source row points at ${row.local_path}", inRecordings(row.local_path!!))
             assertTrue(File(row.local_path!!).isFile)
-            assertFalse("$source cache copy left behind", file.exists())
+            // A watched folder's copy deliberately stays until its recording is deleted (it saves re-copying the file on every sync).
+            if (source == "watched") assertTrue(file.exists()) else assertFalse("$source cache copy left behind", file.exists())
         }
-        assertTrue(File(cache, "imports").walkTopDown().none { it.isFile })
+        assertTrue(File(cache, "imports").walkTopDown().filter { it.isFile }.all { it.path.contains("/watched/") })
     }
 
     // Same audio, different source bytes: the content hash matches, so it reaches discardNormalized (not the source-hash exit).
@@ -145,7 +146,7 @@ class ImportStorageTest {
 
     @Test fun a_file_the_user_chose_is_never_deleted() = runBlocking {
         val mine = wav(File(files, "user-music/mine.wav"), 9)
-        assertFalse(isImportScratchPath(mine.path))
+        assertFalse(isImportCacheCopy(mine.path))
         AudioImportPipeline(container).importFile(mine.path)
         assertTrue(mine.exists())
     }

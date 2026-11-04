@@ -9,12 +9,14 @@ import dev.velum.core.calendar.CalendarEventSummary
 import dev.velum.core.calendar.CalendarLookupResult
 import dev.velum.core.data.DriverFactory
 import dev.velum.core.data.VelumRepository
+import dev.velum.core.data.WipeGate
 import dev.velum.core.data.createDatabase
 import dev.velum.core.db.Autoflow
 import dev.velum.core.db.Recording
 import dev.velum.core.settings.ApiModelOverride
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
+import kotlin.time.Duration.Companion.seconds
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -61,6 +63,34 @@ class AutoFlowRunnerTest {
         assertEquals(listOf("rec-af-1"), f.enqueued)
         assertEquals("ready", f.row("rec-af-1").status)
         assertEquals(listOf("rec-af-1"), f.actions.filterIsInstance<AutoFlowUiAction.PostWebhook>().map { it.recordingId })
+    }
+
+    @Test
+    fun aStalePassDuringAWipe_touchesNothing() = runTest {
+        val f = Fixture(this)
+        f.start()
+        f.gate.wiping(1.seconds) {
+            f.publish(recording("rec-stale"))
+            assertEquals(emptyList(), f.enqueued, "a pass enqueued work for a recording the wipe is deleting")
+            assertEquals("imported", f.row("rec-stale").status, "a pass wrote to a recording the wipe is deleting")
+        }
+    }
+
+    @Test
+    fun aWipe_stopsARunningPass_beforeItsPostAction() = runTest {
+        val f = Fixture(this)
+        f.start()
+        f.enqueue = { } // the job is still running when the wipe starts
+        f.store.put(recording("rec-running"))
+        runCurrent()
+        assertEquals(listOf("rec-running"), f.enqueued)
+        f.gate.wiping(5.seconds) { stopped ->
+            assertTrue(stopped, "the wipe did not stop the pass")
+            f.complete("rec-running")
+            testScheduler.advanceTimeBy(2_000)
+            runCurrent()
+            assertTrue(f.actions.none { it is AutoFlowUiAction.PostWebhook }, "a post action fired during the wipe")
+        }
     }
 
     @Test
@@ -447,7 +477,7 @@ class AutoFlowRunnerTest {
         assertEquals("ready", f.row("bad").status)
         assertEquals("ready", f.row("good").status)
         assertEquals(1, f.actions.count { it === AutoFlowUiAction.ProcessingFailed })
-        assertEquals(listOf(recording("good").title), f.actions.filterIsInstance<AutoFlowUiAction.InsertCalendarEvent>().map { it.title })
+        assertEquals(listOf("good"), f.actions.filterIsInstance<AutoFlowUiAction.InsertCalendarEvent>().map { it.recordingId })
         f.publish(recording("later"))
         assertEquals("ready", f.row("later").status)
     }
@@ -785,6 +815,7 @@ class AutoFlowRunnerTest {
         collectActions: Boolean = true,
     ) {
         val store = Store(rule)
+        val gate = WipeGate()
         // All fixture coroutines use the same TestCoroutineScheduler/thread.
         // Cross-thread integration below uses StateFlow and Deferred signals.
         val enqueued = mutableListOf<String>()
@@ -801,6 +832,7 @@ class AutoFlowRunnerTest {
             store, { id, _, _ -> process(id) }, test.backgroundScope,
             calendar = object : CalendarEventProvider { override suspend fun currentOrNextEvent(aroundEpochMs: Long) = calendarAround(aroundEpochMs) },
             diagnostics = { diagnostics += it },
+            wipeGate = gate,
             jobScheduler = if (scheduler) object : RecordingJobScheduler {
                 override fun enqueue(recordingId: String, templateId: String?, retranscribe: Boolean, apiModelOverride: ApiModelOverride?) {
                     enqueueReportingStart(recordingId, templateId, retranscribe, apiModelOverride)

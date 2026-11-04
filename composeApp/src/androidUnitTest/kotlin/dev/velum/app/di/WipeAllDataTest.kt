@@ -5,11 +5,14 @@ import androidx.lifecycle.ViewModelStore
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import dev.velum.ai.local.ModelStoreDir
+import dev.velum.ai.local.defaultModelStoreRoot
 import dev.velum.app.importing.AudioImportPipeline
 import dev.velum.app.importing.ImportResult
 import dev.velum.app.platform.ExportFolderResult
 import dev.velum.app.platform.ExportFolderStore
 import dev.velum.app.platform.MicCapture
+import dev.velum.app.platform.FakeDocumentsProvider
+import dev.velum.app.platform.releaseGrants
 import dev.velum.app.platform.syncWatchedFolders
 import dev.velum.ai.pipeline.RecordingProcessor
 import dev.velum.core.settings.ApiModelOverride
@@ -25,6 +28,7 @@ import dev.velum.app.platform.MicSessionState
 import dev.velum.app.platform.MicStartResult
 import dev.velum.app.platform.MicStopResult
 import dev.velum.app.platform.installAppContext
+import dev.velum.app.platform.recordingsDirectoryPath
 import dev.velum.app.platform.sha256File
 import dev.velum.app.platform.watchedFolderCount
 import dev.velum.core.security.SecureKeys
@@ -55,6 +59,7 @@ import kotlin.random.Random
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -70,6 +75,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.Robolectric
 import org.robolectric.annotation.Config
 
 /** The whole "Wipe all data" action against a download still saving a recording into the real repository. */
@@ -204,6 +210,12 @@ class WipeAllDataTest {
         }
     }
 
+    /** Reads fail while the keystore is locked; removing an entry only touches preferences, so it succeeds. */
+    private class LockedReadsStore(private val delegate: SecureStore = InMemorySecureStore()) : SecureStore by delegate {
+        override suspend fun getString(key: String): String? =
+            throw SecureStoreUnavailableException(IllegalStateException("synthetic"))
+    }
+
     /** Fails clearing the device keys, the way a locked keystore does. */
     private class FailingDeviceKeyStore(private val delegate: SecureStore = InMemorySecureStore()) : SecureStore by delegate {
         override suspend fun remove(key: String) {
@@ -211,6 +223,9 @@ class WipeAllDataTest {
             delegate.remove(key)
         }
     }
+
+    private var lastRoot: ModelStoreDir? = null
+    private fun root() = lastRoot!!
 
     private fun withContainer(
         store: SecureStore = InMemorySecureStore(),
@@ -223,17 +238,26 @@ class WipeAllDataTest {
         installAppContext(context)
         context.deleteDatabase("velum.db")
         val root = ModelStoreDir(Files.createTempDirectory("velum-wipe-paths").toString())
+        lastRoot = root
+        val files = Files.createTempDirectory("velum-wipe-files").toFile()
+        installRecordingFilesDir(files.path)
         val container = if (mic == null) {
             AppContainer(store, DriverFactory(context), modelStoreRoot = root, recordingJobSchedulerFactory = jobs)
         } else {
             AppContainer(store, DriverFactory(context), modelStoreRoot = root, recordingJobSchedulerFactory = jobs, micCapture = mic)
         }
         try {
-            runBlocking { block(container, context) }
+            runBlocking {
+                // Otherwise the wipe can't vouch for the API keys. A store that can't be read stays unloaded.
+                runCatching { container.settingsRepository.load() }
+                block(container, context)
+            }
         } finally {
             Dispatchers.resetMain()
             container.databaseHandle.driver.close()
             root.deleteRecursively()
+            installRecordingFilesDir(null)
+            files.deleteRecursively()
         }
     }
 
@@ -281,10 +305,37 @@ class WipeAllDataTest {
     }
 
     @Test fun a_watched_folder_sync_after_a_wipe_imports_nothing() = withContainer { container, context ->
+        Robolectric.setupContentProvider(FakeDocumentsProvider::class.java, FakeDocumentsProvider.AUTHORITY)
+        val tree = FakeDocumentsProvider.treeUri()
+        context.contentResolver.takePersistableUriPermission(tree, Intent.FLAG_GRANT_READ_URI_PERMISSION)
         context.getSharedPreferences("velum_watched_folders", Context.MODE_PRIVATE).edit()
-            .putString("tree_uris", "content://synthetic/tree").commit()
+            .putString("tree_uris", tree.toString()).commit()
         container.wipeAllData()
         assertEquals(emptyList(), syncWatchedFolders(AudioImportPipeline(container)))
+        assertEquals(emptyList(), context.contentResolver.persistedUriPermissions, "the app kept access to the folder")
+    }
+
+    @Test fun a_read_only_folder_grant_is_released() = withContainer { container, context ->
+        val tree = FakeDocumentsProvider.treeUri()
+        context.contentResolver.takePersistableUriPermission(tree, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        assertEquals(DownloadWipeResult.Clean, container.wipeAllData())
+        assertEquals(emptyList(), context.contentResolver.persistedUriPermissions)
+    }
+
+    @Test fun a_refused_grant_release_does_not_stop_the_others() = withContainer { _, context ->
+        val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        val first = Uri.parse("content://${FakeDocumentsProvider.AUTHORITY}/tree/first")
+        val second = Uri.parse("content://${FakeDocumentsProvider.AUTHORITY}/tree/second")
+        context.contentResolver.takePersistableUriPermission(first, flags)
+        context.contentResolver.takePersistableUriPermission(second, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        val asked = mutableListOf<Pair<Uri, Int>>()
+        releaseGrants(context.contentResolver.persistedUriPermissions.toList()) { uri, granted ->
+            asked += uri to granted
+            if (asked.size == 1) throw SecurityException("synthetic")
+        }
+        assertEquals(2, asked.size, "a refusal stopped the remaining releases")
+        assertEquals(Intent.FLAG_GRANT_READ_URI_PERMISSION, asked.toMap()[second], "released with access it does not have")
+        for ((uri, granted) in asked) context.contentResolver.releasePersistableUriPermission(uri, granted)
     }
 
     @Test fun a_wipe_deletes_shared_exports() = withContainer { container, context ->
@@ -309,19 +360,187 @@ class WipeAllDataTest {
         }
     }
 
-    @Test fun a_wipe_that_fails_at_the_keys_leaves_queued_processing_alone() {
-        var cancelled = false
-        val jobs = object : RecordingJobScheduler {
-            override fun enqueue(recordingId: String, templateId: String?, retranscribe: Boolean, apiModelOverride: ApiModelOverride?) = Unit
-            override fun cancelAll() { cancelled = true }
-        }
-        withContainer(store = FailingDeviceKeyStore(), jobs = { _, _ -> jobs }) { container, _ ->
-            container.addRecording("rec-queued", status = "queued")
-            assertFailsWith<SecureStoreUnavailableException> { container.wipeAllData() }
-            assertFalse(cancelled, "queued work was cancelled but its recording stayed in the library")
-            assertNotNull(container.repository.getRecording("rec-queued"))
+    @Test fun a_wipe_that_fails_at_the_rows_reports_it_and_runs_the_rest() = withContainer { container, context ->
+        container.addRecording("rec-queued", status = "queued")
+        val share = File(context.cacheDir, "share").apply { mkdirs() }
+        File(share, "synthetic.md").writeText("synthetic")
+        container.databaseHandle.driver.execute(
+            null,
+            "CREATE TRIGGER synthetic_failure BEFORE DELETE ON recording BEGIN SELECT RAISE(ABORT, 'synthetic'); END",
+            0,
+        )
+        assertEquals(DownloadWipeResult.Incomplete, container.wipeAllData())
+        assertFalse(share.exists(), "the steps after the failure did not run")
+    }
+
+    @Test fun a_failed_step_outranks_work_still_running() = withContainer(FailingDeviceKeyStore()) { container, _ ->
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        coroutineScope {
+            val job = async(Dispatchers.Default) {
+                container.wipeGate.guard { withContext(NonCancellable) { started.complete(Unit); release.await() } }
+            }
+            started.await()
+            try {
+                // StillRunning's message says secrets were wiped, which is not so here.
+                assertEquals(DownloadWipeResult.Incomplete, container.wipeAllData(joinTimeout = 100.milliseconds))
+            } finally {
+                release.complete(Unit)
+            }
+            job.await()
         }
     }
+
+    @Test fun api_keys_a_locked_store_could_not_list_are_reported() = withContainer(LockedReadsStore()) { container, _ ->
+        // The real store: reads fail while locked, so settings never load, and removing a key still succeeds.
+        assertEquals(DownloadWipeResult.Incomplete, container.wipeAllData())
+    }
+
+    @Test fun audio_no_row_points_at_is_deleted() = withContainer { container, _ ->
+        val recordings = File(recordingsDirectoryPath()).apply { mkdirs() }
+        val crashedSave = File(recordings, "rec-x.ogg").apply { writeBytes(ByteArray(8)) }
+        val crashedMic = File(recordings, "rec-y.wav.partial").apply { writeBytes(ByteArray(8)) }
+        assertEquals(DownloadWipeResult.Clean, container.wipeAllData())
+        assertFalse(crashedSave.exists(), "a saved file with no row survived")
+        assertFalse(crashedMic.exists(), "a crashed mic recording survived")
+    }
+
+    @Test fun a_wipe_deletes_a_dead_transfers_temp_file() = withContainer { container, _ ->
+        val temp = File.createTempFile("velum-ble-session-", ".bin").apply { writeBytes(ByteArray(8)) }
+        assertEquals(DownloadWipeResult.Clean, container.wipeAllData())
+        assertFalse(temp.exists(), "a transfer's temp file survived")
+    }
+
+    @Test fun a_locked_keystore_does_not_stop_the_rest_of_the_wipe() = withContainer(FailingDeviceKeyStore()) { container, context ->
+        container.addRecording("rec-a")
+        val share = File(context.cacheDir, "share").apply { mkdirs() }
+        File(share, "synthetic.md").writeText("synthetic")
+        assertEquals(DownloadWipeResult.Incomplete, container.wipeAllData())
+        assertEquals(null, container.repository.getRecording("rec-a"), "the recordings stayed")
+        assertFalse(share.exists(), "the exports stayed")
+    }
+
+    @Test fun audio_that_cannot_be_deleted_is_reported() = withContainer { container, _ ->
+        // A non-empty directory at the path can't be deleted as a file.
+        val stuck = Files.createTempDirectory("velum-wipe-stuck").toFile()
+        File(stuck, "inner").writeText("synthetic")
+        container.repository.insertRecording(
+            id = "rec-stuck", sessionId = null, folderId = null, title = "Synthetic", source = "import", deviceSerial = null,
+            startedAt = 1_700_000_000L, durationSeconds = 60, sizeBytes = 0, localPath = stuck.path,
+            transcript = null, summaryMarkdown = null, status = "ready",
+        )
+        assertEquals(DownloadWipeResult.Incomplete, container.wipeAllData())
+        stuck.deleteRecursively()
+    }
+
+    @Test fun exports_that_cannot_be_deleted_are_reported() = withContainer { container, context ->
+        val share = File(context.cacheDir, "share").apply { mkdirs() }
+        File(share, "synthetic.md").writeText("synthetic")
+        share.setWritable(false)
+        try {
+            assertEquals(DownloadWipeResult.Incomplete, container.wipeAllData())
+        } finally {
+            share.setWritable(true)
+            share.deleteRecursively()
+        }
+    }
+
+    @Test fun a_clean_wipe_reports_clean() = withContainer { container, _ ->
+        container.addRecording("rec-a")
+        assertEquals(DownloadWipeResult.Clean, container.wipeAllData())
+    }
+
+    @Test fun a_wipe_deletes_decoded_audio() = withContainer { container, _ ->
+        assertEquals(root().absolutePath, container.recordingProcessor.pcmSpillRoot.absolutePath, "the processor spills elsewhere")
+        val spill = container.recordingProcessor.pcmSpillRoot.resolve("tmp").resolve("pcm-rec")
+        spill.createDirectories()
+        spill.resolve("audio.pcm").writeBytes(ByteArray(8))
+        val quarantine = File(recordingsDirectoryPath(), ".orphaned").apply { mkdirs() }
+        File(quarantine, "rec.wav").writeBytes(ByteArray(8))
+        assertEquals(DownloadWipeResult.Clean, container.wipeAllData())
+        assertFalse(spill.exists(), "decoded audio from a dead process survived")
+        assertFalse(quarantine.exists(), "quarantined audio survived")
+    }
+
+
+    @Test fun a_wipe_leaves_what_a_job_that_has_not_stopped_may_own() = withContainer { container, _ ->
+        val spill = root().resolve("tmp").resolve("pcm-live")
+        spill.createDirectories()
+        val recordings = File(recordingsDirectoryPath()).apply { mkdirs() }
+        val writing = File(recordings, "rec-live.wav").apply { writeBytes(ByteArray(8)) }
+        val temp = File.createTempFile("velum-ble-session-", ".bin").apply { writeBytes(ByteArray(8)) }
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        coroutineScope {
+            val job = async(Dispatchers.Default) {
+                container.wipeGate.guard { withContext(NonCancellable) { started.complete(Unit); release.await() } }
+            }
+            started.await()
+            try {
+                assertEquals(DownloadWipeResult.StillRunning, container.wipeAllData(joinTimeout = 100.milliseconds))
+                assertTrue(spill.exists(), "the wipe deleted a directory a live job owns")
+                assertTrue(writing.exists(), "the wipe deleted a file a live job may be writing")
+                assertTrue(temp.exists(), "the wipe deleted a live transfer's temp file")
+            } finally {
+                release.complete(Unit)
+                temp.delete()
+            }
+            job.await()
+        }
+    }
+
+    @Test fun a_wipe_clears_the_old_spill_root_too() = withContainer { container, _ ->
+        val old = defaultModelStoreRoot().resolve("tmp").resolve("pcm-old")
+        old.createDirectories()
+        old.resolve("audio.pcm").writeBytes(ByteArray(8))
+        assertEquals(DownloadWipeResult.Clean, container.wipeAllData())
+        assertFalse(old.exists(), "decoded audio under the old root survived")
+    }
+
+    @Test fun a_wipe_does_not_follow_links_out_of_the_recordings_folder() = withContainer { container, _ ->
+        val outside = Files.createTempDirectory("velum-wipe-outside").toFile()
+        val kept = File(outside, "keep.wav").apply { writeBytes(ByteArray(8)) }
+        val recordings = File(recordingsDirectoryPath()).apply { mkdirs() }
+        val link = File(recordings, "linked")
+        Files.createSymbolicLink(link.toPath(), outside.toPath())
+        assertEquals(DownloadWipeResult.Clean, container.wipeAllData())
+        assertTrue(kept.exists(), "the wipe followed a link and deleted what it points at")
+        assertFalse(recordings.exists())
+        outside.deleteRecursively()
+    }
+
+    @Test fun a_symlinked_recordings_folder_loses_the_link_not_its_target() = withContainer { container, _ ->
+        val outside = Files.createTempDirectory("velum-wipe-target").toFile()
+        val kept = File(outside, "keep.wav").apply { writeBytes(ByteArray(8)) }
+        val recordings = File(recordingsDirectoryPath())
+        recordings.deleteRecursively()
+        recordings.parentFile!!.mkdirs()
+        Files.createSymbolicLink(recordings.toPath(), outside.toPath())
+        assertEquals(DownloadWipeResult.Clean, container.wipeAllData())
+        assertTrue(kept.exists(), "the wipe deleted the contents of a symlinked folder")
+        assertFalse(Files.exists(recordings.toPath(), java.nio.file.LinkOption.NOFOLLOW_LINKS))
+        outside.deleteRecursively()
+    }
+
+    @Test fun a_wipe_that_cannot_stop_downloads_keeps_the_recordings_folder() = withContainer { container, _ ->
+        val recordings = File(recordingsDirectoryPath()).apply { mkdirs() }
+        val writing = File(recordings, "rec-live.wav").apply { writeBytes(ByteArray(8)) }
+        // Cancelling asks for the locale first, so this makes the downloads step throw.
+        val broken = DeviceViewModel(container.ble, localeTag = { error("synthetic") })
+        assertEquals(DownloadWipeResult.Incomplete, container.wipeAllData(device = broken))
+        assertTrue(writing.exists(), "the folder went while a download may be writing to it")
+    }
+
+    @Test fun a_note_is_read_when_it_is_sent() = withContainer { container, _ ->
+        container.addRecording("rec-note")
+        assertEquals("## Synthetic", assertNotNull(container.noteToShare("rec-note")).summary)
+        container.wipeGate.wiping(1.seconds) {
+            assertEquals(null, container.noteToShare("rec-note"), "a note left the app during the wipe")
+        }
+        container.wipeAllData()
+        assertEquals(null, container.noteToShare("rec-note"), "an action waiting behind a snackbar sent deleted text")
+    }
+
 
     @Test fun a_wipe_stops_the_mic_and_deletes_its_file() {
         val audio = Files.createTempFile("velum-wipe-mic", ".wav").toFile().apply { writeBytes(ByteArray(64)) }
@@ -369,7 +588,7 @@ class WipeAllDataTest {
             privateKeyPem = pems.second,
         )
         assertTrue(container.deviceKeyImporter.hasKeys())
-        assertFailsWith<SecureStoreUnavailableException> { container.wipeAllData() }
+        assertEquals(DownloadWipeResult.Incomplete, container.wipeAllData())
         assertFalse(container.deviceKeyImporter.hasKeys(), "device keys survived a wipe that failed later")
     }
 
@@ -409,8 +628,8 @@ class WipeAllDataTest {
         }
     }
 
-    @Test fun a_shared_file_refused_by_a_wipe_is_deleted() = withContainer { container, _ ->
-        val copy = Files.createTempFile("velum-wipe-share", ".wav").toFile().apply { writeBytes(ByteArray(64) { 1 }) }
+    @Test fun a_shared_file_refused_by_a_wipe_is_deleted() = withContainer { container, context ->
+        val copy = File(context.cacheDir, "imports/share.wav").apply { parentFile!!.mkdirs(); writeBytes(ByteArray(64) { 1 }) }
         val result = container.wipeGate.wiping(1.seconds) { AudioImportPipeline(container).importShared(copy.path) }
         assertIs<ImportResult.Failed>(result)
         assertFalse(copy.exists(), "the shared file's copy survived the wipe")

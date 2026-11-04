@@ -6,15 +6,18 @@ import dev.velum.core.autoflow.AutoFlowResolve
 import dev.velum.app.platform.AudioNormalizer
 import dev.velum.app.platform.NormalizedAudio
 import dev.velum.app.platform.ImportAudioFormats
+import dev.velum.app.di.WipeInProgressException
 import dev.velum.app.platform.deleteFileAtPath
-import dev.velum.app.platform.isImportScratchPath
+import dev.velum.app.platform.deleteFileIfPresent
+import dev.velum.app.platform.isImportCacheCopy
+import dev.velum.app.platform.sha256Bytes
 import dev.velum.app.platform.isSamePath
 import dev.velum.app.platform.sha256File
 import dev.velum.core.data.VelumRepository.Companion.IMPORT_DELETED_PREFIX
 import dev.velum.core.data.epochSecondsNow
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.IO
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
@@ -42,14 +45,53 @@ class AudioImportPipeline(
         startedAtEpochSeconds: Long? = null,
         /** Set for a share re-offered after a restart: a recording deleted since then must not come back. */
         recoveredAtMs: Long? = null,
-    ): ImportResult = container.wipeGate.guard { importNow(absolutePath, source, titleHint, startedAtEpochSeconds, recoveredAtMs) }
-        // A wipe in progress refuses or stops the import before it creates a recording.
-        ?: ImportResult.Failed(WIPE_IN_PROGRESS)
-
-    /** A file shared into the app: its cache copy is deleted when a wipe refuses the import, so it can't outlive the wipe. */
-    suspend fun importShared(copyPath: String, recoveredAtMs: Long? = null): ImportResult = importFile(copyPath, source = "share", recoveredAtMs = recoveredAtMs).also { result ->
-        if (result == ImportResult.Failed(WIPE_IN_PROGRESS)) withContext(Dispatchers.IO) { deleteFileAtPath(copyPath) }
+    ): ImportResult {
+        var result: ImportResult? = null
+        var normalizedPath: String? = null
+        try {
+            // A wipe in progress refuses or stops the import before it creates a recording.
+            result = container.wipeGate.guard {
+                importNow(absolutePath, source, titleHint, startedAtEpochSeconds, recoveredAtMs) { normalizedPath = it }
+            } ?: ImportResult.Failed(WIPE_IN_PROGRESS)
+            return result
+        } finally {
+            withContext(NonCancellable + Dispatchers.IO) {
+                discardSourceCopy(absolutePath, source, result)
+                discardUnusedOutput(normalizedPath, absolutePath, result)
+            }
+        }
     }
+
+    /** Runs [block] so that a wipe refuses or stops it, like an import. Null when it did. */
+    suspend fun <T> underWipeGate(block: suspend () -> T): T? = container.wipeGate.guard(block)
+
+    /**
+     * The app's copy of the source has done its job once the import ends, however it ended ([result] is null when
+     * cancelled). A watched folder's copy stays while it is useful, or every sync would copy the whole file again;
+     * it goes with its recording.
+     */
+    private fun discardSourceCopy(path: String, source: String, result: ImportResult?) {
+        val refused = result is ImportResult.Deleted || result == ImportResult.Failed(WIPE_IN_PROGRESS)
+        val keep = source == WATCHED_SOURCE && !refused
+        if (!keep && isImportCacheCopy(path)) deleteFileIfPresent(path)
+    }
+
+    /**
+     * A failed or cancelled import leaves the WAV it wrote, unless a row already points at it: a throw after the row
+     * exists (disk full, enqueue) or a cancel must not delete the only copy of a recording that is in the library.
+     * (A duplicate or deleted result already discarded its WAV in [discardNormalized].)
+     */
+    private suspend fun discardUnusedOutput(wavPath: String?, sourcePath: String, result: ImportResult?) {
+        if (wavPath == null || wavPath == sourcePath || !(result == null || result is ImportResult.Failed)) return
+        val inUse = runCatching {
+            container.repository.getAllRecordingFileRefs().any { (_, path) -> path != null && isSamePath(path, wavPath) }
+        }.getOrDefault(true) // unknown: keep it
+        if (!inUse) deleteFileIfPresent(wavPath)
+    }
+
+    /** A file shared into the app. Its cache copy goes when the import ends, like a picked one. */
+    suspend fun importShared(copyPath: String, recoveredAtMs: Long? = null): ImportResult =
+        importFile(copyPath, source = "share", recoveredAtMs = recoveredAtMs)
 
     /**
      * [importShared] owned by the app, not the caller: if the screen that received the share is recreated mid-import the
@@ -81,36 +123,6 @@ class AudioImportPipeline(
         titleHint: String?,
         startedAtEpochSeconds: Long?,
         recoveredAtMs: Long?,
-    ): ImportResult {
-        var normalizedPath: String? = null
-        var result: ImportResult? = null
-        try {
-            return importCore(absolutePath, source, titleHint, startedAtEpochSeconds, recoveredAtMs) { normalizedPath = it }.also { result = it }
-        } finally {
-            // Even when cancelled: a half-finished cleanup could leave a row pointing at a deleted file.
-            withContext(NonCancellable + Dispatchers.IO) {
-                // A duplicate or deleted result already discarded the WAV in discardNormalized. For anything else the WAV
-                // goes only if no row points at it: a throw after the row exists (disk full, enqueue) or a cancel must
-                // not delete the only copy of a recording that is already in the library.
-                normalizedPath?.takeIf { (result == null || result is ImportResult.Failed) && it != absolutePath }?.let { wav ->
-                    val inUse = runCatching {
-                        container.repository.getAllRecordingFileRefs().any { (_, path) -> path != null && isSamePath(path, wav) }
-                    }.getOrDefault(true) // unknown: keep it
-                    if (!inUse) deleteFileAtPath(wav)
-                }
-                // The incoming copy in the cache has done its job once the import finished (privacy; never read again).
-                // A cancelled import keeps it: the sweep removes it after a day if nothing uses it.
-                if (result != null && isImportScratchPath(absolutePath)) deleteFileAtPath(absolutePath)
-            }
-        }
-    }
-
-    private suspend fun importCore(
-        absolutePath: String,
-        source: String,
-        titleHint: String?,
-        startedAtEpochSeconds: Long?,
-        recoveredAtMs: Long?,
         onNormalized: (String) -> Unit,
     ): ImportResult = withContext(Dispatchers.Default) {
         runCatching {
@@ -123,6 +135,7 @@ class AudioImportPipeline(
             val sourceHash = sha256File(absolutePath)
             val existingBySource = importedRecording(sourceHash)
             if (existingBySource != null) {
+                rememberWatchedCopy(source, existingBySource, absolutePath)
                 return@withContext ImportResult.Duplicate(existingBySource, sourceHash)
             }
             if (source == WATCHED_SOURCE && wasDeleted(sourceHash)) return@withContext ImportResult.Deleted(sourceHash)
@@ -136,16 +149,19 @@ class AudioImportPipeline(
             }
             val existingByContent = importedRecording(contentHash)
             if (existingByContent != null) {
+                // Removed before the key is written: with the key, no later import would come back to clean this up.
+                discardNormalized(normalized.wavPath, keptBy = existingByContent)
                 // Same audio after normalize — also record source hash for next lookup.
                 container.repository.setMeta("import_sha256_$sourceHash", existingByContent)
-                discardNormalized(normalized.wavPath, keptBy = existingByContent)
+                rememberWatchedCopy(source, existingByContent, absolutePath)
                 return@withContext ImportResult.Duplicate(existingByContent, contentHash)
             }
             if (source == WATCHED_SOURCE && wasDeleted(contentHash)) {
                 // Tombstoned by source too: later syncs skip this copy without decoding it, and a codec update
-                // that changes the hash can't bring the deleted audio back.
-                container.repository.setMeta(IMPORT_DELETED_PREFIX + sourceHash, epochSecondsNow().toString())
+                // that changes the hash can't bring the deleted audio back. Removed first: a crash in between only
+                // decodes and removes it once more.
                 discardNormalized(normalized.wavPath, keptBy = null)
+                container.repository.setMeta(IMPORT_DELETED_PREFIX + sourceHash, epochSecondsNow().toString())
                 return@withContext ImportResult.Deleted(contentHash)
             }
             val title = titleHint ?: ImportTitles.forImport(absolutePath, name)
@@ -173,6 +189,7 @@ class AudioImportPipeline(
             // A file the user chose again is wanted again: its watched-folder tombstone goes.
             container.repository.deleteMeta(IMPORT_DELETED_PREFIX + sourceHash)
             container.repository.deleteMeta(IMPORT_DELETED_PREFIX + contentHash)
+            rememberWatchedCopy(source, id, absolutePath)
             // Resolve AutoFlow before first enqueue so KEEP cannot drop template/model.
             val match = container.repository.findMatchingAutoflow(
                 source = source,
@@ -189,6 +206,7 @@ class AudioImportPipeline(
         }.getOrElse {
             // A cancelled import is not a failed one: let the cancellation through (and the normalizer clean up).
             if (it is kotlinx.coroutines.CancellationException) throw it
+            if (it is WipeInProgressException) return@getOrElse ImportResult.Failed(WIPE_IN_PROGRESS)
             ImportResult.Failed(it.message ?: it::class.simpleName ?: "import_failed")
         }
     }
@@ -199,8 +217,15 @@ class AudioImportPipeline(
      */
     private suspend fun discardNormalized(wavPath: String, keptBy: String?) {
         val keptPath = keptBy?.let { container.repository.getRecording(it)?.local_path }
-        if (keptPath != null && isSamePath(keptPath, wavPath)) return
+        // The string check too: isSamePath is false when it can't resolve a path, and the file must not go then.
+        if (keptPath != null && (keptPath == wavPath || isSamePath(keptPath, wavPath))) return
         withContext(Dispatchers.IO) { deleteFileAtPath(wavPath) }
+    }
+
+    private suspend fun rememberWatchedCopy(source: String, recordingId: String, path: String) {
+        if (source == WATCHED_SOURCE && isImportCacheCopy(path)) {
+            container.repository.addImportCopy(recordingId, sha256Bytes(path.encodeToByteArray()), path)
+        }
     }
 
     /** True when [hash] was deleted at or after [sinceMs] (tombstone values are epoch seconds). */

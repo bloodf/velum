@@ -112,6 +112,7 @@ class OmiProfileTest {
     /** Implements only the Plaud-style single stream, so the interface default for notifications(char) is what runs. */
     private class SingleStreamTransport : BleTransport {
         override val isAvailable = true
+        override val linkGeneration = 0L
         override val connectionState = MutableStateFlow<BleConnectionState>(BleConnectionState.Idle)
         override val discoveredDevices = MutableStateFlow<List<ConnectedDevice>>(emptyList())
         override fun advertisements(): Flow<ConnectedDevice> = emptyFlow()
