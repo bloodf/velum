@@ -11,6 +11,8 @@ import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsNodeInteraction
+import androidx.compose.ui.test.assertAll
+import androidx.compose.ui.test.isNotEnabled
 import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
@@ -382,6 +384,8 @@ class VoiceProfilesLocaleA11yTest {
             }
             screen(s, scale, unavailable, root) {
                 awaitLabel(s.ux.secureStorageUnavailable)
+                // A transient failure keeps the data: wiping is not offered (the always-present wipe button is disabled).
+                compose.onAllNodesWithContentDescription(s.ux.voiceProfilesWipe).assertAll(isNotEnabled())
                 compose.onNodeWithContentDescription(s.ux.retryProcessing).performScrollTo().assertExists()
                 assertState("$tag storage unavailable", s, other, seen)
             }

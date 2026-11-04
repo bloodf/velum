@@ -375,7 +375,18 @@ class VoiceProfileStore(
      * Deletes every voice profile and cached embedding without needing the key, so it works when the key is
      * lost for good or the only profile is corrupt (the recovery path of the voice profiles screen).
      */
-    suspend fun wipeVoiceData() = withContext(ioDispatcher) { accessMutex.withLock { wipeAll() } }
+    suspend fun wipeVoiceData() = withContext(ioDispatcher) {
+        accessMutex.withLock {
+            wipeAll()
+            // Forget the in-memory key (not the stored one): a key that vanished mid-session must not stay in use
+            // for new profiles only memory has, or the next start finds encrypted files and no key. Same lock order
+            // as reloadKey: access, then key initialization.
+            keyInitializationMutex.withLock {
+                primedKey = null
+                keyRevision = Any()
+            }
+        }
+    }
 
     fun wipeAll() {
         if (profilesDir.exists()) profilesDir.deleteRecursively()

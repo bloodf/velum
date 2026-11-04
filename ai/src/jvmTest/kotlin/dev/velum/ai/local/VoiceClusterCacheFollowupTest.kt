@@ -232,4 +232,27 @@ class VoiceClusterCacheFollowupTest {
         assertContentEquals(byteArrayOf(2, 3), target.readBytes())
         assertTrue(dir.listChildren().map { it.name } == listOf("file.bin"), "stray files: ${dir.listChildren().map { it.name }}")
     }
+
+    @Test fun wipe_removes_the_key_check_and_a_new_profile_can_be_enrolled_afterwards() = runTest {
+        val secure = InMemorySecureStore()
+        val store = store(this, secure)
+        store.withReady { upsert("Synthetic Old", embedding, id = "old") }
+        assertTrue(root.resolve("voices/.keycheck.enc").exists())
+        store.wipeVoiceData()
+        assertFalse(root.resolve("voices/.keycheck.enc").exists(), "a stale key check would make a later wrong key look right")
+        store.withReady { upsert("Synthetic New", embedding, id = "new") }
+        assertEquals(listOf("new"), store.withReady { inspectProfiles() }.profiles.map { it.id })
+    }
+
+    @Test fun a_key_that_vanished_mid_session_is_not_kept_in_memory_for_new_profiles() = runTest {
+        val secure = InMemorySecureStore()
+        val store = store(this, secure)
+        store.withReady { upsert("Synthetic Old", embedding, id = "old") }
+        secure.remove(VoiceProfileStore.PROFILE_KEY_SECURE) // the stored key is gone while the store still holds it
+        store.wipeVoiceData()
+        store.withReady { upsert("Synthetic New", embedding, id = "new") }
+        // A fresh start (new store object, same secure store) must still read the profile that was just enrolled.
+        val restarted = store(this, secure)
+        assertEquals(listOf("new"), restarted.withReady { inspectProfiles() }.profiles.map { it.id })
+    }
 }

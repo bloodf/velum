@@ -263,8 +263,11 @@ class RecordingProcessor(
                 } else {
                     // Named rows plus an unavailable voice key means this rerun would end in SpeakerNamesUnavailable
                     // after the (possibly billed) transcription; fail first.
-                    if (repository.getSpeakers(recordingId).any { !it.display_name.isNullOrBlank() } &&
-                        !aiRouter.diarizer().speakerNamingReady()
+                    if (cfg.diarizationMode == ComputeMode.Local &&
+                        repository.getSpeakers(recordingId).any { !it.display_name.isNullOrBlank() } &&
+                        !aiRouter.diarizer().speakerNamingReady(
+                            cfg.localDiarizationModelId?.takeIf { it.isNotBlank() } ?: DEFAULT_LOCAL_DIARIZATION_MODEL_ID,
+                        )
                     ) {
                         throw SpeakerNamesUnavailableException()
                     }

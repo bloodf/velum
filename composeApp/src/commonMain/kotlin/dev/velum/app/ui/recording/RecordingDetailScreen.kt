@@ -669,9 +669,7 @@ fun RecordingDetailScreen(
                                 if (trimmed.isEmpty()) continue
                                 val row = speakers.firstOrNull { it.id == speakerId } ?: continue
                                 // Only a name the user actually changed counts: the sheet hands back every row.
-                                val current = row.display_name?.takeIf { it.isNotBlank() }
-                                val defaultName = strings.ux.speakerLabel.replace("%d", (row.label.trimStart('S', 's').toIntOrNull() ?: 1).toString())
-                                val changed = trimmed != (current ?: defaultName)
+                                val changed = speakerNameChanged(row.display_name, row.label, trimmed, strings)
                                 var cacheMissed = false
                                 container.voiceProfileStore.withReady {
                                     val emb = cachedClusterEmbedding(
@@ -1099,6 +1097,12 @@ private fun SourcesPane(
  * A transcript line that is not a cue header, as drawn: the "## Markers" section heading in the app
  * language and "- **0:12** label" as a plain bullet, never with their Markdown markers.
  */
+/** Whether [typed] differs from what the speaker sheet showed for this row: its saved name, else the default label. */
+internal fun speakerNameChanged(storedName: String?, label: String, typed: String, strings: dev.velum.app.i18n.Strings): Boolean {
+    val defaultName = strings.ux.speakerLabel.replace("%d", (label.trimStart('S', 's').toIntOrNull() ?: 1).toString())
+    return typed != (storedName?.takeIf { it.isNotBlank() } ?: defaultName)
+}
+
 internal fun transcriptBodyLineDisplay(line: String, strings: dev.velum.app.i18n.Strings): String {
     val trimmed = line.trim()
     if (trimmed == dev.velum.ai.pipeline.TranscriptFormatter.MARKERS_HEADING) return strings.ux.markersHeading

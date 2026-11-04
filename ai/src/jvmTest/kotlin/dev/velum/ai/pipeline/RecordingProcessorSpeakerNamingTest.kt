@@ -53,7 +53,7 @@ class RecordingProcessorSpeakerNamingTest {
         }
         val diar = object : Diarizer {
             override val engineId = "synthetic-diar"
-            override suspend fun speakerNamingReady() = namingReady
+            override suspend fun speakerNamingReady(modelId: String) = namingReady
             override suspend fun diarize(input: AudioInput, modelId: String) = DiarizationResult(
                 spans = listOf(SpeakerSpan("S1", 0, 1_000)),
                 engineId = engineId,

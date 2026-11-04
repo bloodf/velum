@@ -67,6 +67,8 @@ fun VoiceProfilesScreen(
     val scope = rememberCoroutineScope()
     var profiles by remember(container) { mutableStateOf(emptyList<VoiceProfile>()) }
     var loaded by remember(container) { mutableStateOf(false) }
+    // Wiping is the recovery for a lost key only; a transient storage/cipher failure keeps the data and just needs a retry.
+    var keyLost by remember(container) { mutableStateOf(false) }
     val settings by container.settingsRepository.settings.collectAsState()
     var unreadable by remember(container) { mutableStateOf(emptyList<UnreadableVoiceProfile>()) }
     var pendingRemoval by remember(container) { mutableStateOf<UnreadableVoiceProfile?>(null) }
@@ -83,6 +85,7 @@ fun VoiceProfilesScreen(
             profiles = inventory.profiles
             unreadable = inventory.unreadable
             loaded = true
+            keyLost = false
             selected = selected?.id?.let { id -> profiles.firstOrNull { it.id == id } }
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -98,6 +101,7 @@ fun VoiceProfilesScreen(
     }
 
     fun showFailure(failure: Exception) {
+        keyLost = failure is VoiceProfileKeyUnavailableException
         val global = failure is VoiceProfileKeyUnavailableException ||
             failure is ProfileCipherUnavailableException || failure is SecureStoreUnavailableException
         if (global) {
@@ -164,8 +168,10 @@ fun VoiceProfilesScreen(
                     Spacer(Modifier.height(8.dp))
                     OutlineButton(strings.ux.retryProcessing, { launchAction { container.voiceProfileStore.reloadKey(); refresh(); status = null } })
                     // Recovery when the key is lost for good: wiping needs no key (and asks for confirmation).
-                    Spacer(Modifier.height(8.dp))
-                    OutlineButton(strings.ux.voiceProfilesWipe, { showWipeConfirm = true }, modifier = Modifier.fillMaxWidth())
+                    if (keyLost) {
+                        Spacer(Modifier.height(8.dp))
+                        OutlineButton(strings.ux.voiceProfilesWipe, { showWipeConfirm = true }, modifier = Modifier.fillMaxWidth())
+                    }
                 } else if (profiles.isEmpty() && unreadable.isEmpty()) {
                     Text(strings.ux.voiceProfilesEmpty, color = VelumInkSecondary)
                 } else {
