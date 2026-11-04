@@ -12,6 +12,8 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
 
@@ -254,5 +256,30 @@ class VoiceClusterCacheFollowupTest {
         // A fresh start (new store object, same secure store) must still read the profile that was just enrolled.
         val restarted = store(this, secure)
         assertEquals(listOf("new"), restarted.withReady { inspectProfiles() }.profiles.map { it.id })
+    }
+
+    /** A job that passed the key check and then waited for the lock must not run into a store a wipe just reset. */
+    @Test fun a_call_queued_behind_a_wipe_does_not_see_a_store_that_is_not_ready() {
+        val secure = InMemorySecureStore()
+        val store = VoiceProfileStore(root, secure)
+        kotlinx.coroutines.runBlocking {
+            store.withReady { upsert("Synthetic Old", embedding, id = "old") }
+            val holding = java.util.concurrent.CountDownLatch(1)
+            val release = java.util.concurrent.CountDownLatch(1)
+            val holder = launch(kotlinx.coroutines.Dispatchers.IO) {
+                store.withReady { holding.countDown(); release.await() } // owns the lock
+            }
+            holding.await()
+            val wipe = launch(kotlinx.coroutines.Dispatchers.IO) { store.wipeVoiceData() }
+            kotlinx.coroutines.delay(300) // the wipe is queued for the lock
+            val queued = async(kotlinx.coroutines.Dispatchers.IO) {
+                runCatching { store.withReady { inspectProfiles() } }
+            }
+            kotlinx.coroutines.delay(300) // it passed its first key check and is queued behind the wipe
+            release.countDown()
+            holder.join(); wipe.join()
+            val outcome = queued.await()
+            assertTrue(outcome.isSuccess, "queued call failed: ${outcome.exceptionOrNull()}")
+        }
     }
 }

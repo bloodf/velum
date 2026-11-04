@@ -72,8 +72,13 @@ class VoiceProfileStore(
 
     /** Await key readiness and perform profile I/O away from the UI thread. Failures propagate. */
     suspend fun <T> withReady(block: VoiceProfileStore.() -> T): T = withContext(ioDispatcher) {
-        ensureKey()
-        accessMutex.withLock { block() }
+        ensureKey() // fails fast without queueing behind a long operation
+        accessMutex.withLock {
+            // Again inside the lock: a wipe that ran while this call waited has forgotten the key (wipeVoiceData),
+            // and the block must not see a store that is "not ready". Lock order: access, then key initialization.
+            ensureKey()
+            block()
+        }
     }
 
     /** Idempotent across concurrent callers and stores sharing the same backing key. */
@@ -255,6 +260,7 @@ class VoiceProfileStore(
     suspend fun removeUnreadableProfile(profile: UnreadableVoiceProfile): Boolean = withContext(ioDispatcher) {
         if (profile.problem == VoiceProfileReadProblem.CannotDecrypt) ensureKey()
         accessMutex.withLock {
+            if (profile.problem == VoiceProfileReadProblem.CannotDecrypt) ensureKey() // see withReady
             require(safeProfileId(profile.id)) { "Invalid voice profile identifier." }
             if (profile.owner != profilesDir.absolutePath || profile.files == null) return@withLock false
             val current = profileFiles(profile.id)

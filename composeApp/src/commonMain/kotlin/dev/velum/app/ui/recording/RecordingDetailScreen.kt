@@ -1089,20 +1089,16 @@ private fun SourcesPane(
     }
 }
 
-/**
- * Cue header as drawn: the stored `**Name** · 0:00` without its Markdown markers, and the generated
- * English "Speaker N" in the app language. The stored text and exports are unchanged.
- */
-/**
- * A transcript line that is not a cue header, as drawn: the "## Markers" section heading in the app
- * language and "- **0:12** label" as a plain bullet, never with their Markdown markers.
- */
 /** Whether [typed] differs from what the speaker sheet showed for this row: its saved name, else the default label. */
 internal fun speakerNameChanged(storedName: String?, label: String, typed: String, strings: dev.velum.app.i18n.Strings): Boolean {
     val defaultName = strings.ux.speakerLabel.replace("%d", (label.trimStart('S', 's').toIntOrNull() ?: 1).toString())
     return typed != (storedName?.takeIf { it.isNotBlank() } ?: defaultName)
 }
 
+/**
+ * A transcript line that is not a cue header, as drawn: the "## Markers" section heading in the app
+ * language and "- **0:12** label" as a plain bullet, never with their Markdown markers.
+ */
 internal fun transcriptBodyLineDisplay(line: String, strings: dev.velum.app.i18n.Strings): String {
     val trimmed = line.trim()
     if (trimmed == dev.velum.ai.pipeline.TranscriptFormatter.MARKERS_HEADING) return strings.ux.markersHeading
@@ -1110,6 +1106,10 @@ internal fun transcriptBodyLineDisplay(line: String, strings: dev.velum.app.i18n
     return line.replace("**", "")
 }
 
+/**
+ * Cue header as drawn: the stored `**Name** · 0:00` without its Markdown markers, and the generated
+ * English "Speaker N" in the app language. The stored text and exports are unchanged.
+ */
 internal fun transcriptHeaderDisplay(line: String, strings: dev.velum.app.i18n.Strings): String {
     val plain = line.trim().replace("**", "")
     val generated = Regex("""^Speaker (\d+)(?= ·)""").find(plain) ?: return plain

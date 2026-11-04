@@ -101,7 +101,7 @@ fun VoiceProfilesScreen(
     }
 
     fun showFailure(failure: Exception) {
-        keyLost = failure is VoiceProfileKeyUnavailableException
+        keyLost = isKeyLostFailure(failure)
         val global = failure is VoiceProfileKeyUnavailableException ||
             failure is ProfileCipherUnavailableException || failure is SecureStoreUnavailableException
         if (global) {
@@ -387,7 +387,10 @@ fun VoiceProfilesScreen(
             },
         )
     }
-    if (showWipeConfirm) {
+    // The state the dialog was opened in can change under it (a retry that succeeds, or fails differently):
+    // close it then, so a confirm never wipes data that is no longer in the state the wipe was meant for.
+    LaunchedEffect(keyLost) { showWipeConfirm = false }
+    if (wipeDialogVisible(showWipeConfirm, loaded, keyLost)) {
         AlertDialog(
             onDismissRequest = { showWipeConfirm = false },
             title = { Text(strings.ux.confirmDeleteTitle) },
@@ -399,7 +402,14 @@ fun VoiceProfilesScreen(
                         launchAction {
                             container.voiceProfileStore.wipeVoiceData()
                             selected = null
-                            refresh()
+                            try {
+                                refresh()
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (_: Exception) {
+                                // The wipe is done; only the reload failed. Say so, with the retry button the
+                                // not-loaded state already shows, not "your data has been kept".
+                            }
                             status = strings.ux.voiceProfilesWiped
                         }
                     },
@@ -480,3 +490,10 @@ private fun Field(label: String, value: String, onChange: (String) -> Unit) {
             .padding(10.dp),
     )
 }
+
+/** Wiping is the recovery for a lost key only; a transient storage or cipher failure keeps the data and needs a retry. */
+internal fun isKeyLostFailure(failure: Exception): Boolean = failure is VoiceProfileKeyUnavailableException
+
+/** The wipe confirmation is only meaningful while there is data to wipe or the key is lost. */
+internal fun wipeDialogVisible(requested: Boolean, loaded: Boolean, keyLost: Boolean): Boolean =
+    requested && (loaded || keyLost)
