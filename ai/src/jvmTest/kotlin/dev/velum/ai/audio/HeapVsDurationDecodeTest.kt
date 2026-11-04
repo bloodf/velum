@@ -28,34 +28,61 @@ class HeapVsDurationDecodeTest {
         }
     }
 
+    /** Heap retained as of the most recent GC, from the JVM's own pool bookkeeping. */
+    private fun heapAfterGc(): Long {
+        System.gc()
+        return java.lang.management.ManagementFactory.getMemoryPoolMXBeans()
+            .filter { it.type == java.lang.management.MemoryType.HEAP }
+            .sumOf { it.collectionUsage?.used ?: 0L }
+    }
+
+    /**
+     * Peak retained heap above the pre-run baseline while [block] runs. Read after a GC from the pools' collection
+     * usage, not as `totalMemory - freeMemory`: that second form also counts garbage allocated after the GC, and when
+     * the sampler thread is descheduled on a loaded machine the decoder's garbage alone can pass the limit (seen on CI).
+     */
+    private fun <T> peakRetainedHeap(block: () -> T): Pair<T, Long> {
+        val baseline = heapAfterGc()
+        val running = AtomicBoolean(true)
+        val peak = AtomicLong(0L)
+        val sampler = Thread {
+            while (running.get()) {
+                peak.accumulateAndGet(heapAfterGc() - baseline) { a, b -> maxOf(a, b) }
+                Thread.sleep(100)
+            }
+        }.apply { isDaemon = true; start() }
+        val result = try {
+            block()
+        } finally {
+            running.set(false)
+            sampler.join(5_000)
+        }
+        return result to peak.get()
+    }
+
     private fun peakHeapDecoding(seconds: Int): Long {
         val dir = Files.createTempDirectory("velum-86-heap").toFile()
         try {
             val ogg = File(dir, "synth.ogg").also { writeOgg(it, seconds) }
-            val rt = Runtime.getRuntime()
-            System.gc()
-            val baseline = rt.totalMemory() - rt.freeMemory()
-            val running = AtomicBoolean(true)
-            val peak = AtomicLong(0L)
-            val sampler = Thread {
-                // Sample only right after a GC so the peak is retained memory, not uncollected garbage.
-                while (running.get()) {
-                    System.gc()
-                    peak.accumulateAndGet(rt.totalMemory() - rt.freeMemory() - baseline) { a, b -> maxOf(a, b) }
-                    Thread.sleep(100)
-                }
-            }.apply { isDaemon = true; start() }
-            val meta = try {
+            val (meta, peak) = peakRetainedHeap {
                 KopusOpusDecoder().decodePathToPcmFile(ogg.path, ModelStoreDir(File(dir, "out.s16le").path))
-            } finally {
-                running.set(false)
-                sampler.join(5_000)
             }
             assertEquals(seconds.toLong() * meta.sampleRateHz * meta.channels * 2, meta.sizeBytes, "golden length for $seconds s")
-            return peak.get()
+            return peak
         } finally {
             dir.deleteRecursively()
         }
+    }
+
+    /** Positive control: the sampler must see a known retained allocation, or a pass would prove nothing. */
+    @Test
+    fun the_sampler_sees_a_known_retained_allocation() {
+        val (_, peak) = peakRetainedHeap {
+            val held = ByteArray(24 shl 20) { 1 }
+            Thread.sleep(600) // several sampler ticks while the array is reachable
+            java.lang.ref.Reference.reachabilityFence(held)
+        }
+        assertTrue(peak > 16L shl 20, "the sampler saw only ${peak shr 20} MiB of a 24 MiB array")
     }
 
     @Test
