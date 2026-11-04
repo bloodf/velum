@@ -164,7 +164,7 @@ class ChangeTemplateUiTest {
             setup = { it.repository.setProcessingError("rec", "The API could not be reached. Check the connection.") },
         ) { container ->
             await(PtBr.ux.failedProcessing)
-            await(PtBr.ux.processingFailedWithDetail.replace("%s", "The API could not be reached. Check the connection"))
+            assertTrue(!shows(PtBr.ux.processingFailedWithDetail.replace("%s", "The API could not be reached. Check the connection")))
             await(PtBr.ux.retryProcessing)
             assertTrue(shows("Prior heading"), "the previous summary must stay on screen")
             val rec = runBlocking { container.repository.getRecording("rec")!! }

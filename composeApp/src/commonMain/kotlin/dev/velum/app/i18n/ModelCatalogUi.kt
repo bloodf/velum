@@ -187,8 +187,7 @@ object ModelCatalogUi {
 /**
  * Stored processing failures come from common code and engines in English, sometimes with file paths. Show each
  * known one in the app's language, matched on the stable start of its text so failures saved by older versions are
- * translated too (#348). Anything else, such as a provider's HTTP error, keeps its sanitized text inside localized
- * copy, so it stays diagnosable.
+ * translated too (#348). Unknown failures use the generic message already shown by the screen.
  */
 internal fun processingFailureText(raw: String?, strings: Strings): String? {
     if (raw == null) return null
@@ -209,48 +208,9 @@ internal fun processingFailureText(raw: String?, strings: Strings): String? {
         MODEL_PRODUCED_NO_TEXT.containsMatchIn(raw) -> ux.processingFailedNoText
         LOCAL_ENGINE_FAILED.containsMatchIn(raw) -> ux.processingFailedLocalEngine
         raw == PROCESSING_STOPPED_MESSAGE || raw in LEGACY_PROCESSING_STOPPED -> ux.processingStoppedByAndroid
-        else -> failureDetail(raw)?.let { ux.processingFailedWithDetail.replace("%s", it) }
+        else -> null
     }
 }
-
-/**
- * The saved text of an unknown failure, fit to show: only its first line, with values that can name the user or the
- * device cut, capped at [FAILURE_DETAIL_MAX] characters. Null when nothing readable is left: the screen's "could not
- * process" line above it already says all there is.
- *
- * Hosts are cut after the word "host" or "hostname" (quoted or not), in a URL, and as `name/address`. A bare host such
- * as `failed to connect to name.example.lan:443` stays, because a general dotted-name cut would also eat text like
- * `java.io.IOException` that keeps the failure diagnosable.
- */
-private fun failureDetail(raw: String): String? {
-    val firstLine = raw.take(FAILURE_SCAN_MAX).substringBefore('\n')
-    val hostless = HOST_AFTER_WORD.replace(firstLine) { "${it.groupValues[1]}…" }
-    val cut = IDENTIFYING_TEXT.replace(hostless, "…").trim().removeSuffix(".")
-    if (cut.none { it.isLetterOrDigit() }) return null
-    return if (cut.length <= FAILURE_DETAIL_MAX) cut else cut.take(FAILURE_DETAIL_MAX - 1).trimEnd() + "…"
-}
-
-private const val FAILURE_DETAIL_MAX = 120
-
-/** The patterns grow quadratically and a restored row could be longer than what the processor saves today. */
-private const val FAILURE_SCAN_MAX = 240
-private val HOST_AFTER_WORD = Regex("""(\bhost(?:name)?\s*[=:]?\s*)(?:["'][^"']*["']|[\w-]+(?:\.[\w-]+)+)""", RegexOption.IGNORE_CASE)
-private val IDENTIFYING_TEXT = Regex(
-    listOf(
-        """\b[A-Za-z][A-Za-z0-9+.-]*://\S+""", // URL, first so no "https:/" is left behind
-        """\b[\w.-]+/\d{1,3}(?:\.\d{1,3}){3}\b""", // host/address, as in a failed connection
-        """(?:\b[A-Za-z]:)?(?:[/\\][^\s/\\]+){2,}[/\\]?""", // file path
-        """[\w\p{L}\p{N}.+-]+@[\w\p{L}\p{N}-]+(?:\.[\w\p{L}\p{N}-]+)+""", // email
-        """\b[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}\b""", // UUID
-        """\b(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}\b""", // MAC
-        """\b[0-9A-Fa-f]{12,}\b""", // MAC without separators, hashes and other long hex
-        """(?<![\w:])(?:[0-9A-Fa-f]{0,4}:){2,7}(?:\d{1,3}(?:\.\d{1,3}){3}|[0-9A-Fa-f]{0,4})(?![\w:])""", // IPv6
-        """\b(?:\d{1,3}\.){3}\d{1,3}\b""", // IPv4
-        """\b[A-Za-z]+-?\d{5,}\b""", // serial such as ABC-1234567
-        """\b\d{3,}[A-Z]{2,}\d*\b""", // serial such as 123ABC4
-        """\b\d{7,}\b""", // bare serial or phone number
-    ).joinToString("|"),
-)
 
 private val MODEL_FILES_MISSING = Regex(
     "^(ASR model directory missing|Model archive at .* is not extracted|(Whisper|SenseVoice|Parakeet/transducer) ASR config " +
