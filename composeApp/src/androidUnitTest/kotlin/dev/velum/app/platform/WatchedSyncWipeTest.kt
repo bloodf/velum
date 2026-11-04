@@ -35,6 +35,7 @@ class WatchedSyncWipeTest {
 
     private fun withPipeline(block: suspend (AppContainer, AudioImportPipeline) -> Unit) {
         installAppContext(context)
+        installRecordingFilesDir(context.filesDir.path)
         context.deleteDatabase("velum.db")
         val root = ModelStoreDir(Files.createTempDirectory("velum-sync-wipe").toString())
         val container = AppContainer(

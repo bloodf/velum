@@ -47,6 +47,7 @@ class ImportPickedDocumentTest {
         assertEquals(name, dev.velum.app.importing.ImportDisplayNames.take(file.path))
         assertEquals("wav", file.extension)
         file.delete()
+        Unit
     }
 
     @Test

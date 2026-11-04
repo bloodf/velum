@@ -63,7 +63,7 @@ class IncomingShareTest {
         kotlin.test.assertTrue((file.name + ".tmp").toByteArray(Charsets.UTF_8).size <= 255)
         assertEquals(name, dev.velum.app.importing.ImportDisplayNames.take(file.path))
         assertEquals("wav", file.extension)
-        IncomingShare.markShareHandled(file.path)
+        IncomingShare.markHandled(context, file.path)
         file.delete()
     }
 
