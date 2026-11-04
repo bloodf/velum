@@ -26,11 +26,16 @@ import org.junit.runner.RunWith
 
 /**
  * #319 on a device: normalizes a long synthetic stereo 44.1 kHz AAC/M4A through the real MediaExtractor/MediaCodec
- * path and reports, per length, the decode time and the peak Java heap growth while it ran. Linear time and a heap
- * that does not follow the length are the acceptance checks. The input is generated here by the device's own AAC
- * encoder (no recorded audio).
+ * path and reports, per length, the decode time and the peak Java heap growth while it ran. Checks:
+ * - heap: the peak of the heap in use after a GC (memory pools' collection usage, so uncollected garbage is not
+ *   counted) stays under [MAX_HEAP_GROWTH_BYTES], far below the PCM size of the longest input; a positive control
+ *   that retains a PCM-sized array proves the probe can see it. Native codec buffers are NOT counted by this probe.
+ * - time: at least two lengths spanning 4x or more, time per audio minute within [MAX_RATE_RATIO] across lengths and
+ *   under [MAX_MS_PER_AUDIO_MINUTE] absolutely.
+ * The input is generated here by the device's own AAC encoder (no recorded audio).
  *
- * Skipped unless `normMinutes` is given (comma separated, e.g. `5,15,60`).
+ * Skipped unless `normMinutes` is given (comma separated, e.g. `5,30,60`). Expected runtime: encoding is about 3x
+ * realtime and normalizing about 9x realtime on the arm64 emulator, so 60 min of audio takes about 30 min.
  *
  * Run: adb -s emulator-5554 shell am instrument -w -e class dev.velum.app.audio.AudioNormalizeLongDeviceTest \
  *   -e normMinutes 5,15,60 -e velumDeviceWalk false dev.velum.app.test/dev.velum.app.devicewalk.DeviceWalkTestRunner
@@ -39,49 +44,71 @@ import org.junit.runner.RunWith
 class AudioNormalizeLongDeviceTest {
     private val args = InstrumentationRegistry.getArguments()
 
-    @Test fun long_stereo_m4a_normalizes_in_linear_time_with_bounded_heap() {
+    @Test(timeout = 5_400_000) fun long_stereo_m4a_normalizes_in_linear_time_with_bounded_heap() {
         val minutes = args.getString("normMinutes").orEmpty().split(',').mapNotNull { it.trim().toIntOrNull() }
         assumeTrue("normMinutes not given", minutes.isNotEmpty())
+        assumeTrue("need two lengths spanning at least 4x for the linearity check", minutes.max() >= 4 * minutes.min())
+        positiveControl()
         val ctx = InstrumentationRegistry.getInstrumentation().targetContext
         val dir = File(ctx.cacheDir, "norm319").apply { deleteRecursively(); mkdirs() }
         val lines = mutableListOf<String>()
+        val rates = mutableListOf<Double>()
+        val growth = mutableListOf<Long>()
         try {
             for (m in minutes) {
                 val src = File(dir, "stereo-${m}min.m4a")
                 val encodeMs = time { encodeStereoM4a(src, m * 60) }
-                val rt = Runtime.getRuntime()
-                System.gc()
-                val baseline = rt.totalMemory() - rt.freeMemory()
+                val baseline = heapAfterGc()
                 val peak = AtomicLong(0)
                 val running = AtomicBoolean(true)
                 val sampler = Thread {
                     while (running.get()) {
-                        peak.accumulateAndGet(rt.totalMemory() - rt.freeMemory() - baseline) { a, b -> maxOf(a, b) }
-                        Thread.sleep(50)
+                        peak.accumulateAndGet(heapAfterGc() - baseline) { a, b -> maxOf(a, b) }
+                        Thread.sleep(100)
                     }
                 }.apply { isDaemon = true; start() }
                 var normalized: dev.velum.app.platform.NormalizedAudio? = null
-                val normMs = time { normalized = runBlocking { AudioNormalizer().normalizeToWav(src.absolutePath, 16_000) } }
-                running.set(false); sampler.join(2_000)
+                val normMs = try {
+                    time { normalized = runBlocking { AudioNormalizer().normalizeToWav(src.absolutePath, 16_000) } }
+                } finally {
+                    running.set(false); sampler.join(2_000)
+                }
                 val wav = File(normalized!!.wavPath)
                 val expectedBytes = m * 60L * 16_000 * 2
                 assertTrue("wav size ${wav.length()} vs ~$expectedBytes", kotlin.math.abs(wav.length() - expectedBytes) < 16_000L * 2 * 2)
                 val line = "minutes=$m srcKiB=${src.length() shr 10} encodeMs=$encodeMs normalizeMs=$normMs " +
                     "x_realtime=${"%.1f".format(java.util.Locale.ROOT, m * 60_000.0 / normMs)} wavMiB=${wav.length() shr 20} " +
-                    "peakJavaHeapGrowthKiB=${peak.get() shr 10}"
+                    "peakHeapAfterGcGrowthKiB=${peak.get() shr 10}"
                 Log.i(TAG, line); lines += line
+                rates += normMs.toDouble() / m
+                growth += peak.get()
                 wav.delete(); src.delete()
             }
         } finally {
             dir.deleteRecursively()
+            // Reported even when an assertion below fails, so a failing run still shows its timings.
+            InstrumentationRegistry.getInstrumentation().sendStatus(0, Bundle().apply { putString("velum.norm319", lines.joinToString(" || ")) })
         }
-        InstrumentationRegistry.getInstrumentation().sendStatus(0, Bundle().apply { putString("velum.norm319", lines.joinToString(" || ")) })
-        // Linearity: time per audio minute within 3x between the shortest and longest length.
-        if (lines.size >= 2) {
-            val rate = lines.map { l -> Regex("normalizeMs=(\\d+)").find(l)!!.groupValues[1].toDouble() }
-                .zip(minutes) { ms, m -> ms / m }
-            assertTrue("time per minute not linear: $rate", rate.max() <= rate.min() * 3.0)
-        }
+        assertTrue("heap growth ${growth.map { it shr 20 }} MiB exceeds ${MAX_HEAP_GROWTH_BYTES shr 20} MiB", growth.all { it < MAX_HEAP_GROWTH_BYTES })
+        assertTrue("normalize took more than ${MAX_MS_PER_AUDIO_MINUTE} ms per audio minute: $rates", rates.all { it < MAX_MS_PER_AUDIO_MINUTE })
+        assertTrue("time per audio minute not linear: $rates", rates.max() <= rates.min() * MAX_RATE_RATIO)
+    }
+
+    /** Heap in use after the most recent GC, from the JVM's own bookkeeping (uncollected garbage is not counted). */
+    private fun heapAfterGc(): Long {
+        System.gc()
+        return java.lang.management.ManagementFactory.getMemoryPoolMXBeans()
+            .filter { it.type == java.lang.management.MemoryType.HEAP }
+            .sumOf { it.collectionUsage?.used ?: 0L }
+    }
+
+    /** The probe must see a retained PCM-sized array, otherwise a low reading means nothing. */
+    private fun positiveControl() {
+        val before = heapAfterGc()
+        val held = ByteArray(64 * 1024 * 1024).also { it[0] = 1 }
+        val seen = heapAfterGc() - before
+        java.lang.ref.Reference.reachabilityFence(held)
+        assertTrue("probe saw only ${seen shr 20} MiB of a retained 64 MiB array", seen > 48L * 1024 * 1024)
     }
 
     private inline fun time(block: () -> Unit): Long { val t = SystemClock.elapsedRealtime(); block(); return SystemClock.elapsedRealtime() - t }
@@ -148,5 +175,10 @@ class AudioNormalizeLongDeviceTest {
         assertEquals(true, dest.length() > 0)
     }
 
-    private companion object { const val TAG = "VelumNorm319" }
+    private companion object {
+        const val TAG = "VelumNorm319"
+        const val MAX_HEAP_GROWTH_BYTES = 32L * 1024 * 1024 // the 60 min input is ~110 MiB of 16 kHz PCM, 635 MB at 44.1 kHz stereo
+        const val MAX_RATE_RATIO = 2.0
+        const val MAX_MS_PER_AUDIO_MINUTE = 20_000.0 // observed ~6,600 on the emulator
+    }
 }
