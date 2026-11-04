@@ -100,6 +100,33 @@ class WatchedSyncWipeTest {
         assertFalse(second.exists())
     }
 
+    @Test fun watched_multibyte_name_scans_and_imports() = withPipeline { container, pipeline ->
+        Robolectric.setupContentProvider(FakeDocumentsProvider::class.java, FakeDocumentsProvider.AUTHORITY)
+        val name = "音".repeat(70)
+        val wav = File(context.cacheDir, "provider.wav")
+        val bytes = java.nio.ByteBuffer.allocate(64).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+        bytes.put("RIFF".toByteArray()).putInt(56).put("WAVEfmt ".toByteArray()).putInt(16)
+        bytes.putShort(1).putShort(1).putInt(16000).putInt(32000).putShort(2).putShort(16)
+        bytes.put("data".toByteArray()).putInt(20).put(ByteArray(20))
+        wav.writeBytes(bytes.array())
+        FakeDocumentsProvider.displayName = "$name.wav"
+        FakeDocumentsProvider.audioFile = wav
+        try {
+            val results = syncWatchedFolders(pipeline) { context, uri, check ->
+                WatchedFolderStore.scanNewAudio(context, uri, check).also { entries ->
+                    assertTrue(entries.any { it.displayName == "$name.wav" })
+                    entries.forEach { assertTrue((File(it.absoluteCopyPath).name + ".tmp").toByteArray(Charsets.UTF_8).size <= 255) }
+                }
+            }
+            assertTrue(results.any { it is dev.velum.app.importing.ImportResult.Created }, "$results")
+            assertEquals(name, container.repository.getAllRecordings().single().title)
+        } finally {
+            FakeDocumentsProvider.displayName = null
+            FakeDocumentsProvider.audioFile = null
+            wav.delete()
+        }
+    }
+
     @Test fun only_successful_unchanged_sources_are_remembered() {
         WatchedFolderStore.clear(context)
         val entry = WatchedFolderEntry("a.wav", "content://test/a", "/unused", 123, 456)

@@ -83,7 +83,8 @@ object WatchedFolderStore {
                         val modified = child.lastModified()
                         val size = child.length()
                         if (isUnchanged(context, uri, modified, size)) return@forEach
-                        val dest = File(destRoot, "${java.util.UUID.randomUUID()}_" + watchedCopyName(uri, modified, name))
+                        val extension = name.substringAfterLast('.').lowercase()
+                        val dest = File(destRoot, "${java.util.UUID.randomUUID()}.$extension")
                         // One unreadable file (card pulled mid-copy, revoked grant) must not stop the others.
                         val copied = runCatching {
                             copyWholeFile(dest, child.length()) { context.contentResolver.openInputStream(child.uri) }

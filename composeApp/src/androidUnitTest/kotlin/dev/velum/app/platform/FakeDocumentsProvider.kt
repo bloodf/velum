@@ -25,7 +25,7 @@ class FakeDocumentsProvider : ContentProvider() {
 
     private fun value(column: String, id: String): Any? = when (column) {
         Document.COLUMN_DOCUMENT_ID -> id
-        Document.COLUMN_DISPLAY_NAME -> "$id.wav"
+        Document.COLUMN_DISPLAY_NAME -> if (id == "synthetic-one") displayName ?: "$id.wav" else "$id.wav"
         Document.COLUMN_MIME_TYPE -> if (id == ROOT) Document.MIME_TYPE_DIR else "audio/wav"
         Document.COLUMN_LAST_MODIFIED -> 1_700_000_000_000L
         Document.COLUMN_SIZE -> 64L
@@ -33,12 +33,17 @@ class FakeDocumentsProvider : ContentProvider() {
         else -> null
     }
 
+    override fun openFile(uri: Uri, mode: String): android.os.ParcelFileDescriptor =
+        android.os.ParcelFileDescriptor.open(audioFile!!, android.os.ParcelFileDescriptor.MODE_READ_ONLY)
+
     override fun getType(uri: Uri): String? = null
     override fun insert(uri: Uri, values: ContentValues?): Uri? = null
     override fun delete(uri: Uri, selection: String?, args: Array<String>?) = 0
     override fun update(uri: Uri, values: ContentValues?, selection: String?, args: Array<String>?) = 0
 
     companion object {
+        var displayName: String? = null
+        var audioFile: java.io.File? = null
         const val AUTHORITY = "dev.velum.test.documents"
         private const val ROOT = "synthetic-root"
         private val CHILDREN = listOf("synthetic-one", "synthetic-two")

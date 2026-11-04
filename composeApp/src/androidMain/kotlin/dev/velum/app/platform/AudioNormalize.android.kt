@@ -233,9 +233,6 @@ private const val WAV_SLICE_BYTES = 256 * 1024
 /** A temp `.part` older than this belongs to a process that died; a live normalize keeps writing to its own. */
 internal const val STALE_PART_AGE_MS = 30L * 60L * 1000L
 
-internal fun normalizedFileName(baseName: String, targetRateHz: Int, sourceSha256: String): String =
-    "${baseName}_${targetRateHz}_${sourceSha256.take(12)}.wav"
-
 private val PART_FILE_NAME = Regex(""".+\.wav\.\d+\.part""")
 
 /** Deletes `*.wav.<n>.part` files in [dir] last modified before [olderThanEpochMs]; returns how many. */
