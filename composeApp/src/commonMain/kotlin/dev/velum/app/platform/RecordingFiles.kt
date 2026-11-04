@@ -14,3 +14,9 @@ expect fun isSamePath(a: String, b: String): Boolean
  * not [newPath]. Compares canonical paths so `..`, symlinks or a different dir spelling never match.
  */
 expect fun isSupersededOwnAudio(previousPath: String, newPath: String, dir: String, id: String): Boolean
+
+/** True when no file remains at [absolutePath] afterwards, including when there was none. */
+expect fun deleteFileIfPresent(absolutePath: String): Boolean
+
+/** True for audio the app itself wrote: its recordings folder and its import cache. Never a file the user picked in place. */
+expect fun isAppOwnedAudioPath(absolutePath: String): Boolean

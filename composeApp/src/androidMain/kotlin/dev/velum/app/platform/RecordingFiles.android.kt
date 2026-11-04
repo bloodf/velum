@@ -29,3 +29,18 @@ actual fun isSupersededOwnAudio(previousPath: String, newPath: String, dir: Stri
             previous.parentFile == File(dir).canonicalFile &&
             previous.name.startsWith("$id.")
     }.getOrDefault(false)
+
+actual fun deleteFileIfPresent(absolutePath: String): Boolean = runCatching {
+    val file = File(absolutePath)
+    if (file.isFile) file.delete()
+    !file.exists()
+}.getOrDefault(false)
+
+actual fun isAppOwnedAudioPath(absolutePath: String): Boolean = runCatching {
+    val file = File(absolutePath).canonicalFile
+    val roots = listOfNotNull(
+        filesDirPath?.let { File(it, "recordings") },
+        appContextOrNull()?.let { File(it.cacheDir, "imports") },
+    )
+    roots.any { file.startsWith(it.canonicalFile) && file != it.canonicalFile }
+}.getOrDefault(false)

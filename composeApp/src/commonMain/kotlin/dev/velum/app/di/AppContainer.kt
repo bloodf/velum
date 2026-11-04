@@ -35,6 +35,8 @@ import dev.velum.app.platform.MicCapture
 import dev.velum.app.platform.createMicCapture
 import dev.velum.app.platform.DOWNLOAD_PART_SUFFIX
 import dev.velum.app.platform.deleteFileAtPath
+import dev.velum.app.platform.deleteFileIfPresent
+import dev.velum.app.platform.isAppOwnedAudioPath
 import dev.velum.app.platform.isSamePath
 import dev.velum.app.platform.isSupersededOwnAudio
 import dev.velum.app.platform.recordingsDirectoryPath
@@ -243,6 +245,27 @@ class AppContainer(
                 }
             }
         }
+    }
+
+    /**
+     * Deletes a recording for good. False when a file could not be deleted: the recording stays, so nothing is
+     * half-removed and the user can try again.
+     */
+    suspend fun deleteRecordingForever(id: String): Boolean {
+        val audio = repository.getRecording(id)?.local_path
+        val others = repository.getAllRecordingFileRefs().filter { it.first != id }.mapNotNull { it.second }
+        val deleted = withContext(Dispatchers.IO) {
+            // Copies first: if one fails, the recording still has its audio.
+            (repository.importCopies(id) + listOfNotNull(audio))
+                .filter { path -> isAppOwnedAudioPath(path) && others.none { it == path || isSamePath(it, path) } }
+                .all { deleteFileIfPresent(it) }
+        }
+        if (!deleted) {
+            println("VelumDelete: a recording's audio could not be deleted")
+            return false
+        }
+        repository.deleteRecordingHard(id)
+        return true
     }
 
     fun enqueueProcessing(

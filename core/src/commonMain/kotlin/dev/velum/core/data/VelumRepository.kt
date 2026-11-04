@@ -746,6 +746,15 @@ class VelumRepository(
         tryIndex { if (ftsAvailable) FtsIndex.deleteTemplate(driver, id) }
     }
 
+    /** Remembers an app-owned source copy of [recordingId], so a permanent delete can remove it. */
+    suspend fun addImportCopy(recordingId: String, sourceHash: String, path: String) = withContext(dbContext) {
+        q.setMeta("$IMPORT_COPY_PREFIX$recordingId:$sourceHash", path)
+    }
+
+    suspend fun importCopies(recordingId: String): List<String> = withContext(dbContext) {
+        q.selectMetaMatching(globPrefix("$IMPORT_COPY_PREFIX$recordingId:")).executeAsList().map { it.value_ }
+    }
+
     suspend fun deleteRecordingHard(id: String) = withContext(dbContext) {
         // One transaction: a failure can't leave a deleted recording without its tombstones.
         db.transaction {
@@ -754,6 +763,7 @@ class VelumRepository(
             q.deleteRecordingHard(id)
             q.deleteMeta(processingErrorKey(id))
             q.deleteMeta("$UNPROMOTED_RUN_PREFIX$id")
+            deleteMetaPrefix("$IMPORT_COPY_PREFIX$id:")
             // Import dedupe keys (import_sha256_<hash> -> id) become tombstones: a manual import of the file works
             // again, but a watched folder does not bring the deleted recording back (#327).
             val deletedAt = epochSeconds().toString()
@@ -796,6 +806,7 @@ class VelumRepository(
         deleteMetaPrefix(PROCESSING_ERROR_PREFIX)
         deleteMetaPrefix(IMPORT_HASH_PREFIX)
         deleteMetaPrefix(IMPORT_DELETED_PREFIX)
+        deleteMetaPrefix(IMPORT_COPY_PREFIX)
         deleteMetaPrefix(UNPROMOTED_RUN_PREFIX)
         // Clear seed marker so maybeSeed re-inserts default AutoFlow + builtins.
         SeedData.clearSeedMarker(db)
@@ -1161,6 +1172,8 @@ class VelumRepository(
         private const val UNPROMOTED_RUN_PREFIX = "unpromoted_run:"
         /** Audio import dedupe: import_sha256_<hash> -> recording id. */
         const val IMPORT_HASH_PREFIX = "import_sha256_"
+        /** import_copy:<recording id>:<source hash> -> path of a watched-folder copy kept for that recording. */
+        private const val IMPORT_COPY_PREFIX = "import_copy:"
 
         /** A GLOB pattern matching keys that start with [prefix] (case-sensitive; GLOB metacharacters escaped). */
         internal fun globPrefix(prefix: String): String =
