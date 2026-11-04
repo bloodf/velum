@@ -10,13 +10,11 @@ import java.nio.file.StandardCopyOption
  * Earlier versions kept the only copy of an imported recording in cacheDir/imports, which Android may evict at any
  * time. Moves each such row's audio into [recordingsDir] and repoints the row. Safe to run on every start and to be
  * killed at any step:
- * - the file is renamed when the volume allows (no extra space, atomic), else copied through a temp file that is
- *   fsynced, size-checked, renamed and the directory fsynced; either way before the row is touched;
+ * - the file is copied through a temp file that is fsynced, size-checked and renamed before the row is touched;
  * - the cache file is deleted only after the row points at the new file;
  * - an existing destination is reused only if it is byte-identical to the source (hash), else the row is left alone;
  * - a source that is already gone (moved before a crash, or evicted) with a valid destination present just repoints;
  * - rows that share one cache file each get their own copy, and the source goes once all of them succeeded;
- * - the moved file's mtime is stamped now, because the orphan sweep reads it and a rename keeps the old one.
  * Returns the number of rows repointed.
  */
 suspend fun migrateCachedImports(
@@ -36,15 +34,11 @@ suspend fun migrateCachedImports(
         .groupBy({ File(it.second!!).canonicalPath }, { it.first })
     for ((sourcePath, ids) in bySource) {
         val source = File(sourcePath)
-        var firstPlaced: File? = null // once the first row renamed the cache file away, later rows copy from its new home
         val results = ids.map { id ->
-            runCatching {
-                migrateRow(repository, id, source, firstPlaced, recordingsDir, nowMs).also { placed -> if (firstPlaced == null) firstPlaced = placed }
-                    ?.let { true }
-            }
+            runCatching { migrateRow(repository, id, source, recordingsDir)?.let { true } }
         }
         moved += results.count { it.getOrNull() == true }
-        // Delete the cache file once every row that used it points elsewhere (rename already removed it).
+        // Delete the cache file once every row that used it points elsewhere.
         if (source.isFile && results.all { it.isSuccess && it.getOrNull() != null }) source.delete()
     }
     val referenced = repository.getAllRecordingFileRefs().mapNotNullTo(HashSet()) { (_, path) ->
@@ -61,19 +55,15 @@ private suspend fun migrateRow(
     repository: VelumRepository,
     id: String,
     source: File,
-    sibling: File?,
     recordingsDir: File,
-    nowMs: Long,
 ): File? {
     val row = repository.getRecording(id) ?: return null
     val ext = source.extension.ifBlank { "wav" }
     val dest = File(recordingsDir, "$id.$ext")
     when {
-        source.isFile -> placeFile(source, dest, nowMs, allowMove = sibling == null)
+        source.isFile -> placeFile(source, dest)
         // Moved before a crash (or evicted): a complete destination is the rescued copy, so the row just follows it.
         dest.isFile && dest.length() > 0L -> Unit
-        // Another row on the same cache file already took it: copy from where it went.
-        sibling != null && sibling.isFile -> placeFile(sibling, dest, nowMs, allowMove = false)
         else -> return null
     }
     repository.updateLocalPath(id, dest.absolutePath, row.duration_seconds, row.size_bytes)
@@ -81,7 +71,7 @@ private suspend fun migrateRow(
 }
 
 /** Makes [dest] hold exactly [source]'s bytes, durably, without ever leaving a partial file at [dest]. */
-private fun placeFile(source: File, dest: File, nowMs: Long, allowMove: Boolean) {
+private fun placeFile(source: File, dest: File) {
     if (dest.exists()) {
         // A copy from an earlier, interrupted run is reused only if it is the same audio.
         check(dest.isFile && dest.length() == source.length() && sha256File(dest.absolutePath) == sha256File(source.absolutePath)) {
@@ -90,15 +80,7 @@ private fun placeFile(source: File, dest: File, nowMs: Long, allowMove: Boolean)
         return
     }
     val length = source.length()
-    if (allowMove) source.setLastModified(nowMs)
-    val renamed = allowMove && runCatching {
-        Files.move(source.toPath(), dest.toPath(), StandardCopyOption.ATOMIC_MOVE)
-    }.isSuccess
-    if (renamed) {
-        syncDirectory(dest.parentFile)
-        return
-    }
-    // Another volume: a copy needs room, and low space is exactly when the OS evicts caches, so check first.
+    // A copy needs room, and low space is exactly when the OS evicts caches, so check first.
     check(dest.parentFile.usableSpace > length + SPARE_BYTES) { "not enough space to move the file" }
     val tmp = File(dest.parentFile, dest.name + ".tmp")
     try {

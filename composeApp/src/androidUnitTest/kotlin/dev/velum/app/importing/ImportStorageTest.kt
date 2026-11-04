@@ -263,6 +263,17 @@ class ImportStorageTest {
         assertFalse(cached.exists())
     }
 
+    @Test fun shared_cache_source_survives_a_partial_migration() = runBlocking {
+        val cached = wav(File(cache, "imports/normalized/partial_16000.wav"), 4)
+        val a = container.createLocalRecording(title = "A", source = "import", localPath = cached.path, status = "ready")
+        val b = container.createLocalRecording(title = "B", source = "import", localPath = cached.path, status = "ready")
+        val dir = File(recordingsDirectoryPath()).also { it.mkdirs() }
+        File(dir, "$b.wav").mkdirs()
+        migrateCachedImports(container.repository, dir, cache)
+        assertTrue("Unmigrated row lost its source", cached.isFile || container.repository.getRecording(b)!!.local_path != cached.path)
+        assertTrue(File(container.repository.getRecording(a)!!.local_path!!).isFile)
+    }
+
     // Pending incoming copy and our own .tmp.
     @Test fun a_pending_incoming_copy_survives_the_sweep_and_an_old_tmp_goes() = runBlocking {
         val dir = File(recordingsDirectoryPath()).also { it.mkdirs() }
