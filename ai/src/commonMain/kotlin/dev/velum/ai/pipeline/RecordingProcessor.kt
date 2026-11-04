@@ -26,7 +26,12 @@ import dev.velum.core.settings.AiApiTask
 import dev.velum.core.settings.ApiModelOverride
 import dev.velum.core.settings.SettingsRepository
 import dev.velum.core.templates.BuiltinTemplateCatalog
+import kotlin.time.Duration
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -131,6 +136,7 @@ class RecordingProcessor(
     /** Where decoded audio spills, under `tmp/`. The wipe and the startup sweep look here. */
     val pcmSpillRoot: ModelStoreDir = ModelStoreDir(defaultModelStoreRoot().absolutePath),
 ) {
+    private val runs = MutableStateFlow<Map<String, Set<Deferred<*>>>>(emptyMap())
     private val nextRun = MutableStateFlow(0L)
     private val activeRuns = MutableStateFlow<Map<String, Long>>(emptyMap())
     private val statusLock = Mutex()
@@ -142,10 +148,35 @@ class RecordingProcessor(
         retranscribe: Boolean = true,
         apiModelOverride: ApiModelOverride? = null,
     ): Flow<JobProgress> = channelFlow {
-        wipeGate.guard {
-            runProcess(recordingId, templateId, retranscribe, apiModelOverride).collect { send(it) }
+        val run = async(start = CoroutineStart.LAZY) {
+            wipeGate.guard {
+                runProcess(recordingId, templateId, retranscribe, apiModelOverride).collect { send(it) }
+            }
+        }
+        // Registered before it starts, so a delete arriving now still finds it.
+        runs.update { it + (recordingId to (it[recordingId].orEmpty() + run)) }
+        try {
+            run.await()
+        } catch (stopped: RunStopped) {
+            // The recording is being deleted: the flow just ends, its collector is not cancelled.
+            ensureActive()
+        } finally {
+            runs.update { current ->
+                val left = current[recordingId].orEmpty() - run
+                if (left.isEmpty()) current - recordingId else current + (recordingId to left)
+            }
         }
     }.buffer(Channel.RENDEZVOUS)
+
+    /**
+     * Stops every run of [recordingId] and waits up to [timeout], so each removes its temp files before the recording
+     * is deleted. False if one had not stopped by then; it can write nothing once the row is gone.
+     */
+    suspend fun stopRuns(recordingId: String, timeout: Duration): Boolean {
+        val stopping = runs.value[recordingId].orEmpty()
+        stopping.forEach { it.cancel(RunStopped()) }
+        return withTimeoutOrNull(timeout) { stopping.forEach { it.join() } } != null
+    }
 
     private fun runProcess(
         recordingId: String,
@@ -872,3 +903,6 @@ internal fun unsupportedContainer(head: ByteArray): String? {
         else -> null
     }
 }
+
+/** The cause a run is cancelled with when its recording is deleted, told apart from any other cancellation. */
+private class RunStopped : CancellationException("The recording is being deleted")

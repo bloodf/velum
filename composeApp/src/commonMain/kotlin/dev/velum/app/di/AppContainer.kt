@@ -314,6 +314,12 @@ class AppContainer(
             // Before the row goes: a cancelled download can't save, and a running one would find no row and add it back (#407).
             val row = repository.getRecording(id)
             row?.session_id?.let(device::cancelDownloadOf)
+            recordingJobs.cancel(id)
+            if (!recordingProcessor.stopRuns(id, WIPE_JOIN_TIMEOUT)) {
+                println("VelumDelete: recording processing did not stop")
+                return@withContext false
+            }
+            val micFile = stopMicRecording(id)
             downloadPersistMutex.withLock {
                 // First: if it stays, the recording stays too, and trying again finishes the job.
                 if (row?.session_id?.let { device.deletePartialOf(it, row.device_serial) } == false) {
@@ -322,8 +328,10 @@ class AppContainer(
                 }
                 val audio = repository.getRecording(id)?.local_path
                 val others = repository.getAllRecordingFileRefs().filter { it.first != id }.mapNotNull { it.second }
+                val dir = runCatching { recordingsDirectoryPath() }.getOrNull()
+                val draft = listOfNotNull(micFile) + listOfNotNull(dir).flatMap { listOf("$it/$id.wav", "$it/$id.wav.partial") }
                 // Copies first: if one fails, the recording still has its audio.
-                val deleted = (repository.importCopies(id) + listOfNotNull(audio))
+                val deleted = (repository.importCopies(id) + draft + listOfNotNull(audio))
                     .filter { path -> isAppOwnedAudioPath(path) && others.none { it == path || isSamePath(it, path) } }
                     .all { deleteFileIfPresent(it) }
                 if (deleted) {
@@ -553,6 +561,13 @@ class AppContainer(
         repository.getRecording(recordingId)?.let { row ->
             SharedNote(row.title, row.summary_markdown.orEmpty(), shareMarkdownBody(row.title, row.summary_markdown, row.transcript))
         }
+    }
+
+    private suspend fun stopMicRecording(recordingId: String): String? = micRecordings.underLock {
+        val owned = micRecordings.owner.value?.takeIf { it.recordingId == recordingId } ?: return@underLock null
+        if (micCapture.isCapturing) micCapture.stop(owned.session)
+        micRecordings.release(owned)
+        owned.session.absolutePath
     }
 
     /** Ends a mic recording in progress and deletes its file, which may not be on a recording row yet. */

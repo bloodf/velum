@@ -1135,6 +1135,7 @@ class VelumRepository(
         createdAt: Long = epochSeconds(),
     ): String = withContext(dbContext) {
         val resolvedVersionId = versionId ?: newSummaryVersionId(recordingId)
+        if (q.selectRecordingById(recordingId).executeAsOneOrNull() == null) return@withContext resolvedVersionId
         val saved = db.transactionWithResult {
             ensureBaselineVersionLocked(recordingId)
             q.clearActiveVersionsForRecording(recordingId)
@@ -1239,6 +1240,7 @@ class VelumRepository(
 
     suspend fun updateSpeakers(recordingId: String, speakers: List<SpeakerUpsert>) =
         withContext(dbContext) {
+            if (q.selectRecordingById(recordingId).executeAsOneOrNull() == null) return@withContext
             db.transaction {
                 q.deleteSpeakersForRecording(recordingId)
                 speakers.forEach { s ->

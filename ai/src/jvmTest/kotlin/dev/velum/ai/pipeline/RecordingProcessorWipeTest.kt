@@ -86,4 +86,50 @@ class RecordingProcessorWipeTest {
         )
         return RecordingProcessor(router, repo, settings, wipeGate = gate)
     }
+
+    private suspend fun insertRunning(id: String) = repo.insertRecording(
+        id = id, sessionId = null, folderId = null, title = "Synthetic", source = "phone",
+        deviceSerial = null, startedAt = 1_700_000_000L, durationSeconds = 60, sizeBytes = 0, localPath = null,
+        transcript = "**Ana** · 0:00\nSynthetic transcript.", summaryMarkdown = null, status = "ready",
+    )
+
+    @Test fun deleting_a_recording_stops_its_run_and_not_its_collector() = runBlocking {
+        insertRunning("rec-running")
+        val processor = processor()
+        var continued = false
+        val job = launch(Dispatchers.Default) {
+            processor.process("rec-running", retranscribe = false).collect()
+            continued = true
+        }
+        llmStarted.await()
+        assertTrue(processor.stopRuns("rec-running", 5.seconds), "the run did not stop")
+        llmRelease.complete(Unit)
+        job.join()
+        assertTrue(continued, "the collector was cancelled too")
+        assertEquals(emptyList(), repo.getSummaryVersions("rec-running"), "the stopped run saved a summary")
+    }
+
+    @Test fun stopping_one_recording_leaves_another_running() = runBlocking {
+        insertRunning("rec-kept")
+        val processor = processor()
+        val job = launch(Dispatchers.Default) { processor.process("rec-kept", retranscribe = false).collect() }
+        llmStarted.await()
+        assertTrue(processor.stopRuns("rec-other", 1.seconds))
+        assertTrue(job.isActive, "stopping another recording stopped this run")
+        llmRelease.complete(Unit)
+        job.join()
+        assertEquals(1, repo.getSummaryVersions("rec-kept").size)
+    }
+
+    @Test fun the_coroutine_scheduler_cancels_one_recordings_job() = runBlocking {
+        insertRunning("rec-queued")
+        val scope = kotlinx.coroutines.CoroutineScope(Dispatchers.Default)
+        val scheduler = createCoroutineRecordingJobScheduler(processor(), scope)
+        scheduler.enqueue("rec-queued", null, false, null)
+        llmStarted.await()
+        scheduler.cancel("rec-queued")
+        llmRelease.complete(Unit)
+        scope.coroutineContext[kotlinx.coroutines.Job]!!.children.forEach { it.join() }
+        assertEquals(emptyList(), repo.getSummaryVersions("rec-queued"), "the cancelled job saved a summary")
+    }
 }
