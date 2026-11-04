@@ -15,17 +15,22 @@ actual class AudioNormalizer actual constructor() {
     actual suspend fun normalizeToWav(
         sourcePath: String,
         targetSampleRateHz: Int,
-    ): NormalizedAudio = withContext(Dispatchers.IO) {
+    ): NormalizedAudio {
+        var ownedOutput: File? = null
+        try {
+            return withContext(Dispatchers.IO) {
         val source = File(sourcePath)
         require(source.isFile) { "Missing import: $sourcePath" }
         val hash = sha256File(sourcePath)
         val outDir = File(source.parentFile, "normalized").apply { mkdirs() }
-        val outFile = File(outDir, "${source.nameWithoutExtension}_$targetSampleRateHz.wav")
+        val outputId = java.util.UUID.randomUUID()
+        val outFile = File(outDir, "import_$outputId.wav")
         val name = source.name.lowercase()
         when {
             name.endsWith(".wav") || name.endsWith(".wave") -> {
                 val bytes = source.readBytes()
                 val pcm = stripWav(bytes)
+                ownedOutput = outFile
                 writeWav(outFile, pcm.pcm, pcm.sampleRateHz.takeIf { it > 0 } ?: targetSampleRateHz)
                 val rate = pcm.sampleRateHz.takeIf { it > 0 } ?: targetSampleRateHz
                 NormalizedAudio(
@@ -38,8 +43,9 @@ actual class AudioNormalizer actual constructor() {
             }
             name.endsWith(".ogg") || name.endsWith(".opus") -> {
                 // Leave as-is for RecordingProcessor Opus path; still return a copy path + hash.
-                val dest = File(outDir, source.name)
-                source.copyTo(dest, overwrite = true)
+                val dest = File(outDir, "import_$outputId.${source.extension.lowercase()}")
+                ownedOutput = dest
+                source.copyTo(dest, overwrite = false)
                 NormalizedAudio(
                     wavPath = dest.absolutePath,
                     sampleRateHz = targetSampleRateHz,
@@ -51,6 +57,11 @@ actual class AudioNormalizer actual constructor() {
             else -> error(
                 "Desktop build cannot decode ${source.extension}; use Android for mp3/m4a/flac/amr/webm or convert to WAV first.",
             )
+        }
+            }
+        } catch (t: Throwable) {
+            ownedOutput?.delete()
+            throw t
         }
     }
 }

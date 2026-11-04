@@ -35,6 +35,7 @@ class WatchedSyncWipeTest {
 
     private fun withPipeline(block: suspend (AppContainer, AudioImportPipeline) -> Unit) {
         installAppContext(context)
+        installRecordingFilesDir(context.filesDir.path)
         context.deleteDatabase("velum.db")
         val root = ModelStoreDir(Files.createTempDirectory("velum-sync-wipe").toString())
         val container = AppContainer(
@@ -79,6 +80,64 @@ class WatchedSyncWipeTest {
             assertTrue(container.wipeGate.wiping(10.seconds) { it }, "the wipe did not wait for the scan")
             assertEquals(emptyList(), sync.await())
         }
+    }
+
+    @Test fun cancelled_batch_removes_unprocessed_copies() = withPipeline { _, pipeline ->
+        val first = File(context.cacheDir, "imports/watched/batch-first.wav").apply { parentFile!!.mkdirs(); writeText("bad") }
+        val second = File(context.cacheDir, "imports/watched/batch-second.wav").apply { writeText("bad") }
+        coroutineScope {
+            val job = async(Dispatchers.Default) {
+                val current = kotlinx.coroutines.currentCoroutineContext()[kotlinx.coroutines.Job]!!
+                syncWatchedFolders(pipeline) { _, _, _ ->
+                    listOf(
+                        WatchedFolderEntry("first.wav", "first", first.path, 1),
+                        WatchedFolderEntry("second.wav", "second", second.path, 1),
+                    ).also { current.cancel() }
+                }
+            }
+            try { job.await() } catch (_: CancellationException) { }
+        }
+        assertFalse(first.exists())
+        assertFalse(second.exists())
+    }
+
+    @Test fun watched_multibyte_name_scans_and_imports() = withPipeline { container, pipeline ->
+        Robolectric.setupContentProvider(FakeDocumentsProvider::class.java, FakeDocumentsProvider.AUTHORITY)
+        val name = "音".repeat(70)
+        val wav = File(context.cacheDir, "provider.wav")
+        val bytes = java.nio.ByteBuffer.allocate(64).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+        bytes.put("RIFF".toByteArray()).putInt(56).put("WAVEfmt ".toByteArray()).putInt(16)
+        bytes.putShort(1).putShort(1).putInt(16000).putInt(32000).putShort(2).putShort(16)
+        bytes.put("data".toByteArray()).putInt(20).put(ByteArray(20))
+        wav.writeBytes(bytes.array())
+        FakeDocumentsProvider.displayName = "$name.wav"
+        FakeDocumentsProvider.audioFile = wav
+        try {
+            val results = syncWatchedFolders(pipeline) { context, uri, check ->
+                WatchedFolderStore.scanNewAudio(context, uri, check).also { entries ->
+                    assertTrue(entries.any { it.displayName == "$name.wav" })
+                    entries.forEach { assertTrue((File(it.absoluteCopyPath).name + ".tmp").toByteArray(Charsets.UTF_8).size <= 255) }
+                }
+            }
+            assertTrue(results.any { it is dev.velum.app.importing.ImportResult.Created }, "$results")
+            assertEquals(name, container.repository.getAllRecordings().single().title)
+        } finally {
+            FakeDocumentsProvider.displayName = null
+            FakeDocumentsProvider.audioFile = null
+            wav.delete()
+        }
+    }
+
+    @Test fun only_successful_unchanged_sources_are_remembered() {
+        WatchedFolderStore.clear(context)
+        val entry = WatchedFolderEntry("a.wav", "content://test/a", "/unused", 123, 456)
+        assertFalse(WatchedFolderStore.isUnchanged(context, entry.uriString, 123, 456))
+        WatchedFolderStore.markImported(context, entry)
+        assertTrue(WatchedFolderStore.isUnchanged(context, entry.uriString, 123, 456))
+        assertFalse(WatchedFolderStore.isUnchanged(context, entry.uriString, 124, 456))
+        assertFalse(WatchedFolderStore.isUnchanged(context, entry.uriString, 123, 457))
+        WatchedFolderStore.clear(context)
+        assertFalse(WatchedFolderStore.isUnchanged(context, entry.uriString, 123, 456))
     }
 
     @Test fun a_stopped_walk_copies_nothing() {
