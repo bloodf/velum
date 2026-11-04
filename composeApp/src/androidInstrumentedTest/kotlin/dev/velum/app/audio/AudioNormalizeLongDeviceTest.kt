@@ -34,6 +34,9 @@ import org.junit.runner.RunWith
  *   under [MAX_MS_PER_AUDIO_MINUTE] absolutely.
  * The input is generated here by the device's own AAC encoder (no recorded audio).
  *
+ * Optional `normSampler=false`: skip the heap sampler (each sample forces a GC) to time the pure decode.
+ * Optional `normSourceDir`: directory holding pre-encoded `stereo-<minutes>min.m4a` files (44.1 kHz stereo AAC) to
+ * use instead of encoding on the device.
  * Skipped unless `normMinutes` is given (comma separated, e.g. `5,30,60`). Expected runtime: encoding is about 3x
  * realtime and normalizing about 9x realtime on the arm64 emulator, so 60 min of audio takes about 30 min.
  *
@@ -61,12 +64,21 @@ class AudioNormalizeLongDeviceTest {
         try {
             for (m in minutes2) {
                 val src = File(dir, "stereo-${m}min.m4a")
-                val encodeMs = time { encodeStereoM4a(src, m * 60) }
+                // With normSourceDir the inputs were encoded elsewhere (e.g. ffmpeg on the host) and pushed, which
+                // keeps the long, load-sensitive on-device encode out of the run; only normalize is timed either way.
+                val pushed = args.getString("normSourceDir")?.let { File(it, "stereo-${m}min.m4a") }
+                val encodeMs = if (pushed != null) {
+                    assertTrue("missing pushed input $pushed", pushed.isFile)
+                    pushed.copyTo(src, overwrite = true); 0L
+                } else {
+                    time { encodeStereoM4a(src, m * 60) }
+                }
                 val baseline = heapAfterGc()
                 val peak = AtomicLong(0)
                 val running = AtomicBoolean(true)
+                val sampling = args.getString("normSampler") != "false"
                 val sampler = Thread {
-                    while (running.get()) {
+                    while (sampling && running.get()) {
                         peak.accumulateAndGet(heapAfterGc() - baseline) { a, b -> maxOf(a, b) }
                         Thread.sleep(SAMPLE_EVERY_MS)
                     }
@@ -82,10 +94,10 @@ class AudioNormalizeLongDeviceTest {
                 assertTrue("wav size ${wav.length()} vs ~$expectedBytes", kotlin.math.abs(wav.length() - expectedBytes) < 16_000L * 2 * 2)
                 val line = "minutes=$m srcKiB=${src.length() shr 10} encodeMs=$encodeMs normalizeMs=$normMs " +
                     "x_realtime=${"%.1f".format(java.util.Locale.ROOT, m * 60_000.0 / normMs)} wavMiB=${wav.length() shr 20} " +
-                    "peakHeapAfterGcGrowthKiB=${peak.get() shr 10}"
+                    "sampler=$sampling peakHeapAfterGcGrowthKiB=${if (sampling) (peak.get() shr 10).toString() else "n/a"}"
                 Log.i(TAG, line); lines += line
                 rates += normMs.toDouble() / m
-                growth += peak.get()
+                if (sampling) growth += peak.get()
                 wav.delete(); src.delete()
             }
         } finally {
@@ -93,6 +105,7 @@ class AudioNormalizeLongDeviceTest {
             // Reported even when an assertion below fails, so a failing run still shows its timings.
             InstrumentationRegistry.getInstrumentation().sendStatus(0, Bundle().apply { putString("velum.norm319", lines.joinToString(" || ")) })
         }
+        // Heap is only measured when the sampler ran (normSampler=false times the pure decode, without GC pauses).
         assertTrue("heap growth ${growth.map { it shr 20 }} MiB exceeds ${MAX_HEAP_GROWTH_BYTES shr 20} MiB", growth.all { it < MAX_HEAP_GROWTH_BYTES })
         assertTrue("normalize took more than ${MAX_MS_PER_AUDIO_MINUTE} ms per audio minute: $rates", rates.all { it < MAX_MS_PER_AUDIO_MINUTE })
         assertTrue("time per audio minute not linear: $rates", rates.max() <= rates.min() * MAX_RATE_RATIO)
@@ -185,7 +198,9 @@ class AudioNormalizeLongDeviceTest {
         const val MAX_HEAP_GROWTH_BYTES = 32L * 1024 * 1024 // the 60 min input is ~110 MiB of 16 kHz PCM, 635 MB at 44.1 kHz stereo
         // Each sample forces a GC, which pauses decoding, so sample rarely: a retained PCM array stays visible.
         const val SAMPLE_EVERY_MS = 2_000L
-        const val MAX_RATE_RATIO = 2.0
+        // Quadratic time would give a ratio of 6x between 10 and 60 min. Under heavy host load a middle length took 2.3x
+        // the per-minute time of its neighbours (8.8 / 19.2 / 8.1 s per minute), so 2x is not stable on a loaded host.
+        const val MAX_RATE_RATIO = 3.0
         const val MAX_MS_PER_AUDIO_MINUTE = 20_000.0 // observed ~6,600 on the emulator
     }
 }
