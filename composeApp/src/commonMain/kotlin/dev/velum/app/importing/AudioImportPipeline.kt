@@ -2,11 +2,13 @@ package dev.velum.app.importing
 
 import dev.velum.ai.pipeline.resolveTemplateForEnqueue
 import dev.velum.app.di.AppContainer
+import dev.velum.app.di.WipeInProgressException
+import dev.velum.core.data.KeyedInsert
+import dev.velum.core.data.RecordingIds
 import dev.velum.core.autoflow.AutoFlowResolve
 import dev.velum.app.platform.AudioNormalizer
 import dev.velum.app.platform.NormalizedAudio
 import dev.velum.app.platform.ImportAudioFormats
-import dev.velum.app.di.WipeInProgressException
 import dev.velum.app.platform.deleteFileAtPath
 import dev.velum.app.platform.deleteFileIfPresent
 import dev.velum.app.platform.isImportCacheCopy
@@ -146,29 +148,40 @@ class AudioImportPipeline(
             }
             val title = titleHint ?: ImportTitles.forImport(absolutePath, name)
             val durationSeconds = (normalized.durationMs / 1000L).coerceAtLeast(0L)
-            val id = container.createLocalRecording(
-                title = title,
-                source = source,
-                localPath = normalized.wavPath,
-                status = "queued",
-            )
-            if (startedAtEpochSeconds != null) {
-                // Title already set; duration/size updated below.
+            val id = RecordingIds.newId()
+            // One transaction: a concurrent import of the same audio, or a crash, can't leave two recordings or a
+            // recording without its dedupe keys. A watched import is refused if a tombstone appeared since the early
+            // check (a delete in between); any other import is the user choosing the file again, so its tombstones go.
+            val hashes = listOf(sourceHash, contentHash).distinct()
+            val watched = source == WATCHED_SOURCE
+            val inserted = container.wipeGate.guard {
+                container.repository.insertRecordingUnlessKeyed(
+                    id = id,
+                    title = title ?: container.formatRecordingTitle(epochSecondsNow()),
+                    source = source,
+                    startedAt = epochSecondsNow(),
+                    durationSeconds = durationSeconds,
+                    localPath = normalized.wavPath,
+                    status = "queued",
+                    keys = hashes.map { "import_sha256_$it" },
+                    refuseKeys = if (watched) hashes.map { IMPORT_DELETED_PREFIX + it } else emptyList(),
+                    clearKeys = if (watched) emptyList() else hashes.map { IMPORT_DELETED_PREFIX + it },
+                )
+            } ?: throw WipeInProgressException()
+            when (inserted) {
+                is KeyedInsert.Existing -> {
+                    discardNormalized(normalized.wavPath, keptBy = inserted.recordingId)
+                    rememberWatchedCopy(source, inserted.recordingId, absolutePath)
+                    return@withContext ImportResult.Duplicate(inserted.recordingId, contentHash)
+                }
+                KeyedInsert.Refused -> {
+                    // Removed first, as in the early tombstone path: a crash in between only decodes it once more.
+                    discardNormalized(normalized.wavPath, keptBy = null)
+                    container.repository.setMeta(IMPORT_DELETED_PREFIX + sourceHash, epochSecondsNow().toString())
+                    return@withContext ImportResult.Deleted(contentHash)
+                }
+                KeyedInsert.Inserted -> Unit
             }
-            container.repository.updateLocalPath(
-                id = id,
-                localPath = normalized.wavPath,
-                durationSeconds = durationSeconds,
-                sizeBytes = 0L,
-            )
-            // Store both keys so source-path re-imports and content-identical WAVs dedupe.
-            container.repository.setMeta("import_sha256_$sourceHash", id)
-            if (contentHash != sourceHash) {
-                container.repository.setMeta("import_sha256_$contentHash", id)
-            }
-            // A file the user chose again is wanted again: its watched-folder tombstone goes.
-            container.repository.deleteMeta(IMPORT_DELETED_PREFIX + sourceHash)
-            container.repository.deleteMeta(IMPORT_DELETED_PREFIX + contentHash)
             rememberWatchedCopy(source, id, absolutePath)
             // Resolve AutoFlow before first enqueue so KEEP cannot drop template/model.
             val match = container.repository.findMatchingAutoflow(
@@ -192,8 +205,9 @@ class AudioImportPipeline(
     }
 
     /**
-     * Removes a normalized copy no recording will use. Its name carries the source hash, so it can only be another
-     * recording's file if both hashes match, which a platform hashing the source could do: [keptBy] is checked anyway.
+     * Removes a normalized copy no recording will use. On Android its name carries the source hash, so it can only be
+     * another recording's file if both hashes match; on desktop the name has no source hash and two sources can map to
+     * one path. Either way [keptBy] is checked, so the kept recording's file is never removed.
      */
     private suspend fun discardNormalized(wavPath: String, keptBy: String?) {
         val keptPath = keptBy?.let { container.repository.getRecording(it)?.local_path }
