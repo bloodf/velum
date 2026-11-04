@@ -78,4 +78,16 @@ class PendingShareTest {
         drain()
         assertTrue(IncomingShare.recoverPending(context, System.currentTimeMillis()).isEmpty())
     }
+
+    @Test fun pending_paths_lists_only_unhandled_unexpired_copies_after_recovery() {
+        val keep = copyOne("keep")
+        val handled = copyOne("handled").also { markShareHandled(it) }
+        val old = copyOne("expiring")
+        assertEquals(setOf(keep, old), IncomingShare.pendingPaths(context).toSet()) // before recovery both are marked
+        val later = System.currentTimeMillis() + IncomingShare.MAX_PENDING_AGE_MS - 1_000
+        File(old).setLastModified(0)
+        IncomingShare.recoverPending(context, later + 2_000) // expires every entry (all older than the window at this time)
+        assertEquals(emptyList(), IncomingShare.pendingPaths(context))
+        assertFalse(handled in IncomingShare.pendingPaths(context))
+    }
 }

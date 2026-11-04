@@ -43,6 +43,14 @@ object IncomingShare {
     }
 
     /**
+     * Paths of copies still marked pending (read after [recoverPending] has expired the stale ones). A startup sweep of
+     * orphaned import copies must skip these: recovery owns their expiry and deletion. IO thread only.
+     */
+    internal fun pendingPaths(context: Context): List<String> = synchronized(lock) {
+        prefs(context).getStringSet(KEY, emptySet()).orEmpty().map { it.substringAfter('|', "") }.filter { it.isNotEmpty() }
+    }
+
+    /**
      * Once per process start (IO thread): re-offers shares copied by a process that died before importing them, relying on
      * the import's hash dedupe if one had in fact finished. Entries whose copy is gone (a wipe, a cache clear) or older than
      * [MAX_PENDING_AGE_MS] are dropped, and an expired copy is deleted. Returns the paths re-offered.
