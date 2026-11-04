@@ -189,9 +189,10 @@ class VoiceClusterCacheFollowupTest {
         assertFailsWith<VoiceProfileKeyUnavailableException> { wrongKey.withReady { inspectProfiles() } }
     }
 
-    @Test fun a_corrupt_enc_keeps_the_plaintext() = runTest {
+    @Test fun a_corrupt_enc_keeps_the_plaintext_while_the_key_is_not_proven() = runTest {
         val store = store(this)
         store.withReady { upsert("Synthetic Good", embedding, id = "good") }
+        root.resolve("voices/.keycheck.enc").deleteRecursively() // no proof the key is right (#417 rewrites it when proven)
         profiles.resolve("bad.json").writeBytes(
             """{"id":"bad","displayName":"Synthetic Bad","dim":3,"sampleCount":1,"encrypted":true}""".encodeToByteArray(),
         )
@@ -287,5 +288,119 @@ class VoiceClusterCacheFollowupTest {
             val outcome = queued.await()
             assertTrue(outcome.isSuccess, "queued call failed: ${outcome.exceptionOrNull()}")
         }
+    }
+
+    private fun damagedWithPlaintext(id: String = "bad", plaintext: ByteArray = VoiceProfileStore.floatsToBytes(embedding)) {
+        profiles.resolve("$id.json").writeBytes(
+            """{"id":"$id","displayName":"Synthetic Bad","dim":3,"sampleCount":1,"encrypted":true}""".encodeToByteArray(),
+        )
+        profiles.resolve("$id.enc").writeBytes(ByteArray(4)) // a truncated write
+        profiles.resolve("$id.f32").writeBytes(plaintext)
+    }
+
+    @Test fun a_damaged_enc_is_rewritten_from_the_plaintext_when_the_key_is_proven() = runTest {
+        val store = store(this)
+        store.withReady { upsert("Synthetic Good", embedding, id = "good") } // writes the key check
+        damagedWithPlaintext()
+        assertEquals(1, store.migrateLegacyPlaintextProfiles())
+        assertFalse(profiles.resolve("bad.f32").exists(), "plaintext survived")
+        val bad = store.withReady { inspectProfiles() }.profiles.single { it.id == "bad" }
+        assertContentEquals(embedding, bad.embedding)
+        assertEquals("Synthetic Bad", bad.displayName)
+        assertEquals(0, store.migrateLegacyPlaintextProfiles())
+    }
+
+    @Test fun without_a_key_check_neither_file_is_touched() = runTest {
+        val store = store(this)
+        store.withReady { upsert("Synthetic Good", embedding, id = "good") }
+        damagedWithPlaintext()
+        root.resolve("voices/.keycheck.enc").deleteRecursively() // an install from before the key check existed
+        val enc = profiles.resolve("bad.enc").readBytes()
+        assertEquals(0, store.migrateLegacyPlaintextProfiles())
+        assertContentEquals(enc, profiles.resolve("bad.enc").readBytes())
+        assertTrue(profiles.resolve("bad.f32").exists())
+    }
+
+    @Test fun with_a_failing_key_check_neither_file_is_touched() = runTest {
+        val store = store(this)
+        store.withReady { upsert("Synthetic Good", embedding, id = "good") }
+        damagedWithPlaintext()
+        root.resolve("voices/.keycheck.enc").writeBytes(ByteArray(40) { 7 }) // does not authenticate
+        val enc = profiles.resolve("bad.enc").readBytes()
+        assertEquals(0, store.migrateLegacyPlaintextProfiles())
+        assertContentEquals(enc, profiles.resolve("bad.enc").readBytes())
+        assertTrue(profiles.resolve("bad.f32").exists())
+    }
+
+    @Test fun an_unusable_plaintext_is_left_alone_even_with_a_proven_key() = runTest {
+        val store = store(this)
+        store.withReady { upsert("Synthetic Good", embedding, id = "good") }
+        val unusable = listOf(
+            byteArrayOf(1, 2, 3), // not a whole number of floats
+            VoiceProfileStore.floatsToBytes(floatArrayOf(1f, 2f)), // two values for dim 3
+            VoiceProfileStore.floatsToBytes(floatArrayOf(1f, Float.NaN, 3f)), // not finite
+            VoiceProfileStore.floatsToBytes(floatArrayOf(0f, 0f, 0f)), // blank, never matches anyone
+        )
+        for (plaintext in unusable) {
+            damagedWithPlaintext(plaintext = plaintext)
+            val enc = profiles.resolve("bad.enc").readBytes()
+            assertEquals(0, store.migrateLegacyPlaintextProfiles())
+            assertContentEquals(enc, profiles.resolve("bad.enc").readBytes())
+            assertTrue(profiles.resolve("bad.f32").exists())
+        }
+    }
+
+    @Test fun the_proof_is_taken_before_this_call_writes_its_own_key_check() = runTest {
+        val store = store(this)
+        store.withReady { upsert("Synthetic Good", embedding, id = "good") }
+        root.resolve("voices/.keycheck.enc").deleteRecursively() // an install from before the key check existed
+        profiles.resolve("legacy.json").writeBytes(
+            """{"id":"legacy","displayName":"Synthetic Legacy","dim":3,"sampleCount":1,"encrypted":false}""".encodeToByteArray(),
+        )
+        profiles.resolve("legacy.f32").writeBytes(VoiceProfileStore.floatsToBytes(embedding)) // migrating this writes a key check
+        damagedWithPlaintext()
+        val enc = profiles.resolve("bad.enc").readBytes()
+        assertEquals(1, store.migrateLegacyPlaintextProfiles(), "only the lone plaintext profile may be migrated")
+        assertTrue(root.resolve("voices/.keycheck.enc").exists(), "the migration is expected to have written the key check")
+        assertContentEquals(enc, profiles.resolve("bad.enc").readBytes())
+        assertTrue(profiles.resolve("bad.f32").exists())
+    }
+
+    @Test fun only_an_enc_that_failed_to_authenticate_is_rewritten() = runTest {
+        val secure = InMemorySecureStore()
+        val store = store(this, secure)
+        store.withReady { upsert("Synthetic Good", embedding, id = "good") }
+        // 1) the .enc is a directory (the file cannot be read right now), 2) it authenticates but holds the wrong dimension.
+        damagedWithPlaintext("dir")
+        profiles.resolve("dir.enc").deleteFile()
+        profiles.resolve("dir.enc").createDirectories()
+        damagedWithPlaintext("dim")
+        val key = kotlin.io.encoding.Base64.decode(secure.getString(VoiceProfileStore.PROFILE_KEY_SECURE)!!)
+        val twoValues = byteArrayOf(1, 0, 2, 0, 0, 0, 0, 0) + VoiceProfileStore.floatsToBytes(floatArrayOf(1f, 2f))
+        profiles.resolve("dim.enc").writeBytes(createProfileCipher(key).encrypt(twoValues))
+        val dimEnc = profiles.resolve("dim.enc").readBytes()
+        assertEquals(0, store.migrateLegacyPlaintextProfiles())
+        assertTrue(profiles.resolve("dir.enc").isDirectory(), "the unreadable-for-now .enc was replaced")
+        assertTrue(profiles.resolve("dir.f32").exists())
+        assertContentEquals(dimEnc, profiles.resolve("dim.enc").readBytes())
+        assertTrue(profiles.resolve("dim.f32").exists())
+    }
+
+    /** Delegates to a real cipher; encryption can be made to fail. */
+    private class FlakyEncrypt(private val inner: ProfileCipher) : ProfileCipher by inner {
+        @Volatile var failEncrypt = false
+        override fun encrypt(plain: ByteArray): ByteArray = if (failEncrypt) error("synthetic encrypt failure") else inner.encrypt(plain)
+    }
+
+    @Test fun the_plaintext_survives_a_failed_encrypt() = runTest {
+        val cipher = FlakyEncrypt(createProfileCipher(ByteArray(32) { 5 }))
+        val store = VoiceProfileStore(root, cipherOverride = cipher, ioDispatcher = StandardTestDispatcher(testScheduler))
+        store.withReady { upsert("Synthetic Good", embedding, id = "good") }
+        damagedWithPlaintext()
+        val enc = profiles.resolve("bad.enc").readBytes()
+        cipher.failEncrypt = true
+        assertFailsWith<IllegalStateException> { store.migrateLegacyPlaintextProfiles() }
+        assertTrue(profiles.resolve("bad.f32").exists(), "the plaintext was deleted before the encrypted copy was written")
+        assertContentEquals(enc, profiles.resolve("bad.enc").readBytes())
     }
 }

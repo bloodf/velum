@@ -201,11 +201,12 @@ fun RecordingDetailScreen(
         val path = localPath
         if (!path.isNullOrBlank()) {
             val ok = audioPlayer.prepare(path)
-            if (!ok) {
-                processError = "playback:" + strings.ux.playbackUnavailable
-            } else if (seekSeconds > 0) {
-                audioPlayer.seekTo(seekSeconds * 1000L)
-            }
+            afterPrepare(
+                ok = ok,
+                seekMs = seekSeconds * 1000L,
+                seekTo = audioPlayer::seekTo,
+                onUnavailable = { processError = "playback:" + strings.ux.playbackUnavailable },
+            )
         }
     }
     val isLiveRecording = recording?.status == "recording"
