@@ -499,9 +499,9 @@ class SettingsRepository(
      */
     suspend fun clearAllApiKeys() {
         store.remove(SecureKeys.AI_API_KEY)
-        _settings.value.profiles.forEach { profile ->
-            store.remove(SecureKeys.apiKey(profile.id))
-        }
+        // By prefix, not by the loaded profile list: that also covers profiles that never loaded (a locked
+        // keystore keeps settings from loading) or are no longer listed, and removal needs no key.
+        store.removeWithPrefix(SecureKeys.API_KEY_PREFIX)
         _settings.update { it.copy(hasApiKey = false) }
     }
 

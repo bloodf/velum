@@ -315,6 +315,18 @@ class RecordingProcessWorker(
             return !(policy == ExistingWorkPolicy.KEEP && hasActiveWork(manager, recordingId, excluding = request.id))
         }
 
+        /** Queued, running or waiting to retry. A lookup that fails or runs on the main thread answers true: unknown is not "no work". */
+        fun isWorkActive(context: Context, recordingId: String): Boolean {
+            if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) return true
+            return runCatching {
+                WorkManager.getInstance(context).getWorkInfosForUniqueWork(UNIQUE_PREFIX + recordingId).get(2, TimeUnit.SECONDS)
+                    .any { !it.state.isFinished }
+            }.getOrElse {
+                Log.w(TAG, "active-work lookup failed; treating the recording as having work", it)
+                true
+            }
+        }
+
         private fun hasActiveWork(manager: WorkManager, recordingId: String, excluding: java.util.UUID): Boolean {
             if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) return false
             return runCatching {
@@ -386,6 +398,8 @@ fun createWorkManagerRecordingJobScheduler(context: Context): RecordingJobSchedu
             retranscribe = retranscribe,
             apiModelOverride = apiModelOverride,
         )
+
+        override fun hasActiveWork(recordingId: String): Boolean = RecordingProcessWorker.isWorkActive(context.applicationContext, recordingId)
 
         // WorkManager tags every request with its worker class.
         override fun cancelAll() {

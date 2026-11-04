@@ -36,7 +36,7 @@ suspend fun finalizeMicRecording(
                 saveLiveText(container, recordingId, transcript, markers)
                 container.repository.updateLocalPath(recordingId, result.absolutePath, result.durationSeconds, result.sizeBytes)
                 container.repository.updateStatus(recordingId, "queued")
-                container.enqueueProcessing(recordingId, templateId = "velum.meeting", retranscribe = true)
+                container.enqueueSavedRecording(recordingId, templateId = "velum.meeting", retranscribe = true)
                 container.micRecordings.release(owned)
             }
             is MicStopResult.Failed -> {

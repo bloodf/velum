@@ -93,6 +93,7 @@ import dev.velum.ai.pipeline.deleteAllPcmSpill
 import dev.velum.ai.pipeline.shareMarkdownBody
 import dev.velum.core.settings.SettingsLoadState
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
@@ -112,6 +113,9 @@ class AppContainer(
     thermalPolicy: ThermalPolicy = NoOpThermalPolicy,
 ) {
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    /** Replaces the last wipe step (the database rewrite) in tests, to count it or make it fail. Null in the app. */
+    internal var compactDatabaseForTest: (suspend () -> Boolean)? = null
 
     /** Stops background work that writes user data during "Wipe all data"; see [wipeAllData]. */
     val wipeGate = WipeGate()
@@ -302,11 +306,20 @@ class AppContainer(
     /**
      * Deletes a recording for good. False when a step failed: the recording stays, though its audio may already be
      * gone, and trying again finishes the job. Not cancellable, so leaving the screen can't stop it halfway. It waits
-     * for a running device save, so it sees the file that save writes.
+     * for a running device save, so it sees the file that save writes. A running or queued download of this recording's
+     * session is cancelled first, and that session's partial is removed, since the audio could be recovered from it.
      */
-    suspend fun deleteRecordingForever(id: String): Boolean = try {
+    suspend fun deleteRecordingForever(id: String, device: DeviceViewModel = deviceViewModel): Boolean = try {
         withContext(NonCancellable + Dispatchers.IO) {
+            // Before the row goes: a cancelled download can't save, and a running one would find no row and add it back (#407).
+            val row = repository.getRecording(id)
+            row?.session_id?.let(device::cancelDownloadOf)
             downloadPersistMutex.withLock {
+                // First: if it stays, the recording stays too, and trying again finishes the job.
+                if (row?.session_id?.let { device.deletePartialOf(it, row.device_serial) } == false) {
+                    println("VelumDelete: a recording's partial download could not be deleted")
+                    return@withLock false
+                }
                 val audio = repository.getRecording(id)?.local_path
                 val others = repository.getAllRecordingFileRefs().filter { it.first != id }.mapNotNull { it.second }
                 // Copies first: if one fails, the recording still has its audio.
@@ -338,6 +351,84 @@ class AppContainer(
         apiModelOverride: ApiModelOverride? = null,
     ) {
         recordingJobs.enqueue(recordingId, templateId, retranscribe, apiModelOverride)
+    }
+
+    /**
+     * Enqueues the job for a row already saved as `queued`. If that fails or is cancelled the row would wait for a
+     * job that does not exist, so it is marked failed (Retry shows) before the error continues (#415).
+     */
+    suspend fun enqueueSavedRecording(
+        recordingId: String,
+        templateId: String? = null,
+        retranscribe: Boolean = true,
+        apiModelOverride: ApiModelOverride? = null,
+    ) {
+        try {
+            enqueueProcessing(recordingId, templateId, retranscribe, apiModelOverride)
+        } catch (t: Throwable) {
+            markQueuedFailed(recordingId)
+            throw t
+        }
+    }
+
+    /**
+     * [enqueueSavedRecording] for a row whose AutoFlow template and model come from the matching flow. The match and
+     * the template lookup are inside the same guard, so a cancel there cannot strand the row either. With
+     * [markFailedOnCancel] false a cancellation leaves the row queued (startup recovery: the next start retries it).
+     */
+    suspend fun enqueueSavedWithAutoflow(
+        recordingId: String,
+        source: String,
+        durationSeconds: Long,
+        title: String,
+        markFailedOnCancel: Boolean = true,
+    ) {
+        try {
+            val match = repository.findMatchingAutoflow(source = source, durationSeconds = durationSeconds, title = title)
+            enqueueProcessing(
+                recordingId = recordingId,
+                templateId = resolveTemplateForEnqueue(repository, match?.template_id),
+                retranscribe = true,
+                apiModelOverride = match?.let { AutoFlowResolve.modelOverride(it) },
+            )
+        } catch (t: Throwable) {
+            if (markFailedOnCancel || t !is kotlinx.coroutines.CancellationException) markQueuedFailed(recordingId)
+            throw t
+        }
+    }
+
+    private suspend fun markQueuedFailed(recordingId: String) {
+        withContext(NonCancellable) { runCatching { repository.updateStatusIfEquals(recordingId, "queued", "failed") } }
+    }
+
+    /**
+     * Startup: a row left `queued` with no job (the process died, or enqueueing failed, after the row was saved) gets
+     * its job again, with the template and model of the AutoFlow that matches it. A row that already has work is left
+     * alone, so a job still held (WorkManager) or running (in-process) is never replaced. Waits for the settings to
+     * load first: a job started on unloaded defaults would pick the wrong model and language. Under the wipe gate: a
+     * wipe in progress recreates no work. A template picked by hand for a lost job cannot be recovered. Returns how
+     * many rows were handed to the scheduler.
+     */
+    suspend fun requeueStrandedRecordings(): Int {
+        settingsRepository.loadState.first {
+            it == SettingsLoadState.Ready || it == SettingsLoadState.Unavailable
+        }
+        return wipeGate.guard {
+            var handed = 0
+            repository.queuedRecordingIds().forEach { id ->
+                val row = repository.getRecording(id)?.takeIf { it.status == "queued" } ?: return@forEach
+                if (recordingJobs.hasActiveWork(id)) return@forEach
+                try {
+                    enqueueSavedWithAutoflow(id, row.source, row.duration_seconds, row.title, markFailedOnCancel = false)
+                    handed++
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    println("VelumStartup: requeue of a queued recording failed: ${e::class.simpleName}")
+                }
+            }
+            handed
+        } ?: 0
     }
 
     suspend fun createLocalRecording(
@@ -408,6 +499,7 @@ class AppContainer(
                 step("queued jobs") { recordingJobs.cancelAll(); true }
                 step("recordings") {
                     val left = mutableSetOf<String>()
+                    // Throws at its very end if the search index could not be cleared; step() turns that into Incomplete.
                     repository.wipeAllUserData { path -> if (deleteFileIfPresent(path)) left -= path else left += path }
                     left.isEmpty()
                 }
@@ -430,12 +522,24 @@ class AppContainer(
                     step("transfer temps") { withContext(Dispatchers.IO) { deleteDeviceTransferTemps() } }
                 }
                 step("api keys") {
+                    // Settings may not have loaded (locked keystore). Try once so the in-memory state is right;
+                    // clearing is by key prefix and does not depend on it, so a failed load is not a failed step.
+                    if (settingsRepository.loadState.value != SettingsLoadState.Ready) {
+                        try {
+                            settingsRepository.load()
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (_: Exception) {
+                            // Still locked: the removal below works without it.
+                        }
+                    }
                     settingsRepository.clearAllApiKeys()
-                    // It walks the loaded profiles: unless settings loaded, a profile's key may not have been seen.
-                    settingsRepository.loadState.value == SettingsLoadState.Ready
+                    true
                 }
                 step("webhook") { webhookSettings.clear(); true }
                 step("integrations") { integrationAuth.clearTokens(); true }
+                // Last: every step above that deletes rows has run, and VACUUM rewrites the file without them.
+                step("database") { (compactDatabaseForTest ?: repository::compactAfterWipe)() }
                 when {
                     !complete -> DownloadWipeResult.Incomplete
                     !nothingWriting -> DownloadWipeResult.StillRunning
@@ -571,18 +675,8 @@ class AppContainer(
     }
 
     private suspend fun enqueueDownloadedSession(id: String, title: String) {
-        // Resolve AutoFlow before first enqueue so KEEP cannot drop template/model.
-        val match = repository.findMatchingAutoflow(
-            source = "note_pro",
-            durationSeconds = 0,
-            title = title,
-        )
-        enqueueProcessing(
-            recordingId = id,
-            templateId = resolveTemplateForEnqueue(repository, match?.template_id),
-            retranscribe = true,
-            apiModelOverride = match?.let { AutoFlowResolve.modelOverride(it) },
-        )
+        // AutoFlow is resolved before the first enqueue so KEEP cannot drop template/model.
+        enqueueSavedWithAutoflow(id, source = "note_pro", durationSeconds = 0, title = title)
     }
 
     private fun looksLikeOgg(bytes: ByteArray): Boolean =

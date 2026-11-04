@@ -135,6 +135,7 @@ class VoiceClusterCacheLifecycleTest {
         @Volatile var keyReadCancelled = false
         override suspend fun putString(key: String, value: String) = inner.putString(key, value)
         override suspend fun remove(key: String) = inner.remove(key)
+        override suspend fun removeWithPrefix(prefix: String) = inner.removeWithPrefix(prefix)
         override suspend fun contains(key: String) = inner.contains(key)
         override suspend fun getString(key: String): String? {
             if (key == VoiceProfileStore.PROFILE_KEY_SECURE) {

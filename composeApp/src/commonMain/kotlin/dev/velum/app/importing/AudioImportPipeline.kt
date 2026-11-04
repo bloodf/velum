@@ -1,11 +1,9 @@
 package dev.velum.app.importing
 
-import dev.velum.ai.pipeline.resolveTemplateForEnqueue
 import dev.velum.app.di.AppContainer
 import dev.velum.app.di.WipeInProgressException
 import dev.velum.core.data.KeyedInsert
 import dev.velum.core.data.RecordingIds
-import dev.velum.core.autoflow.AutoFlowResolve
 import dev.velum.app.platform.AudioNormalizer
 import dev.velum.app.platform.NormalizedAudio
 import dev.velum.app.platform.ImportAudioFormats
@@ -203,18 +201,8 @@ class AudioImportPipeline(
                 KeyedInsert.Inserted -> Unit
             }
             rememberWatchedCopy(source, id, absolutePath)
-            // Resolve AutoFlow before first enqueue so KEEP cannot drop template/model.
-            val match = container.repository.findMatchingAutoflow(
-                source = source,
-                durationSeconds = durationSeconds,
-                title = title.orEmpty(),
-            )
-            container.enqueueProcessing(
-                recordingId = id,
-                templateId = resolveTemplateForEnqueue(container.repository, match?.template_id),
-                retranscribe = true,
-                apiModelOverride = match?.let { AutoFlowResolve.modelOverride(it) },
-            )
+            // AutoFlow is resolved before the first enqueue so KEEP cannot drop template/model.
+            container.enqueueSavedWithAutoflow(id, source = source, durationSeconds = durationSeconds, title = title.orEmpty())
             ImportResult.Created(id, normalized.wavPath, contentHash)
         }.getOrElse {
             // A cancelled import is not a failed one: let the cancellation through (and the normalizer clean up).
