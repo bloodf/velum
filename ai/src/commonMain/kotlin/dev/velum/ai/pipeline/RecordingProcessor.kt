@@ -816,13 +816,13 @@ class RecordingProcessor(
 }
 
 /** The recording points at an audio file that is no longer there. */
-internal const val AUDIO_FILE_MISSING_MESSAGE = "The audio file for this recording is missing, so it was not processed."
+const val AUDIO_FILE_MISSING_MESSAGE = "The audio file for this recording is missing, so it was not processed."
 
 /** The recording's audio file is empty. */
-internal const val AUDIO_FILE_EMPTY_MESSAGE = "The audio file for this recording is empty, so it was not processed."
+const val AUDIO_FILE_EMPTY_MESSAGE = "The audio file for this recording is empty, so it was not processed."
 
 /** The WAV file has a RIFF/WAVE header but no `data` chunk where one can be read, so it holds no audio to decode. */
-internal const val WAV_NO_DATA_MESSAGE =
+const val WAV_NO_DATA_MESSAGE =
     "Unsupported audio format (WAV without audio data). The file looks damaged, so it was not transcribed; " +
         "re-download it from the device or convert it to WAV or Ogg Opus."
 
