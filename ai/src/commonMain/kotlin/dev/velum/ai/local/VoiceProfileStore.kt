@@ -457,34 +457,6 @@ class VoiceProfileStore(
     class SpeakerNaming(val names: Map<String, String>, val unavailable: Boolean)
 
     /**
-     * Caches this run's speaker embeddings and names the speakers that match a saved profile. When the key is
-     * missing or the secure store is unavailable, no names and no cache come out of it (nothing is written in
-     * plaintext), the recording's older cache is dropped, and [SpeakerNaming.unavailable] is set so the caller
-     * can keep names the user already typed instead of overwriting them with bare labels.
-     */
-    suspend fun cacheAndNameSpeakers(
-        recordingId: String?,
-        embeddingsBySpeaker: Map<String, FloatArray>,
-        matchThreshold: Float,
-    ): SpeakerNaming = try {
-        SpeakerNaming(
-            withReady {
-                if (recordingId != null) replaceClusterEmbeddings(recordingId, embeddingsBySpeaker)
-                buildMap {
-                    for ((speakerId, embedding) in embeddingsBySpeaker) {
-                        match(embedding, threshold = matchThreshold)?.let { put(speakerId, it.profile.displayName) }
-                    }
-                }
-            },
-            unavailable = false,
-        )
-    } catch (e: VoiceProfileKeyUnavailableException) {
-        speakerNamingUnavailable(recordingId, e)
-    } catch (e: SecureStoreUnavailableException) {
-        speakerNamingUnavailable(recordingId, e)
-    }
-
-    /**
      * Names the speakers of one diarization run that match a saved profile, without touching the speaker cache. The
      * cache is written by [cacheSpeakerEmbeddings] together with the speaker rows. When the key is missing or the
      * secure store is unavailable nothing is named and [SpeakerNaming.unavailable] is set.
@@ -506,6 +478,14 @@ class VoiceProfileStore(
     } catch (e: SecureStoreUnavailableException) {
         println("VelumVoice: speaker naming unavailable (${e::class.simpleName})")
         SpeakerNaming(emptyMap(), unavailable = true)
+    }
+
+    /**
+     * Drops the recording's cached speaker embeddings, under the store's access lock and off the caller's thread.
+     * Called before a run's speaker numbering is written, so the old numbering never outlives the labels it described.
+     */
+    suspend fun dropSpeakerCache(recordingId: String) = withContext(ioDispatcher) {
+        accessMutex.withLock { deleteClusterCache(recordingId) }
     }
 
     /**

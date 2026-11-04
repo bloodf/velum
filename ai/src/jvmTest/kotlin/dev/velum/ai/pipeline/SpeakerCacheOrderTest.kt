@@ -28,7 +28,6 @@ import kotlin.coroutines.cancellation.CancellationException
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
-import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.Job
@@ -48,10 +47,21 @@ class SpeakerCacheOrderTest {
 
     private class Setup(
         val repo: VelumRepository,
+        val handle: dev.velum.core.data.DatabaseHandle,
         val processor: RecordingProcessor,
         val store: VoiceProfileStore,
+        val dir: File,
         val diarizerBehaviour: MutableStateFlow<suspend () -> DiarizationResult>,
-    )
+    ) {
+        /** Makes the next write that matches [event] on [table] fail, the way a dying database would. */
+        fun failWrites(event: String, table: String) {
+            handle.driver.execute(
+                null,
+                "CREATE TRIGGER synthetic_fail BEFORE $event ON $table BEGIN SELECT RAISE(ABORT, 'synthetic'); END",
+                0,
+            )
+        }
+    }
 
     private fun le32(v: Int) = ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN).putInt(v).array()
     private fun le16(v: Int) = ByteBuffer.allocate(2).order(ByteOrder.LITTLE_ENDIAN).putShort(v.toShort()).array()
@@ -62,7 +72,8 @@ class SpeakerCacheOrderTest {
     }
 
     private suspend fun setup(id: String, secure: SecureStore? = null, keyless: Boolean = false): Setup {
-        val repo = VelumRepository(createDatabase(DriverFactory()))
+        val handle = createDatabase(DriverFactory())
+        val repo = VelumRepository(handle)
         val settings = SettingsRepository(InMemorySecureStore()).also {
             it.load()
             it.setTranscriptionMode(ComputeMode.Local)
@@ -104,7 +115,7 @@ class SpeakerCacheOrderTest {
         // The previous run: one speaker row labelled S1 and its cached embedding.
         repo.updateSpeakers(id, listOf(VelumRepository.SpeakerUpsert(id = "$id-S1", label = "S1", displayName = null, talkSeconds = 1)))
         if (!keyless) store.cacheSpeakerEmbeddings(id, mapOf("S1" to oldEmbedding))
-        return Setup(repo, RecordingProcessor(router, repo, settings, voiceProfiles = store), store, behaviour)
+        return Setup(repo, handle, RecordingProcessor(router, repo, settings, voiceProfiles = store), store, dir, behaviour)
     }
 
     private fun newRun(): DiarizationResult = DiarizationResult(
@@ -128,13 +139,16 @@ class SpeakerCacheOrderTest {
     fun aRunStoppedAfterDiarizingButBeforeTheRowsLeavesBothOfThePreviousRunUntouched() = runBlocking {
         val id = "rec-399-abort"
         val s = setup(id)
+        var reached = false
         s.diarizerBehaviour.value = {
+            reached = true
             val result = newRun()
             // The run is stopped right after the diarizer produced its result and before anything is written.
             currentCoroutineContext()[Job]!!.cancel(CancellationException("stopped between diarize and the rows"))
             result
         }
         runCatching { s.processor.process(id, templateId = "velum.meeting").toList() }
+        assertTrue(reached, "the run got as far as the diarizer")
         assertEquals(listOf("S1"), s.repo.getSpeakers(id).map { it.label }, "the previous run's rows")
         assertContentEquals(oldEmbedding, s.store.cachedClusterEmbedding(id, "S1"), "the previous run's cache")
         assertNull(s.store.cachedClusterEmbedding(id, "S2"), "nothing of the new run was cached")
@@ -151,6 +165,29 @@ class SpeakerCacheOrderTest {
     }
 
     @Test
+    fun aFailingSpeakerRowWriteLeavesTheOldRowsAndNoCachedVoice() = runBlocking {
+        val id = "rec-399-rows"
+        val s = setup(id)
+        s.diarizerBehaviour.value = { newRun() }
+        s.failWrites("INSERT", "speaker")
+        runCatching { s.processor.process(id, templateId = "velum.meeting").toList() }
+        assertEquals(listOf("S1"), s.repo.getSpeakers(id).map { it.label }, "the failed write left the previous rows")
+        assertNull(s.store.cachedClusterEmbedding(id, "S1"), "no cached voice may sit next to rows it was not made for")
+        assertNull(s.store.cachedClusterEmbedding(id, "S2"))
+    }
+
+    @Test
+    fun aFailingTranscriptWriteLeavesNoCachedVoiceEither() = runBlocking {
+        val id = "rec-399-transcript"
+        val s = setup(id)
+        s.diarizerBehaviour.value = { newRun() }
+        s.failWrites("UPDATE OF transcript", "recording")
+        runCatching { s.processor.process(id, templateId = "velum.meeting").toList() }
+        assertNull(s.store.cachedClusterEmbedding(id, "S1"), "the old S1 voice must be gone before the transcript changes")
+        assertEquals(listOf("S1"), s.repo.getSpeakers(id).map { it.label })
+    }
+
+    @Test
     fun withoutTheVoiceKeyTheOldCacheIsDroppedNotKeptBesideNewRows() = runBlocking {
         val id = "rec-399-nokey"
         val unavailable = object : SecureStore {
@@ -160,13 +197,14 @@ class SpeakerCacheOrderTest {
             override suspend fun contains(key: String): Boolean = throw SecureStoreUnavailableException(IllegalStateException("down"))
         }
         val s = setup(id, secure = unavailable, keyless = true)
-        // An old cache written while the key still worked.
-        val working = VoiceProfileStore(ModelStoreDir(File.createTempFile("velum-399k", "").also { it.delete(); it.mkdirs() }.absolutePath), cipherOverride = createProfileCipher(ByteArray(32) { 9 }))
+        // An old cache written while the key still worked, in the same directory and with the same cipher.
+        val cipher = createProfileCipher(ByteArray(32) { 9 })
+        val working = VoiceProfileStore(ModelStoreDir(s.dir.absolutePath), cipherOverride = cipher)
         working.cacheSpeakerEmbeddings(id, mapOf("S1" to oldEmbedding))
-        assertNotNull(working.cachedClusterEmbedding(id, "S1"))
-        // The run ends with the key unavailable: caching fails, and the unreadable old cache for this store goes.
+        assertContentEquals(oldEmbedding, working.cachedClusterEmbedding(id, "S1"), "the old cache really exists")
+        // The run ends with the key unavailable: caching fails, and the old cache must go.
         s.store.cacheSpeakerEmbeddings(id, mapOf("S1" to newS1, "S2" to newS2))
-        assertNull(s.store.cachedClusterEmbedding(id, "S1"))
-        assertNull(s.store.cachedClusterEmbedding(id, "S2"))
+        assertNull(working.cachedClusterEmbedding(id, "S1"), "the previous run's voice survived beside new rows")
+        assertNull(working.cachedClusterEmbedding(id, "S2"))
     }
 }
