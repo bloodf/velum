@@ -1221,9 +1221,15 @@ internal fun LiveTranscriptPane(
     val scope = rememberCoroutineScope()
     // Capture only ever enqueues, so it never waits for the model or for decoding.
     val previewHasGap = remember { mutableStateOf(false) }
+    // The queue drops from the capture thread. The flag is read at once by finishTranscript, so it is set right
+    // here; the state the screen reads is only ever written on Main (below).
+    val gapNow = remember { VolatileFlag() }
     val pcmQueue = remember {
         Channel<ByteArray>(LIVE_PCM_BACKLOG_CHUNKS, BufferOverflow.DROP_OLDEST) {
-            if (!finished.value) previewHasGap.value = true
+            if (!finished.value) {
+                gapNow.value = true
+                scope.launch(Dispatchers.Main.immediate) { previewHasGap.value = true }
+            }
         }
     }
     val finalTranscript = remember { CompletableDeferred<String?>() }
@@ -1239,14 +1245,23 @@ internal fun LiveTranscriptPane(
     // Seeded transcript (Roborazzi / resume) — keep it visible; keep the stored text.
     val preserveSeeded = seededTranscript != null
 
+    // Screen state is written on Main only (the transcriber, the capture thread and Default workers call in from
+    // elsewhere). On a real main looper the composition scope already resumes there; this keeps it true when a
+    // collector is resumed inline on the writing thread, as the Compose test clock does (#345, #202).
+    fun onMain(block: () -> Unit) {
+        scope.launch(Dispatchers.Main.immediate) { block() }
+    }
     // Cancelling the queue (Stop or leaving the screen) ends the transcriber coroutine below and drops
     // any backlog: decoding it would only delay Stop, and the queued recording is retranscribed from the WAV.
-    suspend fun finishTranscript(): String? {
+    // Marks the transcript finished and stops the queue; call it on Main, before awaiting the final text.
+    fun markFinished() {
         finished.value = true
         pcmQueue.cancel()
+    }
+    suspend fun awaitFinalText(): String? {
         val text = withTimeoutOrNull(finishWaitMs) { finalTranscript.await() } ?: partial
         // Text with a hole in the middle must not pass for the transcript if retranscribing fails.
-        return if (previewHasGap.value) null else savableLiveTranscript(text)
+        return if (gapNow.value) null else savableLiveTranscript(text)
     }
 
     // Opening a model is a blocking native load: on IO. NonCancellable because this coroutine
@@ -1263,10 +1278,10 @@ internal fun LiveTranscriptPane(
                     open = { openTranscriber(container) },
                     pcm = pcmQueue,
                     languageHint = container.settingsRepository.settings.value.audioLanguage,
-                    onPartial = { md -> partial = md },
-                    onReady = { liveReady = true },
+                    onPartial = { md -> onMain { partial = md } },
+                    onReady = { onMain { liveReady = true } },
                     onNoTranscriber = { modelFailed ->
-                        liveNotice = if (modelFailed) LiveNotice.Unavailable else LiveNotice.NoModel
+                        onMain { liveNotice = if (modelFailed) LiveNotice.Unavailable else LiveNotice.NoModel }
                     },
                 ),
             )
@@ -1286,18 +1301,23 @@ internal fun LiveTranscriptPane(
 
         micErrorState = null
         if (!preserveSeeded || container.activeMicRecordingId == recordingId) {
-            when (val started = container.micRecordings.startOrAttach(recordingId, wavPath, inputSource)) {
-                is MicStartResult.Started -> {
-                    ownedSession = started.session
-                    pcmSubscription = container.micRecordings.attach(recordingId, started.session, push)
-                    usingMic = pcmSubscription != null
-                    if (!usingMic && !alreadyStopped) micErrorState = MicError.StartFailed
-                    markerCount = container.micCapture.markers.size
-                    pausedUi = container.micCapture.isPaused || alreadyStopped
+            val startResult = container.micRecordings.startOrAttach(recordingId, wavPath, inputSource)
+            // The start suspends on a worker; the writes below belong to the composition, so they run on Main
+            // (a no-op on a real main looper, and it holds when a test clock resumes this inline).
+            withContext(Dispatchers.Main.immediate) {
+                when (val started = startResult) {
+                    is MicStartResult.Started -> {
+                        ownedSession = started.session
+                        pcmSubscription = container.micRecordings.attach(recordingId, started.session, push)
+                        usingMic = pcmSubscription != null
+                        if (!usingMic && !alreadyStopped) micErrorState = MicError.StartFailed
+                        markerCount = container.micCapture.markers.size
+                        pausedUi = container.micCapture.isPaused || alreadyStopped
+                    }
+                    MicStartResult.Unsupported -> { usingMic = false; micErrorState = MicError.Unsupported }
+                    MicStartResult.PermissionRequired -> { usingMic = false; micErrorState = MicError.Permission }
+                    is MicStartResult.Failed -> { usingMic = false; micErrorState = started.message.takeIf { it.isNotBlank() }?.let { MicError.Platform(it) } ?: MicError.StartFailed }
                 }
-                MicStartResult.Unsupported -> { usingMic = false; micErrorState = MicError.Unsupported }
-                MicStartResult.PermissionRequired -> { usingMic = false; micErrorState = MicError.Permission }
-                is MicStartResult.Failed -> { usingMic = false; micErrorState = started.message.takeIf { it.isNotBlank() }?.let { MicError.Platform(it) } ?: MicError.StartFailed }
             }
         } else {
             usingMic = false
@@ -1497,23 +1517,29 @@ internal fun LiveTranscriptPane(
                         runCatching { container.micCapture.stop(requested) }
                             .onFailure { println("VelumLivePcm: stop failed: ${it::class.simpleName}") }
                     }
-                    val finalMd = withContext(Dispatchers.Default) { finishTranscript() }
-                    when {
-                        // The asynchronous transcript finish may outlive ownership. The finalizer
-                        // rechecks the captured identity under its lock before any database write.
-                        container.micCapture.isSupported -> {
-                            when (val stopped = finalizeMicRecording(container, recordingId, wavPath, requested, transcript = finalMd, markers = marks)) {
-                                is MicStopResult.Stopped -> Unit // Finalizer queued the verified audio.
-                                is MicStopResult.Failed -> {
-                                    usingMic = false
-                                    micErrorState = stopped.message.takeIf { it.isNotBlank() }?.let { MicError.Platform(it) } ?: MicError.StartFailed
+                    // `stop` may resume on a worker (the Compose test clock resumes inline), so hop back before the writes.
+                    withContext(Dispatchers.Main.immediate) { markFinished() }
+                    val finalMd = withContext(Dispatchers.Default) { awaitFinalText() }
+                    // A worker may have resumed this coroutine inline (the Compose test clock does); the state below
+                    // is for the composition, so write it from Main.
+                    withContext(Dispatchers.Main.immediate) {
+                        when {
+                            // The asynchronous transcript finish may outlive ownership. The finalizer
+                            // rechecks the captured identity under its lock before any database write.
+                            container.micCapture.isSupported -> {
+                                when (val stopped = finalizeMicRecording(container, recordingId, wavPath, requested, transcript = finalMd, markers = marks)) {
+                                    is MicStopResult.Stopped -> Unit // Finalizer queued the verified audio.
+                                    is MicStopResult.Failed -> {
+                                        usingMic = false
+                                        micErrorState = stopped.message.takeIf { it.isNotBlank() }?.let { MicError.Platform(it) } ?: MicError.StartFailed
+                                    }
+                                    else -> Unit
                                 }
-                                else -> Unit
                             }
-                        }
-                        else -> {
-                            // No mic capture to finalize: mark failed.
-                            container.repository.updateStatus(recordingId, "failed")
+                            else -> {
+                                // No mic capture to finalize: mark failed.
+                                container.repository.updateStatus(recordingId, "failed")
+                            }
                         }
                     }
                     onStoppedAndQueued()
@@ -1527,6 +1553,11 @@ internal fun LiveTranscriptPane(
 // ponytail: live preview only, the WAV never depends on it. At 40-130 ms per chunk this holds a slow
 // model load (about 40 s or more); older audio is dropped from the preview past that.
 internal const val LIVE_PCM_BACKLOG_CHUNKS = 1024
+
+/** A flag one thread sets and another reads at once; not Compose state, so it can be written from any thread. */
+private class VolatileFlag {
+    @kotlin.concurrent.Volatile var value: Boolean = false
+}
 
 private enum class LiveNotice { NoModel, Unavailable }
 
