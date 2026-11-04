@@ -219,12 +219,11 @@ class DeviceViewModel(
 
     /**
      * Removes [sessionId]'s partial, because the audio can be recovered from it, so a later Re-download starts from zero.
-     * Throws if it can't be opened. A download still unwinding keeps writing to the removed file, and what it leaves
-     * behind is ignored on the next open.
+     * False when part of it is still there; throws if it can't be opened. A download still unwinding keeps writing to
+     * the removed file, and what it leaves behind is ignored on the next open.
      */
-    fun deletePartialOf(sessionId: Long, deviceSerial: String?) {
-        openPartialTransfer(sessionId, deviceSerial)?.delete()
-    }
+    fun deletePartialOf(sessionId: Long, deviceSerial: String?): Boolean =
+        openPartialTransfer(sessionId, deviceSerial)?.delete() ?: true
 
     fun cancelDownload() {
         downloads.cancelChildren()

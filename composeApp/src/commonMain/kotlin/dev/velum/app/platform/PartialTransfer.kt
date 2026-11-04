@@ -20,8 +20,8 @@ interface PartialTransfer : PartialTransferStore {
 
     fun close()
 
-    /** Close and remove the partial data. */
-    fun delete()
+    /** Close and remove the partial data. False when some of it is still there. */
+    fun delete(): Boolean
 }
 
 /**

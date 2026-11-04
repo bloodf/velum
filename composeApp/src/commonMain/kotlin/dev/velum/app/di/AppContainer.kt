@@ -311,7 +311,11 @@ class AppContainer(
             val row = repository.getRecording(id)
             row?.session_id?.let(device::cancelDownloadOf)
             downloadPersistMutex.withLock {
-                row?.session_id?.let { device.deletePartialOf(it, row.device_serial) }
+                // First: if it stays, the recording stays too, and trying again finishes the job.
+                if (row?.session_id?.let { device.deletePartialOf(it, row.device_serial) } == false) {
+                    println("VelumDelete: a recording's partial download could not be deleted")
+                    return@withLock false
+                }
                 val audio = repository.getRecording(id)?.local_path
                 val others = repository.getAllRecordingFileRefs().filter { it.first != id }.mapNotNull { it.second }
                 // Copies first: if one fails, the recording still has its audio.

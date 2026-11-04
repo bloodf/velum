@@ -22,6 +22,21 @@ class PartialTransferFileStoreTest {
     private fun open(session: Long = 1L, serial: String? = "SYNTH-SN-1", checkpointBytes: Int = 1_000) =
         PartialTransferFileStore.open(root, session, serial, checkpointBytes)
 
+    @Test fun delete_reports_whether_the_files_are_gone() {
+        val kept = open()
+        kept.write(ByteArray(10))
+        kept.length()
+        assertTrue(root.setWritable(false), "this test needs a directory it can lock")
+        try {
+            assertEquals(false, kept.delete(), "the directory is locked, so the files stay")
+            assertTrue(partialFiles().isNotEmpty())
+        } finally {
+            root.setWritable(true)
+        }
+        assertEquals(true, open().delete())
+        assertTrue(partialFiles().isEmpty())
+    }
+
     @Test fun a_writer_still_unwinding_after_a_delete_leaves_nothing_a_later_open_uses() {
         val writer = open()
         writer.write(ByteArray(10))

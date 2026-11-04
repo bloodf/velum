@@ -99,12 +99,11 @@ internal class PartialTransferFileStore private constructor(
 
     override fun close() = file.close()
 
-    override fun delete() {
+    override fun delete(): Boolean {
         file.close()
-        data.delete()
-        checkpoint.delete()
-        mismatchMark.delete()
-        readFailMark.delete()
+        val files = listOf(data, checkpoint, mismatchMark, readFailMark)
+        files.forEach { it.delete() }
+        return files.none { it.exists() }
     }
 
     companion object {

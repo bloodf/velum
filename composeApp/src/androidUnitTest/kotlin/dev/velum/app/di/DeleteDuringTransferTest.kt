@@ -7,6 +7,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import dev.velum.ai.local.ModelStoreDir
 import dev.velum.ai.pipeline.RecordingJobScheduler
+import dev.velum.app.platform.PartialTransfer
 import dev.velum.app.platform.PartialTransferFileStore
 import dev.velum.app.platform.installRecordingFilesDir
 import dev.velum.app.ui.DeviceViewModel
@@ -97,7 +98,15 @@ class DeleteDuringTransferTest {
         }
     }
 
-    private fun fixture(body: suspend Fixture.() -> Unit) {
+    /** A store whose delete leaves its files behind, as a failed File.delete() does. */
+    private class StuckPartial(private val real: PartialTransfer) : PartialTransfer by real {
+        override fun delete(): Boolean {
+            real.close()
+            return false
+        }
+    }
+
+    private fun fixture(partialDeleteFails: Boolean = false, body: suspend Fixture.() -> Unit) {
         Dispatchers.setMain(Dispatchers.Unconfined)
         val context = ApplicationProvider.getApplicationContext<Context>()
         context.deleteDatabase("velum.db")
@@ -120,7 +129,9 @@ class DeleteDuringTransferTest {
                 container.persistDownloadedSession(audio)
             },
             localeTag = { "en" },
-            openPartialTransfer = { id, sn -> PartialTransferFileStore.open(partials, id, sn) },
+            openPartialTransfer = { id, sn ->
+                PartialTransferFileStore.open(partials, id, sn).let { if (partialDeleteFails) StuckPartial(it) else it }
+            },
             deletePartialTransfers = { PartialTransferFileStore.deleteAll(partials) },
         )
         owner.put("device", vm)
@@ -173,6 +184,18 @@ class DeleteDuringTransferTest {
         assertTrue(container.deleteRecordingForever(first.id, vm))
 
         assertTrue(partialFiles().isEmpty())
+    }
+
+    @Test fun a_partial_that_stays_fails_the_delete_and_keeps_the_recording() = fixture(partialDeleteFails = true) {
+        download()
+        val first = assertNotNull(row())
+        openPartial().run { write(ByteArray(10)); length(); close() }
+
+        assertFalse(container.deleteRecordingForever(first.id, vm), "must not say deleted while the partial stays")
+
+        assertNotNull(row(), "the recording stays, so trying again can finish the job")
+        assertTrue(java.io.File(assertNotNull(first.local_path)).exists(), "with its audio")
+        assertTrue(partialFiles().isNotEmpty())
     }
 
     @Test fun a_download_still_waiting_to_start_is_stopped_too() = fixture {
