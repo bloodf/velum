@@ -55,6 +55,7 @@ class QueuedRecoveryTest {
 
     private fun withContainer(realScheduler: Boolean = false, block: suspend (AppContainer, File) -> Unit) {
         val context = ApplicationProvider.getApplicationContext<Context>()
+        dev.velum.app.platform.installAppContext(context)
         context.deleteDatabase("velum.db")
         enqueued.clear()
         enqueuedTemplates.clear()
@@ -103,6 +104,9 @@ class QueuedRecoveryTest {
                 }
             },
         )
+        val dir = File(context.cacheDir, "queued-fixtures")
+        try {
+            dir.apply { deleteRecursively(); mkdirs() }
         runBlocking {
             container.settingsRepository.load()
             if (realScheduler) {
@@ -117,8 +121,6 @@ class QueuedRecoveryTest {
                 observer.join()
             }
         }
-        val dir = File(context.cacheDir, "queued-fixtures").apply { deleteRecursively(); mkdirs() }
-        try {
             runBlocking { block(container, dir) }
         } finally {
             try {
