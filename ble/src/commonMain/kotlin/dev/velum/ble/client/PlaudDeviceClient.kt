@@ -469,7 +469,7 @@ class PlaudDeviceClient(
         check(!closed) { "Client is closed" }
         checkLink()
         withTimeout(responseTimeout) {
-            link.write(GattProfiles.PLAUD_WRITE, packet, withoutResponse, seal = null, linkGeneration = linkGen)
+            link.writeGuarded(GattProfiles.PLAUD_WRITE, packet, withoutResponse, seal = null, linkGeneration = linkGen)
         }
     }
 
@@ -486,7 +486,7 @@ class PlaudDeviceClient(
                 // A write that times out leaves sendSeq advanced. Later commands then fail on a device that
                 // requires exact sequence numbers (unverified, #6) until a reconnect brings a new client.
                 withTimeout(responseTimeout) {
-                    link.write(GattProfiles.PLAUD_WRITE, packet, withoutResponse = false, linkGeneration = linkGen, seal = {
+                    link.writeGuarded(GattProfiles.PLAUD_WRITE, packet, withoutResponse = false, linkGeneration = linkGen, seal = {
                         // The cipher gets its own copy: one that edits its input then seals the edit cannot also change what we compare.
                         val sealed = cipher.sealPacket(sec, sendSeq, it.copyOf()).copyOf() // the cipher keeps nothing we send
                         // The guard checked [it]. The cipher is a separate component: the bytes that go out must open

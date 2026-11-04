@@ -372,7 +372,7 @@ fun IntegrationsScreen(
                                             webhookMessageOk = true
                                         }
                                         else -> {
-                                            webhookMessage = formatTemplate(strings.ux.webhookFailedFormat, detail)
+                                            webhookMessage = formatTemplate(strings.ux.webhookFailedFormat, WebhookTestResult.failureText(detail, strings))
                                             webhookMessageOk = false
                                         }
                                     }

@@ -5,7 +5,12 @@ import dev.velum.recorder.omi.OmiUuids
 import dev.velum.recorder.pocket.PocketUuids
 
 /** A GATT characteristic address (128-bit UUID strings, as in [PlaudUuids]). */
-data class GattChar(val service: String, val characteristic: String)
+data class GattChar(val service: String, val characteristic: String) {
+    /** UUIDs are case-insensitive on the wire, so the Plaud write characteristic is recognised in any case. */
+    val isPlaudWrite: Boolean
+        get() = service.equals(GattProfiles.PLAUD_WRITE.service, ignoreCase = true) &&
+            characteristic.equals(GattProfiles.PLAUD_WRITE.characteristic, ignoreCase = true)
+}
 
 /** Validates the PLAINTEXT of a write before it can reach the radio. Throws to reject. */
 fun interface WriteGuard {
@@ -114,18 +119,28 @@ sealed class GattWrite {
 /** Bytes sent as given (no session cipher active). */
 class PlainWrite internal constructor(
     override val char: GattChar,
-    override val bytes: ByteArray,
+    bytes: ByteArray,
     override val withoutResponse: Boolean,
     override val linkGeneration: Long? = null,
-) : GattWrite()
+) : GattWrite() {
+    private val data = bytes.copyOf()
+
+    /** A copy each time: a transport wrapper editing it cannot change what the next transport sees. */
+    override val bytes: ByteArray get() = data.copyOf()
+}
 
 /** Bytes produced by a session cipher from a plaintext the guard already accepted. Never parsed. */
 class SealedWrite internal constructor(
     override val char: GattChar,
-    override val bytes: ByteArray,
+    bytes: ByteArray,
     override val withoutResponse: Boolean,
     override val linkGeneration: Long? = null,
-) : GattWrite()
+) : GattWrite() {
+    private val data = bytes.copyOf()
+
+    /** A copy each time: a transport wrapper editing it cannot change what the next transport sees. */
+    override val bytes: ByteArray get() = data.copyOf()
+}
 
 /**
  * The check every transport runs on a write: a write made for another link generation is refused, so a client whose
