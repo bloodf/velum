@@ -66,6 +66,22 @@ object GattProfiles {
         notify = listOf(POCKET_AUDIO_DATA, POCKET_REPLIES, POCKET_BATTERY_LEVEL),
         writes = emptyMap(),
     )
+
+    val LIMITLESS_RX = GattChar(OmiUuids.LIMITLESS_SERVICE, OmiUuids.LIMITLESS_RX)
+    val LIMITLESS_TX = GattChar(OmiUuids.LIMITLESS_SERVICE, OmiUuids.LIMITLESS_TX)
+
+    /**
+     * Limitless pendant (community protocol notes, see docs/DEVICES_ROADMAP.md): the app receives protobuf BLE
+     * wrappers as notifications on RX. It declares NO writable characteristic, so [GuardedLink] rejects every write
+     * under this profile, including to TX (the command channel, where the published clients send storage-delete and
+     * pairing messages). No driver is wired to this profile and whether to build one is the owner's decision (#18);
+     * the profile only fixes the addresses and the "no writes" rule.
+     */
+    val Limitless = GattProfile(
+        id = "limitless",
+        notify = listOf(LIMITLESS_RX),
+        writes = emptyMap(),
+    )
 }
 
 /**
