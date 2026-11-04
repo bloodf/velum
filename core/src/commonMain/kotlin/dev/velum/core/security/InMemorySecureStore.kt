@@ -18,5 +18,9 @@ class InMemorySecureStore : SecureStore {
         mutex.withLock { map.remove(key) }
     }
 
+    override suspend fun removeWithPrefix(prefix: String) {
+        mutex.withLock { map.keys.removeAll { it.startsWith(prefix) } }
+    }
+
     override suspend fun contains(key: String): Boolean = mutex.withLock { map.containsKey(key) }
 }

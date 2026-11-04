@@ -216,6 +216,13 @@ class WipeAllDataTest {
             throw SecureStoreUnavailableException(IllegalStateException("synthetic"))
     }
 
+    /** Fails removing the API key family, the way a store that cannot commit does. */
+    private class FailingPrefixStore(private val delegate: SecureStore = InMemorySecureStore()) : SecureStore by delegate {
+        override suspend fun removeWithPrefix(prefix: String) {
+            throw SecureStoreUnavailableException(IllegalStateException("synthetic"))
+        }
+    }
+
     /** Fails clearing the device keys, the way a locked keystore does. */
     private class FailingDeviceKeyStore(private val delegate: SecureStore = InMemorySecureStore()) : SecureStore by delegate {
         override suspend fun remove(key: String) {
@@ -391,8 +398,23 @@ class WipeAllDataTest {
         }
     }
 
-    @Test fun api_keys_a_locked_store_could_not_list_are_reported() = withContainer(LockedReadsStore()) { container, _ ->
-        // The real store: reads fail while locked, so settings never load, and removing a key still succeeds.
+    @Test fun api_keys_are_removed_and_the_wipe_is_clean_when_the_keystore_is_locked() {
+        // The real store: reads fail while locked, so settings never load, and removing an entry still succeeds.
+        val delegate = InMemorySecureStore()
+        runBlocking {
+            delegate.putString(SecureKeys.AI_API_KEY, "synthetic-legacy")
+            delegate.putString(SecureKeys.apiKey("default"), "synthetic-default")
+            delegate.putString(SecureKeys.apiKey("never-listed"), "synthetic-unlisted")
+        }
+        withContainer(LockedReadsStore(delegate)) { container, _ ->
+            assertEquals(DownloadWipeResult.Clean, container.wipeAllData())
+            assertFalse(delegate.contains(SecureKeys.AI_API_KEY), "legacy key survived")
+            assertFalse(delegate.contains(SecureKeys.apiKey("default")), "profile key survived")
+            assertFalse(delegate.contains(SecureKeys.apiKey("never-listed")), "unlisted profile key survived")
+        }
+    }
+
+    @Test fun a_prefix_removal_that_truly_fails_keeps_the_wipe_incomplete() = withContainer(FailingPrefixStore()) { container, _ ->
         assertEquals(DownloadWipeResult.Incomplete, container.wipeAllData())
     }
 
