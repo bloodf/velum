@@ -253,7 +253,17 @@ private fun VelumRoot(container: AppContainer) {
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     LaunchedEffect(container, lifecycleOwner) {
       lifecycleOwner.lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
-        suspend fun report(result: ImportResult) {
+        suspend fun report(result: ImportResult, recovered: Boolean) {
+            if (recovered) {
+                // A share re-offered after a restart can be up to a day old: say what happened, never move the user.
+                when (result) {
+                    is ImportResult.Created -> snackbar.showSnackbar(strings.ux.imported)
+                    is ImportResult.Duplicate -> snackbar.showSnackbar(strings.ux.importDuplicate)
+                    is ImportResult.Failed -> snackbar.showSnackbar(strings.ux.genericError)
+                    is ImportResult.Deleted -> Unit
+                }
+                return
+            }
             when (result) {
                 is ImportResult.Created -> navController.navigate(Routes.recording(result.recordingId))
                 is ImportResult.Duplicate -> {
@@ -276,7 +286,8 @@ private fun VelumRoot(container: AppContainer) {
                 }
                 if (container.pendingShare === pending) {
                     container.pendingShare = null
-                    result?.let { report(it) }
+                    val recovered = container.pendingShareRecovered
+                    result?.let { report(it, recovered) }
                 }
             }
             val shared = awaitIncomingSharePath() ?: break
@@ -288,7 +299,8 @@ private fun VelumRoot(container: AppContainer) {
                 }
             }
             // The import is owned by the container, so recreating this screen cannot cancel it.
-            container.pendingShare = importPipeline.startSharedDetached(path)
+            container.pendingShareRecovered = (shared as SharedFile.Ready).recoveredAtMs != null
+            container.pendingShare = importPipeline.startSharedDetached(path, shared.recoveredAtMs)
         }
       }
     }
