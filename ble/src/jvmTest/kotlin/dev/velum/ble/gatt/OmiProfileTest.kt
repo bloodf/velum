@@ -130,13 +130,33 @@ class OmiProfileTest {
         for (char in omiChars) assertEquals(0, t.notifications(char).toList().size)
     }
 
-    @Test
-    fun plaudOnlyTransports_refuseOmiBeforeConnecting() = runTest {
-        val stub = StubBleTransport()
-        for (profile in listOf(GattProfiles.Omi, GattProfiles.Pocket, GattProfiles.Limitless)) {
-            assertFailsWith<IllegalArgumentException>(profile.id) { stub.connect("synthetic-device", profile) }
+    /** Uses the interface's own two-arg connect (plain delegation would forward it to the inner stub). */
+    private class RecordingConnect(private val stub: StubBleTransport = StubBleTransport()) : BleTransport by stub {
+        val connected = mutableListOf<String>()
+
+        override suspend fun connect(deviceId: String) {
+            connected += deviceId
+            stub.connect(deviceId)
         }
-        assertTrue(stub.connectionState.value !is BleConnectionState.Connected)
-        stub.connect("synthetic-device", GattProfiles.Plaud)
+
+        override suspend fun connect(deviceId: String, profile: GattProfile) =
+            super<BleTransport>.connect(deviceId, profile)
+    }
+
+    @Test
+    fun plaudOnlyTransports_refuseOtherProfilesBeforeConnecting() = runTest {
+        val ble = RecordingConnect()
+        for (profile in listOf(GattProfiles.Omi, GattProfiles.Pocket, GattProfiles.Limitless)) {
+            assertFailsWith<IllegalArgumentException>(profile.id) { ble.connect("synthetic-device", profile) }
+        }
+        assertTrue(ble.connected.isEmpty(), "a refused profile must not start a connection")
+        assertEquals(BleConnectionState.Idle, ble.connectionState.value)
+    }
+
+    @Test
+    fun plaudProfile_connectsTheGivenDevice() = runTest {
+        val ble = RecordingConnect()
+        ble.connect("synthetic-device", GattProfiles.Plaud)
+        assertEquals(listOf("synthetic-device"), ble.connected)
     }
 }
