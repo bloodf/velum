@@ -49,7 +49,7 @@ class AudioNormalizeFixturesTest {
         assertTrue(normalized.durationMs >= 100)
         assertTrue(File(normalized.wavPath).exists())
         assertEquals(hash1, sha256File(wav.absolutePath))
-        assertTrue(normalized.contentSha256.isNotBlank())
+        assertEquals(sha256File(normalized.wavPath), normalized.contentSha256)
     }
 
     @Test
