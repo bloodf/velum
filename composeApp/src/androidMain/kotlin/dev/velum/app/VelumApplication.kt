@@ -98,6 +98,11 @@ class VelumApplication : Application() {
                 }
                 built.repository.onIndexFailure = { cls -> Log.w(TAG, "FTS index write failed, index flagged stale ($cls)") }
                 built.repository.ftsRebuildFailure?.let { Log.w(TAG, "FTS rebuild failed, index stale ($it)") }
+                // Before the runtime is installed, so a cold-start worker never reads a row whose file is mid-move.
+                runCatching {
+                    val moved = migrateCachedImports(built.repository, java.io.File(recordingsDirectoryPath()), cacheDir)
+                    if (moved > 0) Log.i(TAG, "Moved $moved imported recording(s) out of the cache")
+                }.onFailure { t -> Log.w(TAG, "Import migration failed (${t::class.simpleName})") }
                 AiRuntimeHolder.install(
                     processor = built.recordingProcessor,
                     repository = built.repository,
@@ -126,10 +131,6 @@ class VelumApplication : Application() {
                             val swept = sweepStalePartialTransfers(System.currentTimeMillis())
                             if (swept > 0) Log.i(TAG, "Removed $swept stale partial download file(s)")
                         }.onFailure { t -> Log.w(TAG, "Partial download sweep failed (${t::class.simpleName})") }
-                        runCatching {
-                            val moved = migrateCachedImports(c.repository, java.io.File(recordingsDirectoryPath()), cacheDir)
-                            if (moved > 0) Log.i(TAG, "Moved $moved imported recording(s) out of the cache")
-                        }.onFailure { t -> Log.w(TAG, "Import migration failed (${t::class.simpleName})") }
                         val report = sweepOrphanRecordingAudio(recordingsDirectoryPath(), c.repository::getAllRecordingFileRefs)
                         Log.i(TAG, "Orphan audio sweep: quarantined=${report.quarantined} purged=${report.purged} staleTemps=${report.staleTemps} failedMoves=${report.failedMoves}")
                     },

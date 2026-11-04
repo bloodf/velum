@@ -79,10 +79,13 @@ actual class AudioNormalizer actual constructor() {
             checkCancelled()
             // Of the normalized audio, so the same audio in another container is recognised (#327).
             val contentHash = sha256File(temp.absolutePath)
+            // Durable before it is published: the row that will point at it is written right after.
+            java.io.RandomAccessFile(temp, "rw").use { it.fd.sync() }
             java.nio.file.Files.move(
                 temp.toPath(), outFile.toPath(),
                 java.nio.file.StandardCopyOption.REPLACE_EXISTING, java.nio.file.StandardCopyOption.ATOMIC_MOVE,
             )
+            syncDirectory(outFile.parentFile)
             onOutput(outFile) // the temp name is gone; a cancel that lands after this removes the final file
             val durationMs = (pcmBytes / 2.0 / targetSampleRateHz * 1000.0).toLong()
             return NormalizedAudio(

@@ -5,3 +5,9 @@ package dev.velum.app.platform
  * Only such a copy may be deleted after an import; a path the user chose must never be.
  */
 expect fun isImportScratchPath(absolutePath: String): Boolean
+
+/**
+ * Privacy wipe: removes what an interrupted import can leave in the recordings directory (`import_*` outputs and
+ * unfinished `*.tmp` / `*.part` files). Rows' own audio is deleted by row; this covers files no row owns.
+ */
+expect fun deleteImportResidue(recordingsDir: String)

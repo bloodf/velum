@@ -10,7 +10,9 @@ import dev.velum.app.platform.installRecordingFilesDir
 import dev.velum.app.platform.isImportScratchPath
 import dev.velum.app.platform.migrateCachedImports
 import dev.velum.app.platform.recordingsDirectoryPath
+import dev.velum.app.platform.NormalizedAudio
 import dev.velum.app.platform.deleteImportCopies
+import kotlinx.coroutines.launch
 import dev.velum.core.data.DriverFactory
 import dev.velum.core.security.InMemorySecureStore
 import java.io.File
@@ -88,14 +90,51 @@ class ImportStorageTest {
         assertTrue(File(cache, "imports").walkTopDown().none { it.isFile })
     }
 
-    @Test fun a_duplicate_import_leaves_no_second_wav_and_still_deletes_the_cache_copy() = runBlocking {
+    // Same audio, different source bytes: the content hash matches, so it reaches discardNormalized (not the source-hash exit).
+    @Test fun a_content_duplicate_discards_its_new_wav_and_keeps_the_original_rows_file() = runBlocking {
         val first = wav(File(cache, "imports/1_a.wav"), 1)
-        assertTrue(AudioImportPipeline(container).importFile(first.path) is ImportResult.Created)
-        val before = File(recordingsDirectoryPath()).listFiles().orEmpty().map { it.name }.sorted()
-        val again = wav(File(cache, "imports/2_a.wav"), 1)
-        assertTrue(AudioImportPipeline(container).importFile(again.path) is ImportResult.Duplicate)
-        assertEquals(before, File(recordingsDirectoryPath()).listFiles().orEmpty().map { it.name }.sorted())
-        assertFalse(again.exists())
+        val created = AudioImportPipeline(container).importFile(first.path) as ImportResult.Created
+        val originalWav = container.repository.getRecording(created.recordingId)!!.local_path!!
+        val second = File(cache, "imports/2_b.bin").also { it.writeBytes(ByteArray(32) { 5 }) } // different source hash
+        val dupWav = File(recordingsDirectoryPath().also { File(it).mkdirs() }, "import_dup.wav").also { it.writeBytes(ByteArray(44)) }
+        val pipeline = AudioImportPipeline(container, normalize = {
+            NormalizedAudio(dupWav.path, 16_000, 100, "audio/wav", created.sha256)
+        })
+        assertTrue(pipeline.importFile(second.path) is ImportResult.Duplicate)
+        assertFalse("duplicate's new wav kept", dupWav.exists())
+        assertTrue("the original recording's file was deleted", File(originalWav).isFile)
+        assertFalse(second.exists())
+    }
+
+    // HIGH: a throw after the row exists must not delete the only copy the row now points to.
+    @Test fun a_failure_after_the_row_exists_keeps_the_wav_the_row_points_to() = runBlocking {
+        val failing = AppContainer(
+            InMemorySecureStore(), DriverFactory(app), modelStoreRoot = ModelStoreDir(File(files, "models2").path),
+            recordingJobSchedulerFactory = { _, _ -> RecordingJobScheduler { _, _, _, _ -> error("scheduler down") } },
+        )
+        try {
+            val src = wav(File(cache, "imports/9_shared.wav"), 9)
+            val result = AudioImportPipeline(failing).importFile(src.path, source = "share")
+            assertTrue(result is ImportResult.Failed)
+            val row = failing.repository.getAllRecordings().single()
+            assertTrue("row points at a deleted file: ${row.local_path}", File(row.local_path!!).isFile)
+        } finally {
+            failing.databaseHandle.driver.close()
+        }
+    }
+
+    @Test fun a_cancelled_import_before_the_row_removes_its_wav_but_keeps_the_incoming_copy() = runBlocking {
+        val src = wav(File(cache, "imports/8_cancel.wav"), 8)
+        val half = File(recordingsDirectoryPath().also { File(it).mkdirs() }, "import_half.wav").also { it.writeBytes(ByteArray(44)) }
+        val started = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val pipeline = AudioImportPipeline(container, normalize = {
+            NormalizedAudio(half.path, 16_000, 100, "audio/wav", "cancel-hash").also { started.complete(Unit) }
+        })
+        // Cancel right after normalize returned: the content-hash lookup is the next step.
+        val job = kotlinx.coroutines.GlobalScope.launch { pipeline.importFile(src.path) }
+        started.await(); job.cancel(); job.join()
+        val rows = container.repository.getAllRecordings()
+        if (rows.isEmpty()) assertFalse("orphan wav left", half.exists()) else assertTrue(File(rows.single().local_path!!).isFile)
     }
 
     @Test fun a_failed_import_still_removes_the_cache_copy() = runBlocking {
@@ -169,5 +208,75 @@ class ImportStorageTest {
         assertEquals(0, migrateCachedImports(container.repository, dir, cache, nowMs = System.currentTimeMillis() + 2 * 24L * 3600 * 1000))
         assertEquals(cached.path, container.repository.getRecording(id)!!.local_path)
         assertTrue(cached.isFile)
+    }
+
+    // HIGH 3: a destination left by an earlier run is reused only if it is the very same audio.
+    @Test fun a_same_size_destination_with_different_bytes_is_not_trusted() = runBlocking {
+        val cached = wav(File(cache, "imports/normalized/same_16000.wav"), 4)
+        val id = container.createLocalRecording(title = "S", source = "import", localPath = cached.path, status = "ready")
+        val dir = File(recordingsDirectoryPath()).also { it.mkdirs() }
+        File(dir, "$id.wav").writeBytes(ByteArray(cached.length().toInt()) { 1 }) // same size, other audio
+        assertEquals(0, migrateCachedImports(container.repository, dir, cache))
+        assertEquals(cached.path, container.repository.getRecording(id)!!.local_path)
+        assertTrue(cached.isFile)
+    }
+
+    @Test fun a_different_size_destination_is_not_trusted() = runBlocking {
+        val cached = wav(File(cache, "imports/normalized/size_16000.wav"), 4)
+        val id = container.createLocalRecording(title = "S", source = "import", localPath = cached.path, status = "ready")
+        val dir = File(recordingsDirectoryPath()).also { it.mkdirs() }
+        File(dir, "$id.wav").writeBytes(ByteArray(10))
+        assertEquals(0, migrateCachedImports(container.repository, dir, cache))
+        assertEquals(cached.path, container.repository.getRecording(id)!!.local_path)
+    }
+
+    // HIGH 4: the copy finished, the process died before the repoint, then the cache was evicted.
+    @Test fun a_complete_destination_with_the_source_gone_is_adopted_not_orphaned() = runBlocking {
+        val evicted = File(cache, "imports/normalized/gone_16000.wav")
+        val id = container.createLocalRecording(title = "G", source = "import", localPath = evicted.path, status = "ready")
+        val dir = File(recordingsDirectoryPath()).also { it.mkdirs() }
+        val rescued = wav(File(dir, "$id.wav"), 6)
+        assertEquals(1, migrateCachedImports(container.repository, dir, cache, nowMs = System.currentTimeMillis() + 3 * 24L * 3600 * 1000))
+        assertEquals(rescued.path, container.repository.getRecording(id)!!.local_path)
+        assertTrue(rescued.isFile)
+    }
+
+    // The orphan sweep reads mtime; a moved file must look fresh even if the cache file was old.
+    @Test fun a_moved_file_is_stamped_fresh_so_the_orphan_sweep_cannot_take_it() = runBlocking {
+        val cached = wav(File(cache, "imports/normalized/old_16000.wav"), 4).also { it.setLastModified(1_000L) }
+        val id = container.createLocalRecording(title = "O", source = "import", localPath = cached.path, status = "ready")
+        val before = System.currentTimeMillis()
+        migrateCachedImports(container.repository, File(recordingsDirectoryPath()), cache)
+        assertTrue(File(container.repository.getRecording(id)!!.local_path!!).lastModified() >= before - 2_000)
+    }
+
+    // MEDIUM 5: two rows on one cache file each get their own file; the source goes once.
+    @Test fun rows_sharing_one_cache_file_each_get_a_copy() = runBlocking {
+        val cached = wav(File(cache, "imports/normalized/shared_16000.wav"), 4)
+        val a = container.createLocalRecording(title = "A", source = "import", localPath = cached.path, status = "ready")
+        val b = container.createLocalRecording(title = "B", source = "import", localPath = cached.path, status = "ready")
+        assertEquals(2, migrateCachedImports(container.repository, File(recordingsDirectoryPath()), cache))
+        val pa = container.repository.getRecording(a)!!.local_path!!; val pb = container.repository.getRecording(b)!!.local_path!!
+        assertTrue(File(pa).isFile && File(pb).isFile)
+        assertTrue(pa != pb)
+        assertFalse(cached.exists())
+    }
+
+    // Pending incoming copy and our own .tmp.
+    @Test fun a_pending_incoming_copy_survives_the_sweep_and_an_old_tmp_goes() = runBlocking {
+        val dir = File(recordingsDirectoryPath()).also { it.mkdirs() }
+        val pending = wav(File(cache, "imports/share_1_pending.wav"), 1).also { it.setLastModified(1_000L) }
+        val other = wav(File(cache, "imports/share_2_other.wav"), 2).also { it.setLastModified(1_000L) }
+        val tmp = File(dir, "rec-x.wav.tmp").also { it.writeBytes(ByteArray(4)); it.setLastModified(1_000L) }
+        migrateCachedImports(container.repository, dir, cache, pendingPaths = setOf(pending.path))
+        assertTrue(pending.exists()); assertFalse(other.exists()); assertFalse(tmp.exists())
+    }
+
+    // MEDIUM 8: the wipe deletes what an interrupted import leaves in the recordings directory.
+    @Test fun the_wipe_removes_import_residue_from_the_recordings_directory() = runBlocking {
+        val dir = File(recordingsDirectoryPath()).also { it.mkdirs() }
+        val junk = listOf("import_half_16000_abc.wav", "rec-x.wav.tmp", "import_x.wav.77.part").map { File(dir, it).also { f -> f.writeBytes(ByteArray(8)) } }
+        container.wipeAllData()
+        assertTrue("residue left: ${junk.filter { it.exists() }}", junk.none { it.exists() })
     }
 }

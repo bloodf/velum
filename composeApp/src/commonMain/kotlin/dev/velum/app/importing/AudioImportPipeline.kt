@@ -13,6 +13,7 @@ import dev.velum.app.platform.sha256File
 import dev.velum.core.data.VelumRepository.Companion.IMPORT_DELETED_PREFIX
 import dev.velum.core.data.epochSecondsNow
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -72,11 +73,21 @@ class AudioImportPipeline(
         try {
             return importCore(absolutePath, source, titleHint, startedAtEpochSeconds) { normalizedPath = it }.also { result = it }
         } finally {
-            // The WAV is kept only when a row now points to it; a failed or cancelled import leaves no orphan.
-            // (A duplicate or deleted result already discarded it in discardNormalized, which checks it is not another row's file.)
-            normalizedPath?.takeIf { (result == null || result is ImportResult.Failed) && it != absolutePath }?.let { deleteFileAtPath(it) }
-            // The incoming copy in the cache has done its job whatever the outcome (privacy; it is never read again).
-            if (isImportScratchPath(absolutePath)) deleteFileAtPath(absolutePath)
+            // Even when cancelled: a half-finished cleanup could leave a row pointing at a deleted file.
+            withContext(NonCancellable + Dispatchers.IO) {
+                // A duplicate or deleted result already discarded the WAV in discardNormalized. For anything else the WAV
+                // goes only if no row points at it: a throw after the row exists (disk full, enqueue) or a cancel must
+                // not delete the only copy of a recording that is already in the library.
+                normalizedPath?.takeIf { (result == null || result is ImportResult.Failed) && it != absolutePath }?.let { wav ->
+                    val inUse = runCatching {
+                        container.repository.getAllRecordingFileRefs().any { (_, path) -> path != null && isSamePath(path, wav) }
+                    }.getOrDefault(true) // unknown: keep it
+                    if (!inUse) deleteFileAtPath(wav)
+                }
+                // The incoming copy in the cache has done its job once the import finished (privacy; never read again).
+                // A cancelled import keeps it: the sweep removes it after a day if nothing uses it.
+                if (result != null && isImportScratchPath(absolutePath)) deleteFileAtPath(absolutePath)
+            }
         }
     }
 

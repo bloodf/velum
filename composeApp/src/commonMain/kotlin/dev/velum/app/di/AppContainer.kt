@@ -40,6 +40,7 @@ import dev.velum.app.platform.DOWNLOAD_PART_SUFFIX
 import dev.velum.app.platform.deleteFileAtPath
 import dev.velum.app.platform.isSamePath
 import dev.velum.app.platform.isSupersededOwnAudio
+import dev.velum.app.platform.deleteImportResidue
 import dev.velum.app.platform.recordingsDirectoryPath
 import dev.velum.app.platform.streamToFileAtomically
 import dev.velum.app.i18n.recordingTitle
@@ -348,6 +349,7 @@ class AppContainer(
                     voiceProfileStore.wipeAll()
                     clearWatchedFolders()
                     deleteImportCopies()
+                    deleteImportResidue(recordingsDirectoryPath())
                     deleteShareExports()
                     ExportFolderStore.clear()
                     releaseFolderGrants()

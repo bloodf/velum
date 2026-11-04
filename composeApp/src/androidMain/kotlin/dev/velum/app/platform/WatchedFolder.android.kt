@@ -46,16 +46,19 @@ object WatchedFolderStore {
         prefs.edit().putString(KEY_URIS, next.joinToString("\n")).apply()
     }
 
+    // Own prefs file, excluded from backup and device transfer: the database is not transferred, so carried-over
+    // "already imported" keys would block files that have no recording here.
+    private const val IMPORTED_PREFS = "velum_watched_imported"
     private const val KEY_IMPORTED = "imported_files"
 
     /** Identity of one source file version: a changed size or time is a new file. */
     fun fileKey(uriString: String, lastModifiedMs: Long, length: Long) = "$uriString|$lastModifiedMs|$length"
 
-    private fun importedKeys(context: Context): Set<String> =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getStringSet(KEY_IMPORTED, emptySet()).orEmpty()
+    internal fun importedKeys(context: Context): Set<String> =
+        context.getSharedPreferences(IMPORTED_PREFS, Context.MODE_PRIVATE).getStringSet(KEY_IMPORTED, emptySet()).orEmpty()
 
     fun markImported(context: Context, key: String) {
-        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val prefs = context.getSharedPreferences(IMPORTED_PREFS, Context.MODE_PRIVATE)
         prefs.edit().putStringSet(KEY_IMPORTED, importedKeys(context) + key).apply()
     }
 
@@ -63,15 +66,13 @@ object WatchedFolderStore {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit()
             .putString(KEY_URIS, "")
-            .remove(KEY_IMPORTED)
             .apply()
+        context.getSharedPreferences(IMPORTED_PREFS, Context.MODE_PRIVATE).edit().clear().apply()
     }
 
     fun scanNewAudio(context: Context, treeUriString: String): List<WatchedFolderEntry> {
         val tree = DocumentFile.fromTreeUri(context, Uri.parse(treeUriString)) ?: return emptyList()
-        val out = ArrayList<WatchedFolderEntry>()
-        val destRoot = File(context.cacheDir, "imports/watched").apply { mkdirs() }
-        val imported = importedKeys(context)
+        val sources = ArrayList<WatchedSource>()
         fun walk(dir: DocumentFile) {
             dir.listFiles().forEach { child ->
                 if (child.isDirectory) {
@@ -79,30 +80,52 @@ object WatchedFolderStore {
                 } else if (child.isFile) {
                     val name = child.name.orEmpty()
                     if (ImportAudioFormats.isSupportedFileName(name)) {
-                        val key = fileKey(child.uri.toString(), child.lastModified(), child.length())
-                        // Already imported: the cache copy is deleted after an import, so do not copy it again.
-                        if (key in imported) return@forEach
-                        val dest = File(destRoot, watchedCopyName(child.uri.toString(), child.lastModified(), name))
-                        // One unreadable file (card pulled mid-copy, revoked grant) must not stop the others.
-                        val copied = runCatching {
-                            copyWholeFile(dest, child.length()) { context.contentResolver.openInputStream(child.uri) }
-                        }.getOrDefault(false)
-                        if (copied) {
-                            removeLegacyWatchedCopy(destRoot, child.lastModified(), name, dest)
-                            out += WatchedFolderEntry(
-                                displayName = name,
-                                uriString = child.uri.toString(),
-                                absoluteCopyPath = dest.absolutePath,
-                                lastModifiedMs = child.lastModified(),
-                            )
+                        sources += WatchedSource(child.uri.toString(), name, child.lastModified(), child.length()) {
+                            context.contentResolver.openInputStream(child.uri)
                         }
                     }
                 }
             }
         }
         walk(tree)
-        return out.sortedByDescending { it.lastModifiedMs }
+        val destRoot = File(context.cacheDir, "imports/watched").apply { mkdirs() }
+        return copyUnimported(sources, importedKeys(context), destRoot)
     }
+}
+
+/** One file found in a watched tree, before anything is copied. */
+internal class WatchedSource(
+    val uri: String,
+    val name: String,
+    val lastModifiedMs: Long,
+    val length: Long,
+    val open: () -> java.io.InputStream?,
+)
+
+/**
+ * Copies every source whose [WatchedFolderStore.fileKey] is not in [imported] into [destRoot], newest first. A file
+ * that was already imported is not read at all: its cache copy was deleted after the import, so copying it again
+ * would re-download the whole folder on every sync.
+ */
+internal fun copyUnimported(sources: List<WatchedSource>, imported: Set<String>, destRoot: File): List<WatchedFolderEntry> {
+    val out = ArrayList<WatchedFolderEntry>()
+    for (src in sources) {
+        val key = WatchedFolderStore.fileKey(src.uri, src.lastModifiedMs, src.length)
+        if (key in imported) continue
+        val dest = File(destRoot, watchedCopyName(src.uri, src.lastModifiedMs, src.name))
+        // One unreadable file (card pulled mid-copy, revoked grant) must not stop the others.
+        val copied = runCatching { copyWholeFile(dest, src.length, src.open) }.getOrDefault(false)
+        if (!copied) continue
+        removeLegacyWatchedCopy(destRoot, src.lastModifiedMs, src.name, dest)
+        out += WatchedFolderEntry(
+            displayName = src.name,
+            uriString = src.uri,
+            absoluteCopyPath = dest.absolutePath,
+            lastModifiedMs = src.lastModifiedMs,
+            fileKey = key,
+        )
+    }
+    return out.sortedByDescending { it.lastModifiedMs }
 }
 
 /**
