@@ -183,9 +183,10 @@ class VoiceClusterCacheFollowupTest {
         assertFailsWith<VoiceProfileKeyUnavailableException> { wrongKey.withReady { inspectProfiles() } }
     }
 
-    @Test fun a_corrupt_enc_keeps_the_plaintext() = runTest {
+    @Test fun a_corrupt_enc_keeps_the_plaintext_while_the_key_is_not_proven() = runTest {
         val store = store(this)
         store.withReady { upsert("Synthetic Good", embedding, id = "good") }
+        root.resolve("voices/.keycheck.enc").deleteRecursively() // no proof the key is right (#417 rewrites it when proven)
         profiles.resolve("bad.json").writeBytes(
             """{"id":"bad","displayName":"Synthetic Bad","dim":3,"sampleCount":1,"encrypted":true}""".encodeToByteArray(),
         )
@@ -280,6 +281,65 @@ class VoiceClusterCacheFollowupTest {
             holder.join(); wipe.join()
             val outcome = queued.await()
             assertTrue(outcome.isSuccess, "queued call failed: ${outcome.exceptionOrNull()}")
+        }
+    }
+
+    private fun damagedWithPlaintext(id: String = "bad", plaintext: ByteArray = VoiceProfileStore.floatsToBytes(embedding)) {
+        profiles.resolve("$id.json").writeBytes(
+            """{"id":"$id","displayName":"Synthetic Bad","dim":3,"sampleCount":1,"encrypted":true}""".encodeToByteArray(),
+        )
+        profiles.resolve("$id.enc").writeBytes(ByteArray(4)) // a truncated write
+        profiles.resolve("$id.f32").writeBytes(plaintext)
+    }
+
+    @Test fun a_damaged_enc_is_rewritten_from_the_plaintext_when_the_key_is_proven() = runTest {
+        val store = store(this)
+        store.withReady { upsert("Synthetic Good", embedding, id = "good") } // writes the key check
+        damagedWithPlaintext()
+        assertEquals(1, store.migrateLegacyPlaintextProfiles())
+        assertFalse(profiles.resolve("bad.f32").exists(), "plaintext survived")
+        val bad = store.withReady { inspectProfiles() }.profiles.single { it.id == "bad" }
+        assertContentEquals(embedding, bad.embedding)
+        assertEquals("Synthetic Bad", bad.displayName)
+        assertEquals(0, store.migrateLegacyPlaintextProfiles())
+    }
+
+    @Test fun without_a_key_check_neither_file_is_touched() = runTest {
+        val store = store(this)
+        store.withReady { upsert("Synthetic Good", embedding, id = "good") }
+        damagedWithPlaintext()
+        root.resolve("voices/.keycheck.enc").deleteRecursively() // an install from before the key check existed
+        val enc = profiles.resolve("bad.enc").readBytes()
+        assertEquals(0, store.migrateLegacyPlaintextProfiles())
+        assertContentEquals(enc, profiles.resolve("bad.enc").readBytes())
+        assertTrue(profiles.resolve("bad.f32").exists())
+    }
+
+    @Test fun with_a_failing_key_check_neither_file_is_touched() = runTest {
+        val store = store(this)
+        store.withReady { upsert("Synthetic Good", embedding, id = "good") }
+        damagedWithPlaintext()
+        root.resolve("voices/.keycheck.enc").writeBytes(ByteArray(40) { 7 }) // does not authenticate
+        val enc = profiles.resolve("bad.enc").readBytes()
+        assertEquals(0, store.migrateLegacyPlaintextProfiles())
+        assertContentEquals(enc, profiles.resolve("bad.enc").readBytes())
+        assertTrue(profiles.resolve("bad.f32").exists())
+    }
+
+    @Test fun an_unusable_plaintext_is_left_alone_even_with_a_proven_key() = runTest {
+        val store = store(this)
+        store.withReady { upsert("Synthetic Good", embedding, id = "good") }
+        val unusable = listOf(
+            byteArrayOf(1, 2, 3), // not a whole number of floats
+            VoiceProfileStore.floatsToBytes(floatArrayOf(1f, 2f)), // two values for dim 3
+            VoiceProfileStore.floatsToBytes(floatArrayOf(1f, Float.NaN, 3f)), // not finite
+        )
+        for (plaintext in unusable) {
+            damagedWithPlaintext(plaintext = plaintext)
+            val enc = profiles.resolve("bad.enc").readBytes()
+            assertEquals(0, store.migrateLegacyPlaintextProfiles())
+            assertContentEquals(enc, profiles.resolve("bad.enc").readBytes())
+            assertTrue(profiles.resolve("bad.f32").exists())
         }
     }
 }
