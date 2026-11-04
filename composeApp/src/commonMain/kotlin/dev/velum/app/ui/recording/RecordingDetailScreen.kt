@@ -666,15 +666,20 @@ fun RecordingDetailScreen(
                 },
                 onClose = { showSpeakers = false },
                 onConfirm = { renames ->
+                    // The rows the user typed against, taken at the tap: a background job may replace them while the coroutine runs.
+                    val shown = speakers
                     scope.launch {
                         try {
-                            for ((speakerId, name) in renames) {
-                                val trimmed = name.trim()
-                                if (trimmed.isEmpty()) continue
-                                val row = speakers.firstOrNull { it.id == speakerId } ?: continue
+                            val applied = confirmSpeakerNames(
+                                shown = shown,
+                                current = { container.repository.getSpeakers(recordingId) },
+                                renames = renames,
+                                enrol = { row, trimmed ->
                                 // Only a name the user actually changed counts: the sheet hands back every row.
                                 val changed = speakerNameChanged(row.display_name, row.label, trimmed, strings)
                                 var cacheMissed = false
+                                // The name is already saved; a voice that cannot be enrolled is reported like a missing sample.
+                                try {
                                 container.voiceProfileStore.withReady {
                                     val emb = cachedClusterEmbedding(
                                         recordingId,
@@ -694,9 +699,17 @@ fun RecordingDetailScreen(
                                             )
                                     }
                                 }
-                                container.repository.renameSpeaker(recordingId, speakerId, trimmed)
+                                } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                                    throw cancelled
+                                } catch (_: Exception) {
+                                    cacheMissed = true
+                                }
                                 if (cacheMissed && changed) processError = strings.ux.voiceProfilesNoCachedVoice
-                            }
+                                },
+                                rename = { row, trimmed -> container.repository.renameSpeakerIfUnchanged(recordingId, row, trimmed) },
+                            )
+                            // Set last, so the mismatch message wins over the missing-voice one.
+                            if (!applied) processError = strings.added.speakersChangedWhileOpen
                             showSpeakers = false
                         } catch (cancelled: kotlinx.coroutines.CancellationException) {
                             throw cancelled
