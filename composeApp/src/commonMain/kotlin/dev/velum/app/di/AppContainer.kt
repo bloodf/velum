@@ -600,7 +600,7 @@ class AppContainer(
             bytes[3] == 'F'.code.toByte()
 
 
-    private fun formatRecordingTitle(epochSeconds: Long): String {
+    internal fun formatRecordingTitle(epochSeconds: Long): String {
         return recordingTitle(epochSeconds, settingsRepository.preferences.value.appLanguage, systemLanguageTag())
     }
 }

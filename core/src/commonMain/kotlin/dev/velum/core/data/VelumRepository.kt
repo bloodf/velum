@@ -916,6 +916,58 @@ class VelumRepository(
     }
 
     /**
+     * Inserts a recording and its dedupe [keys] (meta keys, each mapped to the new id) in one transaction.
+     * First, if any of [refuseKeys] is set (a watched-folder tombstone), nothing is written and it is [KeyedInsert.Refused].
+     * Then, if a key already maps to a recording that exists, nothing is inserted, every key is pointed at that
+     * recording and it is [KeyedInsert.Existing]. Otherwise the row and the keys are written and [clearKeys] removed.
+     * Two imports of the same audio cannot both insert, and a failure cannot leave a recording without its keys.
+     */
+    suspend fun insertRecordingUnlessKeyed(
+        id: String,
+        title: String,
+        source: String,
+        startedAt: Long,
+        durationSeconds: Long,
+        localPath: String,
+        status: String,
+        keys: List<String>,
+        refuseKeys: List<String> = emptyList(),
+        clearKeys: List<String> = emptyList(),
+        createdAt: Long = epochSeconds(),
+    ): KeyedInsert = withContext(dbContext) {
+        val result = db.transactionWithResult {
+            if (refuseKeys.any { q.getMeta(it).executeAsOneOrNull() != null }) return@transactionWithResult KeyedInsert.Refused
+            val found = keys.firstNotNullOfOrNull { key ->
+                q.getMeta(key).executeAsOneOrNull()?.takeIf { it.isNotBlank() && q.selectRecordingById(it).executeAsOneOrNull() != null }
+            }
+            if (found == null) {
+                q.insertRecording(
+                    id = id,
+                    session_id = null,
+                    folder_id = null,
+                    title = title,
+                    source = source,
+                    device_serial = null,
+                    started_at = startedAt,
+                    duration_seconds = durationSeconds,
+                    size_bytes = 0,
+                    local_path = localPath,
+                    transcript = null,
+                    summary_markdown = null,
+                    status = status,
+                    trashed = 0,
+                    created_at = createdAt,
+                )
+                clearKeys.forEach { q.deleteMeta(it) }
+            }
+            keys.forEach { q.setMeta(it, found ?: id) }
+            if (found == null) KeyedInsert.Inserted else KeyedInsert.Existing(found)
+        }
+        if (result == KeyedInsert.Inserted) tryIndex { indexRecording(id, title, null, null) }
+        result
+    }
+
+    /**
      * Reindex recordings and/or templates into FTS (after seed, migration, or one-sided empty).
      * Prefer rebuilding only the empty side on cold start so an empty library does not
      * rewrite every template row.
@@ -1208,3 +1260,10 @@ class VelumRepository(
 }
 
 expect fun epochSecondsNow(): Long
+
+/** Outcome of [VelumRepository.insertRecordingUnlessKeyed]. */
+sealed interface KeyedInsert {
+    data object Inserted : KeyedInsert
+    data class Existing(val recordingId: String) : KeyedInsert
+    data object Refused : KeyedInsert
+}
