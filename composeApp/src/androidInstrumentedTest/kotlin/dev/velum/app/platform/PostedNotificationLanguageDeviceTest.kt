@@ -31,7 +31,10 @@ import org.junit.runner.RunWith
  * name and action titles equal the expected strings; the second start fails with the expected error text; and the
  * two languages' expected strings differ (otherwise the comparison proves nothing).
  * - `notifLang` = `pt-BR`, `en` or `system` sets the in-app language first; `keep` leaves what is stored (a cold start
- *   after `am force-stop` is checked with `keep`). The previous language is restored at the end.
+ *   after `am force-stop` is checked with `keep`) and REQUIRES `notifExpect` = the language an earlier step stored: the
+ *   test fails if the store holds anything else, so an empty store cannot pass as "kept".
+ * - The language is left as set so the next step can read it back; only a step with `notifRestore=true` puts the
+ *   language that was stored when that step started back.
  * - If the first start does not report Started (for example the foreground service was refused because the app was in
  *   the background), the test FAILS with that fact; it is never recorded as a language result.
  * Reports the case in the `velum.postedNotif` status line. Skipped unless `notifLang` is given.
@@ -53,6 +56,11 @@ class PostedNotificationLanguageDeviceTest {
         try {
             if (lang != "keep") runBlocking { container.settingsRepository.setAppLanguage(lang!!) }
             val stored = container.settingsRepository.preferences.value.appLanguage
+            if (lang == "keep") {
+                val want = InstrumentationRegistry.getArguments().getString("notifExpect")
+                assertNotNull("notifLang=keep needs notifExpect (the language the earlier step stored)", want)
+                assertEquals("the stored in-app language did not survive the restart", want, stored)
+            }
             fun stringsFor(tag: String): (Int) -> String {
                 val c = if (tag == "system") ctx else ctx.createConfigurationContext(
                     Configuration(ctx.resources.configuration).apply { setLocale(Locale.forLanguageTag(tag)) },
@@ -104,7 +112,9 @@ class PostedNotificationLanguageDeviceTest {
             runCatching { runBlocking { container.micCapture.stop() } }
             // Clean the draft up through the app's own delete path, then put the language back.
             draftId?.let { id -> runCatching { runBlocking { container.deleteRecordingForever(id) } } }
-            runCatching { runBlocking { container.settingsRepository.setAppLanguage(previous) } }
+            if (InstrumentationRegistry.getArguments().getString("notifRestore") == "true") {
+                runCatching { runBlocking { container.settingsRepository.setAppLanguage(previous) } }
+            }
             runCatching { scenario.close() }
             InstrumentationRegistry.getInstrumentation().sendStatus(0, Bundle().apply { putString("velum.postedNotif", report.toString()) })
         }
