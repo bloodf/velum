@@ -8,6 +8,7 @@ import dev.velum.core.model.ConnectedDevice
 import dev.velum.protocol.Bytes
 import dev.velum.protocol.DeviceModel
 import dev.velum.protocol.PlaudUuids
+import kotlin.concurrent.Volatile
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
