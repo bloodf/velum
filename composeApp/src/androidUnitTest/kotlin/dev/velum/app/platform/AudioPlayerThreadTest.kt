@@ -225,6 +225,26 @@ class AudioPlayerThreadTest {
         idleUntil("second prepare") { !t2.isAlive }
         shadowOf(Looper.getMainLooper()).idleFor(500, TimeUnit.MILLISECONDS)
         assertEquals(0L, player.positionMs.value, "a poll tick of the old player must not move the position after the reset")
+        // Nothing is playing now, so no poll tick may stay scheduled on the main looper.
+        assertEquals(java.time.Duration.ZERO, shadowOf(Looper.getMainLooper()).nextScheduledTaskTime, "the old poll is still scheduled")
+        player.release()
+    }
+
+    @Test fun a_cancel_before_the_first_hop_leaves_the_current_player_alone() {
+        val file = wav("player-before-hop")
+        recordPlayers()
+        val player = createAudioPlayer()
+        val t1 = thread { runBlocking { player.prepare(file.absolutePath) } }
+        idleUntil("first prepare") { !t1.isAlive }
+        // The main looper is not run, so P2's first hop is still pending when it is cancelled.
+        val job2 = launchPrepare(player, file)
+        job2.cancel()
+        idleUntil("P2 finished") { job2.isCompleted }
+        assertTrue(job2.isCancelled)
+        assertEquals(1, players.size, "P2 never built a player")
+        assertTrue(stateOf(players[0]) != State.END, "the current player must survive a cancel that came before any change")
+        player.play()
+        assertEquals(State.STARTED, stateOf(players[0]), "and it still plays")
         player.release()
     }
 
@@ -236,7 +256,9 @@ class AudioPlayerThreadTest {
         val thrown = java.util.concurrent.atomic.AtomicReference<Throwable>()
         val collector = CoroutineScope(Dispatchers.Unconfined)
         // 1500 is published by the last hop, after the player is installed: cancel there.
-        collector.launch(start = CoroutineStart.UNDISPATCHED) { player.durationMs.collect { if (it == 1500L) jobRef.get()?.cancel() } }
+        collector.launch(start = CoroutineStart.UNDISPATCHED) {
+            player.durationMs.collect { if (it == 1500L) { player.play(); jobRef.get()?.cancel() } } // playing when the cancel lands
+        }
         val job = CoroutineScope(Dispatchers.IO).launch {
             try { player.prepare(file.absolutePath) } catch (e: kotlinx.coroutines.CancellationException) { thrown.set(e); throw e }
         }.also { scopes += it }
@@ -246,6 +268,10 @@ class AudioPlayerThreadTest {
         assertTrue(thrown.get() != null, "the cancellation must reach the caller, not be turned into a result")
         assertEquals(State.END, stateOf(players[0]))
         assertEquals(0L, player.durationMs.value, "the half-installed duration is rolled back")
+        assertEquals(false, player.isPlaying.value, "playing is rolled back with the install")
+        assertEquals(0L, player.positionMs.value)
+        shadowOf(Looper.getMainLooper()).idleFor(500, TimeUnit.MILLISECONDS)
+        assertEquals(java.time.Duration.ZERO, shadowOf(Looper.getMainLooper()).nextScheduledTaskTime, "the poll started by that play must be stopped")
         player.play()
         assertEquals(false, player.isPlaying.value, "the released player is no longer installed")
         player.release()
