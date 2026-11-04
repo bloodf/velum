@@ -28,5 +28,16 @@ actual fun deleteFileIfPresent(absolutePath: String): Boolean = runCatching {
     !file.exists()
 }.getOrDefault(false)
 
-/** Only Android runs the orphan sweep. */
-actual fun deleteOrphanQuarantine(): Boolean = true
+actual fun deleteRecordingsDirectory(): Boolean {
+    val recordings = File(recordingsDirectoryPath())
+    recordings.deleteRecursively()
+    return !recordings.exists()
+}
+
+actual fun deleteDeviceTransferTemps(): Boolean {
+    val temp = File(System.getProperty("java.io.tmpdir") ?: return false)
+    return temp.listFiles().orEmpty()
+        .filter { it.name.startsWith("velum-ble-session-") }
+        .map { it.delete() || !it.exists() }
+        .all { it }
+}

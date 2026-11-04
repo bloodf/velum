@@ -18,5 +18,13 @@ actual fun deleteFileIfPresent(absolutePath: String): Boolean {
     return !files.fileExistsAtPath(absolutePath)
 }
 
-/** Only Android runs the orphan sweep. */
-actual fun deleteOrphanQuarantine(): Boolean = true
+@OptIn(ExperimentalForeignApi::class)
+actual fun deleteRecordingsDirectory(): Boolean {
+    val files = NSFileManager.defaultManager
+    val recordings = recordingsDirectoryPath()
+    if (files.fileExistsAtPath(recordings)) files.removeItemAtPath(recordings, error = null)
+    return !files.fileExistsAtPath(recordings)
+}
+
+/** iOS has no file-backed device transfer. */
+actual fun deleteDeviceTransferTemps(): Boolean = true

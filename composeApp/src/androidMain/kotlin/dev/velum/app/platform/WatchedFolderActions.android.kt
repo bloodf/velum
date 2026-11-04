@@ -55,7 +55,7 @@ actual fun clearWatchedFolders() {
 }
 
 actual fun releaseFolderGrants(): Boolean {
-    val resolver = appContextOrNull()?.contentResolver ?: return true
+    val resolver = appContextOrNull()?.contentResolver ?: return false
     releaseGrants(resolver.persistedUriPermissions.toList()) { uri, flags -> resolver.releasePersistableUriPermission(uri, flags) }
     // Judged by what is left, not by what threw.
     return resolver.persistedUriPermissions.isEmpty()

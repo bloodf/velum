@@ -18,5 +18,11 @@ expect fun isSupersededOwnAudio(previousPath: String, newPath: String, dir: Stri
 /** True when no file remains at [absolutePath] afterwards, including when there was none. */
 expect fun deleteFileIfPresent(absolutePath: String): Boolean
 
-/** Deletes audio the orphan sweep set aside. False if some remains. */
-expect fun deleteOrphanQuarantine(): Boolean
+/**
+ * Deletes the recordings folder and all it holds, including audio no row points at (a crash before the row was
+ * written, a mic's `.partial`, the orphan quarantine). False if some remains. Only once nothing can be writing there.
+ */
+expect fun deleteRecordingsDirectory(): Boolean
+
+/** Deletes temp files of device transfers a dead process left behind. False if some remain. */
+expect fun deleteDeviceTransferTemps(): Boolean

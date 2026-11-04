@@ -477,7 +477,7 @@ class AutoFlowRunnerTest {
         assertEquals("ready", f.row("bad").status)
         assertEquals("ready", f.row("good").status)
         assertEquals(1, f.actions.count { it === AutoFlowUiAction.ProcessingFailed })
-        assertEquals(listOf(recording("good").title), f.actions.filterIsInstance<AutoFlowUiAction.InsertCalendarEvent>().map { it.title })
+        assertEquals(listOf("good"), f.actions.filterIsInstance<AutoFlowUiAction.InsertCalendarEvent>().map { it.recordingId })
         f.publish(recording("later"))
         assertEquals("ready", f.row("later").status)
     }

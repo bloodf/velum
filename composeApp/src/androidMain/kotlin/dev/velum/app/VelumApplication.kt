@@ -77,7 +77,10 @@ class VelumApplication : Application() {
                 // Before AiRuntimeHolder.install: WorkManager can re-run a killed job as soon as the
                 // holder is set, and it would race this sweep for its own tmp/pcm-<id> (#197).
                 runCatching {
-                    val spills = sweepOrphanPcmSpill(System.currentTimeMillis() - STALE_PCM_SPILL_AGE_MS)
+                    // The models folder, and the default root earlier versions spilled under.
+                    val staleBefore = System.currentTimeMillis() - STALE_PCM_SPILL_AGE_MS
+                    val spills = sweepOrphanPcmSpill(staleBefore) +
+                        sweepOrphanPcmSpill(staleBefore, ModelStoreDir(File(filesDir, "models").absolutePath))
                     if (spills > 0) Log.i(TAG, "Removed $spills orphaned PCM spill dir(s)")
                 }.onFailure { t -> Log.w(TAG, "PCM spill sweep failed (${t::class.simpleName})") }
                 val modelsDir = File(filesDir, "models")

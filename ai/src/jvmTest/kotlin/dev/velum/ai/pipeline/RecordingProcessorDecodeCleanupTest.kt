@@ -55,6 +55,7 @@ class RecordingProcessorDecodeCleanupTest {
         val diarizeHook: (AudioInput) -> Unit = {},
         thermal: ThermalPolicy = NoOpThermalPolicy,
         opusDecoder: (() -> dev.velum.ai.audio.OpusDecoder)? = null,
+        pcmSpillRoot: ModelStoreDir? = null,
     ) {
         val repo = VelumRepository(createDatabase(DriverFactory()))
         val settings = SettingsRepository(InMemorySecureStore()).also {
@@ -97,6 +98,7 @@ class RecordingProcessorDecodeCleanupTest {
             settings,
             thermal = thermal,
             opusDecoder = opusDecoder ?: ::createOpusDecoder,
+            pcmSpillRoot = pcmSpillRoot ?: ModelStoreDir(defaultModelStoreRoot().absolutePath),
         )
 
         suspend fun insert(id: String, file: File) = repo.insertRecording(
@@ -603,6 +605,24 @@ class RecordingProcessorDecodeCleanupTest {
         assertTrue(cancelled, "the collector was never stopped, so the late-cancel path did not run")
         assertEquals("ready", h.repo.getRecording("rec-324-late-cancel")!!.status, "a late cancel restored the earlier status")
         assertFalse(src.exists(), "the audio was deleted before the emit")
+    }
+
+    @Test
+    fun a_run_spills_under_the_root_it_was_given_and_the_wipe_helper_finds_it() = runBlocking {
+        val root = ModelStoreDir(java.nio.file.Files.createTempDirectory("velum-spill-root").toString())
+        val decoding = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val h = Harness({ decoding.complete(Unit); awaitCancellation() }, pcmSpillRoot = root)
+        h.insert("rec-root-spill", tempAudio(".wav", wav(ByteArray(64_000))))
+        val job = launch(Dispatchers.Default) { h.processor.process("rec-root-spill", templateId = "velum.meeting", apiModelOverride = API).collect { } }
+        withTimeout(30_000) { decoding.await() }
+        val spills = File(root.resolve("tmp").absolutePath).listFiles { f -> f.name.startsWith("pcm-rec-root-spill-") }.orEmpty()
+        assertEquals(1, spills.size, "the run did not spill under the given root")
+        assertTrue(File(spills.single(), "pcm.s16le").isFile)
+        // A process death leaves it there; the wipe removes it through the same root.
+        assertTrue(deleteAllPcmSpill(h.processor.pcmSpillRoot))
+        assertFalse(spills.single().exists(), "the wipe's helper missed the run's spill")
+        job.cancelAndJoin()
+        root.deleteRecursively()
     }
 
     @Test

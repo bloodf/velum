@@ -113,6 +113,8 @@ class RecordingProcessor(
     private val thermal: ThermalPolicy = NoOpThermalPolicy,
     private val opusDecoder: () -> OpusDecoder = ::createOpusDecoder,
     private val wipeGate: WipeGate = WipeGate(),
+    /** Where decoded audio spills, under `tmp/`. The wipe and the startup sweep look here. */
+    val pcmSpillRoot: ModelStoreDir = ModelStoreDir(defaultModelStoreRoot().absolutePath),
 ) {
     private val nextRun = MutableStateFlow(0L)
     private val activeRuns = MutableStateFlow<Map<String, Long>>(emptyMap())
@@ -162,7 +164,7 @@ class RecordingProcessor(
             val sampleRate: Int
             val localPath = recording.local_path
             val job = currentCoroutineContext()[Job]
-            val spillRoot = ModelStoreDir(defaultModelStoreRoot().absolutePath)
+            val spillRoot = pcmSpillRoot
                 .resolve("tmp")
                 .resolve("pcm-$recordingId-$run-${kotlin.random.Random.nextLong().toString(16)}")
             var pcmBuffer: PcmAudioBuffer = PcmAudioBuffer.Memory(ByteArray(0))

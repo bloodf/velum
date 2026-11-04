@@ -297,10 +297,10 @@ private fun VelumRoot(container: AppContainer) {
         container.autoFlowRunner.actions.collect { action ->
             when (action) {
                 AutoFlowUiAction.ProcessingFailed -> snackbar.showSnackbar(strings.ux.genericError)
-                // Notes must not leave the app while "Wipe all data" is removing them.
-                is AutoFlowUiAction.ShareMarkdown -> container.unlessWiping { shareText(action.title, action.body) }
-                is AutoFlowUiAction.InsertCalendarEvent ->
-                    container.unlessWiping { openCalendarInsert(action.title, action.description) }
+                is AutoFlowUiAction.ShareMarkdown -> container.noteToShare(action.recordingId)
+                    ?.let { shareText(it.title, it.markdown) }
+                is AutoFlowUiAction.InsertCalendarEvent -> container.noteToShare(action.recordingId)
+                    ?.let { openCalendarInsert(it.title, it.summary) }
                 is AutoFlowUiAction.ExportMarkdownToFolder -> {
                     when (val result = container.exportRecordingToFolder(action.recordingId)) {
                         null -> snackbar.showSnackbar(strings.ux.recordingMissing)

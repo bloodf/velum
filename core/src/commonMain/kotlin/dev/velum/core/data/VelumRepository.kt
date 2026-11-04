@@ -608,7 +608,11 @@ class VelumRepository(
 
     /** Null removes the row; provider error text must not outlive the recording or a wipe. */
     suspend fun setProcessingError(recordingId: String, message: String?) = withContext(dbContext) {
-        if (message == null) q.deleteMeta(processingErrorKey(recordingId)) else q.setMeta(processingErrorKey(recordingId), message)
+        when {
+            message == null -> q.deleteMeta(processingErrorKey(recordingId))
+            // A worker running on after a wipe or delete must not leave error text with no recording.
+            q.selectRecordingById(recordingId).executeAsOneOrNull() != null -> q.setMeta(processingErrorKey(recordingId), message)
+        }
     }
 
     /**
@@ -619,7 +623,10 @@ class VelumRepository(
 
     /** Null clears it. */
     suspend fun setUnpromotedRun(recordingId: String, workId: String?) = withContext(dbContext) {
-        if (workId != null) q.setMeta("$UNPROMOTED_RUN_PREFIX$recordingId", workId) else q.deleteMeta("$UNPROMOTED_RUN_PREFIX$recordingId")
+        when {
+            workId == null -> q.deleteMeta("$UNPROMOTED_RUN_PREFIX$recordingId")
+            q.selectRecordingById(recordingId).executeAsOneOrNull() != null -> q.setMeta("$UNPROMOTED_RUN_PREFIX$recordingId", workId)
+        }
     }
 
     /** Clears the flag only if [workId] still owns it, so a newer run's flag is never removed by an older one. */
