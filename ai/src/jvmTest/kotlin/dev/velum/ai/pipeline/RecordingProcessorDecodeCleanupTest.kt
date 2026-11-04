@@ -52,6 +52,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 class RecordingProcessorDecodeCleanupTest {
     private class Harness(val transcribe: suspend (AudioInput) -> Unit,
         val llmText: suspend () -> String = { "## Summary\nok" },
+        val diarizeHook: (AudioInput) -> Unit = {},
         thermal: ThermalPolicy = NoOpThermalPolicy,
         opusDecoder: (() -> dev.velum.ai.audio.OpusDecoder)? = null,
     ) {
@@ -75,8 +76,10 @@ class RecordingProcessorDecodeCleanupTest {
         }
         private val diar = object : Diarizer {
             override val engineId = "noop"
-            override suspend fun diarize(input: AudioInput, modelId: String) =
-                DiarizationResult(spans = emptyList(), engineId = engineId, modelId = modelId)
+            override suspend fun diarize(input: AudioInput, modelId: String): DiarizationResult {
+                this@Harness.diarizeHook(input)
+                return DiarizationResult(spans = emptyList(), engineId = engineId, modelId = modelId)
+            }
         }
         private val llm = object : LlmEngine {
             override val engineId = "noop"
@@ -143,6 +146,146 @@ class RecordingProcessorDecodeCleanupTest {
         assertEquals(16_000, captured[0].sampleRateHz)
         assertContentEquals(pcm, captured[0].bytes)
         assertFalse(spillDir("rec-86-wav").exists(), "temp PCM removed after success")
+    }
+
+    /** Writes a mono 16 kHz WAV of [seconds] straight to disk (never whole on the heap): header, then 1 s slices. */
+    private fun writeWav(file: File, seconds: Int, rate: Int = 16_000) {
+        val dataLen = seconds * rate * 2
+        val header = wav(ByteArray(0), rate) // header bytes up to and including "data" + len 0
+        val prefix = header.copyOf(header.size - 8) // up to just before the data chunk header
+        val riffBody = prefix.size - 8 + 8 + dataLen
+        file.outputStream().buffered(256 * 1024).use { out ->
+            out.write(prefix.copyOf().also { System.arraycopy(le32(riffBody), 0, it, 4, 4) })
+            out.write("data".toByteArray()); out.write(le32(dataLen))
+            val second = ByteArray(rate * 2) { (it % 251).toByte() }
+            repeat(seconds) { out.write(second) }
+        }
+    }
+
+    private class HeapPeaks(var asr: Long = 0, var diarization: Long = 0, var copy: Long = 0, var asrCalls: Int = 0, var diarizationBytes: Int = -1, var diarizationRate: Int = -1)
+
+    /**
+     * Retained heap above the pre-run baseline while a [seconds]-long WAV is processed. A background sampler (the
+     * same technique as HeapVsDurationDecodeTest) covers the whole run including the copy to disk, and hooks sample
+     * at each ASR window and when diarization receives its audio. Peaks are kept apart so the one deliberate
+     * diarization array cannot hide growth anywhere else.
+     */
+    private fun heapProcessingWav(seconds: Int, rate: Int = 16_000): HeapPeaks = runBlocking {
+        val src = File.createTempFile("velum-86-heap", ".wav").apply { deleteOnExit() }
+        val rt = Runtime.getRuntime()
+        val peaks = HeapPeaks()
+        val overall = java.util.concurrent.atomic.AtomicLong(0L)
+        val running = java.util.concurrent.atomic.AtomicBoolean(false)
+        var sampler: Thread? = null
+        try {
+            writeWav(src, seconds, rate)
+            val h = Harness(
+                { input ->
+                    java.lang.ref.Reference.reachabilityFence(input)
+                    System.gc(); peaks.asrCalls++
+                    peaks.asr = maxOf(peaks.asr, rt.totalMemory() - rt.freeMemory() - heapBaseline)
+                    java.lang.ref.Reference.reachabilityFence(input)
+                },
+                diarizeHook = { input ->
+                    System.gc()
+                    peaks.diarization = maxOf(peaks.diarization, rt.totalMemory() - rt.freeMemory() - heapBaseline)
+                    peaks.diarizationBytes = input.bytes.size
+                    peaks.diarizationRate = input.sampleRateHz
+                    java.lang.ref.Reference.reachabilityFence(input)
+                },
+            )
+            h.insert("rec-86-heap-$seconds", src)
+            System.gc()
+            heapBaseline = rt.totalMemory() - rt.freeMemory()
+            running.set(true)
+            sampler = Thread {
+                while (running.get()) {
+                    System.gc()
+                    overall.accumulateAndGet(rt.totalMemory() - rt.freeMemory() - heapBaseline) { x, y -> maxOf(x, y) }
+                    Thread.sleep(20)
+                }
+            }.apply { isDaemon = true; start() }
+            val events = h.processor.process("rec-86-heap-$seconds", templateId = "velum.meeting", apiModelOverride = API).toList()
+            assertTrue(events.last() is JobProgress.Succeeded, "last=${events.last()}")
+        } finally {
+            running.set(false)
+            sampler?.join(5_000)
+            src.delete()
+        }
+        peaks.copy = overall.get()
+        peaks
+    }
+
+    @Volatile private var heapBaseline = 0L
+
+    @Test
+    fun wav_processing_heap_stays_bounded_as_the_recording_gets_longer() {
+        val forty = heapProcessingWav(40 * 60)
+        val ninety = heapProcessingWav(90 * 60) // ~165 MiB of PCM on disk
+        println(
+            "wav-process heap KiB: 40min asr=${forty.asr shr 10} diar=${forty.diarization shr 10} overall=${forty.copy shr 10}; " +
+                "90min asr=${ninety.asr shr 10} diar=${ninety.diarization shr 10} overall=${ninety.copy shr 10}; " +
+                "asr calls ${forty.asrCalls}/${ninety.asrCalls}",
+        )
+        // The hooks really ran: windows of the whole recording reached ASR, and diarization got its 30 min array.
+        assertTrue(forty.asrCalls > 1 && ninety.asrCalls > forty.asrCalls, "ASR windows: ${forty.asrCalls} / ${ninety.asrCalls}")
+        assertEquals(DIARIZATION_MAX_BYTES, forty.diarizationBytes)
+        assertEquals(DIARIZATION_MAX_BYTES, ninety.diarizationBytes)
+        // ASR windows (and the copy to disk) stay small; only the diarization array is large, and it is capped.
+        assertTrue(ninety.asr < 8L shl 20, "ASR stage retained ${ninety.asr shr 20} MiB")
+        assertTrue(ninety.diarization < 72L shl 20, "diarization stage retained ${ninety.diarization shr 20} MiB")
+        assertTrue(ninety.diarization - forty.diarization < 12L shl 20, "diarization heap grew with duration")
+        // Whole-run peak (sampled during the copy too): the 30 min array plus a small margin, never the full PCM.
+        assertTrue(ninety.copy < 72L shl 20, "whole-run peak ${ninety.copy shr 20} MiB (full PCM is ~165 MiB)")
+    }
+
+    @Test
+    fun diarization_array_is_capped_in_bytes_not_only_in_seconds_at_48_khz() {
+        // 11 min at 48 kHz mono = 63.4 MB of PCM (spills); 30 min in seconds would be 172.8 MB.
+        val peaks = heapProcessingWav(11 * 60, rate = 48_000)
+        assertEquals(48_000, peaks.diarizationRate)
+        assertEquals(DIARIZATION_MAX_BYTES, peaks.diarizationBytes)
+    }
+
+    @Test
+    fun a_wav_chunk_size_of_0xFFFFFFF8_cannot_hang_the_job() {
+        // "JUNK" with size 0xFFFFFFF8 (-8 as a signed Int) makes a signed walk stay on the same offset forever.
+        val fmt = "fmt ".toByteArray() + le32(16) + le16(1) + le16(1) + le32(16_000) + le32(32_000) + le16(2) + le16(16)
+        val junk = "JUNK".toByteArray() + byteArrayOf(0xF8.toByte(), 0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte())
+        val body = "WAVE".toByteArray() + fmt + junk + ByteArray(4_000)
+        val bytes = "RIFF".toByteArray() + le32(body.size) + body
+        val src = tempAudio(".wav", bytes)
+        var last: JobProgress? = null
+        val worker = Thread {
+            val h = Harness({ error("ASR must not run") })
+            runBlocking {
+                h.insert("rec-86-hang", src)
+                last = h.processor.process("rec-86-hang", templateId = "velum.meeting", apiModelOverride = API).toList().last()
+            }
+        }.apply { isDaemon = true; start() }
+        worker.join(20_000)
+        assertFalse(worker.isAlive, "the WAV chunk walk did not terminate")
+        assertEquals(WAV_NO_DATA_MESSAGE, (last as JobProgress.Failed).message)
+        assertContentEquals(bytes, src.readBytes(), "source recording preserved")
+    }
+
+    @Test
+    fun wav_without_a_data_chunk_fails_explicitly_cleans_temp_pcm_and_keeps_source() = runBlocking {
+        // Valid RIFF/WAVE and fmt chunks, but no data chunk: nothing to decode, and it must not be read as PCM.
+        val fmt = "fmt ".toByteArray() + le32(16) + le16(1) + le16(1) + le32(16_000) + le32(32_000) + le16(2) + le16(16)
+        val junk = "LIST".toByteArray() + le32(8) + ByteArray(8)
+        val body = "WAVE".toByteArray() + fmt + junk + ByteArray(2_000) // trailing bytes that are not a chunk
+        val bytes = "RIFF".toByteArray() + le32(body.size) + body
+        var asrRan = false
+        val h = Harness({ asrRan = true })
+        val src = tempAudio(".wav", bytes)
+        h.insert("rec-86-nodata", src)
+        val events = h.processor.process("rec-86-nodata", templateId = "velum.meeting", apiModelOverride = API).toList()
+        assertEquals(WAV_NO_DATA_MESSAGE, (events.last() as JobProgress.Failed).message)
+        assertFalse(asrRan, "ASR must not run on a WAV with no audio")
+        assertEquals("failed", h.repo.getRecording("rec-86-nodata")!!.status)
+        assertFalse(spillDir("rec-86-nodata").exists())
+        assertContentEquals(bytes, src.readBytes(), "source recording preserved")
     }
 
     @Test

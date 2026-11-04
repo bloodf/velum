@@ -190,8 +190,11 @@ class RecordingProcessor(
                         val wideLen = fileLen.coerceAtMost(2L * 1024 * 1024).toInt()
                         header = locateWavPcmHeader(src.readRange(0, wideLen), fileLen)
                     }
+                    // No data chunk in the first 2 MiB: reading the file from byte 44 as PCM would give a noise
+                    // transcript and a "successful" job.
+                    require(header.dataStart >= 0) { WAV_NO_DATA_MESSAGE }
                     sampleRate = header.sampleRateHz
-                    val pcmStart = if (header.dataStart >= 0) header.dataStart.toLong() else 44L
+                    val pcmStart = header.dataStart.toLong()
                     val pcmLen = if (header.dataSize >= 0) {
                         header.dataSize.toLong().coerceAtMost(fileLen - pcmStart)
                     } else {
@@ -286,12 +289,14 @@ class RecordingProcessor(
                             settings.resolveApiModel(AiApiTask.Diarization, apiModelOverride).modelId
                     }
                     val diarization = try {
-                        // Prefer in-memory buffer; for spilled PCM diarize the first 30 min window
-                        // (full-buffer diarizers cannot take multi-hour arrays without OOM).
+                        // Prefer in-memory buffer; for spilled PCM diarize a leading window of at most 30 min and at
+                        // most DIARIZATION_MAX_BYTES (30 min at 16 kHz mono, so 10 min at 48 kHz): full-buffer
+                        // diarizers cannot take multi-hour arrays without OOM.
                         val diarBytes = pcmBuffer.asFullArrayOrNull()
                             ?: pcmBuffer.slice(
                                 0,
                                 WindowedAsr.pcmWindowBytes(sampleRate, 30 * 60)
+                                    .coerceAtMost(DIARIZATION_MAX_BYTES)
                                     .coerceAtMost(pcmBuffer.sizeBytes.toInt()),
                             )
                         diar.diarize(
@@ -645,29 +650,30 @@ class RecordingProcessor(
      */
     private fun locateWavPcmHeader(probe: ByteArray, fileLength: Long): WavPcmHeader {
         if (!looksLikeWav(probe)) return WavPcmHeader(-1, -1, 16_000)
-        var offset = 12
+        // Chunk sizes are unsigned 32-bit: read as a signed Int, 0xFFFFFFF8 is -8 and the walk would never advance.
+        var offset = 12L
         var sampleRate = 16_000
         while (offset + 8 <= probe.size) {
-            val id = fourCc(probe, offset)
-            val size = u32le(probe, offset + 4)
+            val at = offset.toInt()
+            val id = fourCc(probe, at)
+            val size = u32le(probe, at + 4).toLong() and 0xFFFF_FFFFL
             val body = offset + 8
             when (id) {
                 "fmt " -> {
                     if (body + 16 <= probe.size) {
-                        sampleRate = u32le(probe, body + 4)
+                        sampleRate = u32le(probe, body.toInt() + 4)
                     }
                 }
                 "data" -> {
                     val maxSize = (fileLength - body).coerceAtLeast(0L).coerceAtMost(Int.MAX_VALUE.toLong())
                     return WavPcmHeader(
-                        dataStart = body,
-                        dataSize = size.toLong().coerceAtMost(maxSize).toInt(),
+                        dataStart = body.toInt(),
+                        dataSize = size.coerceAtMost(maxSize).toInt(),
                         sampleRateHz = sampleRate,
                     )
                 }
             }
             offset = body + size + (size % 2)
-            if (offset < 0) break // overflow guard
         }
         return WavPcmHeader(-1, -1, sampleRate)
     }
@@ -759,6 +765,17 @@ class RecordingProcessor(
         }
     }
 }
+
+/** The WAV file has a RIFF/WAVE header but no `data` chunk where one can be read, so it holds no audio to decode. */
+internal const val WAV_NO_DATA_MESSAGE =
+    "Unsupported audio format (WAV without audio data). The file looks damaged, so it was not transcribed; " +
+        "re-download it from the device or convert it to WAV or Ogg Opus."
+
+/**
+ * Upper bound, in bytes, of the one heap array diarization receives: 30 minutes of 16 kHz mono PCM. Seconds alone
+ * would let a 48 kHz recording ask for 172.8 MB.
+ */
+internal const val DIARIZATION_MAX_BYTES: Int = 30 * 60 * 16_000 * 2
 
 /** Plain error for audio whose container is recognised but not decoded by this path. */
 internal fun unsupportedAudioMessage(container: String) =
