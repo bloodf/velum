@@ -124,6 +124,45 @@ class GattArchitectureTest {
         assertTrue(offenders.isEmpty(), "Raw GATT write API referenced outside :ble: $offenders")
     }
 
+    // KableBleTransport is not run by any test here (it needs a radio), so its two write checks are pinned by source.
+    private val kableWriteChecks = listOf("requireTransportAllowed(write)", "requireSameLink(write.linkGeneration,")
+
+    /** Checks absent from the body of writeRaw, or after its send. Comments don't count, nor do calls in other functions. */
+    private fun missingWriteChecks(source: String): List<String> {
+        val code = source.replace(Regex("//.*"), "")
+        val start = code.indexOf("override suspend fun writeRaw(")
+        if (start < 0) return kableWriteChecks
+        val open = code.indexOf('{', start)
+        var depth = 0
+        var end = open
+        while (end < code.length) {
+            if (code[end] == '{') depth++
+            if (code[end] == '}' && --depth == 0) break
+            end++
+        }
+        val body = code.substring(open, end)
+        val send = body.indexOf("p.write(").let { if (it < 0) body.length else it }
+        return kableWriteChecks.filter { check -> body.indexOf(check).let { it < 0 || it > send } }
+    }
+
+    @Test
+    fun writeCheckDetector_scopesToWriteRaw_andIgnoresComments() {
+        val both = "requireTransportAllowed(write)\n requireSameLink(write.linkGeneration, g)\n p.write(c, b, t)"
+        assertTrue(missingWriteChecks("override suspend fun writeRaw(w: W) {\n if (x) { y() }\n $both\n}").isEmpty())
+        assertTrue(missingWriteChecks("fun other() {\n $both\n}\noverride suspend fun writeRaw(w: W) {\n p.write(c, b, t)\n}") == kableWriteChecks)
+        assertTrue(missingWriteChecks("override suspend fun writeRaw(w: W) {\n p.write(c, b, t)\n}\nfun later() {\n $both\n}") == kableWriteChecks)
+        assertTrue(missingWriteChecks("override suspend fun writeRaw(w: W) {\n // requireTransportAllowed(write)\n requireSameLink(write.linkGeneration, g)\n p.write(c, b, t)\n}") == kableWriteChecks.take(1))
+        assertTrue(missingWriteChecks("override suspend fun writeRaw(w: W) {\n requireTransportAllowed(write)\n p.write(c, b, t)\n requireSameLink(write.linkGeneration, g)\n}") == kableWriteChecks.drop(1))
+        assertTrue(missingWriteChecks("class NoWriteRaw") == kableWriteChecks)
+    }
+
+    @Test
+    fun kableWriteRaw_runsBothChecksBeforeItSends() {
+        val source = File(repoRoot(), "ble/src/mobileMain/kotlin/dev/velum/ble/KableBleTransport.kt").readText()
+        val missing = missingWriteChecks(source)
+        assertTrue(missing.isEmpty(), "KableBleTransport.writeRaw must run these before p.write: $missing")
+    }
+
     @Test
     fun onlyBleModuleDeclaresKable() {
         val root = repoRoot()
