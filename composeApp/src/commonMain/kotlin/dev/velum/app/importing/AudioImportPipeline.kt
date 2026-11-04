@@ -38,12 +38,14 @@ class AudioImportPipeline(
         source: String = "import",
         titleHint: String? = null,
         startedAtEpochSeconds: Long? = null,
-    ): ImportResult = container.wipeGate.guard { importNow(absolutePath, source, titleHint, startedAtEpochSeconds) }
+        /** Set for a share re-offered after a restart: a recording deleted since then must not come back. */
+        recoveredAtMs: Long? = null,
+    ): ImportResult = container.wipeGate.guard { importNow(absolutePath, source, titleHint, startedAtEpochSeconds, recoveredAtMs) }
         // A wipe in progress refuses or stops the import before it creates a recording.
         ?: ImportResult.Failed(WIPE_IN_PROGRESS)
 
     /** A file shared into the app: its cache copy is deleted when a wipe refuses the import, so it can't outlive the wipe. */
-    suspend fun importShared(copyPath: String): ImportResult = importFile(copyPath, source = "share").also { result ->
+    suspend fun importShared(copyPath: String, recoveredAtMs: Long? = null): ImportResult = importFile(copyPath, source = "share", recoveredAtMs = recoveredAtMs).also { result ->
         if (result == ImportResult.Failed(WIPE_IN_PROGRESS)) withContext(Dispatchers.IO) { deleteFileAtPath(copyPath) }
     }
 
@@ -57,14 +59,26 @@ class AudioImportPipeline(
      * Starts the owned import and returns it. Imports of shares are serialized by the container's mutex, so the same file
      * shared twice, even from two activity instances, is a Duplicate rather than two recordings and two processing jobs.
      */
-    fun startSharedDetached(copyPath: String): kotlinx.coroutines.Deferred<ImportResult> =
-        container.runDetached { container.shareImportMutex.withLock { importShared(copyPath) } }
+    fun startSharedDetached(copyPath: String, recoveredAtMs: Long? = null): kotlinx.coroutines.Deferred<ImportResult> =
+        container.runDetached {
+            try {
+                container.shareImportMutex.withLock {
+                    // Counted before any work, durably: a native decoder crash or a kill never reaches the finally below.
+                    dev.velum.app.platform.markShareAttempt(copyPath)
+                    importShared(copyPath, recoveredAtMs)
+                }
+            } finally {
+                // Only reached when this process lives to the end of the import: a death before it leaves the marker for the next start.
+                dev.velum.app.platform.markShareHandled(copyPath)
+            }
+        }
 
     private suspend fun importNow(
         absolutePath: String,
         source: String,
         titleHint: String?,
         startedAtEpochSeconds: Long?,
+        recoveredAtMs: Long?,
     ): ImportResult = withContext(Dispatchers.Default) {
         runCatching {
             val name = absolutePath.substringAfterLast('/')
@@ -79,8 +93,13 @@ class AudioImportPipeline(
                 return@withContext ImportResult.Duplicate(existingBySource, sourceHash)
             }
             if (source == WATCHED_SOURCE && wasDeleted(sourceHash)) return@withContext ImportResult.Deleted(sourceHash)
+            if (recoveredAtMs != null && deletedSince(sourceHash, recoveredAtMs)) return@withContext ImportResult.Deleted(sourceHash)
             val normalized = normalize(absolutePath)
             val contentHash = normalized.contentSha256
+            if (recoveredAtMs != null && deletedSince(contentHash, recoveredAtMs)) {
+                discardNormalized(normalized.wavPath, keptBy = null)
+                return@withContext ImportResult.Deleted(contentHash)
+            }
             val existingByContent = importedRecording(contentHash)
             if (existingByContent != null) {
                 // Same audio after normalize — also record source hash for next lookup.
@@ -148,6 +167,12 @@ class AudioImportPipeline(
         val keptPath = keptBy?.let { container.repository.getRecording(it)?.local_path }
         if (keptPath != null && isSamePath(keptPath, wavPath)) return
         withContext(Dispatchers.IO) { deleteFileAtPath(wavPath) }
+    }
+
+    /** True when [hash] was deleted at or after [sinceMs] (tombstone values are epoch seconds). */
+    private suspend fun deletedSince(hash: String, sinceMs: Long): Boolean {
+        val at = container.repository.getMeta(IMPORT_DELETED_PREFIX + hash)?.toLongOrNull() ?: return false
+        return at * 1000 >= sinceMs / 1000 * 1000
     }
 
     private suspend fun wasDeleted(hash: String) = container.repository.getMeta(IMPORT_DELETED_PREFIX + hash) != null
