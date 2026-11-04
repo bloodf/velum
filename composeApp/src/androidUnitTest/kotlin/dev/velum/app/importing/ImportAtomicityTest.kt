@@ -7,6 +7,7 @@ import dev.velum.ai.local.ModelStoreDir
 import dev.velum.ai.pipeline.RecordingJobScheduler
 import dev.velum.app.di.AppContainer
 import dev.velum.app.platform.NormalizedAudio
+import dev.velum.app.platform.installAppContext
 import dev.velum.core.data.DriverFactory
 import dev.velum.core.security.InMemorySecureStore
 import java.io.File
@@ -17,6 +18,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -33,6 +35,7 @@ class ImportAtomicityTest {
     private fun withContainer(block: suspend (AppContainer, File) -> Unit) {
         val context = ApplicationProvider.getApplicationContext<Context>()
         context.deleteDatabase("velum.db")
+        installAppContext(context)
         val root = ModelStoreDir(Files.createTempDirectory("velum-atomic").toString())
         val container = AppContainer(
             InMemorySecureStore(), DriverFactory(context), modelStoreRoot = root,
@@ -86,5 +89,27 @@ class ImportAtomicityTest {
         assertEquals(0, container.repository.storageUsage().recordingCount, "the deleted recording came back")
         assertNotNull(container.repository.getMeta("import_deleted_$sourceHash"), "later syncs would decode this copy again")
         assertFalse(wav.exists(), "the refused copy was left behind")
+    }
+
+    @Test fun a_watched_loser_hands_its_app_copy_to_the_recording_that_won() = withContainer { container, dir ->
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val copy = File(context.cacheDir, "imports/watched/loser.wav").apply { parentFile!!.mkdirs(); writeBytes(ByteArray(64) { it.toByte() }) }
+        val sourceHash = dev.velum.app.platform.sha256File(copy.path)
+        val winnerWav = File(dir, "winner.wav").apply { writeBytes(ByteArray(64)) }
+        val loserWav = File(dir, "loser-normalized.wav").apply { writeBytes(ByteArray(64)) }
+        val pipeline = AudioImportPipeline(container, normalize = {
+            // Another import of the same file wins while this one normalizes: the early content check will not
+            // see it (only the source key exists), so the loss is decided inside the transaction.
+            container.repository.insertRecordingUnlessKeyed(
+                id = "rec-winner", title = "Synthetic", source = WATCHED_SOURCE, startedAt = 1, durationSeconds = 1,
+                localPath = winnerWav.path, status = "queued", keys = listOf("import_sha256_$sourceHash"),
+            )
+            NormalizedAudio(loserWav.path, 16_000, 1_000, null, "synthetic-content-hash")
+        })
+        val result = pipeline.importFile(copy.path, source = WATCHED_SOURCE)
+        assertEquals(ImportResult.Duplicate("rec-winner", "synthetic-content-hash"), result)
+        assertEquals(listOf(copy.path), container.repository.importCopies("rec-winner"), "the copy would outlive a permanent delete")
+        assertFalse(loserWav.exists(), "the loser's normalized audio was left behind")
+        assertTrue(winnerWav.exists(), "the winner's audio was removed")
     }
 }
