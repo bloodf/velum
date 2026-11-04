@@ -1,5 +1,6 @@
 package dev.velum.app.di
 
+import dev.velum.ai.pipeline.resolveTemplateForEnqueue
 import dev.velum.ai.createOpenAiCompatibleClient
 import dev.velum.ai.engine.AiTaskRouter
 import dev.velum.ai.local.LocalDiarizer
@@ -29,6 +30,8 @@ import dev.velum.app.platform.ExportFolderResult
 import dev.velum.app.platform.ExportFolderStore
 import dev.velum.app.platform.clearWatchedFolders
 import dev.velum.app.platform.deleteImportCopies
+import dev.velum.app.platform.deleteShareExports
+import dev.velum.app.platform.releaseFolderGrants
 import dev.velum.app.platform.writeMarkdownToExportFolder
 import dev.velum.core.integrations.MarkdownNoteExport
 import dev.velum.app.platform.MicCapture
@@ -315,12 +318,16 @@ class AppContainer(
                 val downloads = device.wipePartialDownloads()
                 deviceKeyImporter.clearKeys()
                 stopMicCapture()
+                // Only now: if an earlier step fails, recordings stay and still need their queued work.
+                recordingJobs.cancelAll()
                 repository.wipeAllUserData { path -> deleteFileAtPath(path) }
                 withContext(Dispatchers.IO) {
                     voiceProfileStore.wipeAll()
                     clearWatchedFolders()
                     deleteImportCopies()
+                    deleteShareExports()
                     ExportFolderStore.clear()
+                    releaseFolderGrants()
                 }
                 settingsRepository.clearAllApiKeys()
                 webhookSettings.clear()
@@ -457,7 +464,7 @@ class AppContainer(
         )
         enqueueProcessing(
             recordingId = id,
-            templateId = match?.template_id,
+            templateId = resolveTemplateForEnqueue(repository, match?.template_id),
             retranscribe = true,
             apiModelOverride = match?.let { AutoFlowResolve.modelOverride(it) },
         )

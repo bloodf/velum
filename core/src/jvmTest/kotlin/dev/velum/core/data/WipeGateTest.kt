@@ -9,10 +9,14 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -68,6 +72,89 @@ class WipeGateTest {
     @Test fun a_failed_wipe_reopens_the_gate() = runBlocking {
         val gate = WipeGate()
         assertFailsWith<IllegalStateException> { gate.wiping(1.seconds) { error("synthetic wipe failure") } }
+        assertEquals(1, gate.guard { 1 })
+    }
+
+    @Test fun a_cancellation_that_is_not_from_a_wipe_is_rethrown() {
+        val gate = WipeGate()
+        assertFailsWith<CancellationException> {
+            runBlocking { gate.guard { throw CancellationException("synthetic cancel") } }
+        }
+    }
+
+    @Test fun a_cancelled_caller_stays_cancelled_without_a_wipe() = runBlocking {
+        val gate = WipeGate()
+        val started = CompletableDeferred<Unit>()
+        var continued = false
+        val caller = launch(Dispatchers.Default) {
+            gate.guard { started.complete(Unit); awaitCancellation() }
+            continued = true
+        }
+        started.await()
+        caller.cancelAndJoin()
+        assertTrue(caller.isCancelled)
+        assertFalse(continued, "the caller carried on after its own cancellation")
+    }
+
+    @Test fun a_caller_cancelled_during_a_wipe_stays_cancelled() = runBlocking {
+        val gate = WipeGate()
+        val started = CompletableDeferred<Unit>()
+        val unwinding = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        var continued = false
+        val caller = launch(Dispatchers.Default) {
+            gate.guard {
+                try {
+                    started.complete(Unit)
+                    awaitCancellation()
+                } finally {
+                    withContext(NonCancellable) { unwinding.complete(Unit); release.await() }
+                }
+            }
+            continued = true
+        }
+        started.await()
+        val wipe = async(Dispatchers.Default) { gate.wiping(10.seconds) { it } }
+        unwinding.await() // the wipe has cancelled the work, which is still unwinding
+        caller.cancel() // and now the outer scope is cancelled too
+        release.complete(Unit)
+        assertTrue(wipe.await())
+        caller.join()
+        assertTrue(caller.isCancelled)
+        assertFalse(continued, "the caller's own cancellation was swallowed as a wipe")
+    }
+
+    @Test fun a_refused_caller_cancelled_during_a_wipe_stays_cancelled() = runBlocking {
+        val gate = WipeGate()
+        val wiping = CompletableDeferred<Unit>()
+        val finish = CompletableDeferred<Unit>()
+        val wipe = async(Dispatchers.Default) { gate.wiping(1.seconds) { wiping.complete(Unit); finish.await() } }
+        wiping.await()
+        var ran = false
+        var continued = false
+        val caller = launch(Dispatchers.Default) {
+            cancel()
+            gate.guard { ran = true }
+            continued = true
+        }
+        caller.join()
+        finish.complete(Unit)
+        wipe.await()
+        assertFalse(ran)
+        assertFalse(continued)
+    }
+
+    @Test fun work_a_wipe_cancels_leaves_no_trace_for_later_work() = runBlocking {
+        val gate = WipeGate()
+        val started = CompletableDeferred<Unit>()
+        val caller = launch(Dispatchers.Default) {
+            assertNull(gate.guard { started.complete(Unit); awaitCancellation() })
+        }
+        started.await()
+        gate.wiping(5.seconds) { }
+        caller.join()
+        // After the wipe, a cancellation is the work's own again.
+        assertFailsWith<CancellationException> { gate.guard { throw CancellationException("synthetic cancel") } }
         assertEquals(1, gate.guard { 1 })
     }
 }

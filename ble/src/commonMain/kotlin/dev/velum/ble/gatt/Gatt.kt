@@ -66,6 +66,22 @@ object GattProfiles {
         notify = listOf(POCKET_AUDIO_DATA, POCKET_REPLIES, POCKET_BATTERY_LEVEL),
         writes = emptyMap(),
     )
+
+    val LIMITLESS_RX = GattChar(OmiUuids.LIMITLESS_SERVICE, OmiUuids.LIMITLESS_RX)
+    val LIMITLESS_TX = GattChar(OmiUuids.LIMITLESS_SERVICE, OmiUuids.LIMITLESS_TX)
+
+    /**
+     * Limitless pendant (UUIDs: `OmiUuids.kt` LIMITLESS_*; packet shape: `LimitlessProtocol.kt`, "every RX
+     * notification is a BLE wrapper protobuf"): the app receives protobuf BLE wrappers as notifications on RX. It declares NO writable characteristic, so [GuardedLink] rejects every write
+     * under this profile, including to TX (taken to be the command channel from its name and the #18 notes; there is no explicit
+     * in-repo source for that mapping, and the published clients are said to send storage-delete and pairing there). No driver is wired to this profile and whether to build one is the owner's decision (#18);
+     * the profile only fixes the addresses and the "no writes" rule.
+     */
+    val Limitless = GattProfile(
+        id = "limitless",
+        notify = listOf(LIMITLESS_RX),
+        writes = emptyMap(),
+    )
 }
 
 /**

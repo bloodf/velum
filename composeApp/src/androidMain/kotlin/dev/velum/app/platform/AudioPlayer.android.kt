@@ -62,17 +62,19 @@ private class AndroidAudioPlayer : AudioPlayer {
     override val skipSilence: StateFlow<Boolean> = _skipSilence.asStateFlow()
 
     override suspend fun prepare(path: String): Boolean = withContext(Dispatchers.IO) {
-        releasePlayerOnly()
-        _isPlaying.value = false
-        _positionMs.value = 0L
-        _durationMs.value = 0L
+        // State is written on the main thread only: a collector's recomposition can run on the writing thread
+        // (the Compose test dispatcher does), and a ripple or animator touched there fails off a Looper (#345).
         // The skip-silence fields belong to Main (the poll runs there), so they are reset there too.
-        withContext(Dispatchers.Main.immediate) {
+        onMain {
+            _isPlaying.value = false
+            _positionMs.value = 0L
+            _durationMs.value = 0L
             skipScan?.cancel() // a scan of the previous file must not seek this one
             skipScan = null
             wavFile = null
             wavSource = null
         }
+        releasePlayerOnly()
         if (path.isBlank()) {
             return@withContext false
         }
@@ -80,8 +82,10 @@ private class AndroidAudioPlayer : AudioPlayer {
         if (!file.isFile || !file.canRead()) {
             return@withContext false
         }
+        var created: MediaPlayer? = null
         try {
             val mp = MediaPlayer()
+            created = mp
             mp.setDataSource(path)
             mp.setOnCompletionListener {
                 _isPlaying.value = false
@@ -96,7 +100,8 @@ private class AndroidAudioPlayer : AudioPlayer {
             mp.prepare()
             applySpeed(mp, speed)
             player = mp
-            _durationMs.value = mp.duration.coerceAtLeast(0).toLong()
+            val durationMs = mp.duration.coerceAtLeast(0).toLong()
+            onMain { _durationMs.value = durationMs }
             if (path.endsWith(".wav", ignoreCase = true) ||
                 path.endsWith(".wave", ignoreCase = true)
             ) {
@@ -104,11 +109,18 @@ private class AndroidAudioPlayer : AudioPlayer {
                 withContext(Dispatchers.Main.immediate) { wavFile = file }
             }
             true
+        } catch (e: CancellationException) {
+            // A cancel at a Main hop: release only the player this call made, then let the cancel through.
+            runCatching { created?.release() }
+            if (player === created) player = null
+            throw e
         } catch (_: Throwable) {
             releasePlayerOnly()
             false
         }
     }
+
+    private suspend fun onMain(block: () -> Unit) = withContext(Dispatchers.Main.immediate) { block() }
 
     override fun play() {
         val mp = player ?: return
