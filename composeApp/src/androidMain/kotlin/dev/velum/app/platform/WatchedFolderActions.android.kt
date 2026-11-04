@@ -1,5 +1,6 @@
 package dev.velum.app.platform
 
+import android.content.Intent
 import androidx.compose.runtime.Composable
 import dev.velum.app.importing.AudioImportPipeline
 import dev.velum.app.importing.ImportResult
@@ -36,4 +37,17 @@ actual fun watchedFolderCount(): Int {
 actual fun clearWatchedFolders() {
     val context = appContextOrNull() ?: return
     WatchedFolderStore.clear(context)
+}
+
+actual fun releaseFolderGrants() {
+    val resolver = appContextOrNull()?.contentResolver ?: return
+    resolver.persistedUriPermissions.toList().forEach { grant ->
+        val flags = (if (grant.isReadPermission) Intent.FLAG_GRANT_READ_URI_PERMISSION else 0) or
+            (if (grant.isWritePermission) Intent.FLAG_GRANT_WRITE_URI_PERMISSION else 0)
+        // A grant the provider already dropped must not stop the rest of the wipe.
+        try {
+            resolver.releasePersistableUriPermission(grant.uri, flags)
+        } catch (_: SecurityException) {
+        }
+    }
 }

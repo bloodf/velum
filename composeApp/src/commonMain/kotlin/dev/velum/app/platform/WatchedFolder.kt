@@ -16,3 +16,6 @@ expect fun watchedFolderCount(): Int
 
 /** Forget all watched-folder trees. No-op when none / unsupported. */
 expect fun clearWatchedFolders()
+
+/** Gives up every folder access the user granted (watched and export folders). No-op when unsupported. */
+expect fun releaseFolderGrants()

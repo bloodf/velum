@@ -1,5 +1,6 @@
 package dev.velum.app.importing
 
+import dev.velum.ai.pipeline.resolveTemplateForEnqueue
 import dev.velum.app.di.AppContainer
 import dev.velum.core.autoflow.AutoFlowResolve
 import dev.velum.app.platform.AudioNormalizer
@@ -113,7 +114,7 @@ class AudioImportPipeline(
             )
             container.enqueueProcessing(
                 recordingId = id,
-                templateId = match?.template_id,
+                templateId = resolveTemplateForEnqueue(container.repository, match?.template_id),
                 retranscribe = true,
                 apiModelOverride = match?.let { AutoFlowResolve.modelOverride(it) },
             )

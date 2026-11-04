@@ -104,6 +104,8 @@ class VelumApplication : Application() {
                     repository = built.repository,
                     settings = built.settingsRepository,
                 )
+                // A cold-process job reads this before the runtime is installed (#348); saved only once settings loaded.
+                appScope.launch { dev.velum.ai.pipeline.keepAppLanguageHint(appContext, built.settingsRepository) }
                 // Channel names are stored by the system; re-publish them when the in-app language changes.
                 appScope.launch {
                     built.settingsRepository.preferences.map { it.appLanguage }.distinctUntilChanged().collect {
