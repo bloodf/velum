@@ -7,6 +7,7 @@ import dev.velum.app.platform.DownloadNotifyKind
 import dev.velum.app.platform.DownloadProgressNotifier
 import dev.velum.app.platform.PartialTransfer
 import dev.velum.app.platform.deleteAllPartialTransfers
+import dev.velum.app.platform.deletePartialTransfer as defaultDeletePartialTransfer
 import dev.velum.app.platform.openPartialTransfer as defaultOpenPartialTransfer
 import dev.velum.app.platform.systemLanguageTag
 import dev.velum.ble.BleConnectionState
@@ -104,6 +105,7 @@ class DeviceViewModel(
     private val librarySessionIds: suspend (sessionIds: List<Long>, deviceSerial: String?) -> Set<Long> = { _, _ -> emptySet() },
     private val openPartialTransfer: (sessionId: Long, deviceSerial: String?) -> PartialTransfer? = ::defaultOpenPartialTransfer,
     private val deletePartialTransfers: () -> Unit = ::deleteAllPartialTransfers,
+    private val deletePartialTransfer: (sessionId: Long, deviceSerial: String?) -> Boolean = ::defaultDeletePartialTransfer,
     private val wipeJoinTimeout: Duration = 15.seconds,
 ) : ViewModel() {
     val connectionState: StateFlow<BleConnectionState> =
@@ -219,11 +221,10 @@ class DeviceViewModel(
 
     /**
      * Removes [sessionId]'s partial, because the audio can be recovered from it, so a later Re-download starts from zero.
-     * False when part of it is still there; throws if it can't be opened. A download still unwinding keeps writing to
-     * the removed file, and what it leaves behind is ignored on the next open.
+     * False when it is still there. A download still unwinding keeps writing to the removed file, and what it leaves
+     * behind is ignored on the next open.
      */
-    fun deletePartialOf(sessionId: Long, deviceSerial: String?): Boolean =
-        openPartialTransfer(sessionId, deviceSerial)?.delete() ?: true
+    fun deletePartialOf(sessionId: Long, deviceSerial: String?): Boolean = deletePartialTransfer(sessionId, deviceSerial)
 
     fun cancelDownload() {
         downloads.cancelChildren()

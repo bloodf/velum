@@ -935,10 +935,9 @@ class DeviceResumeRestartTest {
                             released.complete(Unit)
                         }
 
-                        override fun delete(): Boolean {
-                            val gone = store.delete()
+                        override fun delete() {
+                            store.delete()
                             released.complete(Unit)
-                            return gone
                         }
                     }
                 },

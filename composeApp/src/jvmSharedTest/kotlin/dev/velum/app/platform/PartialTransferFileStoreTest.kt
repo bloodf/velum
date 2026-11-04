@@ -22,19 +22,54 @@ class PartialTransferFileStoreTest {
     private fun open(session: Long = 1L, serial: String? = "SYNTH-SN-1", checkpointBytes: Int = 1_000) =
         PartialTransferFileStore.open(root, session, serial, checkpointBytes)
 
-    @Test fun delete_reports_whether_the_files_are_gone() {
-        val kept = open()
-        kept.write(ByteArray(10))
-        kept.length()
-        assertTrue(root.setWritable(false), "this test needs a directory it can lock")
+    private fun deleteByName(session: Long = 1L, serial: String? = "SYNTH-SN-1") = PartialTransferFileStore.delete(root, session, serial)
+
+    @Test fun delete_by_name_removes_the_files_and_only_that_session() {
+        open().run { write(ByteArray(10)); length(); setCrcMismatch(true); setReadFailures(1); close() }
+        open(session = 2L).run { write(ByteArray(10)); length(); close() }
+        val other = root.listFiles()!!.filter { it.name.startsWith("2-") }
+
+        assertTrue(deleteByName())
+
+        assertEquals(other.toSet(), root.listFiles()!!.filter { it.name != "serial-key.salt" }.toSet())
+    }
+
+    @Test fun delete_by_name_without_a_serial_finds_the_no_serial_partial() {
+        open(serial = null).run { write(ByteArray(10)); length(); close() }
+        assertTrue(partialFiles().isNotEmpty())
+        assertTrue(deleteByName(serial = null))
+        assertTrue(partialFiles().isEmpty())
+    }
+
+    @Test fun delete_by_name_creates_nothing() {
+        val missing = File(root, "not-created-yet")
+        assertTrue(PartialTransferFileStore.delete(missing, 1L, "SYNTH-SN-1"))
+        assertEquals(false, missing.exists())
+
+        missing.mkdirs()
+        assertTrue(PartialTransferFileStore.delete(missing, 1L, "SYNTH-SN-1"), "no salt: no partial with a serial can exist")
+        assertEquals(emptyList(), missing.listFiles()!!.toList())
+    }
+
+    @Test fun delete_by_name_works_in_a_directory_that_refuses_new_files() {
+        open().delete() // leaves the salt, as after any earlier download
+        assertTrue(root.setWritable(false), "this test needs a directory that refuses new files")
         try {
-            assertEquals(false, kept.delete(), "the directory is locked, so the files stay")
-            assertTrue(partialFiles().isNotEmpty())
+            assertTrue(deleteByName())
         } finally {
             root.setWritable(true)
         }
-        assertEquals(true, open().delete())
-        assertTrue(partialFiles().isEmpty())
+    }
+
+    @Test fun delete_by_name_reports_a_data_file_that_stays() {
+        open().run { write(ByteArray(10)); length(); close() }
+        assertTrue(root.setWritable(false), "this test needs a directory that keeps its files")
+        try {
+            assertEquals(false, deleteByName())
+        } finally {
+            root.setWritable(true)
+        }
+        assertTrue(partialFiles().isNotEmpty())
     }
 
     @Test fun a_writer_still_unwinding_after_a_delete_leaves_nothing_a_later_open_uses() {

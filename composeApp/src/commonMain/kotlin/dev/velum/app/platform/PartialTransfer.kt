@@ -20,8 +20,8 @@ interface PartialTransfer : PartialTransferStore {
 
     fun close()
 
-    /** Close and remove the partial data. False when some of it is still there. */
-    fun delete(): Boolean
+    /** Close and remove the partial data. */
+    fun delete()
 }
 
 /**
@@ -30,6 +30,12 @@ interface PartialTransfer : PartialTransferStore {
  * partial starts empty, so bytes from two devices can never be joined.
  */
 expect fun openPartialTransfer(sessionId: Long, deviceSerial: String?): PartialTransfer?
+
+/**
+ * Removes a session's partial download by name, creating nothing, so it works on a full disk. False when its data
+ * file is still there.
+ */
+expect fun deletePartialTransfer(sessionId: Long, deviceSerial: String?): Boolean
 
 /** Removes partial downloads last touched at least [STALE_PARTIAL_TRANSFER_MS] ago; returns the file count. */
 expect fun sweepStalePartialTransfers(nowEpochMs: Long): Int
