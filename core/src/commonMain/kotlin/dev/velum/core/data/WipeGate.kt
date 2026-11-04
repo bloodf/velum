@@ -18,12 +18,14 @@ import kotlinx.coroutines.withTimeoutOrNull
 class WipeGate {
     private val holds = MutableStateFlow(0)
     private val running = MutableStateFlow<Set<Deferred<*>>>(emptySet())
+    private val cancelledByWipe = MutableStateFlow<Set<Deferred<*>>>(emptySet())
 
     val isWiping: Boolean get() = holds.value > 0
 
     /**
      * Runs [block] unless a wipe is in progress. A wipe cancels [block] without cancelling the caller,
-     * so a long-lived caller (an action collector, a worker) keeps running. Null when refused or cancelled.
+     * so a long-lived caller (an action collector, a worker) keeps running. Null when refused or stopped by a wipe;
+     * any other cancellation reaches the caller as usual.
      */
     suspend fun <T> guard(block: suspend () -> T): T? = coroutineScope {
         val work = async(start = CoroutineStart.LAZY) { block() }
@@ -38,11 +40,13 @@ class WipeGate {
                     work.await()
                 } catch (cancelled: CancellationException) {
                     ensureActive() // the caller itself was cancelled: keep that
+                    if (work !in cancelledByWipe.value) throw cancelled
                     null
                 }
             }
         } finally {
             running.update { it - work }
+            cancelledByWipe.update { it - work }
         }
     }
 
@@ -54,6 +58,7 @@ class WipeGate {
         holds.update { it + 1 }
         try {
             val work = running.value
+            cancelledByWipe.update { it + work }
             work.forEach { it.cancel() }
             val allStopped = withTimeoutOrNull(joinTimeout) { work.forEach { it.join() } } != null
             return block(allStopped)
