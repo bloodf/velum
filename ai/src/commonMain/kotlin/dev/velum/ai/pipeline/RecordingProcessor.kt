@@ -136,7 +136,20 @@ class RecordingProcessor(
     /** Where decoded audio spills, under `tmp/`. The wipe and the startup sweep look here. */
     val pcmSpillRoot: ModelStoreDir = ModelStoreDir(defaultModelStoreRoot().absolutePath),
 ) {
-    private val runs = MutableStateFlow<Map<String, Set<Deferred<*>>>>(emptyMap())
+    private data class Admission(val deleting: Set<String> = emptySet(), val runs: Map<String, Set<Deferred<*>>> = emptyMap())
+    private val admission = MutableStateFlow(Admission())
+
+    fun beginDeletion(recordingId: String): Boolean {
+        while (true) {
+            val current = admission.value
+            if (recordingId in current.deleting) return false
+            if (admission.compareAndSet(current, current.copy(deleting = current.deleting + recordingId))) return true
+        }
+    }
+
+    fun endDeletion(recordingId: String) {
+        admission.update { it.copy(deleting = it.deleting - recordingId) }
+    }
     private val nextRun = MutableStateFlow(0L)
     private val activeRuns = MutableStateFlow<Map<String, Long>>(emptyMap())
     private val statusLock = Mutex()
@@ -153,12 +166,20 @@ class RecordingProcessor(
                 runProcess(recordingId, templateId, retranscribe, apiModelOverride).collect { send(it) }
             }
         }
-        // Registered before it starts, so a delete arriving now still finds it.
-        runs.update { it + (recordingId to (it[recordingId].orEmpty() + run)) }
+        // Registration and deletion admission share one CAS, so a delete sees every accepted run.
+        while (true) {
+            val current = admission.value
+            if (recordingId in current.deleting) {
+                run.cancel()
+                return@channelFlow
+            }
+            val next = current.copy(runs = current.runs + (recordingId to (current.runs[recordingId].orEmpty() + run)))
+            if (admission.compareAndSet(current, next)) break
+        }
         run.invokeOnCompletion {
-            runs.update { current ->
-                val left = current[recordingId].orEmpty() - run
-                if (left.isEmpty()) current - recordingId else current + (recordingId to left)
+            admission.update { current ->
+                val left = current.runs[recordingId].orEmpty() - run
+                current.copy(runs = if (left.isEmpty()) current.runs - recordingId else current.runs + (recordingId to left))
             }
         }
         try {
@@ -174,7 +195,7 @@ class RecordingProcessor(
      * is deleted. False if one had not stopped by then; it can write nothing once the row is gone.
      */
     suspend fun stopRuns(recordingId: String, timeout: Duration): Boolean {
-        val stopping = runs.value[recordingId].orEmpty()
+        val stopping = admission.value.runs[recordingId].orEmpty()
         stopping.forEach { it.cancel(RunStopped()) }
         return withTimeoutOrNull(timeout) { stopping.forEach { it.join() } } != null
     }

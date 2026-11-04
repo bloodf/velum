@@ -21,6 +21,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collect
@@ -33,6 +34,9 @@ class RecordingProcessorWipeTest {
     private val gate = WipeGate()
     private val llmStarted = CompletableDeferred<Unit>()
     private val llmRelease = CompletableDeferred<Unit>()
+    private val cleanupStarted = CompletableDeferred<Unit>()
+    private val cleanupRelease = CompletableDeferred<Unit>()
+    private var holdCleanup = false
 
     @Test fun a_job_queued_before_a_wipe_records_nothing_after_it() = runBlocking {
         processor().process("wiped-recording", retranscribe = false).collect()
@@ -65,8 +69,15 @@ class RecordingProcessorWipeTest {
             override val engineId = "fake-llm"
             override suspend fun complete(request: LlmRequest, modelId: String): LlmResult {
                 llmStarted.complete(Unit)
-                llmRelease.await()
-                return LlmResult(text = "## Synthetic summary", engineId = engineId, modelId = modelId)
+                try {
+                    llmRelease.await()
+                    return LlmResult(text = "## Synthetic summary", engineId = engineId, modelId = modelId)
+                } finally {
+                    if (holdCleanup) kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+                        cleanupStarted.complete(Unit)
+                        cleanupRelease.await()
+                    }
+                }
             }
         }
         val asr = object : Transcriber {
@@ -119,6 +130,33 @@ class RecordingProcessorWipeTest {
         llmRelease.complete(Unit)
         job.join()
         assertEquals(1, repo.getSummaryVersions("rec-kept").size)
+    }
+
+    @Test fun deletion_fence_refuses_direct_processing() = runBlocking {
+        insertRunning("rec-fenced")
+        val processor = processor()
+        assertTrue(processor.beginDeletion("rec-fenced"))
+        try {
+            processor.process("rec-fenced", retranscribe = false).collect()
+            assertTrue(!llmStarted.isCompleted)
+            assertTrue(processor.stopRuns("rec-fenced", 1.seconds))
+        } finally {
+            processor.endDeletion("rec-fenced")
+        }
+    }
+
+    @Test fun cancelled_collector_stays_registered_until_cleanup_finishes() = runBlocking {
+        insertRunning("rec-cleanup")
+        holdCleanup = true
+        val processor = processor()
+        val job = launch(Dispatchers.Default) { processor.process("rec-cleanup", retranscribe = false).collect() }
+        llmStarted.await()
+        job.cancel()
+        cleanupStarted.await()
+        assertTrue(!processor.stopRuns("rec-cleanup", 100.milliseconds))
+        cleanupRelease.complete(Unit)
+        job.join()
+        assertTrue(processor.stopRuns("rec-cleanup", 1.seconds))
     }
 
     @Test fun the_coroutine_scheduler_cancels_one_recordings_job() = runBlocking {
