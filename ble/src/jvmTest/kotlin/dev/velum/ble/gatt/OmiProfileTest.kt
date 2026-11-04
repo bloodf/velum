@@ -129,4 +129,14 @@ class OmiProfileTest {
         assertEquals(listOf(listOf<Byte>(7)), t.notifications(GattProfiles.PLAUD_NOTIFY).toList().map { it.toList() })
         for (char in omiChars) assertEquals(0, t.notifications(char).toList().size)
     }
+
+    @Test
+    fun plaudOnlyTransports_refuseOmiBeforeConnecting() = runTest {
+        val stub = StubBleTransport()
+        for (profile in listOf(GattProfiles.Omi, GattProfiles.Pocket, GattProfiles.Limitless)) {
+            assertFailsWith<IllegalArgumentException>(profile.id) { stub.connect("synthetic-device", profile) }
+        }
+        assertTrue(stub.connectionState.value !is BleConnectionState.Connected)
+        stub.connect("synthetic-device", GattProfiles.Plaud)
+    }
 }
