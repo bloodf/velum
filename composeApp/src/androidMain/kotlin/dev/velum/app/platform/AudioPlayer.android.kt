@@ -97,7 +97,7 @@ private class AndroidAudioPlayer : AudioPlayer {
             return@withContext false
         }
         var created: MediaPlayer? = null
-        var installed = false // set on Main in the last hop; read on Main in the rollback
+        var installed = false // set on Main in the last hop; read on IO in the catch, after that hop has returned
         try {
             val mp = MediaPlayer()
             created = mp
@@ -127,8 +127,9 @@ private class AndroidAudioPlayer : AudioPlayer {
             true
         } catch (t: Throwable) {
             // Only the player this call made. It is released here unless it was installed and has since been taken
-            // out of `player` by a newer call, whose first hop releases it (never release one player twice). The hop
-            // returns by throwing when this call was cancelled (its block has run by then), so the release is in `finally`.
+            // out of `player` by a newer call's first hop or by release(), which release it (never release one player
+            // twice). The hop returns by throwing when this call was cancelled (its block has run by then), so the
+            // release is in `finally`.
             var owns = !installed
             try {
                 withContext(NonCancellable + Dispatchers.Main.immediate) {
@@ -143,8 +144,6 @@ private class AndroidAudioPlayer : AudioPlayer {
                         skipScan = null
                         wavFile = null
                         wavSource = null
-                    } else {
-                        owns = !installed
                     }
                 }
             } finally {

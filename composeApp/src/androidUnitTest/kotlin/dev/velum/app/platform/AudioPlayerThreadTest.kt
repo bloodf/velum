@@ -291,24 +291,25 @@ class AudioPlayerThreadTest {
         player.release()
     }
 
-    @Test fun a_rollback_that_finds_its_player_taken_by_a_newer_call_does_not_release_it_again() {
+    @Test fun a_rollback_that_finds_its_player_already_taken_leaves_the_newer_call_alone() {
         val file1 = wav("player-taken-1")
         val file2 = wav("player-taken-2", durationMs = 900)
         recordPlayers()
         val player = createAudioPlayer()
         val job1Ref = java.util.concurrent.atomic.AtomicReference<Job>()
         val collector = CoroutineScope(Dispatchers.Unconfined)
-        // P1 is installed (1500 published) and cancelled in the same Main task; P2 is then queued ahead of P1's rollback.
+        // P1 is installed (1500 published) and, in that same Main task, cancelled and taken out of `player` by
+        // release(): when its rollback runs the player is no longer `created`, so it takes the `installed` path.
         collector.launch(start = CoroutineStart.UNDISPATCHED) {
-            player.durationMs.collect { if (it == 1500L) job1Ref.get()?.cancel() }
+            player.durationMs.collect { if (it == 1500L) { job1Ref.get()?.cancel(); player.release() } }
         }
         val job1 = launchPrepare(player, file1)
         job1Ref.set(job1)
         idleUntil("P1 finished") { job1.isCompleted }
         collector.coroutineContext[Job]?.cancel()
+        assertEquals(State.END, stateOf(players[0]), "release() ended P1's player")
         val job2 = launchPrepare(player, file2)
         idleUntil("P2 ready") { job2.isCompleted }
-        assertEquals(State.END, stateOf(players[0]), "P1's player is released")
         assertTrue(stateOf(players[1]) != State.END, "P2's player is intact")
         player.play()
         assertEquals(State.STARTED, stateOf(players[1]))
