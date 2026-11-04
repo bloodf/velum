@@ -23,6 +23,11 @@ fun interface RecordingJobScheduler {
         apiModelOverride: ApiModelOverride?,
     )
 
+    /** Waits for enqueue acceptance when the platform schedules work asynchronously. */
+    suspend fun enqueueSaved(recordingId: String, templateId: String?, retranscribe: Boolean, apiModelOverride: ApiModelOverride?) {
+        enqueue(recordingId, templateId, retranscribe, apiModelOverride)
+    }
+
     /**
      * Like [enqueue], but reports whether work was started or replaced (true) or the work already queued or running
      * with the same parameters was kept (false). A caller that moved the row to `queued` for a new job must restore the

@@ -364,7 +364,7 @@ class AppContainer(
         apiModelOverride: ApiModelOverride? = null,
     ) {
         try {
-            enqueueProcessing(recordingId, templateId, retranscribe, apiModelOverride)
+            recordingJobs.enqueueSaved(recordingId, templateId, retranscribe, apiModelOverride)
         } catch (t: Throwable) {
             markQueuedFailed(recordingId)
             throw t
@@ -385,7 +385,7 @@ class AppContainer(
     ) {
         try {
             val match = repository.findMatchingAutoflow(source = source, durationSeconds = durationSeconds, title = title)
-            enqueueProcessing(
+            recordingJobs.enqueueSaved(
                 recordingId = recordingId,
                 templateId = resolveTemplateForEnqueue(repository, match?.template_id),
                 retranscribe = true,

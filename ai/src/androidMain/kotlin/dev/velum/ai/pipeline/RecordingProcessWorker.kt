@@ -26,6 +26,8 @@ import dev.velum.core.model.ComputeMode
 import dev.velum.core.settings.ApiModelOverride
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runInterruptible
 
 /**
  * Runs [RecordingProcessor] for one recording under WorkManager with thermal backoff.
@@ -263,6 +265,7 @@ class RecordingProcessWorker(
             templateId: String? = null,
             retranscribe: Boolean = true,
             apiModelOverride: ApiModelOverride? = null,
+            awaitOperation: Boolean = false,
         ): Boolean {
             val data = Data.Builder()
                 .putString(KEY_RECORDING_ID, recordingId)
@@ -306,11 +309,12 @@ class RecordingProcessWorker(
             } else {
                 ExistingWorkPolicy.REPLACE
             }
-            manager.enqueueUniqueWork(
+            val operation = manager.enqueueUniqueWork(
                 UNIQUE_PREFIX + recordingId,
                 policy,
                 request,
             )
+            if (awaitOperation) operation.result.get()
             // Reports "started or replaced"; KEEP over queued/running work did neither.
             return !(policy == ExistingWorkPolicy.KEEP && hasActiveWork(manager, recordingId, excluding = request.id))
         }
@@ -384,6 +388,12 @@ fun createWorkManagerRecordingJobScheduler(context: Context): RecordingJobSchedu
     object : RecordingJobScheduler {
         override fun enqueue(recordingId: String, templateId: String?, retranscribe: Boolean, apiModelOverride: ApiModelOverride?) {
             enqueueReportingStart(recordingId, templateId, retranscribe, apiModelOverride)
+        }
+
+        override suspend fun enqueueSaved(recordingId: String, templateId: String?, retranscribe: Boolean, apiModelOverride: ApiModelOverride?) {
+            runInterruptible(Dispatchers.IO) {
+                RecordingProcessWorker.enqueue(context.applicationContext, recordingId, templateId, retranscribe, apiModelOverride, awaitOperation = true)
+            }
         }
 
         override fun enqueueReportingStart(
