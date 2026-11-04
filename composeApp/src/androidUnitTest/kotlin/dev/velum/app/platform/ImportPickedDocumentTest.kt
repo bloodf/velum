@@ -35,6 +35,21 @@ class ImportPickedDocumentTest {
     private val uri = Uri.parse("content://velum.test.docs/doc/1")
 
     @Test
+    fun multibyte_display_name_uses_bounded_scratch_name() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val name = "音".repeat(70) + ".wav"
+        val uri = Uri.parse("content://unregistered/${android.net.Uri.encode(name)}")
+        var picked: String? = null
+        importPickedDocument(context, uri, onFailed = { error("copy failed") }, onPicked = { picked = it },
+            openStream = { java.io.ByteArrayInputStream(byteArrayOf(1)) })
+        val file = File(checkNotNull(picked))
+        assertTrue((file.name + ".tmp").toByteArray(Charsets.UTF_8).size <= 255)
+        assertEquals(name, dev.velum.app.importing.ImportDisplayNames.take(file.path))
+        assertEquals("wav", file.extension)
+        file.delete()
+    }
+
+    @Test
     fun providerFailure_callsOnFailed_notOnPicked_andLeavesNoCacheFile() = runBlocking {
         Robolectric.setupContentProvider(ThrowingDocumentProvider::class.java, "velum.test.docs")
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()

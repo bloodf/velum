@@ -52,9 +52,9 @@ internal suspend fun importPickedDocument(
     val path = try {
         withContext(Dispatchers.IO) {
             displayName = displayNameOf(context, uri)
-            val name = sanitizeImportFileName(displayName, "${UUID.randomUUID()}.audio")
+            val extension = displayName?.takeIf { ImportAudioFormats.isSupportedFileName(it) }?.substringAfterLast('.')?.lowercase() ?: "audio"
             val dest = File(context.cacheDir, "imports").apply { mkdirs() }
-            val target = File(dest, "${System.currentTimeMillis()}_$name").also { outFile = it }
+            val target = File(dest, "${UUID.randomUUID()}.$extension").also { outFile = it }
             val copied = copyToCache(openStream, target) {
                 // Class name only: the message and path can carry the user's file names.
                 android.util.Log.w(TAG, "Import copy failed (${it::class.java.simpleName})")

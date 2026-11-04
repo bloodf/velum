@@ -181,9 +181,9 @@ object IncomingShare {
     internal fun copyShare(context: Context, uri: Uri): String? {
         // A provider query: IO thread only. Another app controls the name, so cap it and drop control characters.
         val displayName = cleanName(displayNameOf(context, uri))
-        val name = sanitizeImportFileName(displayName, "${java.util.UUID.randomUUID()}.audio")
+        val extension = displayName?.takeIf { ImportAudioFormats.isSupportedFileName(it) }?.substringAfterLast('.')?.lowercase() ?: "audio"
         val dest = File(context.cacheDir, "imports").apply { mkdirs() }
-        val outFile = File(dest, "share_${System.currentTimeMillis()}_$name")
+        val outFile = File(dest, "share_${java.util.UUID.randomUUID()}.$extension")
         if (!copyToCache({ context.contentResolver.openInputStream(uri) }, outFile)) {
             android.util.Log.w("VelumShare", "share copy failed") // never the URI or the exception message
             return null
