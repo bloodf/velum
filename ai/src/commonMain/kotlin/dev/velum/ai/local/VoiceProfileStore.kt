@@ -594,6 +594,12 @@ class VoiceProfileStore(
                 .map { it.name.removeSuffix(".f32") }.toSet()
             val inventory = inspectProfiles()
             val readable = inventory.profiles.filter { it.id in plaintextIds }
+            val damaged = inventory.unreadable.filter {
+                it.id in plaintextIds && it.problem == VoiceProfileReadProblem.CannotDecrypt
+            }
+            // The proof is taken before this call writes anything: migrating a lone plaintext profile writes the
+            // key check itself, which must not count as proof for the damaged files found in the same call.
+            val keyProven = damaged.isNotEmpty() && keyCheckAuthenticates(cipher())
             val migrated = readable.count { profile ->
                 if (profilesDir.resolve("${profile.id}.enc").exists()) {
                     profilesDir.resolve("${profile.id}.f32").deleteFile()
@@ -602,10 +608,7 @@ class VoiceProfileStore(
                     !profilesDir.resolve("${profile.id}.f32").exists()
                 }
             }
-            val damaged = inventory.unreadable.filter {
-                it.id in plaintextIds && it.problem == VoiceProfileReadProblem.CannotDecrypt
-            }
-            if (damaged.isEmpty() || !keyCheckAuthenticates(cipher())) return@withReady migrated
+            if (!keyProven) return@withReady migrated
             migrated + damaged.count { issue -> rewriteFromPlaintext(issue.id) }
         }
     }
@@ -624,6 +627,8 @@ class VoiceProfileStore(
             return false
         }
         if (metadata.id != id || metadata.dim <= 0 || embedding.size != metadata.dim || embedding.any { !it.isFinite() }) return false
+        // An all-zero vector is what a blank or wiped file reads as; it would replace the .enc with a profile that never matches.
+        if (embedding.all { it == 0f }) return false
         writeProfile(
             VoiceProfile(
                 id = id, displayName = metadata.displayName, embedding = embedding, sampleEmbeddings = listOf(embedding),
