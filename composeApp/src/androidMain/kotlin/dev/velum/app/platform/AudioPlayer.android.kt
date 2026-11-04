@@ -63,25 +63,33 @@ private class AndroidAudioPlayer : AudioPlayer {
     override val skipSilence: StateFlow<Boolean> = _skipSilence.asStateFlow()
 
     override suspend fun prepare(path: String): Boolean = withContext(Dispatchers.IO) {
-        // Everything that touches the shared fields happens on Main, in this order:
-        //  1. first hop: stop the poll, reset the published state and the skip-silence fields, take the old player;
+        // The player, the published state and the skip-silence fields are only touched on Main, in this order:
+        //  1. first hop: stop the poll, reset the state and the skip-silence fields, take the old player;
         //  2. file work on IO (the old player is released, the new one is built and prepared);
         //  3. last hop: install the new player, its duration and its WAV in one step.
         // State is written on the main thread only: a collector's recomposition can run on the writing thread
         // (the Compose test dispatcher does), and a ripple or animator touched there fails off a Looper (#345).
-        val old = onMain {
-            stopPolling() // a tick must not write the old player's position after the reset
-            _isPlaying.value = false
-            _positionMs.value = 0L
-            _durationMs.value = 0L
-            skipScan?.cancel() // a scan of the previous file must not seek this one
-            skipScan = null
-            wavFile = null
-            wavSource = null
-            player.also { player = null }
+        var old: MediaPlayer? = null
+        try {
+            onMain {
+                stopPolling() // a tick must not write the old player's position after the reset
+                _isPlaying.value = false
+                _positionMs.value = 0L
+                _durationMs.value = 0L
+                skipScan?.cancel() // a scan of the previous file must not seek this one
+                skipScan = null
+                wavFile = null
+                wavSource = null
+                old = player
+                player = null
+            }
+        } finally {
+            // Taken out of `player` on Main, so it is released here even if the call was cancelled right after the
+            // hop: nothing else can reach it any more. These are plain calls, safe from a cancelled coroutine on IO.
+            runCatching { old?.reset() }
+            runCatching { old?.release() }
         }
         ensureActive()
-        runCatching { old?.reset(); old?.release() }
         if (path.isBlank()) {
             return@withContext false
         }
@@ -117,9 +125,21 @@ private class AndroidAudioPlayer : AudioPlayer {
             }
             true
         } catch (t: Throwable) {
-            // Only the player this call made: `player` may already be a newer call's.
-            runCatching { created?.release() }
-            withContext(NonCancellable + Dispatchers.Main.immediate) { if (player === created) player = null }
+            // Only the player this call made: `player` may already be a newer call's. Uninstall it first, then
+            // release it, so nothing reads a released player. The hop returns by throwing when this call was
+            // cancelled (its block has run by then), so the release sits in `finally`.
+            try {
+                withContext(NonCancellable + Dispatchers.Main.immediate) {
+                    if (created != null && player === created) {
+                        player = null
+                        _durationMs.value = 0L
+                        wavFile = null
+                        wavSource = null
+                    }
+                }
+            } finally {
+                runCatching { created?.release() }
+            }
             if (t is CancellationException) throw t
             false
         }
