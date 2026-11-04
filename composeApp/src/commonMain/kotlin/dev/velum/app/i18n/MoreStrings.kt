@@ -8,4 +8,6 @@ package dev.velum.app.i18n
  *
  * Do not move existing fields: many open changes touch them.
  */
-class MoreStrings
+data class MoreStrings(
+    val speakersChangedWhileOpen: String,
+)

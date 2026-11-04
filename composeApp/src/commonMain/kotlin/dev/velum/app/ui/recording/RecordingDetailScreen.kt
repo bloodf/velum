@@ -669,7 +669,7 @@ fun RecordingDetailScreen(
                     val shown = speakers
                     scope.launch {
                         try {
-                            confirmSpeakerNames(
+                            val applied = confirmSpeakerNames(
                                 shown = shown,
                                 current = { container.repository.getSpeakers(recordingId) },
                                 renames = renames,
@@ -697,6 +697,7 @@ fun RecordingDetailScreen(
                                 container.repository.renameSpeaker(recordingId, row.id, trimmed)
                                 if (cacheMissed) processError = strings.ux.voiceProfilesNoCachedVoice
                             }
+                            if (!applied) processError = strings.added.speakersChangedWhileOpen
                             showSpeakers = false
                         } catch (cancelled: kotlinx.coroutines.CancellationException) {
                             throw cancelled
