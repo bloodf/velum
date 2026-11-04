@@ -61,13 +61,16 @@ class VelumApplication : Application() {
         installCalendarContext(applicationContext)
         installMicCaptureContext(applicationContext)
         dev.velum.ai.local.installDeviceComputeContext(applicationContext)
-        MicRecordingService.ensureNotificationChannel(this)
-        DownloadProgressNotifier.ensureChannel()
 
         val powerManager = getSystemService(PowerManager::class.java)
         val appContext = applicationContext
         appScope.launch {
             try {
+                // Off main, where the saved language can be read, so a channel is first created in the app language (#348).
+                runCatching {
+                    MicRecordingService.ensureNotificationChannel(appContext)
+                    DownloadProgressNotifier.ensureChannel()
+                }.onFailure { t -> Log.w(TAG, "Notification channel setup failed (${t::class.simpleName})") }
                 // filesDir / models path are disk reads — stay on Dispatchers.IO.
                 installRecordingFilesDir(filesDir.absolutePath)
                 // Before AiRuntimeHolder.install: WorkManager can re-run a killed job as soon as the

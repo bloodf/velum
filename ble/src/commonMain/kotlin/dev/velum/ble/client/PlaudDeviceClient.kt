@@ -463,7 +463,7 @@ class PlaudDeviceClient(
                 withTimeout(responseTimeout) {
                     link.write(GattProfiles.PLAUD_WRITE, packet, withoutResponse = false) {
                         // The cipher gets its own copy: one that edits its input then seals the edit cannot also change what we compare.
-                        val sealed = cipher.sealPacket(sec, sendSeq, it.copyOf())
+                        val sealed = cipher.sealPacket(sec, sendSeq, it.copyOf()).copyOf() // the cipher keeps nothing we send
                         // The guard checked [it]. The cipher is a separate component: the bytes that go out must open
                         // to exactly that plaintext, or nothing is written (sealed bytes are never parsed as opcodes).
                         // Opened with the protocol's own AEAD, not the injected cipher, so a cipher cannot vouch for itself.

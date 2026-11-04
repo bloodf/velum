@@ -671,11 +671,13 @@ fun RecordingDetailScreen(
                                 val trimmed = name.trim()
                                 if (trimmed.isEmpty()) continue
                                 val row = speakers.firstOrNull { it.id == speakerId } ?: continue
+                                var cacheMissed = false
                                 container.voiceProfileStore.withReady {
                                     val emb = cachedClusterEmbedding(
                                         recordingId,
                                         row.label,
                                     )
+                                    if (emb == null) cacheMissed = true // nothing to save a voice from
                                     val existing = inspectProfiles().profiles
                                         .firstOrNull { it.displayName.equals(trimmed, ignoreCase = true) }
                                     when {
@@ -690,6 +692,7 @@ fun RecordingDetailScreen(
                                     }
                                 }
                                 container.repository.renameSpeaker(recordingId, speakerId, trimmed)
+                                if (cacheMissed) processError = strings.ux.voiceProfilesNoCachedVoice
                             }
                             showSpeakers = false
                         } catch (cancelled: kotlinx.coroutines.CancellationException) {
