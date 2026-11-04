@@ -169,12 +169,20 @@ class QueuedRecoveryTest {
         )
         val name = RecordingProcessWorker.UNIQUE_PREFIX + id
         var original: java.util.UUID? = null
+        var submissionFailure: Throwable? = null
         beforeSubmit = {
             beforeSubmit = null
-            RecordingProcessWorker.enqueue(context, id, "velum.meeting", true, null, awaitOperation = true)
-            original = manager.getWorkInfosForUniqueWork(name).get().single().id
+            try {
+                RecordingProcessWorker.enqueue(context, id, "velum.meeting", true, null, awaitOperation = true)
+                original = manager.getWorkInfosForUniqueWork(name).get().single().id
+            } catch (failure: Throwable) {
+                submissionFailure = failure
+                throw failure
+            }
         }
-        assertEquals(1, withContext(Dispatchers.IO) { container.requeueStrandedRecordings() })
+        val handed = withContext(Dispatchers.IO) { container.requeueStrandedRecordings() }
+        submissionFailure?.let { throw AssertionError("Concurrent work submission failed", it) }
+        assertEquals(1, handed)
         val kept = requireNotNull(original)
         assertEquals(listOf(kept), manager.getWorkInfosForUniqueWork(name).get().map { it.id })
         assertEquals(0, withContext(Dispatchers.IO) { container.requeueStrandedRecordings() })
