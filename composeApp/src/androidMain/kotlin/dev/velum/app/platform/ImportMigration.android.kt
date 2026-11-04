@@ -28,6 +28,9 @@ suspend fun migrateCachedImports(
         val ext = source.extension.ifBlank { "wav" }
         val dest = File(recordingsDir.apply { mkdirs() }, "$id.$ext")
         val ok = runCatching {
+            // An existing complete copy (an earlier run died before repointing the row) is reused; anything else in
+            // the way (a directory, a different-size file) fails this row and leaves it, and its cache file, as they were.
+            check(!dest.exists() || (dest.isFile && dest.length() == source.length())) { "unexpected file at destination" }
             if (!dest.exists()) {
                 val tmp = File(recordingsDir, dest.name + ".tmp")
                 try {
