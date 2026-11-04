@@ -340,10 +340,13 @@ fun RecordingDetailScreen(
                         showMenu = false
                         showFindReplace = true
                     })
-                    DropdownMenuItem({ Text(strings.retranscribe) }, {
-                        showMenu = false
-                        launchProcessing(retranscribe = true)
-                    })
+                    // A recording still being captured has a growing file: retranscribing it would read a partial WAV.
+                    if (!isLiveRecording) {
+                        DropdownMenuItem({ Text(strings.retranscribe) }, {
+                            showMenu = false
+                            launchProcessing(retranscribe = true)
+                        })
+                    }
                     DropdownMenuItem({ Text(strings.nameSpeakers) }, {
                         showMenu = false
                         showSpeakers = true
