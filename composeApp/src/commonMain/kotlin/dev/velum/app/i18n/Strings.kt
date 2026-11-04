@@ -1244,6 +1244,7 @@ val PtBr = Strings(
         webhookFailedUnresolvedHost = "endereço não encontrado",
         webhookFailedTls = "falha na conexão segura",
         webhookFailedConnection = "sem conexão",
+        speakerCacheNotDropped = "Não foi possível apagar as vozes de falantes salvas, então a gravação ficou como estava. Tente de novo.",
     ),
 )
 
@@ -1859,6 +1860,7 @@ val En = Strings(
         webhookFailedUnresolvedHost = "address not found",
         webhookFailedTls = "secure connection failed",
         webhookFailedConnection = "could not connect",
+        speakerCacheNotDropped = "The saved speaker voices could not be cleared, so the recording was left unchanged. Try again.",
     ),
 )
 

@@ -13,4 +13,5 @@ data class MoreStrings(
     val webhookFailedUnresolvedHost: String,
     val webhookFailedTls: String,
     val webhookFailedConnection: String,
+    val speakerCacheNotDropped: String,
 )
