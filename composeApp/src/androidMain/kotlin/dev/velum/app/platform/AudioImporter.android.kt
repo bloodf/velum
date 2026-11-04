@@ -32,10 +32,7 @@ actual fun rememberAudioImporter(onFailed: () -> Unit, onPicked: (path: String) 
     }
 }
 
-actual fun deleteImportCopies() {
-    val context = appContextOrNull() ?: return
-    File(context.cacheDir, "imports").deleteRecursively()
-}
+actual fun deleteImportCopies(): Boolean = deleteCacheDir("imports")
 
 private const val TAG = "AudioImporter"
 
@@ -113,7 +110,11 @@ internal fun displayNameOf(context: android.content.Context, uri: Uri): String? 
         }
     }.getOrNull()?.takeIf { it.isNotBlank() } ?: uri.lastPathSegment
 
-actual fun deleteShareExports() {
-    val context = appContextOrNull() ?: return
-    File(context.cacheDir, "share").deleteRecursively()
+actual fun deleteShareExports(): Boolean = deleteCacheDir("share")
+
+private fun deleteCacheDir(name: String): Boolean {
+    val context = appContextOrNull() ?: return false
+    val dir = File(context.cacheDir, name)
+    dir.deleteRecursively()
+    return !dir.exists()
 }

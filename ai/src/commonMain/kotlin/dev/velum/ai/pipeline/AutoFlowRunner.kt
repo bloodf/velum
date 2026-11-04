@@ -10,6 +10,7 @@ import dev.velum.core.time.VelumDateTime
 import dev.velum.core.calendar.CalendarLookupResult
 import dev.velum.core.calendar.createCalendarEventProvider
 import dev.velum.core.data.VelumRepository
+import dev.velum.core.data.WipeGate
 import dev.velum.core.db.Autoflow
 import dev.velum.core.db.Recording
 import dev.velum.core.settings.ApiModelOverride
@@ -51,6 +52,7 @@ class AutoFlowRunner internal constructor(
     private val nowEpochMs: () -> Long = { epochMsNow() },
     private val jobScheduler: RecordingJobScheduler? = null,
     private val diagnostics: (String) -> Unit = {},
+    private val wipeGate: WipeGate = WipeGate(),
 ) {
     constructor(
         repository: VelumRepository,
@@ -61,10 +63,11 @@ class AutoFlowRunner internal constructor(
         nowEpochMs: () -> Long = { epochMsNow() },
         jobScheduler: RecordingJobScheduler? = null,
         diagnostics: (String) -> Unit = {},
+        wipeGate: WipeGate = WipeGate(),
     ) : this(
         RepositoryAutoFlowRecordingStore(repository),
         { id, template, override -> processor.process(id, template, true, override) },
-        scope, notifyEnabled, calendar, nowEpochMs, jobScheduler, diagnostics,
+        scope, notifyEnabled, calendar, nowEpochMs, jobScheduler, diagnostics, wipeGate,
     )
 
     private val job = MutableStateFlow<Job?>(null)
@@ -112,7 +115,8 @@ class AutoFlowRunner internal constructor(
                     .distinctUntilChanged()
                     .collect { (recordings, flows) ->
                         try {
-                            runPass(recordings, flows)
+                            // A wipe refuses or stops the pass: it holds a stale list of what the wipe is deleting.
+                            wipeGate.guard { runPass(recordings, flows) }
                         } finally {
                             _passIndex.update { it + 1 }
                         }
@@ -338,8 +342,7 @@ class AutoFlowRunner internal constructor(
         when (AutoFlowPostAction.fromStored(flow.post_action)) {
             AutoFlowPostAction.None -> Unit
             AutoFlowPostAction.ShareMarkdown -> {
-                val body = shareMarkdownBody(recording.title, recording.summary_markdown, recording.transcript)
-                _actions.emit(AutoFlowUiAction.ShareMarkdown(recording.title, body))
+                _actions.emit(AutoFlowUiAction.ShareMarkdown(recording.id))
             }
             AutoFlowPostAction.CalendarInsert -> {
                 when (calendar.currentOrNextEvent(nowEpochMs())) {
@@ -353,10 +356,7 @@ class AutoFlowRunner internal constructor(
                     }
                     else -> {
                         _actions.emit(
-                            AutoFlowUiAction.InsertCalendarEvent(
-                                title = recording.title,
-                                description = recording.summary_markdown.orEmpty(),
-                            ),
+                            AutoFlowUiAction.InsertCalendarEvent(recording.id),
                         )
                     }
                 }
@@ -431,8 +431,9 @@ internal class RepositoryAutoFlowRecordingStore(private val repository: VelumRep
 
 sealed class AutoFlowUiAction {
     data object ProcessingFailed : AutoFlowUiAction()
-    data class ShareMarkdown(val title: String, val body: String) : AutoFlowUiAction()
-    data class InsertCalendarEvent(val title: String, val description: String) : AutoFlowUiAction()
+    /** Carry the id, not the text: an action can wait behind a snackbar while the recording is deleted or wiped. */
+    data class ShareMarkdown(val recordingId: String) : AutoFlowUiAction()
+    data class InsertCalendarEvent(val recordingId: String) : AutoFlowUiAction()
     data class ExportMarkdownToFolder(val recordingId: String) : AutoFlowUiAction()
     data class PostWebhook(val recordingId: String) : AutoFlowUiAction()
     data class BlockedOnPermission(val permission: String, val message: String) : AutoFlowUiAction()
@@ -444,7 +445,7 @@ expect fun epochMsNow(): Long
  * Body of the "share as Markdown" post action. Live-capture markers (the user's notes) stay in the body
  * under their own heading; the "Transcript" heading appears only when there is spoken text.
  */
-internal fun shareMarkdownBody(title: String, summary: String?, transcript: String?): String = buildString {
+fun shareMarkdownBody(title: String, summary: String?, transcript: String?): String = buildString {
     append("# ").append(title).append("\n\n")
     if (!summary.isNullOrBlank()) append(summary).append("\n\n")
     if (transcript.isNullOrBlank()) return@buildString

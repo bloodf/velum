@@ -608,7 +608,11 @@ class VelumRepository(
 
     /** Null removes the row; provider error text must not outlive the recording or a wipe. */
     suspend fun setProcessingError(recordingId: String, message: String?) = withContext(dbContext) {
-        if (message == null) q.deleteMeta(processingErrorKey(recordingId)) else q.setMeta(processingErrorKey(recordingId), message)
+        when {
+            message == null -> q.deleteMeta(processingErrorKey(recordingId))
+            // A worker running on after a wipe or delete must not leave error text with no recording.
+            q.selectRecordingById(recordingId).executeAsOneOrNull() != null -> q.setMeta(processingErrorKey(recordingId), message)
+        }
     }
 
     /**
@@ -619,7 +623,10 @@ class VelumRepository(
 
     /** Null clears it. */
     suspend fun setUnpromotedRun(recordingId: String, workId: String?) = withContext(dbContext) {
-        if (workId != null) q.setMeta("$UNPROMOTED_RUN_PREFIX$recordingId", workId) else q.deleteMeta("$UNPROMOTED_RUN_PREFIX$recordingId")
+        when {
+            workId == null -> q.deleteMeta("$UNPROMOTED_RUN_PREFIX$recordingId")
+            q.selectRecordingById(recordingId).executeAsOneOrNull() != null -> q.setMeta("$UNPROMOTED_RUN_PREFIX$recordingId", workId)
+        }
     }
 
     /** Clears the flag only if [workId] still owns it, so a newer run's flag is never removed by an older one. */
@@ -909,6 +916,58 @@ class VelumRepository(
     }
 
     /**
+     * Inserts a recording and its dedupe [keys] (meta keys, each mapped to the new id) in one transaction.
+     * First, if any of [refuseKeys] is set (a watched-folder tombstone), nothing is written and it is [KeyedInsert.Refused].
+     * Then, if a key already maps to a recording that exists, nothing is inserted, every key is pointed at that
+     * recording and it is [KeyedInsert.Existing]. Otherwise the row and the keys are written and [clearKeys] removed.
+     * Two imports of the same audio cannot both insert, and a failure cannot leave a recording without its keys.
+     */
+    suspend fun insertRecordingUnlessKeyed(
+        id: String,
+        title: String,
+        source: String,
+        startedAt: Long,
+        durationSeconds: Long,
+        localPath: String,
+        status: String,
+        keys: List<String>,
+        refuseKeys: List<String> = emptyList(),
+        clearKeys: List<String> = emptyList(),
+        createdAt: Long = epochSeconds(),
+    ): KeyedInsert = withContext(dbContext) {
+        val result = db.transactionWithResult {
+            if (refuseKeys.any { q.getMeta(it).executeAsOneOrNull() != null }) return@transactionWithResult KeyedInsert.Refused
+            val found = keys.firstNotNullOfOrNull { key ->
+                q.getMeta(key).executeAsOneOrNull()?.takeIf { it.isNotBlank() && q.selectRecordingById(it).executeAsOneOrNull() != null }
+            }
+            if (found == null) {
+                q.insertRecording(
+                    id = id,
+                    session_id = null,
+                    folder_id = null,
+                    title = title,
+                    source = source,
+                    device_serial = null,
+                    started_at = startedAt,
+                    duration_seconds = durationSeconds,
+                    size_bytes = 0,
+                    local_path = localPath,
+                    transcript = null,
+                    summary_markdown = null,
+                    status = status,
+                    trashed = 0,
+                    created_at = createdAt,
+                )
+                clearKeys.forEach { q.deleteMeta(it) }
+            }
+            keys.forEach { q.setMeta(it, found ?: id) }
+            if (found == null) KeyedInsert.Inserted else KeyedInsert.Existing(found)
+        }
+        if (result == KeyedInsert.Inserted) tryIndex { indexRecording(id, title, null, null) }
+        result
+    }
+
+    /**
      * Reindex recordings and/or templates into FTS (after seed, migration, or one-sided empty).
      * Prefer rebuilding only the empty side on cold start so an empty library does not
      * rewrite every template row.
@@ -1144,6 +1203,18 @@ class VelumRepository(
             }
         }
 
+    /**
+     * [renameSpeaker] only if the stored row is still the run [expected] was read from (same label and talk time;
+     * ids repeat across runs). The check and the write share one dispatcher turn, so a replacement cannot land between.
+     */
+    suspend fun renameSpeakerIfUnchanged(recordingId: String, expected: Speaker, displayName: String): Boolean =
+        withContext(dbContext) {
+            val stored = q.selectSpeakersForRecording(recordingId).executeAsList().firstOrNull { it.id == expected.id }
+            if (stored == null || stored.label != expected.label || stored.talk_seconds != expected.talk_seconds) return@withContext false
+            renameSpeaker(recordingId, expected.id, displayName)
+            true
+        }
+
     suspend fun renameSpeaker(
         recordingId: String,
         speakerId: String,
@@ -1189,3 +1260,10 @@ class VelumRepository(
 }
 
 expect fun epochSecondsNow(): Long
+
+/** Outcome of [VelumRepository.insertRecordingUnlessKeyed]. */
+sealed interface KeyedInsert {
+    data object Inserted : KeyedInsert
+    data class Existing(val recordingId: String) : KeyedInsert
+    data object Refused : KeyedInsert
+}

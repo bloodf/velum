@@ -97,6 +97,20 @@ fun sweepOrphanPcmSpill(
         .filter { newestChangeMillis(it) < olderThanEpochMs }
         .count { runCatching { it.deleteRecursively() }; !it.exists() }
 
+/** The startup sweep: the models folder, and the default root earlier versions spilled under. */
+fun sweepOrphanPcmSpill(olderThanEpochMs: Long, modelsRoot: ModelStoreDir, defaultRoot: ModelStoreDir): Int =
+    sweepOrphanPcmSpill(olderThanEpochMs, defaultRoot) + sweepOrphanPcmSpill(olderThanEpochMs, modelsRoot)
+
+/**
+ * Removes every spilled PCM dir, whatever its age, for "Wipe all data". Only safe once no job can be decoding.
+ * False if some remain.
+ */
+fun deleteAllPcmSpill(root: ModelStoreDir = defaultModelStoreRoot()): Boolean =
+    root.resolve("tmp").takeIf { it.isDirectory() }?.listChildren().orEmpty()
+        .filter { it.name.startsWith("pcm-") }
+        .map { runCatching { it.deleteRecursively() }; !it.exists() }
+        .all { it }
+
 private fun newestChangeMillis(dir: ModelStoreDir): Long =
     maxOf(dir.lastModifiedMillis(), dir.walkFiles().maxOfOrNull { it.lastModifiedMillis() } ?: 0L)
 
@@ -114,6 +128,8 @@ class RecordingProcessor(
     private val opusDecoder: () -> OpusDecoder = ::createOpusDecoder,
     private val voiceProfiles: dev.velum.ai.local.VoiceProfileStore? = null,
     private val wipeGate: WipeGate = WipeGate(),
+    /** Where decoded audio spills, under `tmp/`. The wipe and the startup sweep look here. */
+    val pcmSpillRoot: ModelStoreDir = ModelStoreDir(defaultModelStoreRoot().absolutePath),
 ) {
     private val nextRun = MutableStateFlow(0L)
     private val activeRuns = MutableStateFlow<Map<String, Long>>(emptyMap())
@@ -163,7 +179,7 @@ class RecordingProcessor(
             val sampleRate: Int
             val localPath = recording.local_path
             val job = currentCoroutineContext()[Job]
-            val spillRoot = ModelStoreDir(defaultModelStoreRoot().absolutePath)
+            val spillRoot = pcmSpillRoot
                 .resolve("tmp")
                 .resolve("pcm-$recordingId-$run-${kotlin.random.Random.nextLong().toString(16)}")
             var pcmBuffer: PcmAudioBuffer = PcmAudioBuffer.Memory(ByteArray(0))

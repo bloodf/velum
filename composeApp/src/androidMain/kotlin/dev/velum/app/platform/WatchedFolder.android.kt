@@ -52,7 +52,8 @@ object WatchedFolderStore {
             .apply()
     }
 
-    fun scanNewAudio(context: Context, treeUriString: String): List<WatchedFolderEntry> {
+    /** [checkActive] runs before each file is copied, and throws when the scan should stop. */
+    fun scanNewAudio(context: Context, treeUriString: String, checkActive: () -> Unit = {}): List<WatchedFolderEntry> {
         val tree = DocumentFile.fromTreeUri(context, Uri.parse(treeUriString)) ?: return emptyList()
         val out = ArrayList<WatchedFolderEntry>()
         val destRoot = File(context.cacheDir, "imports/watched").apply { mkdirs() }
@@ -63,6 +64,7 @@ object WatchedFolderStore {
                 } else if (child.isFile) {
                     val name = child.name.orEmpty()
                     if (ImportAudioFormats.isSupportedFileName(name)) {
+                        checkActive()
                         val dest = File(destRoot, watchedCopyName(child.uri.toString(), child.lastModified(), name))
                         // One unreadable file (card pulled mid-copy, revoked grant) must not stop the others.
                         val copied = runCatching {

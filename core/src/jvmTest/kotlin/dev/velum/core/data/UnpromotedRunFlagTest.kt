@@ -16,6 +16,7 @@ class UnpromotedRunFlagTest {
 
     @Test fun flag_holds_the_owner_per_recording_and_clears() = runBlocking {
         val repo = repo()
+        repo.insert("a")
         assertNull(repo.unpromotedRunOwner("a"))
         repo.setUnpromotedRun("a", "work-1")
         assertEquals("work-1", repo.unpromotedRunOwner("a"))

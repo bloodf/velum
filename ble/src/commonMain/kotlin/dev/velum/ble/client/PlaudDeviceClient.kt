@@ -66,6 +66,21 @@ class PlaudDeviceClient(
     private var notifyJob: Job? = null
     @Volatile private var closed = false
 
+    /**
+     * The transport's link generation taken when the current [unlock] began (null before any unlock). The secret and
+     * counter belong to that link: once the transport reports another generation, every write is refused here, and the
+     * transport refuses a write already past this check (the generation travels on the write).
+     */
+    @Volatile private var linkGen: Long? = null
+
+    /** True only after an unlock finished. A re-unlock that fails leaves the old secret unusable, not re-armed. */
+    @Volatile private var unlocked = false
+
+    private fun checkLink() {
+        val g = linkGen
+        check(g == null || ble.linkGeneration == g) { "Link changed since unlock" }
+    }
+
     private var secret: Protocol20SessionSecret? = null
     private var sendSeq: Long = 2
     private var recvSeq: Long = 0
@@ -107,6 +122,10 @@ class PlaudDeviceClient(
         check(!closed) { "Client is closed" }
         start()
         writeMutex.withLock {
+            // Under the lock, and before anything is written: no write from the old session can interleave, and a failure
+            // below leaves this client locked rather than holding the old secret.
+            unlocked = false
+            linkGen = ble.linkGeneration
             if (protocolVersionHint >= 20) {
                 require(keys.serialSignature.isNotEmpty()) {
                     "snSignature missing — import sn-sign once from Plaud storage; " +
@@ -164,6 +183,7 @@ class PlaudDeviceClient(
             secret = parsed
             sendSeq = 2
             recvSeq = 0
+            unlocked = true
         }
     }
 
@@ -447,13 +467,18 @@ class PlaudDeviceClient(
 
     private suspend fun writePlain(packet: ByteArray, withoutResponse: Boolean) {
         check(!closed) { "Client is closed" }
-        withTimeout(responseTimeout) { link.write(GattProfiles.PLAUD_WRITE, packet, withoutResponse) }
+        checkLink()
+        withTimeout(responseTimeout) {
+            link.writeGuarded(GattProfiles.PLAUD_WRITE, packet, withoutResponse, seal = null, linkGeneration = linkGen)
+        }
     }
 
     private suspend fun writeOutbound(packet: ByteArray) {
         writeMutex.withLock {
             check(!closed) { "Client is closed" }
+            checkLink()
             val sec = secret
+            check(sec == null || unlocked) { "Not unlocked on this link" }
             if (sec == null) {
                 writePlain(packet, withoutResponse = false)
             } else {
@@ -461,7 +486,7 @@ class PlaudDeviceClient(
                 // A write that times out leaves sendSeq advanced. Later commands then fail on a device that
                 // requires exact sequence numbers (unverified, #6) until a reconnect brings a new client.
                 withTimeout(responseTimeout) {
-                    link.write(GattProfiles.PLAUD_WRITE, packet, withoutResponse = false) {
+                    link.writeGuarded(GattProfiles.PLAUD_WRITE, packet, withoutResponse = false, linkGeneration = linkGen, seal = {
                         // The cipher gets its own copy: one that edits its input then seals the edit cannot also change what we compare.
                         val sealed = cipher.sealPacket(sec, sendSeq, it.copyOf()).copyOf() // the cipher keeps nothing we send
                         // The guard checked [it]. The cipher is a separate component: the bytes that go out must open
@@ -474,7 +499,7 @@ class PlaudDeviceClient(
                         ) { "Sealed packet does not match the checked plaintext" }
                         sendSeq += 1
                         sealed
-                    }
+                    })
                 }
             }
         }

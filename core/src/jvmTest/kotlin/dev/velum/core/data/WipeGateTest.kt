@@ -13,6 +13,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
@@ -21,6 +22,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 
 class WipeGateTest {
     @Test fun work_is_refused_while_a_wipe_runs_and_allowed_after() = runBlocking {
@@ -144,7 +146,7 @@ class WipeGateTest {
         assertFalse(continued)
     }
 
-    @Test fun work_a_wipe_cancels_leaves_no_trace_for_later_work() = runBlocking {
+    @Test fun a_cancellation_after_a_wipe_is_the_works_own() = runBlocking<Unit> {
         val gate = WipeGate()
         val started = CompletableDeferred<Unit>()
         val caller = launch(Dispatchers.Default) {
@@ -153,8 +155,60 @@ class WipeGateTest {
         started.await()
         gate.wiping(5.seconds) { }
         caller.join()
-        // After the wipe, a cancellation is the work's own again.
         assertFailsWith<CancellationException> { gate.guard { throw CancellationException("synthetic cancel") } }
-        assertEquals(1, gate.guard { 1 })
+    }
+
+    @Test fun a_failure_while_unwinding_from_a_wipe_stays_inside_the_gate() = runBlocking {
+        val gate = WipeGate()
+        val started = CompletableDeferred<Unit>()
+        var result: Any? = "not set"
+        val caller = launch(Dispatchers.Default) {
+            result = gate.guard {
+                try {
+                    started.complete(Unit)
+                    awaitCancellation()
+                } finally {
+                    throw IllegalStateException("synthetic restore failure")
+                }
+            }
+        }
+        started.await()
+        assertTrue(gate.wiping(5.seconds) { it })
+        caller.join()
+        assertFalse(caller.isCancelled, "a failure while the wipe stopped the work reached the caller")
+        assertNull(result)
+    }
+
+    @Test fun a_failure_without_a_wipe_reaches_the_caller() = runBlocking {
+        val gate = WipeGate()
+        assertFailsWith<IllegalStateException> { gate.guard { error("synthetic failure") } }
+        Unit
+    }
+
+    @Test fun a_wipe_stops_nested_guards_and_the_caller_carries_on() = runBlocking {
+        val gate = WipeGate()
+        val started = CompletableDeferred<Unit>()
+        var outerResult: Any? = "not set"
+        var continued = false
+        val caller = launch(Dispatchers.Default) {
+            outerResult = gate.guard {
+                gate.guard { started.complete(Unit); awaitCancellation() }
+                "the outer work ran on after the wipe"
+            }
+            continued = true
+        }
+        started.await()
+        assertTrue(gate.wiping(5.seconds) { it })
+        caller.join()
+        assertNull(outerResult)
+        assertTrue(continued, "the caller was cancelled too")
+    }
+
+    @Test fun a_timeout_inside_guarded_work_is_rethrown() = runBlocking {
+        val gate = WipeGate()
+        assertFailsWith<TimeoutCancellationException> {
+            gate.guard { withTimeout(10.milliseconds) { awaitCancellation() } }
+        }
+        Unit
     }
 }
