@@ -10,6 +10,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -62,19 +63,33 @@ private class AndroidAudioPlayer : AudioPlayer {
     override val skipSilence: StateFlow<Boolean> = _skipSilence.asStateFlow()
 
     override suspend fun prepare(path: String): Boolean = withContext(Dispatchers.IO) {
+        // The player, the published state and the skip-silence fields are only touched on Main, in this order:
+        //  1. first hop: stop the poll, reset the state and the skip-silence fields, take the old player;
+        //  2. file work on IO (the old player is released, the new one is built and prepared);
+        //  3. last hop: install the new player, its duration and its WAV in one step.
         // State is written on the main thread only: a collector's recomposition can run on the writing thread
         // (the Compose test dispatcher does), and a ripple or animator touched there fails off a Looper (#345).
-        // The skip-silence fields belong to Main (the poll runs there), so they are reset there too.
-        onMain {
-            _isPlaying.value = false
-            _positionMs.value = 0L
-            _durationMs.value = 0L
-            skipScan?.cancel() // a scan of the previous file must not seek this one
-            skipScan = null
-            wavFile = null
-            wavSource = null
+        var old: MediaPlayer? = null
+        try {
+            onMain {
+                stopPolling() // a tick must not write the old player's position after the reset
+                _isPlaying.value = false
+                _positionMs.value = 0L
+                _durationMs.value = 0L
+                skipScan?.cancel() // a scan of the previous file must not seek this one
+                skipScan = null
+                wavFile = null
+                wavSource = null
+                old = player
+                player = null
+            }
+        } finally {
+            // Taken out of `player` on Main, so it is released here even if the call was cancelled right after the
+            // hop: nothing else can reach it any more. These are plain calls, safe from a cancelled coroutine on IO.
+            runCatching { old?.reset() }
+            runCatching { old?.release() }
         }
-        releasePlayerOnly()
+        ensureActive()
         if (path.isBlank()) {
             return@withContext false
         }
@@ -99,28 +114,38 @@ private class AndroidAudioPlayer : AudioPlayer {
             }
             mp.prepare()
             applySpeed(mp, speed)
-            player = mp
             val durationMs = mp.duration.coerceAtLeast(0).toLong()
-            onMain { _durationMs.value = durationMs }
-            if (path.endsWith(".wav", ignoreCase = true) ||
-                path.endsWith(".wave", ignoreCase = true)
-            ) {
-                // no data is read here: skip-silence opens it on demand
-                withContext(Dispatchers.Main.immediate) { wavFile = file }
+            val isWav = path.endsWith(".wav", ignoreCase = true) || path.endsWith(".wave", ignoreCase = true)
+            // One hop, and a cancelled call never reaches it: a stale prepare cannot replace a newer player.
+            // No data is read for a WAV here: skip-silence opens it on demand.
+            onMain {
+                player = mp
+                _durationMs.value = durationMs
+                if (isWav) wavFile = file
             }
             true
-        } catch (e: CancellationException) {
-            // A cancel at a Main hop: release only the player this call made, then let the cancel through.
-            runCatching { created?.release() }
-            if (player === created) player = null
-            throw e
-        } catch (_: Throwable) {
-            releasePlayerOnly()
+        } catch (t: Throwable) {
+            // Only the player this call made: `player` may already be a newer call's. Uninstall it first, then
+            // release it, so nothing reads a released player. The hop returns by throwing when this call was
+            // cancelled (its block has run by then), so the release sits in `finally`.
+            try {
+                withContext(NonCancellable + Dispatchers.Main.immediate) {
+                    if (created != null && player === created) {
+                        player = null
+                        _durationMs.value = 0L
+                        wavFile = null
+                        wavSource = null
+                    }
+                }
+            } finally {
+                runCatching { created?.release() }
+            }
+            if (t is CancellationException) throw t
             false
         }
     }
 
-    private suspend fun onMain(block: () -> Unit) = withContext(Dispatchers.Main.immediate) { block() }
+    private suspend fun <T> onMain(block: () -> T): T = withContext(Dispatchers.Main.immediate) { block() }
 
     override fun play() {
         val mp = player ?: return
