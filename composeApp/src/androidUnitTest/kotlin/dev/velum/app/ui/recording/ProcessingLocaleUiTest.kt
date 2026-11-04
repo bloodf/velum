@@ -39,30 +39,41 @@ class ProcessingLocaleUiTest {
         context.deleteDatabase("velum.db")
         val root = ModelStoreDir(Files.createTempDirectory("velum-locale-ui-test").toString())
         val container = AppContainer(InMemorySecureStore(), DriverFactory(context), modelStoreRoot = root)
-        runBlocking {
-            container.settingsRepository.load()
-            container.repository.insertRecording(
-                id = "rec", sessionId = null, folderId = null, title = "Synthetic recording", source = "phone", deviceSerial = null,
-                startedAt = 1, durationSeconds = 60, sizeBytes = 0, localPath = null,
-                transcript = null, summaryMarkdown = null, status = status,
-            )
-            if (status == "failed") container.repository.setProcessingError("rec", INSUFFICIENT_STORAGE_MESSAGE)
-        }
-        val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup()
         try {
-            activity.get().setContent {
-                CompositionLocalProvider(LocalStrings provides strings) {
-                    VelumTheme(darkTheme = false) {
-                        RecordingDetailScreen(container, recordingId = "rec", onBack = {})
+            runBlocking {
+                container.settingsRepository.load()
+                container.repository.insertRecording(
+                    id = "rec", sessionId = null, folderId = null, title = "Synthetic recording", source = "phone", deviceSerial = null,
+                    startedAt = 1, durationSeconds = 60, sizeBytes = 0, localPath = null,
+                    transcript = null, summaryMarkdown = null, status = status,
+                )
+                if (status == "failed") container.repository.setProcessingError("rec", INSUFFICIENT_STORAGE_MESSAGE)
+            }
+            val activity = Robolectric.buildActivity(ComponentActivity::class.java)
+            try {
+                activity.setup().get().setContent {
+                    CompositionLocalProvider(LocalStrings provides strings) {
+                        VelumTheme(darkTheme = false) {
+                            RecordingDetailScreen(container, recordingId = "rec", onBack = {})
+                        }
                     }
                 }
+                compose.waitUntil(20_000) { compose.onAllNodesWithText(expected).fetchSemanticsNodes().isNotEmpty() }
+                assertTrue(compose.onAllNodesWithText(otherLanguage).fetchSemanticsNodes().isEmpty())
+            } finally {
+                activity.pause().stop().destroy()
             }
-            compose.waitUntil(20_000) { compose.onAllNodesWithText(expected).fetchSemanticsNodes().isNotEmpty() }
-            assertTrue(compose.onAllNodesWithText(otherLanguage).fetchSemanticsNodes().isEmpty())
         } finally {
-            activity.pause().stop().destroy()
-            container.databaseHandle.driver.close()
-            root.deleteRecursively()
+            try {
+                container.databaseHandle.driver.close()
+            } finally {
+                try {
+                    context.deleteDatabase("velum.db")
+                    assertTrue(!context.getDatabasePath("velum.db").exists())
+                } finally {
+                    root.deleteRecursively()
+                }
+            }
         }
     }
 
