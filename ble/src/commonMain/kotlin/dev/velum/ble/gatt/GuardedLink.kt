@@ -23,11 +23,16 @@ class GuardedLink(
         seal: (ByteArray) -> ByteArray,
     ) = writeGuarded(char, plaintext, withoutResponse, seal)
 
-    private suspend fun writeGuarded(
+    /**
+     * [linkGeneration] is the link the caller wrote for, carried on the write so the transport can refuse it if the
+     * link changed after the caller's own check. Internal with the seal: only `:ble` code reaches it.
+     */
+    internal suspend fun writeGuarded(
         char: GattChar,
         plaintext: ByteArray,
         withoutResponse: Boolean,
         seal: ((ByteArray) -> ByteArray)?,
+        linkGeneration: Long? = null,
     ) {
         val declared = requireNotNull(profile.writes[char]) {
             "No write guard declared for ${char.characteristic} in profile ${profile.id}"
@@ -38,9 +43,9 @@ class GuardedLink(
         val p = plaintext.copyOf()
         guard.check(p)
         val write = if (seal == null) {
-            PlainWrite(char, p, withoutResponse)
+            PlainWrite(char, p, withoutResponse, linkGeneration)
         } else {
-            SealedWrite(char, seal(p).copyOf(), withoutResponse)
+            SealedWrite(char, seal(p).copyOf(), withoutResponse, linkGeneration)
         }
         transport.writeRaw(write)
     }

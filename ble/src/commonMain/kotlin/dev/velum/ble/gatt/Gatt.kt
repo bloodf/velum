@@ -111,6 +111,9 @@ sealed class GattWrite {
     abstract val char: GattChar
     abstract val bytes: ByteArray
     abstract val withoutResponse: Boolean
+
+    /** The link generation the caller wrote for; a transport refuses the write if its link has changed since. Null: any. */
+    abstract val linkGeneration: Long?
 }
 
 /** Bytes sent as given (no session cipher active). */
@@ -118,6 +121,7 @@ class PlainWrite internal constructor(
     override val char: GattChar,
     bytes: ByteArray,
     override val withoutResponse: Boolean,
+    override val linkGeneration: Long? = null,
 ) : GattWrite() {
     private val data = bytes.copyOf()
 
@@ -130,9 +134,18 @@ class SealedWrite internal constructor(
     override val char: GattChar,
     bytes: ByteArray,
     override val withoutResponse: Boolean,
+    override val linkGeneration: Long? = null,
 ) : GattWrite() {
     private val data = bytes.copyOf()
 
     /** A copy each time: a transport wrapper editing it cannot change what the next transport sees. */
     override val bytes: ByteArray get() = data.copyOf()
+}
+
+/**
+ * The check every transport runs on a write: a write made for another link generation is refused, so a client whose
+ * session belongs to an older link cannot reach the current one. Null means the write does not name a link.
+ */
+fun requireSameLink(writeGeneration: Long?, currentGeneration: Long) {
+    check(writeGeneration == null || writeGeneration == currentGeneration) { "Link changed since the write was checked" }
 }
