@@ -139,14 +139,16 @@ class OrphanRecordingSweepTest {
         val old = file("old-pick.wav", day + 1)
         val young = file("young-pick.wav", day - 1)
         val referenced = file("in-use.wav", day + 1)
+        val pending = file("share_1_pending.wav", day + 1)
         val watched = file("watched/copy.wav", day * 2)
         val normalized = file("normalized/rec.wav", day * 2)
 
-        assertEquals(1, sweepStaleImportCopies(imports, listOf(referenced.path, null), nowMs = now))
+        assertEquals(1, sweepStaleImportCopies(imports, listOf(referenced.path, null), listOf(pending.path), nowMs = now))
 
         assertFalse(old.exists(), "a stale copy stayed")
         assertTrue(young.exists(), "a copy that may belong to a running import was deleted")
         assertTrue(referenced.exists(), "a recording lost its audio")
+        assertTrue(pending.exists(), "a share waiting to be re-offered lost its copy")
         assertTrue(watched.exists(), "watched copies are tracked separately")
         assertTrue(normalized.exists(), "a recording lost its normalized audio")
     }
