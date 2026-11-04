@@ -1,5 +1,6 @@
 package dev.velum.app.di
 
+import dev.velum.ai.pipeline.resolveTemplateForEnqueue
 import dev.velum.ai.createOpenAiCompatibleClient
 import dev.velum.ai.engine.AiTaskRouter
 import dev.velum.ai.local.LocalDiarizer
@@ -29,6 +30,8 @@ import dev.velum.app.platform.ExportFolderResult
 import dev.velum.app.platform.ExportFolderStore
 import dev.velum.app.platform.clearWatchedFolders
 import dev.velum.app.platform.deleteImportCopies
+import dev.velum.app.platform.deleteShareExports
+import dev.velum.app.platform.releaseFolderGrants
 import dev.velum.app.platform.writeMarkdownToExportFolder
 import dev.velum.core.integrations.MarkdownNoteExport
 import dev.velum.app.platform.MicCapture
@@ -226,6 +229,17 @@ class AppContainer(
     val activeMicRecordingId: String? get() = micRecordings.owner.value?.recordingId
 
     init {
+        // Earlier versions also kept every speaker embedding in plaintext, and a recording deleted while its
+        // diarization ran can leave its embeddings behind (#320).
+        appScope.launch(Dispatchers.IO) {
+            runCatching {
+                voiceProfileStore.purgePlaintextClusterCache()
+                // Listed before reading the recordings: a recording is stored before its processing caches anything.
+                val cached = voiceProfileStore.cachedRecordingIds()
+                val live = repository.recordingIds()
+                (cached - live).forEach { id -> runCatching { voiceProfileStore.deleteClusterCache(id) } }
+            }.onFailure { println("VelumStartup: voice cache cleanup failed: ${it::class.simpleName}") }
+        }
         // Template catalogs lazily read packaged assets; warm them off the main thread so the
         // composition-time lookups (template names, AutoFlow library) never hit the disk (StrictMode).
         appScope.launch(Dispatchers.IO) {
@@ -243,6 +257,12 @@ class AppContainer(
                 }
             }
         }
+    }
+
+    /** Deletes a recording for good, with the speaker embeddings its processing cached (#320). */
+    suspend fun deleteRecordingForever(id: String) {
+        repository.deleteRecordingHard(id)
+        withContext(Dispatchers.IO) { voiceProfileStore.deleteClusterCache(id) }
     }
 
     fun enqueueProcessing(
@@ -297,12 +317,16 @@ class AppContainer(
                 val downloads = device.wipePartialDownloads()
                 deviceKeyImporter.clearKeys()
                 stopMicCapture()
+                // Only now: if an earlier step fails, recordings stay and still need their queued work.
+                recordingJobs.cancelAll()
                 repository.wipeAllUserData { path -> deleteFileAtPath(path) }
                 withContext(Dispatchers.IO) {
                     voiceProfileStore.wipeAll()
                     clearWatchedFolders()
                     deleteImportCopies()
+                    deleteShareExports()
                     ExportFolderStore.clear()
+                    releaseFolderGrants()
                 }
                 settingsRepository.clearAllApiKeys()
                 webhookSettings.clear()
@@ -439,7 +463,7 @@ class AppContainer(
         )
         enqueueProcessing(
             recordingId = id,
-            templateId = match?.template_id,
+            templateId = resolveTemplateForEnqueue(repository, match?.template_id),
             retranscribe = true,
             apiModelOverride = match?.let { AutoFlowResolve.modelOverride(it) },
         )

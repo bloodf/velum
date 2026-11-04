@@ -12,3 +12,6 @@ expect fun rememberAudioImporter(onFailed: () -> Unit = {}, onPicked: (path: Str
 
 /** Deletes the app's copies of picked or shared audio (kept in the cache until imported). */
 expect fun deleteImportCopies()
+
+/** Deletes exported transcripts and other files handed to the share sheet (kept in the cache). */
+expect fun deleteShareExports()

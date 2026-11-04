@@ -121,8 +121,9 @@ settings 4/26), runs it on the **plaintext**, then optionally seals. `GattLink.w
 `:ble-testing` can implement it, but it only accepts `GattWrite` values whose constructors are `internal` to `:ble`,
 so only `GuardedLink` can produce one. Drivers and app code hold `BleTransport` / `GuardedLink` only.
 `GattArchitectureTest` fails if any module other than `ble` / `ble-testing` mentions `writeRaw`, `GattWrite`,
-`PlainWrite(` or `SealedWrite(`. Omi/Pocket/Limitless profiles
-arrive with #15, each declaring its own guard.
+`PlainWrite(` or `SealedWrite(`. The Omi, Pocket and Limitless profiles exist (`GattProfiles`) and declare no
+writable characteristic, so `GuardedLink` refuses every write under them; a driver that needs to write would first
+have to add its own guard for a named characteristic. No driver is wired to the Limitless profile (#18).
 
 ---
 

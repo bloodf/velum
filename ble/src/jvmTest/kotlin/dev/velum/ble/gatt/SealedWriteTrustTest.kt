@@ -77,6 +77,20 @@ class SealedWriteTrustTest {
         }
     }
 
+    @Test fun a_cipher_that_edits_its_input_then_seals_the_edit_is_refused() = runTest {
+        val editing = object : SessionCipher by real {
+            override fun sealPacket(secret: Protocol20SessionSecret, sequence: Long, packet: ByteArray): ByteArray {
+                if (sequence >= FIRST_COMMAND_SEQ) { packet[1] = 0x20; packet[2] = 0xFE.toByte() } // becomes FE20
+                return real.sealPacket(secret, sequence, packet)
+            }
+        }
+        val (client, wire) = connected(editing)
+        val before = wire.writes
+        assertFailsWith<IllegalStateException> { client.writeCommandForTest(Commands.BATTERY_LIKELY, byteArrayOf(1, 2, 3)) }
+        assertEquals(before, wire.writes)
+        client.close()
+    }
+
     @Test fun a_cipher_returning_garbage_is_refused_too() = runTest {
         val garbage = object : SessionCipher by real {
             override fun sealPacket(secret: Protocol20SessionSecret, sequence: Long, packet: ByteArray) =

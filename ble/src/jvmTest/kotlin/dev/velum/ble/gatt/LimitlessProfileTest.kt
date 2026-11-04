@@ -32,6 +32,10 @@ class LimitlessProfileTest {
 
     @Test fun the_profile_is_notify_only_and_addressed_by_the_published_uuids() {
         assertTrue(GattProfiles.Limitless.writes.isEmpty())
+        assertTrue(GattProfiles.Limitless.reads.isEmpty())
+        // Literals, not the constants the profile is built from: a wrong constant must fail here.
+        assertEquals("632de001-604c-446b-a80f-7963e950f3fb", GattProfiles.LIMITLESS_RX.service)
+        assertEquals("632de001-604c-446b-a80f-7963e950f3fb", GattProfiles.LIMITLESS_TX.service)
         assertEquals(listOf(rxChar), GattProfiles.Limitless.notify)
         assertEquals("632de003-604c-446b-a80f-7963e950f3fb", GattProfiles.LIMITLESS_RX.characteristic)
         assertEquals("632de002-604c-446b-a80f-7963e950f3fb", GattProfiles.LIMITLESS_TX.characteristic)
@@ -70,5 +74,9 @@ class LimitlessProfileTest {
         val ble = fake()
         ble.connect("fake-note-pro", GattProfiles.Plaud)
         assertTrue(ble.connectionState.value is BleConnectionState.Connected)
+    }
+
+    @Test fun the_stub_transport_refuses_a_profile_without_a_driver_path_too() = runTest {
+        assertFailsWith<IllegalArgumentException> { dev.velum.ble.StubBleTransport().connect("x", GattProfiles.Limitless) }
     }
 }
