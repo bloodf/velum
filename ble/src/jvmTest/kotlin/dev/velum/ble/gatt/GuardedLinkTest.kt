@@ -79,7 +79,12 @@ class GuardedLinkTest {
         assertFailsWith<IllegalArgumentException> {
             link.write(char, byteArrayOf(0x20, 0xFE.toByte()), withoutResponse = false)
         }
-        link.write(char, byteArrayOf(0xFE.toByte(), 0x20), withoutResponse = false)
+        // The swapped bytes are a different opcode but not a shape production sends on 2BB1 (deny by default): refused too.
+        assertFailsWith<IllegalArgumentException> {
+            link.write(char, byteArrayOf(0xFE.toByte(), 0x20), withoutResponse = false)
+        }
+        // An unlock chunk (0xFE10, little endian) is the bare shape that does go out.
+        link.write(char, byteArrayOf(0x10, 0xFE.toByte(), 1, 0, 9), withoutResponse = false)
         assertEquals(1, t.writes.size)
     }
 
@@ -99,7 +104,9 @@ class GuardedLinkTest {
     @Test
     fun sealedBytes_areNeverParsedAsOpcodes() = runTest {
         val (t, link) = rig()
-        // Ciphertext that happens to start with forbidden opcode 104 must still go out.
+        // GuardedLink itself never parses sealed bytes (its seal overload is internal to :ble; PlaudDeviceClient verifies
+        // that the sealed bytes open to the checked plaintext). Ciphertext that happens to start with forbidden opcode
+        // 104 must still go out.
         link.write(char, prefixed(0x1234), withoutResponse = false) { bare(ForbiddenOpcodes.CLEAR_ALL) + it }
         val w = t.writes.single()
         assertIs<SealedWrite>(w)
@@ -230,12 +237,47 @@ class GuardedLinkTest {
                 caller[2] = 0x7F
                 caller[3] = 0x7F
             }
-            val link = GuardedLink(t, GattProfile("probe", emptyList(), mapOf(char to guard)))
-            if (sealed) link.write(char, caller, false) { it } else link.write(char, caller, false)
+            // A characteristic of its own: on 2BB1 the profile's guard is ignored (PlaudWriteGuard always applies).
+            val probe = GattChar("probe-service", "probe-char")
+            val link = GuardedLink(t, GattProfile("probe", emptyList(), mapOf(probe to guard)))
+            if (sealed) link.write(probe, caller, false) { it } else link.write(probe, caller, false)
             caller[4] = 0x7F // and after the call returns
             val sent = t.writes.single().bytes
             assertContentEquals(checkedSnapshot, sent, "sealed=$sealed: transport must get exactly the bytes that were checked")
             assertContentEquals(byteArrayOf(Framing.APP_PREFIX, 0x40, 1, 2, 3), sent)
         }
     }
+
+    private val fe20Frame = byteArrayOf(Framing.APP_PREFIX, 0x20, 0xFE.toByte())
+
+    @Test fun a_profile_with_a_do_nothing_guard_on_2BB1_still_gets_the_plaud_guard() = runTest {
+        val wire = RecordingTransport()
+        val weak = GuardedLink(wire, GattProfile("weak", emptyList(), mapOf(char to WriteGuard { })))
+        assertFailsWith<IllegalArgumentException> { weak.write(char, fe20Frame, withoutResponse = false) }
+        assertFailsWith<IllegalArgumentException> { weak.write(char, fe20Frame, withoutResponse = false) { it } }
+        assertEquals(0, wire.writes.size)
+    }
+
+    @Test fun frames_that_are_not_production_shapes_are_refused_on_2BB1() = runTest {
+        val wire = RecordingTransport()
+        val link = GuardedLink(wire, GattProfiles.Plaud)
+        for (op in ForbiddenOpcodes.ALL.filter { it < 256 }) {
+            for (first in listOf(0x00, 0x02, 0x03)) {
+                assertFailsWith<IllegalArgumentException>("[%02x, %02x]".format(first, op)) {
+                    link.write(char, byteArrayOf(first.toByte(), op.toByte()), withoutResponse = false)
+                }
+            }
+        }
+        // Even an allowed opcode (cmd 9) is refused in a bare shape; only the prefixed command frame and unlock chunks go out.
+        for (first in listOf(0x00, 0x02)) {
+            assertFailsWith<IllegalArgumentException> { link.write(char, byteArrayOf(first.toByte(), 0x09), withoutResponse = false) }
+        }
+        assertEquals(0, wire.writes.size)
+        link.write(char, byteArrayOf(Framing.APP_PREFIX, 0x09), withoutResponse = false)
+        for (unlock in listOf(0xFE10, 0xFE11, 0xFE12)) {
+            link.write(char, byteArrayOf(unlock.toByte(), (unlock shr 8).toByte(), 1, 0, 7), withoutResponse = false)
+        }
+        assertEquals(4, wire.writes.size)
+    }
+
 }

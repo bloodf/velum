@@ -37,6 +37,23 @@ class GattArchitectureTest {
     // A call (`.f(`) or a bound/unbound reference (`::f`, `x::f`); a bare declaration `fun f` is not a use.
     private val wifiSendUse = Regex("""(\.|::)\s*sendEncryptedFrame\b""")
 
+    // The guard API itself: outside :ble nobody may build a GuardedLink or supply a WriteGuard (a wrapper that edits
+    // write.bytes after the guard, or a weaker guard, is how the choke point would be bypassed). Code uses only, so a
+    // doc comment that names PlaudWriteGuard does not trip it.
+    private val guardApiUse = Regex("""\bGuardedLink\s*\(|\bWriteGuard\s*[({]|:\s*WriteGuard\b|\bPlaudWriteGuard\s*\.""")
+
+    private fun referencesGuardApi(text: String) = guardApiUse.containsMatchIn(text)
+
+    @Test
+    fun guardApiDetector_catchesUses_notComments() {
+        assertTrue(referencesGuardApi("val l = GuardedLink(transport, profile)"))
+        assertTrue(referencesGuardApi("val g = WriteGuard { }"))
+        assertTrue(referencesGuardApi("object X : WriteGuard {"))
+        assertTrue(referencesGuardApi("PlaudWriteGuard.check(bytes)"))
+        assertTrue(!referencesGuardApi("// PlaudWriteGuard in :ble rejects reads of them too"))
+        assertTrue(!referencesGuardApi("see `PlaudWriteGuard` in :ble"))
+    }
+
     private fun referencesWifiSend(text: String) = wifiSendUse.containsMatchIn(text)
 
     @Test
@@ -97,7 +114,7 @@ class GattArchitectureTest {
                     .onEnter { it.name != "build" && it.name != ".gradle" }
                     .filter { it.isSource() }
                     .filter { it.relativeTo(root).invariantSeparatorsPath !in allowedFiles }
-                    .filter { f -> banned.any { f.readText().contains(it) } }
+                    .filter { f -> f.readText().let { text -> banned.any { text.contains(it) } || referencesGuardApi(text) } }
                     .map { it.relativeTo(root).path }
                     .toList()
             }
