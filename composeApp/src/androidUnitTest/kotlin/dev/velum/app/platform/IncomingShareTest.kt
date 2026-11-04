@@ -23,6 +23,9 @@ import org.robolectric.annotation.Config
 class IncomingShareTest {
     private val context: Context = ApplicationProvider.getApplicationContext()
     private val own = "dev.velum.app.fileprovider"
+
+    // The channel is process-wide; other test classes in this JVM may have left shares in it.
+    @org.junit.Before fun drain() = kotlinx.coroutines.runBlocking { while (kotlinx.coroutines.withTimeoutOrNull(300) { IncomingShare.next() } != null) Unit }
     private fun accept(action: String?, uri: String?) = IncomingShare.acceptedUri(action, uri?.let(Uri::parse), own)
 
     @Test fun only_send_and_view_are_accepted() {

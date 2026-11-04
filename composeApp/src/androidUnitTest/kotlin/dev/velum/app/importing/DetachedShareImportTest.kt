@@ -147,4 +147,19 @@ class DetachedShareImportTest {
         assertTrue(result.exceptionOrNull() is kotlinx.coroutines.CancellationException || result.getOrNull() is ImportResult.Failed, result.toString())
         assertEquals(0L, container.repository.storageUsage().recordingCount)
     }
+
+    @Test fun a_finished_share_import_clears_its_pending_marker() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        dev.velum.app.platform.installAppContext(context)
+        context.getSharedPreferences("velum_pending_shares", Context.MODE_PRIVATE).edit().clear().commit()
+        withContainer { container, dir ->
+            val wav = silentWav(File(dir, "marked.wav"))
+            val u = android.net.Uri.parse("content://test.provider/marked.wav")
+            org.robolectric.Shadows.shadowOf(context.contentResolver).registerInputStream(u, java.io.ByteArrayInputStream(wav.readBytes()))
+            val copy = checkNotNull(dev.velum.app.platform.IncomingShare.copyShare(context, u))
+            assertEquals(listOf(copy), dev.velum.app.platform.IncomingShare.recoverPending(context)) // marker present while pending
+            AudioImportPipeline(container).startSharedDetached(copy).await()
+            assertEquals(emptyList(), dev.velum.app.platform.IncomingShare.recoverPending(context), "the marker must go with the import")
+        }
+    }
 }

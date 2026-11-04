@@ -58,7 +58,14 @@ class AudioImportPipeline(
      * shared twice, even from two activity instances, is a Duplicate rather than two recordings and two processing jobs.
      */
     fun startSharedDetached(copyPath: String): kotlinx.coroutines.Deferred<ImportResult> =
-        container.runDetached { container.shareImportMutex.withLock { importShared(copyPath) } }
+        container.runDetached {
+            try {
+                container.shareImportMutex.withLock { importShared(copyPath) }
+            } finally {
+                // Only reached when this process lives to the end of the import: a death before it leaves the marker for the next start.
+                dev.velum.app.platform.markShareHandled(copyPath)
+            }
+        }
 
     private suspend fun importNow(
         absolutePath: String,

@@ -18,6 +18,56 @@ object IncomingShare {
     private val paths: Channel<SharedFile> = Channel(Channel.UNLIMITED, onUndeliveredElement = { shared -> paths.trySend(shared) })
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    private const val PREFS = "velum_pending_shares"
+    private const val KEY = "pending"
+
+    /** A pending share older than this is dropped with its copy: the user has moved on. */
+    internal const val MAX_PENDING_AGE_MS = 24L * 60 * 60 * 1000
+
+    private fun prefs(context: Context) = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+    // Entries are "<epochMs>|<absolute path>". Synchronous commit so the marker is on disk before the path is offered: a kill right
+    // after the copy must still find it. IO thread only.
+    private val lock = Any()
+
+    private fun mark(context: Context, path: String, nowMs: Long) = synchronized(lock) {
+        val p = prefs(context)
+        p.edit().putStringSet(KEY, (p.getStringSet(KEY, emptySet()).orEmpty()) + "$nowMs|$path").commit()
+    }
+
+    /** Forgets [path]; call once the share was handled (imported, duplicate, failed, refused). */
+    internal fun markHandled(context: Context, path: String) = synchronized(lock) {
+        val p = prefs(context)
+        val now = p.getStringSet(KEY, emptySet()).orEmpty()
+        p.edit().putStringSet(KEY, now.filterNot { it.substringAfter('|') == path }.toSet()).commit()
+    }
+
+    /**
+     * Once per process start (IO thread): re-offers shares copied by a process that died before importing them, relying on
+     * the import's hash dedupe if one had in fact finished. Entries whose copy is gone (a wipe, a cache clear) or older than
+     * [MAX_PENDING_AGE_MS] are dropped, and an expired copy is deleted. Returns the paths re-offered.
+     */
+    fun recoverPending(context: Context, nowMs: Long = System.currentTimeMillis()): List<String> = synchronized(lock) {
+        val p = prefs(context)
+        val entries = p.getStringSet(KEY, emptySet()).orEmpty()
+        val keep = mutableSetOf<String>()
+        val offered = mutableListOf<String>()
+        for (entry in entries) {
+            val at = entry.substringBefore('|').toLongOrNull()
+            val path = entry.substringAfter('|', "")
+            val file = File(path)
+            when {
+                at == null || path.isEmpty() -> Unit // corrupt: drop
+                nowMs - at > MAX_PENDING_AGE_MS -> file.delete()
+                !file.isFile || file.length() == 0L -> Unit
+                else -> { keep += entry; offered += path }
+            }
+        }
+        p.edit().putStringSet(KEY, keep).commit()
+        offered.forEach { enqueue(SharedFile.Ready(it)) }
+        offered
+    }
+
     /** Queues a finished share. Used by the copy and by tests. */
     internal fun enqueue(shared: SharedFile) {
         paths.trySend(shared)
@@ -84,6 +134,7 @@ object IncomingShare {
             return null
         }
         dev.velum.app.importing.ImportDisplayNames.put(outFile.absolutePath, displayName)
+        mark(context, outFile.absolutePath, System.currentTimeMillis())
         return outFile.absolutePath
     }
 }
