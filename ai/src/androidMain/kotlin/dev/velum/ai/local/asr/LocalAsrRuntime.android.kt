@@ -166,13 +166,7 @@ actual class LocalAsrRuntime actual constructor() {
                 embeddingModelPath = embModel.absolutePath,
             )
             val naming = voiceProfiles?.cacheAndNameSpeakers(recordingId, embeddingsBySpeaker, matchThreshold)
-            return DiarizationResult(
-                spans = spans,
-                namedSpeakers = naming?.names.orEmpty(),
-                speakerNamesUnavailable = naming?.unavailable == true,
-                engineId = "local-diarizer",
-                modelId = modelId,
-            )
+            return VoiceProfileStore.SpeakerNaming.resultFor(spans, naming, engineId = "local-diarizer", modelId = modelId)
         } finally {
             diarizer.release()
         }
