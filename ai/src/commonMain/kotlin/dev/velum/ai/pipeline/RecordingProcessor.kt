@@ -48,8 +48,15 @@ const val TRUNCATED_AUDIO_MESSAGE = "Audio file is truncated; processing the par
 /** Bytes read to tell an Ogg or WAV file apart when the file name does not say. */
 private const val SNIFF_BYTES = 16
 
+/** Saved as the processing error when the disk is full; the UI matches this exact text to translate it (#348). */
 const val INSUFFICIENT_STORAGE_MESSAGE =
     "Not enough free storage to process this recording. Free up space and try again."
+
+/** Saved failure texts the UI shows in the app's language; keep them stable (#348). */
+const val NO_TRANSCRIPT_TO_SUMMARIZE_MESSAGE = "This recording has no transcript to summarize."
+const val NO_AUDIO_OR_TRANSCRIPT_MESSAGE = "Recording has no local audio path and no existing transcript."
+const val PROCESSING_STOPPED_MESSAGE =
+    "Processing was stopped by Android because it could not run in the foreground. Open Velum and try again."
 
 /** True when [t] or a cause reports a full disk (ENOSPC); message text is all common code can see. */
 internal fun isOutOfStorage(t: Throwable): Boolean {
@@ -236,13 +243,13 @@ class RecordingProcessor(
             val (storedTranscript, storedMarkers) = TranscriptFormatter.splitMarkers(recording.transcript.orEmpty())
             var transcriptMarkdown = storedTranscript
             if (!retranscribe && transcriptMarkdown.isBlank()) {
-                throw IllegalStateException("This recording has no transcript to summarize.")
+                throw IllegalStateException(NO_TRANSCRIPT_TO_SUMMARIZE_MESSAGE)
             }
             if (retranscribe) {
                 if (pcmBuffer.sizeBytes <= 0L) {
                     if (transcriptMarkdown.isBlank()) {
                         throw IllegalStateException(
-                            "Recording has no local audio path and no existing transcript.",
+                            NO_AUDIO_OR_TRANSCRIPT_MESSAGE,
                         )
                     }
                     emit(JobProgress.Running(0.35f, "Using existing transcript (no audio file)"))
@@ -315,6 +322,14 @@ class RecordingProcessor(
                     } catch (_: UnsupportedOperationException) {
                         // API diarization / JVM-without-native — keep ASR text.
                         null
+                    }
+
+                    // Without the voice key nothing can be named. A first run goes on with bare labels; a rerun
+                    // fails as before so the names the user already typed (and the transcript) stay as they are.
+                    if (diarization != null && diarization.speakerNamesUnavailable &&
+                        repository.getSpeakers(recordingId).any { !it.display_name.isNullOrBlank() }
+                    ) {
+                        throw dev.velum.ai.local.VoiceProfileKeyUnavailableException()
                     }
 
                     val mergedSegments = if (diarization != null) {

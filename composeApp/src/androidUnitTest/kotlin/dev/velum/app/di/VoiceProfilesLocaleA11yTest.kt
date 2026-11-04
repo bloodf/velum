@@ -92,6 +92,7 @@ class VoiceProfilesLocaleA11yTest {
         "VoiceProfilesFileUnavailable" to "needs a profile file that cannot be read (I/O error)",
         "VoiceProfilesFilesChanged" to "needs files repaired while the removal dialog is open",
         "VoiceProfilesImportedFormat" to "needs importing 2+ profiles; plural text is covered in VoiceProfilesLocalizationTest",
+        "VoiceProfilesNoCachedVoice" to "shown by the recording's speaker sheet, not by this screen",
         "VoiceProfilesChangeBlocked" to "needs saving a profile that turned unreadable",
     )
 
