@@ -109,8 +109,35 @@ class ProcessingFailureTextTest {
         )
     }
 
+    @Test fun an_unquoted_host_is_cut() {
+        assertEquals(
+            "Processing failed (Failed to connect to …:11434).",
+            processingFailureText("Failed to connect to nas.example.lan/192.0.2.5:11434", En),
+        )
+        assertEquals("Processing failed (Unable to resolve host …).", processingFailureText("Unable to resolve host nas.example.lan", En))
+    }
+
+    @Test fun only_the_first_line_is_shown() {
+        val raw = "Hostname nas.example.lan not verified:\n    certificate: sha256/AAAA\n    DN: CN=someone, O=Example"
+        assertEquals("Processing failed (Hostname … not verified:).", processingFailureText(raw, En))
+    }
+
+    @Test fun a_word_before_a_path_is_kept_whole() {
+        assertEquals("Processing failed (Error:…).", processingFailureText("Error:/data/x/y", En))
+    }
+
+    @Test fun an_email_with_accented_letters_is_cut() {
+        assertEquals("Processing failed (sent to …).", processingFailureText("sent to joão@exâmple.lan", En))
+    }
+
+    @Test fun only_the_start_of_a_long_row_is_scanned() {
+        // A URL filling the scan limit is all that is left, so text past the limit must not bring a detail back.
+        val raw = "https://nas.example.lan/" + "x".repeat(240) + " past the limit"
+        assertEquals(null, processingFailureText(raw, En))
+    }
+
     @Test fun ordinary_diagnostics_stay_readable() {
-        for (kept in listOf("HTTP 503", "got 8000 Hz", "timeout after 30000 ms", "error: code 12")) {
+        for (kept in listOf("HTTP 503", "got 8000 Hz", "timeout after 30000 ms", "error: code 12", "java.io.IOException", "gemma-4-e2b")) {
             assertEquals("Processing failed ($kept).", processingFailureText(kept, En), kept)
         }
     }
