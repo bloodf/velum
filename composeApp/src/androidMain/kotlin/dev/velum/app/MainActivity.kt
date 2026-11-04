@@ -38,7 +38,8 @@ class MainActivity : ComponentActivity() {
         splash.setKeepOnScreenCondition { !composeReady.get() && !fatalUi.get() }
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        IncomingShare.offerFromIntent(this, intent)
+        // A recreation (rotation, process restore) replays the original intent; only a fresh launch is a new share (#329).
+        IncomingShare.offerOnCreate(this, intent, savedInstanceState)
         // Compose hierarchy immediately for AndroidComposeTestRule (#106).
         // When the process-scoped container is already ready (later instrumented
         // cells), seed App on the first frame — do not wait on a Main coroutine
