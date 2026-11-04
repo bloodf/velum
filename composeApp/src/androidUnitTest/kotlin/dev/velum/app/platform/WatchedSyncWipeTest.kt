@@ -43,7 +43,7 @@ class WatchedSyncWipeTest {
             recordingJobSchedulerFactory = { _, _ -> RecordingJobScheduler { _, _, _, _ -> } },
         )
         context.getSharedPreferences("velum_watched_folders", Context.MODE_PRIVATE).edit()
-            .putString("tree_uris", FakeDocumentsProvider.treeUri().toString()).commit()
+            .clear().putString("tree_uris", FakeDocumentsProvider.treeUri().toString()).commit()
         try {
             runBlocking { block(container, AudioImportPipeline(container)) }
         } finally {
@@ -128,16 +128,47 @@ class WatchedSyncWipeTest {
         }
     }
 
-    @Test fun only_successful_unchanged_sources_are_remembered() {
-        WatchedFolderStore.clear(context)
-        val entry = WatchedFolderEntry("a.wav", "content://test/a", "/unused", 123, 456)
-        assertFalse(WatchedFolderStore.isUnchanged(context, entry.uriString, 123, 456))
-        WatchedFolderStore.markImported(context, entry)
-        assertTrue(WatchedFolderStore.isUnchanged(context, entry.uriString, 123, 456))
-        assertFalse(WatchedFolderStore.isUnchanged(context, entry.uriString, 124, 456))
-        assertFalse(WatchedFolderStore.isUnchanged(context, entry.uriString, 123, 457))
-        WatchedFolderStore.clear(context)
-        assertFalse(WatchedFolderStore.isUnchanged(context, entry.uriString, 123, 456))
+    @Test fun watched_content_identity_detects_replacement_and_retries_failures() = withPipeline { container, pipeline ->
+        Robolectric.setupContentProvider(FakeDocumentsProvider::class.java, FakeDocumentsProvider.AUTHORITY)
+        val wav = File(context.cacheDir, "identity-provider.wav")
+        fun audio(sample: Byte): ByteArray {
+            val bytes = java.nio.ByteBuffer.allocate(64).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+            bytes.put("RIFF".toByteArray()).putInt(56).put("WAVEfmt ".toByteArray()).putInt(16)
+            bytes.putShort(1).putShort(1).putInt(16000).putInt(32000).putShort(2).putShort(16)
+            bytes.put("data".toByteArray()).putInt(20).put(ByteArray(20) { sample })
+            return bytes.array()
+        }
+        FakeDocumentsProvider.audioFile = wav
+        try {
+            // Both provider entries have fixed URIs, timestamps and sizes across every scan.
+            wav.writeBytes(audio(0))
+            val first = syncWatchedFolders(pipeline)
+            assertEquals(1, first.count { it is dev.velum.app.importing.ImportResult.Created })
+            assertEquals(1, container.repository.getAllRecordings().size)
+
+            val unchanged = syncWatchedFolders(pipeline)
+            assertTrue(unchanged.all { it is dev.velum.app.importing.ImportResult.Duplicate }, "$unchanged")
+            assertEquals(2, unchanged.size)
+            assertEquals(1, container.repository.getAllRecordings().size)
+
+            wav.writeBytes(audio(1))
+            val changed = syncWatchedFolders(pipeline)
+            assertEquals(1, changed.count { it is dev.velum.app.importing.ImportResult.Created }, "$changed")
+            assertEquals(2, container.repository.getAllRecordings().size)
+
+            wav.writeBytes(ByteArray(64))
+            val failed = syncWatchedFolders(pipeline)
+            assertEquals(2, failed.count { it is dev.velum.app.importing.ImportResult.Failed }, "$failed")
+            val retried = syncWatchedFolders(pipeline)
+            assertEquals(2, retried.count { it is dev.velum.app.importing.ImportResult.Failed }, "$retried")
+            wav.writeBytes(audio(2))
+            val recovered = syncWatchedFolders(pipeline)
+            assertEquals(1, recovered.count { it is dev.velum.app.importing.ImportResult.Created }, "$recovered")
+            assertEquals(3, container.repository.getAllRecordings().size)
+        } finally {
+            FakeDocumentsProvider.audioFile = null
+            wav.delete()
+        }
     }
 
     @Test fun a_stopped_walk_copies_nothing() {

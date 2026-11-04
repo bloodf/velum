@@ -40,7 +40,6 @@ internal suspend fun syncWatchedFolders(
                         titleHint = entry.displayName.substringBeforeLast('.'),
                         startedAtEpochSeconds = entry.lastModifiedMs / 1000L,
                     )
-                    if (result !is ImportResult.Failed) WatchedFolderStore.markImported(context, entry)
                     results += result
                 }
             } finally {

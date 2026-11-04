@@ -53,19 +53,6 @@ object WatchedFolderStore {
             .apply()
     }
 
-    private fun identity(uri: String) = "file_" + sha256Bytes(uri.encodeToByteArray())
-
-    fun isUnchanged(context: Context, uri: String, modified: Long, size: Long): Boolean =
-        modified > 0 && size > 0 && context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getString(identity(uri), null) == "$modified:$size"
-
-    fun markImported(context: Context, entry: WatchedFolderEntry) {
-        if (entry.lastModifiedMs > 0 && entry.sizeBytes > 0) {
-            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-                .putString(identity(entry.uriString), "${entry.lastModifiedMs}:${entry.sizeBytes}").commit()
-        }
-    }
-
     /** [checkActive] runs before each file is copied, and throws when the scan should stop. */
     fun scanNewAudio(context: Context, treeUriString: String, checkActive: () -> Unit = {}): List<WatchedFolderEntry> {
         val tree = DocumentFile.fromTreeUri(context, Uri.parse(treeUriString)) ?: return emptyList()
@@ -82,7 +69,6 @@ object WatchedFolderStore {
                         val uri = child.uri.toString()
                         val modified = child.lastModified()
                         val size = child.length()
-                        if (isUnchanged(context, uri, modified, size)) return@forEach
                         val extension = name.substringAfterLast('.').lowercase()
                         val dest = File(destRoot, "${java.util.UUID.randomUUID()}.$extension")
                         // One unreadable file (card pulled mid-copy, revoked grant) must not stop the others.
