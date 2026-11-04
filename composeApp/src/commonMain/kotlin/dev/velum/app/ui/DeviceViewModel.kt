@@ -89,7 +89,7 @@ data class DownloadedSessionAudio(
 )
 
 /** How the downloads ended for "Wipe all data". */
-enum class DownloadWipeResult { Clean, PartialsLeft, StillRunning }
+enum class DownloadWipeResult { Clean, PartialsLeft, StillRunning, Incomplete }
 
 class DeviceViewModel(
     private val ble: BleTransport,

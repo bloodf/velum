@@ -14,3 +14,9 @@ expect fun isSamePath(a: String, b: String): Boolean
  * not [newPath]. Compares canonical paths so `..`, symlinks or a different dir spelling never match.
  */
 expect fun isSupersededOwnAudio(previousPath: String, newPath: String, dir: String, id: String): Boolean
+
+/** True when no file remains at [absolutePath] afterwards, including when there was none. */
+expect fun deleteFileIfPresent(absolutePath: String): Boolean
+
+/** Deletes audio the orphan sweep set aside. False if some remains. */
+expect fun deleteOrphanQuarantine(): Boolean

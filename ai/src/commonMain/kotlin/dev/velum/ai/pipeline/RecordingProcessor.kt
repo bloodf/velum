@@ -80,6 +80,16 @@ fun sweepOrphanPcmSpill(
         .filter { newestChangeMillis(it) < olderThanEpochMs }
         .count { runCatching { it.deleteRecursively() }; !it.exists() }
 
+/**
+ * Removes every spilled PCM dir, whatever its age, for "Wipe all data". Only safe once no job can be decoding.
+ * False if some remain.
+ */
+fun deleteAllPcmSpill(root: ModelStoreDir = defaultModelStoreRoot()): Boolean =
+    root.resolve("tmp").takeIf { it.isDirectory() }?.listChildren().orEmpty()
+        .filter { it.name.startsWith("pcm-") }
+        .map { runCatching { it.deleteRecursively() }; !it.exists() }
+        .all { it }
+
 private fun newestChangeMillis(dir: ModelStoreDir): Long =
     maxOf(dir.lastModifiedMillis(), dir.walkFiles().maxOfOrNull { it.lastModifiedMillis() } ?: 0L)
 

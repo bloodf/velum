@@ -29,7 +29,9 @@ import dev.velum.app.devicewalk.DeviceWalkTranscriber
 import dev.velum.app.platform.ExportFolderResult
 import dev.velum.app.platform.ExportFolderStore
 import dev.velum.app.platform.clearWatchedFolders
+import dev.velum.app.platform.deleteFileIfPresent
 import dev.velum.app.platform.deleteImportCopies
+import dev.velum.app.platform.deleteOrphanQuarantine
 import dev.velum.app.platform.deleteShareExports
 import dev.velum.app.platform.releaseFolderGrants
 import dev.velum.app.platform.writeMarkdownToExportFolder
@@ -83,14 +85,17 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import dev.velum.ai.pipeline.deleteAllPcmSpill
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
 class AppContainer(
     val secureStore: SecureStore,
     driverFactory: DriverFactory,
     val ble: BleTransport = createBleTransport(),
-    modelStoreRoot: ModelStoreDir = defaultModelStoreRoot(),
+    private val modelStoreRoot: ModelStoreDir = defaultModelStoreRoot(),
     val integrationConfig: IntegrationConfig = IntegrationConfig.defaults(),
     val calendarProvider: CalendarEventProvider = createCalendarEventProvider(),
     /**
@@ -311,37 +316,68 @@ class AppContainer(
      * is stopped first and can't start again until the wipe ends, including when a step fails. The device keys
      * go as soon as the downloads stop, so a step that fails later can't leave them for a download to use.
      */
-    internal suspend fun wipeAllData(device: DeviceViewModel = deviceViewModel): DownloadWipeResult =
-        wipeGate.wiping(WIPE_JOIN_TIMEOUT) { workStopped ->
+    internal suspend fun wipeAllData(
+        device: DeviceViewModel = deviceViewModel,
+        joinTimeout: Duration = WIPE_JOIN_TIMEOUT,
+    ): DownloadWipeResult =
+        wipeGate.wiping(joinTimeout) { workStopped ->
             device.holdingDownloads {
-                val downloads = device.wipePartialDownloads()
-                deviceKeyImporter.clearKeys()
-                stopMicCapture()
-                // Only now: if an earlier step fails, recordings stay and still need their queued work.
-                recordingJobs.cancelAll()
-                repository.wipeAllUserData { path -> deleteFileAtPath(path) }
-                withContext(Dispatchers.IO) {
-                    voiceProfileStore.wipeAll()
-                    clearWatchedFolders()
-                    deleteImportCopies()
-                    deleteShareExports()
-                    ExportFolderStore.clear()
-                    releaseFolderGrants()
+                var complete = true
+                // Every step runs even if an earlier one failed: a locked keystore must not leave the rest behind.
+                suspend fun step(name: String, action: suspend () -> Boolean) {
+                    val done = try {
+                        action()
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (e: Exception) {
+                        println("VelumWipe: $name failed: ${e::class.simpleName}")
+                        false
+                    }
+                    if (!done) complete = false
                 }
-                settingsRepository.clearAllApiKeys()
-                webhookSettings.clear()
-                integrationAuth.clearTokens()
-                if (workStopped) downloads else DownloadWipeResult.StillRunning
+                val downloads = device.wipePartialDownloads()
+                step("device keys") { deviceKeyImporter.clearKeys(); true }
+                step("mic") { stopMicCapture() }
+                step("recordings") {
+                    val left = mutableSetOf<String>()
+                    repository.wipeAllUserData { path -> if (deleteFileIfPresent(path)) left -= path else left += path }
+                    // Only now: if the rows stayed, they still need their queued work. The gate refuses it meanwhile.
+                    recordingJobs.cancelAll()
+                    left.isEmpty()
+                }
+                step("voice data") { withContext(Dispatchers.IO) { voiceProfileStore.wipeAll() } }
+                step("folders") {
+                    withContext(Dispatchers.IO) {
+                        clearWatchedFolders()
+                        ExportFolderStore.clear()
+                        releaseFolderGrants()
+                    }
+                }
+                step("cached files") {
+                    withContext(Dispatchers.IO) {
+                        // A job that has not stopped may own a spill directory; StillRunning reports that case.
+                        val spill = !workStopped || deleteAllPcmSpill(modelStoreRoot)
+                        listOf(spill, deleteImportCopies(), deleteShareExports(), deleteOrphanQuarantine()).all { it }
+                    }
+                }
+                step("api keys") { settingsRepository.clearAllApiKeys(); true }
+                step("webhook") { webhookSettings.clear(); true }
+                step("integrations") { integrationAuth.clearTokens(); true }
+                when {
+                    !workStopped || downloads == DownloadWipeResult.StillRunning -> DownloadWipeResult.StillRunning
+                    !complete -> DownloadWipeResult.Incomplete
+                    else -> downloads
+                }
             }
         }
 
     /** Ends a mic recording in progress and deletes its file, which may not be on a recording row yet. */
-    private suspend fun stopMicCapture() = micRecordings.underLock {
+    private suspend fun stopMicCapture(): Boolean = micRecordings.underLock {
         // Under the controller's lock: a start that passed its check before the wipe finishes first, then stops here.
-        val session = micCapture.sessions.value.session ?: return@underLock
+        val session = micCapture.sessions.value.session ?: return@underLock true
         if (micCapture.isCapturing) micCapture.stop(session)
         micRecordings.owner.value?.let { micRecordings.release(it) }
-        withContext(Dispatchers.IO) { deleteFileAtPath(session.absolutePath) }
+        withContext(Dispatchers.IO) { deleteFileIfPresent(session.absolutePath) }
     }
 
     /** AutoFlow's export to folder. Null when the recording is gone; a wipe stops or refuses it. */

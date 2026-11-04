@@ -41,6 +41,9 @@ class AudioImportPipeline(
         // A wipe in progress refuses or stops the import before it creates a recording.
         ?: ImportResult.Failed(WIPE_IN_PROGRESS)
 
+    /** Runs [block] so that a wipe refuses or stops it, like an import. Null when it did. */
+    suspend fun <T> underWipeGate(block: suspend () -> T): T? = container.wipeGate.guard(block)
+
     /** A file shared into the app: its cache copy is deleted when a wipe refuses the import, so it can't outlive the wipe. */
     suspend fun importShared(copyPath: String): ImportResult = importFile(copyPath, source = "share").also { result ->
         if (result == ImportResult.Failed(WIPE_IN_PROGRESS)) withContext(Dispatchers.IO) { deleteFileAtPath(copyPath) }

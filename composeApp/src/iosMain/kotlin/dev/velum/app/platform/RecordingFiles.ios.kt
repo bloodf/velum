@@ -1,5 +1,8 @@
 package dev.velum.app.platform
 
+import kotlinx.cinterop.ExperimentalForeignApi
+import platform.Foundation.NSFileManager
+
 actual fun recordingsDirectoryPath(): String = "/tmp/velum-recordings"
 
 actual fun deleteFileAtPath(absolutePath: String): Boolean = false
@@ -7,3 +10,13 @@ actual fun deleteFileAtPath(absolutePath: String): Boolean = false
 actual fun isSamePath(a: String, b: String): Boolean = a == b
 
 actual fun isSupersededOwnAudio(previousPath: String, newPath: String, dir: String, id: String): Boolean = false
+
+@OptIn(ExperimentalForeignApi::class)
+actual fun deleteFileIfPresent(absolutePath: String): Boolean {
+    val files = NSFileManager.defaultManager
+    if (files.fileExistsAtPath(absolutePath)) files.removeItemAtPath(absolutePath, error = null)
+    return !files.fileExistsAtPath(absolutePath)
+}
+
+/** Only Android runs the orphan sweep. */
+actual fun deleteOrphanQuarantine(): Boolean = true

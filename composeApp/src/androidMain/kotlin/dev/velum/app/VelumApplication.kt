@@ -24,6 +24,7 @@ import dev.velum.app.platform.sweepStalePartialTransfers
 import dev.velum.app.platform.recoverPartialMicRecordings
 import dev.velum.app.platform.recordingsDirectoryPath
 import dev.velum.app.platform.sweepOrphanRecordingAudio
+import dev.velum.app.platform.sweepStaleImportCopies
 import dev.velum.core.calendar.installCalendarContext
 import dev.velum.core.data.DriverFactory
 import dev.velum.core.integrations.IntegrationConfig
@@ -129,6 +130,13 @@ class VelumApplication : Application() {
                             val swept = sweepStalePartialTransfers(System.currentTimeMillis())
                             if (swept > 0) Log.i(TAG, "Removed $swept stale partial download file(s)")
                         }.onFailure { t -> Log.w(TAG, "Partial download sweep failed (${t::class.simpleName})") }
+                        runCatching {
+                            val swept = sweepStaleImportCopies(
+                                File(appContext.cacheDir, "imports"),
+                                c.repository.getAllRecordingFileRefs().map { it.second },
+                            )
+                            if (swept > 0) Log.i(TAG, "Removed $swept stale import copie(s)")
+                        }.onFailure { t -> Log.w(TAG, "Import copy sweep failed (${t::class.simpleName})") }
                         val report = sweepOrphanRecordingAudio(recordingsDirectoryPath(), c.repository::getAllRecordingFileRefs)
                         Log.i(TAG, "Orphan audio sweep: quarantined=${report.quarantined} purged=${report.purged} staleTemps=${report.staleTemps} failedMoves=${report.failedMoves}")
                     },

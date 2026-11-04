@@ -119,10 +119,12 @@ private fun topViewController(): UIViewController? {
 }
 
 @OptIn(ExperimentalForeignApi::class)
-actual fun deleteImportCopies() {
-    val caches = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, true).firstOrNull() as? String ?: return
-    NSFileManager.defaultManager.removeItemAtPath("$caches/imports", error = null)
+actual fun deleteImportCopies(): Boolean {
+    val caches = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, true).firstOrNull() as? String ?: return true
+    val files = NSFileManager.defaultManager
+    files.removeItemAtPath("$caches/imports", error = null)
+    return !files.fileExistsAtPath("$caches/imports")
 }
 
 /** iOS shares text only; nothing is kept in a cache. */
-actual fun deleteShareExports() = Unit
+actual fun deleteShareExports(): Boolean = true
