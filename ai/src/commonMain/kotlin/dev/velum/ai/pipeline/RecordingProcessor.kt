@@ -102,6 +102,7 @@ class RecordingProcessor(
     },
     private val thermal: ThermalPolicy = NoOpThermalPolicy,
     private val opusDecoder: () -> OpusDecoder = ::createOpusDecoder,
+    private val voiceProfiles: dev.velum.ai.local.VoiceProfileStore? = null,
     private val wipeGate: WipeGate = WipeGate(),
 ) {
     private val nextRun = MutableStateFlow(0L)
@@ -352,7 +353,12 @@ class RecordingProcessor(
                                 talkSeconds = talkMs / 1000,
                             )
                         }
+                        // The cached embeddings are numbered like the speaker rows. Drop the previous run's before the
+                        // rows change, then cache this run's right after: a failure in between leaves no cache (nothing
+                        // to promote) instead of the old numbering next to new rows, which could enroll the wrong voice.
+                        voiceProfiles?.deleteClusterCache(recordingId)
                         repository.updateSpeakers(recordingId, speakers)
+                        voiceProfiles?.cacheSpeakerEmbeddings(recordingId, diarization.embeddings)
                     }
                 }
             }

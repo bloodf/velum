@@ -485,6 +485,45 @@ class VoiceProfileStore(
     }
 
     /**
+     * Names the speakers of one diarization run that match a saved profile, without touching the speaker cache. The
+     * cache is written by [cacheSpeakerEmbeddings] together with the speaker rows. When the key is missing or the
+     * secure store is unavailable nothing is named and [SpeakerNaming.unavailable] is set.
+     */
+    suspend fun nameSpeakers(embeddingsBySpeaker: Map<String, FloatArray>, matchThreshold: Float): SpeakerNaming = try {
+        SpeakerNaming(
+            withReady {
+                buildMap {
+                    for ((speakerId, embedding) in embeddingsBySpeaker) {
+                        match(embedding, threshold = matchThreshold)?.let { put(speakerId, it.profile.displayName) }
+                    }
+                }
+            },
+            unavailable = false,
+        )
+    } catch (e: VoiceProfileKeyUnavailableException) {
+        println("VelumVoice: speaker naming unavailable (${e::class.simpleName})")
+        SpeakerNaming(emptyMap(), unavailable = true)
+    } catch (e: SecureStoreUnavailableException) {
+        println("VelumVoice: speaker naming unavailable (${e::class.simpleName})")
+        SpeakerNaming(emptyMap(), unavailable = true)
+    }
+
+    /**
+     * Replaces the recording's cached speakers with this run's, to be called right after its speaker rows were
+     * written. When the cache cannot be written (no key) the old one is dropped instead: it belongs to the previous
+     * run's numbering and must not outlive the rows it described.
+     */
+    suspend fun cacheSpeakerEmbeddings(recordingId: String, embeddingsBySpeaker: Map<String, FloatArray>) {
+        try {
+            withReady { replaceClusterEmbeddings(recordingId, embeddingsBySpeaker) }
+        } catch (e: VoiceProfileKeyUnavailableException) {
+            speakerNamingUnavailable(recordingId, e)
+        } catch (e: SecureStoreUnavailableException) {
+            speakerNamingUnavailable(recordingId, e)
+        }
+    }
+
+    /**
      * The old cache must not outlive a run that could not replace it: once the key is back, naming "S1" would
      * read the previous run's "S1", which may be a different person.
      */
