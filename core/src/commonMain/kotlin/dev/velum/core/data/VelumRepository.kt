@@ -758,6 +758,11 @@ class VelumRepository(
         q.setMeta("$IMPORT_COPY_PREFIX$recordingId:$pathHash", path)
     }
 
+    /** Every watched-folder copy tied to a recording. */
+    suspend fun allImportCopies(): List<String> = withContext(dbContext) {
+        q.selectMetaMatching(globPrefix(IMPORT_COPY_PREFIX)).executeAsList().map { it.value_ }
+    }
+
     suspend fun importCopies(recordingId: String): List<String> = withContext(dbContext) {
         q.selectMetaMatching(globPrefix("$IMPORT_COPY_PREFIX$recordingId:")).executeAsList().map { it.value_ }
     }
@@ -1033,6 +1038,8 @@ class VelumRepository(
         createdAt: Long = epochSeconds(),
     ): String = withContext(dbContext) {
         val resolvedVersionId = versionId ?: newSummaryVersionId(recordingId)
+        // A job that ran on after its recording was deleted leaves no rows behind.
+        if (q.selectRecordingById(recordingId).executeAsOneOrNull() == null) return@withContext resolvedVersionId
         val saved = db.transactionWithResult {
             ensureBaselineVersionLocked(recordingId)
             q.clearActiveVersionsForRecording(recordingId)
@@ -1137,6 +1144,8 @@ class VelumRepository(
 
     suspend fun updateSpeakers(recordingId: String, speakers: List<SpeakerUpsert>) =
         withContext(dbContext) {
+            // A job that ran on after its recording was deleted leaves no rows behind.
+            if (q.selectRecordingById(recordingId).executeAsOneOrNull() == null) return@withContext
             db.transaction {
                 q.deleteSpeakersForRecording(recordingId)
                 speakers.forEach { s ->

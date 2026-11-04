@@ -40,6 +40,9 @@ fun interface RecordingJobScheduler {
 
     /** Drops work that is queued or waiting to retry. A job already running is stopped through its [dev.velum.core.data.WipeGate]. */
     fun cancelAll() = Unit
+
+    /** Drops the queued or retrying work of one recording, which is being deleted. */
+    fun cancel(recordingId: String) = Unit
 }
 
 /**
@@ -151,6 +154,10 @@ fun createCoroutineRecordingJobScheduler(
             // Same work already running: keep it, so ASR does not run twice and nothing cancels mid-flight.
             if (keepRunning) job.cancel() else job.start()
             return !keepRunning
+        }
+
+        override fun cancel(recordingId: String) {
+            inFlight.value[recordingId]?.job?.cancel()
         }
     }
 }

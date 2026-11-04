@@ -387,6 +387,11 @@ fun createWorkManagerRecordingJobScheduler(context: Context): RecordingJobSchedu
             apiModelOverride = apiModelOverride,
         )
 
+        override fun cancel(recordingId: String) {
+            WorkManager.getInstance(context.applicationContext)
+                .cancelUniqueWork(RecordingProcessWorker.UNIQUE_PREFIX + recordingId)
+        }
+
         // WorkManager tags every request with its worker class.
         override fun cancelAll() {
             WorkManager.getInstance(context.applicationContext).cancelAllWorkByTag(RecordingProcessWorker::class.java.name)

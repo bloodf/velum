@@ -19,8 +19,10 @@ actual class AudioNormalizer actual constructor() {
         val source = File(sourcePath)
         require(source.isFile) { "Missing import: $sourcePath" }
         val hash = sha256File(sourcePath)
-        val outDir = File(source.parentFile, "normalized").apply { mkdirs() }
-        val outFile = File(outDir, "${source.nameWithoutExtension}_$targetSampleRateHz.wav")
+        // App storage, not next to the picked file: a permanent delete or a wipe can then reach it, and a picked file
+        // is never written beside. The hash keeps two picked files of one name apart.
+        val outDir = File(recordingsDirectoryPath(), "normalized").apply { mkdirs() }
+        val outFile = File(outDir, "${source.nameWithoutExtension}_${targetSampleRateHz}_${hash.take(12)}.wav")
         val name = source.name.lowercase()
         when {
             name.endsWith(".wav") || name.endsWith(".wave") -> {
@@ -38,7 +40,7 @@ actual class AudioNormalizer actual constructor() {
             }
             name.endsWith(".ogg") || name.endsWith(".opus") -> {
                 // Leave as-is for RecordingProcessor Opus path; still return a copy path + hash.
-                val dest = File(outDir, source.name)
+                val dest = File(outDir, "${source.nameWithoutExtension}_${hash.take(12)}.${source.extension}")
                 source.copyTo(dest, overwrite = true)
                 NormalizedAudio(
                     wavPath = dest.absolutePath,

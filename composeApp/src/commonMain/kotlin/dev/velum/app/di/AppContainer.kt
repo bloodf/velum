@@ -306,11 +306,18 @@ class AppContainer(
      */
     suspend fun deleteRecordingForever(id: String): Boolean = try {
         withContext(NonCancellable + Dispatchers.IO) {
+            recordingJobs.cancel(id)
+            // Bounded: a job that ignores this can still write nothing once the row is gone, and startup clears its temps.
+            recordingProcessor.stopRuns(id, WIPE_JOIN_TIMEOUT)
+            val micFile = stopMicRecording(id)
             downloadPersistMutex.withLock {
                 val audio = repository.getRecording(id)?.local_path
                 val others = repository.getAllRecordingFileRefs().filter { it.first != id }.mapNotNull { it.second }
+                // A mic draft has its file before the row has a path, and a crashed one leaves a `.partial`.
+                val dir = runCatching { recordingsDirectoryPath() }.getOrNull()
+                val draft = listOfNotNull(micFile) + listOfNotNull(dir).flatMap { listOf("$it/$id.wav", "$it/$id.wav.partial") }
                 // Copies first: if one fails, the recording still has its audio.
-                val deleted = (repository.importCopies(id) + listOfNotNull(audio))
+                val deleted = (repository.importCopies(id) + draft + listOfNotNull(audio))
                     .filter { path -> isAppOwnedAudioPath(path) && others.none { it == path || isSamePath(it, path) } }
                     .all { deleteFileIfPresent(it) }
                 if (deleted) {
@@ -449,6 +456,14 @@ class AppContainer(
         repository.getRecording(recordingId)?.let { row ->
             SharedNote(row.title, row.summary_markdown.orEmpty(), shareMarkdownBody(row.title, row.summary_markdown, row.transcript))
         }
+    }
+
+    /** Ends the capture of [recordingId] if there is one, and returns its file. Under the lock a start holds. */
+    private suspend fun stopMicRecording(recordingId: String): String? = micRecordings.underLock {
+        val owned = micRecordings.owner.value?.takeIf { it.recordingId == recordingId } ?: return@underLock null
+        if (micCapture.isCapturing) micCapture.stop(owned.session)
+        micRecordings.release(owned)
+        owned.session.absolutePath
     }
 
     /** Ends a mic recording in progress and deletes its file, which may not be on a recording row yet. */

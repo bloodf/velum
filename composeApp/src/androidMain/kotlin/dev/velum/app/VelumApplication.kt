@@ -23,6 +23,7 @@ import dev.velum.app.platform.sweepStalePartialTransfers
 import dev.velum.app.platform.recoverPartialMicRecordings
 import dev.velum.app.platform.recordingsDirectoryPath
 import dev.velum.app.platform.sweepOrphanRecordingAudio
+import dev.velum.app.platform.settleOlderWatchedCopies
 import dev.velum.app.platform.sweepStaleImportCopies
 import dev.velum.core.calendar.installCalendarContext
 import dev.velum.core.data.DriverFactory
@@ -145,6 +146,14 @@ class VelumApplication : Application() {
                             )
                             if (swept > 0) Log.i(TAG, "Removed $swept stale import copie(s)")
                         }.onFailure { t -> Log.w(TAG, "Import copy sweep failed (${t::class.simpleName})") }
+                        runCatching {
+                            // Before any sync can run. Once: later copies are tied when they are imported.
+                            if (c.repository.getMeta(OLDER_WATCHED_COPIES_SETTLED) == null) {
+                                val swept = settleOlderWatchedCopies(File(appContext.cacheDir, "imports/watched"), c.repository)
+                                c.repository.setMeta(OLDER_WATCHED_COPIES_SETTLED, "1")
+                                if (swept > 0) Log.i(TAG, "Removed $swept older watched copie(s)")
+                            }
+                        }.onFailure { t -> Log.w(TAG, "Older watched copy pass failed (${t::class.simpleName})") }
                         val report = sweepOrphanRecordingAudio(recordingsDirectoryPath(), c.repository::getAllRecordingFileRefs)
                         Log.i(TAG, "Orphan audio sweep: quarantined=${report.quarantined} purged=${report.purged} staleTemps=${report.staleTemps} failedMoves=${report.failedMoves}")
                     },
@@ -202,3 +211,5 @@ class VelumApplication : Application() {
             private set
     }
 }
+
+private const val OLDER_WATCHED_COPIES_SETTLED = "older_watched_copies_settled"
