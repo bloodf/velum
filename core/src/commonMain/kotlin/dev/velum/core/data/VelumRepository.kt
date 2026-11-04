@@ -811,6 +811,23 @@ class VelumRepository(
         }
     }
 
+    /**
+     * Run at the very end of "Wipe all data": deleted rows stay readable in SQLite free pages (and in the WAL
+     * when the driver uses one) until the file is rewritten. VACUUM rewrites it; the truncating checkpoint empties
+     * the WAL and does nothing in rollback-journal mode. Returns false when either step failed (no disk, locked
+     * database), so the caller can report the wipe as incomplete without stopping its other steps.
+     */
+    suspend fun compactAfterWipe(): Boolean = withContext(dbContext) {
+        try {
+            driver.execute(null, "VACUUM", 0)
+            driver.executeQuery(null, "PRAGMA wal_checkpoint(TRUNCATE)", { it.next(); QueryResult.Unit }, 0).value
+            true
+        } catch (e: Exception) {
+            println("VelumWipe: database compaction failed: ${e::class.simpleName}")
+            false
+        }
+    }
+
     data class StorageUsage(
         val recordingCount: Long,
         val bytesClaimed: Long,

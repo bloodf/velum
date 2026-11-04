@@ -388,6 +388,8 @@ class AppContainer(
                 step("api keys") { settingsRepository.clearAllApiKeys(); true }
                 step("webhook") { webhookSettings.clear(); true }
                 step("integrations") { integrationAuth.clearTokens(); true }
+                // Last: every step above that deletes rows has run, and VACUUM rewrites the file without them.
+                step("database") { repository.compactAfterWipe() }
                 when {
                     !workStopped || downloads == DownloadWipeResult.StillRunning -> DownloadWipeResult.StillRunning
                     !complete -> DownloadWipeResult.Incomplete
