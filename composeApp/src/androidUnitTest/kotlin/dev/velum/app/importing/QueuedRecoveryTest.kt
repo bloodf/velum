@@ -47,6 +47,7 @@ class QueuedRecoveryTest {
     private var enqueueFailure: Throwable? = null
     private var savedOperation: SettableFuture<Operation.State.SUCCESS>? = null
     private var beforeSubmit: (() -> Unit)? = null
+    private var submitRealBeforeDelay = false
     private val submitted = kotlinx.coroutines.CompletableDeferred<Unit>()
 
     private fun withContainer(realScheduler: Boolean = false, block: suspend (AppContainer, File) -> Unit) {
@@ -58,6 +59,7 @@ class QueuedRecoveryTest {
         enqueueFailure = null
         savedOperation = null
         beforeSubmit = null
+        submitRealBeforeDelay = false
         if (realScheduler) {
             WorkManagerTestInitHelper.initializeTestWorkManager(context, Configuration.Builder().setExecutor(Executors.newSingleThreadExecutor()).build())
         }
@@ -70,6 +72,7 @@ class QueuedRecoveryTest {
                     val future = savedOperation
                     if (future == null) manager.enqueueUniqueWork(name, policy, request)
                     else {
+                        if (submitRealBeforeDelay) manager.enqueueUniqueWork(name, policy, request).result.get()
                         submitted.complete(Unit)
                         object : Operation {
                             override fun getState(): LiveData<Operation.State> = MutableLiveData()
@@ -141,6 +144,8 @@ class QueuedRecoveryTest {
         container.row("rec-cancel-after-submit", "queued")
         val operation = SettableFuture.create<Operation.State.SUCCESS>()
         savedOperation = operation
+        submitRealBeforeDelay = true
+        val context = ApplicationProvider.getApplicationContext<Context>()
         kotlinx.coroutines.coroutineScope {
             val job = launch(Dispatchers.Default) { container.enqueueSavedRecording("rec-cancel-after-submit") }
             kotlinx.coroutines.withTimeout(5_000) { submitted.await() }
@@ -149,6 +154,7 @@ class QueuedRecoveryTest {
             job.join()
             assertTrue(job.isCancelled)
             assertEquals("queued", container.repository.getRecording("rec-cancel-after-submit")!!.status)
+            assertTrue(withContext(Dispatchers.IO) { RecordingProcessWorker.isWorkActive(context, "rec-cancel-after-submit") })
         }
     }
 

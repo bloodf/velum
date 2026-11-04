@@ -3,6 +3,8 @@ package dev.velum.app.platform
 import dev.velum.ai.pipeline.TranscriptFormatter
 import dev.velum.app.di.AppContainer
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.collect
 
@@ -36,8 +38,11 @@ suspend fun finalizeMicRecording(
                 saveLiveText(container, recordingId, transcript, markers)
                 container.repository.updateLocalPath(recordingId, result.absolutePath, result.durationSeconds, result.sizeBytes)
                 container.repository.updateStatus(recordingId, "queued")
-                container.enqueueSavedRecording(recordingId, templateId = "velum.meeting", retranscribe = true)
-                container.micRecordings.release(owned)
+                try {
+                    container.enqueueSavedRecording(recordingId, templateId = "velum.meeting", retranscribe = true)
+                } finally {
+                    withContext(NonCancellable) { container.micRecordings.release(owned) }
+                }
             }
             is MicStopResult.Failed -> {
                 saveLiveText(container, recordingId, transcript, markers)
