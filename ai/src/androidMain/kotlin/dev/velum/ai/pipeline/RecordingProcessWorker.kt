@@ -28,6 +28,7 @@ import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.runInterruptible
 
 /**
  * Runs [RecordingProcessor] for one recording under WorkManager with thermal backoff.
@@ -265,6 +266,10 @@ class RecordingProcessWorker(
             templateId: String? = null,
             retranscribe: Boolean = true,
             apiModelOverride: ApiModelOverride? = null,
+            awaitOperation: Boolean = false,
+            keepExisting: Boolean = false,
+            submit: (WorkManager, String, ExistingWorkPolicy, androidx.work.OneTimeWorkRequest) -> androidx.work.Operation =
+                { manager, name, policy, request -> manager.enqueueUniqueWork(name, policy, request) },
         ): Boolean {
             val data = Data.Builder()
                 .putString(KEY_RECORDING_ID, recordingId)
@@ -303,16 +308,18 @@ class RecordingProcessWorker(
                 recordingId,
                 recordingWorkParamsTag(templateId, retranscribe, apiModelOverride, requiresNetworkForApiModes()),
             )
-            val policy = if (!recordingWorkHasAutoFlowParams(templateId, apiModelOverride) || sameParams) {
+            val policy = if (keepExisting || !recordingWorkHasAutoFlowParams(templateId, apiModelOverride) || sameParams) {
                 ExistingWorkPolicy.KEEP
             } else {
                 ExistingWorkPolicy.REPLACE
             }
-            manager.enqueueUniqueWork(
+            val operation = submit(
+                manager,
                 UNIQUE_PREFIX + recordingId,
                 policy,
                 request,
             )
+            if (awaitOperation) operation.result.get()
             // Reports "started or replaced"; KEEP over queued/running work did neither.
             return !(policy == ExistingWorkPolicy.KEEP && hasActiveWork(manager, recordingId, excluding = request.id))
         }
@@ -382,10 +389,20 @@ class RecordingProcessWorker(
     }
 }
 
-fun createWorkManagerRecordingJobScheduler(context: Context): RecordingJobScheduler =
+fun createWorkManagerRecordingJobScheduler(
+    context: Context,
+    submit: (WorkManager, String, ExistingWorkPolicy, androidx.work.OneTimeWorkRequest) -> androidx.work.Operation =
+        { manager, name, policy, request -> manager.enqueueUniqueWork(name, policy, request) },
+): RecordingJobScheduler =
     object : RecordingJobScheduler {
         override fun enqueue(recordingId: String, templateId: String?, retranscribe: Boolean, apiModelOverride: ApiModelOverride?) {
             enqueueReportingStart(recordingId, templateId, retranscribe, apiModelOverride)
+        }
+
+        override suspend fun enqueueSaved(recordingId: String, templateId: String?, retranscribe: Boolean, apiModelOverride: ApiModelOverride?, keepExisting: Boolean) {
+            runInterruptible(Dispatchers.IO) {
+                RecordingProcessWorker.enqueue(context.applicationContext, recordingId, templateId, retranscribe, apiModelOverride, awaitOperation = true, keepExisting = keepExisting, submit = submit)
+            }
         }
 
         override fun enqueueReportingStart(
