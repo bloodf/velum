@@ -1220,9 +1220,8 @@ internal fun LiveTranscriptPane(
     val finished = remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     // Capture only ever enqueues, so it never waits for the model or for decoding.
-    val previewHasGap = remember { mutableStateOf(false) }
     // The queue drops from the capture thread. The flag is read at once by finishTranscript, so it is set right
-    // here; the state the screen reads is only ever written on Main (below).
+    // here (the pane keeps no Compose state for it).
     val gapNow = remember { VolatileRef(false) }
     // `finished` and the latest partial as plain volatiles too: the capture thread and Stop's wait read them, and
     // reading Compose state off Main is what this pane avoids. They are written before the Main-side state is.
@@ -1234,7 +1233,6 @@ internal fun LiveTranscriptPane(
             if (!finishedNow.value && !gapNow.value) {
                 gapNow.value = true
                 container.micRecordings.publishLiveText(recordingId, null) // a hole in the text is never savable
-                scope.launch(Dispatchers.Main.immediate) { previewHasGap.value = true }
             }
         }
     }
@@ -1291,6 +1289,8 @@ internal fun LiveTranscriptPane(
                         // Published from here, not from an effect: with the screen off no frame is produced, so a
                         // recomposition-driven publish could leave a notification Stop with stale text.
                         container.micRecordings.publishLiveText(recordingId, if (gapNow.value) null else savableLiveTranscript(md))
+                        // A drop between the check and the publish must not leave text with a hole in it published.
+                        if (gapNow.value) container.micRecordings.publishLiveText(recordingId, null)
                         onMain { partial = md }
                     },
                     onReady = { onMain { liveReady = true } },
@@ -1337,10 +1337,9 @@ internal fun LiveTranscriptPane(
             }
         }
     }
-    // Publish the savable live text so a Stop from the notification, with this pane open or not, keeps it.
-    val publishedGap = previewHasGap.value
-    LaunchedEffect(partial, publishedGap) {
-        container.micRecordings.publishLiveText(recordingId, if (publishedGap) null else savableLiveTranscript(partial))
+    // Seed the published live text with a resumed transcript; later text is published from onPartial.
+    LaunchedEffect(recordingId) {
+        if (seededTranscript != null) container.micRecordings.publishLiveText(recordingId, savableLiveTranscript(seededTranscript))
     }
     DisposableEffect(recordingId) {
         onDispose {

@@ -33,8 +33,11 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -112,6 +115,7 @@ class LiveTranscriberHandoffTest {
     @After fun tearDown() {
         modelLoad.countDown()
         transcriber.pushGate.countDown()
+        transcriber.finishGate.countDown()
         leaveScreen()
         installRecordingFilesDir(ApplicationProvider.getApplicationContext<Application>().filesDir.path)
         container.databaseHandle.driver.close()
@@ -546,6 +550,7 @@ class LiveTranscriberHandoffTest {
         val t = Thread { try { block() } catch (e: Throwable) { failure = e } }
         t.start()
         t.join(10_000)
+        assertFalse(t.isAlive, "the call from another thread did not return")
         failure?.let { throw it }
     }
 
@@ -570,6 +575,15 @@ class LiveTranscriberHandoffTest {
             waitUntil(10_000) { compose.onAllNodesWithText("Synthetic stop failure").fetchSemanticsNodes().isNotEmpty() }
         }
         assertTrue(offMain.isEmpty(), "state written off the main thread:\n${offMain.joinToString("\n")}")
+    }
+
+    @Test fun a_partial_is_published_for_a_notification_stop_the_moment_it_arrives() {
+        showPane()
+        modelLoad.countDown()
+        waitUntil(10_000) { transcriber.starts.get() > 0 }
+        fromAnotherThread { transcriber.onPartial("**partial** · 0:01\nSynthetic words\n") }
+        // No looper idle, no frame: a screen that is off produces none.
+        assertEquals("Synthetic words\n", container.micRecordings.liveText(recordingId))
     }
 
     @Test fun pause_and_marker_taps_write_their_state_on_main() {
@@ -599,12 +613,16 @@ class LiveTranscriberHandoffTest {
     @Test fun the_last_partial_is_the_fallback_even_when_the_screen_has_gone_and_the_final_text_never_comes() {
         mic.currentMarkers = emptyList()
         transcriber.finishGate = CountDownLatch(1) // finish() never returns within the wait
-        showPane(finishWaitMs = 1_500)
+        val waitMs = 5_000L
+        showPane(finishWaitMs = waitMs)
         modelLoad.countDown()
         waitUntil(10_000) { transcriber.starts.get() > 0 }
+        val stoppedAt = System.nanoTime()
         compose.onNodeWithContentDescription(PtBr.stopRecording).performClick() // Stop is now waiting for the final text
         leaveScreen() // the screen's scope is cancelled; posts to it are dropped
         fromAnotherThread { transcriber.onPartial("**partial** · 0:01\nLast words\n") }
+        // The partial must be in before the wait times out, or this would pass on the timeout alone.
+        assertTrue((System.nanoTime() - stoppedAt) / 1_000_000 < waitMs / 2, "the partial arrived too late for the test to mean anything")
         waitOnMainLooper { recordingRow().status != "recording" }
         transcriber.finishGate.countDown()
         assertEquals("Last words\n", recordingRow().transcript, "the fallback text must be the transcriber's last partial")
@@ -703,12 +721,13 @@ class LiveTranscriberHandoffTest {
             sessions.value = MicSessionState.Stopped(current.absolutePath, 1, 64, current.token)
             return MicStopResult.Stopped(current.absolutePath, 1, 64, current)
         }
-        override suspend fun pause() = MicPauseResult.Ok
-        override suspend fun resume() = MicPauseResult.Ok
-        override suspend fun addMarker(label: String): MicMarkerResult {
+        // They suspend onto a worker, as the platform does, so a caller that does not hop back resumes off Main.
+        override suspend fun pause() = withContext(Dispatchers.Default) { MicPauseResult.Ok }
+        override suspend fun resume() = withContext(Dispatchers.Default) { MicPauseResult.Ok }
+        override suspend fun addMarker(label: String): MicMarkerResult = withContext(Dispatchers.Default) {
             val marker = MicMarker(offsetMs = 65_000, label = label)
             currentMarkers = currentMarkers + marker
-            return MicMarkerResult.Ok(marker)
+            MicMarkerResult.Ok(marker)
         }
     }
 }
