@@ -589,7 +589,6 @@ data class UxStrings(
     val restore: String,
     val deleteForever: String,
     val deleteForeverBody: String,
-    val deleteForeverFailed: String,
     val emptyTrash: String,
     val emptyTrashBody: String,
     val trashConfirmBody: String,
@@ -1198,7 +1197,6 @@ val PtBr = Strings(
         restore = "Restaurar",
         deleteForever = "Excluir para sempre",
         deleteForeverBody = "Isso apaga as gravações selecionadas de forma permanente. Não dá para desfazer.",
-        deleteForeverFailed = "Não foi possível apagar algumas gravações por completo. O áudio delas pode já ter sido apagado. Tente novamente.",
         emptyTrash = "Esvaziar lixeira",
         emptyTrashBody = "Exclui para sempre todas as gravações na lixeira. Não dá para desfazer.",
         trashConfirmBody = "Mover as gravações selecionadas para a lixeira?",
@@ -1238,7 +1236,9 @@ val PtBr = Strings(
         retryProcessing = "Tentar de novo",
         waveformA11y = "Progresso da reprodução",
     ),
-    added = MoreStrings(),
+    added = MoreStrings(
+        deleteForeverFailed = "Não foi possível apagar algumas gravações por completo. O áudio delas pode já ter sido apagado. Tente novamente.",
+    ),
 )
 
 val En = Strings(
@@ -1808,7 +1808,6 @@ val En = Strings(
         restore = "Restore",
         deleteForever = "Delete forever",
         deleteForeverBody = "This permanently deletes the selected recordings. This cannot be undone.",
-        deleteForeverFailed = "Some recordings could not be fully deleted. Their audio may already be gone. Try again.",
         emptyTrash = "Empty trash",
         emptyTrashBody = "Permanently deletes every recording in trash. This cannot be undone.",
         trashConfirmBody = "Move the selected recordings to trash?",
@@ -1848,7 +1847,9 @@ val En = Strings(
         retryProcessing = "Try again",
         waveformA11y = "Playback progress",
     ),
-    added = MoreStrings(),
+    added = MoreStrings(
+        deleteForeverFailed = "Some recordings could not be fully deleted. Their audio may already be gone. Try again.",
+    ),
 )
 
 val LocalStrings = staticCompositionLocalOf { PtBr }

@@ -408,7 +408,7 @@ fun FilesScreen(
     if (deleteFailed) {
         AlertDialog(
             onDismissRequest = { deleteFailed = false },
-            text = { Text(strings.ux.deleteForeverFailed) },
+            text = { Text(strings.added.deleteForeverFailed) },
             confirmButton = { TextButton(onClick = { deleteFailed = false }) { Text(strings.confirm) } },
         )
     }
