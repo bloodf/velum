@@ -11,6 +11,10 @@ expect class ModelStoreDir(absolutePath: String) {
     fun isDirectory(): Boolean
     fun createDirectories()
     fun writeBytes(bytes: ByteArray)
+    /** Like [writeBytes], but the contents are on stable storage before this returns (a power cut keeps them). */
+    fun writeBytesDurably(bytes: ByteArray)
+    /** Best effort: persist this directory's entries (a rename into it). Platforms that cannot ignore it. */
+    fun syncDirectory()
     fun appendBytes(bytes: ByteArray)
     fun readBytes(): ByteArray
     /** Random-access read of [length] bytes starting at [offset] (for spilled PCM windows). */

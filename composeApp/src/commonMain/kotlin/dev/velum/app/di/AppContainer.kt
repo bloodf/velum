@@ -78,6 +78,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -127,6 +128,22 @@ class AppContainer(
         runBlocking { !repository.isFirstRunDone() },
     )
     val firstRunPending: StateFlow<Boolean> = _firstRunPending.asStateFlow()
+
+    /**
+     * Runs [block] in the app's own scope instead of the caller's, so work started from a screen finishes when that screen
+     * is recreated (rotation, theme or locale change). The caller may stop waiting; the work goes on.
+     */
+    fun <T> runDetached(block: suspend () -> T): kotlinx.coroutines.Deferred<T> = appScope.async { block() }
+
+    /**
+     * The share import currently running or just finished and not yet reported to the user. Held here, not by the screen,
+     * because the screen's collector is cancelled at every ON_STOP and a result nobody saw would otherwise vanish.
+     * Read and written on the main thread only (from the Compose effect).
+     */
+    var pendingShare: kotlinx.coroutines.Deferred<dev.velum.app.importing.ImportResult>? = null
+
+    /** One share import at a time across every instance of the activity (the pipeline is recreated per composition). */
+    val shareImportMutex = Mutex()
 
     /** Dismiss FirstRun in memory immediately; persist on [appScope]. */
     fun markFirstRunDone() {
@@ -235,13 +252,20 @@ class AppContainer(
         // Earlier versions also kept every speaker embedding in plaintext, and a recording deleted while its
         // diarization ran can leave its embeddings behind (#320).
         appScope.launch(Dispatchers.IO) {
+            // Each step on its own, so one failure does not skip the others.
+            runCatching { voiceProfileStore.sweepTemporaryFiles() }
+                .onFailure { println("VelumStartup: voice temp sweep failed: ${it::class.simpleName}") }
+            runCatching { voiceProfileStore.purgePlaintextClusterCache() }
+                .onFailure { println("VelumStartup: voice cache purge failed: ${it::class.simpleName}") }
             runCatching {
-                voiceProfileStore.purgePlaintextClusterCache()
                 // Listed before reading the recordings: a recording is stored before its processing caches anything.
                 val cached = voiceProfileStore.cachedRecordingIds()
                 val live = repository.recordingIds()
                 (cached - live).forEach { id -> runCatching { voiceProfileStore.deleteClusterCache(id) } }
-            }.onFailure { println("VelumStartup: voice cache cleanup failed: ${it::class.simpleName}") }
+            }.onFailure { println("VelumStartup: voice cache orphan sweep failed: ${it::class.simpleName}") }
+            // Under the wipe gate: a wipe cancels it, so it can't recreate a profile after the wipe.
+            runCatching { wipeGate.guard { voiceProfileStore.migrateLegacyPlaintextProfiles() } }
+                .onFailure { println("VelumStartup: voice profile migration failed: ${it::class.simpleName}") }
         }
         // Template catalogs lazily read packaged assets; warm them off the main thread so the
         // composition-time lookups (template names, AutoFlow library) never hit the disk (StrictMode).

@@ -114,6 +114,9 @@ data class Protocol20SessionSecret(
 
     override fun hashCode(): Int =
         31 * (31 * key.contentHashCode() + nonce.contentHashCode()) + aad.contentHashCode()
+
+    /** Never prints the key, nonce or aad (a data class would, and test failures and logs show toString). */
+    override fun toString(): String = "Protocol20SessionSecret([redacted])"
 }
 
 /**
