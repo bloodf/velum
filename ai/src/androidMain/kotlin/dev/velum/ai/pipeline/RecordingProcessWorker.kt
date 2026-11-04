@@ -385,4 +385,9 @@ fun createWorkManagerRecordingJobScheduler(context: Context): RecordingJobSchedu
             retranscribe = retranscribe,
             apiModelOverride = apiModelOverride,
         )
+
+        // WorkManager tags every request with its worker class.
+        override fun cancelAll() {
+            WorkManager.getInstance(context.applicationContext).cancelAllWorkByTag(RecordingProcessWorker::class.java.name)
+        }
     }
