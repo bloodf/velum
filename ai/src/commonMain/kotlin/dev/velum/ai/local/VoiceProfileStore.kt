@@ -394,12 +394,15 @@ class VoiceProfileStore(
         }
     }
 
-    fun wipeAll() {
+    /** False if voice data remains. */
+    fun wipeAll(): Boolean {
         if (profilesDir.exists()) profilesDir.deleteRecursively()
         keyCheckFile().deleteRecursively()
         // Cluster embeddings from processed recordings are voice data too.
         if (cacheDir.exists()) cacheDir.deleteRecursively()
+        val gone = !profilesDir.exists() && !cacheDir.exists()
         profilesDir.createDirectories()
+        return gone
     }
 
     fun match(

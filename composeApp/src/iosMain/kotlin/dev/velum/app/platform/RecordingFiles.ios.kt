@@ -21,6 +21,17 @@ actual fun deleteFileIfPresent(absolutePath: String): Boolean {
     return !files.fileExistsAtPath(absolutePath)
 }
 
+@OptIn(ExperimentalForeignApi::class)
+actual fun deleteRecordingsDirectory(): Boolean {
+    val files = NSFileManager.defaultManager
+    val recordings = recordingsDirectoryPath()
+    if (files.fileExistsAtPath(recordings)) files.removeItemAtPath(recordings, error = null)
+    return !files.fileExistsAtPath(recordings)
+}
+
+/** iOS has no file-backed device transfer. */
+actual fun deleteDeviceTransferTemps(): Boolean = true
+
 actual fun isAppOwnedAudioPath(absolutePath: String): Boolean {
     val caches = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, true).firstOrNull() as? String ?: return false
     // No canonicalizing here: a path with ".." is not one the app wrote, so it isn't treated as owned.

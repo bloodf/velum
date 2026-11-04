@@ -36,6 +36,20 @@ actual fun deleteFileIfPresent(absolutePath: String): Boolean = runCatching {
     !file.exists()
 }.getOrDefault(false)
 
+actual fun deleteRecordingsDirectory(): Boolean {
+    val base = filesDirPath ?: return false
+    val recordings = File(base, "recordings")
+    return deleteTreeWithoutFollowingLinks(recordings)
+}
+
+actual fun deleteDeviceTransferTemps(): Boolean {
+    val temp = File(System.getProperty("java.io.tmpdir") ?: return false)
+    return temp.listFiles().orEmpty()
+        .filter { it.name.startsWith("velum-ble-session-") }
+        .map { it.delete() || !it.exists() }
+        .all { it }
+}
+
 actual fun isAppOwnedAudioPath(absolutePath: String): Boolean = runCatching {
     val file = File(absolutePath).canonicalFile
     val roots = listOfNotNull(

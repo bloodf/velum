@@ -57,6 +57,9 @@ class AudioImportPipeline(
         }
     }
 
+    /** Runs [block] so that a wipe refuses or stops it, like an import. Null when it did. */
+    suspend fun <T> underWipeGate(block: suspend () -> T): T? = container.wipeGate.guard(block)
+
     /**
      * The app's copy of the source has done its job once the import ends, however it ended ([result] is null when
      * cancelled). A watched folder's copy stays while it is useful, or every sync would copy the whole file again;
