@@ -13,6 +13,9 @@ class GuardedLink(
         char: GattChar,
         plaintext: ByteArray,
         withoutResponse: Boolean,
+        // The link generation the caller wrote for, carried on the write so the transport can refuse it if the link
+        // changed after the caller's own check. Before [seal] so a trailing lambda still binds to it.
+        linkGeneration: Long? = null,
         seal: ((ByteArray) -> ByteArray)? = null,
     ) {
         val guard = requireNotNull(profile.writes[char]) {
@@ -23,9 +26,9 @@ class GuardedLink(
         val p = plaintext.copyOf()
         guard.check(p)
         val write = if (seal == null) {
-            PlainWrite(char, p, withoutResponse)
+            PlainWrite(char, p, withoutResponse, linkGeneration)
         } else {
-            SealedWrite(char, seal(p).copyOf(), withoutResponse)
+            SealedWrite(char, seal(p).copyOf(), withoutResponse, linkGeneration)
         }
         transport.writeRaw(write)
     }

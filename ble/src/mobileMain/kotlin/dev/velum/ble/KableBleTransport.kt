@@ -18,6 +18,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelAndJoin
+import kotlin.concurrent.Volatile
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -78,6 +79,9 @@ class KableBleTransport : BleTransport {
         }
     }
 
+    @Volatile private var generation = 0L
+    override val linkGeneration: Long get() = generation
+
     override fun advertisements(): Flow<ConnectedDevice> = advertisementFlow.asSharedFlow()
 
     override suspend fun startScan() {
@@ -133,6 +137,7 @@ class KableBleTransport : BleTransport {
             notifyJob = scope.launch {
                 p.observe(notifyCharacteristic).collect { notifyFlow.emit(it) }
             }
+            generation++ // a new link; an older client's secret no longer applies
             _state.value = BleConnectionState.Connected(device)
             disconnectWatchJob?.cancel()
             disconnectWatchJob = scope.launch {
@@ -144,11 +149,13 @@ class KableBleTransport : BleTransport {
                         if (peripheral === p) {
                             runCatching { p.close() }
                             peripheral = null
+                            generation++ // only for the link this watcher belongs to, not a newer one
                         }
                         _state.value = BleConnectionState.Idle
                     }
             }
         } catch (t: Throwable) {
+            generation++
             _state.value = BleConnectionState.Failed(t.message ?: t.toString())
         }
     }
@@ -161,6 +168,7 @@ class KableBleTransport : BleTransport {
         runCatching { peripheral?.disconnect() }
         peripheral?.close()
         peripheral = null
+        generation++
         _state.value = BleConnectionState.Idle
     }
 

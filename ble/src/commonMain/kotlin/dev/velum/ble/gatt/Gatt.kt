@@ -106,6 +106,9 @@ sealed class GattWrite {
     abstract val char: GattChar
     abstract val bytes: ByteArray
     abstract val withoutResponse: Boolean
+
+    /** The link generation the caller wrote for; a transport refuses the write if its link has changed since. Null: any. */
+    abstract val linkGeneration: Long?
 }
 
 /** Bytes sent as given (no session cipher active). */
@@ -113,6 +116,7 @@ class PlainWrite internal constructor(
     override val char: GattChar,
     override val bytes: ByteArray,
     override val withoutResponse: Boolean,
+    override val linkGeneration: Long? = null,
 ) : GattWrite()
 
 /** Bytes produced by a session cipher from a plaintext the guard already accepted. Never parsed. */
@@ -120,4 +124,5 @@ class SealedWrite internal constructor(
     override val char: GattChar,
     override val bytes: ByteArray,
     override val withoutResponse: Boolean,
+    override val linkGeneration: Long? = null,
 ) : GattWrite()

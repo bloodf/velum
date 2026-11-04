@@ -176,6 +176,41 @@ class SealedWriteTrustTest {
         client.close()
     }
 
+    @Test fun scanning_changes_the_published_state_but_not_the_link() = runTest {
+        val (client, wire) = connected(real)
+        wire.ble.startScan() // a Scan tap during a download: state becomes Scanning, the peripheral stays connected
+        val before = wire.writes
+        client.writeCommandForTest(Commands.BATTERY_LIKELY)
+        wire.ble.stopScan()
+        client.writeCommandForTest(Commands.BATTERY_LIKELY)
+        assertEquals(before + 2, wire.writes, "a live link must keep writing while the scan state changes")
+        client.close()
+    }
+
+    @Test fun a_failed_re_unlock_leaves_the_client_locked_not_re_armed() = runTest {
+        val (client, wire) = connected(real)
+        wire.ble.disconnect()
+        wire.ble.connect("fake-note-pro")
+        val failing = wire.ble.beforeWrite
+        wire.ble.beforeWrite = { throw IllegalStateException("link dropped during unlock") }
+        assertFailsWith<IllegalStateException> { client.unlock() }
+        wire.ble.beforeWrite = failing
+        val before = wire.writes
+        val refused = assertFailsWith<IllegalStateException> { client.writeCommandForTest(Commands.BATTERY_LIKELY) }
+        assertEquals("Not unlocked on this link", refused.message)
+        assertEquals(before, wire.writes, "the old secret must not reach the radio")
+        client.close()
+    }
+
+    @Test fun a_link_change_between_the_check_and_the_write_is_refused_by_the_transport() = runTest {
+        val (client, wire) = connected(real)
+        // The client's own check has passed when the write reaches the transport; the link is re-made right there.
+        wire.ble.beforeWrite = { wire.ble.disconnect(); wire.ble.connect("fake-note-pro") }
+        val refused = assertFailsWith<IllegalStateException> { client.writeCommandForTest(Commands.BATTERY_LIKELY) }
+        assertEquals("Link changed since the write was checked", refused.message)
+        client.close()
+    }
+
     @Test fun a_closed_client_cannot_unlock_again_and_hides_its_secret() = runTest {
         val (client, wire) = connected(real)
         assertTrue(client.sessionSecret != null)
