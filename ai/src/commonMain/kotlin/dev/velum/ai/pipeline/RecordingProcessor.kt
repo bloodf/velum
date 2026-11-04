@@ -317,6 +317,14 @@ class RecordingProcessor(
                         null
                     }
 
+                    // Without the voice key nothing can be named. A first run goes on with bare labels; a rerun
+                    // fails as before so the names the user already typed (and the transcript) stay as they are.
+                    if (diarization != null && diarization.speakerNamesUnavailable &&
+                        repository.getSpeakers(recordingId).any { !it.display_name.isNullOrBlank() }
+                    ) {
+                        throw dev.velum.ai.local.VoiceProfileKeyUnavailableException()
+                    }
+
                     val mergedSegments = if (diarization != null) {
                         TranscriptFormatter.mergeSpeakerLabels(transcription.segments, diarization)
                     } else {

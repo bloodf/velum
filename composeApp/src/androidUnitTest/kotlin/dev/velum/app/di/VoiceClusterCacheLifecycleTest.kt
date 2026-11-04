@@ -5,7 +5,11 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import dev.velum.ai.local.ModelStoreDir
 import dev.velum.core.data.DriverFactory
+import dev.velum.ai.local.VoiceProfileStore
 import dev.velum.core.security.InMemorySecureStore
+import dev.velum.core.security.SecureStore
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import java.nio.file.Files
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -102,6 +106,70 @@ class VoiceClusterCacheLifecycleTest {
             assertTrue(cache.exists())
             container.wipeAllData()
             assertFalse(cache.exists(), "speaker embeddings survived the wipe")
+        }
+    }
+
+    private fun legacyProfile(root: ModelStoreDir) {
+        val profiles = root.resolve("voices/profiles").apply { createDirectories() }
+        profiles.resolve("legacy.json").writeBytes(
+            """{"id":"legacy","displayName":"Synthetic Legacy","dim":2,"sampleCount":1,"encrypted":false}""".encodeToByteArray(),
+        )
+        profiles.resolve("legacy.f32").writeBytes(VoiceProfileStore.floatsToBytes(floatArrayOf(1f, 0f)))
+    }
+
+    @Test fun startup_reencrypts_legacy_plaintext_profiles() {
+        val root = ModelStoreDir(Files.createTempDirectory("velum-legacy-profiles").toString())
+        legacyProfile(root)
+        withContainer(root) {
+            val plaintext = root.resolve("voices/profiles/legacy.f32")
+            withTimeout(10_000) { while (plaintext.exists()) delay(20) }
+            assertTrue(root.resolve("voices/profiles/legacy.enc").exists(), "no encrypted copy after the migration")
+        }
+    }
+
+    /** Wraps the in-memory store; the voice key read waits until released and records whether a wipe cancelled it. */
+    private class GatedKeyStore : SecureStore {
+        private val inner = InMemorySecureStore()
+        val release = CompletableDeferred<Unit>()
+        val keyReadStarted = CompletableDeferred<Unit>()
+        @Volatile var keyReadCancelled = false
+        override suspend fun putString(key: String, value: String) = inner.putString(key, value)
+        override suspend fun remove(key: String) = inner.remove(key)
+        override suspend fun contains(key: String) = inner.contains(key)
+        override suspend fun getString(key: String): String? {
+            if (key == VoiceProfileStore.PROFILE_KEY_SECURE) {
+                keyReadStarted.complete(Unit)
+                try {
+                    release.await()
+                } catch (c: CancellationException) {
+                    keyReadCancelled = true
+                    throw c
+                }
+            }
+            return inner.getString(key)
+        }
+    }
+
+    @Test fun a_wipe_cancels_the_legacy_profile_migration_instead_of_racing_it() {
+        val root = ModelStoreDir(Files.createTempDirectory("velum-legacy-wipe").toString())
+        legacyProfile(root)
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        context.deleteDatabase("velum.db")
+        val store = GatedKeyStore()
+        val container = AppContainer(store, DriverFactory(context), modelStoreRoot = root)
+        try {
+            runBlocking {
+                withTimeout(10_000) { store.keyReadStarted.await() } // the migration is waiting for the key
+                container.wipeAllData()
+                assertTrue(store.keyReadCancelled, "the wipe did not stop the migration it was racing")
+                store.release.complete(Unit)
+                delay(300)
+                assertFalse(root.resolve("voices/profiles/legacy.enc").exists(), "a profile was recreated after the wipe")
+            }
+        } finally {
+            store.release.complete(Unit)
+            container.databaseHandle.driver.close()
+            root.deleteRecursively()
         }
     }
 }
