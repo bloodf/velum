@@ -26,3 +26,11 @@ actual fun isAppOwnedAudioPath(absolutePath: String): Boolean {
     // No canonicalizing here: a path with ".." is not one the app wrote, so it isn't treated as owned.
     return absolutePath.startsWith("$caches/imports/") && ".." !in absolutePath
 }
+
+actual fun isImportCacheCopy(absolutePath: String): Boolean {
+    val caches = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, true).firstOrNull() as? String ?: return false
+    val imports = "$caches/imports/"
+    if (!absolutePath.startsWith(imports) || ".." in absolutePath) return false
+    val relative = absolutePath.removePrefix(imports)
+    return relative.isNotEmpty() && !relative.startsWith("normalized/")
+}

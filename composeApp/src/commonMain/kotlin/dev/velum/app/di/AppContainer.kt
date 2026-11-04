@@ -82,6 +82,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
 import kotlin.time.Duration.Companion.seconds
 
@@ -248,24 +249,25 @@ class AppContainer(
     }
 
     /**
-     * Deletes a recording for good. False when a file could not be deleted: the recording stays, so nothing is
-     * half-removed and the user can try again.
+     * Deletes a recording for good. False when a step failed: the recording stays, though its audio may already be
+     * gone, and trying again finishes the job. Not cancellable, so leaving the screen can't stop it halfway.
      */
-    suspend fun deleteRecordingForever(id: String): Boolean {
-        val audio = repository.getRecording(id)?.local_path
-        val others = repository.getAllRecordingFileRefs().filter { it.first != id }.mapNotNull { it.second }
-        val deleted = withContext(Dispatchers.IO) {
+    suspend fun deleteRecordingForever(id: String): Boolean = try {
+        withContext(NonCancellable + Dispatchers.IO) {
+            val audio = repository.getRecording(id)?.local_path
+            val others = repository.getAllRecordingFileRefs().filter { it.first != id }.mapNotNull { it.second }
             // Copies first: if one fails, the recording still has its audio.
-            (repository.importCopies(id) + listOfNotNull(audio))
+            val deleted = (repository.importCopies(id) + listOfNotNull(audio))
                 .filter { path -> isAppOwnedAudioPath(path) && others.none { it == path || isSamePath(it, path) } }
                 .all { deleteFileIfPresent(it) }
+            if (deleted) repository.deleteRecordingHard(id) else println("VelumDelete: a recording's audio could not be deleted")
+            deleted
         }
-        if (!deleted) {
-            println("VelumDelete: a recording's audio could not be deleted")
-            return false
-        }
-        repository.deleteRecordingHard(id)
-        return true
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (e: Exception) {
+        println("VelumDelete: deleting a recording failed: ${e::class.simpleName}")
+        false
     }
 
     fun enqueueProcessing(

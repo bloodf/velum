@@ -9,6 +9,9 @@ import dev.velum.app.di.AppContainer
 import dev.velum.app.di.WipeInProgressException
 import dev.velum.app.platform.installAppContext
 import dev.velum.app.platform.installRecordingFilesDir
+import dev.velum.app.platform.isAppOwnedAudioPath
+import dev.velum.app.platform.isImportCacheCopy
+import dev.velum.app.platform.recordingsDirectoryPath
 import dev.velum.app.platform.AudioNormalizer
 import dev.velum.app.platform.NormalizedAudio
 import dev.velum.app.platform.sha256File
@@ -24,6 +27,10 @@ import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -37,6 +44,8 @@ class ReimportAfterDeleteTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         context.deleteDatabase("velum.db")
         installAppContext(context)
+        val files = Files.createTempDirectory("velum-reimport-files").toFile()
+        installRecordingFilesDir(files.path)
         File(context.cacheDir, "imports").deleteRecursively()
         val root = ModelStoreDir(Files.createTempDirectory("velum-reimport").toString())
         // No processing: it is not under test and would outlive the database.
@@ -51,6 +60,8 @@ class ReimportAfterDeleteTest {
             container.databaseHandle.driver.close()
             root.deleteRecursively()
             dir.deleteRecursively()
+            installRecordingFilesDir(null)
+            files.deleteRecursively()
         }
     }
 
@@ -196,6 +207,118 @@ class ReimportAfterDeleteTest {
         assertNotNull(container.repository.getRecording("rec-a"), "the recording went but its audio stayed")
     }
 
+    @Test fun importing_a_file_a_recording_uses_leaves_it_on_disk() = withPipeline { container, pipeline, wav ->
+        val stored = File(recordingsDir(), "rec-x.wav").also { it.parentFile!!.mkdirs(); wav.copyTo(it, overwrite = true) }
+        container.addRow("rec-x", stored.path)
+        assertIs<ImportResult.Created>(pipeline.importFile(stored.path))
+        assertTrue(stored.exists(), "importing a recording's own file deleted it")
+    }
+
+    @Test fun a_failed_import_of_a_file_a_recording_uses_leaves_it_on_disk() = withPipeline { container, _, wav ->
+        val stored = File(recordingsDir(), "rec-x.bin").also { it.parentFile!!.mkdirs(); wav.copyTo(it, overwrite = true) }
+        container.addRow("rec-x", stored.path)
+        val failing = AudioImportPipeline(container, normalize = { error("synthetic decode failure") })
+        assertIs<ImportResult.Failed>(failing.importFile(stored.path))
+        assertTrue(stored.exists(), "a failed import deleted the only copy of a recording")
+    }
+
+    @Test fun a_normalized_file_is_not_a_source_copy() = withPipeline { _, _, wav ->
+        val normalized = ownedCopy(wav, "normalized/rec.wav")
+        assertFalse(isImportCacheCopy(normalized.path))
+        assertTrue(isImportCacheCopy(ownedCopy(wav, "picked.wav").path))
+        assertTrue(isImportCacheCopy(ownedCopy(wav, "watched/copy.wav").path))
+    }
+
+    @Test fun app_owned_path_fails_closed() = withPipeline { _, _, wav ->
+        val recordings = recordingsDir().apply { mkdirs() }
+        val imports = File(ownedCopy(wav, "picked.wav").parentFile!!.path)
+        assertTrue(isAppOwnedAudioPath(File(recordings, "rec.wav").path))
+        assertFalse(isAppOwnedAudioPath(recordings.path), "the root itself")
+        assertFalse(isAppOwnedAudioPath(imports.path), "the root itself")
+        assertFalse(isAppOwnedAudioPath(recordings.path + "-evil/rec.wav"), "a sibling with the same prefix")
+        assertFalse(isAppOwnedAudioPath(File(recordings, "../outside.wav").path), "a path that climbs out")
+        val outside = Files.createTempFile("velum-outside", ".wav")
+        val link = File(recordings, "link.wav").toPath()
+        Files.deleteIfExists(link)
+        Files.createSymbolicLink(link, outside)
+        assertFalse(isAppOwnedAudioPath(link.toString()), "a symlink out")
+        assertFalse(isImportCacheCopy(link.toString()))
+        Files.delete(link)
+        Files.delete(outside)
+        assertFalse(isImportCacheCopy(File(recordings, "rec.wav").path), "the recordings folder is not the import cache")
+        assertFalse(isImportCacheCopy(imports.path), "the root itself")
+    }
+
+    @Test fun a_mic_style_recording_loses_its_file() = withPipeline { container, _, wav ->
+        val mic = File(recordingsDir(), "rec-a.wav").also { it.parentFile!!.mkdirs(); wav.copyTo(it, overwrite = true) }
+        container.addRow("rec-a", mic.path)
+        assertTrue(container.deleteRecordingForever("rec-a"))
+        assertFalse(mic.exists(), "the recording's audio stayed on disk")
+    }
+
+    @Test fun a_trashed_recording_keeps_a_file_it_shares() = withPipeline { container, _, wav ->
+        val shared = ownedCopy(wav, "normalized/shared.wav")
+        for (id in listOf("rec-a", "rec-trashed")) container.addRow(id, shared.path)
+        container.repository.trashRecording("rec-trashed")
+        assertTrue(container.deleteRecordingForever("rec-a"))
+        assertTrue(shared.exists(), "a recording in the trash lost its audio")
+    }
+
+    @Test fun a_watched_duplicate_found_by_source_hash_is_tracked() = withPipeline { container, pipeline, wav ->
+        val first = ownedCopy(wav, "watched/first.wav")
+        val created = assertIs<ImportResult.Created>(pipeline.importFile(first.path, source = "watched"))
+        val second = ownedCopy(wav, "watched/second.wav")
+        assertIs<ImportResult.Duplicate>(pipeline.importFile(second.path, source = "watched"))
+        assertTrue(container.deleteRecordingForever(created.recordingId))
+        assertFalse(first.exists(), "the first watched copy stayed on disk")
+        assertFalse(second.exists(), "the watched copy found by its source hash stayed on disk")
+    }
+
+    @Test fun a_failed_row_delete_is_reported_and_keeps_the_row() = withPipeline { container, _, wav ->
+        val audio = ownedCopy(wav, "normalized/a.wav")
+        container.addRow("rec-a", audio.path)
+        container.addRow("rec-b", null)
+        container.databaseHandle.driver.execute(
+            null,
+            "CREATE TRIGGER synthetic_failure BEFORE DELETE ON recording WHEN OLD.id = 'rec-a' BEGIN SELECT RAISE(ABORT, 'synthetic'); END",
+            0,
+        )
+        assertFalse(container.deleteRecordingForever("rec-a"), "a failed row delete must be reported")
+        assertNotNull(container.repository.getRecording("rec-a"))
+        // The next item of an Empty trash still runs.
+        assertTrue(container.deleteRecordingForever("rec-b"))
+        assertEquals(null, container.repository.getRecording("rec-b"))
+    }
+
+    @Test fun leaving_the_screen_does_not_cut_a_delete_in_half() = withPipeline { container, _, wav ->
+        val audio = ownedCopy(wav, "normalized/a.wav")
+        container.addRow("rec-a", audio.path)
+        coroutineScope {
+            launch {
+                cancel()
+                runCatching { container.deleteRecordingForever("rec-a") }
+            }.join()
+        }
+        assertFalse(audio.exists(), "the audio should be gone")
+        assertEquals(null, container.repository.getRecording("rec-a"), "the file went but the row stayed")
+    }
+
+    @Test fun a_refused_watched_copy_is_removed() = withPipeline { container, pipeline, wav ->
+        val copy = ownedCopy(wav, "watched/copy.wav")
+        val result = container.wipeGate.wiping(1.seconds) { pipeline.importFile(copy.path, source = "watched") }
+        assertEquals(ImportResult.Failed("wipe_in_progress"), result)
+        assertFalse(copy.exists(), "a watched copy outlived the wipe")
+    }
+
+    @Test fun a_refused_import_removes_its_cache_copy() = withPipeline { container, _, wav ->
+        val copy = ownedCopy(wav, "picked.wav")
+        val pipeline = AudioImportPipeline(container, normalize = { throw WipeInProgressException() })
+        assertEquals(ImportResult.Failed("wipe_in_progress"), pipeline.importFile(copy.path))
+        assertFalse(copy.exists(), "the copy outlived the wipe")
+    }
+
+    private fun recordingsDir() = File(recordingsDirectoryPath())
+
     @Test fun the_screen_deletes_through_the_container() {
         val source = File("src/commonMain/kotlin/dev/velum/app/ui/files/FilesScreen.kt").readText()
         assertFalse("deleteRecordingHard" in source, "the screen removes rows without their files")
@@ -237,7 +360,7 @@ class ReimportAfterDeleteTest {
         )
     }
 
-    private suspend fun AppContainer.addRow(id: String, path: String) = repository.insertRecording(
+    private suspend fun AppContainer.addRow(id: String, path: String?) = repository.insertRecording(
         id = id, sessionId = null, folderId = null, title = "Synthetic", source = "import", deviceSerial = null,
         startedAt = 1_700_000_000L, durationSeconds = 1, sizeBytes = 0, localPath = path,
         transcript = null, summaryMarkdown = null, status = "ready",

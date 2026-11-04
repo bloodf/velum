@@ -747,8 +747,8 @@ class VelumRepository(
     }
 
     /** Remembers an app-owned source copy of [recordingId], so a permanent delete can remove it. */
-    suspend fun addImportCopy(recordingId: String, sourceHash: String, path: String) = withContext(dbContext) {
-        q.setMeta("$IMPORT_COPY_PREFIX$recordingId:$sourceHash", path)
+    suspend fun addImportCopy(recordingId: String, pathHash: String, path: String) = withContext(dbContext) {
+        q.setMeta("$IMPORT_COPY_PREFIX$recordingId:$pathHash", path)
     }
 
     suspend fun importCopies(recordingId: String): List<String> = withContext(dbContext) {
@@ -1172,7 +1172,7 @@ class VelumRepository(
         private const val UNPROMOTED_RUN_PREFIX = "unpromoted_run:"
         /** Audio import dedupe: import_sha256_<hash> -> recording id. */
         const val IMPORT_HASH_PREFIX = "import_sha256_"
-        /** import_copy:<recording id>:<source hash> -> path of a watched-folder copy kept for that recording. */
+        /** import_copy:<recording id>:<sha-256 of the path> -> path of a watched-folder copy kept for that recording. */
         private const val IMPORT_COPY_PREFIX = "import_copy:"
 
         /** A GLOB pattern matching keys that start with [prefix] (case-sensitive; GLOB metacharacters escaped). */

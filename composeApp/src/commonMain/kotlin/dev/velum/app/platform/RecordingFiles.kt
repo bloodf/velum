@@ -20,3 +20,6 @@ expect fun deleteFileIfPresent(absolutePath: String): Boolean
 
 /** True for audio the app itself wrote: its recordings folder and its import cache. Never a file the user picked in place. */
 expect fun isAppOwnedAudioPath(absolutePath: String): Boolean
+
+/** True only for a source copy the app made in its import cache, never for its recordings or normalized audio. */
+expect fun isImportCacheCopy(absolutePath: String): Boolean

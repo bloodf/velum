@@ -44,3 +44,10 @@ actual fun isAppOwnedAudioPath(absolutePath: String): Boolean = runCatching {
     )
     roots.any { file.startsWith(it.canonicalFile) && file != it.canonicalFile }
 }.getOrDefault(false)
+
+actual fun isImportCacheCopy(absolutePath: String): Boolean = runCatching {
+    val imports = File(appContextOrNull()?.cacheDir ?: return false, "imports").canonicalFile
+    val parent = File(absolutePath).canonicalFile.parentFile
+    // Picked and shared copies sit directly in imports/, watched ones in imports/watched/. Normalized audio does not.
+    parent == imports || parent == File(imports, "watched")
+}.getOrDefault(false)
