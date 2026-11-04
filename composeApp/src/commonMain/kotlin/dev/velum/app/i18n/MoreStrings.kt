@@ -14,4 +14,9 @@ data class MoreStrings(
     val webhookFailedTls: String,
     val webhookFailedConnection: String,
     val speakerCacheNotDropped: String,
+    val processingFailedAudioMissing: String,
+    val processingFailedAudioEmpty: String,
+    val processingFailedWavNoData: String,
+    val deleteForeverFailed: String,
+    val speakersChangedWhileOpen: String,
 )
