@@ -166,6 +166,15 @@ object FtsIndex {
         clearTemplates(driver)
     }
 
+    /**
+     * Merge all segments of both tables so deleted words no longer sit in the index data. Wipe-time only: it rewrites the
+     * whole index.
+     */
+    fun optimize(driver: SqlDriver) {
+        driver.execute(identifier = null, sql = "INSERT INTO recording_fts(recording_fts) VALUES('optimize')", parameters = 0)
+        driver.execute(identifier = null, sql = "INSERT INTO template_fts(template_fts) VALUES('optimize')", parameters = 0)
+    }
+
     fun clearRecordings(driver: SqlDriver) {
         driver.execute(identifier = null, sql = "DELETE FROM recording_fts", parameters = 0)
     }

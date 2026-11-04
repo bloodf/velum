@@ -294,6 +294,25 @@ class WipeAllDataTest {
         assertFalse(written, "an export was written during the wipe")
     }
 
+    // #423: the last wipe step rewrites the database file. The real modes (FTS, WAL, secure_delete) are covered in :core
+    // and by the emulator scan; Robolectric's framework SQLite reports no FTS and a non-WAL journal.
+    @Test fun a_wipe_runs_the_database_rewrite_as_a_step() = withContainer { container, _ ->
+        var runs = 0
+        container.compactDatabaseForTest = { runs++; true }
+        assertEquals(DownloadWipeResult.Clean, container.wipeAllData())
+        assertEquals(1, runs)
+    }
+
+    @Test fun a_failed_database_rewrite_makes_the_wipe_incomplete_and_the_other_steps_still_ran() = withContainer { container, _ ->
+        container.compactDatabaseForTest = { false }
+        container.repository.insertRecording(
+            id = "rec-x", sessionId = null, folderId = null, title = "t", source = "phone", deviceSerial = null, startedAt = 1,
+            durationSeconds = 0, sizeBytes = 0, localPath = null, transcript = "words", summaryMarkdown = null, status = "ready",
+        )
+        assertEquals(DownloadWipeResult.Incomplete, container.wipeAllData())
+        assertEquals(null, container.repository.getRecording("rec-x"), "the rows were deleted before the failing step")
+    }
+
     @Test fun a_wipe_removes_import_hashes_and_tombstones() = withContainer { container, _ ->
         container.repository.setMeta("import_sha256_synthetic", "rec-gone")
         container.repository.setMeta("import_deleted_synthetic", "1")

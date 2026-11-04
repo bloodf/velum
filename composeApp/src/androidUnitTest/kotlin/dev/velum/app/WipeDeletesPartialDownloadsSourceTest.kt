@@ -14,4 +14,11 @@ class WipeDeletesPartialDownloadsSourceTest {
         assertTrue("wipeAllDataPartialsLeft" in screen, "a failed delete must be reported")
         assertTrue("wipeAllDataDownloadRunning" in screen, "a download that outlasts the wait must be reported")
     }
+
+    // Robolectric cannot tell the real database rewrite from nothing, so pin the fallback in the source (#423).
+    @Test fun the_last_wipe_step_falls_back_to_the_real_database_rewrite() {
+        val source = File("src/commonMain/kotlin/dev/velum/app/di/AppContainer.kt").readText()
+        assertTrue("step(\"database\") { (compactDatabaseForTest ?: repository::compactAfterWipe)() }" in source, "the app must run compactAfterWipe")
+        assertTrue(source.indexOf("step(\"database\")") > source.indexOf("step(\"recordings\")"), "the rewrite runs after the rows are deleted")
+    }
 }
