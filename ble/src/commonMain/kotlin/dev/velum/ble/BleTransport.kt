@@ -26,8 +26,9 @@ interface BleTransport : GattLink {
     /**
      * Connect for [profile]'s family. A transport serves only the profiles it has a working driver path for; today
      * that is [GattProfiles.Plaud] on every transport (the Kable transport is Plaud-only: it hardcodes the Plaud
-     * services and rejects other adverts). Any other profile is refused before a connection is attempted, so a device
-     * that cannot work is never offered or connected.
+     * services and rejects other adverts). Any other profile is refused before a connection is attempted. This method
+     * does not decide what a scan lists: that is gated separately (today by the Kable transport accepting Plaud
+     * adverts only).
      */
     suspend fun connect(deviceId: String, profile: GattProfile) {
         require(profile == GattProfiles.Plaud) { "No driver path for profile '${profile.id}' on this transport" }

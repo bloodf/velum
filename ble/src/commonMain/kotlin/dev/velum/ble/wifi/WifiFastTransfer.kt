@@ -158,15 +158,16 @@ class WifiFastTransferSession(
     }
 
     suspend fun sendPacket(packet: ByteArray) {
-        // The same plaintext check as every BLE write: forbidden opcodes and settings never leave the app (#350).
+        // The same plaintext guard as every BLE write: forbidden opcodes and settings never leave the app (#350).
         // Before sealing, so a rejected packet neither uses a sequence number nor reaches the server.
         // The guard and the seal see the same copy, so a caller cannot change the bytes between them (as GuardedLink).
         val checked = packet.copyOf()
         PlaudWriteGuard.check(checked)
         // One send at a time: the sequence number is taken, and the frame written, in the same order for everyone.
         sendMutex.withLock {
-            val sealed = frameCipher.seal(sendSeq, checked)
-            // What goes out must open to exactly the packet the guard checked, at this sequence.
+            val sealed = frameCipher.seal(sendSeq, checked.copyOf())
+            // What goes out must open to exactly the packet the guard checked, at this sequence. This uses the same
+            // cipher's own open, so it catches a broken or swapped seal, not a cipher whose seal and open agree on a lie.
             val opened = frameCipher.open(sendSeq, sealed)
             check(opened != null && opened.first == sendSeq && opened.second.contentEquals(checked)) {
                 "Sealed frame does not match the checked packet"

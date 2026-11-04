@@ -3,6 +3,7 @@ package dev.velum.ai.pipeline
 import dev.velum.ai.engine.JobProgress
 import dev.velum.core.autoflow.AutoFlowPostAction
 import dev.velum.core.calendar.CalendarEventProvider
+import dev.velum.core.templates.BuiltinTemplateCatalog
 import dev.velum.core.time.VelumDateTime
 import dev.velum.core.calendar.CalendarEventSummary
 import dev.velum.core.calendar.CalendarLookupResult
@@ -126,6 +127,7 @@ class AutoFlowRunnerTest {
         val f = Fixture(this)
         f.start()
         // The row turns ready between the runner reading it and its conditional queued write.
+        f.store.activeTemplates["rec-gap"] = "velum.meeting" // the finished job produced this flow's summary
         f.store.beforeConditionalQueue = { id -> f.store.change(id) { it.copy(status = "ready", summary_markdown = "## done") } }
         f.publish(recording("rec-gap", "imported"))
         assertTrue(f.enqueued.isEmpty(), "a finished job must not be re-enqueued")
@@ -142,6 +144,11 @@ class AutoFlowRunnerTest {
         f.store.put(recording("rec-notyet", "imported"))
         runCurrent()
         assertEquals("imported", f.row("rec-notyet").status)
+        f.complete("rec-notyet")
+        testScheduler.advanceTimeBy(2_000)
+        runCurrent()
+        assertEquals("ready", f.row("rec-notyet").status)
+        assertEquals(listOf("rec-notyet"), f.actions.filterIsInstance<AutoFlowUiAction.PostWebhook>().map { it.recordingId })
     }
 
     /** The row turns ready (with [template] as its active summary) the first time the runner re-reads it. */
@@ -164,6 +171,170 @@ class AutoFlowRunnerTest {
         f.publish(recording("rec-same", "imported"))
         assertTrue(f.enqueued.isEmpty(), "the finished job already did this flow's work")
         assertEquals(listOf("rec-same"), f.actions.filterIsInstance<AutoFlowUiAction.PostWebhook>().map { it.recordingId })
+    }
+
+    @Test
+    fun aBlankTemplateFlow_reEnqueuesWithTheEffectiveTemplate_soTheFinishedWorkerIsReplaced() = runTest {
+        val f = Fixture(this, rule = rule().copy(template_id = null))
+        f.start()
+        f.finishesBeforeTheRunnerActs("velum.sales")
+        f.publish(recording("rec-blank", "imported"))
+        assertEquals(listOf<String?>("velum.meeting"), f.templates, "a blank template must be enqueued as real parameters")
+    }
+
+    private val flowWithoutOverride = { template: String? -> rule().copy(template_id = template, model_id = null, endpoint_profile_id = null) }
+
+    @Test
+    fun aTplMeetingFlow_keepsARunningVelumMeetingJob_notCancelsIt() = runTest {
+        val f = Fixture(this, rule = flowWithoutOverride("tpl-meeting"))
+        f.realMatching = true
+        f.start()
+        f.running["rec-mic"] = Triple("velum.meeting", null, true) // MicFinalize's job, still running
+        f.enqueue = { }
+        f.store.put(recording("rec-mic", "generating"))
+        runCurrent()
+        assertEquals(listOf<String?>("velum.meeting"), f.templates, "the alias is resolved before the scheduler compares")
+        assertEquals(listOf(false), f.startedFlags, "the running job is kept, not replaced")
+        f.complete("rec-mic")
+        testScheduler.advanceTimeBy(2_000)
+        runCurrent()
+        assertEquals(listOf("rec-mic"), f.actions.filterIsInstance<AutoFlowUiAction.PostWebhook>().map { it.recordingId })
+    }
+
+    @Test
+    fun aLaterPass_afterARequeue_doesNotReplaceItsOwnRunningJob() = runTest {
+        val f = Fixture(this, rule = flowWithoutOverride("tpl-meeting"))
+        f.realMatching = true
+        f.start()
+        f.enqueue = { } // the rerun keeps running for longer than the runner waits
+        // Pass 1: the row turns ready on sales in the gap, so the runner takes the requeue branch.
+        f.store.beforeConditionalQueue = { id ->
+            f.store.activeTemplates[id] = "velum.sales"
+            f.store.change(id) { it.copy(status = "ready", summary_markdown = "## sales") }
+        }
+        f.store.put(recording("rec-mixed", "imported"))
+        runCurrent()
+        f.store.beforeConditionalQueue = {}
+        testScheduler.advanceTimeBy(31L * 60L * 1000L) // pass 1 gives up waiting
+        runCurrent()
+        // Pass 2: another emission; the row is queued, so the normal branch enqueues again with the same parameters.
+        f.store.change("rec-mixed") { it.copy(title = "touched") }
+        runCurrent()
+        assertEquals(listOf(true, false), f.startedFlags, "pass 2 must keep the job pass 1 started")
+    }
+
+    @Test
+    fun aTplMeetingJobQueuedBeforeTheUpgrade_isReplacedOnce_thenKept() = runTest {
+        val f = Fixture(this, rule = flowWithoutOverride("tpl-meeting"))
+        f.realMatching = true
+        f.start()
+        f.running["rec-old"] = Triple("tpl-meeting", null, true) // started with the raw alias by an older build
+        f.enqueue = { }
+        f.store.put(recording("rec-old", "generating"))
+        runCurrent()
+        assertEquals(listOf(true), f.startedFlags, "the raw-alias job is replaced once")
+        f.store.change("rec-old") { it.copy(title = "touched") }
+        testScheduler.advanceTimeBy(31L * 60L * 1000L)
+        runCurrent()
+        assertEquals(listOf(true, false), f.startedFlags, "after that the resolved job is kept")
+    }
+
+    @Test
+    fun aReplacedRunThatLeavesReadyOnAnotherTemplate_isRequeuedOnce_andThePostActionFiresOnce() = runTest {
+        val f = Fixture(this) // the flow asks for velum.meeting
+        f.start()
+        var calls = 0
+        f.enqueue = { id ->
+            if (++calls == 1) {
+                // The replacement was stopped mid-run and its cancel handler left ready on a velum.sales summary.
+                f.store.activeTemplates[id] = "velum.sales"
+                f.store.change(id) { it.copy(status = "ready", summary_markdown = "## sales") }
+            } else {
+                f.complete(id) // the requeued rerun produces this flow's summary
+            }
+        }
+        f.store.put(recording("rec-replaced", "imported"))
+        runCurrent()
+        testScheduler.advanceTimeBy(2_000)
+        runCurrent()
+        assertEquals(listOf("rec-replaced", "rec-replaced"), f.enqueued, "one requeue, no dead wait")
+        assertEquals(listOf("rec-replaced"), f.actions.filterIsInstance<AutoFlowUiAction.PostWebhook>().map { it.recordingId })
+    }
+
+    @Test
+    fun aSecondMismatchAfterTheRequeue_isClaimedWithoutAPostActionAndWithoutLooping() = runTest {
+        val f = Fixture(this)
+        f.start()
+        f.enqueue = { id ->
+            f.store.activeTemplates[id] = "velum.sales"
+            f.store.change(id) { it.copy(status = "ready", summary_markdown = "## sales") }
+        }
+        f.store.put(recording("rec-stubborn", "imported"))
+        runCurrent()
+        testScheduler.advanceTimeBy(2_000)
+        runCurrent()
+        assertEquals(2, f.enqueued.size, "exactly one requeue")
+        assertTrue(f.actions.none { it is AutoFlowUiAction.PostWebhook }, "no post-action on the wrong summary")
+        assertEquals(1, f.diagnostics.size, "claimed with one log line")
+    }
+
+    @Test
+    fun aRequeueThatLosesTheRow_isDroppedWithoutAnEnqueue() = runTest {
+        val f = Fixture(this)
+        f.start()
+        f.store.refuseRequeue = true // something else took the row between the read and the write
+        f.store.beforeConditionalQueue = { id ->
+            f.store.activeTemplates[id] = "velum.sales"
+            f.store.change(id) { it.copy(status = "ready", summary_markdown = "## sales") }
+        }
+        f.store.put(recording("rec-lost", "imported"))
+        runCurrent()
+        assertTrue(f.enqueued.isEmpty(), "no enqueue when the conditional requeue fails")
+        assertTrue(f.actions.none { it is AutoFlowUiAction.PostWebhook })
+    }
+
+    @Test
+    fun jobFinishingBetweenTheReadAndTheQueuedWrite_ForAnotherTemplate_isEnqueuedOnceWithoutAPostAction() = runTest {
+        val f = Fixture(this)
+        f.start()
+        f.enqueue = { }
+        f.store.beforeConditionalQueue = { id ->
+            f.store.activeTemplates[id] = "velum.sales"
+            f.store.change(id) { it.copy(status = "ready", summary_markdown = "## sales") }
+        }
+        f.store.put(recording("rec-window", "imported"))
+        runCurrent()
+        assertEquals(listOf("rec-window"), f.enqueued, "the flow's own template still has to run, exactly once")
+        assertTrue(f.actions.none { it is AutoFlowUiAction.PostWebhook }, "no post-action on the sales summary")
+    }
+
+    @Test
+    fun aKeptEnqueueNeverRestoresReady_soThePostActionDoesNotFireOnAnotherTemplatesSummary() = runTest {
+        val f = Fixture(this, rule = rule().copy(template_id = null))
+        f.start()
+        f.keepRunning = true
+        f.enqueue = { }
+        f.finishesBeforeTheRunnerActs("velum.sales")
+        f.store.put(recording("rec-kept-ready", "imported"))
+        runCurrent()
+        assertTrue(f.row("rec-kept-ready").status != "ready", "the other template's ready must not be put back")
+        assertTrue(f.actions.none { it is AutoFlowUiAction.PostWebhook }, "no post-action on the wrong summary")
+    }
+
+    @Test
+    fun anUneditedTplMeetingFlow_matchesTheStoredBuiltin_butAnEditedOneDoesNot() = runTest {
+        val unedited = Fixture(this, rule = rule().copy(template_id = "tpl-meeting"))
+        unedited.start()
+        unedited.finishesBeforeTheRunnerActs("velum.meeting") // the processor stores the resolved built-in id
+        unedited.publish(recording("rec-unedited", "imported"))
+        assertTrue(unedited.enqueued.isEmpty(), "tpl-meeting resolves to velum.meeting: the finished work is the flow's")
+
+        val edited = Fixture(this, rule = rule().copy(template_id = "tpl-meeting"))
+        edited.store.exactTemplates += "tpl-meeting" // the user's edited row keeps its id
+        edited.start()
+        edited.finishesBeforeTheRunnerActs("velum.meeting")
+        edited.publish(recording("rec-edited", "imported"))
+        assertEquals(listOf("rec-edited"), edited.enqueued, "an edited tpl-meeting is a different template from the built-in")
     }
 
     @Test
@@ -629,6 +800,7 @@ class AutoFlowRunnerTest {
         val runner = AutoFlowRunner(
             store, { id, _, _ -> process(id) }, test.backgroundScope,
             calendar = object : CalendarEventProvider { override suspend fun currentOrNextEvent(aroundEpochMs: Long) = calendarAround(aroundEpochMs) },
+            diagnostics = { diagnostics += it },
             jobScheduler = if (scheduler) object : RecordingJobScheduler {
                 override fun enqueue(recordingId: String, templateId: String?, retranscribe: Boolean, apiModelOverride: ApiModelOverride?) {
                     enqueueReportingStart(recordingId, templateId, retranscribe, apiModelOverride)
@@ -642,6 +814,18 @@ class AutoFlowRunnerTest {
                     enqueued += recordingId
                     templates += templateId
                     overrides += apiModelOverride
+                    if (realMatching) {
+                        val current = running[recordingId]
+                        val kept = current != null && recordingWorkParamsMatch(
+                            current.first, current.third, current.second, templateId, retranscribe, apiModelOverride,
+                        )
+                        if (!kept) {
+                            running[recordingId] = Triple(templateId, apiModelOverride, retranscribe)
+                            enqueue(recordingId)
+                        }
+                        startedFlags += !kept
+                        return !kept
+                    }
                     enqueue(recordingId)
                     return !keepRunning
                 }
@@ -665,7 +849,19 @@ class AutoFlowRunnerTest {
             assertTrue(runner.passIndex.value > previous, "input pass must complete, even on error or cancellation")
         }
         fun row(id: String) = store.rows.value.single { it.id == id }
-        fun complete(id: String) { store.change(id) { it.copy(status = "ready", summary_markdown = "## Synthetic note") } }
+        fun complete(id: String) {
+            // The finished job saved a summary under the flow's effective template.
+            val flowTemplate = store.rules.value.first().template_id
+            store.activeTemplates[id] =
+                flowTemplate?.takeIf { it in store.exactTemplates } ?: BuiltinTemplateCatalog.resolveId(flowTemplate)
+            store.change(id) { it.copy(status = "ready", summary_markdown = "## Synthetic note") }
+        }
+        /** With [realMatching] the scheduler keeps a running job whose parameters match, as the real ones do. */
+        var realMatching = false
+        /** Parameters of the job each recording is "running"; seed it to model a job started by another caller. */
+        val running = mutableMapOf<String, Triple<String?, ApiModelOverride?, Boolean>>()
+        val startedFlags = mutableListOf<Boolean>()
+        val diagnostics = mutableListOf<String>()
     }
 
     private class Store(rule: Autoflow) : AutoFlowRecordingStore {
@@ -696,6 +892,13 @@ class AutoFlowRunnerTest {
             updateStatus(id, "queued")
             return true
         }
+        var refuseRequeue = false
+        override suspend fun requeueIfReady(id: String): Boolean {
+            if (refuseRequeue) return false
+            if (rows.value.firstOrNull { it.id == id }?.status != "ready") return false
+            updateStatus(id, "queued")
+            return true
+        }
         override suspend fun restoreStatusIfQueued(id: String, status: String): Boolean {
             if (rows.value.firstOrNull { it.id == id }?.status != "queued") return false
             updateStatus(id, status)
@@ -704,6 +907,9 @@ class AutoFlowRunnerTest {
         /** Template of each recording's active summary, set by tests that need a finished row. */
         val activeTemplates = mutableMapOf<String, String>()
         override suspend fun activeSummaryTemplateId(id: String): String? = activeTemplates[id]
+        /** Template rows that exist under their exact id (an edited builtin). */
+        val exactTemplates = mutableSetOf<String>()
+        override suspend fun exactTemplateId(templateId: String): String? = templateId.takeIf { it in exactTemplates }
         override suspend fun updateRecordingTitle(id: String, title: String) {
             beforeTitle(id)
             change(id) { it.copy(title = title) }
