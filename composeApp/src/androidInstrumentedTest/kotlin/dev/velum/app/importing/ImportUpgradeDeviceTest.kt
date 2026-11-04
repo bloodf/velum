@@ -48,6 +48,8 @@ class ImportUpgradeDeviceTest {
         assertTrue("import result $result", result is ImportResult.Created)
         val created = result as ImportResult.Created
         val row = runBlocking { container.repository.getRecording(created.recordingId)!! }
+        // The old build must really have put the only audio copy in the evictable cache, or the upgrade proves nothing.
+        assertTrue("seed row is not in the cache: ${row.local_path}", File(row.local_path!!).canonicalPath.startsWith(ctx.cacheDir.canonicalPath + File.separator))
         seedFile.writeText("${created.recordingId}\n${row.local_path}\n${File(row.local_path!!).length()}\n")
         InstrumentationRegistry.getInstrumentation().sendStatus(
             0, Bundle().apply { putString("velum.upgradeSeed", "rowPath=${row.local_path} bytes=${File(row.local_path!!).length()} inCache=${row.local_path!!.startsWith(ctx.cacheDir.path)}") },
@@ -58,7 +60,7 @@ class ImportUpgradeDeviceTest {
         assumeTrue("phase is '$phase'", phase == "verify")
         val (id, oldPath, oldBytes) = seedFile.readLines().let { Triple(it[0], it[1], it[2].toLong()) }
         val container = runBlocking { (ctx.applicationContext as VelumApplication).awaitContainer() }
-        val recordings = File(ctx.filesDir, "recordings").canonicalPath
+        val recordings = File(ctx.filesDir, "recordings").canonicalPath + File.separator
         // The migration runs at startup, before the container is published; allow a moment for the row write.
         var row = runBlocking { container.repository.getRecording(id) }
         val end = System.currentTimeMillis() + 30_000
@@ -71,7 +73,7 @@ class ImportUpgradeDeviceTest {
             0, Bundle().apply {
                 putString(
                     "velum.upgradeVerify",
-                    "before=$oldPath after=$path exists=${moved.isFile} bytes=${moved.length()} (was $oldBytes) oldGone=${!File(oldPath).exists()} inCacheNow=${File(path).canonicalPath.startsWith(ctx.cacheDir.canonicalPath)}",
+                    "before=$oldPath after=$path exists=${moved.isFile} bytes=${moved.length()} (was $oldBytes) oldGone=${!File(oldPath).exists()} inCacheNow=${File(path).canonicalPath.startsWith(ctx.cacheDir.canonicalPath + File.separator)}",
                 )
             },
         )
