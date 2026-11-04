@@ -187,6 +187,37 @@ class SpeakerCacheOrderTest {
         assertEquals(listOf("S1"), s.repo.getSpeakers(id).map { it.label })
     }
 
+    /** Makes deleting [id]'s cache fail the way a locked or read-only directory does; returns false when the OS ignores it. */
+    private fun lockCache(s: Setup, id: String): Boolean {
+        val dir = File(s.dir, "voices/cluster-cache/$id")
+        dir.setWritable(false)
+        return !File(dir, "probe").let { runCatching { it.createNewFile() }.getOrDefault(false).also { made -> if (made) it.delete() } }
+    }
+
+    private fun unlockCache(s: Setup, id: String) {
+        File(s.dir, "voices/cluster-cache/$id").setWritable(true)
+    }
+
+    @Test
+    fun aCacheThatCannotBeDroppedStopsTheRunBeforeAnythingElseChanges() = runBlocking {
+        val id = "rec-399-stuck"
+        val s = setup(id)
+        s.diarizerBehaviour.value = { newRun() }
+        s.repo.updateTranscript(id, "OLD TRANSCRIPT")
+        val locked = lockCache(s, id)
+        try {
+            org.junit.Assume.assumeTrue("the OS did not honour a read-only directory (running as root?)", locked)
+            val events = s.processor.process(id, templateId = "velum.meeting").toList()
+            assertTrue(events.any { it is dev.velum.ai.engine.JobProgress.Failed }, "the run must fail, not carry on: $events")
+            val row = s.repo.getRecording(id)!!
+            assertEquals("OLD TRANSCRIPT", row.transcript, "the transcript was changed although the old cache stayed")
+            assertEquals(listOf("S1"), s.repo.getSpeakers(id).map { it.label }, "old rows stay matched to the old cache")
+            assertContentEquals(oldEmbedding, s.store.cachedClusterEmbedding(id, "S1"), "the old cache stayed")
+        } finally {
+            unlockCache(s, id)
+        }
+    }
+
     @Test
     fun withoutTheVoiceKeyTheOldCacheIsDroppedNotKeptBesideNewRows() = runBlocking {
         val id = "rec-399-nokey"

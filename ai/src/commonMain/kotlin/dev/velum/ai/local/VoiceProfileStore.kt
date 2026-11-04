@@ -483,9 +483,14 @@ class VoiceProfileStore(
     /**
      * Drops the recording's cached speaker embeddings, under the store's access lock and off the caller's thread.
      * Called before a run's speaker numbering is written, so the old numbering never outlives the labels it described.
+     * The delete is verified: a directory that is still there (a file the platform would not remove) throws
+     * [SpeakerCacheNotDroppedException], so the caller stops before it changes anything the cache must match.
      */
     suspend fun dropSpeakerCache(recordingId: String) = withContext(ioDispatcher) {
-        accessMutex.withLock { deleteClusterCache(recordingId) }
+        accessMutex.withLock {
+            deleteClusterCache(recordingId)
+            if (cacheDir.resolve(recordingId).exists()) throw SpeakerCacheNotDroppedException()
+        }
     }
 
     /**
@@ -861,6 +866,11 @@ class UnreadableVoiceProfile internal constructor(
 }
 
 /** The pasted text is not a Voice Profiles backup (not JSON, wrong shape, or bad base64). */
+/** The previous run's speaker cache could not be removed, so the recording was left as it was. */
+class SpeakerCacheNotDroppedException : IllegalStateException(
+    "The saved speaker voices could not be cleared, so the recording was left unchanged. Try again.",
+)
+
 class InvalidVoiceProfileBackupException(cause: Throwable) : IllegalArgumentException(
     "The text is not a voice profile backup.", cause,
 )
