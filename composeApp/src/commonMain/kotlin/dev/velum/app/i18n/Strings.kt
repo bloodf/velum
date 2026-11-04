@@ -1236,7 +1236,7 @@ val PtBr = Strings(
         retryProcessing = "Tentar de novo",
         waveformA11y = "Progresso da reprodução",
     ),
-    added = MoreStrings(speakersChangedWhileOpen = "Os falantes mudaram enquanto isto estava aberto. Confira os nomes e tente de novo."),
+    added = MoreStrings(speakersChangedWhileOpen = "Os oradores mudaram enquanto isto estava aberto. Confira os nomes e tente de novo."),
 )
 
 val En = Strings(

@@ -1133,6 +1133,18 @@ class VelumRepository(
             }
         }
 
+    /**
+     * [renameSpeaker] only if the stored row is still the run [expected] was read from (same label and talk time;
+     * ids repeat across runs). The check and the write share one dispatcher turn, so a replacement cannot land between.
+     */
+    suspend fun renameSpeakerIfUnchanged(recordingId: String, expected: Speaker, displayName: String): Boolean =
+        withContext(dbContext) {
+            val stored = q.selectSpeakersForRecording(recordingId).executeAsList().firstOrNull { it.id == expected.id }
+            if (stored == null || stored.label != expected.label || stored.talk_seconds != expected.talk_seconds) return@withContext false
+            renameSpeaker(recordingId, expected.id, displayName)
+            true
+        }
+
     suspend fun renameSpeaker(
         recordingId: String,
         speakerId: String,

@@ -16,36 +16,61 @@ class SpeakerRenameTest {
 
     private val typed = mapOf("rec-1-S1" to " Alex ", "rec-1-S2" to "Sam")
 
-    @Test fun rows_replaced_while_the_sheet_is_open_save_and_enrol_nothing() = runTest {
-        val shown = run(talk1 = 300, talk2 = 200)
-        val saved = mutableListOf<Pair<String, String>>()
-        // The background job swapped in a new run (same stable ids) before the confirm ran.
-        val ok = confirmSpeakerNames(shown, current = { run(talk1 = 120, talk2 = 410) }, renames = typed) { row, name ->
-            saved += row.id to name
+    /** Stands in for the repository: renaming updates display_name, as the real one does; rename is refused for a replaced row. */
+    private class Store(var rows: List<Speaker>) {
+        val enrolled = mutableListOf<String>()
+        val renamed = mutableListOf<Pair<String, String>>()
+        suspend fun current() = rows
+        fun enrol(row: Speaker, @Suppress("UNUSED_PARAMETER") name: String) { enrolled += row.id }
+        fun rename(row: Speaker, name: String): Boolean {
+            val stored = rows.firstOrNull { it.id == row.id } ?: return false
+            if (stored.label != row.label || stored.talk_seconds != row.talk_seconds) return false
+            rows = rows.map { if (it.id == row.id) it.copy(display_name = name) else it }
+            renamed += row.id to name
+            return true
         }
-        assertFalse(ok)
-        assertEquals(emptyList(), saved)
+    }
+
+    private suspend fun Store.confirm(shown: List<Speaker>, renames: Map<String, String> = typed, onEnrol: () -> Unit = {}) =
+        confirmSpeakerNames(shown, ::current, renames, { r, n -> enrol(r, n); onEnrol() }, ::rename)
+
+    @Test fun a_normal_confirm_saves_every_speaker_even_though_each_save_changes_display_name() = runTest {
+        val shown = run(300, 200)
+        val store = Store(shown)
+        assertTrue(store.confirm(shown))
+        assertEquals(listOf("rec-1-S1" to "Alex", "rec-1-S2" to "Sam"), store.renamed)
+        assertEquals(listOf("rec-1-S1", "rec-1-S2"), store.enrolled)
+    }
+
+    @Test fun rows_replaced_while_the_sheet_is_open_enrol_and_rename_nothing() = runTest {
+        val store = Store(run(talk1 = 120, talk2 = 410)) // the background run swapped in before the confirm
+        assertFalse(store.confirm(shown = run(300, 200)))
+        assertEquals(emptyList(), store.enrolled)
+        assertEquals(emptyList(), store.renamed)
     }
 
     @Test fun a_swap_after_the_first_name_stops_the_rest() = runTest {
         val shown = run(300, 200)
-        var live = shown
-        val saved = mutableListOf<String>()
-        val ok = confirmSpeakerNames(shown, current = { live }, renames = typed) { row, _ ->
-            saved += row.id
-            live = run(1, 2) // the swap lands while the first name is being saved
-        }
+        val store = Store(shown)
+        var first = true
+        val ok = store.confirm(shown) { if (first) { first = false; store.rows = run(1, 2) } }
         assertFalse(ok)
-        assertEquals(listOf("rec-1-S1"), saved)
+        assertEquals(listOf("rec-1-S1"), store.enrolled)
+        assertEquals(emptyList(), store.renamed, "the rename re-checks and refuses the replaced row")
     }
 
-    @Test fun unchanged_rows_save_every_trimmed_name() = runTest {
+    @Test fun a_swap_between_the_last_check_and_the_rename_is_reported() = runTest {
         val shown = run(300, 200)
-        val saved = mutableListOf<Pair<String, String>>()
-        val ok = confirmSpeakerNames(shown, current = { run(300, 200) }, renames = typed + ("rec-1-S9" to "Ghost") + ("rec-1-S2" to "  ")) { row, name ->
-            saved += row.id to name
-        }
-        assertTrue(ok)
-        assertEquals(listOf("rec-1-S1" to "Alex"), saved)
+        val store = Store(shown)
+        val ok = store.confirm(shown, mapOf("rec-1-S1" to "Alex")) { store.rows = run(1, 2) }
+        assertFalse(ok)
+        assertEquals(emptyList(), store.renamed)
+    }
+
+    @Test fun unchanged_rows_skip_blank_and_unknown_ids() = runTest {
+        val shown = run(300, 200)
+        val store = Store(shown)
+        assertTrue(store.confirm(shown, mapOf("rec-1-S1" to " Alex ", "rec-1-S9" to "Ghost", "rec-1-S2" to "  ")))
+        assertEquals(listOf("rec-1-S1" to "Alex"), store.renamed)
     }
 }

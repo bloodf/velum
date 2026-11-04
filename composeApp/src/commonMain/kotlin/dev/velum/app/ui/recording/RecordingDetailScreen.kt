@@ -673,7 +673,7 @@ fun RecordingDetailScreen(
                                 shown = shown,
                                 current = { container.repository.getSpeakers(recordingId) },
                                 renames = renames,
-                            ) { row, trimmed ->
+                                enrol = { row, trimmed ->
                                 var cacheMissed = false
                                 container.voiceProfileStore.withReady {
                                     val emb = cachedClusterEmbedding(
@@ -694,11 +694,12 @@ fun RecordingDetailScreen(
                                             )
                                     }
                                 }
-                                container.repository.renameSpeaker(recordingId, row.id, trimmed)
                                 if (cacheMissed) processError = strings.ux.voiceProfilesNoCachedVoice
-                            }
-                            if (!applied) processError = strings.added.speakersChangedWhileOpen
-                            showSpeakers = false
+                                },
+                                rename = { row, trimmed -> container.repository.renameSpeakerIfUnchanged(recordingId, row, trimmed) },
+                            )
+                            // Mismatch: keep the sheet open; the rows flow re-keys it to the new run's speakers.
+                            if (applied) showSpeakers = false else processError = strings.added.speakersChangedWhileOpen
                         } catch (cancelled: kotlinx.coroutines.CancellationException) {
                             throw cancelled
                         } catch (_: Exception) {
