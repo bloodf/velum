@@ -647,6 +647,22 @@ class DeviceResumeRestartTest {
         } finally { tearDown() }
     }
 
+    @Test fun a_second_connect_closes_the_client_it_replaces() {
+        try {
+            val vm = run(peripheral())
+            val first = checkNotNull(vm.liveClient)
+            runBlocking {
+                first.writeCommandForTest(dev.velum.protocol.Commands.BATTERY_LIKELY) // open before the reconnect
+                vm.connect("fake-note-pro")
+                withTimeout(20_000) { while (vm.liveClient === first || vm.liveClient == null) delay(5) }
+                val refused = assertFailsWith<IllegalStateException>("the replaced client must be closed") {
+                    first.writeCommandForTest(dev.velum.protocol.Commands.BATTERY_LIKELY)
+                }
+                assertEquals("Client is closed", refused.message)
+            }
+        } finally { tearDown() }
+    }
+
     @Test fun wipe_deletes_partials_off_the_callers_thread() {
         try {
             var deleteThread: Thread? = null

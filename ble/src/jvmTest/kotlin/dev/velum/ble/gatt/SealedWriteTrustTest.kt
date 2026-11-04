@@ -103,6 +103,26 @@ class SealedWriteTrustTest {
         client.close()
     }
 
+    @Test fun a_cipher_that_keeps_and_edits_its_output_cannot_change_the_bytes_written() = runTest {
+        var kept: ByteArray? = null
+        val retaining = object : SessionCipher by real {
+            override fun sealPacket(secret: Protocol20SessionSecret, sequence: Long, packet: ByteArray): ByteArray =
+                real.sealPacket(secret, sequence, packet).also { if (sequence >= FIRST_COMMAND_SEQ) kept = it }
+        }
+        val peripheral = FakePlaudPeripheral(real, keys, ByteArray(10), requirePublicKey = false)
+        val ble = FakeBleTransport(peripheral)
+        ble.connect("fake-note-pro")
+        val client = PlaudDeviceClient(ble, retaining, keys, responseTimeout = 5.seconds)
+        client.unlock()
+        // After the client's own check and before the radio: the cipher scribbles on the array it returned.
+        ble.beforeWrite = { kept?.fill(0x7F) }
+        val before = peripheral.receivedCommands.size
+        client.writeCommandForTest(Commands.BATTERY_LIKELY)
+        assertEquals(before + 1, peripheral.receivedCommands.size, "the peripheral must still open the checked packet")
+        assertEquals(Commands.BATTERY_LIKELY, peripheral.receivedCommands.last())
+        client.close()
+    }
+
     @Test fun a_refused_seal_does_not_advance_the_counter() = runTest {
         val seen = mutableListOf<Long>()
         // Only the first sealed command is swapped for a forbidden one; the second is sealed honestly.

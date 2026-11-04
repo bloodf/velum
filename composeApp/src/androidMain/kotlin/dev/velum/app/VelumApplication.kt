@@ -81,6 +81,11 @@ class VelumApplication : Application() {
                     val removed = dev.velum.ai.local.RetiredModels.sweep(ModelStoreDir(modelsDir.absolutePath))
                     if (removed.isNotEmpty()) Log.i(TAG, "Removed retired model dir(s): $removed")
                 }.onFailure { t -> Log.w(TAG, "Retired model sweep failed (${t::class.simpleName})") }
+                // A share copied by a process that died before importing it is offered again (hash dedupe covers a finished one; a half-finished one is #411, a queued row with no job is #415) (#405).
+                runCatching {
+                    val offered = dev.velum.app.platform.IncomingShare.recoverPending(appContext)
+                    if (offered.isNotEmpty()) Log.i(TAG, "Re-offered ${offered.size} pending share(s)")
+                }.onFailure { t -> Log.w(TAG, "Pending share recovery failed (${t::class.simpleName})") }
                 val built = AppContainer(
                     secureStore = AndroidSecureStore(appContext),
                     driverFactory = DriverFactory(appContext),

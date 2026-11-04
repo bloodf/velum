@@ -115,6 +115,7 @@ class DeviceViewModel(
     val sessionUi: StateFlow<DeviceSessionUi> = _sessionUi.asStateFlow()
 
     private var client: PlaudDeviceClient? = null
+    internal val liveClient: PlaudDeviceClient? get() = client
     private var connectedSerial: String? = null
 
     /** Set when a download attempt discarded its partial after repeated read errors; picks the failure text. */

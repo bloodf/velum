@@ -6,6 +6,7 @@
         <exclude domain="sharedpref" path="velum_secure_encrypted.xml" />
         <exclude domain="sharedpref" path="velum_app_language_hint.xml" />
         <exclude domain="sharedpref" path="velum_watched_imported.xml" />
+        <exclude domain="sharedpref" path="velum_pending_shares.xml" />
         <exclude domain="database" />
         <exclude domain="file" path="models/" />
         <exclude domain="file" path="recordings/" />
@@ -17,6 +18,7 @@
         <exclude domain="sharedpref" path="velum_secure_encrypted.xml" />
         <exclude domain="sharedpref" path="velum_app_language_hint.xml" />
         <exclude domain="sharedpref" path="velum_watched_imported.xml" />
+        <exclude domain="sharedpref" path="velum_pending_shares.xml" />
         <exclude domain="database" />
         <exclude domain="file" path="models/" />
         <exclude domain="file" path="recordings/" />
