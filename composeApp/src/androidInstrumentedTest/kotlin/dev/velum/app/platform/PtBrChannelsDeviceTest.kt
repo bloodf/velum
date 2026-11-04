@@ -46,19 +46,24 @@ class PtBrChannelsDeviceTest {
                 name("velum_downloads"),
             )
         }
+        val previous = runBlocking { container.settingsRepository.load(); container.settingsRepository.preferences.value.appLanguage }
         try {
-            runBlocking { container.settingsRepository.load(); container.settingsRepository.setAppLanguage("pt-BR") }
+            runBlocking { container.settingsRepository.setAppLanguage("pt-BR") }
             val pt = names()
             lines += "pt-BR: mic='${pt.first}' processing='${pt.second}' downloads='${pt.third}'"
             assertEquals("Gravação pelo microfone", pt.first)
             assertEquals("Processamento de gravação", pt.second)
+            assertEquals("Downloads", pt.third) // the same word in both languages
             runBlocking { container.settingsRepository.setAppLanguage("en") }
             val en = names()
             lines += "en: mic='${en.first}' processing='${en.second}' downloads='${en.third}'"
             assertEquals("Microphone recording", en.first)
             assertEquals("Recording processing", en.second)
+            assertEquals("Downloads", en.third)
         } finally {
-            runBlocking { container.settingsRepository.setAppLanguage("system") }
+            // Put back what the device had, and re-create the channels so their names follow it again.
+            runBlocking { container.settingsRepository.setAppLanguage(previous) }
+            names()
             InstrumentationRegistry.getInstrumentation().sendStatus(
                 0, Bundle().apply { putString("velum.ptbr331", "device=${Locale.getDefault()} " + lines.joinToString(" | ")) },
             )
@@ -68,7 +73,8 @@ class PtBrChannelsDeviceTest {
     /**
      * The notification and mic-error texts the app builds from Android resources, resolved through the same
      * `inAppLanguage()` the app uses, for Portuguese in-app on an English device. Each text must differ from the
-     * English one and contain no English word from it. This reads the texts; it does not post them.
+     * English one and share no word of four or more letters with it, apart from the product and platform names
+     * Velum and Android. This reads the texts; it does not post them.
      */
     @Test fun notification_and_mic_error_texts_follow_the_in_app_language_on_an_english_device() {
         val args = InstrumentationRegistry.getArguments()
@@ -90,16 +96,19 @@ class PtBrChannelsDeviceTest {
             "mic_cancelled" to dev.velum.app.R.string.mic_recording_cancelled,
         )
         val lines = mutableListOf<String>()
+        val previous = runBlocking { container.settingsRepository.load(); container.settingsRepository.preferences.value.appLanguage }
+        fun words(text: String) = Regex("\\p{L}{4,}").findAll(text.lowercase()).map { it.value }.toSet() - setOf("velum", "android")
         try {
-            runBlocking { container.settingsRepository.load(); container.settingsRepository.setAppLanguage("pt-BR") }
+            runBlocking { container.settingsRepository.setAppLanguage("pt-BR") }
             for ((name, id) in ids) {
                 val pt = ctx.inAppLanguage().getString(id)
                 val en = ctx.getString(id) // device language = English
                 lines += "$name: '$pt'"
                 org.junit.Assert.assertNotEquals("$name still English", en, pt)
+                org.junit.Assert.assertEquals("$name shares English words with the English text", emptySet<String>(), words(pt) intersect words(en))
             }
         } finally {
-            runBlocking { container.settingsRepository.setAppLanguage("system") }
+            runBlocking { container.settingsRepository.setAppLanguage(previous) }
             InstrumentationRegistry.getInstrumentation().sendStatus(0, Bundle().apply { putString("velum.ptbr331texts", lines.joinToString(" | ")) })
         }
     }
