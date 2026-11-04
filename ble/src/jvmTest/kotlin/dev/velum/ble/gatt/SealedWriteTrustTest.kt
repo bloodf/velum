@@ -211,6 +211,13 @@ class SealedWriteTrustTest {
         client.close()
     }
 
+    @Test fun requireSameLink_refuses_only_a_write_made_for_another_generation() {
+        requireSameLink(null, 7) // a write that names no link is not constrained
+        requireSameLink(7, 7)
+        assertFailsWith<IllegalStateException> { requireSameLink(6, 7) }
+        assertFailsWith<IllegalStateException> { requireSameLink(8, 7) }
+    }
+
     @Test fun a_closed_client_cannot_unlock_again_and_hides_its_secret() = runTest {
         val (client, wire) = connected(real)
         assertTrue(client.sessionSecret != null)

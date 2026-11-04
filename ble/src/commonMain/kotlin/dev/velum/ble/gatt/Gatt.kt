@@ -126,3 +126,11 @@ class SealedWrite internal constructor(
     override val withoutResponse: Boolean,
     override val linkGeneration: Long? = null,
 ) : GattWrite()
+
+/**
+ * The check every transport runs on a write: a write made for another link generation is refused, so a client whose
+ * session belongs to an older link cannot reach the current one. Null means the write does not name a link.
+ */
+fun requireSameLink(writeGeneration: Long?, currentGeneration: Long) {
+    check(writeGeneration == null || writeGeneration == currentGeneration) { "Link changed since the write was checked" }
+}

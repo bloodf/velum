@@ -3,6 +3,7 @@ package dev.velum.ble.fake
 import dev.velum.ble.BleConnectionState
 import dev.velum.ble.BleTransport
 import dev.velum.ble.gatt.GattWrite
+import dev.velum.ble.gatt.requireSameLink
 import dev.velum.core.model.ConnectedDevice
 import dev.velum.protocol.Bytes
 import dev.velum.protocol.DeviceModel
@@ -80,7 +81,7 @@ class FakeBleTransport(
     override suspend fun writeRaw(write: GattWrite) {
         beforeWrite()
         check(linked) { "Not connected" }
-        write.linkGeneration?.let { check(it == generation) { "Link changed since the write was checked" } }
+        requireSameLink(write.linkGeneration, generation)
         peripheral.onWrite(write.bytes)
     }
 

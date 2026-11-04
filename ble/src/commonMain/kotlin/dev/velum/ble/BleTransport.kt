@@ -39,9 +39,10 @@ interface BleTransport : GattLink {
     /**
      * Identifies the current link to the device: changes when a link is established or lost, never on scan state or
      * other bookkeeping. A client keeps the value it unlocked on and refuses to write once it differs, because its
-     * session secret and counter belong to that link. Default 0: a transport that does not track links never differs.
+     * session secret and counter belong to that link. Abstract on purpose: a transport that does not track links would
+     * silently disable the check, so every implementation must say what its link is (see [requireSameLink]).
      */
-    val linkGeneration: Long get() = 0L
+    val linkGeneration: Long
 
     /** Notifications from the Plaud notify characteristic (2BB0). */
     fun notifications(): Flow<ByteArray>
