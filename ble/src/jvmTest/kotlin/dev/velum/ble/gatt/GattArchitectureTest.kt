@@ -37,6 +37,23 @@ class GattArchitectureTest {
     // A call (`.f(`) or a bound/unbound reference (`::f`, `x::f`); a bare declaration `fun f` is not a use.
     private val wifiSendUse = Regex("""(\.|::)\s*sendEncryptedFrame\b""")
 
+    // The guard API itself: outside :ble nobody may build a GuardedLink or supply a WriteGuard (a wrapper that edits
+    // write.bytes after the guard, or a weaker guard, is how the choke point would be bypassed). Code uses only, so a
+    // doc comment that names PlaudWriteGuard does not trip it.
+    private val guardApiUse = Regex("""\bGuardedLink\s*\(|\bWriteGuard\s*[({]|:\s*WriteGuard\b|\bPlaudWriteGuard\s*\.""")
+
+    private fun referencesGuardApi(text: String) = guardApiUse.containsMatchIn(text)
+
+    @Test
+    fun guardApiDetector_catchesUses_notComments() {
+        assertTrue(referencesGuardApi("val l = GuardedLink(transport, profile)"))
+        assertTrue(referencesGuardApi("val g = WriteGuard { }"))
+        assertTrue(referencesGuardApi("object X : WriteGuard {"))
+        assertTrue(referencesGuardApi("PlaudWriteGuard.check(bytes)"))
+        assertTrue(!referencesGuardApi("// PlaudWriteGuard in :ble rejects reads of them too"))
+        assertTrue(!referencesGuardApi("see `PlaudWriteGuard` in :ble"))
+    }
+
     private fun referencesWifiSend(text: String) = wifiSendUse.containsMatchIn(text)
 
     @Test
@@ -70,6 +87,9 @@ class GattArchitectureTest {
             path != guardedLink && ("PlainWrite(" in text || "SealedWrite(" in text)
         }.map { it.first }
         assertTrue(builders.isEmpty(), "Only GuardedLink.kt may build writes: $builders")
+        // The fakes module is test support for other modules: it may not build a GuardedLink or supply a guard either.
+        val fakesUsingGuardApi = files.filter { (path, text) -> path.startsWith("ble-testing/") && referencesGuardApi(text) }.map { it.first }
+        assertTrue(fakesUsingGuardApi.isEmpty(), "ble-testing must not use the guard API: $fakesUsingGuardApi")
         // The forwarding test double is exempt from the writeRaw CALL ban by exact path only.
         val callers = files.filter { (path, text) ->
             path != guardedLink && path != recordingDouble && ".writeRaw(" in text
@@ -97,7 +117,7 @@ class GattArchitectureTest {
                     .onEnter { it.name != "build" && it.name != ".gradle" }
                     .filter { it.isSource() }
                     .filter { it.relativeTo(root).invariantSeparatorsPath !in allowedFiles }
-                    .filter { f -> banned.any { f.readText().contains(it) } }
+                    .filter { f -> f.readText().let { text -> banned.any { text.contains(it) } || referencesGuardApi(text) } }
                     .map { it.relativeTo(root).path }
                     .toList()
             }
