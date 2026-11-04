@@ -502,9 +502,9 @@ class VoiceProfileStore(
         try {
             withReady { replaceClusterEmbeddings(recordingId, embeddingsBySpeaker) }
         } catch (e: VoiceProfileKeyUnavailableException) {
-            speakerNamingUnavailable(recordingId, e)
+            dropCacheAfterUnavailable(recordingId, e)
         } catch (e: SecureStoreUnavailableException) {
-            speakerNamingUnavailable(recordingId, e)
+            dropCacheAfterUnavailable(recordingId, e)
         }
     }
 
@@ -512,10 +512,9 @@ class VoiceProfileStore(
      * The old cache must not outlive a run that could not replace it: once the key is back, naming "S1" would
      * read the previous run's "S1", which may be a different person.
      */
-    private fun speakerNamingUnavailable(recordingId: String?, cause: Exception): SpeakerNaming {
-        println("VelumVoice: speaker naming unavailable (${cause::class.simpleName})")
-        if (recordingId != null) runCatching { deleteClusterCache(recordingId) }
-        return SpeakerNaming(emptyMap(), unavailable = true)
+    private fun dropCacheAfterUnavailable(recordingId: String, cause: Exception) {
+        println("VelumVoice: speaker cache unavailable (${cause::class.simpleName})")
+        runCatching { deleteClusterCache(recordingId) }
     }
 
     /**
@@ -865,12 +864,12 @@ class UnreadableVoiceProfile internal constructor(
     val canRemove: Boolean get() = files != null
 }
 
-/** The pasted text is not a Voice Profiles backup (not JSON, wrong shape, or bad base64). */
 /** The previous run's speaker cache could not be removed, so the recording was left as it was. */
 class SpeakerCacheNotDroppedException : IllegalStateException(
     "The saved speaker voices could not be cleared, so the recording was left unchanged. Try again.",
 )
 
+/** The pasted text is not a Voice Profiles backup (not JSON, wrong shape, or bad base64). */
 class InvalidVoiceProfileBackupException(cause: Throwable) : IllegalArgumentException(
     "The text is not a voice profile backup.", cause,
 )

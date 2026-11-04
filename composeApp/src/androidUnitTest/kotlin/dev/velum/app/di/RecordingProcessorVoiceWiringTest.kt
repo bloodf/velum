@@ -27,14 +27,11 @@ class RecordingProcessorVoiceWiringTest {
         context.deleteDatabase("velum.db")
         val root = ModelStoreDir(Files.createTempDirectory("velum-voice-wiring").toString())
         val container = AppContainer(InMemorySecureStore(), DriverFactory(context), modelStoreRoot = root)
-        try {
-            val field = RecordingProcessor::class.java.getDeclaredField("voiceProfiles").apply { isAccessible = true }
-            val wired = field.get(container.recordingProcessor)
-            assertNotNull(wired, "RecordingProcessor has no voice profile store: the speaker cache is never replaced")
-            assertSame(container.voiceProfileStore, wired)
-        } finally {
-            container.databaseHandle.driver.close()
-            root.deleteRecursively()
-        }
+        // Nothing is closed or deleted afterwards: the container's startup coroutines (sweeps, the AutoFlow runner)
+        // may still be using the driver and the directory, and the check reads one field.
+        val field = RecordingProcessor::class.java.getDeclaredField("voiceProfiles").apply { isAccessible = true }
+        val wired = field.get(container.recordingProcessor)
+        assertNotNull(wired, "RecordingProcessor has no voice profile store: the speaker cache is never replaced")
+        assertSame(container.voiceProfileStore, wired)
     }
 }

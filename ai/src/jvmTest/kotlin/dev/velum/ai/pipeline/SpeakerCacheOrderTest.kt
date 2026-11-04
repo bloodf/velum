@@ -41,6 +41,13 @@ import kotlinx.coroutines.runBlocking
  * that fails before either was written leaves both of the previous run untouched.
  */
 class SpeakerCacheOrderTest {
+    private val dirs = mutableListOf<File>()
+
+    @kotlin.test.AfterTest fun cleanup() {
+        dirs.forEach { it.setWritable(true); it.deleteRecursively() }
+        dirs.clear()
+    }
+
     private val oldEmbedding = FloatArray(8) { 1f }
     private val newS1 = FloatArray(8) { 2f }
     private val newS2 = FloatArray(8) { 3f }
@@ -100,7 +107,7 @@ class SpeakerCacheOrderTest {
             localTranscriber = asr, apiTranscriber = asr, localDiarizer = diar, apiDiarizer = diar,
             localLlm = llm, apiLlm = llm,
         )
-        val dir = File.createTempFile("velum-399", "").also { it.delete(); it.mkdirs() }
+        val dir = File.createTempFile("velum-399", "").also { it.delete(); it.mkdirs() }.also { dirs += it }
         val store = if (keyless) {
             VoiceProfileStore(ModelStoreDir(dir.absolutePath), secureStore = secure)
         } else {
@@ -185,6 +192,30 @@ class SpeakerCacheOrderTest {
         runCatching { s.processor.process(id, templateId = "velum.meeting").toList() }
         assertNull(s.store.cachedClusterEmbedding(id, "S1"), "the old S1 voice must be gone before the transcript changes")
         assertEquals(listOf("S1"), s.repo.getSpeakers(id).map { it.label })
+    }
+
+    @Test
+    fun aRunWithoutSpeakersLeavesTheOldRowsAndTheOldCacheAlone() = runBlocking {
+        val id = "rec-399-nospans"
+        val s = setup(id)
+        s.diarizerBehaviour.value = {
+            DiarizationResult(spans = emptyList(), engineId = "fake", modelId = "m", embeddings = mapOf("S1" to newS1))
+        }
+        s.processor.process(id, templateId = "velum.meeting").toList()
+        assertEquals(listOf("S1"), s.repo.getSpeakers(id).map { it.label }, "no spans, so the rows are not rewritten")
+        assertContentEquals(oldEmbedding, s.store.cachedClusterEmbedding(id, "S1"), "and the cache they match stays")
+    }
+
+    @Test
+    fun aRerunWithoutTheVoiceKeyOverNamedSpeakersFailsAndKeepsTheOldCache() = runBlocking {
+        val id = "rec-399-named"
+        val s = setup(id)
+        s.repo.updateSpeakers(id, listOf(VelumRepository.SpeakerUpsert(id = "$id-S1", label = "S1", displayName = "Synthetic Alice", talkSeconds = 1)))
+        s.diarizerBehaviour.value = { newRun().copy(speakerNamesUnavailable = true) }
+        val events = s.processor.process(id, templateId = "velum.meeting").toList()
+        assertTrue(events.any { it is dev.velum.ai.engine.JobProgress.Failed }, "the rerun fails so typed names stay as they are: $events")
+        assertEquals("Synthetic Alice", s.repo.getSpeakers(id).single().display_name)
+        assertContentEquals(oldEmbedding, s.store.cachedClusterEmbedding(id, "S1"), "the cache still matches the kept rows")
     }
 
     /** Makes deleting [id]'s cache fail the way a locked or read-only directory does; returns false when the OS ignores it. */
