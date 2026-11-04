@@ -47,8 +47,39 @@ class PartialTransferFileStoreTest {
         assertEquals(false, missing.exists())
 
         missing.mkdirs()
-        assertTrue(PartialTransferFileStore.delete(missing, 1L, "SYNTH-SN-1"), "no salt: no partial with a serial can exist")
+        assertTrue(PartialTransferFileStore.delete(missing, 1L, "SYNTH-SN-1"))
         assertEquals(emptyList(), missing.listFiles()!!.toList())
+    }
+
+    @Test fun delete_with_damaged_salt_removes_only_the_requested_session() {
+        open(session = 5L).run { write(ByteArray(10)); length(); close() }
+        open(session = 55L).run { write(ByteArray(10)); length(); close() }
+        val other = root.listFiles()!!.filter { it.name.startsWith("55-") }.toSet()
+        val salt = File(root, "serial-key.salt").apply { writeBytes(byteArrayOf(1)) }
+
+        assertTrue(deleteByName(session = 5L))
+        assertTrue(root.listFiles()!!.none { it.name.startsWith("5-") })
+        assertEquals(other, root.listFiles()!!.filter { it.name.startsWith("55-") }.toSet())
+        assertContentEquals(byteArrayOf(1), salt.readBytes())
+    }
+
+    @Test fun delete_with_missing_salt_removes_orphaned_partial() {
+        open().run { write(ByteArray(10)); length(); close() }
+        assertTrue(File(root, "serial-key.salt").delete())
+        assertTrue(deleteByName())
+        assertTrue(root.listFiles()!!.isEmpty())
+    }
+
+    @Test fun delete_with_missing_salt_reports_remaining_audio() {
+        open().run { write(ByteArray(10)); length(); close() }
+        assertTrue(File(root, "serial-key.salt").delete())
+        assertTrue(root.setWritable(false), "this test needs a directory that keeps its files")
+        try {
+            assertFalse(deleteByName())
+            assertTrue(partialFiles().any { it.name.endsWith(".partial") })
+        } finally {
+            root.setWritable(true)
+        }
     }
 
     @Test fun delete_by_name_works_in_a_directory_that_refuses_new_files() {
