@@ -189,15 +189,7 @@ fun ApiSettingsScreen(
             BlackButton(
                 strings.settingsUi.addEndpointProfile,
                 {
-                    val id = "profile-${profiles.size + 1}"
-                    viewModel.upsertProfile(
-                        ApiEndpointProfile(
-                            id = id,
-                            name = id,
-                            baseUrl = SettingsRepository.DEFAULT_BASE_URL,
-                        ),
-                    )
-                    selectedProfileId = id
+                    viewModel.createProfile { id -> selectedProfileId = id }
                 },
                 Modifier.padding(horizontal = 20.dp),
             )
