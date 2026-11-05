@@ -90,6 +90,7 @@ fun ImportHubScreen(
                     onOpenRecording(r.existingRecordingId)
                 }
                 is ImportResult.Failed -> status = strings.ux.genericError
+                is ImportResult.InTrash -> status = strings.added.importMatchInTrash
                 is ImportResult.Deleted -> Unit // watched-folder sync only
             }
             importing = false
@@ -174,7 +175,8 @@ fun ImportHubScreen(
                                 val dupes = results.count { it is ImportResult.Duplicate }
                                 val failed = results.count { it is ImportResult.Failed }
                                 val skipped = results.count { it is ImportResult.Deleted }
-                                status = syncSummary(strings, created, dupes, failed, skipped)
+                                val inTrash = results.count { it is ImportResult.InTrash }
+                                status = syncSummary(strings, created, dupes, failed, skipped, inTrash)
                                 results.filterIsInstance<ImportResult.Created>().lastOrNull()
                                     ?.let { onOpenRecording(it.recordingId) }
                                 importing = false
@@ -208,10 +210,10 @@ fun ImportHubScreen(
 }
 
 /** "Done · 1 new · 2 dupes · 1 failed · 1 skipped" with proper singular and plural for each count. */
-internal fun syncSummary(strings: Strings, created: Int, dupes: Int, failed: Int, skipped: Int): String = formatTemplate(
+internal fun syncSummary(strings: Strings, created: Int, dupes: Int, failed: Int, skipped: Int, inTrash: Int = 0): String = formatTemplate(
     strings.ux.syncDoneFormat,
     countText(created, strings.ux.syncNewOne, strings.ux.syncNewMany),
     countText(dupes, strings.ux.syncDupesOne, strings.ux.syncDupesMany),
     countText(failed, strings.ux.syncFailedOne, strings.ux.syncFailedMany),
     countText(skipped, strings.ux.syncSkippedOne, strings.ux.syncSkippedMany),
-)
+) + if (inTrash > 0) " · " + formatTemplate(strings.added.syncInTrashFormat, inTrash) else ""
