@@ -1253,6 +1253,9 @@ val PtBr = Strings(
         processingFailedWavNoData = "Este arquivo WAV não tem dados de áudio e parece danificado, então não foi transcrito. Baixe-o de novo do dispositivo ou converta para WAV ou Ogg Opus.",
         deleteForeverFailed = "Não foi possível apagar algumas gravações por completo. O áudio delas pode já ter sido apagado. Tente novamente.",
         speakersChangedWhileOpen = "Os oradores mudaram enquanto isto estava aberto. Confira os nomes e tente de novo.",
+        voiceProfilesExportCopy = "Copiar backup criptografado",
+        voiceProfilesExportCopied = "Backup criptografado copiado. Cole o texto em Importar para restaurar os perfis.",
+        voiceProfilesExportCopyFailed = "Não foi possível copiar o backup. Tente de novo.",
         noSpeakers = "Nenhum orador nesta gravação.",
     ),
 )
@@ -1877,6 +1880,9 @@ val En = Strings(
         processingFailedWavNoData = "This WAV file has no audio data and looks damaged, so it wasn't transcribed. Download it again from the device, or convert it to WAV or Ogg Opus.",
         deleteForeverFailed = "Some recordings could not be fully deleted. Their audio may already be gone. Try again.",
         speakersChangedWhileOpen = "Speakers changed while this was open. Check the names and try again.",
+        voiceProfilesExportCopy = "Copy encrypted backup",
+        voiceProfilesExportCopied = "Encrypted backup copied. Paste the text into Import to restore the profiles.",
+        voiceProfilesExportCopyFailed = "The backup could not be copied. Try again.",
         noSpeakers = "No speakers in this recording.",
     ),
 )
