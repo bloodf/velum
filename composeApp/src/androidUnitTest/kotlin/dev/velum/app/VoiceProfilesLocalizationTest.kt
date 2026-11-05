@@ -27,6 +27,7 @@ class VoiceProfilesLocalizationTest {
         s.ux.voiceProfilesSamplesFormat, s.ux.voiceProfilesSampleOne, s.ux.voiceProfilesImportedOne, s.ux.voiceProfilesSensitivityFlexible,
         s.ux.voiceProfilesSensitivityBalanced, s.ux.voiceProfilesSensitivityStrict,
         s.ux.voiceProfilesSensitivityVeryStrict,
+        s.added.voiceProfilesExportCopy, s.added.voiceProfilesExportCopied, s.added.voiceProfilesExportCopyFailed,
     )
 
     @Test
