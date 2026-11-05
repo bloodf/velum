@@ -164,7 +164,7 @@ class ChangeTemplateUiTest {
             setup = { it.repository.setProcessingError("rec", "The API could not be reached. Check the connection.") },
         ) { container ->
             await(PtBr.ux.failedProcessing)
-            await(PtBr.ux.processingFailedWithDetail.replace("%s", "The API could not be reached. Check the connection"))
+            assertTrue(!shows(PtBr.ux.processingFailedWithDetail.replace("%s", "The API could not be reached. Check the connection")))
             await(PtBr.ux.retryProcessing)
             assertTrue(shows("Prior heading"), "the previous summary must stay on screen")
             val rec = runBlocking { container.repository.getRecording("rec")!! }
@@ -179,9 +179,10 @@ class ChangeTemplateUiTest {
             await(PtBr.ux.failedProcessing)
             await(PtBr.ux.retryProcessing)
             assertTrue(
-                compose.onAllNodes(hasText("API key required", substring = true)).fetchSemanticsNodes().isNotEmpty(),
-                "the reason is shown",
+                shows(PtBr.added.processingFailedApiKey),
+                "the reason is shown in the app language",
             )
+            assertTrue(compose.onAllNodes(hasText("API key required", substring = true)).fetchSemanticsNodes().isEmpty())
             assertTrue(shows("Prior heading"), "the previous summary must stay on screen")
             val rec = runBlocking { container.repository.getRecording("rec")!! }
             assertEquals("## Prior heading\n- prior point", rec.summary_markdown)
