@@ -2,6 +2,7 @@ package dev.velum.app.ui.templates
 
 import android.content.Context
 import androidx.activity.compose.setContent
+import androidx.compose.material3.Text
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
@@ -104,10 +105,10 @@ class DiscoverBundledCatalogDeviceTest {
         shows(text)
     }.getOrDefault(false)
 
-    private val countText = Regex("(\\d+) result\\(s\\)")
+    private val countText = Regex("(\\d+) results?")
 
     /** The result count rendered by the search sheet, or null while it is not composed. */
-    private fun uiCount(): Int? = compose.onAllNodes(hasText("result(s)", substring = true)).fetchSemanticsNodes()
+    private fun uiCount(): Int? = compose.onAllNodes(hasText(countText)).fetchSemanticsNodes()
         .firstNotNullOfOrNull { n ->
             n.config.getOrNull(SemanticsProperties.Text)?.firstNotNullOfOrNull {
                 countText.find(it.text)?.groupValues?.get(1)?.toInt()
@@ -148,6 +149,22 @@ class DiscoverBundledCatalogDeviceTest {
             ) Probe(name, cat, lang, tags.getString(0)) else null
         } ?: error("no unique probe in bundled catalog")
         return Catalog(full.size, probe)
+    }
+
+    @Test fun count_matcher_accepts_current_english_labels_only() {
+        until(30_000L, "app container ready") { (compose.activity.application as VelumApplication).isContainerReady() }
+        until(30_000L, "app content hosted") {
+            runCatching { compose.onRoot().fetchSemanticsNode().children.isNotEmpty() }.getOrDefault(false)
+        }
+        val cases = listOf(
+            "1 result" to 1, "0 results" to 0, "2 results" to 2, "123 results" to 123,
+            "1 result(s)" to null, "results" to null, "unrelated" to null, "2 results extra" to null,
+        )
+        cases.forEach { (label, expected) ->
+            compose.runOnUiThread { compose.activity.setContent { Text(label) } }
+            compose.waitForIdle()
+            assertEquals(label, expected, uiCount())
+        }
     }
 
     @Test fun bundled_catalog_tiers_filters_search_and_clear() {
