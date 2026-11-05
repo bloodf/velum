@@ -23,28 +23,25 @@ actual suspend fun syncWatchedFolders(pipeline: AudioImportPipeline): List<Impor
 /** All of it under the wipe gate: a wipe stops the scan and its copying too, not only the imports. */
 internal suspend fun syncWatchedFolders(
     pipeline: AudioImportPipeline,
-    scan: (Context, String, () -> Unit) -> List<WatchedFolderEntry>,
+    scan: suspend (Context, String, () -> Unit, suspend (WatchedFolderEntry) -> Unit) -> Unit,
 ): List<ImportResult> = pipeline.underWipeGate {
     withContext(Dispatchers.IO) {
         val context = appContextOrNull() ?: return@withContext emptyList()
         val coroutine = currentCoroutineContext()
         val results = ArrayList<ImportResult>()
         WatchedFolderStore.list(context).forEach { uri ->
-            val entries = scan(context, uri) { coroutine.ensureActive() }
-            try {
-                entries.forEach { entry ->
+            scan(context, uri, { coroutine.ensureActive() }) { entry ->
+                try {
                     coroutine.ensureActive()
-                    val result = pipeline.importFile(
+                    results += pipeline.importFile(
                         absolutePath = entry.absoluteCopyPath,
                         source = WATCHED_SOURCE,
                         titleHint = entry.displayName.substringBeforeLast('.'),
                         startedAtEpochSeconds = entry.lastModifiedMs / 1000L,
                     )
-                    if (result !is ImportResult.Failed) WatchedFolderStore.markImported(context, entry)
-                    results += result
+                } finally {
+                    java.io.File(entry.absoluteCopyPath).delete()
                 }
-            } finally {
-                entries.forEach { java.io.File(it.absoluteCopyPath).delete() }
             }
         }
         results
