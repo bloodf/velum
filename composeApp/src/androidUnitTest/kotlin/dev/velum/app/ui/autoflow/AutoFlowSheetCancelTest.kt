@@ -55,7 +55,15 @@ class AutoFlowSheetCancelTest {
     }
     private fun save() = click(compose.onNodeWithText(En.save))
 
-    private fun fixture(block: (AppContainer, () -> Unit) -> Unit) {
+    private suspend fun insertFlow(app: AppContainer) {
+        app.repository.upsertAutoflow(
+            id = "sheet-test", name = "Synthetic flow", enabled = true, wakePhrase = "original",
+            durationMinSeconds = 0, durationMaxSeconds = 10800, sourceFilter = "note_pro",
+            templateId = "velum.meeting", autoLabelVoice = false, language = "auto", notify = true,
+        )
+    }
+
+    private fun fixture(seedFlow: Boolean = true, block: (AppContainer, () -> Unit) -> Unit) {
         val context = ApplicationProvider.getApplicationContext<Context>()
         context.deleteDatabase("velum.db")
         val root = ModelStoreDir(Files.createTempDirectory("autoflow-sheet-test").toString())
@@ -64,13 +72,7 @@ class AutoFlowSheetCancelTest {
         try {
             val app = AppContainer(InMemorySecureStore(), DriverFactory(context), modelStoreRoot = root)
             container = app
-            runBlocking {
-                app.repository.upsertAutoflow(
-                    id = "sheet-test", name = "Synthetic flow", enabled = true, wakePhrase = "original",
-                    durationMinSeconds = 0, durationMaxSeconds = 10800, sourceFilter = "note_pro",
-                    templateId = "velum.meeting", autoLabelVoice = false, language = "auto", notify = true,
-                )
-            }
+            if (seedFlow) runBlocking { insertFlow(app) }
             val visible = mutableStateOf(true)
             activity.get().setContent {
                 CompositionLocalProvider(LocalStrings provides En) {
@@ -83,13 +85,24 @@ class AutoFlowSheetCancelTest {
                 compose.runOnIdle { visible.value = true }
                 compose.waitUntil(20_000) { compose.onAllNodesWithText(En.edit).fetchSemanticsNodes().size == 2 }
             }
-            compose.waitUntil(20_000) { compose.onAllNodesWithText("original").fetchSemanticsNodes().isNotEmpty() }
+            if (seedFlow) {
+                compose.waitUntil(20_000) { compose.onAllNodesWithText("original").fetchSemanticsNodes().isNotEmpty() }
+            }
             block(app, ::reopen)
         } finally {
             activity.pause().stop().destroy()
             container?.databaseHandle?.driver?.close()
             root.deleteRecursively()
         }
+    }
+
+    @Test
+    fun edit_controls_can_appear_before_repository_emits_the_flow() = fixture(seedFlow = false) { app, _ ->
+        compose.waitUntil(20_000) { compose.onAllNodesWithText(En.edit).fetchSemanticsNodes().size == 2 }
+        compose.onNodeWithText("original").assertDoesNotExist()
+        runBlocking { insertFlow(app) }
+        compose.waitUntil(20_000) { compose.onAllNodesWithText("original").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("original").assertExists()
     }
 
     @Test
@@ -112,6 +125,7 @@ class AutoFlowSheetCancelTest {
         assertEquals("original", saved.wake_phrase)
         assertEquals("auto", saved.language)
         reopen()
+        compose.waitUntil(20_000) { compose.onAllNodesWithText("original").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("original").assertExists()
         edit(0)
         replaceText("original", "applied")
