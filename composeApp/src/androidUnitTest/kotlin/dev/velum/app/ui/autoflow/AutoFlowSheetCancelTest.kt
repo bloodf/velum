@@ -4,9 +4,21 @@ import android.content.Context
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.semantics.SemanticsActions
-import androidx.compose.ui.test.*
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.SemanticsNodeInteraction
+import androidx.compose.ui.test.assertExists
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.test.performTextClearance
+import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import dev.velum.ai.local.ModelStoreDir
@@ -30,60 +42,122 @@ import kotlin.test.assertEquals
 class AutoFlowSheetCancelTest {
     @get:Rule val compose = createEmptyComposeRule()
 
-    @Test
-    fun cancel_and_done_use_sheet_drafts() {
+    private fun click(node: SemanticsNodeInteraction) {
+        node.performSemanticsAction(SemanticsActions.OnClick) { it() }
+    }
+
+    private fun edit(index: Int) = click(compose.onAllNodesWithText(En.edit)[index])
+    private fun action(label: String) = click(compose.onNodeWithContentDescription(label))
+    private fun choose(label: String) {
+        val nodes = compose.onAllNodes(hasText(label) and hasClickAction())
+        click(nodes[nodes.fetchSemanticsNodes().lastIndex])
+    }
+    private fun replaceText(old: String, new: String) {
+        compose.onNode(hasText(old) and hasSetTextAction()).performTextClearance().performTextInput(new)
+    }
+    private fun save() = click(compose.onNodeWithText(En.save))
+
+    private fun fixture(block: (AppContainer, () -> Unit) -> Unit) {
         val context = ApplicationProvider.getApplicationContext<Context>()
         context.deleteDatabase("velum.db")
         val root = ModelStoreDir(Files.createTempDirectory("autoflow-sheet-test").toString())
-        val container = AppContainer(InMemorySecureStore(), DriverFactory(context), modelStoreRoot = root)
-        runBlocking {
-            container.repository.upsertAutoflow(
-                id = "sheet-test", name = "Synthetic flow", enabled = true, wakePhrase = "original",
-                durationMinSeconds = 0, durationMaxSeconds = 10800, sourceFilter = "note_pro",
-                templateId = "velum.meeting", autoLabelVoice = false, language = "auto", notify = true,
-            )
-        }
-        var backs = 0
+        var container: AppContainer? = null
         val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup()
         try {
+            val app = AppContainer(InMemorySecureStore(), DriverFactory(context), modelStoreRoot = root)
+            container = app
+            runBlocking {
+                app.repository.upsertAutoflow(
+                    id = "sheet-test", name = "Synthetic flow", enabled = true, wakePhrase = "original",
+                    durationMinSeconds = 0, durationMaxSeconds = 10800, sourceFilter = "note_pro",
+                    templateId = "velum.meeting", autoLabelVoice = false, language = "auto", notify = true,
+                )
+            }
+            val visible = mutableStateOf(true)
             activity.get().setContent {
                 CompositionLocalProvider(LocalStrings provides En) {
-                    VelumTheme(darkTheme = false) { AutoFlowEditScreen(container, "sheet-test", onBack = { backs++ }) }
+                    VelumTheme(darkTheme = false) {
+                        if (visible.value) AutoFlowEditScreen(app, "sheet-test", onBack = { visible.value = false })
+                    }
                 }
             }
-            compose.waitUntil(20_000) { compose.onAllNodesWithText("original").fetchSemanticsNodes().isNotEmpty() }
-            fun click(node: SemanticsNodeInteraction) {
-                node.performSemanticsAction(SemanticsActions.OnClick) { it() }
+            fun reopen() {
+                compose.runOnIdle { visible.value = true }
+                compose.waitUntil(20_000) { compose.onAllNodesWithText(En.edit).fetchSemanticsNodes().size == 2 }
             }
-            fun edit(index: Int) = click(compose.onAllNodesWithText(En.edit)[index])
-            fun action(label: String) = click(compose.onAllNodesWithContentDescription(label)[0])
-            edit(0)
-            compose.onNode(hasText("original") and hasSetTextAction()).performTextClearance().performTextInput("cancelled")
-            action(En.cancel)
-            compose.onNodeWithText("original").assertExists()
-            edit(0)
-            compose.onNode(hasText("original") and hasSetTextAction()).assertExists()
-            compose.onNode(hasText("original") and hasSetTextAction()).performTextClearance().performTextInput("dismissed")
-            compose.onNode(SemanticsMatcher.keyIsDefined(SemanticsActions.Dismiss)).performSemanticsAction(SemanticsActions.Dismiss) { it() }
-            click(compose.onNodeWithContentDescription(En.ux.back))
-            compose.runOnIdle { assertEquals(1, backs) }
-
-            edit(0)
-            compose.onNode(hasText("original") and hasSetTextAction()).performTextClearance().performTextInput("applied")
-            action(En.done)
-            compose.onNodeWithText("applied").assertExists()
-            edit(1)
-            click(compose.onAllNodesWithText(En.languageEn).let { it[it.fetchSemanticsNodes().lastIndex] })
-            action(En.cancel)
-            edit(1)
-            click(compose.onAllNodesWithText(En.languageEn).let { it[it.fetchSemanticsNodes().lastIndex] })
-            action(En.done)
-            click(compose.onNodeWithContentDescription(En.ux.back))
-            compose.onNodeWithContentDescription(En.discard).assertExists()
+            compose.waitUntil(20_000) { compose.onAllNodesWithText("original").fetchSemanticsNodes().isNotEmpty() }
+            block(app, ::reopen)
         } finally {
             activity.pause().stop().destroy()
-            container.databaseHandle.driver.close()
+            container?.databaseHandle?.driver?.close()
             root.deleteRecursively()
         }
+    }
+
+    @Test
+    fun cancel_and_dismiss_leave_saved_values_while_done_persists() = fixture { app, reopen ->
+        edit(0)
+        replaceText("original", "cancelled")
+        action(En.cancel)
+        edit(0)
+        compose.onNode(hasText("original") and hasSetTextAction()).assertExists()
+        replaceText("original", "dismissed")
+        // This invokes the modal's dismissal semantics; it does not exercise an outside pointer gesture.
+        compose.onNode(SemanticsMatcher.keyIsDefined(SemanticsActions.Dismiss))
+            .performSemanticsAction(SemanticsActions.Dismiss) { it() }
+        edit(1)
+        choose(En.languageEn)
+        action(En.cancel)
+        save()
+        compose.waitUntil(20_000) { compose.onAllNodesWithText(En.edit).fetchSemanticsNodes().isEmpty() }
+        var saved = runBlocking { app.repository.listAutoflows().single { it.id == "sheet-test" } }
+        assertEquals("original", saved.wake_phrase)
+        assertEquals("auto", saved.language)
+        reopen()
+        compose.onNodeWithText("original").assertExists()
+        edit(0)
+        replaceText("original", "applied")
+        action(En.done)
+        edit(1)
+        choose(En.languageEn)
+        action(En.done)
+        save()
+        compose.waitUntil(20_000) { compose.onAllNodesWithText(En.edit).fetchSemanticsNodes().isEmpty() }
+        saved = runBlocking { app.repository.listAutoflows().single { it.id == "sheet-test" } }
+        assertEquals("applied", saved.wake_phrase)
+        assertEquals("en", saved.language)
+        reopen()
+        compose.waitUntil(20_000) { compose.onAllNodesWithText("applied").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("applied").assertExists()
+        edit(0)
+        compose.onNode(hasText("applied") and hasSetTextAction()).assertExists()
+    }
+
+    @Test
+    fun cancel_and_unchanged_done_preserve_existing_dirty_parent() = fixture { app, _ ->
+        replaceText("Synthetic flow", "Edited flow")
+        edit(0)
+        replaceText("original", "cancelled")
+        action(En.cancel)
+        edit(0)
+        action(En.done)
+        click(compose.onNodeWithContentDescription(En.ux.back))
+        compose.onNodeWithContentDescription(En.discard).assertExists()
+        action(En.save)
+        compose.waitUntil(20_000) { compose.onAllNodesWithText(En.edit).fetchSemanticsNodes().isEmpty() }
+        val saved = runBlocking { app.repository.listAutoflows().single { it.id == "sheet-test" } }
+        assertEquals("Edited flow", saved.name)
+        assertEquals("original", saved.wake_phrase)
+    }
+
+    @Test
+    fun done_keeps_existing_save_validation() = fixture { app, _ ->
+        edit(1)
+        choose(En.postActionFolderExport)
+        action(En.done)
+        save()
+        compose.onNodeWithText(En.ux.autoFlowNeedExportFolder).assertExists()
+        val saved = runBlocking { app.repository.listAutoflows().single { it.id == "sheet-test" } }
+        assertEquals(null, saved.post_action)
     }
 }
