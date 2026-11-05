@@ -1,3 +1,81 @@
 package dev.velum.app.platform
 
-actual fun createLivePcmCapture(): LivePcmCapture? = null
+import java.util.concurrent.atomic.AtomicBoolean
+
+actual fun createLivePcmCapture(): LivePcmCapture? = DesktopLivePcmCapture()
+
+internal class DesktopLivePcmCapture(
+    private val lineFactory: DesktopAudioLineFactory = JavaSoundAudioLineFactory,
+) : LivePcmCapture {
+    override val sampleRateHz: Int = 16_000
+
+    private val running = AtomicBoolean(false)
+    private var line: DesktopAudioLine? = null
+    private var worker: Thread? = null
+
+    override fun start(onPcm: (ByteArray) -> Unit): Boolean {
+        if (running.get()) return true
+
+        val audioLine = try {
+            lineFactory.createLine(MicInputSource.Mic).also {
+                it.open()
+                it.start()
+            }
+        } catch (_: Exception) {
+            return false
+        }
+
+        line = audioLine
+        running.set(true)
+
+        val sink = PcmChunkSink(fileOutputStream = null, onChunk = onPcm)
+        val resampler = MonoPcmWavWriter(
+            file = null,
+            targetRate = sampleRateHz,
+            sink = sink,
+            writeHeaderPlaceholder = false,
+        ).apply {
+            setFormat(audioLine.sampleRateHz, audioLine.channels)
+        }
+
+        worker = Thread({
+            val bufSize = audioLine.bufferSizeBytes.coerceAtLeast(4096)
+            val buf = ByteArray(bufSize)
+            try {
+                while (running.get()) {
+                    val n = audioLine.read(buf, 0, buf.size)
+                    if (!running.get()) break
+                    if (n > 0) {
+                        resampler.write(buf, n)
+                        resampler.flush()
+                    } else if (n < 0) {
+                        break
+                    }
+                }
+            } catch (_: Exception) {
+            } finally {
+                running.set(false)
+                runCatching { resampler.finish() }
+            }
+        }, "velum-desktop-live-pcm").apply {
+            isDaemon = true
+            start()
+        }
+        return true
+    }
+
+    override fun stop() {
+        running.set(false)
+        val l = line
+        line = null
+        val w = worker
+        worker = null
+        l?.stop()
+        l?.close()
+        try {
+            w?.join(500)
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+        }
+    }
+}
