@@ -22,7 +22,7 @@ actual class AudioNormalizer actual constructor() {
         val source = File(sourcePath)
         require(source.isFile) { "Missing import: $sourcePath" }
         val hash = sha256File(sourcePath)
-        val outDir = File(source.parentFile, "normalized").apply { mkdirs() }
+        val outDir = File(recordingsDirectoryPath()).apply { mkdirs() }
         val outputId = java.util.UUID.randomUUID()
         val outFile = File(outDir, "import_$outputId.wav")
         val name = source.name.lowercase()
