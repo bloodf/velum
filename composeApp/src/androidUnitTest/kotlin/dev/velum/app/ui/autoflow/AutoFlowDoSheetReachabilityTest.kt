@@ -5,7 +5,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasContentDescription
@@ -17,7 +16,6 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
-import androidx.compose.ui.unit.Density
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import dev.velum.ai.local.ModelStoreDir
@@ -38,7 +36,7 @@ import org.robolectric.annotation.Config
 import kotlin.test.assertEquals
 
 @RunWith(AndroidJUnit4::class)
-@Config(application = android.app.Application::class, sdk = [34], qualifiers = "w360dp-h640dp-xxhdpi")
+@Config(application = android.app.Application::class, sdk = [34], qualifiers = "w360dp-h640dp-xxhdpi", fontScale = 1.5f)
 class AutoFlowDoSheetReachabilityTest {
     @get:Rule val compose = createEmptyComposeRule()
 
@@ -68,7 +66,7 @@ class AutoFlowDoSheetReachabilityTest {
             val saves = AtomicInteger()
             val visible = mutableStateOf(true)
             controller.get().setContent {
-                CompositionLocalProvider(LocalStrings provides En, LocalDensity provides Density(3f, 1.5f)) {
+                CompositionLocalProvider(LocalStrings provides En) {
                     VelumTheme(darkTheme = false) {
                         if (visible.value) AutoFlowEditScreen(app, "reachability", onBack = {
                             visible.value = false
@@ -86,6 +84,11 @@ class AutoFlowDoSheetReachabilityTest {
             fun choose(label: String) = compose.onNode(hasText(label) and hasClickAction() and inSheet).performScrollTo().assertIsDisplayed().performClick()
 
             openDo()
+            assertEquals(
+                1.5f,
+                compose.onNode(hasText(En.languagePtBr) and hasClickAction() and inSheet)
+                    .fetchSemanticsNode().layoutInfo.density.fontScale,
+            )
             repeat(12) {
                 compose.onNode(hasText("Synthetic template %02d".format(it)) and hasClickAction() and inSheet)
                     .performScrollTo().assertIsDisplayed()
