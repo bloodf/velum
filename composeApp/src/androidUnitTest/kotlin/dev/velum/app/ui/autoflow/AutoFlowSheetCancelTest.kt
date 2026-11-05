@@ -8,7 +8,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.SemanticsNodeInteraction
-import androidx.compose.ui.test.assertExists
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
@@ -53,7 +52,9 @@ class AutoFlowSheetCancelTest {
         click(nodes[nodes.fetchSemanticsNodes().lastIndex])
     }
     private fun replaceText(old: String, new: String) {
-        compose.onNode(hasText(old) and hasSetTextAction()).performTextClearance().performTextInput(new)
+        val field = compose.onNode(hasText(old) and hasSetTextAction())
+        field.performTextClearance()
+        field.performTextInput(new)
     }
     private fun save() = click(compose.onNodeWithText(En.save))
 
