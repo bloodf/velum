@@ -58,7 +58,7 @@ class TaskBindingEditorTest {
 
             compose.onNodeWithContentDescription(En.settingsUi.endpointProfile).performClick()
             compose.onNode(hasText("beta-model") and !hasSetTextAction()).assertDoesNotExist()
-            compose.onNode(hasSetTextAction()).assertTextEquals("beta-model")
+            compose.onNode(hasSetTextAction()).assertTextEquals("Summary", "beta-model")
             compose.onNode(hasSetTextAction()).performTextReplacement("manual-model")
             compose.onNodeWithContentDescription(En.save).performClick()
             assertEquals(TaskModelBinding("empty", "manual-model"), binding)
