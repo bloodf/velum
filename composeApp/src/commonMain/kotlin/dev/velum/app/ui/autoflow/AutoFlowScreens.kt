@@ -705,7 +705,7 @@ private fun AutoFlowEditContent(
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
             containerColor = VelumSurface,
         ) {
-            Column(Modifier.padding(vertical = 8.dp)) {
+            Column(Modifier.verticalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
                 Text(
                     strings.doSection,
                     fontWeight = FontWeight.SemiBold,
