@@ -2100,12 +2100,7 @@ fun SpeakerLabelSheetContent(
         val n = label.trimStart('S', 's').toIntOrNull() ?: 1
         return strings.ux.speakerLabel.replace("%d", n.toString())
     }
-    val rows = speakers.ifEmpty {
-        listOf(
-            SpeakerLabelRow("demo-1", "S1", defaultSpeakerName("S1"), 312),
-            SpeakerLabelRow("demo-2", "S2", defaultSpeakerName("S2"), 220),
-        )
-    }
+    val rows = speakers
     var names by remember(rows, strings.localeTag) {
         mutableStateOf(
             rows.associate { row ->
@@ -2164,12 +2159,12 @@ fun SpeakerLabelSheetContent(
             }
         }
         Text(
-            strings.speakersUpdateNote,
+            if (rows.isEmpty()) strings.added.noSpeakers else strings.speakersUpdateNote,
             color = VelumInkSecondary,
             fontSize = 12.sp,
             modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
         )
-        DualActionRow(strings.cancel, strings.confirm, onClose, { onConfirm(names) })
+        DualActionRow(strings.cancel, strings.confirm, onClose, { onConfirm(names) }, rightEnabled = rows.isNotEmpty())
     }
 }
 

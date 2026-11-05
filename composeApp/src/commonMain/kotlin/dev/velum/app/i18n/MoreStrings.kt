@@ -20,4 +20,5 @@ data class MoreStrings(
     val processingFailedWavNoData: String,
     val deleteForeverFailed: String,
     val speakersChangedWhileOpen: String,
+    val noSpeakers: String,
 )
