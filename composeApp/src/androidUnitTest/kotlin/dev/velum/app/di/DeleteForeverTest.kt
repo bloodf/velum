@@ -422,11 +422,16 @@ class DeleteForeverTest {
     }
 
     @Test fun the_screen_stays_quiet_when_a_delete_works() = withContainer { container ->
-        container.addRow("rec-fine")
+        val audio = File(recordingsDirectoryPath(), "rec-fine.wav").apply {
+            parentFile?.mkdirs()
+            writeBytes(byteArrayOf(1, 2, 3, 4))
+        }
+        container.addRow("rec-fine", path = audio.path)
         container.repository.trashRecording("rec-fine")
         showTrash(container)
         emptyTrash()
         compose.waitUntil(10_000) { runBlocking { container.repository.getRecording("rec-fine") == null } }
+        assertFalse(audio.exists(), "the app-owned audio file should be deleted")
         compose.waitForIdle()
         assertTrue(compose.onAllNodesWithText(PtBr.added.deleteForeverFailed).fetchSemanticsNodes().isEmpty())
     }
