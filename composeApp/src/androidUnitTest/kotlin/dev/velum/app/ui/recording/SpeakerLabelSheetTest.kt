@@ -7,6 +7,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextClearance
@@ -42,8 +43,8 @@ class SpeakerLabelSheetTest {
             compose.onNode(hasSetTextAction()).assertDoesNotExist()
             compose.onNodeWithText("Total duration: 5m 12s").assertDoesNotExist()
             compose.onNodeWithText("Total duration: 3m 40s").assertDoesNotExist()
-            compose.onNodeWithText(En.confirm).assertIsNotEnabled()
-            compose.onNodeWithText(En.cancel).performClick()
+            compose.onNodeWithContentDescription(En.confirm).assertIsNotEnabled()
+            compose.onNodeWithContentDescription(En.cancel).performClick()
             assertEquals(1, closed)
             assertEquals(null, confirmed)
 
@@ -51,7 +52,7 @@ class SpeakerLabelSheetTest {
             compose.onNodeWithText(En.added.noSpeakers).assertDoesNotExist()
             compose.onNode(hasSetTextAction()).performTextClearance()
             compose.onNode(hasSetTextAction()).performTextInput("Ada")
-            compose.onNodeWithText(En.confirm).performClick()
+            compose.onNodeWithContentDescription(En.confirm).performClick()
             assertEquals(mapOf("actual-id" to "Ada"), confirmed)
         } finally {
             activity.pause().stop().destroy()
