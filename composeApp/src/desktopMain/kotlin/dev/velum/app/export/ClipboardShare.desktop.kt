@@ -6,12 +6,14 @@ import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-actual fun copyToClipboard(text: String) {
-    try {
+actual fun copyToClipboard(text: String): Boolean {
+    return try {
         val clipboard = Toolkit.getDefaultToolkit().systemClipboard
         clipboard.setContents(StringSelection(text), null)
+        true
     } catch (_: Throwable) {
-        // Headless / no clipboard — ignore.
+        // Headless / no clipboard.
+        false
     }
 }
 
