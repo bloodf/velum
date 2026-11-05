@@ -674,9 +674,8 @@ fun RecordingDetailScreen(
                                 shown = shown,
                                 current = { container.repository.getSpeakers(recordingId) },
                                 renames = renames,
+                                strings = strings,
                                 enrol = { row, trimmed ->
-                                // Only a name the user actually changed counts: the sheet hands back every row.
-                                val changed = speakerNameChanged(row.display_name, row.label, trimmed, strings)
                                 var cacheMissed = false
                                 // The name is already saved; a voice that cannot be enrolled is reported like a missing sample.
                                 try {
@@ -704,7 +703,7 @@ fun RecordingDetailScreen(
                                 } catch (_: Exception) {
                                     cacheMissed = true
                                 }
-                                if (cacheMissed && changed) processError = strings.ux.voiceProfilesNoCachedVoice
+                                if (cacheMissed) processError = strings.ux.voiceProfilesNoCachedVoice
                                 },
                                 rename = { row, trimmed -> container.repository.renameSpeakerIfUnchanged(recordingId, row, trimmed) },
                             )
