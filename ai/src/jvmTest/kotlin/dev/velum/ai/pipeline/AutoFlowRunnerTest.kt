@@ -136,6 +136,31 @@ class AutoFlowRunnerTest {
     }
 
     @Test
+    fun unknownAcceptedOutcome_leavesQueuedRowForExistingWork_withoutPostAction() = runTest {
+        val f = Fixture(this)
+        f.start()
+        f.enqueue = { throw EnqueueOutcomeUnknown() }
+        f.store.put(recording("rec-unknown"))
+        runCurrent() // Accepted work keeps this pass waiting until its terminal status arrives.
+        assertEquals("queued", f.row("rec-unknown").status)
+        assertTrue(f.actions.none { it is AutoFlowUiAction.PostWebhook })
+        f.complete("rec-unknown")
+        testScheduler.advanceTimeBy(2_000)
+        runCurrent()
+        assertEquals(listOf("rec-unknown"), f.actions.filterIsInstance<AutoFlowUiAction.PostWebhook>().map { it.recordingId })
+    }
+
+    @Test
+    fun rejectedJob_marksSurvivingQueuedRowFailed_withoutPostAction() = runTest {
+        val f = Fixture(this)
+        f.start()
+        f.rejectEnqueue = true
+        f.publish(recording("rec-rejected"))
+        assertEquals("failed", f.row("rec-rejected").status)
+        assertTrue(f.actions.none { it is AutoFlowUiAction.PostWebhook })
+    }
+
+    @Test
     fun keptJob_givesTheRowItsPriorStatusBack_notQueued_untilItFinishes() = runTest {
         val f = Fixture(this)
         f.start()
@@ -825,6 +850,7 @@ class AutoFlowRunnerTest {
         var enqueue: (String) -> Unit = { complete(it) }
         /** Makes the scheduler report that it kept an already running job instead of starting one. */
         var keepRunning = false
+        var rejectEnqueue = false
         var process: (String) -> Flow<JobProgress> = { id -> flow { complete(id); emit(JobProgress.Succeeded()) } }
         var lookup: suspend () -> CalendarLookupResult = { CalendarLookupResult.Ok(null) }
         var calendarAround: suspend (Long) -> CalendarLookupResult = { lookup() }
@@ -834,15 +860,13 @@ class AutoFlowRunnerTest {
             diagnostics = { diagnostics += it },
             wipeGate = gate,
             jobScheduler = if (scheduler) object : RecordingJobScheduler {
-                override fun enqueue(recordingId: String, templateId: String?, retranscribe: Boolean, apiModelOverride: ApiModelOverride?) {
-                    enqueueReportingStart(recordingId, templateId, retranscribe, apiModelOverride)
-                }
-                override fun enqueueReportingStart(
+                override suspend fun enqueue(
                     recordingId: String,
                     templateId: String?,
                     retranscribe: Boolean,
                     apiModelOverride: ApiModelOverride?,
-                ): Boolean {
+                ): EnqueueResult {
+                    if (rejectEnqueue) return EnqueueResult.REJECTED
                     enqueued += recordingId
                     templates += templateId
                     overrides += apiModelOverride
@@ -856,10 +880,10 @@ class AutoFlowRunnerTest {
                             enqueue(recordingId)
                         }
                         startedFlags += !kept
-                        return !kept
+                        return if (kept) EnqueueResult.KEPT else EnqueueResult.STARTED_OR_REPLACED
                     }
                     enqueue(recordingId)
-                    return !keepRunning
+                    return if (keepRunning) EnqueueResult.KEPT else EnqueueResult.STARTED_OR_REPLACED
                 }
             } else null,
         )

@@ -158,9 +158,12 @@ class MicFinalizeTest {
             enqueueEntered = CompletableDeferred()
             enqueueGate = CompletableDeferred()
             val finishing = launch { finalizeMicRecording(container, id, wav.path) }
-            withTimeout(5_000) { enqueueEntered!!.await() }
-            finishing.cancel()
-            enqueueGate!!.complete(Unit)
+            try {
+                withTimeout(5_000) { enqueueEntered!!.await() }
+                finishing.cancel()
+                assertFalse(finishing.isCompleted, "finalize returned before acceptance")
+                assertEquals(id, container.activeMicRecordingId)
+            } finally { enqueueGate!!.complete(Unit) }
             finishing.join()
             assertEquals(true, finishing.isCancelled)
             assertEquals(1, queued)
@@ -231,11 +234,11 @@ class MicFinalizeTest {
         val container = AppContainer(InMemorySecureStore(), DriverFactory(context),
             modelStoreRoot = ModelStoreDir(File(root, "models").path), micCapture = mic,
             recordingJobSchedulerFactory = { _, _ -> object : RecordingJobScheduler {
-                override fun enqueue(recordingId: String, templateId: String?, retranscribe: Boolean, apiModelOverride: dev.velum.core.settings.ApiModelOverride?) { queued++ }
-                override suspend fun enqueueSaved(recordingId: String, templateId: String?, retranscribe: Boolean, apiModelOverride: dev.velum.core.settings.ApiModelOverride?, keepExisting: Boolean) {
+                override suspend fun enqueue(recordingId: String, templateId: String?, retranscribe: Boolean, apiModelOverride: dev.velum.core.settings.ApiModelOverride?): dev.velum.ai.pipeline.EnqueueResult { queued++; return dev.velum.ai.pipeline.EnqueueResult.STARTED_OR_REPLACED }
+                override suspend fun enqueueSaved(recordingId: String, templateId: String?, retranscribe: Boolean, apiModelOverride: dev.velum.core.settings.ApiModelOverride?, keepExisting: Boolean): dev.velum.ai.pipeline.EnqueueResult {
                     enqueueEntered?.complete(Unit)
                     enqueueGate?.await()
-                    enqueue(recordingId, templateId, retranscribe, apiModelOverride)
+                    return enqueue(recordingId, templateId, retranscribe, apiModelOverride)
                 }
             } })
         lateinit var id: String

@@ -210,7 +210,7 @@ class PersistDownloadedSessionDedupTest {
         var onEnqueue: () -> Unit = {}
         val container = AppContainer(
             InMemorySecureStore(), DriverFactory(context), modelStoreRoot = ModelStoreDir(File(root, "models").path),
-            recordingJobSchedulerFactory = { _, _ -> RecordingJobScheduler { _, _, _, _ -> enqueued++; onEnqueue() } },
+            recordingJobSchedulerFactory = { _, _ -> RecordingJobScheduler { _, _, _, _ -> enqueued++; onEnqueue(); dev.velum.ai.pipeline.EnqueueResult.STARTED_OR_REPLACED } },
         )
         fun dir() = recordingsDirectoryPath()
         fun audioFiles() = File(dir()).listFiles().orEmpty().filter { it.isFile }.map { it.name }.sorted()

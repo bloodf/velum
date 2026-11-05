@@ -39,7 +39,7 @@ class ImportAtomicityTest {
         val root = ModelStoreDir(Files.createTempDirectory("velum-atomic").toString())
         val container = AppContainer(
             InMemorySecureStore(), DriverFactory(context), modelStoreRoot = root,
-            recordingJobSchedulerFactory = { _, _ -> RecordingJobScheduler { _, _, _, _ -> } },
+            recordingJobSchedulerFactory = { _, _ -> RecordingJobScheduler { _, _, _, _ -> dev.velum.ai.pipeline.EnqueueResult.STARTED_OR_REPLACED } },
         )
         val dir = File(context.cacheDir, "atomic-fixtures").apply { deleteRecursively(); mkdirs() }
         try {

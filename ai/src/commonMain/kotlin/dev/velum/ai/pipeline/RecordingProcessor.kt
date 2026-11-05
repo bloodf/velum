@@ -26,7 +26,12 @@ import dev.velum.core.settings.AiApiTask
 import dev.velum.core.settings.ApiModelOverride
 import dev.velum.core.settings.SettingsRepository
 import dev.velum.core.templates.BuiltinTemplateCatalog
+import kotlin.time.Duration
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -131,6 +136,25 @@ class RecordingProcessor(
     /** Where decoded audio spills, under `tmp/`. The wipe and the startup sweep look here. */
     val pcmSpillRoot: ModelStoreDir = ModelStoreDir(defaultModelStoreRoot().absolutePath),
 ) {
+    private data class Admission(val deleting: Set<String> = emptySet(), val runs: Map<String, Set<Deferred<*>>> = emptyMap())
+    private val admission = MutableStateFlow(Admission())
+
+    fun beginDeletion(recordingId: String): Boolean {
+        while (true) {
+            val current = admission.value
+            if (recordingId in current.deleting) return false
+            if (admission.compareAndSet(current, current.copy(deleting = current.deleting + recordingId))) return true
+        }
+    }
+
+    fun endDeletion(recordingId: String) {
+        admission.update { it.copy(deleting = it.deleting - recordingId) }
+    }
+    fun isDeleting(recordingId: String): Boolean = recordingId in admission.value.deleting
+
+    suspend fun canSchedule(recordingId: String): Boolean =
+        !isDeleting(recordingId) && repository.getRecording(recordingId) != null
+
     private val nextRun = MutableStateFlow(0L)
     private val activeRuns = MutableStateFlow<Map<String, Long>>(emptyMap())
     private val statusLock = Mutex()
@@ -142,10 +166,44 @@ class RecordingProcessor(
         retranscribe: Boolean = true,
         apiModelOverride: ApiModelOverride? = null,
     ): Flow<JobProgress> = channelFlow {
-        wipeGate.guard {
-            runProcess(recordingId, templateId, retranscribe, apiModelOverride).collect { send(it) }
+        val run = async(start = CoroutineStart.LAZY) {
+            wipeGate.guard {
+                runProcess(recordingId, templateId, retranscribe, apiModelOverride).collect { send(it) }
+            }
+        }
+        // Registration and deletion admission share one CAS, so a delete sees every accepted run.
+        while (true) {
+            val current = admission.value
+            if (recordingId in current.deleting) {
+                run.cancel()
+                return@channelFlow
+            }
+            val next = current.copy(runs = current.runs + (recordingId to (current.runs[recordingId].orEmpty() + run)))
+            if (admission.compareAndSet(current, next)) break
+        }
+        run.invokeOnCompletion {
+            admission.update { current ->
+                val left = current.runs[recordingId].orEmpty() - run
+                current.copy(runs = if (left.isEmpty()) current.runs - recordingId else current.runs + (recordingId to left))
+            }
+        }
+        try {
+            run.await()
+        } catch (stopped: RunStopped) {
+            // The recording is being deleted: the flow just ends, its collector is not cancelled.
+            ensureActive()
         }
     }.buffer(Channel.RENDEZVOUS)
+
+    /**
+     * Stops every run of [recordingId] and waits up to [timeout], so each removes its temp files before the recording
+     * is deleted. False if one had not stopped by then; it can write nothing once the row is gone.
+     */
+    suspend fun stopRuns(recordingId: String, timeout: Duration): Boolean {
+        val stopping = admission.value.runs[recordingId].orEmpty()
+        stopping.forEach { it.cancel(RunStopped()) }
+        return withTimeoutOrNull(timeout) { stopping.forEach { it.join() } } != null
+    }
 
     private fun runProcess(
         recordingId: String,
@@ -872,3 +930,6 @@ internal fun unsupportedContainer(head: ByteArray): String? {
         else -> null
     }
 }
+
+/** The cause a run is cancelled with when its recording is deleted, told apart from any other cancellation. */
+private class RunStopped : CancellationException("The recording is being deleted")

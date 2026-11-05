@@ -196,7 +196,7 @@ class RecordingJobSchedulerTest {
             withTimeout(20_000) { while (repo.getRecording("rec-again")?.status != "ready") delay(20) }
             // The row turns ready slightly before the job unregisters; until then an identical enqueue is kept, so
             // retry until one actually starts (true), which is the "job ended" signal.
-            withTimeout(5_000) { while (!scheduler.enqueueReportingStart("rec-again", "velum.meeting", true, null)) delay(10) }
+            withTimeout(5_000) { while (scheduler.enqueue("rec-again", "velum.meeting", true, null) == EnqueueResult.KEPT) delay(10) }
             withTimeout(20_000) { while (asrCalls.get() < 2) delay(20) }
             assertEquals(2, asrCalls.get(), "an identical enqueue after the job ended must run again")
         } finally {
@@ -218,6 +218,7 @@ class RecordingJobSchedulerTest {
                 val previous = jobs.value[id]
                 jobs.value = jobs.value + (id to next)
                 previous?.cancel()
+                EnqueueResult.STARTED_OR_REPLACED
             }
         }
 
@@ -276,16 +277,13 @@ class RecordingJobSchedulerTest {
         val enqueueCount = java.util.concurrent.atomic.AtomicInteger()
         val runnerEnqueued = kotlinx.coroutines.CompletableDeferred<Unit>()
         val scheduler = object : RecordingJobScheduler {
-            override fun enqueue(recordingId: String, templateId: String?, retranscribe: Boolean, apiModelOverride: ApiModelOverride?) {
-                enqueueReportingStart(recordingId, templateId, retranscribe, apiModelOverride)
-            }
-            override fun enqueueReportingStart(
+            override suspend fun enqueue(
                 recordingId: String,
                 templateId: String?,
                 retranscribe: Boolean,
                 apiModelOverride: ApiModelOverride?,
-            ): Boolean {
-                val started = inner.enqueueReportingStart(recordingId, templateId, retranscribe, apiModelOverride)
+            ): EnqueueResult {
+                val started = inner.enqueue(recordingId, templateId, retranscribe, apiModelOverride)
                 if (enqueueCount.incrementAndGet() == 2) runnerEnqueued.complete(Unit)
                 return started
             }

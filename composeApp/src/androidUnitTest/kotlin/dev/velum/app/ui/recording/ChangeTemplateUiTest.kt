@@ -178,10 +178,10 @@ class ChangeTemplateUiTest {
 
             await(PtBr.ux.failedProcessing)
             await(PtBr.ux.retryProcessing)
-            assertTrue(
-                shows(PtBr.added.processingFailedApiKey),
-                "the reason is shown in the app language",
-            )
+            // The failed status renders before a separate effect finishes loading its reason.
+            awaitCond("the reason is shown in the app language") {
+                shows(PtBr.added.processingFailedApiKey)
+            }
             assertTrue(compose.onAllNodes(hasText("API key required", substring = true)).fetchSemanticsNodes().isEmpty())
             assertTrue(shows("Prior heading"), "the previous summary must stay on screen")
             val rec = runBlocking { container.repository.getRecording("rec")!! }

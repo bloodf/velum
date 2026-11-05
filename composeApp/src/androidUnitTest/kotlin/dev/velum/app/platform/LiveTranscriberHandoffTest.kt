@@ -66,7 +66,7 @@ class LiveTranscriberHandoffTest {
     private lateinit var activity: ActivityController<ComponentActivity>
     private lateinit var recordingId: String
     private var destroyed = true
-    private var queued = 0
+    private val queued = AtomicInteger()
     private val opens = AtomicInteger()
     @Volatile private var modelMissing = false
     private val uiStrings = androidx.compose.runtime.mutableStateOf<Strings>(PtBr)
@@ -78,7 +78,7 @@ class LiveTranscriberHandoffTest {
         installRecordingFilesDir(root.path)
         container = AppContainer(InMemorySecureStore(), DriverFactory(context),
             modelStoreRoot = ModelStoreDir(File(root, "models").path), micCapture = mic,
-            recordingJobSchedulerFactory = { _, _ -> RecordingJobScheduler { _, _, _, _ -> queued++ } })
+            recordingJobSchedulerFactory = { _, _ -> RecordingJobScheduler { _, _, _, _ -> queued.incrementAndGet(); dev.velum.ai.pipeline.EnqueueResult.STARTED_OR_REPLACED } })
         recordingId = runBlocking { container.createLocalRecording(status = "recording") }
     }
 
@@ -167,12 +167,12 @@ class LiveTranscriberHandoffTest {
 
         waitUntil(10_000) { mic.stops == 1 }
         assertEquals(0, transcriber.finishes.get())
-        assertEquals(0, queued)
+        assertEquals(0, queued.get())
         assertEquals("recording", recordingRow().status)
 
         // Stop is non-cancellable: let it finish before teardown closes the database.
         modelLoad.countDown()
-        waitUntil(10_000) { queued == 1 }
+        waitUntil(10_000) { queued.get() == 1 && container.activeMicRecordingId == null }
     }
 
     @Test fun reentering_during_the_transcript_wait_shows_no_error_and_opens_no_second_model() {
@@ -187,7 +187,7 @@ class LiveTranscriberHandoffTest {
         assertEquals(1, opens.get())
 
         modelLoad.countDown()
-        waitOnMainLooper { queued == 1 }
+        waitOnMainLooper { queued.get() == 1 && container.activeMicRecordingId == null }
         assertEquals(SyntheticTranscriber.FINAL, recordingRow().transcript)
     }
 
@@ -204,7 +204,7 @@ class LiveTranscriberHandoffTest {
         assertEquals(1, opens.get())
 
         compose.onNodeWithContentDescription(PtBr.stopRecording).performClick()
-        waitUntil(10_000) { queued == 1 }
+        waitUntil(10_000) { queued.get() == 1 && container.activeMicRecordingId == null }
         assertEquals("queued", recordingRow().status)
     }
 
@@ -216,10 +216,11 @@ class LiveTranscriberHandoffTest {
         leaveScreen()
         modelLoad.countDown()
 
-        waitOnMainLooper { queued == 1 }
+        waitOnMainLooper { queued.get() == 1 && container.activeMicRecordingId == null }
         val row = recordingRow()
         assertEquals("queued", row.status)
         assertEquals(SyntheticTranscriber.FINAL, row.transcript)
+        assertEquals(1, queued.get())
         assertEquals(null, container.activeMicRecordingId)
     }
 
@@ -229,7 +230,7 @@ class LiveTranscriberHandoffTest {
         modelMissing = true
         modelLoad.countDown()
 
-        waitUntil(10_000) { queued == 1 }
+        waitUntil(10_000) { queued.get() == 1 && container.activeMicRecordingId == null }
         val row = recordingRow()
         assertEquals("queued", row.status)
         assertEquals(null, row.transcript)
@@ -245,7 +246,7 @@ class LiveTranscriberHandoffTest {
         }
         compose.onNodeWithContentDescription(PtBr.stopRecording).performClick()
 
-        waitUntil(10_000) { queued == 1 }
+        waitUntil(10_000) { queued.get() == 1 && container.activeMicRecordingId == null }
         val row = recordingRow()
         assertEquals("queued", row.status)
         assertEquals(null, row.transcript)
@@ -258,7 +259,7 @@ class LiveTranscriberHandoffTest {
         waitUntil(10_000) { compose.onAllNodesWithText(PtBr.ux.liveNoModelNoApi).fetchSemanticsNodes().isNotEmpty() }
         assertTrue(compose.onAllNodesWithText("chunk", substring = true).fetchSemanticsNodes().isEmpty())
         compose.onNodeWithContentDescription(PtBr.stopRecording).performClick()
-        waitUntil(10_000) { queued == 1 }
+        waitUntil(10_000) { queued.get() == 1 && container.activeMicRecordingId == null }
         assertEquals(null, recordingRow().transcript)
     }
 
@@ -309,7 +310,7 @@ class LiveTranscriberHandoffTest {
         waitUntil(10_000) { compose.onAllNodesWithText(PtBr.ux.liveNoModelNoApi).fetchSemanticsNodes().isEmpty() }
         assertTrue(mic.sessions.value is MicSessionState.Recording)
         mic.stopGate.complete(Unit)
-        waitUntil(10_000) { queued == 1 }
+        waitUntil(10_000) { queued.get() == 1 && container.activeMicRecordingId == null }
     }
 
     @Test fun the_notice_follows_an_api_key_added_while_the_pane_is_open() {
@@ -360,7 +361,7 @@ class LiveTranscriberHandoffTest {
     @Test fun a_stop_from_the_notification_finalizes_the_row() {
         showPane(reportedFailures = mutableListOf())
         mic.sessions.value = MicSessionState.Stopped(File(recordingsDirectoryPath(), "$recordingId.wav").path, 1, 64, mic.starts.toLong())
-        waitOnMainLooper { queued == 1 }
+        waitOnMainLooper { queued.get() == 1 && container.activeMicRecordingId == null }
         assertEquals("queued", recordingRow().status)
     }
 
@@ -373,7 +374,7 @@ class LiveTranscriberHandoffTest {
         transcriber.onPartial("Words heard live")
         waitUntil(10_000) { container.micRecordings.liveText(recordingId) == "Words heard live" }
         mic.sessions.value = MicSessionState.Stopped(File(recordingsDirectoryPath(), "$recordingId.wav").path, 1, 64, mic.starts.toLong())
-        waitOnMainLooper { queued == 1 }
+        waitOnMainLooper { queued.get() == 1 && container.activeMicRecordingId == null }
         assertEquals("Words heard live", recordingRow().transcript)
     }
 
@@ -382,7 +383,7 @@ class LiveTranscriberHandoffTest {
         showPane()
         compose.onNodeWithContentDescription(PtBr.stopRecording).performClick()
         modelLoad.countDown()
-        waitUntil(10_000) { queued == 1 }
+        waitUntil(10_000) { queued.get() == 1 && container.activeMicRecordingId == null }
         val finalText = recordingRow().transcript
         mic.currentMarkers = mic.currentMarkers + MicMarker(offsetMs = 90_000, label = "late marker")
         runBlocking { persistLiveMarkers(container, recordingId) }
@@ -393,16 +394,16 @@ class LiveTranscriberHandoffTest {
         showPane(reportedFailures = mutableListOf())
         compose.onNodeWithContentDescription(PtBr.stopRecording).performClick()
         modelLoad.countDown()
-        waitUntil(10_000) { queued == 1 }
+        waitUntil(10_000) { queued.get() == 1 && container.activeMicRecordingId == null }
         assertEquals(SyntheticTranscriber.FINAL, recordingRow().transcript)
-        assertEquals(1, queued)
+        assertEquals(1, queued.get())
     }
 
     @Test fun a_stuck_load_cannot_hold_stop_past_the_limit_and_is_still_finished_later() {
         showPane(finishWaitMs = 200)
         compose.onNodeWithContentDescription(PtBr.stopRecording).performClick()
 
-        waitUntil(10_000) { queued == 1 }
+        waitUntil(10_000) { queued.get() == 1 && container.activeMicRecordingId == null }
         assertEquals("queued", recordingRow().status)
         assertEquals(null, recordingRow().transcript)
         assertEquals(0, transcriber.finishes.get())
@@ -421,7 +422,7 @@ class LiveTranscriberHandoffTest {
         assertEquals((extra + 1).toByte(), transcriber.pushed.first())
 
         compose.onNodeWithContentDescription(PtBr.stopRecording).performClick()
-        waitUntil(10_000) { queued == 1 }
+        waitUntil(10_000) { queued.get() == 1 && container.activeMicRecordingId == null }
         assertEquals(null, recordingRow().transcript)
     }
 
@@ -452,7 +453,7 @@ class LiveTranscriberHandoffTest {
         assertTrue(mic.onPcmChunk != null)
 
         compose.onNodeWithContentDescription(PtBr.stopRecording).performClick()
-        waitUntil(10_000) { queued == 1 }
+        waitUntil(10_000) { queued.get() == 1 && container.activeMicRecordingId == null }
         assertEquals("queued", recordingRow().status)
     }
 
@@ -480,7 +481,7 @@ class LiveTranscriberHandoffTest {
         modelMissing = true
         modelLoad.countDown()
 
-        waitUntil(10_000) { queued == 1 }
+        waitUntil(10_000) { queued.get() == 1 && container.activeMicRecordingId == null }
         assertEquals("## Markers\n- **1:05** Synthetic note\n", recordingRow().transcript)
     }
 
@@ -507,7 +508,7 @@ class LiveTranscriberHandoffTest {
         waitUntil(10_000) { container.activeMicRecordingId == null }
         assertEquals(listOf("Synthetic stop failure"), reported)
         assertEquals("failed", recordingRow().status)
-        assertEquals(0, queued)
+        assertEquals(0, queued.get())
         assertTrue(recordingRow().transcript.orEmpty().contains("- **0:01**"))
     }
 
@@ -522,7 +523,7 @@ class LiveTranscriberHandoffTest {
         assertEquals("failed", row.status)
         assertEquals(SyntheticTranscriber.FINAL, row.transcript)
         assertEquals(null, container.activeMicRecordingId)
-        assertEquals(0, queued)
+        assertEquals(0, queued.get())
     }
 
     /** Runs [scenario] and returns every Compose state write made off the main thread while it ran. */

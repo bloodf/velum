@@ -59,7 +59,7 @@ class ReimportAfterDeleteTest {
         // No processing: it is not under test and would outlive the database.
         val container = AppContainer(
             InMemorySecureStore(), DriverFactory(context), modelStoreRoot = root,
-            recordingJobSchedulerFactory = { _, _ -> RecordingJobScheduler { _, _, _, _ -> } },
+            recordingJobSchedulerFactory = { _, _ -> RecordingJobScheduler { _, _, _, _ -> dev.velum.ai.pipeline.EnqueueResult.STARTED_OR_REPLACED } },
         )
         val dir = File(context.cacheDir, "reimport-fixtures").apply { deleteRecursively(); mkdirs() }
         try {
