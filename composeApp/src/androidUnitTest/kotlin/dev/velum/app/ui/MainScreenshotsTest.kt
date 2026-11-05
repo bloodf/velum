@@ -49,6 +49,7 @@ import dev.velum.app.ui.onboarding.FirstRunScreen
 import dev.velum.app.ui.recording.GenerateSheetContent
 import dev.velum.app.ui.recording.RecordingDetailScreen
 import dev.velum.app.ui.recording.SpeakerLabelSheetContent
+import dev.velum.app.ui.recording.SpeakerLabelRow
 import dev.velum.app.ui.settings.AiProcessingScreen
 import dev.velum.app.ui.settings.ModelManagerScreen
 import dev.velum.app.ui.settings.SettingsHubScreen
@@ -206,7 +207,10 @@ private lateinit var container: AppContainer
     @Test
     fun nameSpeakersSheet() = capture("09-name-speakers") {
         Box(Modifier.fillMaxSize().background(VelumBg)) {
-            SpeakerLabelSheetContent(onClose = {})
+            SpeakerLabelSheetContent(onClose = {}, speakers = listOf(
+                SpeakerLabelRow("demo-1", "S1", null, 312),
+                SpeakerLabelRow("demo-2", "S2", null, 220),
+            ))
         }
     }
 
