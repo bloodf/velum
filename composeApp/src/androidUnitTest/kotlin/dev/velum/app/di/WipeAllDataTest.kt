@@ -25,6 +25,7 @@ import java.nio.file.Files
 import kotlin.random.Random
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import kotlin.test.assertNotNull
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CompletableDeferred
@@ -64,6 +65,8 @@ class WipeAllDataTest {
         override suspend fun clearKeys() = error("Not used")
     }
 
+    private var dataWiped = false
+
     private fun wipeDuringSave(joinTimeout: kotlin.time.Duration, check: suspend (AppContainer, DeviceViewModel, DownloadWipeResult, String) -> Unit) {
         Dispatchers.setMain(Dispatchers.Unconfined)
         val context = ApplicationProvider.getApplicationContext<Context>()
@@ -76,6 +79,7 @@ class WipeAllDataTest {
         val container = AppContainer(
             InMemorySecureStore(), DriverFactory(context), modelStoreRoot = root,
             recordingJobSchedulerFactory = { _, _ -> RecordingJobScheduler { _, _, _, _ -> } },
+            onDataWiped = { dataWiped = true },
         )
         val owner = ViewModelStore()
         val saving = CompletableDeferred<Unit>()
@@ -133,6 +137,7 @@ class WipeAllDataTest {
     @Test fun no_recording_survives_a_wipe_during_a_save() = wipeDuringSave(15.seconds) { container, _, result, path ->
         assertEquals(DownloadWipeResult.Clean, result)
         assertEquals(0, container.repository.storageUsage().recordingCount)
+        assertTrue(dataWiped, "the platform wipe hook (Android's boot language copy, #348) must run")
         assertFalse(File(path).exists(), "the recording's audio survived the wipe")
     }
 }

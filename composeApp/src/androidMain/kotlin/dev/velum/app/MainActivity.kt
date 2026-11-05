@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import dev.velum.ai.pipeline.inAppLanguage
 import dev.velum.app.di.AppContainer
 import dev.velum.app.platform.IncomingShare
 import java.util.concurrent.Executors
@@ -70,7 +71,7 @@ class MainActivity : ComponentActivity() {
         Log.e(TAG, "Fatal AppContainer init", t)
         setContent {
             Text(
-                text = FATAL_COPY,
+                text = inAppLanguage().getString(R.string.fatal_start_failed),
                 fontSize = 16.sp,
                 modifier = Modifier.padding(48.dp),
             )
@@ -136,8 +137,5 @@ class MainActivity : ComponentActivity() {
         private val HANDOFF_EXECUTOR = Executors.newSingleThreadExecutor { r ->
             Thread(r, "velum-container-handoff").apply { isDaemon = true }
         }
-        private const val FATAL_COPY =
-            "Velum failed to start. Reinstall or clear app storage.\n" +
-                "O Velum não iniciou. Reinstale ou limpe o armazenamento do app."
     }
 }

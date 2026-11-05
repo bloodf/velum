@@ -7,6 +7,7 @@ import androidx.annotation.Keep
 import androidx.annotation.VisibleForTesting
 import dev.velum.ai.local.ModelStoreDir
 import dev.velum.ai.pipeline.AiRuntimeHolder
+import dev.velum.ai.pipeline.BootLanguage
 import dev.velum.ai.pipeline.ThermalMonitor
 import dev.velum.ai.pipeline.createWorkManagerRecordingJobScheduler
 import dev.velum.ai.pipeline.STALE_PCM_SPILL_AGE_MS
@@ -38,6 +39,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Process-scoped application graph.
@@ -61,13 +63,15 @@ class VelumApplication : Application() {
         installCalendarContext(applicationContext)
         installMicCaptureContext(applicationContext)
         dev.velum.ai.local.installDeviceComputeContext(applicationContext)
-        MicRecordingService.ensureNotificationChannel(this)
-        DownloadProgressNotifier.ensureChannel()
 
         val powerManager = getSystemService(PowerManager::class.java)
         val appContext = applicationContext
         appScope.launch {
             try {
+                // The language copy first, so channels and a fatal screen use the app language before the vault opens (#348).
+                runCatching { BootLanguage.load(appContext) }
+                MicRecordingService.ensureNotificationChannel(appContext)
+                DownloadProgressNotifier.ensureChannel()
                 // filesDir / models path are disk reads — stay on Dispatchers.IO.
                 installRecordingFilesDir(filesDir.absolutePath)
                 // Before AiRuntimeHolder.install: WorkManager can re-run a killed job as soon as the
@@ -91,6 +95,7 @@ class VelumApplication : Application() {
                         createWorkManagerRecordingJobScheduler(appContext)
                     },
                     thermalPolicy = ThermalMonitor.asPolicy(powerManager),
+                    onDataWiped = { withContext(Dispatchers.IO) { BootLanguage.clear(appContext) } },
                 )
                 container = built
                 if (!built.repository.ftsAvailable) {
@@ -106,7 +111,9 @@ class VelumApplication : Application() {
                 )
                 // Channel names are stored by the system; re-publish them when the in-app language changes.
                 appScope.launch {
-                    built.settingsRepository.preferences.map { it.appLanguage }.distinctUntilChanged().collect {
+                    built.settingsRepository.preferences.map { it.appLanguage }.distinctUntilChanged().collect { language ->
+                        runCatching { BootLanguage.save(appContext, language) }
+                            .onFailure { t -> Log.w(TAG, "Boot language save failed (${t::class.simpleName})") }
                         MicRecordingService.ensureNotificationChannel(appContext)
                         DownloadProgressNotifier.ensureChannel()
                         dev.velum.ai.pipeline.RecordingProcessWorker.ensureProcessingChannel(appContext)

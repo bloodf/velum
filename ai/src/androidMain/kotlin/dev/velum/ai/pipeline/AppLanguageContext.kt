@@ -16,7 +16,40 @@ fun localeForAppLanguage(appLanguage: String?): Locale? = when (appLanguage) {
  * mic errors read Android resources through this, so they match the rest of the UI.
  */
 fun Context.inAppLanguage(): Context {
-    val locale = localeForAppLanguage(AiRuntimeHolder.settings?.preferences?.value?.appLanguage) ?: return this
+    val appLanguage = AiRuntimeHolder.settings?.preferences?.value?.appLanguage ?: BootLanguage.current
+    val locale = localeForAppLanguage(appLanguage) ?: return this
     val config = Configuration(resources.configuration).apply { setLocale(locale) }
     return createConfigurationContext(config)
+}
+
+/**
+ * A plain copy of the in-app language, the only key in `velum_boot`, so a cold start can use it before the settings
+ * vault is open (#348). It is not a secret: the UI shows it. Call [load], [save] and [clear] off the main thread.
+ *
+ * ponytail: if the language changes and the process dies before [save], the next cold start uses the previous
+ * language until settings load and re-save it; write it from setAppLanguage if that window matters.
+ */
+object BootLanguage {
+    private const val PREFS = "velum_boot"
+    private const val KEY = "app_language"
+
+    /** The copy read at this process start, or null before [load] finishes or when it failed. */
+    @Volatile
+    var current: String? = null
+        private set
+
+    fun load(context: Context): String? {
+        current = runCatching { prefs(context).getString(KEY, null) }.getOrNull()
+        return current
+    }
+
+    fun save(context: Context, appLanguage: String) {
+        current = appLanguage
+        prefs(context).edit().putString(KEY, appLanguage).commit()
+    }
+
+    /** Back to "system", for "Wipe all data". */
+    fun clear(context: Context) = save(context, "system")
+
+    private fun prefs(context: Context) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 }

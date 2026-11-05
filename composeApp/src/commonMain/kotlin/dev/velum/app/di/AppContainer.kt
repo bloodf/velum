@@ -89,6 +89,8 @@ class AppContainer(
     recordingJobSchedulerFactory: ((RecordingProcessor, CoroutineScope) -> RecordingJobScheduler)? = null,
     val micCapture: MicCapture = createMicCapture(),
     thermalPolicy: ThermalPolicy = NoOpThermalPolicy,
+    /** Platform data outside the container to reset after "Wipe all data", such as Android's boot language copy. */
+    private val onDataWiped: suspend () -> Unit = {},
 ) {
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -286,6 +288,7 @@ class AppContainer(
             deviceKeyImporter.clearKeys()
             webhookSettings.clear()
             integrationAuth.clearTokens()
+            onDataWiped()
             downloads
         }
 

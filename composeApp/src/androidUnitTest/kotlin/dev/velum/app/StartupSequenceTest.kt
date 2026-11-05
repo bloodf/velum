@@ -71,4 +71,22 @@ class StartupSequenceTest {
         val install = src.indexOf("AiRuntimeHolder.install(")
         assertTrue(sweep in 0 until install, "sweepOrphanPcmSpill must precede AiRuntimeHolder.install")
     }
+
+    /** #348: the language copy is read before any channel is created, and onCreate itself reads no disk. */
+    @Test fun boot_language_loads_off_main_before_channels_and_wipe_resets_it() {
+        val src = listOf(
+            File("src/androidMain/kotlin/dev/velum/app/VelumApplication.kt"),
+            File("composeApp/src/androidMain/kotlin/dev/velum/app/VelumApplication.kt"),
+        ).first { it.isFile }.readText()
+        val launch = src.indexOf("appScope.launch {")
+        val load = src.indexOf("BootLanguage.load(")
+        assertTrue(launch in 0 until load, "BootLanguage.load must run inside the IO coroutine, not on main")
+        for (channel in listOf("MicRecordingService.ensureNotificationChannel(", "DownloadProgressNotifier.ensureChannel(")) {
+            val first = src.indexOf(channel)
+            assertTrue(first > load, "$channel must come after BootLanguage.load")
+        }
+        assertTrue(load < src.indexOf("AiRuntimeHolder.install("), "the copy must be loaded before the worker gate opens")
+        assertTrue(src.indexOf("BootLanguage.save(") > 0, "the copy must be refreshed from settings")
+        assertTrue(src.indexOf("onDataWiped = {") in 0 until src.indexOf("BootLanguage.clear("), "wipe must reset the copy")
+    }
 }
