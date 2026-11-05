@@ -88,6 +88,28 @@ class VoiceProfileStoreTest {
     }
 
     @Test
+    fun importEncrypted_invalidSecondId_isMalformedAndWritesNothing() {
+        val dir = File.createTempFile("velum-vp-invalid-id", "").also { it.delete(); it.mkdirs() }
+        val store = VoiceProfileStore(
+            root = ModelStoreDir(dir.absolutePath),
+            cipherOverride = createProfileCipher(ByteArray(32) { 9 }),
+        )
+        store.upsert("A", floatArrayOf(1f, 0f))
+        store.upsert("B", floatArrayOf(0f, 1f))
+        val export = store.exportEncrypted()
+        val broken = export.replace("\"id\": \"b\"", "\"id\": \"../bad\"")
+        assertTrue(broken != export)
+        store.wipeAll()
+        val before = dir.walkTopDown().filter { it.isFile }.map { it.relativeTo(dir).path to it.readBytes().toList() }.toList()
+
+        assertFailsWith<InvalidVoiceProfileBackupException> { store.importEncrypted(broken) }
+        assertEquals(before, dir.walkTopDown().filter { it.isFile }.map { it.relativeTo(dir).path to it.readBytes().toList() }.toList())
+        assertTrue(store.listProfiles().isEmpty())
+        assertEquals(2, store.importEncrypted(export))
+        assertEquals(listOf("a", "b"), store.listProfiles().map { it.id })
+    }
+
+    @Test
     fun exportImport_roundTrip() {
         val store = tempStore()
         store.upsert(
