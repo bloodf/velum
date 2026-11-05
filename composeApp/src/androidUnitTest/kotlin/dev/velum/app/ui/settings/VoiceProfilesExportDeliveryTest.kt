@@ -94,6 +94,33 @@ class VoiceProfilesExportDeliveryTest {
         source.deleteRecursively()
     }
 
+    @Test
+    fun a_refused_copy_does_not_claim_success() {
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        val previous = ShareTextHolder.context
+        // No clipboard to copy to: the platform copy must report the refusal instead of failing silently while
+        // the screen tells the user the backup was copied.
+        ShareTextHolder.context = null
+        val memory = InMemorySecureStore()
+        val source = newRoot()
+        try {
+            runBlocking {
+                VoiceProfileStore(source, memory).withReady { upsert("Synthetic Export", embedding, id = "export") }
+            }
+            screen(app, memory, source) {
+                tap(En.ux.voiceProfilesExport)
+                awaitLabel(En.ux.voiceProfilesExportReady)
+                tap(En.added.voiceProfilesExportCopy)
+                awaitLabel(En.added.voiceProfilesExportCopyFailed)
+            }
+            val claimed = compose.onAllNodesWithText(En.added.voiceProfilesExportCopied).fetchSemanticsNodes()
+            assertTrue(claimed.isEmpty(), "a refused copy must not claim success")
+        } finally {
+            ShareTextHolder.context = previous
+            source.deleteRecursively()
+        }
+    }
+
     // ---- helpers ------------------------------------------------------------
 
     private fun newRoot() = ModelStoreDir(Files.createTempDirectory("velum-voice-export-test").toString())

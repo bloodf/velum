@@ -22,4 +22,5 @@ data class MoreStrings(
     val speakersChangedWhileOpen: String,
     val voiceProfilesExportCopy: String,
     val voiceProfilesExportCopied: String,
+    val voiceProfilesExportCopyFailed: String,
 )

@@ -10,10 +10,11 @@ import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-actual fun copyToClipboard(text: String) {
-    val context = ShareTextHolder.context ?: return
-    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return
+actual fun copyToClipboard(text: String): Boolean {
+    val context = ShareTextHolder.context ?: return false
+    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return false
     clipboard.setPrimaryClip(ClipData.newPlainText("Velum", text))
+    return true
 }
 
 actual suspend fun shareBytes(filename: String, mime: String, bytes: ByteArray) {

@@ -1255,6 +1255,7 @@ val PtBr = Strings(
         speakersChangedWhileOpen = "Os oradores mudaram enquanto isto estava aberto. Confira os nomes e tente de novo.",
         voiceProfilesExportCopy = "Copiar backup criptografado",
         voiceProfilesExportCopied = "Backup criptografado copiado. Cole o texto em Importar para restaurar os perfis.",
+        voiceProfilesExportCopyFailed = "Não foi possível copiar o backup. Tente de novo.",
     ),
 )
 
@@ -1880,6 +1881,7 @@ val En = Strings(
         speakersChangedWhileOpen = "Speakers changed while this was open. Check the names and try again.",
         voiceProfilesExportCopy = "Copy encrypted backup",
         voiceProfilesExportCopied = "Encrypted backup copied. Paste the text into Import to restore the profiles.",
+        voiceProfilesExportCopyFailed = "The backup could not be copied. Try again.",
     ),
 )
 
