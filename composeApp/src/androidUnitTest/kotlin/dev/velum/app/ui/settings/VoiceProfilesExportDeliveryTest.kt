@@ -112,9 +112,11 @@ class VoiceProfilesExportDeliveryTest {
                 awaitLabel(En.ux.voiceProfilesExportReady)
                 tap(En.added.voiceProfilesExportCopy)
                 awaitLabel(En.added.voiceProfilesExportCopyFailed)
+                // Asserted inside the screen block: the activity is destroyed when the block ends, and the
+                // semantics tree is gone with it.
+                val claimed = compose.onAllNodesWithText(En.added.voiceProfilesExportCopied).fetchSemanticsNodes()
+                assertTrue(claimed.isEmpty(), "a refused copy must not claim success")
             }
-            val claimed = compose.onAllNodesWithText(En.added.voiceProfilesExportCopied).fetchSemanticsNodes()
-            assertTrue(claimed.isEmpty(), "a refused copy must not claim success")
         } finally {
             ShareTextHolder.context = previous
             source.deleteRecursively()
