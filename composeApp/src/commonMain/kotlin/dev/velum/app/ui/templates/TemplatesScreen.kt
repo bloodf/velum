@@ -758,7 +758,7 @@ private fun Tab(label: String, selected: Boolean, onClick: () -> Unit) {
 }
 
 private fun templateDisplayName(tpl: Template, languageTag: String): String {
-    val catalog = BuiltinTemplateCatalog.get(tpl.id)
+    val catalog = if (tpl.builtin != 0L) BuiltinTemplateCatalog.get(tpl.id) else null
     return catalog?.displayName(languageTag) ?: tpl.name
 }
 
@@ -961,7 +961,7 @@ fun TemplateDetailScreen(
         var promptDraft by remember(tpl?.id) { mutableStateOf(tpl?.system_prompt.orEmpty()) }
         var nameDraft by remember(tpl?.id) { mutableStateOf(tpl?.name.orEmpty()) }
         val scope = rememberCoroutineScope()
-        if (editing && tpl != null && tpl.builtin == 0L) {
+        if (editing && tpl != null) {
             BasicTextField(
                 value = nameDraft,
                 onValueChange = { nameDraft = it },
@@ -998,6 +998,10 @@ fun TemplateDetailScreen(
                             author = tpl.author,
                             builtin = false,
                             uses = tpl.uses,
+                            tags = TemplateTagVocabulary.decode(tpl.tags),
+                            lang = tpl.lang,
+                            preferredModel = tpl.preferred_model,
+                            preferredEndpointProfileId = tpl.preferred_endpoint_profile_id,
                         )
                         editing = false
                     }
@@ -1019,16 +1023,22 @@ fun TemplateDetailScreen(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(
-                Modifier
-                    .size(52.dp)
-                    .border(1.dp, VelumDivider, RoundedCornerShape(10.dp))
-                    .clickable {
-                        if (tpl?.builtin == 0L) editing = !editing
-                    },
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(Icons.Outlined.Edit, null, tint = VelumInk)
+            if (tpl != null) {
+                Box(
+                    Modifier
+                        .size(52.dp)
+                        .border(1.dp, VelumDivider, RoundedCornerShape(10.dp))
+                        .clickable(role = Role.Button) {
+                            if (!editing) {
+                                nameDraft = tpl.name
+                                promptDraft = tpl.system_prompt
+                            }
+                            editing = !editing
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(if (editing) Icons.Outlined.Close else Icons.Outlined.Edit, if (editing) strings.cancel else strings.edit, tint = VelumInk)
+                }
             }
             BlackButton(strings.close, onBack, Modifier.weight(1f))
         }
