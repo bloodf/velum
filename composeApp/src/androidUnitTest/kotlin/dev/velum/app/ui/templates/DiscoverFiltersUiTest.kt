@@ -160,7 +160,9 @@ class DiscoverFiltersUiTest {
             assertRowAbsent("ui102-d")
 
             // Tier switching: All adds the non-featured row, Featured removes it again.
-            tap("tier:all"); await("ZQ Delta")
+            tap("tier:all")
+            waiting("Delta row loaded") { rowLoaded("ui102-d") }
+            await("ZQ Delta")
             tap("tier:featured"); await("ZQ Alpha"); await("ZQ Delta", present = false)
             awaitRow("ui102-a")
             assertRowAbsent("ui102-d")
@@ -204,14 +206,14 @@ class DiscoverFiltersUiTest {
             // Search composes with the category filter.
             tap("category:meeting")
             compose.onNodeWithContentDescription(PtBr.search).performClick()
-            compose.onNode(hasSetTextAction()).performTextInput("ZQ Beta")
+            compose.onNodeWithTag("search:query").performTextInput("ZQ Beta")
             // Typing is debounced: wait for the old rows to go, then for the match to return.
             await("ZQ Alpha", present = false); await("ZQ Beta")
             awaitRow("ui102-b")
             assertRowAbsent("ui102-a")
 
             // Widen the search to every ZQ row: the category still excludes Gamma.
-            compose.onNode(hasSetTextAction()).performTextReplacement("ZQ")
+            compose.onNodeWithTag("search:query").performTextReplacement("ZQ")
             await("ZQ Alpha"); await("ZQ Beta")
             awaitRow("ui102-a")
             assertRowAbsent("ui102-c")
@@ -253,7 +255,7 @@ class DiscoverFiltersUiTest {
             // Every later facets/page query now fails; the selections must survive the failed load.
             container.databaseHandle.driver.close()
             compose.onNodeWithContentDescription(PtBr.search).performClick()
-            compose.onNode(hasSetTextAction()).performTextInput("zq")
+            compose.onNodeWithTag("search:query").performTextInput("zq")
             // The failed query is observable: the load error shows before we check the selections.
             await(PtBr.ux.genericError)
             // The facets effect is a separate coroutine from the page load: wait for its own failure, or the window

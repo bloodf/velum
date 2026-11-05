@@ -6,7 +6,6 @@ import androidx.activity.compose.setContent
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.isEnabled
-import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -115,8 +114,8 @@ class DiscoverSeamUiTest {
             show(container, queries)
             waiting("first page") { reaches("pg-000") }
             compose.onNodeWithContentDescription(PtBr.search).performClick()
-            waiting("search field") { compose.onAllNodes(hasSetTextAction()).fetchSemanticsNodes().isNotEmpty() }
-            val field = compose.onNode(hasSetTextAction())
+            waiting("search field") { compose.onAllNodesWithTag("search:query").fetchSemanticsNodes().isNotEmpty() }
+            val field = compose.onNodeWithTag("search:query")
 
             compose.mainClock.autoAdvance = false
             field.performTextReplacement("PG 001")
