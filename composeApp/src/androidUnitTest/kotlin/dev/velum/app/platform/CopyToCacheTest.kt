@@ -10,6 +10,8 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
 
 class CopyToCacheTest {
     private fun target() = File.createTempFile("velum-copy", ".wav").also { it.delete() }
@@ -53,6 +55,31 @@ class CopyToCacheTest {
     fun cancellation_propagates_andCleansUp() {
         val out = target()
         assertFailsWith<CancellationException> { copyToCache({ Failing(3, CancellationException("cancelled")) }, out) }
+        assertFalse(out.exists())
+    }
+
+    @Test
+    fun cancelledDuringRead_stopsCopyClosesStreamAndDeletesPartialFile() {
+        val out = target()
+        val job = Job()
+        var reads = 0
+        var closed = false
+        val input = object : InputStream() {
+            override fun read(): Int = error("bulk reads expected")
+            override fun read(bytes: ByteArray, offset: Int, length: Int): Int {
+                reads++
+                if (reads == 2) job.cancel()
+                bytes[offset] = 1
+                return 1
+            }
+            override fun close() { closed = true }
+        }
+
+        assertFailsWith<CancellationException> {
+            copyToCache({ input }, out, checkCancelled = { job.ensureActive() })
+        }
+        assertEquals(2, reads)
+        assertTrue(closed)
         assertFalse(out.exists())
     }
 }
