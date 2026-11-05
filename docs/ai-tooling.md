@@ -32,7 +32,9 @@ TokenEconomizer global installation and harness settings belong to the central c
 
 Antigravity uses GOOGLE MODELS ONLY. Argon stays parked while quota-exhausted. Reserve capacity with the central coordinator before launching: at most one worker per account across projects during rollout. Round robin only among eligible accounts; unknown quota stays unknown. Park exhausted or unavailable routes without blind retries or budget resets.
 
-For bounded mechanical tasks, prefer available MiniMax M3.1 Flash `m:minimax:MiniMax-M3.1-Flash:v:`. Its thinking variant `m:minimax:MiniMax-M3.1-Flash:v:thinking` and frontier models are for judgments and risky independent reviews. Verify provider/model IDs through the harness. Children receive explicit ownership and no subdelegation unless authorized.
+MiniMax M3.1 Flash requires the exact runtime-validated target `m:minimax:MiniMax-M3.1-Flash:v:thinking`. The empty variant advertised by T3 fails `Invalid model reasoning` because the runtime requires `FORCED_ON`; do not use or claim a nonthinking route. The earlier stale Preview default was a separate model/route failure, not quota evidence. Unknown quota stays unknown. Keep mechanical tasks bounded and retain risk-appropriate models and independent review gates. Children receive explicit ownership and no subdelegation unless authorized.
+
+Before any tooling worker launch, reserve with `t3-model-route reserve --project Velum --purpose tooling --task '<bounded task>'`. Launch only the returned exact target and options, record task/run and release only that completed lease with evidence. If no route is eligible, retain HOLD. The dispatcher coordinates cooperating orchestrators; it does not intercept manual T3/UI launches. Global authority and limits are in `/Users/heitor/.config/ai-tooling/COORDINATION.md`. Routine coordinators use Codex `gpt-6.1-sol`, `reasoningEffort=high`, `serviceTier=default`; do not restart running turns to change models.
 
 ## Delivery and propagation
 
