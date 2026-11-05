@@ -28,7 +28,18 @@ internal class DesktopLivePcmCapture(
         line = audioLine
         running.set(true)
 
-        val sink = PcmChunkSink(fileOutputStream = null, onChunk = onPcm)
+        val sink = PcmChunkSink(
+            fileOutputStream = null,
+            onChunk = { chunk ->
+                if (running.get()) {
+                    try {
+                        onPcm(chunk)
+                    } catch (_: Throwable) {
+                        stop()
+                    }
+                }
+            },
+        )
         val resampler = MonoPcmWavWriter(
             file = null,
             targetRate = sampleRateHz,
@@ -38,34 +49,39 @@ internal class DesktopLivePcmCapture(
             setFormat(audioLine.sampleRateHz, audioLine.channels)
         }
 
-        worker = Thread({
+        val thread = Thread({
             val bufSize = audioLine.bufferSizeBytes.coerceAtLeast(4096)
             val buf = ByteArray(bufSize)
             try {
                 while (running.get()) {
                     val n = audioLine.read(buf, 0, buf.size)
                     if (!running.get()) break
+                    if (n < 0) {
+                        break
+                    }
                     if (n > 0) {
                         resampler.write(buf, n)
                         resampler.flush()
-                    } else if (n < 0) {
-                        break
                     }
                 }
             } catch (_: Exception) {
             } finally {
                 running.set(false)
                 runCatching { resampler.finish() }
+                runCatching { audioLine.stop() }
+                runCatching { audioLine.close() }
             }
         }, "velum-desktop-live-pcm").apply {
             isDaemon = true
-            start()
         }
+
+        worker = thread
+        thread.start()
         return true
     }
 
     override fun stop() {
-        running.set(false)
+        if (!running.getAndSet(false)) return
         val l = line
         line = null
         val w = worker

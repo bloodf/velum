@@ -1,7 +1,12 @@
 package dev.velum.app.platform
 
 import java.io.File
+import java.io.OutputStream
 import java.io.RandomAccessFile
+import java.nio.ByteBuffer
+import java.nio.channels.FileChannel
+import java.nio.file.FileAlreadyExistsException
+import java.nio.file.StandardOpenOption
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import javax.sound.sampled.LineUnavailableException
@@ -13,9 +18,43 @@ import kotlinx.coroutines.sync.withLock
 
 actual fun createMicCapture(): MicCapture = DesktopMicCapture()
 
+internal class DesktopCaptureSession(
+    val session: MicSessionIdentity,
+    val line: DesktopAudioLine,
+    val file: File,
+    val raf: RandomAccessFile,
+    val resampler: MonoPcmWavWriter,
+) {
+    val capturing = AtomicBoolean(true)
+    val paused = AtomicBoolean(false)
+    val settled = AtomicBoolean(false)
+
+    @Volatile
+    var workerThread: Thread? = null
+
+    @Volatile
+    var pcmListener: ((ByteArray) -> Unit)? = null
+
+    val pcmBytesWritten: Long get() = resampler.pcmBytesWritten
+
+    /**
+     * Marker offset in milliseconds based strictly on output PCM frames (16 kHz, 16-bit mono = 32 bytes/ms).
+     * Eliminates wall-time drift, thread scheduling latency, and pause accumulation errors.
+     */
+    val recordedOffsetMs: Long get() = (pcmBytesWritten / 32L).coerceAtLeast(0L)
+
+    fun closeResources() {
+        releaseAll(
+            { runCatching { line.stop() } },
+            { runCatching { line.close() } },
+            { runCatching { resampler.close() } },
+            { runCatching { raf.close() } },
+        )
+    }
+}
+
 internal class DesktopMicCapture(
     private val lineFactory: DesktopAudioLineFactory = JavaSoundAudioLineFactory,
-    private val timeProvider: () -> Long = { System.nanoTime() / 1_000_000L },
 ) : MicCapture {
 
     private val startMutex = Mutex()
@@ -29,22 +68,8 @@ internal class DesktopMicCapture(
     private val _failures = MutableStateFlow<String?>(null)
     override val failures: StateFlow<String?> = _failures.asStateFlow()
 
-    private val capturing = AtomicBoolean(false)
-    private val paused = AtomicBoolean(false)
-
-    private var currentSession: MicSessionIdentity? = null
+    private var activeSession: DesktopCaptureSession? = null
     private val sessionMarkers = ArrayList<MicMarker>()
-
-    private var startedAtElapsedMs: Long = 0L
-    private var pausedAccumulatedMs: Long = 0L
-    private var pauseStartedElapsedMs: Long = 0L
-
-    @Volatile
-    private var pcmListener: ((ByteArray) -> Unit)? = null
-
-    private var workerThread: Thread? = null
-    private var activeLine: DesktopAudioLine? = null
-    private var outputFile: File? = null
 
     override val isSupported: Boolean = true
     override val isCapturing: Boolean
@@ -58,18 +83,25 @@ internal class DesktopMicCapture(
         get() = synchronized(markersLock) { sessionMarkers.toList() }
 
     override var onPcmChunk: ((ByteArray) -> Unit)?
-        get() = pcmListener
-        set(value) { pcmListener = value }
+        get() = synchronized(sessionLock) { activeSession?.pcmListener }
+        set(value) {
+            synchronized(sessionLock) { activeSession?.pcmListener = value }
+        }
 
-    override fun attachPcm(session: MicSessionIdentity, listener: (ByteArray) -> Unit): Boolean {
-        if (_sessions.value.session != session || !isCapturing) return false
-        pcmListener = listener
-        return true
-    }
+    override fun attachPcm(session: MicSessionIdentity, listener: (ByteArray) -> Unit): Boolean =
+        synchronized(sessionLock) {
+            val active = activeSession
+            if (active == null || active.session != session || !active.capturing.get()) return false
+            active.pcmListener = listener
+            true
+        }
 
     override fun detachPcm(session: MicSessionIdentity, listener: (ByteArray) -> Unit) {
-        if (_sessions.value.session == session && pcmListener === listener) {
-            pcmListener = null
+        synchronized(sessionLock) {
+            val active = activeSession
+            if (active != null && active.session == session && active.pcmListener === listener) {
+                active.pcmListener = null
+            }
         }
     }
 
@@ -77,57 +109,136 @@ internal class DesktopMicCapture(
         absolutePath: String,
         inputSource: MicInputSource,
     ): MicStartResult = startMutex.withLock {
-        if (isCapturing) return MicStartResult.Failed("Recording already in progress")
+        synchronized(sessionLock) {
+            val existing = activeSession
+            if (existing != null && (!existing.settled.get() || existing.workerThread?.isAlive == true)) {
+                return MicStartResult.Failed("Recording already in progress")
+            }
+        }
 
         val file = File(absolutePath)
         file.parentFile?.mkdirs()
-        if (file.exists()) return MicStartResult.Failed("Recording output already exists: $absolutePath")
+
+        // 1. Atomic creation: StandardOpenOption.CREATE_NEW fails if file already exists (no overwrite race)
+        try {
+            FileChannel.open(
+                file.toPath(),
+                StandardOpenOption.CREATE_NEW,
+                StandardOpenOption.WRITE,
+            ).use { channel ->
+                val header = ByteBuffer.wrap(pcm16MonoWavHeader(0, 16_000))
+                while (header.hasRemaining()) {
+                    check(channel.write(header) > 0) { "Unable to write WAV header" }
+                }
+                channel.force(true)
+            }
+        } catch (_: FileAlreadyExistsException) {
+            return MicStartResult.Failed("Recording output already exists: $absolutePath")
+        } catch (e: Exception) {
+            return MicStartResult.Failed("Failed to initialize recording file: ${e.message}")
+        }
 
         val token = sessionSequence.incrementAndGet()
-        val session = MicSessionIdentity(token, absolutePath)
+        val sessionIdentity = MicSessionIdentity(token, absolutePath)
 
+        // 2. Hardware line acquisition with candidate cleanup
         val line = try {
             lineFactory.createLine(inputSource).also { it.open() }
         } catch (e: SecurityException) {
+            file.delete()
             val fail = MicSessionState.Failed(
                 message = "Microphone permission denied: ${e.message ?: "permission required"}",
                 permissionRequired = true,
-                session = session,
+                session = sessionIdentity,
             )
             _sessions.value = fail
             _failures.value = fail.message
             return MicStartResult.PermissionRequired
         } catch (e: LineUnavailableException) {
-            val isExplicitPerm = e.message?.contains("permission", ignoreCase = true) == true
+            file.delete()
             val fail = MicSessionState.Failed(
                 message = "Microphone line unavailable: ${e.message ?: "device busy or unavailable"}",
-                permissionRequired = isExplicitPerm,
-                session = session,
+                permissionRequired = false,
+                session = sessionIdentity,
             )
             _sessions.value = fail
             _failures.value = fail.message
-            return if (isExplicitPerm) MicStartResult.PermissionRequired else MicStartResult.Failed(fail.message)
+            return MicStartResult.Failed(fail.message)
         } catch (e: Exception) {
-            val isExplicitPerm = e.message?.contains("permission", ignoreCase = true) == true
+            file.delete()
             val fail = MicSessionState.Failed(
                 message = "Microphone initialization failed: ${e.message ?: "unknown error"}",
-                permissionRequired = isExplicitPerm,
-                session = session,
+                permissionRequired = false,
+                session = sessionIdentity,
             )
             _sessions.value = fail
             _failures.value = fail.message
-            return if (isExplicitPerm) MicStartResult.PermissionRequired else MicStartResult.Failed(fail.message)
+            return MicStartResult.Failed(fail.message)
         }
 
+        val raf = try {
+            RandomAccessFile(file, "rw").apply { seek(44) }
+        } catch (e: Exception) {
+            line.close()
+            file.delete()
+            val fail = MicSessionState.Failed("Unable to open recording file for writing: ${e.message}", false, sessionIdentity)
+            _sessions.value = fail
+            _failures.value = fail.message
+            return MicStartResult.Failed(fail.message)
+        }
+
+        val rafStream = object : OutputStream() {
+            override fun write(b: Int) = raf.write(b)
+            override fun write(b: ByteArray, off: Int, len: Int) = raf.write(b, off, len)
+            override fun flush() {}
+            override fun close() {}
+        }
+
+        var captureSession: DesktopCaptureSession? = null
+
+        val chunkSink = PcmChunkSink(
+            fileOutputStream = rafStream,
+            onChunk = { pcmChunk ->
+                val current = captureSession
+                if (current != null && current.capturing.get() && !current.paused.get()) {
+                    try {
+                        current.pcmListener?.invoke(pcmChunk)
+                    } catch (t: Throwable) {
+                        failAndCloseSession(current, "PCM chunk callback threw: ${t.message ?: t::class.simpleName}")
+                    }
+                }
+            },
+        )
+
+        val resampler = MonoPcmWavWriter(
+            file = null,
+            targetRate = 16_000,
+            sink = chunkSink,
+            writeHeaderPlaceholder = false,
+        ).apply {
+            setFormat(line.sampleRateHz, line.channels)
+        }
+
+        val session = DesktopCaptureSession(
+            session = sessionIdentity,
+            line = line,
+            file = file,
+            raf = raf,
+            resampler = resampler,
+        )
+        captureSession = session
+
+        val thread = Thread({
+            runCaptureLoop(session)
+        }, "velum-desktop-mic").apply {
+            isDaemon = true
+        }
+
+        // Assign workerThread and register activeSession BEFORE thread.start()
+        session.workerThread = thread
+
         synchronized(sessionLock) {
-            currentSession = session
-            activeLine = line
-            outputFile = file
-            startedAtElapsedMs = timeProvider()
-            pausedAccumulatedMs = 0L
-            pauseStartedElapsedMs = 0L
-            paused.set(false)
-            capturing.set(true)
+            activeSession = session
             _failures.value = null
             _sessions.value = MicSessionState.Recording(absolutePath, 0L, token)
         }
@@ -135,190 +246,139 @@ internal class DesktopMicCapture(
             sessionMarkers.clear()
         }
 
-        val thread = Thread({
-            runCaptureLoop(session, line, file)
-        }, "velum-desktop-mic").apply {
-            isDaemon = true
-            start()
-        }
-        synchronized(sessionLock) {
-            workerThread = thread
-        }
+        thread.start()
 
-        return MicStartResult.Started(session)
+        return MicStartResult.Started(sessionIdentity)
     }
 
-    private fun runCaptureLoop(session: MicSessionIdentity, line: DesktopAudioLine, file: File) {
-        val token = session.token
-        var raf: RandomAccessFile? = null
-        var resampler: MonoPcmWavWriter? = null
+    private fun failAndCloseSession(session: DesktopCaptureSession, message: String) {
+        if (!session.capturing.getAndSet(false)) return
+        session.closeResources()
+        val failState = MicSessionState.Failed(message, permissionRequired = false, session = session.session)
+        _sessions.value = failState
+        _failures.value = message
+    }
+
+    private fun runCaptureLoop(session: DesktopCaptureSession) {
+        val raf = session.raf
+        val line = session.line
+        val writer = session.resampler
+        val readBuffer = ByteArray(line.bufferSizeBytes.coerceAtLeast(4096))
+        var lastSyncedBytes = 0L
+
         try {
-            raf = RandomAccessFile(file, "rw").apply {
-                seek(0)
-                write(pcm16MonoWavHeader(0, 16_000))
-                seek(44)
-            }
-            val rafHandle = raf
-
-            val rafStream = object : java.io.OutputStream() {
-                override fun write(b: Int) {
-                    rafHandle.write(b)
-                }
-                override fun write(b: ByteArray, off: Int, len: Int) {
-                    rafHandle.write(b, off, len)
-                }
-                override fun flush() {}
-                override fun close() {}
-            }
-
-            val chunkSink = PcmChunkSink(
-                fileOutputStream = rafStream,
-                onChunk = { pcmChunk ->
-                    if (capturing.get() && currentSession?.token == token) {
-                        pcmListener?.invoke(pcmChunk)
-                    }
-                },
-            )
-
-            val writer = MonoPcmWavWriter(
-                file = null,
-                targetRate = 16_000,
-                sink = chunkSink,
-                writeHeaderPlaceholder = false,
-            ).apply {
-                setFormat(line.sampleRateHz, line.channels)
-            }
-            resampler = writer
-
-            val bufSize = line.bufferSizeBytes.coerceAtLeast(4096)
-            val readBuffer = ByteArray(bufSize)
-            var lastSyncedBytes = 0L
-
             line.start()
 
-            while (capturing.get() && currentSession?.token == token) {
-                if (paused.get()) {
-                    try {
-                        Thread.sleep(50)
-                    } catch (_: InterruptedException) {
-                        break
-                    }
+            while (session.capturing.get()) {
+                val readBytes = try {
+                    line.read(readBuffer, 0, readBuffer.size)
+                } catch (e: Exception) {
+                    failAndCloseSession(session, "Audio line read failed: ${e.message}")
+                    break
+                }
+
+                if (!session.capturing.get()) break
+
+                // EOF / audio line closed
+                if (readBytes < 0) {
+                    failAndCloseSession(session, "Microphone audio input stream terminated unexpectedly (EOF)")
+                    break
+                }
+
+                // If paused, discard read bytes to drain the line buffer without writing or publishing
+                if (session.paused.get()) {
                     continue
                 }
 
-                val readBytes = line.read(readBuffer, 0, readBuffer.size)
-                if (!capturing.get() || currentSession?.token != token) break
-                if (readBytes < 0) {
-                    break
-                }
                 if (readBytes > 0) {
-                    writer.write(readBuffer, readBytes)
-                    writer.flush()
+                    try {
+                        writer.write(readBuffer, readBytes)
+                        writer.flush()
+                    } catch (t: Throwable) {
+                        failAndCloseSession(session, "Audio processing failed: ${t.message}")
+                        break
+                    }
 
                     val currentWritten = writer.pcmBytesWritten
                     if (currentWritten - lastSyncedBytes >= 32_000L) {
-                        val savedPos = rafHandle.filePointer
-                        rafHandle.seek(0)
-                        rafHandle.write(pcm16MonoWavHeader(currentWritten, 16_000))
-                        rafHandle.fd.sync()
-                        rafHandle.seek(savedPos)
+                        val savedPos = raf.filePointer
+                        raf.seek(0)
+                        raf.write(pcm16MonoWavHeader(currentWritten, 16_000))
+                        raf.fd.sync()
+                        raf.seek(savedPos)
                         lastSyncedBytes = currentWritten
-                        if (capturing.get() && currentSession?.token == token) {
-                            _sessions.value = MicSessionState.Recording(session.absolutePath, currentWritten, token)
+                        // Never publish Recording if paused occurred in-flight
+                        if (session.capturing.get() && !session.paused.get() && activeSession === session) {
+                            _sessions.value = MicSessionState.Recording(session.session.absolutePath, currentWritten, session.session.token)
                         }
                     }
                 }
             }
-        } catch (e: Exception) {
-            if (capturing.get() && currentSession?.token == token) {
-                val fail = MicSessionState.Failed("Microphone capture failed: ${e.message}", false, session)
-                _sessions.value = fail
-                _failures.value = fail.message
-            }
         } finally {
-            // Finish resampler and flush any trailing samples to file
-            runCatching { resampler?.finish() }
-            // Write final header checkpoint to raf before closing
+            runCatching { writer.finish() }
             runCatching {
-                raf?.let { r ->
-                    val finalBytes = resampler?.pcmBytesWritten ?: 0L
-                    r.seek(0)
-                    r.write(pcm16MonoWavHeader(finalBytes, 16_000))
-                    r.fd.sync()
-                }
+                val finalBytes = writer.pcmBytesWritten
+                raf.seek(0)
+                raf.write(pcm16MonoWavHeader(finalBytes, 16_000))
+                raf.fd.sync()
             }
-            runCatching { raf?.close() }
-            runCatching { line.stop() }
-            runCatching { line.close() }
+            session.closeResources()
+            session.settled.set(true)
         }
     }
 
     override suspend fun pause(): MicPauseResult =
-        currentSession?.let { pause(it) } ?: MicPauseResult.NotCapturing
+        synchronized(sessionLock) { activeSession?.session }?.let { pause(it) } ?: MicPauseResult.NotCapturing
 
-    override suspend fun pause(session: MicSessionIdentity): MicPauseResult {
+    override suspend fun pause(session: MicSessionIdentity): MicPauseResult =
         synchronized(sessionLock) {
-            if (currentSession != session || !capturing.get()) {
+            val active = activeSession
+            if (active == null || active.session != session || !active.capturing.get()) {
                 return MicPauseResult.NotCapturing
             }
-            if (paused.compareAndSet(false, true)) {
-                pauseStartedElapsedMs = timeProvider()
-                val current = _sessions.value
-                val written = (current as? MicSessionState.Recording)?.bytesWritten ?: 0L
-                _sessions.value = MicSessionState.Paused(session.absolutePath, written, session.token)
+            if (active.paused.compareAndSet(false, true)) {
+                _sessions.value = MicSessionState.Paused(session.absolutePath, active.pcmBytesWritten, session.token)
             }
+            MicPauseResult.Ok
         }
-        return MicPauseResult.Ok
-    }
 
     override suspend fun resume(): MicPauseResult =
-        currentSession?.let { resume(it) } ?: MicPauseResult.NotCapturing
+        synchronized(sessionLock) { activeSession?.session }?.let { resume(it) } ?: MicPauseResult.NotCapturing
 
-    override suspend fun resume(session: MicSessionIdentity): MicPauseResult {
+    override suspend fun resume(session: MicSessionIdentity): MicPauseResult =
         synchronized(sessionLock) {
-            if (currentSession != session || !capturing.get()) {
+            val active = activeSession
+            if (active == null || active.session != session || !active.capturing.get()) {
                 return MicPauseResult.NotCapturing
             }
-            if (paused.compareAndSet(true, false)) {
-                if (pauseStartedElapsedMs > 0) {
-                    pausedAccumulatedMs += (timeProvider() - pauseStartedElapsedMs).coerceAtLeast(0L)
-                    pauseStartedElapsedMs = 0L
-                }
-                val current = _sessions.value
-                val written = (current as? MicSessionState.Paused)?.bytesWritten ?: 0L
-                _sessions.value = MicSessionState.Recording(session.absolutePath, written, session.token)
+            if (active.paused.compareAndSet(true, false)) {
+                _sessions.value = MicSessionState.Recording(session.absolutePath, active.pcmBytesWritten, session.token)
             }
+            MicPauseResult.Ok
         }
-        return MicPauseResult.Ok
-    }
 
     override suspend fun addMarker(label: String): MicMarkerResult =
-        currentSession?.let { addMarker(it, label) } ?: MicMarkerResult.NotCapturing
+        synchronized(sessionLock) { activeSession?.session }?.let { addMarker(it, label) } ?: MicMarkerResult.NotCapturing
 
-    override suspend fun addMarker(session: MicSessionIdentity, label: String): MicMarkerResult {
+    override suspend fun addMarker(session: MicSessionIdentity, label: String): MicMarkerResult =
         synchronized(sessionLock) {
-            if (currentSession != session || !capturing.get()) {
+            val active = activeSession
+            if (active == null || active.session != session || !active.capturing.get()) {
                 return MicMarkerResult.NotCapturing
             }
-            val now = timeProvider()
-            val pausedExtra = if (paused.get() && pauseStartedElapsedMs > 0) {
-                (now - pauseStartedElapsedMs).coerceAtLeast(0L)
-            } else {
-                0L
-            }
-            val offsetMs = (now - startedAtElapsedMs - pausedAccumulatedMs - pausedExtra).coerceAtLeast(0L)
+            // Markers strictly follow output PCM frames written so far (independent of wall-clock jitter)
+            val offsetMs = active.recordedOffsetMs
             val marker = MicMarker(offsetMs = offsetMs, label = label)
             synchronized(markersLock) {
                 sessionMarkers.add(marker)
             }
-            return MicMarkerResult.Ok(marker)
+            MicMarkerResult.Ok(marker)
         }
-    }
 
     override suspend fun stop(): MicStopResult =
-        currentSession?.let { stop(it) } ?: MicStopResult.NotCapturing
+        synchronized(sessionLock) { activeSession?.session }?.let { stop(it) } ?: MicStopResult.NotCapturing
 
-    override suspend fun stop(session: MicSessionIdentity): MicStopResult {
+    override suspend fun stop(session: MicSessionIdentity): MicStopResult = startMutex.withLock {
         val current = _sessions.value
         if (current is MicSessionState.Stopped && current.session == session) {
             return MicStopResult.Stopped(
@@ -329,51 +389,58 @@ internal class DesktopMicCapture(
             )
         }
 
-        val worker: Thread?
-        val line: DesktopAudioLine?
+        val active = synchronized(sessionLock) {
+            activeSession?.takeIf { it.session == session && it.capturing.get() }
+        } ?: return MicStopResult.NotCapturing
 
-        synchronized(sessionLock) {
-            if (currentSession != session || !capturing.get()) {
-                return MicStopResult.NotCapturing
+        // 1. Signal capture stop and unblock any pending read
+        active.capturing.set(false)
+        active.paused.set(false)
+        runCatching { active.line.stop() }
+        runCatching { active.line.close() }
+
+        // 2. Bounded worker settlement (outside sessionLock)
+        val worker = active.workerThread
+        if (worker != null) {
+            try {
+                worker.join(5000)
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
             }
-            capturing.set(false)
-            paused.set(false)
-            worker = workerThread
-            workerThread = null
-            line = activeLine
-            activeLine = null
         }
 
-        // 1. Unblock any pending line read before waiting for worker settlement
-        line?.stop()
-        line?.close()
-
-        // 2. Bounded worker settlement (without holding sessionLock)
-        try {
-            worker?.join(5000)
-        } catch (_: InterruptedException) {
-            Thread.currentThread().interrupt()
-        }
-
-        // 3. Ensure worker did not time out
+        // 3. If worker did not terminate, RETAIN ownership: do not clear activeSession
         if (worker?.isAlive == true) {
-            val fail = MicSessionState.Failed("Microphone worker settlement timed out", false, session)
-            _sessions.value = fail
-            _failures.value = fail.message
-            return MicStopResult.Failed(fail.message)
+            val failMsg = "Microphone worker settlement timed out after 5000ms"
+            val failState = MicSessionState.Failed(failMsg, permissionRequired = false, session = session)
+            _sessions.value = failState
+            _failures.value = failMsg
+            return MicStopResult.Failed(failMsg)
         }
 
-        // 4. File writes are guaranteed finished. Finalize WAV header via WavWriter.recoverOrFinalize
-        val path = session.absolutePath
-        val recovered = WavWriter.recoverOrFinalize(path, 16_000)
+        active.settled.set(true)
+
+        // 4. File writes are settled. Finalize WAV header
+        val recovered = try {
+            WavWriter.recoverOrFinalize(session.absolutePath, 16_000)
+        } catch (_: Exception) {
+            null
+        }
+
         if (recovered == null) {
-            val fail = MicSessionState.Failed("Failed to finalize recording WAV", false, session)
-            _sessions.value = fail
-            _failures.value = fail.message
-            return MicStopResult.Failed(fail.message)
+            val failMsg = "Failed to finalize recording WAV header"
+            val failState = MicSessionState.Failed(failMsg, permissionRequired = false, session = session)
+            _sessions.value = failState
+            _failures.value = failMsg
+            active.closeResources()
+            synchronized(sessionLock) { activeSession = null }
+            return MicStopResult.Failed(failMsg)
         }
 
+        // 5. Successful stop
+        active.closeResources()
         synchronized(sessionLock) {
+            activeSession = null
             val stopped = MicSessionState.Stopped(
                 absolutePath = recovered.absolutePath,
                 durationSeconds = recovered.durationSeconds,
@@ -381,9 +448,6 @@ internal class DesktopMicCapture(
                 token = session.token,
             )
             _sessions.value = stopped
-            pcmListener = null
-            currentSession = null
-            outputFile = null
         }
 
         return MicStopResult.Stopped(

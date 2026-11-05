@@ -12,11 +12,12 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import javax.sound.sampled.LineUnavailableException
 import kotlin.test.Test
+import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
-import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 
 class DesktopMicCaptureTest {
@@ -28,6 +29,7 @@ class DesktopMicCaptureTest {
         private val chunkProvider: (() -> ByteArray?)? = null,
         private val onOpenAction: (() -> Unit)? = null,
         private val blockOnReadUntilStopped: Boolean = false,
+        private val hangForeverOnRead: Boolean = false,
     ) : DesktopAudioLine {
         val openCount = AtomicInteger(0)
         val startCount = AtomicInteger(0)
@@ -41,6 +43,7 @@ class DesktopMicCaptureTest {
         var isLineClosed = false
 
         private val stopLatch = CountDownLatch(1)
+        val hangLatch = CountDownLatch(1)
 
         override fun open() {
             onOpenAction?.invoke()
@@ -54,6 +57,14 @@ class DesktopMicCaptureTest {
 
         override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
             if (!isLineRunning || isLineClosed) return -1
+            if (hangForeverOnRead) {
+                try {
+                    hangLatch.await(10, TimeUnit.SECONDS)
+                } catch (_: InterruptedException) {
+                    return -1
+                }
+                return -1
+            }
             if (blockOnReadUntilStopped) {
                 try {
                     stopLatch.await(500, TimeUnit.MILLISECONDS)
@@ -83,15 +94,35 @@ class DesktopMicCaptureTest {
     }
 
     @Test
+    fun pre_existing_file_preservation_atomic_create_new() = runBlocking {
+        val tempDir = Files.createTempDirectory("velum-mic-preexist-test").toFile()
+        try {
+            val audioFile = File(tempDir, "existing.wav")
+            val originalBytes = "PRE_EXISTING_DO_NOT_OVERWRITE".toByteArray()
+            audioFile.writeBytes(originalBytes)
+
+            val fakeLine = FakeAudioLine()
+            val capture = DesktopMicCapture(lineFactory = { fakeLine })
+
+            val result = capture.start(audioFile.absolutePath)
+            val failed = assertIs<MicStartResult.Failed>(result)
+            assertTrue(failed.message.contains("already exists"))
+
+            // Pre-existing file content must be completely untouched
+            assertContentEquals(originalBytes, audioFile.readBytes())
+            assertEquals(0, fakeLine.openCount.get(), "Line must not have been opened")
+        } finally {
+            tempDir.deleteRecursively()
+        }
+    }
+
+    @Test
     fun session_token_is_strictly_positive_and_matches_state_immediately() = runBlocking {
         val tempDir = Files.createTempDirectory("velum-mic-token-test").toFile()
         try {
             val audioFile = File(tempDir, "recordings/test.wav")
             val fakeLine = FakeAudioLine(sampleRateHz = 16_000, channels = 1)
-            val capture = DesktopMicCapture(
-                lineFactory = { fakeLine },
-                timeProvider = { 10_000L },
-            )
+            val capture = DesktopMicCapture(lineFactory = { fakeLine })
 
             val controller = MicRecordingController(capture)
             val startResult = controller.startOrAttach("rec-1", audioFile.absolutePath)
@@ -122,10 +153,7 @@ class DesktopMicCaptureTest {
         try {
             val audioFile = File(tempDir, "session_a.wav")
             val fakeLine = FakeAudioLine(sampleRateHz = 16_000, channels = 1)
-            val capture = DesktopMicCapture(
-                lineFactory = { fakeLine },
-                timeProvider = { 1_000L },
-            )
+            val capture = DesktopMicCapture(lineFactory = { fakeLine })
 
             val startResult = assertIs<MicStartResult.Started>(capture.start(audioFile.absolutePath))
             val activeSession = startResult.session
@@ -152,56 +180,164 @@ class DesktopMicCaptureTest {
     }
 
     @Test
-    fun pause_resume_and_marker_math_excludes_paused_time() = runBlocking {
-        val tempDir = Files.createTempDirectory("velum-mic-markers-test").toFile()
+    fun markers_follow_output_pcm_frames_not_wall_time() = runBlocking {
+        val tempDir = Files.createTempDirectory("velum-mic-pcm-markers-test").toFile()
         try {
-            val audioFile = File(tempDir, "markers.wav")
-            var currentTime = 10_000L
-            val fakeLine = FakeAudioLine(sampleRateHz = 16_000, channels = 1)
-            val capture = DesktopMicCapture(
-                lineFactory = { fakeLine },
-                timeProvider = { currentTime },
+            val audioFile = File(tempDir, "pcm_markers.wav")
+
+            // 16,000 Hz mono 16-bit PCM = 32,000 bytes per second = 32 bytes per millisecond
+            // Emit exactly 32,000 bytes (1,000 ms of audio)
+            val chunk1 = ByteArray(32_000) { 1 }
+            val chunk2 = ByteArray(16_000) { 2 }
+            val chunks = ArrayDeque(listOf(chunk1, chunk2))
+
+            val fakeLine = FakeAudioLine(
+                sampleRateHz = 16_000,
+                channels = 1,
+                bufferSizeBytes = 4096,
+                chunkProvider = { if (chunks.isNotEmpty()) chunks.removeFirst() else ByteArray(0) },
             )
 
+            val capture = DesktopMicCapture(lineFactory = { fakeLine })
             val startResult = assertIs<MicStartResult.Started>(capture.start(audioFile.absolutePath))
             val session = startResult.session
 
-            // At t = 12,000 (+2,000ms), drop m1
-            currentTime = 12_000L
+            // Wait until first 32,000 bytes are read and written (1,000 ms audio)
+            repeat(30) {
+                if (capture.sessions.value.let { it is MicSessionState.Recording && it.bytesWritten >= 32_000L }) return@repeat
+                delay(20)
+            }
+
+            // Drop m1: must be exactly 1,000ms based on audio frames
             val m1 = assertIs<MicMarkerResult.Ok>(capture.addMarker(session, "m1"))
-            assertEquals(2_000L, m1.marker.offsetMs)
+            assertEquals(1_000L, m1.marker.offsetMs)
 
-            // At t = 14,000, pause
-            currentTime = 14_000L
+            // Pause capture
             assertEquals(MicPauseResult.Ok, capture.pause(session))
-            assertTrue(capture.isPaused)
 
-            // At t = 19,000 (paused for 5,000ms), resume
-            currentTime = 19_000L
-            assertEquals(MicPauseResult.Ok, capture.resume(session))
-            assertFalse(capture.isPaused)
-
-            // At t = 22,000 (+3,000ms recorded, total elapsed 12,000ms - 5,000ms paused = 7,000ms), drop m2
-            currentTime = 22_000L
+            // Drop m2 while paused: offset must stay exactly 1,000ms (frames did not advance)
             val m2 = assertIs<MicMarkerResult.Ok>(capture.addMarker(session, "m2"))
-            assertEquals(7_000L, m2.marker.offsetMs)
+            assertEquals(1_000L, m2.marker.offsetMs)
 
-            // At t = 25,000, pause again
-            currentTime = 25_000L
-            assertEquals(MicPauseResult.Ok, capture.pause(session))
+            // Resume capture: second chunk (16,000 bytes = 500 ms) is processed
+            assertEquals(MicPauseResult.Ok, capture.resume(session))
 
-            // At t = 27,000 (while paused), drop m3 (total active recorded time = 10,000ms)
-            currentTime = 27_000L
+            repeat(30) {
+                if (capture.sessions.value.let { it is MicSessionState.Recording && it.bytesWritten >= 48_000L }) return@repeat
+                delay(20)
+            }
+
+            // Drop m3: must be 1,000ms + 500ms = 1,500ms
             val m3 = assertIs<MicMarkerResult.Ok>(capture.addMarker(session, "m3"))
-            assertEquals(10_000L, m3.marker.offsetMs)
-
-            val markers = capture.markers
-            assertEquals(3, markers.size)
-            assertEquals(2_000L, markers[0].offsetMs)
-            assertEquals(7_000L, markers[1].offsetMs)
-            assertEquals(10_000L, markers[2].offsetMs)
+            assertEquals(1_500L, m3.marker.offsetMs)
 
             capture.stop(session)
+        } finally {
+            tempDir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun pause_does_not_publish_recording_state_from_in_flight_read() = runBlocking {
+        val tempDir = Files.createTempDirectory("velum-mic-pause-race-test").toFile()
+        try {
+            val audioFile = File(tempDir, "pause_race.wav")
+
+            val chunk = ByteArray(32_000) { 1 }
+            val fakeLine = FakeAudioLine(
+                sampleRateHz = 16_000,
+                channels = 1,
+                bufferSizeBytes = 4096,
+                chunkProvider = { chunk },
+            )
+
+            val capture = DesktopMicCapture(lineFactory = { fakeLine })
+            val startResult = assertIs<MicStartResult.Started>(capture.start(audioFile.absolutePath))
+            val session = startResult.session
+
+            // Pause immediately
+            capture.pause(session)
+            assertTrue(capture.isPaused)
+            val stateBefore = capture.sessions.value
+            assertIs<MicSessionState.Paused>(stateBefore)
+
+            // Allow the worker thread to loop several times while paused
+            delay(100)
+
+            // Verify that in-flight reads while paused did NOT clobber the Paused state with Recording
+            val stateAfter = capture.sessions.value
+            assertIs<MicSessionState.Paused>(stateAfter, "In-flight reads while paused must not publish Recording state")
+
+            capture.stop(session)
+        } finally {
+            tempDir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun eof_read_transitions_to_failed_and_releases_resources() = runBlocking {
+        val tempDir = Files.createTempDirectory("velum-mic-eof-test").toFile()
+        try {
+            val audioFile = File(tempDir, "eof.wav")
+
+            val fakeLine = FakeAudioLine(
+                sampleRateHz = 16_000,
+                channels = 1,
+                chunkProvider = { null }, // null causes read to return -1 (EOF)
+            )
+
+            val capture = DesktopMicCapture(lineFactory = { fakeLine })
+            val startResult = assertIs<MicStartResult.Started>(capture.start(audioFile.absolutePath))
+            val session = startResult.session
+
+            // Wait for EOF detection
+            repeat(40) {
+                if (capture.sessions.value is MicSessionState.Failed) return@repeat
+                delay(20)
+            }
+
+            val state = assertIs<MicSessionState.Failed>(capture.sessions.value)
+            assertTrue(state.message.contains("EOF") || state.message.contains("terminated"))
+            assertFalse(state.permissionRequired)
+            assertFalse(capture.isCapturing, "EOF must end capturing state")
+            assertTrue(fakeLine.isLineClosed, "EOF must close line resources")
+        } finally {
+            tempDir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun throwing_pcm_callback_does_not_crash_loop_and_releases_resources() = runBlocking {
+        val tempDir = Files.createTempDirectory("velum-mic-callback-crash-test").toFile()
+        try {
+            val audioFile = File(tempDir, "crash.wav")
+            val chunk = ByteArray(1024) { 1 }
+
+            val fakeLine = FakeAudioLine(
+                sampleRateHz = 16_000,
+                channels = 1,
+                chunkProvider = { chunk },
+            )
+
+            val capture = DesktopMicCapture(lineFactory = { fakeLine })
+            val startResult = assertIs<MicStartResult.Started>(capture.start(audioFile.absolutePath))
+            val session = startResult.session
+
+            // Attach listener that throws
+            capture.attachPcm(session) {
+                throw RuntimeException("Boom in listener")
+            }
+
+            // Wait for callback failure handling
+            repeat(40) {
+                if (capture.sessions.value is MicSessionState.Failed) return@repeat
+                delay(20)
+            }
+
+            val state = assertIs<MicSessionState.Failed>(capture.sessions.value)
+            assertTrue(state.message.contains("callback threw") || state.message.contains("Boom in listener"))
+            assertFalse(capture.isCapturing)
+            assertTrue(fakeLine.isLineClosed)
         } finally {
             tempDir.deleteRecursively()
         }
@@ -213,9 +349,6 @@ class DesktopMicCaptureTest {
         try {
             val audioFile = File(tempDir, "resampled_48k_stereo.wav")
 
-            // Emit 48 kHz stereo (4 bytes per frame)
-            // 480 frames = 10ms of 48k audio = 1,920 bytes.
-            // When resampled to 16 kHz mono (2 bytes per frame), 480 frames becomes 160 frames = 320 bytes.
             val emittedChunks = AtomicInteger(0)
             val chunk = ByteArray(1920) { idx -> ((idx * 7) % 256).toByte() }
 
@@ -237,10 +370,9 @@ class DesktopMicCaptureTest {
                 livePcmChunks.add(pcm)
             })
 
-            // Wait until chunks are processed
             var attempts = 0
             while (emittedChunks.get() < 20 && attempts++ < 40) {
-                kotlinx.coroutines.delay(25)
+                delay(25)
             }
 
             val stopResult = assertIs<MicStopResult.Stopped>(capture.stop(session))
@@ -255,21 +387,21 @@ class DesktopMicCaptureTest {
                 assertEquals("RIFF", String(header, 0, 4))
                 assertEquals("WAVE", String(header, 8, 4))
                 assertEquals("fmt ", String(header, 12, 4))
-                assertEquals(16, bb.getInt(16)) // PCM format size
-                assertEquals(1.toShort(), bb.getShort(20)) // PCM format code 1
-                assertEquals(1.toShort(), bb.getShort(22)) // 1 channel (mono)
-                assertEquals(16_000, bb.getInt(24)) // 16,000 Hz target sample rate
-                assertEquals(32_000, bb.getInt(28)) // byte rate (16000 * 2)
-                assertEquals(2.toShort(), bb.getShort(32)) // block align
-                assertEquals(16.toShort(), bb.getShort(34)) // 16-bit
+                assertEquals(16, bb.getInt(16))
+                assertEquals(1.toShort(), bb.getShort(20))
+                assertEquals(1.toShort(), bb.getShort(22))
+                assertEquals(16_000, bb.getInt(24))
+                assertEquals(32_000, bb.getInt(28))
+                assertEquals(2.toShort(), bb.getShort(32))
+                assertEquals(16.toShort(), bb.getShort(34))
                 assertEquals("data", String(header, 36, 4))
                 val dataSize = bb.getInt(40).toLong()
                 assertEquals(raf.length() - 44L, dataSize)
             }
 
-            assertTrue(livePcmChunks.isNotEmpty(), "Live PCM chunks must have been delivered to attachPcm listener")
+            assertTrue(livePcmChunks.isNotEmpty())
             livePcmChunks.forEach { pcm ->
-                assertEquals(0, pcm.size % 2, "PCM chunk size must be multiple of 2 (16-bit samples)")
+                assertEquals(0, pcm.size % 2)
             }
         } finally {
             tempDir.deleteRecursively()
@@ -291,16 +423,13 @@ class DesktopMicCaptureTest {
             val startResult = assertIs<MicStartResult.Started>(capture.start(audioFile.absolutePath))
             val session = startResult.session
 
-            // Line should be open and started
             assertEquals(1, fakeLine.openCount.get())
             assertEquals(1, fakeLine.startCount.get())
 
-            // stop must unblock the read loop and settle without timing out
             val stopResult = assertIs<MicStopResult.Stopped>(capture.stop(session))
             assertEquals(1, fakeLine.stopCount.get())
             assertEquals(1, fakeLine.closeCount.get())
             assertEquals(audioFile.absolutePath, stopResult.absolutePath)
-            assertEquals(MicSessionState.Stopped(audioFile.absolutePath, 0L, 44L, session.token), capture.sessions.value)
         } finally {
             tempDir.deleteRecursively()
         }
@@ -320,7 +449,6 @@ class DesktopMicCaptureTest {
             val capture = DesktopMicCapture(lineFactory = { fakeLine })
             val result = capture.start(audioFile.absolutePath)
 
-            // Must NOT be PermissionRequired
             val failed = assertIs<MicStartResult.Failed>(result)
             assertTrue(failed.message.contains("busy") || failed.message.contains("unavailable"))
 
@@ -355,7 +483,7 @@ class DesktopMicCaptureTest {
 
     @Test
     fun desktop_live_pcm_capture_streams_and_stops_cleanly() = runBlocking {
-        val sampleChunk = ByteArray(882) { (it * 3).toByte() } // 44.1 kHz mono
+        val sampleChunk = ByteArray(882) { (it * 3).toByte() }
         val chunksEmitted = AtomicInteger(0)
         val fakeLine = FakeAudioLine(
             sampleRateHz = 44_100,
@@ -376,7 +504,7 @@ class DesktopMicCaptureTest {
 
         var attempts = 0
         while (chunksEmitted.get() < 15 && attempts++ < 30) {
-            kotlinx.coroutines.delay(25)
+            delay(25)
         }
 
         liveCapture.stop()

@@ -28,54 +28,77 @@ internal fun interface DesktopAudioLineFactory {
 }
 
 internal object JavaSoundAudioLineFactory : DesktopAudioLineFactory {
-    override fun createLine(inputSource: MicInputSource): DesktopAudioLine {
-        // Velum canonical recording format: 16,000 Hz, 16-bit signed little-endian mono
-        val targetFormat = AudioFormat(16_000f, 16, 1, true, false)
-        val targetInfo = DataLine.Info(TargetDataLine::class.java, targetFormat)
 
-        val line: TargetDataLine = if (AudioSystem.isLineSupported(targetInfo)) {
-            val candidate = AudioSystem.getLine(targetInfo) as TargetDataLine
-            try {
-                val bufferSize = (16_000 * 2 / 5).coerceAtLeast(4096) // ~200ms
-                candidate.open(targetFormat, bufferSize)
-                candidate
-            } catch (unavailable: LineUnavailableException) {
-                openFallbackLine() ?: throw unavailable
-            }
-        } else {
-            openFallbackLine() ?: throw LineUnavailableException("No supported audio capture line found")
-        }
-
-        return JavaSoundDesktopAudioLine(line)
+    private fun isValidPcm16Le(format: AudioFormat): Boolean {
+        return format.encoding == AudioFormat.Encoding.PCM_SIGNED &&
+            format.sampleSizeInBits == 16 &&
+            !format.isBigEndian &&
+            format.channels in 1..2 &&
+            format.sampleRate >= 8000f
     }
 
-    private fun openFallbackLine(): TargetDataLine? {
-        val genericInfo = DataLine.Info(TargetDataLine::class.java, null as AudioFormat?)
-        if (!AudioSystem.isLineSupported(genericInfo)) return null
-        val line = AudioSystem.getLine(genericInfo) as TargetDataLine
+    override fun createLine(inputSource: MicInputSource): DesktopAudioLine {
+        // Explicitly validated 16-bit signed little-endian PCM formats only
+        val candidateFormats = listOf(
+            AudioFormat(16_000f, 16, 1, true, false),
+            AudioFormat(48_000f, 16, 2, true, false),
+            AudioFormat(44_100f, 16, 2, true, false),
+            AudioFormat(48_000f, 16, 1, true, false),
+            AudioFormat(44_100f, 16, 1, true, false),
+            AudioFormat(32_000f, 16, 1, true, false),
+            AudioFormat(24_000f, 16, 1, true, false),
+            AudioFormat(16_000f, 16, 2, true, false),
+            AudioFormat(8_000f, 16, 1, true, false),
+        )
 
-        // Try line's native format first
-        try {
-            line.open()
-            return line
-        } catch (_: Exception) {
-            // Try standard hardware rates in priority order
-            val fallbackFormats = listOf(
-                AudioFormat(48_000f, 16, 2, true, false),
-                AudioFormat(44_100f, 16, 2, true, false),
-                AudioFormat(48_000f, 16, 1, true, false),
-                AudioFormat(44_100f, 16, 1, true, false),
-            )
-            for (fmt in fallbackFormats) {
-                try {
-                    val bufSize = (fmt.sampleRate.toInt() * fmt.channels * 2 / 5).coerceAtLeast(4096)
-                    line.open(fmt, bufSize)
-                    return line
-                } catch (_: Exception) {
+        var lastError: Exception? = null
+
+        // 1. Try candidates on explicit format Info
+        for (fmt in candidateFormats) {
+            val info = DataLine.Info(TargetDataLine::class.java, fmt)
+            if (!AudioSystem.isLineSupported(info)) continue
+
+            var candidate: TargetDataLine? = null
+            try {
+                candidate = AudioSystem.getLine(info) as TargetDataLine
+                val bufferSize = (fmt.sampleRate.toInt() * fmt.channels * 2 / 5).coerceAtLeast(4096)
+                candidate.open(fmt, bufferSize)
+                if (isValidPcm16Le(candidate.format)) {
+                    return JavaSoundDesktopAudioLine(candidate)
                 }
+                // Close immediately if opened format is unexpected
+                candidate.close()
+            } catch (e: Exception) {
+                lastError = e
+                runCatching { candidate?.close() }
             }
         }
-        return null
+
+        // 2. Try candidates on generic TargetDataLine if supported
+        val genericInfo = DataLine.Info(TargetDataLine::class.java, null as AudioFormat?)
+        if (AudioSystem.isLineSupported(genericInfo)) {
+            var genericLine: TargetDataLine? = null
+            try {
+                genericLine = AudioSystem.getLine(genericInfo) as TargetDataLine
+                for (fmt in candidateFormats) {
+                    try {
+                        val bufferSize = (fmt.sampleRate.toInt() * fmt.channels * 2 / 5).coerceAtLeast(4096)
+                        genericLine.open(fmt, bufferSize)
+                        if (isValidPcm16Le(genericLine.format)) {
+                            return JavaSoundDesktopAudioLine(genericLine)
+                        }
+                        genericLine.close()
+                    } catch (_: Exception) {
+                        runCatching { genericLine.close() }
+                    }
+                }
+            } catch (e: Exception) {
+                lastError = e
+                runCatching { genericLine?.close() }
+            }
+        }
+
+        throw lastError ?: LineUnavailableException("No supported 16-bit signed little-endian audio capture line found")
     }
 }
 
