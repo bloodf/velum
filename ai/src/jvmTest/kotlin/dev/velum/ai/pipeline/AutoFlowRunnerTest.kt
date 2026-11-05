@@ -979,6 +979,21 @@ class AutoFlowRunnerTest {
     }
 
     @Test
+    fun calendarTitleMatchesWakePhraseInSamePass() = runTest {
+        val f = Fixture(this, rule = rule().copy(wake_phrase = "planning"))
+        f.lookup = { CalendarLookupResult.Ok(CalendarEventSummary("Planning", 0, Long.MAX_VALUE)) }
+        f.start()
+        val seedPass = f.runner.passIndex.value
+        f.enqueue = { id ->
+            assertEquals(seedPass, f.runner.passIndex.value, "match must happen before the next emission is processed")
+            assertEquals("Planning", f.row(id).title)
+            f.complete(id)
+        }
+        f.publish(recording("calendar-match", status = "queued"))
+        assertEquals(listOf("calendar-match"), f.enqueued)
+    }
+
+    @Test
     fun calendarRenamesProductionDefaultTitlesInBothLocales_andKeepsEditedTitles() = runTest {
         val f = Fixture(this)
         f.lookup = { CalendarLookupResult.Ok(CalendarEventSummary("Planning", 0, Long.MAX_VALUE)) }
