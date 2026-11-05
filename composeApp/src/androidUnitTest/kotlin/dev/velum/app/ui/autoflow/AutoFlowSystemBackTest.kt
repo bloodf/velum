@@ -2,6 +2,7 @@ package dev.velum.app.ui.autoflow
 
 import android.content.Context
 import androidx.activity.ComponentActivity
+import androidx.activity.ComponentDialog
 import androidx.activity.compose.setContent
 import androidx.compose.material3.Text
 import androidx.compose.runtime.CompositionLocalProvider
@@ -28,14 +29,18 @@ import dev.velum.core.security.InMemorySecureStore
 import java.nio.file.Files
 import kotlinx.coroutines.runBlocking
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
+import org.robolectric.shadows.ShadowDialog
 
 @RunWith(AndroidJUnit4::class)
 @Config(application = android.app.Application::class, sdk = [34], qualifiers = "w360dp-h2400dp-xxhdpi")
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
 class AutoFlowSystemBackTest {
     @get:Rule val compose = createEmptyComposeRule()
 
@@ -81,6 +86,15 @@ class AutoFlowSystemBackTest {
         compose.waitForIdle()
     }
 
+    private fun modalBack() {
+        val dialog = ShadowDialog.getLatestDialog()
+        assertTrue(dialog is ComponentDialog)
+        assertEquals("androidx.compose.material3.ModalBottomSheetDialogWrapper", dialog.javaClass.name)
+        assertTrue(dialog.isShowing)
+        compose.runOnUiThread { dialog.onBackPressedDispatcher.onBackPressed() }
+        compose.waitUntil(20_000) { !dialog.isShowing }
+    }
+
     private fun dirty() {
         compose.onNode(hasText("Synthetic flow") and hasSetTextAction()).performTextReplacement("Edited flow")
     }
@@ -94,7 +108,7 @@ class AutoFlowSystemBackTest {
         dirty()
         back(activity)
         compose.onNodeWithContentDescription(En.discard).assertExists()
-        back(activity)
+        modalBack()
         compose.onNodeWithContentDescription(En.discard).assertDoesNotExist()
         compose.onNode(hasText("Edited flow") and hasSetTextAction()).assertExists()
         back(activity)
@@ -107,7 +121,7 @@ class AutoFlowSystemBackTest {
         dirty()
         compose.onAllNodesWithText(En.edit)[0].performClick()
         compose.onNode(hasText("original") and hasSetTextAction()).performTextReplacement("sheet draft")
-        back(activity)
+        modalBack()
         compose.onNode(hasText("Edited flow") and hasSetTextAction()).assertExists()
         compose.onNodeWithContentDescription(En.discard).assertDoesNotExist()
         back(activity)
