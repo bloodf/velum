@@ -76,7 +76,10 @@ class AutoFlowDoSheetReachabilityTest {
             fun choose(label: String) = compose.onNode(hasText(label) and hasClickAction()).performScrollTo().assertIsDisplayed().performClick()
 
             openDo()
-            repeat(12) { reach("Synthetic template %02d".format(it)) }
+            repeat(12) {
+                compose.onNode(hasText("Synthetic template %02d".format(it)) and hasClickAction())
+                    .performScrollTo().assertIsDisplayed()
+            }
             reach(En.autoSpeakerLabel)
             listOf(En.automatic, En.languagePtBr, En.languageEn, En.postActionNone, En.postActionShare,
                 En.postActionCalendar, En.postActionFolderExport, En.postActionWebhook,
