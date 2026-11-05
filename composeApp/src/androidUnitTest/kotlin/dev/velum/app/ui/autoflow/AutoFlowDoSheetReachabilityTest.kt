@@ -107,7 +107,7 @@ class AutoFlowDoSheetReachabilityTest {
             openDo()
             choose(En.languagePtBr)
             action(En.done)
-            compose.onNodeWithText(En.languagePtBr).assertExists()
+            compose.onNode(hasText(En.languagePtBr) and !inSheet).assertExists()
             compose.onNodeWithText(En.save).performClick()
             compose.waitUntil(20_000) {
                 saves.get() == 2 && compose.onAllNodesWithText(En.edit).fetchSemanticsNodes().isEmpty()
