@@ -195,7 +195,11 @@ private fun VelumRoot(container: AppContainer) {
         if (loaded == dev.velum.core.settings.SettingsLoadState.Ready &&
             container.settingsRepository.preferences.value.autoSyncWatchedFolders
         ) {
-            runCatching { syncWatchedFolders(importPipeline) }
+            runCatching { syncWatchedFolders(importPipeline) }.getOrNull()?.let { results ->
+                if (results.any { it is ImportResult.InTrash }) {
+                    snackbar.showSnackbar(strings.added.importMatchInTrash)
+                }
+            }
         }
     }
     ModelDownloadNotification(container)
@@ -236,6 +240,7 @@ private fun VelumRoot(container: AppContainer) {
                 is ImportResult.Failed -> {
                     snackbar.showSnackbar(strings.ux.genericError)
                 }
+                is ImportResult.InTrash -> snackbar.showSnackbar(strings.added.importMatchInTrash)
                 is ImportResult.Deleted -> Unit // watched-folder sync only
             }
         }
@@ -260,6 +265,7 @@ private fun VelumRoot(container: AppContainer) {
                     is ImportResult.Created -> snackbar.showSnackbar(strings.ux.imported)
                     is ImportResult.Duplicate -> snackbar.showSnackbar(strings.ux.importDuplicate)
                     is ImportResult.Failed -> snackbar.showSnackbar(strings.ux.genericError)
+                    is ImportResult.InTrash -> snackbar.showSnackbar(strings.added.importMatchInTrash)
                     is ImportResult.Deleted -> Unit
                 }
                 return
@@ -271,6 +277,7 @@ private fun VelumRoot(container: AppContainer) {
                     navController.navigate(Routes.recording(result.existingRecordingId))
                 }
                 is ImportResult.Failed -> snackbar.showSnackbar(strings.ux.genericError)
+                is ImportResult.InTrash -> snackbar.showSnackbar(strings.added.importMatchInTrash)
                 is ImportResult.Deleted -> Unit // watched-folder sync only
             }
         }
