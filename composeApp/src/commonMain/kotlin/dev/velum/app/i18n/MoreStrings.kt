@@ -23,4 +23,5 @@ data class MoreStrings(
     val voiceProfilesExportCopy: String,
     val voiceProfilesExportCopied: String,
     val voiceProfilesExportCopyFailed: String,
+    val noSpeakers: String,
 )

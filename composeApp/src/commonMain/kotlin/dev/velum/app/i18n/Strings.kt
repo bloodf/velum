@@ -1256,6 +1256,7 @@ val PtBr = Strings(
         voiceProfilesExportCopy = "Copiar backup criptografado",
         voiceProfilesExportCopied = "Backup criptografado copiado. Cole o texto em Importar para restaurar os perfis.",
         voiceProfilesExportCopyFailed = "Não foi possível copiar o backup. Tente de novo.",
+        noSpeakers = "Nenhum orador nesta gravação.",
     ),
 )
 
@@ -1882,6 +1883,7 @@ val En = Strings(
         voiceProfilesExportCopy = "Copy encrypted backup",
         voiceProfilesExportCopied = "Encrypted backup copied. Paste the text into Import to restore the profiles.",
         voiceProfilesExportCopyFailed = "The backup could not be copied. Try again.",
+        noSpeakers = "No speakers in this recording.",
     ),
 )
 

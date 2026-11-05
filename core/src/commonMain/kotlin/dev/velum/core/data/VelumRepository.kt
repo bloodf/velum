@@ -1285,6 +1285,7 @@ class VelumRepository(
                 .replace("**${target.label}**", "**$displayName**")
             if (updated != transcript) {
                 q.updateTranscript(updated, recordingId)
+                tryIndex { reindexRecording(recordingId) }
             }
         }
     }

@@ -682,9 +682,8 @@ fun RecordingDetailScreen(
                                 shown = shown,
                                 current = { container.repository.getSpeakers(recordingId) },
                                 renames = renames,
+                                strings = strings,
                                 enrol = { row, trimmed ->
-                                // Only a name the user actually changed counts: the sheet hands back every row.
-                                val changed = speakerNameChanged(row.display_name, row.label, trimmed, strings)
                                 var cacheMissed = false
                                 // The name is already saved; a voice that cannot be enrolled is reported like a missing sample.
                                 try {
@@ -712,7 +711,7 @@ fun RecordingDetailScreen(
                                 } catch (_: Exception) {
                                     cacheMissed = true
                                 }
-                                if (cacheMissed && changed) processError = strings.ux.voiceProfilesNoCachedVoice
+                                if (cacheMissed) processError = strings.ux.voiceProfilesNoCachedVoice
                                 },
                                 rename = { row, trimmed -> container.repository.renameSpeakerIfUnchanged(recordingId, row, trimmed) },
                             )
@@ -2101,12 +2100,7 @@ fun SpeakerLabelSheetContent(
         val n = label.trimStart('S', 's').toIntOrNull() ?: 1
         return strings.ux.speakerLabel.replace("%d", n.toString())
     }
-    val rows = speakers.ifEmpty {
-        listOf(
-            SpeakerLabelRow("demo-1", "S1", defaultSpeakerName("S1"), 312),
-            SpeakerLabelRow("demo-2", "S2", defaultSpeakerName("S2"), 220),
-        )
-    }
+    val rows = speakers
     var names by remember(rows, strings.localeTag) {
         mutableStateOf(
             rows.associate { row ->
@@ -2165,12 +2159,12 @@ fun SpeakerLabelSheetContent(
             }
         }
         Text(
-            strings.speakersUpdateNote,
+            if (rows.isEmpty()) strings.added.noSpeakers else strings.speakersUpdateNote,
             color = VelumInkSecondary,
             fontSize = 12.sp,
             modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
         )
-        DualActionRow(strings.cancel, strings.confirm, onClose, { onConfirm(names) })
+        DualActionRow(strings.cancel, strings.confirm, onClose, { onConfirm(names) }, rightEnabled = rows.isNotEmpty())
     }
 }
 
