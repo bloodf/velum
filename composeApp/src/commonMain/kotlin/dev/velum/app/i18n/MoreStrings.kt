@@ -20,4 +20,6 @@ data class MoreStrings(
     val processingFailedWavNoData: String,
     val deleteForeverFailed: String,
     val speakersChangedWhileOpen: String,
+    val voiceProfilesExportCopy: String,
+    val voiceProfilesExportCopied: String,
 )

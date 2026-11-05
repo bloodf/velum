@@ -43,6 +43,7 @@ import dev.velum.ai.local.VoiceProfileReadProblem
 import dev.velum.core.security.SecureStoreUnavailableException
 import dev.velum.ai.local.VoiceProfile
 import dev.velum.app.di.AppContainer
+import dev.velum.app.export.copyToClipboard
 import dev.velum.app.i18n.LocalStrings
 import dev.velum.app.i18n.Strings
 import dev.velum.app.ui.components.BlackButton
@@ -75,6 +76,9 @@ fun VoiceProfilesScreen(
     var selected by remember { mutableStateOf<VoiceProfile?>(null) }
     var status by remember { mutableStateOf<String?>(null) }
     var exportText by remember { mutableStateOf<String?>(null) }
+    // The copy confirmation sits next to the button that copies, not in the status line at the bottom of the
+    // screen: the user has just pressed the button and must not have to scroll to learn whether it worked.
+    var exportCopied by remember { mutableStateOf(false) }
     var importDraft by remember { mutableStateOf("") }
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showWipeConfirm by remember { mutableStateOf(false) }
@@ -253,9 +257,11 @@ fun VoiceProfilesScreen(
                         launchAction {
                             if (profiles.isEmpty()) {
                                 exportText = null
+                                exportCopied = false
                                 status = strings.ux.voiceProfilesExportEmpty
                             } else {
                                 exportText = container.voiceProfileStore.withReady { exportEncrypted() }
+                                exportCopied = false
                                 status = strings.ux.voiceProfilesExportReady
                             }
                         }
@@ -266,11 +272,30 @@ fun VoiceProfilesScreen(
                 if (loaded && unreadable.isNotEmpty()) {
                     Text(strings.ux.voiceProfilesExportBlocked, color = VelumInkSecondary, fontSize = 12.sp)
                 }
-                Spacer(Modifier.height(8.dp))
-                exportText?.let {
-                    Text(it.take(400) + if (it.length > 400) "…" else "", color = VelumInkSecondary, fontSize = 11.sp)
+                exportText?.let { payload ->
+                    // A backup the user cannot take out of the app is not a backup. This used to render only the
+                    // first 400 characters of the export in a plain Text (nothing to select, nothing to copy), so a
+                    // normal profile set could never be recovered (#107 finding 2a). The whole export is now
+                    // delivered by an explicit action: one press copies the complete encrypted payload.
                     Spacer(Modifier.height(8.dp))
+                    OutlineButton(
+                        strings.added.voiceProfilesExportCopy,
+                        {
+                            copyToClipboard(payload)
+                            exportCopied = true
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    if (exportCopied) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            strings.added.voiceProfilesExportCopied,
+                            color = VelumInkSecondary,
+                            fontSize = 13.sp,
+                        )
+                    }
                 }
+                Spacer(Modifier.height(8.dp))
                 Text(strings.ux.voiceProfilesImportTitle, fontWeight = FontWeight.SemiBold, color = VelumInk)
                 Spacer(Modifier.height(6.dp))
                 BasicTextField(
