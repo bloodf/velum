@@ -16,8 +16,7 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performSemanticsAction
-import androidx.compose.ui.test.performTextClearance
-import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextReplacement
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import dev.velum.ai.local.ModelStoreDir
@@ -52,9 +51,7 @@ class AutoFlowSheetCancelTest {
         click(nodes[nodes.fetchSemanticsNodes().lastIndex])
     }
     private fun replaceText(old: String, new: String) {
-        val field = compose.onNode(hasText(old) and hasSetTextAction())
-        field.performTextClearance()
-        field.performTextInput(new)
+        compose.onNode(hasText(old) and hasSetTextAction()).performTextReplacement(new)
     }
     private fun save() = click(compose.onNodeWithText(En.save))
 
