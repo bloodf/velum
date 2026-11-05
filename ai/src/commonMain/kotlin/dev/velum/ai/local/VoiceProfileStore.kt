@@ -738,6 +738,9 @@ class VoiceProfileStore(
                 throw InvalidVoiceProfileBackupException(bad)
             }
             val id = e.id.ifBlank { slug(e.displayName) }
+            if (!safeProfileId(id)) {
+                throw InvalidVoiceProfileBackupException(IllegalArgumentException("Invalid voice profile identifier."))
+            }
             get(id) // Refuse to overwrite unreadable files; recovery requires an explicit removal.
             VoiceProfile(
                 id = id,
