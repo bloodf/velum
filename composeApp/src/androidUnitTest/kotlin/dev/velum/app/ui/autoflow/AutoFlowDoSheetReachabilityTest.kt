@@ -44,9 +44,12 @@ class AutoFlowDoSheetReachabilityTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         context.deleteDatabase("velum.db")
         val root = ModelStoreDir(Files.createTempDirectory("autoflow-reachability").toString())
-        val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup()
+        var activity: org.robolectric.android.controller.ActivityController<ComponentActivity>? = null
         var container: AppContainer? = null
         try {
+            val controller = Robolectric.buildActivity(ComponentActivity::class.java)
+            activity = controller
+            controller.setup()
             val app = AppContainer(InMemorySecureStore(), DriverFactory(context), modelStoreRoot = root)
             container = app
             runBlocking {
@@ -60,7 +63,7 @@ class AutoFlowDoSheetReachabilityTest {
                 )
             }
             val saves = AtomicInteger()
-            activity.get().setContent {
+            controller.get().setContent {
                 CompositionLocalProvider(LocalStrings provides En, LocalDensity provides Density(3f, 1.5f)) {
                     VelumTheme(darkTheme = false) { AutoFlowEditScreen(app, "reachability", onBack = { saves.incrementAndGet() }) }
                 }
@@ -90,9 +93,15 @@ class AutoFlowDoSheetReachabilityTest {
             compose.waitUntil(20_000) { saves.get() == 2 }
             assertEquals("pt-BR", runBlocking { app.repository.listAutoflows().single { it.id == "reachability" }.language })
         } finally {
-            activity.pause().stop().destroy()
-            container?.databaseHandle?.driver?.close()
-            root.deleteRecursively()
+            try {
+                activity?.pause()?.stop()?.destroy()
+            } finally {
+                try {
+                    container?.databaseHandle?.driver?.close()
+                } finally {
+                    root.deleteRecursively()
+                }
+            }
         }
     }
 }
