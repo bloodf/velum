@@ -24,6 +24,8 @@ data class MoreStrings(
     val voiceProfilesExportCopied: String,
     val voiceProfilesExportCopyFailed: String,
     val noSpeakers: String,
+    val importMatchInTrash: String,
+    val syncInTrashFormat: String,
     val searchTags: String,
     val noMatchingTags: String,
 )
