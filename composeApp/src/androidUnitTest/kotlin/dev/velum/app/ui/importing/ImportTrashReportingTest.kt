@@ -9,6 +9,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -65,7 +66,7 @@ class ImportTrashReportingTest {
                     }
                 }
             }
-            compose.onNodeWithText(En.ux.syncWatchedFolders).performScrollTo().performClick()
+            compose.onNodeWithContentDescription(En.ux.syncWatchedFolders).performScrollTo().performClick()
             compose.onNodeWithText("Done · 0 new · 0 dupes · 0 failed · 0 skipped · 1 in Trash (not imported)")
                 .performScrollTo().assertIsDisplayed()
             compose.runOnIdle {
