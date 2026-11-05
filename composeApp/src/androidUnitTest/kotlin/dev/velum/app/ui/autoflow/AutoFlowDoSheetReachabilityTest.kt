@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasAnyAncestor
@@ -65,9 +66,15 @@ class AutoFlowDoSheetReachabilityTest {
                 )
             }
             val saves = AtomicInteger()
+            val visible = mutableStateOf(true)
             controller.get().setContent {
                 CompositionLocalProvider(LocalStrings provides En, LocalDensity provides Density(3f, 1.5f)) {
-                    VelumTheme(darkTheme = false) { AutoFlowEditScreen(app, "reachability", onBack = { saves.incrementAndGet() }) }
+                    VelumTheme(darkTheme = false) {
+                        if (visible.value) AutoFlowEditScreen(app, "reachability", onBack = {
+                            visible.value = false
+                            saves.incrementAndGet()
+                        })
+                    }
                 }
             }
             compose.waitUntil(20_000) { compose.onAllNodesWithText(En.edit).fetchSemanticsNodes().size == 2 }
@@ -90,13 +97,21 @@ class AutoFlowDoSheetReachabilityTest {
             choose(En.languageEn)
             action(En.cancel)
             compose.onNodeWithText(En.save).performClick()
-            compose.waitUntil(20_000) { saves.get() == 1 }
+            compose.waitUntil(20_000) {
+                saves.get() == 1 && compose.onAllNodesWithText(En.edit).fetchSemanticsNodes().isEmpty()
+            }
             assertEquals("auto", runBlocking { app.repository.listAutoflows().single { it.id == "reachability" }.language })
+            compose.runOnIdle { visible.value = true }
+            compose.waitUntil(20_000) { compose.onAllNodesWithText(En.edit).fetchSemanticsNodes().size == 2 }
+            compose.waitUntil(20_000) { compose.onAllNodesWithText("Synthetic template 00").fetchSemanticsNodes().isNotEmpty() }
             openDo()
             choose(En.languagePtBr)
             action(En.done)
+            compose.onNodeWithText(En.languagePtBr).assertExists()
             compose.onNodeWithText(En.save).performClick()
-            compose.waitUntil(20_000) { saves.get() == 2 }
+            compose.waitUntil(20_000) {
+                saves.get() == 2 && compose.onAllNodesWithText(En.edit).fetchSemanticsNodes().isEmpty()
+            }
             assertEquals("pt-BR", runBlocking { app.repository.listAutoflows().single { it.id == "reachability" }.language })
         } finally {
             try {
