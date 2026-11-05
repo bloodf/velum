@@ -6,11 +6,13 @@ import androidx.activity.compose.setContent
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
-import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -71,13 +73,14 @@ class AutoFlowDoSheetReachabilityTest {
             compose.waitUntil(20_000) { compose.onAllNodesWithText(En.edit).fetchSemanticsNodes().size == 2 }
             compose.waitUntil(20_000) { compose.onAllNodesWithText("Synthetic template 00").fetchSemanticsNodes().isNotEmpty() }
             fun openDo() = compose.onAllNodesWithText(En.edit)[1].performScrollTo().performClick()
-            fun reach(label: String) = compose.onNodeWithText(label).performScrollTo().assertIsDisplayed()
-            fun action(label: String) = compose.onNodeWithContentDescription(label).performScrollTo().assertIsDisplayed().performClick()
-            fun choose(label: String) = compose.onNode(hasText(label) and hasClickAction()).performScrollTo().assertIsDisplayed().performClick()
+            val inSheet = hasAnyAncestor(isDialog())
+            fun reach(label: String) = compose.onNode(hasText(label) and inSheet).performScrollTo().assertIsDisplayed()
+            fun action(label: String) = compose.onNode(hasContentDescription(label) and inSheet).performScrollTo().assertIsDisplayed().performClick()
+            fun choose(label: String) = compose.onNode(hasText(label) and hasClickAction() and inSheet).performScrollTo().assertIsDisplayed().performClick()
 
             openDo()
             repeat(12) {
-                compose.onNode(hasText("Synthetic template %02d".format(it)) and hasClickAction())
+                compose.onNode(hasText("Synthetic template %02d".format(it)) and hasClickAction() and inSheet)
                     .performScrollTo().assertIsDisplayed()
             }
             reach(En.autoSpeakerLabel)
