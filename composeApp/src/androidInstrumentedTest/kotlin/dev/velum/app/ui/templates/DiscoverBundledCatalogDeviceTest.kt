@@ -104,10 +104,10 @@ class DiscoverBundledCatalogDeviceTest {
         shows(text)
     }.getOrDefault(false)
 
-    private val countText = Regex("(\\d+) result\\(s\\)")
+    private val countText = Regex("(\\d+) results?")
 
     /** The result count rendered by the search sheet, or null while it is not composed. */
-    private fun uiCount(): Int? = compose.onAllNodes(hasText("result(s)", substring = true)).fetchSemanticsNodes()
+    private fun uiCount(): Int? = compose.onAllNodes(hasText(countText)).fetchSemanticsNodes()
         .firstNotNullOfOrNull { n ->
             n.config.getOrNull(SemanticsProperties.Text)?.firstNotNullOfOrNull {
                 countText.find(it.text)?.groupValues?.get(1)?.toInt()

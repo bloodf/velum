@@ -64,6 +64,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.velum.app.di.AppContainer
+import dev.velum.app.i18n.countText
 import dev.velum.app.i18n.LocalStrings
 import dev.velum.app.importing.AudioImportPipeline
 import dev.velum.app.platform.HapticKind
@@ -208,7 +209,7 @@ fun FilesScreen(
             if (selectionMode) {
                 HeaderIcon(Icons.Outlined.Close, strings.ux.exitSelection) { exitSelection() }
                 Text(
-                    strings.ux.selectionCount.replace("%d", selectedIds.size.toString()),
+                    countText(selectedIds.size, strings.ux.selectionOne, strings.ux.selectionCount),
                     color = VelumInk,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Medium,
@@ -290,7 +291,7 @@ fun FilesScreen(
         }
         if (searchQuery.isNotBlank()) {
             Text(
-                strings.searchResultsCount.replace("%d", visible.size.toString()),
+                countText(visible.size, strings.searchResultsOne, strings.searchResultsCount),
                 color = VelumInkSecondary,
                 fontSize = 13.sp,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),

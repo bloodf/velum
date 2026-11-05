@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import dev.velum.app.i18n.countText
 import dev.velum.app.i18n.LocalStrings
 import dev.velum.app.ui.theme.VelumInk
 import dev.velum.app.ui.theme.VelumInkSecondary
@@ -64,7 +65,7 @@ fun SearchSheet(
             ThinDivider(0)
             Spacer(Modifier.height(8.dp))
             Text(
-                strings.searchResultsCount.replace("%d", resultCount.toString()),
+                countText(resultCount, strings.searchResultsOne, strings.searchResultsCount),
                 color = VelumInkSecondary,
                 fontSize = 13.sp,
             )
