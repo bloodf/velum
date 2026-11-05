@@ -33,9 +33,11 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 import kotlin.test.assertEquals
 
 @RunWith(AndroidJUnit4::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(application = android.app.Application::class, sdk = [34], qualifiers = "w360dp-h640dp-xxhdpi", fontScale = 1.5f)
 class AutoFlowDoSheetReachabilityTest {
     @get:Rule val compose = createEmptyComposeRule()
