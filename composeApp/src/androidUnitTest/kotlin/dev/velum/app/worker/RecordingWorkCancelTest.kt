@@ -18,7 +18,7 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class, sdk = [34])
 class RecordingWorkCancelTest {
-    @Test fun cancel_all_cancels_queued_recording_work() {
+    @Test fun cancel_all_cancels_queued_recording_work() = kotlinx.coroutines.runBlocking {
         val context = ApplicationProvider.getApplicationContext<Context>()
         WorkManagerTestInitHelper.initializeTestWorkManager(context)
         val scheduler = createWorkManagerRecordingJobScheduler(context)
@@ -32,5 +32,22 @@ class RecordingWorkCancelTest {
 
         assertTrue(states("rec-1").all { it == WorkInfo.State.CANCELLED }, "work stayed queued: ${states("rec-1")}")
         assertTrue(states("rec-2").all { it == WorkInfo.State.CANCELLED }, "work stayed queued: ${states("rec-2")}")
+    }
+
+    @Test fun cancel_drops_only_that_recordings_work() = kotlinx.coroutines.runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        WorkManagerTestInitHelper.initializeTestWorkManager(context)
+        val scheduler = createWorkManagerRecordingJobScheduler(context)
+        scheduler.enqueue("rec-1", null, true, null)
+        scheduler.enqueue("rec-2", null, true, null)
+        val manager = WorkManager.getInstance(context)
+        val states = { id: String -> manager.getWorkInfosByTag("recording:$id").get().map { it.state } }
+
+        scheduler.cancel("rec-1")
+
+        val cancelled = states("rec-1")
+        assertTrue(cancelled.isNotEmpty(), "no work found for rec-1")
+        assertTrue(cancelled.all { it == WorkInfo.State.CANCELLED }, "work stayed queued: $cancelled")
+        assertEquals(listOf(WorkInfo.State.ENQUEUED), states("rec-2"))
     }
 }

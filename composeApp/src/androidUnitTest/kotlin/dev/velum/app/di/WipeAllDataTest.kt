@@ -112,7 +112,7 @@ class WipeAllDataTest {
         // No processing: a job left running would write to the database after this test closes it.
         val container = AppContainer(
             InMemorySecureStore(), DriverFactory(context), modelStoreRoot = root,
-            recordingJobSchedulerFactory = { _, _ -> RecordingJobScheduler { _, _, _, _ -> } },
+            recordingJobSchedulerFactory = { _, _ -> RecordingJobScheduler { _, _, _, _ -> dev.velum.ai.pipeline.EnqueueResult.STARTED_OR_REPLACED } },
         )
         val owner = ViewModelStore()
         val saving = CompletableDeferred<Unit>()
@@ -375,7 +375,7 @@ class WipeAllDataTest {
         var rowsAtCancel: Long? = null
         lateinit var wiped: AppContainer
         val jobs = object : RecordingJobScheduler {
-            override fun enqueue(recordingId: String, templateId: String?, retranscribe: Boolean, apiModelOverride: ApiModelOverride?) = Unit
+            override suspend fun enqueue(recordingId: String, templateId: String?, retranscribe: Boolean, apiModelOverride: ApiModelOverride?): dev.velum.ai.pipeline.EnqueueResult = dev.velum.ai.pipeline.EnqueueResult.STARTED_OR_REPLACED
             override fun cancelAll() { rowsAtCancel = runBlocking { wiped.repository.storageUsage().recordingCount.toLong() } }
         }
         withContainer(jobs = { _, _ -> jobs }) { container, _ ->

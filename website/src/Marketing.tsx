@@ -40,6 +40,8 @@ function Hero() {
       <motion.div className="hero-brand-mark" initial={{ opacity: 0, y: 25, rotate: -8 }} animate={{ opacity: 1, y: 0, rotate: 0 }} transition={{ ...transitions.hero, delay: .45 }}>
         <img src="/brand/icon-3d-light.webp" alt="Velum 3D logo" width="1024" height="1024" fetchPriority="high" />
       </motion.div>
+      <div className="hero-glass-note note-left"><span>01</span> AI notetakers + recorders</div>
+      <div className="hero-glass-note note-right"><span>02</span> Open by design</div>
       <motion.div className="hero-content" style={{ opacity, y, scale }}>
         <div className="hero-kicker hero-enter"><span className="live-dot" /> Open-source AI notetaker <span className="kicker-divider" /> Desktop + mobile</div>
         <h1 className="hero-title" aria-label="Every word has a place">
@@ -177,9 +179,13 @@ function PhoneUI({ view }: { view: MobileView }) {
 }
 
 function Everywhere() {
+  const sectionRef = useRef<HTMLElement>(null)
   const [mobileView, setMobileView] = useState<MobileView>('library')
+  const { scrollYProgress } = useScroll({ target: sectionRef, offset: ['start end', 'end start'] })
+  const desktopY = useTransform(scrollYProgress, [0, 1], [70, -50])
+  const phoneY = useTransform(scrollYProgress, [0, 1], [150, -90])
   return (
-    <section className="everywhere light-section" id="everywhere">
+    <section className="everywhere light-section" id="everywhere" ref={sectionRef}>
       <div className="section-rule reveal"><span className="micro-label">03 / DESKTOP + MOBILE</span><span className="micro-label">ONE THOUGHT. EVERY SCREEN.</span></div>
       <div className="everywhere-layout">
         <div className="everywhere-copy reveal"><h2>YOUR<br />SECOND<br /><span>MEMORY.</span></h2><p>Capture at your desk. Review on the move. Velum is being designed as one coherent workspace, not a collection of disconnected apps.</p><div className="platform-links"><Link to="/docs/desktop"><Monitor size={18} /> Desktop <ArrowUpRight size={15} /></Link><Link to="/docs/mobile"><Smartphone size={18} /> Mobile <ArrowUpRight size={15} /></Link></div></div>
@@ -188,8 +194,8 @@ function Everywhere() {
           <div className="device-view-switch" role="group" aria-label="Mobile screen preview">
             {(Object.keys(mobileScreenshots) as MobileView[]).map((view) => <button key={view} aria-pressed={mobileView === view} onClick={() => setMobileView(view)}>{view === 'note' ? 'AI note' : view}</button>)}
           </div>
-          <div className="desktop-shell"><div className="shell-top"><span /><span /><span /><i>VELUM / DESKTOP LIBRARY</i></div><DesktopUI /></div>
-          <div className="phone-shell"><div className="phone-speaker" /><PhoneUI view={mobileView} /></div>
+          <motion.div className="desktop-shell" style={{ y: desktopY }}><div className="shell-top"><span /><span /><span /><i>VELUM / DESKTOP LIBRARY</i></div><DesktopUI /></motion.div>
+          <motion.div className="phone-shell" style={{ y: phoneY }}><div className="phone-speaker" /><PhoneUI view={mobileView} /></motion.div>
           <div className="device-caption"><span>01 / DESKTOP WORKSPACE</span><span>02 / MOBILE {mobileView.toUpperCase()}</span></div>
         </div>
       </div>

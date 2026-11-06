@@ -48,7 +48,7 @@ import org.robolectric.annotation.Config
 @RunWith(AndroidJUnit4::class)
 @Config(application = android.app.Application::class, sdk = [34])
 class ReimportAfterDeleteTest {
-    private fun withPipeline(block: suspend (AppContainer, AudioImportPipeline, File) -> Unit) {
+    private fun withPipeline(onEnqueue: () -> Unit = {}, block: suspend (AppContainer, AudioImportPipeline, File) -> Unit) {
         val context = ApplicationProvider.getApplicationContext<Context>()
         context.deleteDatabase("velum.db")
         installAppContext(context)
@@ -59,7 +59,7 @@ class ReimportAfterDeleteTest {
         // No processing: it is not under test and would outlive the database.
         val container = AppContainer(
             InMemorySecureStore(), DriverFactory(context), modelStoreRoot = root,
-            recordingJobSchedulerFactory = { _, _ -> RecordingJobScheduler { _, _, _, _ -> } },
+            recordingJobSchedulerFactory = { _, _ -> RecordingJobScheduler { _, _, _, _ -> onEnqueue(); dev.velum.ai.pipeline.EnqueueResult.STARTED_OR_REPLACED } },
         )
         val dir = File(context.cacheDir, "reimport-fixtures").apply { deleteRecursively(); mkdirs() }
         try {
@@ -153,6 +153,51 @@ class ReimportAfterDeleteTest {
 
         assertIs<ImportResult.Duplicate>(pipeline.importFile(retagged.path))
         assertEquals(2, normalize.outputs.size, "a known copy was decoded again")
+    }
+
+    @Test fun manual_source_match_warns_without_restoring() = trashMatch("import", contentMatch = false)
+    @Test fun shared_source_match_warns_without_restoring() = trashMatch("share", contentMatch = false)
+    @Test fun watched_source_match_warns_without_restoring() = trashMatch(WATCHED_SOURCE, contentMatch = false)
+    @Test fun manual_content_match_warns_without_restoring() = trashMatch("import", contentMatch = true)
+    @Test fun shared_content_match_warns_without_restoring() = trashMatch("share", contentMatch = true)
+    @Test fun watched_content_match_warns_without_restoring() = trashMatch(WATCHED_SOURCE, contentMatch = true)
+
+    private fun trashMatch(source: String, contentMatch: Boolean) {
+        val enqueues = java.util.concurrent.atomic.AtomicInteger()
+        withPipeline(onEnqueue = { enqueues.incrementAndGet() }) { container, _, wav ->
+            val normalize = CountingNormalize()
+            val pipeline = AudioImportPipeline(container, normalize = normalize.call)
+            val first = assertIs<ImportResult.Created>(pipeline.importFile(wav.path))
+            container.repository.trashRecording(first.recordingId)
+            val trashed = container.repository.getRecording(first.recordingId)!!
+            val offered = if (contentMatch) silentWav(File(wav.parentFile, "retagged.wav"), extraChunk = true) else wav
+            val copyName = if (source == WATCHED_SOURCE) "watched/trash-match.wav" else "trash-match.wav"
+            val copy = ownedCopy(offered, copyName)
+            val sourceHash = sha256File(copy.path)
+            if (contentMatch) assertNotEquals(sha256File(wav.path), sourceHash, "must reach the content-hash lookup")
+
+            suspend fun importCopy(): ImportResult = if (source == "share") pipeline.importSharedDetached(copy.path)
+                else pipeline.importFile(copy.path, source = source)
+            val result = assertIs<ImportResult.InTrash>(importCopy())
+            assertEquals(first.recordingId, result.existingRecordingId)
+            assertEquals(if (contentMatch) first.sha256 else sourceHash, result.sha256)
+            assertEquals(trashed, container.repository.getRecording(first.recordingId), "the trashed row changed")
+            assertEquals(listOf(first.recordingId to first.wavPath), container.repository.getAllRecordingFileRefs(), "a second row was created")
+            assertEquals(first.recordingId, container.repository.getMeta("import_sha256_$sourceHash"))
+            assertEquals(first.recordingId, container.repository.getMeta("import_sha256_${first.sha256}"))
+            assertFalse(copy.exists(), "the source scratch copy was left behind")
+            assertTrue(File(first.wavPath).exists(), "the trashed recording lost its audio")
+            assertEquals(if (contentMatch) 2 else 1, normalize.outputs.size)
+            if (contentMatch) assertFalse(File(normalize.outputs.last()).exists(), "the unused normalized copy survived")
+
+            // The content match remembers its source too; the next offer must not decode or create anything.
+            ownedCopy(offered, copyName)
+            assertIs<ImportResult.InTrash>(importCopy())
+            assertEquals(if (contentMatch) 2 else 1, normalize.outputs.size)
+            assertEquals(trashed, container.repository.getRecording(first.recordingId))
+            assertFalse(copy.exists())
+            assertEquals(1, enqueues.get(), "a trash match enqueued processing")
+        }
     }
 
     @Test fun an_imported_recordings_normalized_file_goes_with_it() = withPipeline { container, _, wav ->

@@ -13,13 +13,14 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
-import kotlin.test.assertTrue
 
 /** #348: a saved processing failure shows in the app's language, whatever language the device uses. */
 class ProcessingFailureTextTest {
     /** Saved text as common code and the engines write it, with synthetic paths, and the copy it must become. */
     private val cases: List<Pair<String, (Strings) -> String>> = listOf(
         INSUFFICIENT_STORAGE_MESSAGE to { s -> s.ux.insufficientStorage },
+        "API key required for API summaries. Add your OpenAI-compatible key in Settings → AI provider." to { s -> s.added.processingFailedApiKey },
+        "API key required: synthetic-secret /data/user/0/private.wav" to { s -> s.added.processingFailedApiKey },
         SPEAKER_CACHE_NOT_DROPPED_MESSAGE to { s -> s.added.speakerCacheNotDropped },
         "Unsupported audio format (WebM/Matroska). This file is not Ogg Opus, WAV or raw 16 kHz PCM, so it was not transcribed; re-download it from the device or convert it to WAV or Ogg Opus." to { s -> s.ux.processingFailedUnsupportedFormat },
         WAV_NO_DATA_MESSAGE to { s -> s.added.processingFailedWavNoData },
@@ -75,91 +76,29 @@ class ProcessingFailureTextTest {
         assertNotEquals(En.ux.insufficientStorage, PtBr.ux.insufficientStorage)
     }
 
+    @Test fun missing_key_guidance_names_the_settings_destination_in_both_languages() {
+        for (strings in listOf(En, PtBr)) {
+            val shown = processingFailureText("API key required", strings).orEmpty()
+            kotlin.test.assertTrue(shown.contains(strings.settings))
+            kotlin.test.assertTrue(shown.contains(strings.aiProvider))
+        }
+    }
+
     @Test fun missing_failure_shows_nothing() {
         assertEquals(null, processingFailureText(null, PtBr))
     }
 
-    @Test fun unknown_failure_keeps_its_detail_inside_localized_copy() {
-        assertEquals("O processamento falhou (Provider said no (HTTP 500)).", processingFailureText("Provider said no (HTTP 500).", PtBr))
-        assertEquals("Processing failed (Provider said no (HTTP 500)).", processingFailureText("Provider said no (HTTP 500)", En))
-    }
-
-    @Test fun unknown_failure_detail_drops_paths_emails_and_hardware_addresses() {
-        val raw = "open failed: /storage/emulated/0/Velum/meeting.ogg for someone@example.test on AA:BB:CC:DD:EE:FF"
-        val shown = processingFailureText(raw, En).orEmpty()
-        assertEquals("Processing failed (open failed: … for … on …).", shown)
-        val windows = processingFailureText("""cannot read C:\Users\someone\rec.wav""", En).orEmpty()
-        assertEquals("Processing failed (cannot read …).", windows)
-    }
-
-    @Test fun unknown_failure_detail_drops_every_identifying_value() {
-        val probes = listOf(
-            "AABBCCDDEEFF", // MAC without separators
-            "0123456789abcdef0123", // long hex
-            "123e4567-e89b-12d3-a456-426614174000", // UUID
-            "2001:db8::8a2e:370:7334", "fe80::1", "::1", "::ffff:192.0.2.1", // IPv6
-            "192.0.2.1", // IPv4
-            "PLAUD-8812345", "PLAUD8812345", "881FAKE1", "8812345", // serials
-            "https://api.example.test/v1/chat?key=x", "ftp://files.example.test", // URLs
+    @Test fun unknown_failures_use_the_screen_generic_copy_without_exposing_details() {
+        val failures = listOf(
+            "Provider said no (HTTP 500).",
+            "Unexpected engine exception: /data/user/0/secret.wav someone@example.test",
+            "Failed to connect to private.example.lan:443 with token synthetic-secret",
+            "", "   ",
         )
-        for (probe in probes) {
-            assertEquals("Processing failed (failed for … now).", processingFailureText("failed for $probe now", En), probe)
+        for (strings in listOf(En, PtBr)) {
+            for (raw in failures) {
+                assertEquals(null, processingFailureText(raw, strings), raw)
+            }
         }
-    }
-
-    @Test fun a_url_leaves_no_scheme_fragment() {
-        assertEquals("Processing failed (… failed: HTTP 503).", processingFailureText("https://api.example.test/v1/chat failed: HTTP 503", En))
-    }
-
-    @Test fun a_quoted_host_is_cut_and_the_words_stay() {
-        assertEquals(
-            "Processing failed (Unable to resolve host …: No address).",
-            processingFailureText("""Unable to resolve host "api.example.test": No address.""", En),
-        )
-    }
-
-    @Test fun an_unquoted_host_is_cut() {
-        assertEquals(
-            "Processing failed (Failed to connect to …:11434).",
-            processingFailureText("Failed to connect to nas.example.lan/192.0.2.5:11434", En),
-        )
-        assertEquals("Processing failed (Unable to resolve host …).", processingFailureText("Unable to resolve host nas.example.lan", En))
-    }
-
-    @Test fun only_the_first_line_is_shown() {
-        val raw = "Hostname nas.example.lan not verified:\n    certificate: sha256/AAAA\n    DN: CN=someone, O=Example"
-        assertEquals("Processing failed (Hostname … not verified:).", processingFailureText(raw, En))
-    }
-
-    @Test fun a_word_before_a_path_is_kept_whole() {
-        assertEquals("Processing failed (Error:…).", processingFailureText("Error:/data/x/y", En))
-    }
-
-    @Test fun an_email_with_accented_letters_is_cut() {
-        assertEquals("Processing failed (sent to …).", processingFailureText("sent to joão@exâmple.lan", En))
-    }
-
-    @Test fun only_the_start_of_a_long_row_is_scanned() {
-        // A URL filling the scan limit is all that is left, so text past the limit must not bring a detail back.
-        val raw = "https://nas.example.lan/" + "x".repeat(240) + " past the limit"
-        assertEquals(null, processingFailureText(raw, En))
-    }
-
-    @Test fun ordinary_diagnostics_stay_readable() {
-        for (kept in listOf("HTTP 503", "got 8000 Hz", "timeout after 30000 ms", "error: code 12", "java.io.IOException", "gemma-4-e2b")) {
-            assertEquals("Processing failed ($kept).", processingFailureText(kept, En), kept)
-        }
-    }
-
-    @Test fun a_detail_with_nothing_left_adds_no_second_line() {
-        for (raw in listOf("", "   ", ".", "/data/user/0/app/x.ogg", "https://api.example.test")) {
-            assertEquals(null, processingFailureText(raw, En), "'$raw'")
-        }
-    }
-
-    @Test fun unknown_failure_detail_is_length_capped() {
-        val shown = processingFailureText("x".repeat(500), En).orEmpty()
-        assertTrue(shown.length <= "Processing failed ().".length + 120, shown)
-        assertTrue(shown.endsWith("…)."), shown)
     }
 }

@@ -39,7 +39,7 @@ class ImportAtomicityTest {
         val root = ModelStoreDir(Files.createTempDirectory("velum-atomic").toString())
         val container = AppContainer(
             InMemorySecureStore(), DriverFactory(context), modelStoreRoot = root,
-            recordingJobSchedulerFactory = { _, _ -> RecordingJobScheduler { _, _, _, _ -> } },
+            recordingJobSchedulerFactory = { _, _ -> RecordingJobScheduler { _, _, _, _ -> dev.velum.ai.pipeline.EnqueueResult.STARTED_OR_REPLACED } },
         )
         val dir = File(context.cacheDir, "atomic-fixtures").apply { deleteRecursively(); mkdirs() }
         try {
@@ -114,4 +114,29 @@ class ImportAtomicityTest {
         assertFalse(loserWav.exists(), "the loser's normalized audio was left behind")
         assertTrue(winnerWav.exists(), "the winner's audio was removed")
     }
+    @Test fun a_trashed_concurrent_winner_is_reported_without_restoring_or_deleting_its_audio() = withContainer { container, dir ->
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val copy = File(context.cacheDir, "imports/watched/trash-loser.wav").apply {
+            parentFile!!.mkdirs(); writeBytes(ByteArray(64) { it.toByte() })
+        }
+        val sourceHash = dev.velum.app.platform.sha256File(copy.path)
+        val winnerWav = File(dir, "trashed-winner.wav").apply { writeBytes(ByteArray(64)) }
+        val loserWav = File(dir, "loser.wav").apply { writeBytes(ByteArray(64)) }
+        val pipeline = AudioImportPipeline(container, normalize = {
+            container.repository.insertRecordingUnlessKeyed(
+                id = "rec-trashed", title = "Synthetic", source = WATCHED_SOURCE, startedAt = 1, durationSeconds = 1,
+                localPath = winnerWav.path, status = "ready", keys = listOf("import_sha256_$sourceHash"),
+            )
+            container.repository.trashRecording("rec-trashed")
+            NormalizedAudio(loserWav.path, 16_000, 1_000, null, "synthetic-content-hash")
+        })
+        assertEquals(ImportResult.InTrash("rec-trashed", "synthetic-content-hash"), pipeline.importFile(copy.path, source = WATCHED_SOURCE))
+        assertEquals(1L, container.repository.getRecording("rec-trashed")!!.trashed)
+        assertEquals(listOf("rec-trashed" to winnerWav.path), container.repository.getAllRecordingFileRefs())
+        assertEquals("rec-trashed", container.repository.getMeta("import_sha256_synthetic-content-hash"))
+        assertFalse(copy.exists())
+        assertFalse(loserWav.exists())
+        assertTrue(winnerWav.exists())
+    }
+
 }

@@ -48,7 +48,7 @@ class ImportStorageTest {
         installRecordingFilesDir(files.path)
         container = AppContainer(
             InMemorySecureStore(), DriverFactory(app), modelStoreRoot = ModelStoreDir(File(files, "models").path),
-            recordingJobSchedulerFactory = { _, _ -> RecordingJobScheduler { _, _, _, _ -> } },
+            recordingJobSchedulerFactory = { _, _ -> RecordingJobScheduler { _, _, _, _ -> dev.velum.ai.pipeline.EnqueueResult.STARTED_OR_REPLACED } },
         )
     }
 

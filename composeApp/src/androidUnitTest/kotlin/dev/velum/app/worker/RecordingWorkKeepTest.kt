@@ -23,10 +23,14 @@ import org.robolectric.annotation.Config
 class RecordingWorkKeepTest {
     private val context: Context = ApplicationProvider.getApplicationContext()
 
+    private val executor = Executors.newSingleThreadExecutor()
+
+    @org.junit.After fun closeExecutor() { executor.shutdownNow() }
+
     @Before fun init() {
         WorkManagerTestInitHelper.initializeTestWorkManager(
             context,
-            Configuration.Builder().setExecutor(Executors.newSingleThreadExecutor()).build(),
+            Configuration.Builder().setExecutor(executor).build(),
         )
     }
 
@@ -44,6 +48,30 @@ class RecordingWorkKeepTest {
         val t = Thread { started = RecordingProcessWorker.enqueue(context, id, template, retranscribe, override) }
         t.start(); t.join()
         return started
+    }
+
+    @Test fun submitted_request_that_finishes_before_lookup_still_reports_started() = kotlinx.coroutines.runBlocking {
+        val started = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            RecordingProcessWorker.enqueue(context, "rec-fast", submit = { manager, name, policy, request ->
+                val operation = manager.enqueueUniqueWork(name, policy, request)
+                operation.result.get()
+                manager.cancelWorkById(request.id).result.get()
+                operation
+            })
+        }
+        assertEquals(true, started)
+        assertEquals(WorkInfo.State.CANCELLED, infos("rec-fast").single().state)
+    }
+
+    @Test fun accepted_operation_without_retained_request_is_unknown_not_started() = kotlinx.coroutines.runBlocking {
+        val failure = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching {
+                RecordingProcessWorker.enqueue(context, "rec-unknown", submit = { manager, _, _, _ ->
+                    manager.cancelUniqueWork("synthetic-unused")
+                })
+            }.exceptionOrNull()
+        }
+        kotlin.test.assertTrue(failure is dev.velum.ai.pipeline.EnqueueOutcomeUnknown)
     }
 
     @Test fun sameTemplateAndModelKeepsTheQueuedWork() {
