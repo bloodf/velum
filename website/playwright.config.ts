@@ -12,7 +12,7 @@ export default defineConfig({
     deviceScaleFactor: 1,
   },
   webServer: {
-    command: 'pnpm run dev -- --host 127.0.0.1 --port 7102',
+    command: 'pnpm run dev --host 127.0.0.1 --port 7102',
     url: 'http://127.0.0.1:7102',
     reuseExistingServer: false,
     timeout: 30_000,
