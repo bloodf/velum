@@ -6,6 +6,7 @@ import dev.velum.ble.gatt.GuardedLink
 import dev.velum.protocol.Battery
 import dev.velum.protocol.BatteryReading
 import dev.velum.protocol.Bytes
+import dev.velum.protocol.ChaCha20Poly1305
 import dev.velum.protocol.Commands
 import dev.velum.protocol.DeviceIdentityKeys
 import dev.velum.protocol.Framing
@@ -24,6 +25,7 @@ import dev.velum.ble.wifi.WifiFastTransferSession
 import dev.velum.ble.wifi.WifiTransferCoordinator
 import dev.velum.ble.wifi.WifiTransferPreamble
 import dev.velum.ble.wifi.WifiTransferServer
+import kotlin.concurrent.Volatile
 import kotlin.coroutines.coroutineContext
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
@@ -62,13 +64,30 @@ class PlaudDeviceClient(
     private val inbound = Channel<ByteArray>(capacity = 128)
     private val writeMutex = Mutex()
     private var notifyJob: Job? = null
+    @Volatile private var closed = false
+
+    /**
+     * The transport's link generation taken when the current [unlock] began (null before any unlock). The secret and
+     * counter belong to that link: once the transport reports another generation, every write is refused here, and the
+     * transport refuses a write already past this check (the generation travels on the write).
+     */
+    @Volatile private var linkGen: Long? = null
+
+    /** True only after an unlock finished. A re-unlock that fails leaves the old secret unusable, not re-armed. */
+    @Volatile private var unlocked = false
+
+    private fun checkLink() {
+        val g = linkGen
+        check(g == null || ble.linkGeneration == g) { "Link changed since unlock" }
+    }
 
     private var secret: Protocol20SessionSecret? = null
     private var sendSeq: Long = 2
     private var recvSeq: Long = 0
     private var protocolVersion: Int = 20
 
-    val sessionSecret: Protocol20SessionSecret? get() = secret
+    /** Null once the client is closed; the secret itself is kept so a write already past the check cannot go out in plain. */
+    internal val sessionSecret: Protocol20SessionSecret? get() = if (closed) null else secret
     val linkProtocolVersion: Int get() = protocolVersion
 
     suspend fun start() {
@@ -84,6 +103,9 @@ class PlaudDeviceClient(
     }
 
     fun close() {
+        // A closed client never writes again: its session secret and counter belong to the link it was opened on, and
+        // the same transport may be connected to the device again by a new client.
+        closed = true
         notifyJob?.cancel()
         notifyJob = null
         inbound.close()
@@ -97,8 +119,13 @@ class PlaudDeviceClient(
      * on every call (every connect). Missing / empty signature fails clearly.
      */
     suspend fun unlock() {
+        check(!closed) { "Client is closed" }
         start()
         writeMutex.withLock {
+            // Under the lock, and before anything is written: no write from the old session can interleave, and a failure
+            // below leaves this client locked rather than holding the old secret.
+            unlocked = false
+            linkGen = ble.linkGeneration
             if (protocolVersionHint >= 20) {
                 require(keys.serialSignature.isNotEmpty()) {
                     "snSignature missing — import sn-sign once from Plaud storage; " +
@@ -156,6 +183,7 @@ class PlaudDeviceClient(
             secret = parsed
             sendSeq = 2
             recvSeq = 0
+            unlocked = true
         }
     }
 
@@ -437,12 +465,20 @@ class PlaudDeviceClient(
         return decoded.payload
     }
 
-    private suspend fun writePlain(packet: ByteArray, withoutResponse: Boolean) =
-        withTimeout(responseTimeout) { link.write(GattProfiles.PLAUD_WRITE, packet, withoutResponse) }
+    private suspend fun writePlain(packet: ByteArray, withoutResponse: Boolean) {
+        check(!closed) { "Client is closed" }
+        checkLink()
+        withTimeout(responseTimeout) {
+            link.writeGuarded(GattProfiles.PLAUD_WRITE, packet, withoutResponse, seal = null, linkGeneration = linkGen)
+        }
+    }
 
     private suspend fun writeOutbound(packet: ByteArray) {
         writeMutex.withLock {
+            check(!closed) { "Client is closed" }
+            checkLink()
             val sec = secret
+            check(sec == null || unlocked) { "Not unlocked on this link" }
             if (sec == null) {
                 writePlain(packet, withoutResponse = false)
             } else {
@@ -450,11 +486,20 @@ class PlaudDeviceClient(
                 // A write that times out leaves sendSeq advanced. Later commands then fail on a device that
                 // requires exact sequence numbers (unverified, #6) until a reconnect brings a new client.
                 withTimeout(responseTimeout) {
-                    link.write(GattProfiles.PLAUD_WRITE, packet, withoutResponse = false) {
-                        val sealed = cipher.sealPacket(sec, sendSeq, it)
+                    link.writeGuarded(GattProfiles.PLAUD_WRITE, packet, withoutResponse = false, linkGeneration = linkGen, seal = {
+                        // The cipher gets its own copy: one that edits its input then seals the edit cannot also change what we compare.
+                        val sealed = cipher.sealPacket(sec, sendSeq, it.copyOf()).copyOf() // the cipher keeps nothing we send
+                        // The guard checked [it]. The cipher is a separate component: the bytes that go out must open
+                        // to exactly that plaintext, or nothing is written (sealed bytes are never parsed as opcodes).
+                        // Opened with the protocol's own AEAD, not the injected cipher, so a cipher cannot vouch for itself.
+                        val plain = ChaCha20Poly1305.open(sec.key, sec.nonce, sec.aad, sealed)
+                        check(
+                            plain != null && plain.size >= 4 && Bytes.readU32Le(plain, 0) == sendSeq &&
+                                plain.copyOfRange(4, plain.size).contentEquals(it),
+                        ) { "Sealed packet does not match the checked plaintext" }
                         sendSeq += 1
                         sealed
-                    }
+                    })
                 }
             }
         }

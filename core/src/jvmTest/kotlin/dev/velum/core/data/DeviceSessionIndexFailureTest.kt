@@ -9,6 +9,7 @@ import dev.velum.core.db.VelumDatabase
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlinx.coroutines.runBlocking
 
@@ -91,7 +92,7 @@ class DeviceSessionIndexFailureTest {
         }
     }
 
-    /** Generated summaries, version switches/deletes, processing checkpoints and a wipe all commit even if the index fails. */
+    /** Generated summaries, version switches/deletes, processing checkpoints and a wipe all commit even if the index fails (the wipe then throws once its rows are gone). */
     @Test
     fun summaryVersions_checkpoints_andWipe_survivedAFailingIndex() = runBlocking {
         val real = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
@@ -120,7 +121,8 @@ class DeviceSessionIndexFailureTest {
             assertEquals("final text", repo.getRecording("rec-1")?.transcript)
             assertEquals("1", repo.getMeta(VelumRepository.META_FTS_DIRTY))
 
-            repo.wipeAllUserData()
+            // The rows are deleted regardless; the wipe then says the index could not be cleared (#423).
+            assertFailsWith<IllegalStateException> { repo.wipeAllUserData() }
             assertNull(repo.getRecording("rec-1"))
         } finally {
             real.close()

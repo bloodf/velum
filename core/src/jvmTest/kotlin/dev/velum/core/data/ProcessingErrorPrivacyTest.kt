@@ -41,11 +41,23 @@ class ProcessingErrorPrivacyTest {
         val repo = VelumRepository(handle)
         repo.seed("a")
         repo.setProcessingError("a", "secret a")
-        repo.setProcessingError("orphan", "secret orphan")
+        repo.setMeta("processing_error:orphan", "secret orphan")
         repo.setMeta("keep_me", "1")
         repo.wipeAllUserData()
         assertNull(repo.getProcessingError("a"))
         assertNull(repo.getProcessingError("orphan"))
         assertEquals("1", repo.getMeta("keep_me"))
+    }
+
+    @Test
+    fun aWorkerRunningOnAfterAWipe_leavesNoKeys() = runTest {
+        val handle = createDatabase(DriverFactory())
+        val repo = VelumRepository(handle)
+        repo.seed("a")
+        repo.wipeAllUserData()
+        repo.setProcessingError("a", "secret a")
+        repo.setUnpromotedRun("a", "work-1")
+        assertNull(repo.getProcessingError("a"), "error text outlived the wipe")
+        assertNull(repo.unpromotedRunOwner("a"), "a run flag outlived the wipe")
     }
 }

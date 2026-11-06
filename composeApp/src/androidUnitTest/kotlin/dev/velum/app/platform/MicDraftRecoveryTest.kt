@@ -218,7 +218,7 @@ class MicDraftRecoveryTest {
         val id = "rec-draft-${UUID.randomUUID()}"; val audio = File(root, "$id.wav")
         val mic = SyntheticCapture(); var enqueued = 0
         val container = AppContainer(InMemorySecureStore(), DriverFactory(context), modelStoreRoot = ModelStoreDir(File(root, "models").path), micCapture = mic,
-            recordingJobSchedulerFactory = { _, _ -> RecordingJobScheduler { _, _, _, _ -> enqueued++ } })
+            recordingJobSchedulerFactory = { _, _ -> RecordingJobScheduler { _, _, _, _ -> enqueued++; dev.velum.ai.pipeline.EnqueueResult.STARTED_OR_REPLACED } })
         suspend fun insert() { container.createLocalRecording(status = "recording", id = id) }
         suspend fun row() = container.repository.getRecording(id)
         suspend fun reconcile() = reconcileInterruptedMicDrafts(container, root.path)

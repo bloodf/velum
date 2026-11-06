@@ -210,8 +210,13 @@ object RecordingExport {
     private const val DEFAULT_CUE_DURATION_MS = 3_000L
 }
 
-/** Copy [text] to the system clipboard when available. */
-expect fun copyToClipboard(text: String)
+/**
+ * Copy [text] to the system clipboard when available.
+ *
+ * Returns false when the platform has no clipboard to copy to (no context, no clipboard service, headless).
+ * A caller that tells the user "copied" must not claim success on a false result.
+ */
+expect fun copyToClipboard(text: String): Boolean
 
 /**
  * Share raw [bytes] via the platform share sheet / save path.

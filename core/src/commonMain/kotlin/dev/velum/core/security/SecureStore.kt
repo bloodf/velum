@@ -18,6 +18,12 @@ interface SecureStore {
     suspend fun putString(key: String, value: String)
     suspend fun getString(key: String): String?
     suspend fun remove(key: String)
+    /**
+     * Removes every entry whose key starts with [prefix]. The store has no way to list keys, so this is how a
+     * caller clears a family of entries (per-profile API keys) without having read the list that names them.
+     * Like [remove] it must not need the vault key: a locked keystore still lets entries be deleted.
+     */
+    suspend fun removeWithPrefix(prefix: String)
     suspend fun contains(key: String): Boolean
 }
 
@@ -32,7 +38,10 @@ object SecureKeys {
     const val AI_API_KEY = "ai.api_key"
 
     /** Per-endpoint-profile API key. Legacy [AI_API_KEY] mirrors the default profile. */
-    fun apiKey(profileId: String): String = "ai.api_key.$profileId"
+    fun apiKey(profileId: String): String = "$API_KEY_PREFIX$profileId"
+
+    /** Every per-profile API key starts with this; the legacy [AI_API_KEY] does not. */
+    const val API_KEY_PREFIX = "ai.api_key."
 
     const val DEVICE_PRIVATE_KEY_PEM = "device.private_key_pem"
     const val DEVICE_PUBLIC_KEY_PEM = "device.public_key_pem"

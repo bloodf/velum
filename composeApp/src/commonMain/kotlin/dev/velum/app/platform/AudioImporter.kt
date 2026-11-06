@@ -5,6 +5,13 @@ import androidx.compose.runtime.Composable
 /**
  * Opens a multi-format audio document picker (SAF on Android).
  * Supported: mp3, m4a/aac, wav, ogg/opus, flac, amr, 3gp, webm, mp4 audio.
+ * [onFailed] runs when the chosen document cannot be read (provider error, revoked grant).
  */
 @Composable
-expect fun rememberAudioImporter(onPicked: (path: String) -> Unit): () -> Unit
+expect fun rememberAudioImporter(onFailed: () -> Unit = {}, onPicked: (path: String) -> Unit): () -> Unit
+
+/** Deletes the app's copies of picked or shared audio (kept in the cache until imported). False if some remain. */
+expect fun deleteImportCopies(): Boolean
+
+/** Deletes exported transcripts and other files handed to the share sheet (kept in the cache). False if some remain. */
+expect fun deleteShareExports(): Boolean

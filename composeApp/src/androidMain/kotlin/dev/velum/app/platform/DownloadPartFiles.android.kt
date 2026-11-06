@@ -54,7 +54,7 @@ actual fun streamToFileAtomically(
 }
 
 /** Persist the rename: Linux/Android fsync a directory fd; platforms that refuse it are best effort. */
-private fun syncDirectory(dir: File?) {
+internal fun syncDirectory(dir: File?) {
     if (dir == null) return
     runCatching { FileChannel.open(dir.toPath(), StandardOpenOption.READ).use { it.force(true) } }
 }

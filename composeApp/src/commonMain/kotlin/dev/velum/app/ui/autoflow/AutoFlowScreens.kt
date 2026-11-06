@@ -561,6 +561,12 @@ private fun AutoFlowEditContent(
     }
 
     if (editWhen) {
+        var sheetWakePhrase by remember { mutableStateOf(wakePhrase) }
+        var sheetDurationMin by remember { mutableStateOf(durationMin) }
+        var sheetDurationMax by remember { mutableStateOf(durationMax) }
+        var sheetDurationMinText by remember { mutableStateOf(durationMinText) }
+        var sheetDurationMaxText by remember { mutableStateOf(durationMaxText) }
+        var sheetSourceFilter by remember { mutableStateOf(sourceFilter) }
         ModalBottomSheet(
             onDismissRequest = { editWhen = false },
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
@@ -582,10 +588,9 @@ private fun AutoFlowEditContent(
                     modifier = Modifier.padding(horizontal = 20.dp),
                 )
                 BasicTextField(
-                    value = wakePhrase,
+                    value = sheetWakePhrase,
                     onValueChange = {
-                        wakePhrase = it
-                        markDirty()
+                        sheetWakePhrase = it
                     },
                     singleLine = true,
                     cursorBrush = SolidColor(VelumInk),
@@ -603,11 +608,10 @@ private fun AutoFlowEditContent(
                     modifier = Modifier.padding(horizontal = 20.dp),
                 )
                 BasicTextField(
-                    value = durationMinText,
+                    value = sheetDurationMinText,
                     onValueChange = { raw ->
-                        durationMinText = raw.filter { it.isDigit() }.take(5)
-                        durationMin = (durationMinText.toLongOrNull() ?: 0L) * 60L
-                        markDirty()
+                        sheetDurationMinText = raw.filter { it.isDigit() }.take(5)
+                        sheetDurationMin = (sheetDurationMinText.toLongOrNull() ?: 0L) * 60L
                     },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -624,12 +628,11 @@ private fun AutoFlowEditContent(
                     modifier = Modifier.padding(horizontal = 20.dp),
                 )
                 BasicTextField(
-                    value = durationMaxText,
+                    value = sheetDurationMaxText,
                     onValueChange = { raw ->
-                        durationMaxText = raw.filter { it.isDigit() }.take(3)
-                        val hours = durationMaxText.toLongOrNull() ?: 3L
-                        durationMax = (hours.coerceAtLeast(1L)) * 3600L
-                        markDirty()
+                        sheetDurationMaxText = raw.filter { it.isDigit() }.take(3)
+                        val hours = sheetDurationMaxText.toLongOrNull() ?: 3L
+                        sheetDurationMax = (hours.coerceAtLeast(1L)) * 3600L
                     },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -650,14 +653,29 @@ private fun AutoFlowEditContent(
                 listOf("note_pro", "phone", "import", "all").forEach { src ->
                     SelectableSheetRow(
                         label = sourceFilterLabel(src, strings),
-                        selected = sourceFilter == src,
+                        selected = sheetSourceFilter == src,
                         onClick = {
-                            sourceFilter = src
-                            markDirty()
+                            sheetSourceFilter = src
                         },
                     )
                 }
-                DualActionRow(strings.cancel, strings.done, { editWhen = false }, { editWhen = false })
+                DualActionRow(strings.cancel, strings.done, { editWhen = false }, {
+                    if (wakePhrase != sheetWakePhrase ||
+                        durationMin != sheetDurationMin ||
+                        durationMax != sheetDurationMax ||
+                        durationMinText != sheetDurationMinText ||
+                        durationMaxText != sheetDurationMaxText ||
+                        sourceFilter != sheetSourceFilter) {
+                        markDirty()
+                    }
+                    wakePhrase = sheetWakePhrase
+                    durationMin = sheetDurationMin
+                    durationMax = sheetDurationMax
+                    durationMinText = sheetDurationMinText
+                    durationMaxText = sheetDurationMaxText
+                    sourceFilter = sheetSourceFilter
+                    editWhen = false
+                })
             }
         }
     }
@@ -673,12 +691,18 @@ private fun AutoFlowEditContent(
     }
 
     if (editDo) {
+        var sheetTemplateId by remember { mutableStateOf(templateId) }
+        var sheetAutoLabel by remember { mutableStateOf(autoLabel) }
+        var sheetLanguage by remember { mutableStateOf(language) }
+        var sheetPostAction by remember { mutableStateOf(postAction) }
+        var sheetModelId by remember { mutableStateOf(modelId) }
+        var sheetEndpointProfileId by remember { mutableStateOf(endpointProfileId) }
         ModalBottomSheet(
             onDismissRequest = { editDo = false },
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
             containerColor = VelumSurface,
         ) {
-            Column(Modifier.padding(vertical = 8.dp)) {
+            Column(Modifier.verticalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
                 Text(
                     strings.doSection,
                     fontWeight = FontWeight.SemiBold,
@@ -696,16 +720,14 @@ private fun AutoFlowEditContent(
                 templateChoices.forEach { tpl ->
                     SelectableSheetRow(
                         label = tpl.name,
-                        selected = templateId == tpl.id,
+                        selected = sheetTemplateId == tpl.id,
                         onClick = {
-                            templateId = tpl.id
-                            markDirty()
+                            sheetTemplateId = tpl.id
                         },
                     )
                 }
-                ToggleRow(strings.autoSpeakerLabel, autoLabel, {
-                    autoLabel = it
-                    markDirty()
+                ToggleRow(strings.autoSpeakerLabel, sheetAutoLabel, {
+                    sheetAutoLabel = it
                 })
                 Spacer(Modifier.height(8.dp))
                 Text(
@@ -721,10 +743,9 @@ private fun AutoFlowEditContent(
                 ).forEach { (value, label) ->
                     SelectableSheetRow(
                         label = label,
-                        selected = language == value,
+                        selected = sheetLanguage == value,
                         onClick = {
-                            language = value
-                            markDirty()
+                            sheetLanguage = value
                         },
                     )
                 }
@@ -738,19 +759,17 @@ private fun AutoFlowEditContent(
                 postActionChoices.forEach { (value, label) ->
                     SelectableSheetRow(
                         label = label,
-                        selected = postAction == value,
+                        selected = sheetPostAction == value,
                         onClick = {
-                            postAction = value
-                            markDirty()
+                            sheetPostAction = value
                         },
                     )
                 }
                 Spacer(Modifier.height(8.dp))
                 OutlinedTextField(
-                    value = modelId,
+                    value = sheetModelId,
                     onValueChange = {
-                        modelId = it
-                        markDirty()
+                        sheetModelId = it
                     },
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
                     label = { Text(strings.settingsUi.modelForAutoFlow) },
@@ -759,17 +778,32 @@ private fun AutoFlowEditContent(
                 )
                 Spacer(Modifier.height(8.dp))
                 OutlinedTextField(
-                    value = endpointProfileId,
+                    value = sheetEndpointProfileId,
                     onValueChange = {
-                        endpointProfileId = it
-                        markDirty()
+                        sheetEndpointProfileId = it
                     },
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
                     label = { Text(strings.settingsUi.endpointProfile) },
                     singleLine = true,
                     shape = RoundedCornerShape(10.dp),
                 )
-                DualActionRow(strings.cancel, strings.done, { editDo = false }, { editDo = false })
+                DualActionRow(strings.cancel, strings.done, { editDo = false }, {
+                    if (templateId != sheetTemplateId ||
+                        autoLabel != sheetAutoLabel ||
+                        language != sheetLanguage ||
+                        postAction != sheetPostAction ||
+                        modelId != sheetModelId ||
+                        endpointProfileId != sheetEndpointProfileId) {
+                        markDirty()
+                    }
+                    templateId = sheetTemplateId
+                    autoLabel = sheetAutoLabel
+                    language = sheetLanguage
+                    postAction = sheetPostAction
+                    modelId = sheetModelId
+                    endpointProfileId = sheetEndpointProfileId
+                    editDo = false
+                })
             }
         }
     }
