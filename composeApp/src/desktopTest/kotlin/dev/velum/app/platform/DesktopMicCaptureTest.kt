@@ -28,6 +28,7 @@ class DesktopMicCaptureTest {
         override val bufferSizeBytes: Int = 4096,
         private val chunkProvider: (() -> ByteArray?)? = null,
         private val onOpenAction: (() -> Unit)? = null,
+        private val onStartAction: (() -> Unit)? = null,
         private val blockOnReadUntilStopped: Boolean = false,
         private val hangForeverOnRead: Boolean = false,
     ) : DesktopAudioLine {
@@ -51,6 +52,7 @@ class DesktopMicCaptureTest {
         }
 
         override fun start() {
+            onStartAction?.invoke()
             isLineRunning = true
             startCount.incrementAndGet()
         }
@@ -479,6 +481,26 @@ class DesktopMicCaptureTest {
         } finally {
             tempDir.deleteRecursively()
         }
+    }
+
+    @Test
+    fun desktop_live_pcm_capture_closes_line_when_open_fails() {
+        val fakeLine = FakeAudioLine(onOpenAction = { throw LineUnavailableException("busy") })
+        val capture = DesktopLivePcmCapture(lineFactory = { fakeLine })
+
+        assertFalse(capture.start { error("No PCM expected") })
+        assertEquals(1, fakeLine.closeCount.get())
+        assertEquals(0, fakeLine.startCount.get())
+    }
+
+    @Test
+    fun desktop_live_pcm_capture_closes_line_when_start_fails() {
+        val fakeLine = FakeAudioLine(onStartAction = { throw IllegalStateException("cannot start") })
+        val capture = DesktopLivePcmCapture(lineFactory = { fakeLine })
+
+        assertFalse(capture.start { error("No PCM expected") })
+        assertEquals(1, fakeLine.openCount.get())
+        assertEquals(1, fakeLine.closeCount.get())
     }
 
     @Test

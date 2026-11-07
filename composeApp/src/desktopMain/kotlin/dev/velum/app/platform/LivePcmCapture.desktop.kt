@@ -17,11 +17,15 @@ internal class DesktopLivePcmCapture(
         if (running.get()) return true
 
         val audioLine = try {
-            lineFactory.createLine(MicInputSource.Mic).also {
-                it.open()
-                it.start()
-            }
+            lineFactory.createLine(MicInputSource.Mic)
         } catch (_: Exception) {
+            return false
+        }
+        try {
+            audioLine.open()
+            audioLine.start()
+        } catch (_: Exception) {
+            runCatching { audioLine.close() }
             return false
         }
 
