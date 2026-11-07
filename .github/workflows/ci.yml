@@ -116,12 +116,14 @@ jobs:
         id: record-screenshots
         run: ./gradlew :composeApp:recordRoborazziDebug --stacktrace
 
-      - name: Upload Discover filter test results on failure
+      - name: Upload failing Discover and recovery test results
         if: ${{ failure() && steps.record-screenshots.outcome == 'failure' }}
         uses: actions/upload-artifact@v4
         with:
           name: discover-filter-junit
-          path: composeApp/build/test-results/testDebugUnitTest/TEST-dev.velum.app.ui.templates.DiscoverFiltersUiTest.xml
+          path: |
+            composeApp/build/test-results/testDebugUnitTest/TEST-dev.velum.app.ui.templates.DiscoverFiltersUiTest.xml
+            composeApp/build/test-results/testDebugUnitTest/TEST-dev.velum.app.importing.QueuedRecoveryTest.xml
           if-no-files-found: warn
 
       - name: Compile desktop JVM (shared shell)

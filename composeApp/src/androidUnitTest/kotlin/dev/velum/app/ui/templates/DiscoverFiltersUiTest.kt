@@ -224,7 +224,10 @@ class DiscoverFiltersUiTest {
             // Clear-all keeps the search but drops every facet filter, so Gamma returns.
             tap("filters:clear")
             awaitTag("active:category", present = false)
-            await("ZQ Gamma"); awaitRow("ui102-c"); assertRowAbsent("ui102-d")
+            // Gamma can be loaded below the lazy viewport after the tag options grow.
+            // Scroll to its stable key before requiring its rendered text.
+            waiting("Gamma row loaded after clear") { rowLoaded("ui102-c") }
+            await("ZQ Gamma"); assertRowAbsent("ui102-d")
         } finally {
             activity.pause().stop().destroy()
             container.databaseHandle.driver.close()
