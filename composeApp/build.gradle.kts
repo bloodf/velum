@@ -198,6 +198,7 @@ kotlin {
                 implementation(project(":ble-testing"))
                 implementation(libs.junit)
                 implementation(libs.androidx.test.ext.junit)
+                implementation(libs.androidx.work.testing)
                 implementation(libs.androidx.compose.ui.test.junit4)
                 implementation(libs.robolectric)
                 implementation(libs.roborazzi)
@@ -220,6 +221,7 @@ kotlin {
                 implementation(libs.androidx.compose.ui.test.junit4)
                 implementation(libs.androidx.compose.ui.test.manifest)
                 implementation("androidx.tracing:tracing:1.2.0")
+                implementation(project(":ble-testing"))
             }
         }
         desktopMain.dependencies {

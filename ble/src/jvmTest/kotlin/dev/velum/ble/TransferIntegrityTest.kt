@@ -49,8 +49,9 @@ class TransferIntegrityTest {
         faults: TransferFaults,
         stopReply: FakePlaudPeripheral.StopReply = FakePlaudPeripheral.StopReply.Cmd29,
         sessionFile: ByteArray = file,
+        chunk: Int = 200,
     ): PlaudDeviceClient {
-        val fake = FakePlaudPeripheral(cipher, keys, sessionFile, chunkSize = 200, faults = faults, stopReply = stopReply)
+        val fake = FakePlaudPeripheral(cipher, keys, sessionFile, chunkSize = chunk, faults = faults, stopReply = stopReply)
         peripheral = fake
         val ble = FakeBleTransport(fake)
         ble.connect("fake-note-pro")
@@ -180,6 +181,19 @@ class TransferIntegrityTest {
         client.close()
     }
 
+    @Test fun device_stuck_repeating_at_a_high_offset_with_tiny_chunks_stops_after_the_frame_limit() = runTest(timeout = 120.seconds) {
+        // The limit used to scale as offset / smallest chunk: 100,001 frames here. A repeat never advances the
+        // offset, so it must stop after the same 4,096 frames at any offset or chunk size (#212).
+        val big = Random(9).nextBytes(130_000)
+        val client = clientFor(TransferFaults(endlessRepeatAt = 100_001), sessionFile = big, chunk = 1)
+        val sink = Sink()
+        assertFailsWith<TransferIntegrityException> {
+            client.downloadSessionTo(SESSION, big.size.toLong(), sink, startOffset = 100_000L)
+        }
+        assertTrue(peripheral!!.framesSent < 6_000, "frames sent: ${peripheral!!.framesSent}")
+        client.close()
+    }
+
     @Test fun exactly_the_limit_of_repeats_does_not_end_the_transfer() = runTest {
         val client = clientFor(TransferFaults(repeatBurstAt = mapOf(2_000L to 4096)))
         val sink = Sink()
@@ -200,6 +214,16 @@ class TransferIntegrityTest {
         // 5,000 chunks of repeats before the first new byte, more than the 4,096 floor of the limit.
         val big = Random(8).nextBytes(1_200_000)
         val client = clientFor(TransferFaults(ignoreStartOffset = true), sessionFile = big)
+        val sink = Sink()
+        client.downloadSessionTo(SESSION, big.size.toLong(), sink, startOffset = 1_000_000L)
+        assertContentEquals(big.copyOfRange(1_000_000, big.size), sink.out.toByteArray())
+        client.close()
+    }
+
+    @Test fun a_stray_chunk_mid_catch_up_does_not_end_the_transfer() = runTest {
+        // The catch-up replays 5,000 frames, past the 4,096 limit; one stray inside it must cost one frame, not the transfer.
+        val big = Random(10).nextBytes(1_200_000)
+        val client = clientFor(TransferFaults(ignoreStartOffset = true, strayAt = setOf(900_000L)), sessionFile = big)
         val sink = Sink()
         client.downloadSessionTo(SESSION, big.size.toLong(), sink, startOffset = 1_000_000L)
         assertContentEquals(big.copyOfRange(1_000_000, big.size), sink.out.toByteArray())

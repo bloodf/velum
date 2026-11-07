@@ -1,5 +1,8 @@
 package dev.velum.ble.crypto
 
+import dev.velum.protocol.Bytes
+import dev.velum.protocol.PlaudFile
+import dev.velum.protocol.PlaudFileCrypto
 import java.io.File
 import javax.crypto.Cipher
 import javax.crypto.spec.ChaCha20ParameterSpec
@@ -7,6 +10,7 @@ import javax.crypto.spec.SecretKeySpec
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 
 /** The file decryptor must not depend on which JCA provider is first: Conscrypt ignores the nonce (#94). */
@@ -22,6 +26,27 @@ class FileDecryptorChaCha20Test {
                 val cipher = Cipher.getInstance("ChaCha20", "SunJCE")
                 cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(key, "ChaCha20"), ChaCha20ParameterSpec(nonce, counter))
                 assertContentEquals(cipher.doFinal(data), decryptor.chacha20Decrypt(key, nonce, counter.toLong(), 0L, data), "size=$size counter=$counter")
+            }
+        }
+    }
+
+    @Test fun the_last_counter_block_matches_sunjce() {
+        val data = Random(3).nextBytes(64)
+        val cipher = Cipher.getInstance("ChaCha20", "SunJCE")
+        cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(key, "ChaCha20"), ChaCha20ParameterSpec(nonce, -1))
+        assertContentEquals(cipher.doFinal(data), JcaFileDecryptor().chacha20Decrypt(key, nonce, 0xFFFF_FFFFL, 0L, data))
+    }
+
+    @Test fun a_file_whose_counter_would_wrap_fails_in_the_stream_path_too() {
+        val pems = rsaKeyPairToPem()
+        val decryptor = JcaFileDecryptor()
+        val file = decryptor.encryptFile(pems.first, ByteArray(1_000))
+        Bytes.u32Le(0xFFFF_FFFFL).copyInto(file, PlaudFile.OFF_CHACHA_COUNTER)
+        val read = { position: Long, length: Int -> file.copyOfRange(position.toInt(), position.toInt() + length) }
+        // Wraps inside the first chunk, and with small chunks a later chunk starts past the limit.
+        for (chunkBytes in listOf(PlaudFileCrypto.STREAM_CHUNK_BYTES, 64)) {
+            assertFailsWith<IllegalArgumentException> {
+                PlaudFileCrypto.decryptStream(file.size.toLong(), read, pems.second, decryptor, chunkBytes) {}
             }
         }
     }

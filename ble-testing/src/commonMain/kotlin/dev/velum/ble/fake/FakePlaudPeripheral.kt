@@ -97,6 +97,9 @@ class FakePlaudPeripheral(
     private var secret: Protocol20SessionSecret? = null
     private var appRecvSeq: Long = 2
     private var deviceSendSeq: Long = 0
+
+    /** Sealed packets sent so far (tests use it to bound how long a client keeps listening). */
+    val framesSent: Long get() = deviceSendSeq
     private var unlocked = false
     private var handshakeFailed = false
 
@@ -197,7 +200,7 @@ class FakePlaudPeripheral(
         _receivedCommands += cmd
         when (cmd) {
             Commands.HANDSHAKE -> {
-                val hsPayload = Bytes.hexToBytes("001400051e0101000156000701")
+                val hsPayload = Bytes.hexToBytes(if (faults.legacyProtocol) "000600051e0101000156000701" else "001400051e0101000156000701")
                 emitCommand(Commands.HANDSHAKE, hsPayload)
             }
             Commands.GET_SESSIONS -> {
@@ -274,6 +277,10 @@ class FakePlaudPeripheral(
     private suspend fun streamSessionFrom(startOffset: Int) {
         var offset = startOffset
         faults.startPass(startOffset)
+        if (faults.leftoverBeforeStream && startOffset > 0) {
+            val from = maxOf(0, startOffset - chunkSize)
+            emitEncrypted(chunkFrame(sessionId + 1, from.toLong(), ByteArray(startOffset - from) { 0x77 }))
+        }
         while (offset < sessionFile.size) {
             val end = minOf(offset + chunkSize, sessionFile.size)
             val at = offset.toLong()
@@ -305,6 +312,7 @@ class FakePlaudPeripheral(
             if (faults.corrupt.remove(at)) slice[0] = (slice[0].toInt() xor 0x5A).toByte()
             val frame = chunkFrame(sessionId, if (faults.relativeOffsets) at - startOffset else at, slice)
             when {
+                at in faults.dropAlwaysAt -> Unit
                 faults.drop.remove(at) -> Unit
                 faults.garble.remove(at) -> emitEncrypted(frame, garble = true)
                 faults.lostNotification.remove(at) -> emitEncrypted(frame, lost = true)
@@ -319,13 +327,16 @@ class FakePlaudPeripheral(
 
     private fun endFrame(sid: Long) =
         byteArrayOf(PacketType.RecordingData.code.toByte()) +
-            Bytes.u32Le(sid) +
+            sidField(sid) +
             Bytes.u32Le(0xFFFF_FFFFL) +
             byteArrayOf(0)
 
+    /** Protocol 7+ puts the session id in recording data; older ones do not. */
+    private fun sidField(sid: Long) = if (faults.legacyProtocol) ByteArray(0) else Bytes.u32Le(sid)
+
     private fun chunkFrame(sid: Long, offset: Long, data: ByteArray) =
         byteArrayOf(PacketType.RecordingData.code.toByte()) +
-            Bytes.u32Le(sid) +
+            sidField(sid) +
             Bytes.u32Le(offset) +
             byteArrayOf(data.size.toByte()) +
             data

@@ -5,18 +5,25 @@ import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import dev.velum.ble.crypto.JcaSessionCipher
 import dev.velum.ble.crypto.createFileDecryptor
+import dev.velum.ble.crypto.createSessionCipher
 import dev.velum.ble.crypto.rsaKeyPairToPem
+import dev.velum.ble.wifi.WifiPayloadCipher
+import dev.velum.ble.wifi.createWifiFrameCipher
 import dev.velum.protocol.Bytes
 import dev.velum.protocol.ChaCha20
 import dev.velum.protocol.PlaudFile
 import dev.velum.protocol.PlaudFileCrypto
+import dev.velum.protocol.Protocol20SessionSecret
 import java.io.ByteArrayOutputStream
 import java.security.Security
 import javax.crypto.Cipher
 import javax.crypto.spec.GCMParameterSpec
+import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
 import kotlin.random.Random
 import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -137,8 +144,71 @@ class FileDecryptDeviceTest {
             """,
         )
         val cipher = JcaSessionCipher()
+        Log.i(TAG, "api=${Build.VERSION.SDK_INT} ChaCha20-Poly1305 usesPlatformChaCha=${cipher.usesPlatformChaCha}")
+        // Documented from API 28; on 26 and 27 the Kotlin path is expected and the line above records it.
+        if (Build.VERSION.SDK_INT >= 28) {
+            assertTrue("API ${Build.VERSION.SDK_INT} should use the platform ChaCha20-Poly1305", cipher.usesPlatformChaCha)
+        }
         assertArrayEquals(sealed, cipher.chacha20Poly1305Seal(aeadKey, aeadNonce, aad, plain))
         assertArrayEquals(plain, cipher.chacha20Poly1305Open(aeadKey, aeadNonce, aad, sealed))
+    }
+
+    /** Must return null for each of these, and only these. The log shows what the platform really throws. */
+    @Test fun session_cipher_fails_closed_for_bad_input() {
+        val cipher = JcaSessionCipher()
+        val openKey = ByteArray(32) { it.toByte() }
+        val openNonce = ByteArray(12) { (it + 1).toByte() }
+        val aad = ByteArray(12) { (it + 2).toByte() }
+        val sealed = cipher.chacha20Poly1305Seal(openKey, openNonce, aad, ByteArray(40))
+        val badTag = sealed.copyOf().also { it[it.size - 1] = (it[it.size - 1].toInt() xor 1).toByte() }
+        val cases = listOf(
+            "bad tag" to Triple(openKey, aad, badTag),
+            "wrong aad" to Triple(openKey, ByteArray(12), sealed),
+            "wrong key" to Triple(ByteArray(32), aad, sealed),
+            "empty" to Triple(openKey, aad, ByteArray(0)),
+            "one byte" to Triple(openKey, aad, ByteArray(1)),
+            "shorter than a tag" to Triple(openKey, aad, ByteArray(15)),
+            "exactly a tag, wrong" to Triple(openKey, aad, ByteArray(16)),
+        )
+        for ((name, case) in cases) {
+            val raw = runCatching {
+                // Same names, same order as production; API 28 only resolves the full one.
+                val c = listOf("ChaCha20/Poly1305/NoPadding", "ChaCha20-Poly1305").firstNotNullOfOrNull { n ->
+                    runCatching { Cipher.getInstance(n) }.getOrNull()
+                } ?: Cipher.getInstance("ChaCha20/Poly1305/NoPadding")
+                c.init(Cipher.DECRYPT_MODE, SecretKeySpec(case.first, "ChaCha20"), IvParameterSpec(openNonce))
+                c.updateAAD(case.second)
+                c.doFinal(case.third)
+            }.exceptionOrNull()
+            Log.i(TAG, "open $name throws ${raw?.javaClass?.name}")
+            assertNull(name, cipher.chacha20Poly1305Open(case.first, openNonce, case.second, case.third))
+        }
+    }
+
+    /** The Wi-Fi AES-GCM frame cipher. The log shows what the platform really throws. */
+    @Test fun wifi_cipher_fails_closed_for_bad_input() {
+        val secret = Protocol20SessionSecret(ByteArray(32) { 1 }, ByteArray(12) { 2 }, ByteArray(12) { 3 })
+        val wifi = createWifiFrameCipher(createSessionCipher(), secret, WifiPayloadCipher.AesGcm)
+        val sealed = wifi.seal(7, byteArrayOf(1, 2, 3))
+        assertArrayEquals(byteArrayOf(1, 2, 3), wifi.open(7, sealed)!!.second)
+        val badTag = sealed.copyOf().also { it[it.size - 1] = (it[it.size - 1].toInt() xor 1).toByte() }
+        val cases = listOf(
+            "bad tag" to badTag,
+            "empty" to ByteArray(0),
+            "one byte" to ByteArray(1),
+            "shorter than a tag" to ByteArray(15),
+            "exactly a tag, wrong" to ByteArray(16),
+        )
+        for ((name, input) in cases) {
+            val raw = runCatching {
+                val c = Cipher.getInstance("AES/GCM/NoPadding")
+                c.init(Cipher.DECRYPT_MODE, SecretKeySpec(secret.key, "AES"), GCMParameterSpec(128, secret.nonce))
+                c.updateAAD(secret.aad)
+                c.doFinal(input)
+            }.exceptionOrNull()
+            Log.i(TAG, "wifi open $name throws ${raw?.javaClass?.name}")
+            assertNull(name, wifi.open(7, input))
+        }
     }
 
     /** NIST GCM test case 14, in the form the Wi-Fi frame and voice profile ciphers use. */
@@ -149,7 +219,10 @@ class FileDecryptDeviceTest {
     }
 
     @Test fun throughput_for_the_log() {
-        val plain = Random(3).nextBytes(16 * 1024 * 1024)
+        // Only for the log: the plaintext and the encrypted copy are both held, so size them to the heap
+        // (a 48 MB AVD heap cannot hold 2 x 16 MiB plus the decryptor's buffers).
+        val size = (Runtime.getRuntime().maxMemory() / 8).coerceIn(1L * 1024 * 1024, 16L * 1024 * 1024).toInt()
+        val plain = Random(3).nextBytes(size)
         val file = plaudFile(plain)
         val started = System.nanoTime()
         var written = 0L

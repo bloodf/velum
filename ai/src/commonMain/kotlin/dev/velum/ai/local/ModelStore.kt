@@ -11,6 +11,10 @@ expect class ModelStoreDir(absolutePath: String) {
     fun isDirectory(): Boolean
     fun createDirectories()
     fun writeBytes(bytes: ByteArray)
+    /** Like [writeBytes], but the contents are on stable storage before this returns (a power cut keeps them). */
+    fun writeBytesDurably(bytes: ByteArray)
+    /** Best effort: persist this directory's entries (a rename into it). Platforms that cannot ignore it. */
+    fun syncDirectory()
     fun appendBytes(bytes: ByteArray)
     fun readBytes(): ByteArray
     /** Random-access read of [length] bytes starting at [offset] (for spilled PCM windows). */
@@ -20,10 +24,14 @@ expect class ModelStoreDir(absolutePath: String) {
     fun deleteRecursively()
     fun listChildren(): List<ModelStoreDir>
     fun length(): Long
+    /** Free bytes on the volume holding this path (nearest existing parent), or null when unknown. */
+    fun freeSpaceBytes(): Long?
+    /** Last modification time in epoch milliseconds, or 0 when the path does not exist. */
+    fun lastModifiedMillis(): Long
     /**
      * Publish this path onto [dest], replacing it. JVM/Android: atomic for a file target on
      * the same filesystem (ATOMIC_MOVE; plain replace where unsupported); an existing
-     * directory target is deleted first. iOS: delete-then-move, not atomic.
+     * directory target is deleted first. iOS: rename(2), which replaces a file target atomically.
      */
     fun renameTo(dest: ModelStoreDir): Boolean
 }

@@ -67,7 +67,7 @@ Status legend: `Open` · `Fixed` · `Deferred (owner/hardware)` · `Accepted ris
 ### H11 — Demo seed left on — **Fixed** (`0a34d9b`, `SEED_DEMO_DATA = false`; templates always seed)
 ### H12 — Explore Conta / dark contrast — **Fixed** (`b851722`, `VelumOnBlack` + localized settings copy)
 ### H13 — Voice Profiles hardcoded English — **Fixed** (`1b33ae3`, EN + pt-BR via `Strings.ux`; #87 addressed in code — owner can verify on device)
-### H14 — No BLE transfer FGS — **Deferred (owner/hardware)** — download works in-process; add `connectedDevice` FGS after hardware timing measurements (#85)
+### H14 — No BLE transfer FGS — **Code added, hardware pending** — `SessionDownloadService` holds a `connectedDevice` (or `dataSync`) FGS during session downloads; background and Doze behaviour on real hardware is still unverified (#85)
 
 ---
 
@@ -107,13 +107,13 @@ Status legend: `Open` · `Fixed` · `Deferred (owner/hardware)` · `Accepted ris
 | L7 Decorative Mic/Sync icons | Fixed (`b851722`) | Removed |
 | L8 Seek contentDescriptions | Fixed (`1b33ae3`) | `seekBack15` / `seekForward15` |
 | L9 Integrations HMAC label | Fixed (`1b33ae3`) | User-facing `webhookSigned` (EN/pt-BR) |
-| L10 Fixed SoftAP AEAD nonce | Accepted (S13) | |
+| L10 Fixed AEAD nonce (S13) | Open, pending owner decision | BLE, files and Wi-Fi. An earlier document called the Wi-Fi case accepted on 2026-10-27; no owner decision is on record. |
 
 ---
 
 ## Correctly verified
 
-- Forbidden opcodes **5 / 104 / 128 / 0xFE20 / 143** and settings **4 / 26** gated + tested
+- Forbidden opcodes **5 / 30 / 104 / 128 / 0xFE20 / 143** and settings **4 / 26** gated + tested
 - Android Keystore AES-GCM secure store; `allowBackup=false`; cleartext off
 - Only `MainActivity` exported; 16 KB CI packaging checks present
 - No telemetry / Velum login chrome in Settings hub

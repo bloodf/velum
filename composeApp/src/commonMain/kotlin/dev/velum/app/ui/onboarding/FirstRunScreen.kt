@@ -1,7 +1,17 @@
 package dev.velum.app.ui.onboarding
 
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsBottomHeight
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -44,6 +54,11 @@ fun FirstRunScreen(
     onUseApi: () -> Unit,
     onSkip: () -> Unit,
     languageHint: String? = null,
+    /** Plain message shown above the download button, e.g. not enough free space. */
+    notice: String? = null,
+    /** Download size and free space the recommended pack still needs (models already Ready excluded); 0 hides the line. */
+    recommendedTotalBytes: Long = 0L,
+    recommendedNeededBytes: Long = 0L,
 ) {
     val strings = LocalStrings.current
     val fr = strings.firstRun
@@ -65,6 +80,9 @@ fun FirstRunScreen(
         Modifier
             .fillMaxSize()
             .background(VelumBg)
+            // The activity is edge-to-edge and this screen sits outside the Scaffold that pads the other routes:
+            // inset the scroll viewport, not its content, so scrolled text is clipped below the status bar (#288).
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
             .verticalScroll(rememberScrollState()),
     ) {
         VelumHero(
@@ -127,6 +145,24 @@ fun FirstRunScreen(
                     Text("• $name", color = VelumInkSecondary, fontSize = 13.sp)
                 }
             }
+            Spacer(Modifier.height(10.dp))
+            if (recommendedTotalBytes > 0) {
+                Text(
+                    ModelCatalogUi.fill(
+                        fr.recommendedTotalFormat,
+                        ModelCatalogUi.formatBytes(recommendedTotalBytes),
+                        ModelCatalogUi.formatBytes(recommendedNeededBytes),
+                    ),
+                    color = VelumInkSecondary, fontSize = 13.sp, lineHeight = 18.sp,
+                )
+            }
+            if (notice != null) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    notice, color = VelumInk, fontSize = 14.sp, lineHeight = 20.sp,
+                    modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                )
+            }
             Spacer(Modifier.height(16.dp))
             BlackButton(
                 fr.downloadRecommended,
@@ -159,5 +195,6 @@ fun FirstRunScreen(
                 lineHeight = 18.sp,
             )
         }
+        Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
     }
 }

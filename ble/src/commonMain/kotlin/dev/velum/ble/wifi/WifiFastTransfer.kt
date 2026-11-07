@@ -1,9 +1,12 @@
 package dev.velum.ble.wifi
 
+import dev.velum.ble.gatt.PlaudWriteGuard
 import dev.velum.protocol.FeatureFlags
 import dev.velum.protocol.Protocol20SessionSecret
 import dev.velum.protocol.SessionCipher
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.flow
 
@@ -50,13 +53,13 @@ interface WifiTransferServer {
 
     suspend fun stop()
 
-    /** Encrypted frames from the device (still sealed — open with [WifiFrameCipher]). */
+    /** Encrypted frames from the device (still sealed — open with [WifiFrameCipher]), and [PEER_CLOSED_FRAME]. */
     fun incomingEncryptedFrames(): Flow<ByteArray>
 
     suspend fun sendEncryptedFrame(bytes: ByteArray)
 
     /**
-     * Fixed codes ([FAILURE_PEER_CLOSED], [FAILURE_FRAME_OVERFLOW]) for events that make the Wi-Fi path
+     * Fixed codes for events that make the Wi-Fi path
      * unusable before [WifiTransferCoordinator]'s timeout. Hot: subscribe before [start]. The default never emits.
      */
     fun pathFailures(): Flow<String> = flow { awaitCancellation() }
@@ -67,6 +70,16 @@ interface WifiTransferServer {
 
         /** A frame was dropped because the consumer fell behind the receive buffer; the stream has a gap. */
         const val FAILURE_FRAME_OVERFLOW: String = "wifi_frame_overflow"
+
+        /**
+         * Put in [incomingEncryptedFrames] after a peer close, so frames delivered before the close are handled
+         * first, however slow the consumer. On a clean WebSocket close that is every frame the device sent. On a raw
+         * connection loss the library can drop frames still queued, which then shows up as an incomplete file.
+         * Compared by identity, so a device sending an empty frame can't forge it.
+         * [WifiFastTransferSession.openIncoming] turns it into [FAILURE_PEER_CLOSED]. If no consumer has read frames
+         * yet, servers use [pathFailures] instead. If one read frames and left, nothing is signalled.
+         */
+        val PEER_CLOSED_FRAME: ByteArray = ByteArray(0)
 
         const val DEFAULT_PORT: Int = 8081
     }
@@ -110,11 +123,18 @@ object UnsupportedWifiSoftApJoiner : WifiSoftApJoiner {
  */
 class WifiFastTransferSession(
     private val softAp: WifiSoftApJoiner,
-    val server: WifiTransferServer,
-    val frameCipher: WifiFrameCipher,
+    private val server: WifiTransferServer,
+    private val frameCipher: WifiFrameCipher,
 ) {
     private var sendSeq: Long = 0
     private var recvSeq: Long = 0
+    private val sendMutex = Mutex()
+
+    /** Encrypted frames from the device, and [WifiTransferServer.PEER_CLOSED_FRAME]. Open them with [openIncoming]. */
+    fun incomingEncryptedFrames(): Flow<ByteArray> = server.incomingEncryptedFrames()
+
+    /** Fixed failure codes that make the Wi-Fi path unusable; see [WifiTransferServer.pathFailures]. */
+    fun pathFailures(): Flow<String> = server.pathFailures()
 
     suspend fun start(
         ssid: String,
@@ -127,7 +147,8 @@ class WifiFastTransferSession(
         // Start WS listener first so the device can connect as soon as SoftAP is up.
         server.start(port = port, bindHost = bindHost, preamble = preamble)
         softAp.join(ssid, password, ssidIsPattern)
-        sendSeq = 0
+        // Under the send lock, so a send in flight cannot take a sequence number from the old run.
+        sendMutex.withLock { sendSeq = 0 }
         recvSeq = 0
     }
 
@@ -136,13 +157,36 @@ class WifiFastTransferSession(
         server.stop()
     }
 
+    // Note: unlike the BLE client, this does no link check. The session has no BLE link or session secret to compare against
+    // (it holds a frame cipher only), and nothing builds it outside tests today (no production caller of sendPacket). If it is
+    // wired, bind it to the Wi-Fi socket's own lifetime and add the check then.
     suspend fun sendPacket(packet: ByteArray) {
-        val sealed = frameCipher.seal(sendSeq, packet)
-        sendSeq += 1
-        server.sendEncryptedFrame(sealed)
+        // The same plaintext guard as every BLE write: forbidden opcodes and settings never leave the app (#350).
+        // Before sealing, so a rejected packet neither uses a sequence number nor reaches the server.
+        // The caller's array is copied once, then checked and sealed from that copy, so the caller cannot change the
+        // bytes between the check and the seal (as GuardedLink does).
+        val checked = packet.copyOf()
+        PlaudWriteGuard.check(checked)
+        // One send at a time: the sequence number is taken, and the frame written, in the same order for everyone.
+        sendMutex.withLock {
+            // Copies on both sides: what the cipher returns is not kept by it, and open() cannot edit what we send.
+            val sealed = frameCipher.seal(sendSeq, checked.copyOf()).copyOf()
+            // What goes out must open to exactly the packet the guard checked, at this sequence. This uses the same
+            // cipher's own open, so it catches a broken or swapped seal, not a cipher whose seal and open agree on a lie.
+            val opened = frameCipher.open(sendSeq, sealed.copyOf())
+            check(opened != null && opened.first == sendSeq && opened.second.contentEquals(checked)) {
+                "Sealed frame does not match the checked packet"
+            }
+            sendSeq += 1
+            server.sendEncryptedFrame(sealed)
+        }
     }
 
+    /** Null for a frame that doesn't open. Throws if the peer closed: see [WifiTransferServer.PEER_CLOSED_FRAME]. */
     fun openIncoming(ciphertextAndTag: ByteArray): ByteArray? {
+        if (ciphertextAndTag === WifiTransferServer.PEER_CLOSED_FRAME) {
+            throw WifiTransferFailure(WifiTransferServer.FAILURE_PEER_CLOSED)
+        }
         val opened = frameCipher.open(recvSeq, ciphertextAndTag) ?: return null
         recvSeq = opened.first + 1
         return opened.second

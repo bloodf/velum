@@ -9,14 +9,14 @@
 | SoftAP | Phone joins device SoftAP via `WifiNetworkSpecifier` (WPA2) |
 | Transport | Phone runs **WebSocket server on `:8081`** (`org.java_websocket`, same as Plaud) |
 | Crypto | Same BLE session **key / nonce / aad**; ChaCha20-Poly1305, or **AES-GCM** when cmd 138 bit `0x08` |
-| Nonce | **Fixed for the whole session** — **required** for Note Pro; do not rotate. **Accepted risk (review S13):** rotating per-message would break Plaud SoftAP parity; BLE session isolation + SoftAP preamble + BLE fallback mitigate exposure. Revisit only after owner hardware SoftAP confirms a compatible alternative. |
+| Nonce | **Fixed for the whole session** — **required** for Note Pro; do not rotate. **Review S13: Open, pending owner decision: BLE, files and Wi-Fi. An earlier document called the Wi-Fi case accepted on 2026-10-27; no owner decision is on record.** Rotating per-message would break Plaud SoftAP parity. The SoftAP preamble limits who can connect on Wi-Fi, but it doesn't protect the frames. BLE uses the same fixed nonce, and BLE fallback isn't a mitigation. Revisit only after owner hardware SoftAP confirms a compatible alternative. |
 | Seq | Each WS binary frame uses its own seq (`seq ‖ packet` plaintext) |
 | BLE | Active BLE session required; Wi-Fi is an acceleration path |
 
 ## Velum additions (safe)
 
 - **Socket-level SoftAP bind, attempted not proven:** `AndroidWifiTransferServer` tries `Network.bindSocket` on each accepted socket and never uses `bindProcessToNetwork`. On real Android the accepted-socket bind is expected to throw, so see the known platform limit in the test instructions below.
-- **Early failure signals (#219):** servers publish `pathFailures()` codes. `wifi_peer_closed` (the authenticated device closed its socket) falls back to BLE at once, after a short `peerClosedGrace` that lets `assemble` finish from frames already received; `wifi_frame_overflow` (the consumer fell 64 frames behind and a frame was dropped, so the sequence has a gap) falls back immediately and closes the socket with 1013. Neither waits for the 45 s `wifiTimeout`.
+- **Early failure signals (#219):** servers publish `pathFailures()` codes. `wifi_peer_closed` (the authenticated device closed its socket) falls back to BLE as soon as the frames delivered before the close are handled, with no time limit on them: the close is queued after those frames. On a clean WebSocket close that is every frame the device sent, so a rejected frame or a complete file beats the close. On a raw connection loss Java-WebSocket can drop frames still queued (6 of 150 loopback runs lost some), so the transfer ends as `wifi_peer_closed` and falls back with the file still whole from BLE; `wifi_frame_overflow` (the consumer fell 64 frames behind and a frame was dropped, so the sequence has a gap) falls back immediately and closes the socket with 1013. Neither waits for the 45 s `wifiTimeout`.
 - **Preamble** first WS binary message (`VELUM-WIFI-v1:<bindToken>`) so a random SoftAP client is rejected.
 - **Per-connection preamble, latest authenticated wins:** authorization is tracked per WebSocket connection. A valid preamble from a new connection replaces the current peer (the old socket is closed with 1001); an invalid one is closed with 1008; an unauthenticated close changes nothing. **Unverified (#8 hardware validation):** how the Note Pro reacts to a 1008/1001 close, and whether it ever opens parallel sockets.
 - **BLE fallback** (`WifiTransferCoordinator` / `PlaudDeviceClient.downloadSessionPreferWifi`) on timeout, SoftAP failure, preamble mismatch, or cipher errors.
@@ -35,11 +35,13 @@ Run `./gradlew :ble:jvmTest --rerun`. `WifiSoftApMockServerTest` starts `JavaWeb
 ephemeral loopback port (`ServerSocket(0)`, connect-retry, no fixed ports) with `FakeWifiDeviceClient` as the device.
 
 - **Simulated (JVM):** preamble accept/reject, sealed frames for both ciphers, seq ordering/replay, AEAD failure,
-  full-file transfer with CRC (loopback MB/s is printed, not a hardware claim), mid-transfer disconnect and device
+  full-file transfer with CRC (loopback MB/s is printed and recorded below, not a hardware claim), mid-transfer disconnect and device
   never joining -> timeout -> BLE fallback with exact bytes, and port release after stop.
 - **Android-side (Robolectric, `./gradlew :ble:testDebugUnitTest --rerun`):** `AndroidWifiTransferServerTest` runs the real
   `AndroidWifiTransferServer` on an ephemeral loopback port with a java-websocket device and Robolectric's `Network`
-  shadow. It checks that each accepted socket is passed to `Network.bindSocket`, preamble accept/reject (close 1008),
+  shadow. `completeTransfer_onTheLiteralPort8081` repeats the complete transfer on `:8081`, the port a real device uses;
+  if something else on the machine holds that port, the test is reported as skipped with that reason, and it never passes
+  without running. It checks that each accepted socket is passed to `Network.bindSocket`, preamble accept/reject (close 1008),
   full-file CRC for both ciphers, mid-transfer disconnect and AEAD failure -> BLE fallback with exact bytes, and
   release of the SoftAP join and the port on success and failure. `AndroidWifiSoftApJoinerTest` checks the
   `ConnectivityManager` request/callback lifecycle: the process is never bound (`bindProcessToNetwork`), the callback
@@ -53,6 +55,24 @@ ephemeral loopback port (`ServerSocket(0)`, connect-retry, no fixed ports) with 
   the connection is still served. The Robolectric tests only prove the call is made and the failure is reported, not that
   traffic is routed over the SoftAP network. Whoever wires Wi-Fi into the app must bind the listening side instead
   (SoftAP host address via `bindHost`) and confirm on a real Note Pro that traffic uses the SoftAP network; an address bind is not proven to be a network bind.
+- **Measured throughput, loopback only (2026-11-03):** this is the same machine talking to itself under the simulated
+  path, not Wi-Fi, and says nothing about a Note Pro or a phone. Each test moves a 262,144-byte fixture, once per cipher,
+  so the numbers mostly reflect start-up and a cold JVM. Three runs on a heavily loaded macOS arm64 machine (load above 600),
+  in MB/s from the lines the tests print:
+
+  | Test | ChaCha20-Poly1305 | AES-GCM |
+  | --- | --- | --- |
+  | `AndroidWifiTransferServerTest`, ephemeral port (Robolectric) | 3.73, 5.63, 4.57 | 2.10, 3.36, 3.57 |
+  | `AndroidWifiTransferServerTest`, `:8081` (Robolectric) | 4.53, 3.29, 2.69 | 1.35, 1.83, 2.14 |
+  | `WifiSoftApMockServerTest` (JVM) | 3.73, 2.81, 2.71 | 2.40, 3.25, 3.32 |
+
+- **Known library limit (#349):** Java-WebSocket's server reads on a selector thread and decodes on a worker
+  thread. If it reads the end of the connection before the worker has decoded the frames that came before it, it closes
+  with code 1006 and drops those frames: `onClosing` never runs and they're never delivered. A device that closes right
+  after sending can lose its last frames this way. The transfer then ends as `wifi_peer_closed` and falls back to BLE,
+  so the file still comes whole, but the speedup is lost. On CI's Linux it happened in 10 to 18 of 872 test runs. The
+  tests' fake device closes only after the server has delivered its frames, so they check Velum's behaviour, not this
+  race. Whether a Note Pro closes that way is unknown (#8).
 - **Not covered (stays in #8):** real SoftAP join, `Network.bindSocket` on a real `Network`, normal-network
   restoration, hardware throughput.
 - **Nonce (#28):** `wifiFrameSealing_isDeterministicPerSecretAndSeq` characterizes sealing as deterministic per

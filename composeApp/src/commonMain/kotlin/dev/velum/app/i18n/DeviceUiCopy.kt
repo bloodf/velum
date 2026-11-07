@@ -84,6 +84,10 @@ object DeviceUiCopy {
         if (isPt(localeTag)) "Não conectado. Conecte e desbloqueie primeiro."
         else "Not connected. Connect and unlock first."
 
+    fun connectBusy(localeTag: String): String =
+        if (isPt(localeTag)) "Finalizando o download anterior. Tente conectar de novo em instantes."
+        else "Still finishing the previous download. Try connecting again in a moment."
+
     fun importKeysToDownload(localeTag: String): String =
         if (isPt(localeTag)) "Importe as chaves de identidade do aparelho para baixar."
         else "Import device identity keys to download."
@@ -108,6 +112,11 @@ object DeviceUiCopy {
     fun downloadFailed(localeTag: String): String =
         if (isPt(localeTag)) "Falha no download. Verifique a conexão e tente de novo."
         else "Download failed. Check the connection and try again."
+
+    /** The partial download was dropped after repeated read errors; the next attempt transfers everything again. */
+    fun savedDownloadUnreadable(localeTag: String): String =
+        if (isPt(localeTag)) "Não foi possível ler os dados já baixados. O próximo download recomeça do início."
+        else "The saved download data could not be read. The next download starts over."
 
     fun downloadCancelled(localeTag: String): String =
         if (isPt(localeTag)) "Download cancelado."

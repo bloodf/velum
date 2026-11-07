@@ -1,0 +1,50 @@
+name: iosApp
+options:
+  bundleIdPrefix: dev.velum
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+targets:
+  iosApp:
+    type: application
+    platform: iOS
+    sources:
+      - path: iosApp
+        excludes:
+          - Info.plist
+    info:
+      path: iosApp/Info.plist
+      # XcodeGen rewrites Info.plist from these, so every key the app needs lives here.
+      properties:
+        CFBundleName: Velum
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSBluetoothAlwaysUsageDescription: Velum talks to your voice recorder over Bluetooth to sync recordings.
+        NSBluetoothPeripheralUsageDescription: Velum talks to your voice recorder over Bluetooth to sync recordings.
+        UILaunchScreen: {}
+        # Compose Multiplatform aborts at launch without this (PlistSanityCheck).
+        CADisableMinimumFrameDurationOnPhone: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.velum.app
+        INFOPLIST_FILE: iosApp/Info.plist
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        GENERATE_INFOPLIST_FILE: NO
+        # Static ComposeApp framework produced by Gradle (embedAndSignAppleFrameworkForXcode).
+        FRAMEWORK_SEARCH_PATHS: "$(inherited) $(SRCROOT)/../composeApp/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)"
+        # SQLiter (SQLDelight native driver) needs the system SQLite, which a static framework does not carry.
+        OTHER_LDFLAGS: "$(inherited) -framework ComposeApp -lsqlite3"
+        # Apple-silicon simulator only; the Gradle build produces iosSimulatorArm64.
+        "EXCLUDED_ARCHS[sdk=iphonesimulator*]": x86_64
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+    preBuildScripts:
+      - name: Build ComposeApp framework
+        basedOnDependencyAnalysis: false
+        script: |
+          cd "$SRCROOT/.."
+          ./gradlew :composeApp:embedAndSignAppleFrameworkForXcode

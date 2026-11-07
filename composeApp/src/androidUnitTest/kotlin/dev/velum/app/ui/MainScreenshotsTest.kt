@@ -49,6 +49,7 @@ import dev.velum.app.ui.onboarding.FirstRunScreen
 import dev.velum.app.ui.recording.GenerateSheetContent
 import dev.velum.app.ui.recording.RecordingDetailScreen
 import dev.velum.app.ui.recording.SpeakerLabelSheetContent
+import dev.velum.app.ui.recording.SpeakerLabelRow
 import dev.velum.app.ui.settings.AiProcessingScreen
 import dev.velum.app.ui.settings.ModelManagerScreen
 import dev.velum.app.ui.settings.SettingsHubScreen
@@ -93,7 +94,9 @@ class MainScreenshotsTest {
     @get:Rule
     val composeRule = createEmptyComposeRule()
 
-    private lateinit var container: AppContainer
+    // Resume Discover queries on the UI thread, as in production (see QueryLog); unchanged rendering.
+private val templatesQueryLog = dev.velum.app.ui.templates.QueryLog()
+private lateinit var container: AppContainer
     private lateinit var modelRoot: dev.velum.ai.local.ModelStoreDir
 
     @Before
@@ -204,7 +207,10 @@ class MainScreenshotsTest {
     @Test
     fun nameSpeakersSheet() = capture("09-name-speakers") {
         Box(Modifier.fillMaxSize().background(VelumBg)) {
-            SpeakerLabelSheetContent(onClose = {})
+            SpeakerLabelSheetContent(onClose = {}, speakers = listOf(
+                SpeakerLabelRow("demo-1", "S1", null, 312),
+                SpeakerLabelRow("demo-2", "S2", null, 220),
+            ))
         }
     }
 
@@ -217,7 +223,7 @@ class MainScreenshotsTest {
 
     @Test
     fun templates() = capture("11-template-picker") {
-        TemplatesScreen(container, onBack = {}, onOpenTemplate = {})
+        TemplatesScreen(container, onBack = {}, onOpenTemplate = {}, queries = templatesQueryLog.wrap(container))
     }
 
     @Test
@@ -487,7 +493,7 @@ class MainScreenshotsTest {
 
     @Test
     fun darkTemplates() = capture("dark-10-templates", dark = true) {
-        TemplatesScreen(container, onBack = {}, onOpenTemplate = {})
+        TemplatesScreen(container, onBack = {}, onOpenTemplate = {}, queries = templatesQueryLog.wrap(container))
     }
 
     @Test
@@ -635,12 +641,15 @@ class MainScreenshotsTest {
         // Explicitly await the same cold-start readiness barrier as production (#110).
         container.voiceProfileStore.ensureKey()
         val emb = FloatArray(192) { i -> (i % 17) / 17f }
-        container.voiceProfileStore.upsert("Heitor", emb, role = "Product", company = "Velum")
-        container.voiceProfileStore.upsert(
-            "Marina",
-            FloatArray(192) { i -> ((i + 3) % 19) / 19f },
-            role = "Engineering",
-            company = "Velum",
-        )
+        // withReady: it holds the lock the startup temp sweep takes, which otherwise can delete the file mid-write.
+        container.voiceProfileStore.withReady {
+            upsert("Heitor", emb, role = "Product", company = "Velum")
+            upsert(
+                "Marina",
+                FloatArray(192) { i -> ((i + 3) % 19) / 19f },
+                role = "Engineering",
+                company = "Velum",
+            )
+        }
     }
 }

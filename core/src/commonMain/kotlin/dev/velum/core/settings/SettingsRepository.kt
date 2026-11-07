@@ -52,6 +52,7 @@ class SettingsRepository(
     private val _preferences = MutableStateFlow(AppPreferences())
     val preferences: StateFlow<AppPreferences> = _preferences.asStateFlow()
 
+    private val profileMutex = Mutex()
     private val loadMutex = Mutex()
     private val _loadState = MutableStateFlow(SettingsLoadState.NotLoaded)
     val loadState: StateFlow<SettingsLoadState> = _loadState.asStateFlow()
@@ -196,7 +197,21 @@ class SettingsRepository(
         return null
     }
 
-    suspend fun upsertProfile(profile: ApiEndpointProfile) {
+    suspend fun createProfile(): ApiEndpointProfile = profileMutex.withLock {
+        val profiles = _settings.value.profiles
+        var number = profiles.size + 1
+        while (profiles.any { it.id == "profile-$number" }) number++
+        val id = "profile-$number"
+        val profile = ApiEndpointProfile(id = id, name = id, baseUrl = DEFAULT_BASE_URL)
+        saveProfile(profile)
+        profile
+    }
+
+    suspend fun upsertProfile(profile: ApiEndpointProfile) = profileMutex.withLock {
+        saveProfile(profile)
+    }
+
+    private suspend fun saveProfile(profile: ApiEndpointProfile) {
         val normalized = profile.copy(baseUrl = AiBaseUrl.normalizeAndValidate(profile.baseUrl))
         val current = _settings.value.profiles.toMutableList()
         val idx = current.indexOfFirst { it.id == normalized.id }
@@ -214,10 +229,10 @@ class SettingsRepository(
         }
     }
 
-    suspend fun deleteProfile(profileId: String) {
-        if (profileId == ApiModelResolver.DEFAULT_PROFILE_ID) return
+    suspend fun deleteProfile(profileId: String) = profileMutex.withLock {
+        if (profileId == ApiModelResolver.DEFAULT_PROFILE_ID) return@withLock
         val current = _settings.value.profiles.filterNot { it.id == profileId }
-        if (current.isEmpty()) return
+        if (current.isEmpty()) return@withLock
         persistProfiles(current)
         store.remove(SecureKeys.apiKey(profileId))
         store.remove(cachedModelsKey(profileId))
@@ -499,9 +514,9 @@ class SettingsRepository(
      */
     suspend fun clearAllApiKeys() {
         store.remove(SecureKeys.AI_API_KEY)
-        _settings.value.profiles.forEach { profile ->
-            store.remove(SecureKeys.apiKey(profile.id))
-        }
+        // By prefix, not by the loaded profile list: that also covers profiles that never loaded (a locked
+        // keystore keeps settings from loading) or are no longer listed, and removal needs no key.
+        store.removeWithPrefix(SecureKeys.API_KEY_PREFIX)
         _settings.update { it.copy(hasApiKey = false) }
     }
 

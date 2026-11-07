@@ -47,6 +47,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
@@ -57,6 +58,7 @@ import androidx.compose.ui.unit.sp
 import dev.velum.app.di.AppContainer
 import dev.velum.core.data.UserContentIds
 import dev.velum.app.i18n.LocalStrings
+import dev.velum.app.i18n.countText
 import dev.velum.app.platform.rememberJsonFileImporter
 import dev.velum.app.ui.components.BlackButton
 import dev.velum.app.ui.components.DisplayTitle
@@ -89,16 +91,27 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.random.Random
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TemplatesScreen(
     container: AppContainer,
     onBack: () -> Unit,
     onOpenTemplate: (String) -> Unit,
+) = TemplatesScreen(container, onBack, onOpenTemplate, remember(container) { container.repository.discoverQueries() })
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun TemplatesScreen(
+    container: AppContainer,
+    onBack: () -> Unit,
+    onOpenTemplate: (String) -> Unit,
+    queries: DiscoverQueries,
 ) {
     val strings = LocalStrings.current
     val templateChanges = remember(container) { container.repository.observeTemplateChanges() }
-    val templateTick by templateChanges.collectAsState(0L)
+    // null until the flow delivers its first value: loading before that would run every query twice (tick 0, then 1).
+    val templateTickOrNull by templateChanges.collectAsState(null as Long?)
+    val tickReady = templateTickOrNull != null
+    val templateTick = templateTickOrNull ?: 0L
     var tab by remember { mutableStateOf(1) } // 0 my space, 1 discover
     /** Discover tier: true = Featured builtins, false = All builtins. */
     var discoverFeaturedOnly by remember { mutableStateOf(true) }
@@ -140,7 +153,7 @@ fun TemplatesScreen(
                         builtin = false,
                     )
                 }
-                importStatus = strings.templatesImportOkFormat.replace("%d", specs.size.toString())
+                importStatus = countText(specs.size, strings.templatesImportOkFormatOne, strings.templatesImportOkFormat)
             }.onFailure {
                 importStatus = strings.templatesImportFailed
             }
@@ -153,30 +166,35 @@ fun TemplatesScreen(
         else -> DiscoverTier.All
     }
     // Facet values come from catalog metadata for the current tier + search (+ category for tags/langs).
-    // `facetsLoaded` stays false until a load succeeds; a failed load keeps the previous facets and never prunes.
-    var facets by remember { mutableStateOf(DiscoverFacets(emptyList(), emptyList(), emptyList())) }
-    var facetsLoaded by remember { mutableStateOf(false) }
-    // Search the current facets were loaded for: only a blank-search load may prune selections (#102).
-    var facetsSearch by remember { mutableStateOf<String?>(null) }
+    // `loadedFacets` stays null until a load succeeds; a failed load keeps the previous facets and never prunes.
+    // One state object, written once per load: the facets and the search they were loaded for must never be
+    // observed out of step (a recomposition between two separate writes pruned a selection against new facets while
+    // the old blank search still allowed pruning). Only a blank-search load may prune selections (#102).
+    var loadedFacets by remember { mutableStateOf<LoadedFacets?>(null) }
+    val facets = loadedFacets?.facets ?: NoFacets
     // Debounced so each keystroke does not re-run the facet and page queries.
     var debouncedQuery by remember { mutableStateOf(searchQuery) }
     LaunchedEffect(searchQuery) {
         // Clearing the search applies at once; only typing is debounced.
-        if (searchQuery.isNotEmpty() && searchQuery != debouncedQuery) delay(SEARCH_DEBOUNCE_MS)
+        delay(searchApplyDelayMs(searchQuery, debouncedQuery))
         debouncedQuery = searchQuery
     }
-    LaunchedEffect(tier, debouncedQuery, selectedCategory, templateTick) {
+    // True while a facets reload is in flight: the chip rows may reflow when it lands, so they are not tappable
+    // until then (a tap aimed at the old layout would otherwise hit a neighbouring chip).
+    var facetsLoading by remember { mutableStateOf(false) }
+    LaunchedEffect(tier, debouncedQuery, selectedCategory, templateTick, tickReady) {
+        if (!tickReady) return@LaunchedEffect
+        facetsLoading = true
         try {
-            facets = container.repository.discoverFacets(DiscoverFilter(tier, debouncedQuery, selectedCategory))
-            facetsLoaded = true
-            facetsSearch = debouncedQuery
+            loadedFacets = loadFacets(queries, DiscoverFilter(tier, debouncedQuery, selectedCategory))
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
             // Keep the previous facets (and the user's selections) on failure.
         }
+        facetsLoading = false
     }
-    val canPrune = tab == 1 && facetsLoaded && facetsSearch?.isBlank() == true
+    val canPrune = tab == 1 && loadedFacets?.search?.isBlank() == true
     // The selected category stays listed even when the current search has no hit in it (#102).
     val categoryTabs = remember(facets, selectedCategory) {
         val categories = facets.categories.let { c -> if (selectedCategory != null && selectedCategory !in c) c + selectedCategory!! else c }
@@ -216,7 +234,10 @@ fun TemplatesScreen(
     var shownTick by remember { mutableStateOf(-1L) }
     var totalMatches by remember { mutableStateOf(0L) }
     var loadFailed by remember { mutableStateOf(false) }
-    LaunchedEffect(filter, pages, templateTick) {
+    // Bumped by the retry button after a failed load.
+    var retryTick by remember { mutableStateOf(0) }
+    LaunchedEffect(filter, pages, templateTick, retryTick, tickReady) {
+        if (!tickReady) return@LaunchedEffect
         // Snapshot before the first suspension: the tick may move while the queries run.
         val loadTick = templateTick
         // A different filter must not keep the previous filter's rows (or its paging sentinel) on screen.
@@ -228,8 +249,9 @@ fun TemplatesScreen(
         try {
             val current = shown.orEmpty()
             val offset = if (pages == 1) 0 else current.size
-            val rows = container.repository.queryDiscoverTemplates(filter, limit = PAGE_SIZE, offset = offset)
-            val total = container.repository.countDiscoverTemplates(filter)
+            val limit = reloadLimit(pages, if (shownFilter == filter) current.size else 0, PAGE_SIZE)
+            val rows = queries.page(filter, limit, offset)
+            val total = queries.count(filter)
             shown = if (pages == 1) rows else appendPage(current, rows)
             shownFilter = filter
             shownTick = loadTick
@@ -254,15 +276,33 @@ fun TemplatesScreen(
     val rows = visible.orEmpty()
     // Weekly ranking uses Featured builtins only.
     var ranking by remember { mutableStateOf<List<Template>>(emptyList()) }
-    LaunchedEffect(templateTick) {
+    LaunchedEffect(templateTick, tickReady) {
+        if (!tickReady) return@LaunchedEffect
         ranking = try {
-            container.repository.queryDiscoverTemplates(DiscoverFilter(DiscoverTier.Featured), limit = 5)
+            queries.page(DiscoverFilter(DiscoverTier.Featured), 5, 0)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
             emptyList()
         }
     }
+    // Every optional block of the grid, fixed for this composition. The grid scope below reads only these plain
+    // values: state read inside it could change between the grid's reads of the item count (#202).
+    val rankingNow = ranking
+    val plan = discoverGridPlan(
+        discoverTab = tab == 1,
+        featuredOnly = discoverFeaturedOnly,
+        hasRanking = rankingNow.isNotEmpty(),
+        searchBlank = searchQuery.isBlank(),
+        noFacetSelected = selectedCategory == null && selectedTags.isEmpty() && selectedLang == null,
+        shown = visible,
+        fullImportRunning = fullImportRunning,
+        loadFailed = loadFailed,
+        shownTick = shownTick,
+        currentTick = templateTick,
+        loadedTarget = PAGE_SIZE * pages,
+        totalMatches = totalMatches,
+    )
     fun clearFilters() {
         selectedCategory = null
         selectedTags = emptySet()
@@ -278,19 +318,18 @@ fun TemplatesScreen(
                 Icons.AutoMirrored.Outlined.ArrowBack,
                 contentDescription = strings.ux.back,
                 modifier = Modifier
-                    .size(40.dp)
-                    .semantics { contentDescription = strings.ux.back }
-                    .clickable(onClick = onBack)
-                    .padding(8.dp),
+                    .size(48.dp)
+                    .clickable(role = Role.Button, onClick = onBack)
+                    .padding(12.dp),
                 tint = VelumInk,
             )
             Spacer(Modifier.weight(1f))
-            Icon(
-                Icons.Outlined.Search,
-                strings.search,
-                tint = VelumInk,
-                modifier = Modifier.size(22.dp).clickable { showSearch = true },
-            )
+            Box(
+                Modifier.size(48.dp).clickable(role = Role.Button) { showSearch = true },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Outlined.Search, strings.search, tint = VelumInk, modifier = Modifier.size(22.dp))
+            }
             Spacer(Modifier.width(12.dp))
             Text(
                 strings.templatesImportJson,
@@ -377,12 +416,14 @@ fun TemplatesScreen(
                                 label = strings.templatesAll,
                                 selected = selectedCategory == null,
                                 testTag = "category:all",
+                                enabled = !facetsLoading,
                             ) { selectedCategory = null }
                             categoryTabs.forEach { cat ->
                                 CategoryChip(
                                     label = BuiltinTemplateCatalog.categoryLabel(cat, languageTag),
                                     selected = selectedCategory == cat,
                                     testTag = "category:$cat",
+                                    enabled = !facetsLoading,
                                 ) { selectedCategory = cat }
                             }
                         }
@@ -409,6 +450,7 @@ fun TemplatesScreen(
                                     label = TemplateTagVocabulary.label(tag, languageTag),
                                     selected = tag in selectedTags,
                                     testTag = "tag:$tag",
+                                    enabled = !facetsLoading,
                                 ) {
                                     selectedTags = if (tag in selectedTags) selectedTags - tag else selectedTags + tag
                                 }
@@ -435,12 +477,14 @@ fun TemplatesScreen(
                                 label = strings.templatesAll,
                                 selected = selectedLang == null,
                                 testTag = "lang:all",
+                                enabled = !facetsLoading,
                             ) { selectedLang = null }
                             availableLangs.forEach { lang ->
                                 CategoryChip(
                                     label = templateLangLabel(lang, languageTag),
                                     selected = selectedLang == lang,
                                     testTag = "lang:$lang",
+                                    enabled = !facetsLoading,
                                 ) { selectedLang = lang }
                             }
                         }
@@ -480,9 +524,7 @@ fun TemplatesScreen(
 
                 }
             }
-            if (tab == 1 && discoverFeaturedOnly && ranking.isNotEmpty() && searchQuery.isBlank() &&
-                selectedCategory == null && selectedTags.isEmpty() && selectedLang == null
-            ) {
+            if (plan.showRanking) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     Column {
                         DisplayTitle(strings.weeklyRanking)
@@ -491,7 +533,7 @@ fun TemplatesScreen(
                             Modifier.horizontalScroll(rememberScrollState()),
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
-                            ranking.forEachIndexed { index, tpl ->
+                            rankingNow.forEachIndexed { index, tpl ->
                                 RankingCard(tpl, index + 1, languageTag) { onOpenTemplate(tpl.id) }
                             }
                         }
@@ -500,14 +542,14 @@ fun TemplatesScreen(
                     }
                 }
             }
-            if (showLoadingState(visible, loadFailed)) {
+            if (plan.showLoading) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     Box(Modifier.fillMaxWidth().padding(vertical = 48.dp).testTag("templates:loading"), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator()
                     }
                 }
             }
-            if (showEmptyState(visible, fullImportRunning, loadFailed)) {
+            if (plan.showEmpty) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     Box(
                         Modifier.fillMaxWidth().padding(vertical = 48.dp).testTag("templates:empty"),
@@ -540,7 +582,15 @@ fun TemplatesScreen(
                     modifier = Modifier.fillMaxWidth(),
                 ) { onOpenTemplate(tpl.id) }
             }
-            if (shownTick == templateTick && rows.size >= PAGE_SIZE * pages && rows.size < totalMatches) {
+            // Retry sits after the rows so a failed later page is retried where the user is looking.
+            if (plan.showRetry) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Box(Modifier.fillMaxWidth().padding(vertical = 12.dp), contentAlignment = Alignment.Center) {
+                        CategoryChip(label = strings.ux.retryProcessing, selected = false, testTag = "templates:retry") { retryTick += 1 }
+                    }
+                }
+            }
+            if (plan.showPagingSentinel) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     // Composed only when scrolled to the end: load the next page.
                     LaunchedEffect(rows.size) { pages += 1 }
@@ -648,7 +698,7 @@ fun TemplatesScreen(
 private const val PAGE_SIZE = 60
 
 @Composable
-private fun CategoryChip(label: String, selected: Boolean, testTag: String, onClick: () -> Unit) {
+private fun CategoryChip(label: String, selected: Boolean, testTag: String, enabled: Boolean = true, onClick: () -> Unit) {
     val selectedState = LocalStrings.current.templatesFilterSelected
     Text(
         label,
@@ -664,7 +714,8 @@ private fun CategoryChip(label: String, selected: Boolean, testTag: String, onCl
                 role = Role.Button
                 if (selected) stateDescription = selectedState
             }
-            .clickable(onClick = onClick)
+            .alpha(if (enabled) 1f else 0.5f)
+            .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 8.dp),
     )
 }
@@ -707,7 +758,7 @@ private fun Tab(label: String, selected: Boolean, onClick: () -> Unit) {
 }
 
 private fun templateDisplayName(tpl: Template, languageTag: String): String {
-    val catalog = BuiltinTemplateCatalog.get(tpl.id)
+    val catalog = if (tpl.builtin != 0L) BuiltinTemplateCatalog.get(tpl.id) else null
     return catalog?.displayName(languageTag) ?: tpl.name
 }
 
@@ -822,12 +873,13 @@ fun TemplateDetailScreen(
     val contributorCredit = tpl?.let { templateUiCredit(it) }
 
     Column(Modifier.fillMaxSize().background(VelumBg).verticalScroll(rememberScrollState())) {
-        Icon(
-            Icons.Outlined.Close,
-            null,
-            modifier = Modifier.padding(16.dp).size(28.dp).clickable(onClick = onBack),
-            tint = VelumInk,
-        )
+        // 48dp target, same 16dp inset around the 28dp glyph as before.
+        Box(
+            Modifier.padding(6.dp).size(48.dp).clickable(role = Role.Button, onClick = onBack),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(Icons.Outlined.Close, strings.close, modifier = Modifier.size(28.dp), tint = VelumInk)
+        }
         Box(
             Modifier
                 .size(56.dp)
@@ -909,7 +961,7 @@ fun TemplateDetailScreen(
         var promptDraft by remember(tpl?.id) { mutableStateOf(tpl?.system_prompt.orEmpty()) }
         var nameDraft by remember(tpl?.id) { mutableStateOf(tpl?.name.orEmpty()) }
         val scope = rememberCoroutineScope()
-        if (editing && tpl != null && tpl.builtin == 0L) {
+        if (editing && tpl != null) {
             BasicTextField(
                 value = nameDraft,
                 onValueChange = { nameDraft = it },
@@ -946,6 +998,10 @@ fun TemplateDetailScreen(
                             author = tpl.author,
                             builtin = false,
                             uses = tpl.uses,
+                            tags = TemplateTagVocabulary.decode(tpl.tags),
+                            lang = tpl.lang,
+                            preferredModel = tpl.preferred_model,
+                            preferredEndpointProfileId = tpl.preferred_endpoint_profile_id,
                         )
                         editing = false
                     }
@@ -967,16 +1023,22 @@ fun TemplateDetailScreen(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(
-                Modifier
-                    .size(52.dp)
-                    .border(1.dp, VelumDivider, RoundedCornerShape(10.dp))
-                    .clickable {
-                        if (tpl?.builtin == 0L) editing = !editing
-                    },
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(Icons.Outlined.Edit, null, tint = VelumInk)
+            if (tpl != null) {
+                Box(
+                    Modifier
+                        .size(52.dp)
+                        .border(1.dp, VelumDivider, RoundedCornerShape(10.dp))
+                        .clickable(role = Role.Button) {
+                            if (!editing) {
+                                nameDraft = tpl.name
+                                promptDraft = tpl.system_prompt
+                            }
+                            editing = !editing
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(if (editing) Icons.Outlined.Close else Icons.Outlined.Edit, if (editing) strings.cancel else strings.edit, tint = VelumInk)
+                }
             }
             BlackButton(strings.close, onBack, Modifier.weight(1f))
         }

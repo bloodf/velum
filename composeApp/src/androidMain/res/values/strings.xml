@@ -24,4 +24,7 @@
     <string name="mic_recording_start_failed">Unable to start microphone recording. Try again while Velum is open.</string>
     <string name="mic_recording_capture_failed">Microphone recording stopped unexpectedly. Try again.</string>
     <string name="mic_recording_cancelled">Microphone recording was cancelled.</string>
+    <!-- Same text as the Compose library string; declared so the pt-BR override has a default (lint ExtraTranslation). -->
+    <string name="close_sheet">Close sheet</string>
+    <string name="fatal_start_failed">Velum failed to start. Reinstall or clear app storage.</string>
 </resources>

@@ -107,6 +107,8 @@ tasks.matching { it.name == "jvmTest" }.configureEach {
 tasks.withType<Test>().configureEach {
     testLogging {
         exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+        // A test that skipped, like the :8081 one when the port is taken, must not look like a pass.
+        events("skipped")
     }
 }
 

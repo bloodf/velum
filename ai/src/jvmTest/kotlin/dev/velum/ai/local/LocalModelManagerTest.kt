@@ -35,7 +35,7 @@ class LocalModelManagerTest {
         )
         val states = manager.download("no-url").toList()
         assertEquals(LocalModelStatus.BlockedOnUrl, states.last().status)
-        assertTrue(states.last().error?.contains("No download URL") == true)
+        assertEquals(LocalModelErrors.NoDownloadUrl, states.last().error)
     }
 
     @Test
@@ -62,7 +62,7 @@ class LocalModelManagerTest {
         assertEquals(LocalModelStatus.BlockedOnUrl, manager.stateFor("no-sha")?.status)
         val states = manager.download("no-sha").toList()
         assertEquals(LocalModelStatus.BlockedOnUrl, states.last().status)
-        assertTrue(states.last().error?.contains("SHA-256") == true)
+        assertEquals(LocalModelErrors.ChecksumNotPinned, states.last().error)
     }
 
     @Test
@@ -127,6 +127,85 @@ class LocalModelManagerTest {
         )
         val states = manager.download("http-only").toList()
         assertEquals(LocalModelStatus.Failed, states.last().status)
-        assertTrue(states.last().error?.contains("https://") == true)
+        assertEquals(LocalModelErrors.HttpsRequired, states.last().error)
+    }
+
+    @Test
+    fun a_failed_download_never_stores_the_signed_url_in_its_error() = runTest {
+        val root = ModelStoreDir(File.createTempFile("velum-models", "").also { it.delete(); it.mkdirs() }.absolutePath)
+        val signed = "https://objects.example.test/tiny.bin?X-Amz-Signature=deadbeef&X-Amz-Expires=300"
+        val payload = byteArrayOf(1)
+        val manager = LocalModelManager(
+            storeRoot = root,
+            httpClient = HttpClient(MockEngine { throw java.io.IOException("Connection reset while reading $signed") }),
+            catalog = listOf(
+                LocalModelSpec(
+                    id = "tiny", displayName = "Tiny", kind = LocalModelKind.Asr, approxBytes = 1, license = "MIT",
+                    notes = "test", languages = "en", downloadUrl = signed, archiveFileName = "tiny.bin",
+                    sha256 = sha256Hex(payload),
+                ),
+            ),
+        )
+        val last = manager.download("tiny").toList().last()
+        assertEquals(LocalModelStatus.Failed, last.status)
+        assertEquals(LocalModelErrors.DownloadFailed, last.error)
+        assertTrue(manager.stateFor("tiny")?.error?.contains("Signature") != true)
+    }
+
+    @Test
+    fun the_https_refusal_does_not_echo_the_url() = runTest {
+        val root = ModelStoreDir(File.createTempFile("velum-models", "").also { it.delete(); it.mkdirs() }.absolutePath)
+        val url = "http://example.test/x.bin?token=secret"
+        val manager = LocalModelManager(
+            storeRoot = root,
+            httpClient = HttpClient(MockEngine { respond(byteArrayOf(1)) }),
+            catalog = listOf(
+                LocalModelSpec(
+                    id = "h", displayName = "H", kind = LocalModelKind.Asr, approxBytes = 1, license = "MIT",
+                    notes = "test", languages = "en", downloadUrl = url, archiveFileName = "x.bin",
+                    sha256 = sha256Hex(byteArrayOf(1)),
+                ),
+            ),
+        )
+        assertEquals(LocalModelErrors.HttpsRequired, manager.download("h").toList().last().error)
+    }
+
+    private fun failing(engine: MockEngine, payload: ByteArray = byteArrayOf(1, 2)) = LocalModelManager(
+        storeRoot = ModelStoreDir(File.createTempFile("velum-models", "").also { it.delete(); it.mkdirs() }.absolutePath),
+        httpClient = HttpClient(engine),
+        catalog = listOf(
+            LocalModelSpec(
+                id = "m", displayName = "M", kind = LocalModelKind.Asr, approxBytes = payload.size.toLong(), license = "MIT",
+                notes = "test", languages = "en", downloadUrl = "https://example.test/m.bin?sig=abc", archiveFileName = "m.bin",
+                sha256 = sha256Hex(payload),
+            ),
+        ),
+    )
+
+    @Test
+    fun an_http_status_is_stored_as_a_code() = runTest {
+        val m = failing(MockEngine { respond(content = "", status = HttpStatusCode.Forbidden) })
+        assertEquals("http_403", m.download("m").toList().last().error)
+    }
+
+    @Test
+    fun a_wrong_checksum_is_stored_as_a_code() = runTest {
+        val m = failing(MockEngine { respond(content = byteArrayOf(9, 9), status = HttpStatusCode.OK) })
+        assertEquals(LocalModelErrors.ChecksumMismatch, m.download("m").toList().last().error)
+    }
+
+    @Test
+    fun the_managers_own_failures_map_to_their_codes() {
+        assertEquals(LocalModelErrors.Incomplete, LocalModelErrors.forFailure(ModelFailure(LocalModelErrors.Incomplete)))
+        assertEquals("http_503", LocalModelErrors.forFailure(ModelFailure(LocalModelErrors.http(503))))
+        assertEquals(503, LocalModelErrors.httpStatus("http_503"))
+        assertEquals(null, LocalModelErrors.httpStatus("http_x"))
+        assertEquals(null, LocalModelErrors.httpStatus("download_failed"))
+    }
+
+    @Test
+    fun a_non_network_failure_after_the_download_is_a_generic_code_not_a_network_one() {
+        assertEquals(LocalModelErrors.DownloadError, LocalModelErrors.forFailure(IllegalArgumentException("boom https://x?sig=1")))
+        assertEquals(LocalModelErrors.DownloadError, LocalModelErrors.forFailure(java.io.IOException("renameTo failed")))
     }
 }
