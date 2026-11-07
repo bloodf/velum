@@ -106,6 +106,24 @@ class ResumableSessionDownloadTest {
         assertEquals(CrcStatus.NotProvided, download.download(SESSION, 10, memory).crc)
     }
 
+    @Test fun enforced_persisted_mismatch_restarts_before_returning_a_complete_partial() = runTest {
+        val file = ByteArray(2000) { (it % 251).toByte() }
+        val memory = MemoryStore().apply { write(ByteArray(file.size)) }
+        var mismatch: CrcStatus.Mismatch? = CrcStatus.Mismatch(123, 456)
+        val store = object : PartialTransferStore by memory {
+            override fun crcMismatchVerdict() = mismatch
+            override fun truncate(length: Long) {
+                memory.truncate(length)
+                mismatch = null
+            }
+        }
+        val rig = rig(file)
+        val result = downloader(rig, CrcPolicy.Enforce).download(SESSION, file.size.toLong(), store)
+        assertEquals(CrcStatus.Verified, result.crc)
+        assertEquals(listOf(0L), rig.peripheral.syncStartOffsets)
+        assertContentEquals(file, memory.bytes)
+    }
+
     @Test fun verdict_persistence_failure_does_not_fall_through_to_complete_shortcut() = runTest {
         val memory = MemoryStore()
         val store = object : PartialTransferStore by memory {
