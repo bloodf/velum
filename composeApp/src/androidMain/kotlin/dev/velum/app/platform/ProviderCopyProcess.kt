@@ -26,9 +26,9 @@ internal fun providerCopyProcessRole(
 
 internal fun providerCopyProcessRole(context: Context): ProviderCopyProcessRole = providerCopyProcessRole(
     context.packageName, Build.VERSION.SDK_INT,
-    publicName = { Application.getProcessName() },
+    publicName = { if (Build.VERSION.SDK_INT >= 28) Application.getProcessName() else null },
     ownName = {
-        context.getSystemService(ActivityManager::class.java).runningAppProcesses
+        context.getSystemService(ActivityManager::class.java)?.runningAppProcesses
             ?.firstOrNull { it.pid == Process.myPid() && it.uid == Process.myUid() }?.processName
     },
 )
