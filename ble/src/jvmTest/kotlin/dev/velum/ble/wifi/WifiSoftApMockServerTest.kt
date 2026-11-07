@@ -18,6 +18,7 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -479,10 +480,40 @@ class WifiSoftApMockServerTest {
                 assemble = { error("the transfer must not start") },
             )
             assertIs<WifiTransferCoordinator.Outcome.BleFallback>(outcome)
+            assertContentEquals(fixture, outcome.bytes)
             assertEquals(JavaWebsocketTransferServer.BIND_FAILURE_CODE, outcome.reason)
             assertEquals(0, joiner.joinCount, "SoftAP must not be joined without a listener")
             // 5 s is the server's limit for a wait that went wrong: the listener's own error must end it sooner.
             assertTrue(System.nanoTime() - started < 5_000_000_000L, "the bind failure must be noticed, not waited out")
         }
     }
+    @Test
+    fun timeoutDuringSoftApJoin_closesListenerAndReturnsBle() = runBoundedTest {
+        val port = freePort()
+        val joining = CompletableDeferred<Unit>()
+        val joiner = object : WifiSoftApJoiner {
+            override suspend fun join(ssid: String, password: String, ssidIsPattern: Boolean) {
+                joining.complete(Unit)
+                awaitCancellation()
+            }
+            override suspend fun leave() = Unit
+        }
+        val coordinator = WifiTransferCoordinator(
+            sessionFactory = {
+                WifiFastTransferSession(joiner, JavaWebsocketTransferServer(), cipher(WifiPayloadCipher.ChaCha20Poly1305))
+            },
+            bleDownload = { fixture },
+            wifiTimeout = 2_000.milliseconds,
+        )
+        val outcome = coordinator.transferOrFallback(
+            "PLAUD-FAKE", "password12", port = port, preamble = preamble, bindHost = "127.0.0.1",
+            assemble = { error("the transfer must not start") },
+        )
+        assertTrue(joining.isCompleted, "listener must start before the SoftAP join")
+        assertIs<WifiTransferCoordinator.Outcome.BleFallback>(outcome)
+        assertEquals("wifi_timeout", outcome.reason)
+        assertContentEquals(fixture, outcome.bytes)
+        assertPortReleased(port)
+    }
+
 }
