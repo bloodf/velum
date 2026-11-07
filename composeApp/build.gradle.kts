@@ -176,6 +176,7 @@ kotlin {
             implementation(libs.markdown.renderer.m3)
         }
         commonTest.dependencies {
+            implementation(libs.kotlinx.coroutines.test)
             implementation(libs.kotlin.test)
             implementation(compose.ui)
         }
