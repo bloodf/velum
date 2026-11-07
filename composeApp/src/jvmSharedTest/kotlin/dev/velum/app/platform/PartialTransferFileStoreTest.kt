@@ -84,9 +84,20 @@ class PartialTransferFileStoreTest {
         assertEquals(CrcStatus.NotProvided, retryComplete(50))
         open().run { setCrcVerdict(mismatch); truncate(25); close() }
         assertEquals(CrcStatus.NotProvided, retryComplete(25))
-        open().run { setCrcVerdict(mismatch); truncate(0); write(ByteArray(25) { 2 }); close() }
+        open().run {
+            setCrcVerdict(mismatch)
+            truncate(0)
+            write(ByteArray(25) { 2 })
+            assertEquals(25L, length()) // checkpoint the replacement before reopening
+            close()
+        }
         assertEquals(CrcStatus.NotProvided, retryComplete(25))
-        open().run { setCrcVerdict(mismatch); write(byteArrayOf(3)); close() }
+        open().run {
+            setCrcVerdict(mismatch)
+            write(byteArrayOf(3))
+            assertEquals(26L, length()) // checkpoint the appended byte before reopening
+            close()
+        }
         assertEquals(CrcStatus.NotProvided, retryComplete(26))
     }
 
