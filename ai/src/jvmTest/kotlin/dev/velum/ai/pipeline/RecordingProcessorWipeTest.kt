@@ -145,6 +145,51 @@ class RecordingProcessorWipeTest {
         }
     }
 
+    @Test fun scheduler_rejects_during_deletion_and_checks_the_row_afterward() = runBlocking {
+        val processor = processor()
+        val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.Default)
+        val submitted = mutableListOf<String>()
+        val delegate = RecordingJobScheduler { id, _, _, _ ->
+            submitted.add(id)
+            EnqueueResult.STARTED_OR_REPLACED
+        }
+        val scheduler = admittingRecordingJobScheduler(processor, scope, delegate)
+        try {
+            for (deleteSucceeds in listOf(false, true)) {
+                val id = if (deleteSucceeds) "rec-deleted" else "rec-retained"
+                insertRunning(id)
+                val fenced = CompletableDeferred<Unit>()
+                val finishDeletion = CompletableDeferred<Unit>()
+                val deletion = launch(Dispatchers.Default) {
+                    assertTrue(processor.beginDeletion(id))
+                    try {
+                        scheduler.cancel(id)
+                        assertTrue(processor.stopRuns(id, 1.seconds))
+                        fenced.complete(Unit)
+                        finishDeletion.await()
+                        if (deleteSucceeds) repo.deleteRecordingHard(id)
+                    } finally {
+                        processor.endDeletion(id)
+                    }
+                }
+                try {
+                    kotlinx.coroutines.withTimeout(5_000) { fenced.await() }
+                    assertEquals(EnqueueResult.REJECTED, scheduler.enqueueSaved(id, null, false, null))
+                    assertTrue(repo.getRecording(id) != null)
+                } finally {
+                    finishDeletion.complete(Unit)
+                    deletion.join()
+                }
+                val result = scheduler.enqueueSaved(id, null, false, null)
+                assertEquals(if (deleteSucceeds) EnqueueResult.REJECTED else EnqueueResult.STARTED_OR_REPLACED, result)
+                assertEquals(!deleteSucceeds, repo.getRecording(id) != null)
+            }
+            assertEquals(listOf("rec-retained"), submitted)
+        } finally {
+            scope.coroutineContext[kotlinx.coroutines.Job]!!.cancel()
+        }
+    }
+
     @Test fun cancelled_collector_stays_registered_until_cleanup_finishes() = runBlocking {
         insertRunning("rec-cleanup")
         holdCleanup = true
