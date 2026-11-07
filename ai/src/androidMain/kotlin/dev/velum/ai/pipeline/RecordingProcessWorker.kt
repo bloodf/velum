@@ -223,17 +223,18 @@ class RecordingProcessWorker(
         }
     }
 
-    private fun buildForegroundInfo(): ForegroundInfo {
-        ensureProcessingChannel(applicationContext)
+    private suspend fun buildForegroundInfo(): ForegroundInfo = withContext(Dispatchers.IO) {
+        val context = applicationContext.inAppLanguage()
+        ensureProcessingChannel(context)
         val notification = NotificationCompat.Builder(applicationContext, PROCESSING_CHANNEL_ID)
-            .setContentTitle(applicationContext.inAppLanguage().getString(R.string.velum_processing_notification_title))
-            .setContentText(applicationContext.inAppLanguage().getString(R.string.velum_processing_notification_body))
+            .setContentTitle(context.getString(R.string.velum_processing_notification_title))
+            .setContentText(context.getString(R.string.velum_processing_notification_body))
             .setSmallIcon(android.R.drawable.stat_sys_download)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setCategory(NotificationCompat.CATEGORY_PROGRESS)
             .build()
-        return if (Build.VERSION.SDK_INT >= 29) {
+        if (Build.VERSION.SDK_INT >= 29) {
             ForegroundInfo(
                 PROCESSING_NOTIFICATION_ID,
                 notification,

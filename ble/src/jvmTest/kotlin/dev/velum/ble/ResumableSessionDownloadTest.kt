@@ -147,6 +147,43 @@ class ResumableSessionDownloadTest {
         assertEquals(CrcStatus.Verified, result.crc)
     }
 
+    @Test fun checkpoint_then_corruption_and_disconnect_restarts_with_exact_bytes_and_crc() = runTest {
+        val file = Random(41).nextBytes(10_000)
+        val rig = rig(file, TransferFaults(corruptAt = setOf(4_000), disconnectAt = setOf(6_000)))
+        // The prefix represents bytes checkpointed by an earlier downloader instance.
+        val store = storeHolding(file.copyOf(2_000))
+        val result = downloader(rig, CrcPolicy.Enforce).download(SESSION, file.size.toLong(), store)
+        assertEquals(listOf(2_000L, 6_000L, 0L), rig.peripheral.syncStartOffsets)
+        assertEquals(3, result.attempts)
+        assertContentEquals(file, store.bytes)
+        assertEquals(Crc16Ccitt.compute(file), Crc16Ccitt.compute(store.bytes))
+        assertEquals(CrcStatus.Verified, result.crc)
+    }
+
+    @Test fun crc_read_failure_after_resumed_corrupt_transfer_cannot_return_success() = runTest {
+        for (policy in CrcPolicy.entries) {
+            val file = Random(42).nextBytes(10_000)
+            val rig = rig(file, TransferFaults(corruptAt = setOf(4_000), disconnectAt = setOf(6_000)))
+            val base = storeHolding(file.copyOf(2_000))
+            var reads = 0
+            val store = object : PartialTransferStore by base {
+                override fun read(offset: Long, length: Int): ByteArray {
+                    reads++
+                    throw IOException("synthetic CRC read failure")
+                }
+            }
+            val failure = assertFailsWith<TransferIntegrityException> {
+                downloader(rig, policy).download(SESSION, file.size.toLong(), store)
+            }
+            assertEquals("synthetic CRC read failure", failure.cause?.message)
+            assertEquals(1, reads)
+            assertEquals(listOf(2_000L, 6_000L), rig.peripheral.syncStartOffsets)
+            val corrupted = file.copyOf().also { it[4_000] = (it[4_000].toInt() xor 0x5A).toByte() }
+            assertContentEquals(corrupted, base.bytes, "a read error keeps the received bytes")
+            assertFalse(Crc16Ccitt.compute(file) == Crc16Ccitt.compute(base.bytes))
+        }
+    }
+
     @Test fun real_device_crc_mismatch_is_reported_and_kept_but_never_verified() = runTest {
         val file = Random(6).nextBytes(20_000)
         val rig = rig(file, TransferFaults(corruptAt = setOf(8_000)))

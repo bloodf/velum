@@ -1,6 +1,9 @@
 package dev.velum.app.worker
 
 import android.app.Application
+import android.app.Notification
+import android.app.NotificationManager
+import android.os.Looper
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.work.ForegroundInfo
@@ -18,6 +21,8 @@ import dev.velum.ai.engine.LlmRequest
 import dev.velum.ai.engine.LlmResult
 import dev.velum.ai.engine.Transcriber
 import dev.velum.ai.engine.TranscriptionResult
+import dev.velum.ai.pipeline.forgetCachedAppLanguageHint
+import dev.velum.ai.pipeline.saveAppLanguageHint
 import dev.velum.ai.pipeline.AiRuntimeHolder
 import dev.velum.ai.pipeline.PROCESSING_STOPPED_MESSAGE
 import dev.velum.ai.pipeline.RecordingProcessor
@@ -40,7 +45,7 @@ import org.robolectric.annotation.Config
 
 /** #330: a refused foreground start (background start restriction) must not fail the work permanently. */
 @RunWith(RobolectricTestRunner::class)
-@Config(application = Application::class, sdk = [34])
+@Config(application = Application::class, sdk = [34], qualifiers = "en")
 class RecordingProcessWorkerForegroundTest {
     private val context: Context = ApplicationProvider.getApplicationContext()
 
@@ -50,6 +55,8 @@ class RecordingProcessWorkerForegroundTest {
         AiRuntimeHolder.processor = null
         AiRuntimeHolder.repository = null
         AiRuntimeHolder.settings = null
+        saveAppLanguageHint(context, null)
+        forgetCachedAppLanguageHint()
         graphs.forEach { it.close() }
         graphs.clear()
     }
@@ -79,6 +86,44 @@ class RecordingProcessWorkerForegroundTest {
                 }
             }
             .build()
+
+    private fun coldPortugueseHint() {
+        saveAppLanguageHint(context, "pt-BR")
+        forgetCachedAppLanguageHint()
+        assertEquals(Looper.getMainLooper(), Looper.myLooper())
+        assertEquals("en", context.resources.configuration.locales[0].language)
+    }
+
+    @Test fun foreground_info_on_main_reads_persisted_language_before_creating_notification_and_channel() {
+        AiRuntimeHolder.settings = null
+        coldPortugueseHint()
+        val info = runBlocking { worker(attempt = 0).getForegroundInfo() }
+        assertEquals("Processando gravação", info.notification.extras.getCharSequence(Notification.EXTRA_TITLE).toString())
+        assertEquals("Transcrevendo e resumindo no aparelho", info.notification.extras.getCharSequence(Notification.EXTRA_TEXT).toString())
+        val manager = context.getSystemService(NotificationManager::class.java)
+        assertEquals("Processamento de gravação", manager.getNotificationChannel(RecordingProcessWorker.PROCESSING_CHANNEL_ID).name.toString())
+    }
+
+    @Test fun foreground_info_before_settings_load_uses_persisted_language() {
+        AiRuntimeHolder.settings = SettingsRepository(InMemorySecureStore())
+        coldPortugueseHint()
+        val info = runBlocking { worker(attempt = 0).getForegroundInfo() }
+        assertEquals("Processando gravação", info.notification.extras.getCharSequence(Notification.EXTRA_TITLE).toString())
+    }
+
+    @Test fun do_work_promotes_in_persisted_language_before_runtime_install() {
+        AiRuntimeHolder.settings = null
+        coldPortugueseHint()
+        var title: String? = null
+        val worker = TestListenableWorkerBuilder<RecordingProcessWorker>(context)
+            .setInputData(androidx.work.workDataOf(RecordingProcessWorker.KEY_RECORDING_ID to "cold-start"))
+            .setForegroundUpdater { _, _: UUID, info: ForegroundInfo ->
+                title = info.notification.extras.getCharSequence(Notification.EXTRA_TITLE).toString()
+                SettableFuture.create<Void>().also { it.set(null) }
+            }.build()
+        assertEquals(ListenableWorker.Result.retry(), runBlocking { worker.doWork() })
+        assertEquals("Processando gravação", title)
+    }
 
     @Test fun a_refused_foreground_start_retries_instead_of_failing_the_work() {
         // Holder not installed yet: the retry path after setForeground, which a thrown setForeground never reached.
