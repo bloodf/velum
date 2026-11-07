@@ -87,16 +87,39 @@ class LocalModelBenchmarkDeviceTest {
             val window = ByteArray(w.endByte - w.startByte) { clip[(w.startByte + it) % clip.size] }
             ns += measureNanoTime { chars += transcriber.transcribe(AudioInput("bench.pcm", window, SAMPLE_RATE), id).text.length }
         }
-        return BenchResult(BenchTask.Transcription, id, "${sec}s", sec * 1000L, ns / 1_000_000, peakRssBytes(), chars)
+        return BenchResult(
+            task = BenchTask.Transcription,
+            modelId = id,
+            workload = "${sec}s",
+            inputDurationMs = sec * 1000L,
+            elapsedMs = ns / 1_000_000,
+            peakRamBytes = peakRssBytes(),
+            outputChars = chars,
+            runtime = transcriber.engineId,
+            timeBoundary = "windowed_asr_engine_transcribe_wall_clock_sum",
+            rtfUnit = "ratio_elapsed_over_source_duration",
+        )
     }
 
     private suspend fun summarize(manager: LocalModelManager, id: String): BenchResult {
+        val engine = LocalLlmEngine(manager)
         var text = ""
         resetPeak()
         val ns = measureNanoTime {
-            text = LocalLlmEngine(manager).complete(LlmRequest("Summarize the meeting in five bullet points.", TRANSCRIPT), id).text
+            text = engine.complete(LlmRequest("Summarize the meeting in five bullet points.", TRANSCRIPT), id).text
         }
-        return BenchResult(BenchTask.Summary, id, "fixed-transcript", TRANSCRIPT_SOURCE_SECONDS * 1000L, ns / 1_000_000, peakRssBytes(), text.length)
+        return BenchResult(
+            task = BenchTask.Summary,
+            modelId = id,
+            workload = "fixed-transcript",
+            inputDurationMs = TRANSCRIPT_SOURCE_SECONDS * 1000L,
+            elapsedMs = ns / 1_000_000,
+            peakRamBytes = peakRssBytes(),
+            outputChars = text.length,
+            runtime = engine.engineId,
+            timeBoundary = "single_complete_call_wall_clock",
+            rtfUnit = "ratio_elapsed_over_source_duration",
+        )
     }
 
     private fun environment(models: List<String>, workloadSec: Int, audio: String, clip: ByteArray) = BenchEnvironment(
@@ -110,10 +133,14 @@ class LocalModelBenchmarkDeviceTest {
             "workloadSeconds" to workloadSec.toString(),
             "audio" to audio,
             "audioSha256" to sha256(clip),
+            "audioFormat" to "PCM16_MONO_16KHZ",
+            "fixtureSensitivity" to "non-sensitive",
             "summaryTranscriptSha256" to sha256(TRANSCRIPT.encodeToByteArray()),
             "asrWindowSeconds" to "${WindowedAsr.DEFAULT_WINDOW_SECONDS}/hop ${WindowedAsr.DEFAULT_HOP_SECONDS}",
             "summaryTranscriptChars" to TRANSCRIPT.length.toString(),
             "summaryTranscriptSourceSeconds" to TRANSCRIPT_SOURCE_SECONDS.toString(),
+            "peakRamMethod" to PEAK_RAM_METHOD,
+            "rtfUnit" to "ratio_elapsed_over_source_duration",
             "cores" to Runtime.getRuntime().availableProcessors().toString(),
         ),
     )
@@ -169,6 +196,7 @@ class LocalModelBenchmarkDeviceTest {
         const val TAG = "VelumBench98"
         const val SAMPLE_RATE = 16_000
         const val HWM_TOLERANCE_KB = 4096L
+        const val PEAK_RAM_METHOD = "proc_self_clear_refs_5_vmhwm"
         const val DEFAULT_MODELS = "parakeet-tdt-0.6b-v3-int8,whisper-large-v3-turbo,whisper-tiny,gemma-4-e4b"
 
         /** The fixed summary workload (84 words). */
