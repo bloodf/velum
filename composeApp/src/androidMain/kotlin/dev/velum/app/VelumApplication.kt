@@ -18,12 +18,12 @@ import dev.velum.app.platform.installAppContext
 import dev.velum.app.platform.installMicCaptureContext
 import dev.velum.app.platform.STALE_DOWNLOAD_PART_AGE_MS
 import dev.velum.app.platform.installRecordingFilesDir
+import dev.velum.app.platform.migrateCachedImports
 import dev.velum.app.platform.sweepStaleDownloadParts
 import dev.velum.app.platform.sweepStalePartialTransfers
 import dev.velum.app.platform.recoverPartialMicRecordings
 import dev.velum.app.platform.recordingsDirectoryPath
 import dev.velum.app.platform.sweepOrphanRecordingAudio
-import dev.velum.app.platform.settleOlderWatchedCopies
 import dev.velum.app.platform.sweepStaleImportCopies
 import dev.velum.core.calendar.installCalendarContext
 import dev.velum.core.data.DriverFactory
@@ -109,6 +109,14 @@ class VelumApplication : Application() {
                 }
                 built.repository.onIndexFailure = { cls -> Log.w(TAG, "FTS index write failed, index flagged stale ($cls)") }
                 built.repository.ftsRebuildFailure?.let { Log.w(TAG, "FTS rebuild failed, index stale ($it)") }
+                // Before the runtime is installed, so a cold-start worker never reads a row whose file is mid-move.
+                runCatching {
+                    val moved = migrateCachedImports(
+                        built.repository, java.io.File(recordingsDirectoryPath()), cacheDir,
+                        pendingPaths = dev.velum.app.platform.IncomingShare.pendingPaths(appContext).toSet(),
+                    )
+                    if (moved > 0) Log.i(TAG, "Moved $moved imported recording(s) out of the cache")
+                }.onFailure { t -> Log.w(TAG, "Import migration failed (${t::class.simpleName})") }
                 AiRuntimeHolder.install(
                     processor = built.recordingProcessor,
                     repository = built.repository,
@@ -146,14 +154,6 @@ class VelumApplication : Application() {
                             )
                             if (swept > 0) Log.i(TAG, "Removed $swept stale import copie(s)")
                         }.onFailure { t -> Log.w(TAG, "Import copy sweep failed (${t::class.simpleName})") }
-                        runCatching {
-                            // Before any sync can run. Once: later copies are tied when they are imported.
-                            if (c.repository.getMeta(OLDER_WATCHED_COPIES_SETTLED) == null) {
-                                val swept = settleOlderWatchedCopies(File(appContext.cacheDir, "imports/watched"), c.repository)
-                                c.repository.setMeta(OLDER_WATCHED_COPIES_SETTLED, "1")
-                                if (swept > 0) Log.i(TAG, "Removed $swept older watched copie(s)")
-                            }
-                        }.onFailure { t -> Log.w(TAG, "Older watched copy pass failed (${t::class.simpleName})") }
                         val report = sweepOrphanRecordingAudio(recordingsDirectoryPath(), c.repository::getAllRecordingFileRefs)
                         Log.i(TAG, "Orphan audio sweep: quarantined=${report.quarantined} purged=${report.purged} staleTemps=${report.staleTemps} failedMoves=${report.failedMoves}")
                     },
@@ -167,22 +167,24 @@ class VelumApplication : Application() {
                     onCleanupFailure = { t -> Log.w(TAG, "Orphan audio sweep skipped (${t::class.simpleName})") },
                 )
                 runCatching {
-                    recoverPartialMicRecordings(
-                        recordingsDirPath = recordingsDirectoryPath(),
-                        repository = built.repository,
-                        protectedRecording = built.micRecordings::protects,
-                        onRecovered = { recordingId ->
-                            built.enqueueProcessing(
-                                recordingId = recordingId,
-                                templateId = null,
-                                retranscribe = true,
-                            )
-                        },
-                    )
+                    val recovered = built.micRecordings.underLock {
+                        recoverPartialMicRecordings(
+                            recordingsDirPath = recordingsDirectoryPath(),
+                            repository = built.repository,
+                            protectedRecording = { built.micRecordings.protects(it) || built.recordingProcessor.isDeleting(it) },
+                        )
+                    }
+                    for (id in recovered.recoveredIds) built.runDetached {
+                        runCatching { built.enqueueSavedRecording(id) }
+                            .onFailure { Log.w(TAG, "Recovered recording enqueue failed (${it::class.simpleName})") }
+                    }
                     dev.velum.app.platform.reconcileInterruptedMicDrafts(built, recordingsDirectoryPath())
                 }.onFailure { t ->
                     Log.e(TAG, "Partial mic recovery failed", t)
                 }
+                // A row left queued with no job (the process died, or enqueueing failed, after the row was saved) (#415).
+                runCatching { built.runDetached { built.requeueStrandedRecordings() } }
+                    .onFailure { t -> Log.w(TAG, "Requeue of stranded recordings failed (${t::class.simpleName})") }
             } catch (t: Throwable) {
                 Log.e(TAG, "AppContainer init failed", t)
                 initFailure.set(t)
@@ -211,5 +213,3 @@ class VelumApplication : Application() {
             private set
     }
 }
-
-private const val OLDER_WATCHED_COPIES_SETTLED = "older_watched_copies_settled"

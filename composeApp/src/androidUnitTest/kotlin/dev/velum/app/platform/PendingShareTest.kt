@@ -65,6 +65,16 @@ class PendingShareTest {
         assertNotNull(shared.recoveredAtMs, "a recovered share must be flagged so the UI stays quiet")
     }
 
+    @Test fun a_recovered_share_restores_its_original_display_name() {
+        val path = copyOne("meeting-notes")
+        assertTrue(File(path).name.startsWith("share_"))
+        assertEquals("meeting-notes.mp3", dev.velum.app.importing.ImportDisplayNames.take(path))
+        IncomingShare.markAttempt(context, path)
+        restart()
+        assertEquals(listOf(path), recover())
+        assertEquals("meeting-notes", dev.velum.app.importing.ImportTitles.forImport(path, File(path).name))
+    }
+
     @Test fun a_share_this_process_just_copied_is_not_offered_a_second_time() {
         copyOne("cold-start") // copied by this process: it is already in flight
         drain()
@@ -83,7 +93,7 @@ class PendingShareTest {
     /** Rewrites the marker for [path] with an exact timestamp, as an older process would have left it. */
     private fun stamp(path: String, at: Long) {
         prefs.edit().putStringSet("pending", prefs.getStringSet("pending", emptySet()).orEmpty().map {
-            if (it.substringAfter("|").substringAfter("|") == path) "$at|0|$path" else it
+            if (it.substringAfter("|").substringAfter("|").substringBefore("|") == path) "$at|0|$path" else it
         }.toSet()).commit()
     }
 

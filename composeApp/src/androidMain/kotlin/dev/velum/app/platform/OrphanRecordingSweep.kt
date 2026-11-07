@@ -1,6 +1,5 @@
 package dev.velum.app.platform
 
-import dev.velum.core.data.VelumRepository
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.LinkOption
@@ -118,25 +117,4 @@ fun sweepStaleImportCopies(
     return importsDir.listFiles().orEmpty().count { file ->
         file.isPlainFile() && file.olderThan(minAgeMs, nowMs) && file.canonicalFile !in referenced && file.delete()
     }
-}
-
-/**
- * For watched-folder copies from before they were tied to a recording, which a sync that never runs again can't tie:
- * a copy whose audio belongs to a live recording is tied to it, and any other is deleted. A folder still watched
- * copies it again on its next sync. Returns how many were deleted.
- */
-suspend fun settleOlderWatchedCopies(watchedDir: File, repository: VelumRepository): Int {
-    val tied = repository.allImportCopies().map { File(it).canonicalFile }.toSet()
-    var deleted = 0
-    for (copy in watchedDir.listFiles().orEmpty()) {
-        if (!copy.isPlainFile() || copy.canonicalFile in tied) continue
-        val owner = repository.getMeta(VelumRepository.IMPORT_HASH_PREFIX + sha256File(copy.path))
-            ?.takeIf { repository.getRecording(it) != null }
-        if (owner != null) {
-            repository.addImportCopy(owner, sha256Bytes(copy.path.encodeToByteArray()), copy.path)
-        } else if (copy.delete()) {
-            deleted++
-        }
-    }
-    return deleted
 }

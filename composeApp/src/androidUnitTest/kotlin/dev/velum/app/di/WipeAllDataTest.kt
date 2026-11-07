@@ -112,7 +112,7 @@ class WipeAllDataTest {
         // No processing: a job left running would write to the database after this test closes it.
         val container = AppContainer(
             InMemorySecureStore(), DriverFactory(context), modelStoreRoot = root,
-            recordingJobSchedulerFactory = { _, _ -> RecordingJobScheduler { _, _, _, _ -> } },
+            recordingJobSchedulerFactory = { _, _ -> RecordingJobScheduler { _, _, _, _ -> dev.velum.ai.pipeline.EnqueueResult.STARTED_OR_REPLACED } },
         )
         val owner = ViewModelStore()
         val saving = CompletableDeferred<Unit>()
@@ -216,6 +216,13 @@ class WipeAllDataTest {
             throw SecureStoreUnavailableException(IllegalStateException("synthetic"))
     }
 
+    /** Fails removing the API key family, the way a store that cannot commit does. */
+    private class FailingPrefixStore(private val delegate: SecureStore = InMemorySecureStore()) : SecureStore by delegate {
+        override suspend fun removeWithPrefix(prefix: String) {
+            throw SecureStoreUnavailableException(IllegalStateException("synthetic"))
+        }
+    }
+
     /** Fails clearing the device keys, the way a locked keystore does. */
     private class FailingDeviceKeyStore(private val delegate: SecureStore = InMemorySecureStore()) : SecureStore by delegate {
         override suspend fun remove(key: String) {
@@ -287,6 +294,25 @@ class WipeAllDataTest {
         assertFalse(written, "an export was written during the wipe")
     }
 
+    // #423: the last wipe step rewrites the database file. The real modes (FTS, WAL, secure_delete) are covered in :core
+    // and by the emulator scan; Robolectric's framework SQLite reports no FTS and a non-WAL journal.
+    @Test fun a_wipe_runs_the_database_rewrite_as_a_step() = withContainer { container, _ ->
+        var runs = 0
+        container.compactDatabaseForTest = { runs++; true }
+        assertEquals(DownloadWipeResult.Clean, container.wipeAllData())
+        assertEquals(1, runs)
+    }
+
+    @Test fun a_failed_database_rewrite_makes_the_wipe_incomplete_and_the_other_steps_still_ran() = withContainer { container, _ ->
+        container.compactDatabaseForTest = { false }
+        container.repository.insertRecording(
+            id = "rec-x", sessionId = null, folderId = null, title = "t", source = "phone", deviceSerial = null, startedAt = 1,
+            durationSeconds = 0, sizeBytes = 0, localPath = null, transcript = "words", summaryMarkdown = null, status = "ready",
+        )
+        assertEquals(DownloadWipeResult.Incomplete, container.wipeAllData())
+        assertEquals(null, container.repository.getRecording("rec-x"), "the rows were deleted before the failing step")
+    }
+
     @Test fun a_wipe_removes_import_hashes_and_tombstones() = withContainer { container, _ ->
         container.repository.setMeta("import_sha256_synthetic", "rec-gone")
         container.repository.setMeta("import_deleted_synthetic", "1")
@@ -349,7 +375,7 @@ class WipeAllDataTest {
         var rowsAtCancel: Long? = null
         lateinit var wiped: AppContainer
         val jobs = object : RecordingJobScheduler {
-            override fun enqueue(recordingId: String, templateId: String?, retranscribe: Boolean, apiModelOverride: ApiModelOverride?) = Unit
+            override suspend fun enqueue(recordingId: String, templateId: String?, retranscribe: Boolean, apiModelOverride: ApiModelOverride?): dev.velum.ai.pipeline.EnqueueResult = dev.velum.ai.pipeline.EnqueueResult.STARTED_OR_REPLACED
             override fun cancelAll() { rowsAtCancel = runBlocking { wiped.repository.storageUsage().recordingCount.toLong() } }
         }
         withContainer(jobs = { _, _ -> jobs }) { container, _ ->
@@ -391,8 +417,23 @@ class WipeAllDataTest {
         }
     }
 
-    @Test fun api_keys_a_locked_store_could_not_list_are_reported() = withContainer(LockedReadsStore()) { container, _ ->
-        // The real store: reads fail while locked, so settings never load, and removing a key still succeeds.
+    @Test fun api_keys_are_removed_and_the_wipe_is_clean_when_the_keystore_is_locked() {
+        // The real store: reads fail while locked, so settings never load, and removing an entry still succeeds.
+        val delegate = InMemorySecureStore()
+        runBlocking {
+            delegate.putString(SecureKeys.AI_API_KEY, "synthetic-legacy")
+            delegate.putString(SecureKeys.apiKey("default"), "synthetic-default")
+            delegate.putString(SecureKeys.apiKey("never-listed"), "synthetic-unlisted")
+        }
+        withContainer(LockedReadsStore(delegate)) { container, _ ->
+            assertEquals(DownloadWipeResult.Clean, container.wipeAllData())
+            assertFalse(delegate.contains(SecureKeys.AI_API_KEY), "legacy key survived")
+            assertFalse(delegate.contains(SecureKeys.apiKey("default")), "profile key survived")
+            assertFalse(delegate.contains(SecureKeys.apiKey("never-listed")), "unlisted profile key survived")
+        }
+    }
+
+    @Test fun a_prefix_removal_that_truly_fails_keeps_the_wipe_incomplete() = withContainer(FailingPrefixStore()) { container, _ ->
         assertEquals(DownloadWipeResult.Incomplete, container.wipeAllData())
     }
 

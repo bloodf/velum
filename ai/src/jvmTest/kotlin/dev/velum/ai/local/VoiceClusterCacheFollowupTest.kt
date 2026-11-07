@@ -46,6 +46,7 @@ class VoiceClusterCacheFollowupTest {
             override suspend fun putString(key: String, value: String) = throw SecureStoreUnavailableException(RuntimeException("synthetic"))
             override suspend fun getString(key: String): String? = throw SecureStoreUnavailableException(RuntimeException("synthetic"))
             override suspend fun remove(key: String) = Unit
+            override suspend fun removeWithPrefix(prefix: String) = Unit
             override suspend fun contains(key: String) = false
         }
         val brokenStore = store(this, broken)

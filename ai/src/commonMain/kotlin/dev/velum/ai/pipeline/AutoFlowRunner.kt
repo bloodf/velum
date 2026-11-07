@@ -143,8 +143,8 @@ class AutoFlowRunner internal constructor(
             if (recording.id in processedIds) continue
             var processingCompleted = isStableNonMatch(recording)
             try {
-                maybeApplyCalendarTitle(recording)
-                val match = enabledFlows.firstOrNull { matches(it, recording) }
+                val titledRecording = maybeApplyCalendarTitle(recording)
+                val match = enabledFlows.firstOrNull { matches(it, titledRecording) }
                 if (match == null || isStableNonMatch(recording)) {
                     if (isStableNonMatch(recording)) processedIds.add(recording.id)
                     continue
@@ -225,15 +225,24 @@ class AutoFlowRunner internal constructor(
                     return row?.status == "ready"
                 }
             }
-            val started = scheduler.enqueueReportingStart(
-                recordingId = recordingId,
-                templateId = enqueueTemplate,
-                retranscribe = true,
-                apiModelOverride = apiModelOverride,
-            )
+            val result = try {
+                scheduler.enqueueSaved(
+                    recordingId = recordingId,
+                    templateId = enqueueTemplate,
+                    retranscribe = true,
+                    apiModelOverride = apiModelOverride,
+                )
+            } catch (_: EnqueueOutcomeUnknown) {
+                // Submission was accepted; observe its outcome without guessing whether KEEP inserted a request.
+                return awaitReadyStatus(scheduler, recordingId, wanted, apiModelOverride, alreadyInFlight = true)
+            }
             // The running job was kept: give the row back the status it had (generating, paused_thermal, ...), not a
             // hardcoded one, since the kept job may not have started yet.
-            if (!started && priorStatus != null && priorStatus != "queued" && priorStatus != "ready" && priorStatus != "failed") {
+            if (result == EnqueueResult.REJECTED) {
+                repository.restoreStatusIfQueued(recordingId, "failed")
+                return false
+            }
+            if (result == EnqueueResult.KEPT && priorStatus != null && priorStatus != "queued" && priorStatus != "ready" && priorStatus != "failed") {
                 repository.restoreStatusIfQueued(recordingId, priorStatus)
             }
             return awaitReadyStatus(scheduler, recordingId, wanted, apiModelOverride, alreadyInFlight = true)
@@ -283,7 +292,14 @@ class AutoFlowRunner internal constructor(
                                 // with the same parameters is kept over a pending rerun; otherwise it replaces the
                                 // finished worker.
                                 if (repository.requeueIfReady(recordingId)) {
-                                    scheduler.enqueueReportingStart(recordingId, wantedTemplateId, true, apiModelOverride)
+                                    try {
+                                        if (scheduler.enqueueSaved(recordingId, wantedTemplateId, true, apiModelOverride) == EnqueueResult.REJECTED) {
+                                            repository.restoreStatusIfQueued(recordingId, "failed")
+                                            return@withTimeoutOrNull null
+                                        }
+                                    } catch (_: EnqueueOutcomeUnknown) {
+                                        // Accepted submission: keep observing rather than overwrite an active worker's status.
+                                    }
                                 }
                             } else {
                                 // Bounded: one requeue per recording. A second mismatch is claimed without a
@@ -310,7 +326,7 @@ class AutoFlowRunner internal constructor(
         listOf("pt-BR", "en").any { VelumDateTime.formatFriendlyTitle(recording.started_at, it) == recording.title }
 
     // Looked up at the recording's own start: downloads keep the device start time, so "now" could be days later.
-    private suspend fun maybeApplyCalendarTitle(recording: Recording) {
+    private suspend fun maybeApplyCalendarTitle(recording: Recording): Recording {
         when (val result = calendar.currentOrNextEvent(recording.started_at * 1000)) {
             is CalendarLookupResult.Ok -> {
                 calendarPermissionAsked.value = false
@@ -318,6 +334,7 @@ class AutoFlowRunner internal constructor(
                 val title = event?.title?.trim().orEmpty()
                 if (title.isNotEmpty() && hasAutomaticTitle(recording)) {
                     repository.updateRecordingTitle(recording.id, title)
+                    return recording.copy(title = title)
                 }
             }
             CalendarLookupResult.PermissionDenied -> {
@@ -334,6 +351,7 @@ class AutoFlowRunner internal constructor(
             }
             is CalendarLookupResult.Unavailable -> Unit
         }
+        return recording
     }
 
     private suspend fun firePostAction(flow: Autoflow, recordingId: String) {

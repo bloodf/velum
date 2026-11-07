@@ -71,6 +71,7 @@ class PlaudExportImporterTest {
             override suspend fun getString(key: String): String? = null
             override suspend fun contains(key: String) = false
             override suspend fun remove(key: String) = Unit
+            override suspend fun removeWithPrefix(prefix: String) = Unit
         }
         assertSame(cancellation, assertFailsWith<CancellationException> {
             PlaudExportImporter.importInto(readResource("plaud_export_sample.json"), SecureDeviceKeyImporter(store))

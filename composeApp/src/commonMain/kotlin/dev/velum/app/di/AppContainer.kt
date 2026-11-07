@@ -79,6 +79,7 @@ import dev.velum.core.time.VelumDateTime
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
@@ -93,6 +94,7 @@ import dev.velum.ai.pipeline.deleteAllPcmSpill
 import dev.velum.ai.pipeline.shareMarkdownBody
 import dev.velum.core.settings.SettingsLoadState
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
@@ -112,6 +114,9 @@ class AppContainer(
     thermalPolicy: ThermalPolicy = NoOpThermalPolicy,
 ) {
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    /** Replaces the last wipe step (the database rewrite) in tests, to count it or make it fail. Null in the app. */
+    internal var compactDatabaseForTest: (suspend () -> Boolean)? = null
 
     /** Stops background work that writes user data during "Wipe all data"; see [wipeAllData]. */
     val wipeGate = WipeGate()
@@ -231,9 +236,12 @@ class AppContainer(
         voiceProfiles = voiceProfileStore,
     )
 
-    val recordingJobs: RecordingJobScheduler =
+    val recordingJobs: RecordingJobScheduler = dev.velum.ai.pipeline.admittingRecordingJobScheduler(
+        recordingProcessor,
+        appScope,
         recordingJobSchedulerFactory?.invoke(recordingProcessor, appScope)
-            ?: createCoroutineRecordingJobScheduler(recordingProcessor, appScope)
+            ?: createCoroutineRecordingJobScheduler(recordingProcessor, appScope),
+    )
 
     val askAiChat = AskAiChat(
         aiRouter = aiRouter,
@@ -257,7 +265,7 @@ class AppContainer(
     )
 
     val micRecordings = dev.velum.app.platform.MicRecordingController(micCapture) { id ->
-        !wipeGate.isWiping && repository.getRecording(id)?.let { it.source == "phone" && it.status == "recording" } == true
+        !wipeGate.isWiping && !recordingProcessor.isDeleting(id) && repository.getRecording(id)?.let { it.source == "phone" && it.status == "recording" } == true
     }
     val activeMicRecordingId: String? get() = micRecordings.owner.value?.recordingId
 
@@ -302,18 +310,36 @@ class AppContainer(
     /**
      * Deletes a recording for good. False when a step failed: the recording stays, though its audio may already be
      * gone, and trying again finishes the job. Not cancellable, so leaving the screen can't stop it halfway. It waits
-     * for a running device save, so it sees the file that save writes.
+     * for a running device save, so it sees the file that save writes. A running or queued download of this recording's
+     * session is cancelled first, and that session's partial is removed, since the audio could be recovered from it.
      */
-    suspend fun deleteRecordingForever(id: String): Boolean = try {
+    suspend fun deleteRecordingForever(id: String, device: DeviceViewModel = deviceViewModel): Boolean = try {
         withContext(NonCancellable + Dispatchers.IO) {
-            recordingJobs.cancel(id)
-            // Bounded: a job that ignores this can still write nothing once the row is gone, and startup clears its temps.
-            recordingProcessor.stopRuns(id, WIPE_JOIN_TIMEOUT)
-            val micFile = stopMicRecording(id)
+            if (!recordingProcessor.beginDeletion(id)) return@withContext false
+            try {
+            // Before the row goes: a cancelled download can't save, and a running one would find no row and add it back (#407).
+            val row = repository.getRecording(id)
+            row?.session_id?.let(device::cancelDownloadOf)
+            if (kotlinx.coroutines.withTimeoutOrNull(WIPE_JOIN_TIMEOUT) { recordingJobs.cancel(id); true } != true) {
+                println("VelumDelete: recording scheduling did not stop")
+                return@withContext false
+            }
+            if (!recordingProcessor.stopRuns(id, WIPE_JOIN_TIMEOUT)) {
+                println("VelumDelete: recording processing did not stop")
+                return@withContext false
+            }
+            // Scheduler lock is released before taking the mic lock: finalize enqueues while holding it.
+            micRecordings.underLock(WIPE_JOIN_TIMEOUT) {
+            val (micStopped, micFile) = stopMicRecording(id)
+            if (!micStopped) return@underLock false
             downloadPersistMutex.withLock {
+                // First: if it stays, the recording stays too, and trying again finishes the job.
+                if (row?.session_id?.let { device.deletePartialOf(it, row.device_serial) } == false) {
+                    println("VelumDelete: a recording's partial download could not be deleted")
+                    return@withLock false
+                }
                 val audio = repository.getRecording(id)?.local_path
                 val others = repository.getAllRecordingFileRefs().filter { it.first != id }.mapNotNull { it.second }
-                // A mic draft has its file before the row has a path, and a crashed one leaves a `.partial`.
                 val dir = runCatching { recordingsDirectoryPath() }.getOrNull()
                 val draft = listOfNotNull(micFile) + listOfNotNull(dir).flatMap { listOf("$it/$id.wav", "$it/$id.wav.partial") }
                 // Copies first: if one fails, the recording still has its audio.
@@ -330,6 +356,10 @@ class AppContainer(
                 }
                 deleted
             }
+            }
+            } finally {
+                recordingProcessor.endDeletion(id)
+            }
         }
     } catch (cancelled: CancellationException) {
         throw cancelled
@@ -338,13 +368,107 @@ class AppContainer(
         false
     }
 
-    fun enqueueProcessing(
+    suspend fun enqueueProcessing(
+        recordingId: String,
+        templateId: String? = null,
+        retranscribe: Boolean = true,
+        apiModelOverride: ApiModelOverride? = null,
+    ): dev.velum.ai.pipeline.EnqueueResult =
+        recordingJobs.enqueue(recordingId, templateId, retranscribe, apiModelOverride)
+
+    /**
+     * Enqueues the job for a row already saved as `queued`. If that fails or is cancelled the row would wait for a
+     * job that does not exist, so it is marked failed (Retry shows) before the error continues (#415).
+     */
+    suspend fun enqueueSavedRecording(
         recordingId: String,
         templateId: String? = null,
         retranscribe: Boolean = true,
         apiModelOverride: ApiModelOverride? = null,
     ) {
-        recordingJobs.enqueue(recordingId, templateId, retranscribe, apiModelOverride)
+        var accepted = false
+        try {
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+            withContext(NonCancellable) {
+                val result = recordingJobs.enqueueSaved(recordingId, templateId, retranscribe, apiModelOverride)
+                if (result == dev.velum.ai.pipeline.EnqueueResult.REJECTED) throw dev.velum.ai.pipeline.RecordingEnqueueRejected()
+                accepted = true
+            }
+        } catch (t: Throwable) {
+            if (!accepted && t !is dev.velum.ai.pipeline.EnqueueOutcomeUnknown) markQueuedFailed(recordingId)
+            throw t
+        }
+        kotlinx.coroutines.currentCoroutineContext().ensureActive()
+    }
+
+    /**
+     * [enqueueSavedRecording] for a row whose AutoFlow template and model come from the matching flow. The match and
+     * the template lookup are inside the same guard, so a cancel there cannot strand the row either. With
+     * [markFailedOnCancel] false a cancellation leaves the row queued (startup recovery: the next start retries it).
+     */
+    suspend fun enqueueSavedWithAutoflow(
+        recordingId: String,
+        source: String,
+        durationSeconds: Long,
+        title: String,
+        markFailedOnCancel: Boolean = true,
+        keepExisting: Boolean = false,
+    ) {
+        var accepted = false
+        try {
+            val match = repository.findMatchingAutoflow(source = source, durationSeconds = durationSeconds, title = title)
+            val templateId = resolveTemplateForEnqueue(repository, match?.template_id)
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+            withContext(NonCancellable) {
+                val result = recordingJobs.enqueueSaved(
+                    recordingId = recordingId,
+                    templateId = templateId,
+                    retranscribe = true,
+                    apiModelOverride = match?.let { AutoFlowResolve.modelOverride(it) },
+                    keepExisting = keepExisting,
+                )
+                if (result == dev.velum.ai.pipeline.EnqueueResult.REJECTED) throw dev.velum.ai.pipeline.RecordingEnqueueRejected()
+                accepted = true
+            }
+        } catch (t: Throwable) {
+            if (!accepted && t !is dev.velum.ai.pipeline.EnqueueOutcomeUnknown && (markFailedOnCancel || t !is kotlinx.coroutines.CancellationException)) markQueuedFailed(recordingId)
+            throw t
+        }
+        kotlinx.coroutines.currentCoroutineContext().ensureActive()
+    }
+
+    private suspend fun markQueuedFailed(recordingId: String) {
+        withContext(NonCancellable) { runCatching { repository.updateStatusIfEquals(recordingId, "queued", "failed") } }
+    }
+
+    /**
+     * Startup: a row left `queued` with no job (the process died, or enqueueing failed, after the row was saved) gets
+     * its job again, with the template and model of the AutoFlow that matches it. A row that already has work is left
+     * alone, so a job still held (WorkManager) or running (in-process) is never replaced. Waits for the settings to
+     * load first: a job started on unloaded defaults would pick the wrong model and language. Under the wipe gate: a
+     * wipe in progress recreates no work. A template picked by hand for a lost job cannot be recovered. Returns how
+     * many rows were handed to the scheduler.
+     */
+    suspend fun requeueStrandedRecordings(): Int {
+        settingsRepository.loadState.first {
+            it == SettingsLoadState.Ready || it == SettingsLoadState.Unavailable
+        }
+        return wipeGate.guard {
+            var handed = 0
+            repository.queuedRecordingIds().forEach { id ->
+                val row = repository.getRecording(id)?.takeIf { it.status == "queued" } ?: return@forEach
+                if (recordingJobs.hasActiveWork(id)) return@forEach
+                try {
+                    enqueueSavedWithAutoflow(id, row.source, row.duration_seconds, row.title, markFailedOnCancel = false, keepExisting = true)
+                    handed++
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    println("VelumStartup: requeue of a queued recording failed: ${e::class.simpleName}")
+                }
+            }
+            handed
+        } ?: 0
     }
 
     suspend fun createLocalRecording(
@@ -415,6 +539,7 @@ class AppContainer(
                 step("queued jobs") { recordingJobs.cancelAll(); true }
                 step("recordings") {
                     val left = mutableSetOf<String>()
+                    // Throws at its very end if the search index could not be cleared; step() turns that into Incomplete.
                     repository.wipeAllUserData { path -> if (deleteFileIfPresent(path)) left -= path else left += path }
                     left.isEmpty()
                 }
@@ -437,12 +562,24 @@ class AppContainer(
                     step("transfer temps") { withContext(Dispatchers.IO) { deleteDeviceTransferTemps() } }
                 }
                 step("api keys") {
+                    // Settings may not have loaded (locked keystore). Try once so the in-memory state is right;
+                    // clearing is by key prefix and does not depend on it, so a failed load is not a failed step.
+                    if (settingsRepository.loadState.value != SettingsLoadState.Ready) {
+                        try {
+                            settingsRepository.load()
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (_: Exception) {
+                            // Still locked: the removal below works without it.
+                        }
+                    }
                     settingsRepository.clearAllApiKeys()
-                    // It walks the loaded profiles: unless settings loaded, a profile's key may not have been seen.
-                    settingsRepository.loadState.value == SettingsLoadState.Ready
+                    true
                 }
                 step("webhook") { webhookSettings.clear(); true }
                 step("integrations") { integrationAuth.clearTokens(); true }
+                // Last: every step above that deletes rows has run, and VACUUM rewrites the file without them.
+                step("database") { (compactDatabaseForTest ?: repository::compactAfterWipe)() }
                 when {
                     !complete -> DownloadWipeResult.Incomplete
                     !nothingWriting -> DownloadWipeResult.StillRunning
@@ -458,12 +595,19 @@ class AppContainer(
         }
     }
 
-    /** Ends the capture of [recordingId] if there is one, and returns its file. Under the lock a start holds. */
-    private suspend fun stopMicRecording(recordingId: String): String? = micRecordings.underLock {
-        val owned = micRecordings.owner.value?.takeIf { it.recordingId == recordingId } ?: return@underLock null
-        if (micCapture.isCapturing) micCapture.stop(owned.session)
+    private suspend fun stopMicRecording(recordingId: String): Pair<Boolean, String?> {
+        val owned = micRecordings.owner.value?.takeIf { it.recordingId == recordingId } ?: return true to null
+        val state = micCapture.sessions.value
+        if (state !is dev.velum.app.platform.MicSessionState.Stopped || state.session != owned.session) {
+            val stopped = kotlinx.coroutines.withTimeoutOrNull(WIPE_JOIN_TIMEOUT) { micCapture.stop(owned.session) }
+            val terminal = micCapture.sessions.value
+            if (stopped !is dev.velum.app.platform.MicStopResult.Stopped ||
+                terminal !is dev.velum.app.platform.MicSessionState.Stopped || terminal.session != owned.session) {
+                return false to null
+            }
+        }
         micRecordings.release(owned)
-        owned.session.absolutePath
+        return true to owned.session.absolutePath
     }
 
     /** Ends a mic recording in progress and deletes its file, which may not be on a recording row yet. */
@@ -586,18 +730,8 @@ class AppContainer(
     }
 
     private suspend fun enqueueDownloadedSession(id: String, title: String) {
-        // Resolve AutoFlow before first enqueue so KEEP cannot drop template/model.
-        val match = repository.findMatchingAutoflow(
-            source = "note_pro",
-            durationSeconds = 0,
-            title = title,
-        )
-        enqueueProcessing(
-            recordingId = id,
-            templateId = resolveTemplateForEnqueue(repository, match?.template_id),
-            retranscribe = true,
-            apiModelOverride = match?.let { AutoFlowResolve.modelOverride(it) },
-        )
+        // AutoFlow is resolved before the first enqueue so KEEP cannot drop template/model.
+        enqueueSavedWithAutoflow(id, source = "note_pro", durationSeconds = 0, title = title)
     }
 
     private fun looksLikeOgg(bytes: ByteArray): Boolean =
@@ -615,7 +749,7 @@ class AppContainer(
             bytes[3] == 'F'.code.toByte()
 
 
-    private fun formatRecordingTitle(epochSeconds: Long): String {
+    internal fun formatRecordingTitle(epochSeconds: Long): String {
         return recordingTitle(epochSeconds, settingsRepository.preferences.value.appLanguage, systemLanguageTag())
     }
 }

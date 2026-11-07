@@ -26,6 +26,8 @@ import dev.velum.core.model.ComputeMode
 import dev.velum.core.settings.ApiModelOverride
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * Runs [RecordingProcessor] for one recording under WorkManager with thermal backoff.
@@ -263,6 +265,9 @@ class RecordingProcessWorker(
             templateId: String? = null,
             retranscribe: Boolean = true,
             apiModelOverride: ApiModelOverride? = null,
+            keepExisting: Boolean = false,
+            submit: (WorkManager, String, ExistingWorkPolicy, androidx.work.OneTimeWorkRequest) -> androidx.work.Operation =
+                { manager, name, policy, request -> manager.enqueueUniqueWork(name, policy, request) },
         ): Boolean {
             val data = Data.Builder()
                 .putString(KEY_RECORDING_ID, recordingId)
@@ -301,28 +306,38 @@ class RecordingProcessWorker(
                 recordingId,
                 recordingWorkParamsTag(templateId, retranscribe, apiModelOverride, requiresNetworkForApiModes()),
             )
-            val policy = if (!recordingWorkHasAutoFlowParams(templateId, apiModelOverride) || sameParams) {
+            val policy = if (keepExisting || !recordingWorkHasAutoFlowParams(templateId, apiModelOverride) || sameParams) {
                 ExistingWorkPolicy.KEEP
             } else {
                 ExistingWorkPolicy.REPLACE
             }
-            manager.enqueueUniqueWork(
+            val operation = submit(
+                manager,
                 UNIQUE_PREFIX + recordingId,
                 policy,
                 request,
             )
-            // Reports "started or replaced"; KEEP over queued/running work did neither.
-            return !(policy == ExistingWorkPolicy.KEEP && hasActiveWork(manager, recordingId, excluding = request.id))
+            operation.result.get()
+            // Include terminal work: the submitted request can finish before this lookup.
+            try {
+                if (manager.getWorkInfoById(request.id).get(2, TimeUnit.SECONDS) != null) return true
+                val infos = manager.getWorkInfosForUniqueWork(UNIQUE_PREFIX + recordingId).get(2, TimeUnit.SECONDS)
+                if (policy == ExistingWorkPolicy.KEEP && infos.any { !it.state.isFinished }) return false
+            } catch (t: Exception) {
+                throw EnqueueOutcomeUnknown(t)
+            }
+            throw EnqueueOutcomeUnknown()
         }
 
-        private fun hasActiveWork(manager: WorkManager, recordingId: String, excluding: java.util.UUID): Boolean {
-            if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) return false
+        /** Queued, running or waiting to retry. A lookup that fails or runs on the main thread answers true: unknown is not "no work". */
+        fun isWorkActive(context: Context, recordingId: String): Boolean {
+            if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) return true
             return runCatching {
-                manager.getWorkInfosForUniqueWork(UNIQUE_PREFIX + recordingId).get(2, TimeUnit.SECONDS)
-                    .any { !it.state.isFinished && it.id != excluding }
+                WorkManager.getInstance(context).getWorkInfosForUniqueWork(UNIQUE_PREFIX + recordingId).get(2, TimeUnit.SECONDS)
+                    .any { !it.state.isFinished }
             }.getOrElse {
-                Log.w(TAG, "active-work lookup failed; reporting the enqueue as started", it)
-                false
+                Log.w(TAG, "active-work lookup failed; treating the recording as having work", it)
+                true
             }
         }
 
@@ -368,28 +383,27 @@ class RecordingProcessWorker(
     }
 }
 
-fun createWorkManagerRecordingJobScheduler(context: Context): RecordingJobScheduler =
+fun createWorkManagerRecordingJobScheduler(
+    context: Context,
+    submit: (WorkManager, String, ExistingWorkPolicy, androidx.work.OneTimeWorkRequest) -> androidx.work.Operation =
+        { manager, name, policy, request -> manager.enqueueUniqueWork(name, policy, request) },
+): RecordingJobScheduler =
     object : RecordingJobScheduler {
-        override fun enqueue(recordingId: String, templateId: String?, retranscribe: Boolean, apiModelOverride: ApiModelOverride?) {
-            enqueueReportingStart(recordingId, templateId, retranscribe, apiModelOverride)
-        }
+        override suspend fun enqueue(recordingId: String, templateId: String?, retranscribe: Boolean, apiModelOverride: ApiModelOverride?): EnqueueResult =
+            enqueueSaved(recordingId, templateId, retranscribe, apiModelOverride)
 
-        override fun enqueueReportingStart(
-            recordingId: String,
-            templateId: String?,
-            retranscribe: Boolean,
-            apiModelOverride: ApiModelOverride?,
-        ): Boolean = RecordingProcessWorker.enqueue(
-            context = context.applicationContext,
-            recordingId = recordingId,
-            templateId = templateId,
-            retranscribe = retranscribe,
-            apiModelOverride = apiModelOverride,
-        )
+        override suspend fun enqueueSaved(recordingId: String, templateId: String?, retranscribe: Boolean, apiModelOverride: ApiModelOverride?, keepExisting: Boolean): EnqueueResult =
+            withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) {
+                if (RecordingProcessWorker.enqueue(context.applicationContext, recordingId, templateId, retranscribe, apiModelOverride, keepExisting = keepExisting, submit = submit)) EnqueueResult.STARTED_OR_REPLACED else EnqueueResult.KEPT
+            }
 
-        override fun cancel(recordingId: String) {
-            WorkManager.getInstance(context.applicationContext)
-                .cancelUniqueWork(RecordingProcessWorker.UNIQUE_PREFIX + recordingId)
+        override fun hasActiveWork(recordingId: String): Boolean = RecordingProcessWorker.isWorkActive(context.applicationContext, recordingId)
+
+        override suspend fun cancel(recordingId: String) {
+            withContext(Dispatchers.IO) {
+                WorkManager.getInstance(context.applicationContext)
+                    .cancelUniqueWork(RecordingProcessWorker.UNIQUE_PREFIX + recordingId).result.get()
+            }
         }
 
         // WorkManager tags every request with its worker class.

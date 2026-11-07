@@ -149,6 +149,7 @@ class DeviceIdentityAtomicityTest {
             if (failAfter == index) throw SecureStoreUnavailableException(IllegalStateException("Synthetic uncertain commit"))
         }
         override suspend fun getString(key: String): String? { readFailure?.let { throw it }; return values[key] }
+        override suspend fun removeWithPrefix(prefix: String) { values.keys.removeAll { it.startsWith(prefix) } }
         override suspend fun contains(key: String) = key in values
         override suspend fun remove(key: String) {
             if (key == removeFailureKey) throw SecureStoreUnavailableException(IllegalStateException("Synthetic clear failure"))
