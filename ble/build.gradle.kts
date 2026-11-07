@@ -71,6 +71,11 @@ kotlin {
         // With the default hierarchy, apple/ios intermediate sets exist after applyDefaultHierarchyTemplate.
         val iosMain by getting {
             dependsOn(mobileMain)
+            dependencies {
+                implementation("com.ionspin.kotlin:multiplatform-crypto-libsodium-bindings:0.9.4")
+                implementation("dev.whyoleg.cryptography:cryptography-provider-apple:0.6.0")
+                implementation("dev.whyoleg.cryptography:cryptography-provider-cryptokit:0.6.0")
+            }
         }
     }
 }
