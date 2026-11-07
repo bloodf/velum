@@ -111,6 +111,9 @@ class TemplateRegenerationPreservationTest {
         assertEquals(listOf(before), r.repo.getSummaryVersions("rec"))
         assertEquals(summary, r.repo.getRecording("rec")!!.summary_markdown)
 
+        val statusBeforeCancellation = r.repo.getRecording("rec")!!.status
+        assertEquals("failed", statusBeforeCancellation)
+
         r.local.failWith = null
         r.local.gate = CompletableDeferred()
         val job = async(start = CoroutineStart.UNDISPATCHED) {
@@ -120,6 +123,6 @@ class TemplateRegenerationPreservationTest {
         job.cancelAndJoin()
         assertEquals(listOf(before), r.repo.getSummaryVersions("rec"))
         assertEquals(summary, r.repo.getRecording("rec")!!.summary_markdown)
-        assertEquals("ready", r.repo.getRecording("rec")!!.status)
+        assertEquals(statusBeforeCancellation, r.repo.getRecording("rec")!!.status)
     }
 }
