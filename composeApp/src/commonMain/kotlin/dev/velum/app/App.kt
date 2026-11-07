@@ -261,8 +261,8 @@ private fun VelumRoot(container: AppContainer) {
     if (consentPath != null) {
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { shareConsent.decide(false) },
-            title = { androidx.compose.material3.Text(strings.externalShareConsentTitle) },
-            text = { androidx.compose.material3.Text(strings.externalShareConsentBody) },
+            title = { androidx.compose.material3.Text(strings.added.externalShareConsentTitle) },
+            text = { androidx.compose.material3.Text(strings.added.externalShareConsentBody) },
             confirmButton = {
                 androidx.compose.material3.TextButton(onClick = { shareConsent.decide(true) }) {
                     androidx.compose.material3.Text(strings.confirm)
