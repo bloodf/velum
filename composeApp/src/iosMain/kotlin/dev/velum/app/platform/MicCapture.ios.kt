@@ -2,20 +2,22 @@
 
 package dev.velum.app.platform
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import platform.AVFAudio.*
-import platform.AudioToolbox.kAudioFormatLinearPCM
+import platform.CoreAudioTypes.kAudioFormatLinearPCM
 import platform.Foundation.*
+import platform.darwin.NSObjectProtocol
 import platform.darwin.NSObject
 
 actual fun createMicCapture(): MicCapture = IosMicCapture()
 
 /** AVAudioRecorder owns the WAV header. Live PCM requires a separate capture backend. */
-private class IosMicCapture : NSObject(), MicCapture, AVAudioRecorderDelegateProtocol {
+private class IosMicCapture : MicCapture {
     private val state = MutableStateFlow<MicSessionState>(MicSessionState.Idle)
     private val failure = MutableStateFlow<String?>(null)
     override val sessions = state.asStateFlow()
@@ -35,53 +37,66 @@ private class IosMicCapture : NSObject(), MicCapture, AVAudioRecorderDelegatePro
     private suspend inline fun <T> transition(crossinline action: suspend () -> T): T =
         withContext(Dispatchers.Main.immediate + NonCancellable) { action() }
 
-    override suspend fun start(absolutePath: String, inputSource: MicInputSource): MicStartResult = transition {
-        if (isCapturing) return@transition MicStartResult.Failed("Microphone is already recording")
-        val audio = AVAudioSession.sharedInstance()
-        if (audio.recordPermission != AVAudioSessionRecordPermissionGranted) return@transition MicStartResult.PermissionRequired
-        if (!absolutePath.startsWith("/") || !absolutePath.endsWith(".wav", ignoreCase = true)) {
-            return@transition MicStartResult.Failed("Recording requires an absolute WAV path")
-        }
-        if (NSFileManager.defaultManager.fileExistsAtPath(absolutePath)) {
-            return@transition MicStartResult.Failed("Recording file already exists")
-        }
-        val identity = MicSessionIdentity(++nextToken, absolutePath)
-        state.value = MicSessionState.Starting(identity)
-        failure.value = null
-        bookmarks = emptyList()
-        onPcmChunk = null
-        if (!audio.setCategory(AVAudioSessionCategoryPlayAndRecord,
-                withOptions = AVAudioSessionCategoryOptionDefaultToSpeaker or AVAudioSessionCategoryOptionAllowBluetooth,
-                error = null) || !audio.setActive(true, error = null)) {
-            fail("Unable to activate microphone session", identity)
-            return@transition MicStartResult.Failed(failure.value!!)
-        }
-        val settings: Map<Any?, Any> = mapOf(
-            AVFormatIDKey to kAudioFormatLinearPCM,
-            AVSampleRateKey to 16000.0,
-            AVNumberOfChannelsKey to 1,
-            AVLinearPCMBitDepthKey to 16,
-            AVLinearPCMIsFloatKey to false,
-            AVLinearPCMIsBigEndianKey to false,
-        )
-        val native = AVAudioRecorder(NSURL.fileURLWithPath(absolutePath), settings, null)
-        recorder = native
-        native.delegate = this
-        if (!native.prepareToRecord() || !native.record()) {
-            fail("Unable to start microphone recording", identity)
-            return@transition MicStartResult.Failed(failure.value!!)
-        }
-        observer = NSNotificationCenter.defaultCenter.addObserverForName(
-            AVAudioSessionInterruptionNotification, audio, NSOperationQueue.mainQueue,
-        ) { notification ->
-            val kind = notification?.userInfo?.get(AVAudioSessionInterruptionTypeKey) as? NSNumber
-            if (kind?.unsignedIntegerValue == AVAudioSessionInterruptionTypeBegan && recorder === native) {
-                native.pause()
-                state.value = MicSessionState.Paused(absolutePath, bytesWritten(), identity.token)
+    override suspend fun start(absolutePath: String, inputSource: MicInputSource): MicStartResult {
+        var admitted: MicSessionIdentity? = null
+        try {
+            return transition {
+                if (isCapturing) return@transition MicStartResult.Failed("Microphone is already recording")
+                val audio = AVAudioSession.sharedInstance()
+                if (audio.recordPermission != AVAudioSessionRecordPermissionGranted) return@transition MicStartResult.PermissionRequired
+                if (!absolutePath.startsWith("/") || !absolutePath.endsWith(".wav", ignoreCase = true)) {
+                    return@transition MicStartResult.Failed("Recording requires an absolute WAV path")
+                }
+                if (NSFileManager.defaultManager.fileExistsAtPath(absolutePath)) {
+                    return@transition MicStartResult.Failed("Recording file already exists")
+                }
+                val identity = MicSessionIdentity(++nextToken, absolutePath)
+                state.value = MicSessionState.Starting(identity)
+                failure.value = null
+                bookmarks = emptyList()
+                onPcmChunk = null
+                if (!audio.setCategory(AVAudioSessionCategoryPlayAndRecord,
+                        withOptions = AVAudioSessionCategoryOptionDefaultToSpeaker or AVAudioSessionCategoryOptionAllowBluetooth,
+                        error = null) || !audio.setActive(true, error = null)) {
+                    fail("Unable to activate microphone session", identity)
+                    return@transition MicStartResult.Failed(failure.value!!)
+                }
+                val settings: Map<Any?, Any> = mapOf(
+                    AVFormatIDKey to kAudioFormatLinearPCM,
+                    AVSampleRateKey to 16000.0,
+                    AVNumberOfChannelsKey to 1,
+                    AVLinearPCMBitDepthKey to 16,
+                    AVLinearPCMIsFloatKey to false,
+                    AVLinearPCMIsBigEndianKey to false,
+                )
+                val native = AVAudioRecorder(NSURL.fileURLWithPath(absolutePath), settings, null)
+                recorder = native
+                native.delegate = delegate
+                if (!native.prepareToRecord() || !native.record()) {
+                    fail("Unable to start microphone recording", identity)
+                    return@transition MicStartResult.Failed(failure.value!!)
+                }
+                observer = NSNotificationCenter.defaultCenter.addObserverForName(
+                    AVAudioSessionInterruptionNotification, audio, NSOperationQueue.mainQueue,
+                ) { notification ->
+                    val kind = notification?.userInfo?.get(AVAudioSessionInterruptionTypeKey) as? NSNumber
+                    if (kind?.unsignedIntegerValue == AVAudioSessionInterruptionTypeBegan && recorder === native) {
+                        native.pause()
+                        state.value = MicSessionState.Paused(absolutePath, bytesWritten(), identity.token)
+                    }
+                }
+                state.value = MicSessionState.Recording(absolutePath, 0, identity.token)
+                admitted = identity
+                MicStartResult.Started(identity)
             }
+        } catch (cancelled: CancellationException) {
+            transition {
+                admitted?.takeIf { state.value.session == it }?.let {
+                    fail("Microphone start cancelled", it)
+                }
+            }
+            throw cancelled
         }
-        state.value = MicSessionState.Recording(absolutePath, 0, identity.token)
-        MicStartResult.Started(identity)
     }
 
     override suspend fun pause(): MicPauseResult = transition {
@@ -171,10 +186,16 @@ private class IosMicCapture : NSObject(), MicCapture, AVAudioRecorderDelegatePro
         failure.value = message
         state.value = MicSessionState.Failed(message, session = identity)
     }
-    override fun audioRecorderEncodeErrorDidOccur(recorder: AVAudioRecorder, error: NSError?) {
-        if (this.recorder === recorder) state.value.session?.let { fail("Microphone encoding failed", it) }
-    }
-    override fun audioRecorderDidFinishRecording(recorder: AVAudioRecorder, successfully: Boolean) {
-        if (this.recorder === recorder) state.value.session?.let { fail("Microphone recording ended unexpectedly", it) }
+    private val delegate = object : NSObject(), AVAudioRecorderDelegateProtocol {
+        override fun audioRecorderEncodeErrorDidOccur(recorder: AVAudioRecorder, error: NSError?) {
+            if (this@IosMicCapture.recorder === recorder) state.value.session?.let {
+                fail("Microphone encoding failed", it)
+            }
+        }
+        override fun audioRecorderDidFinishRecording(recorder: AVAudioRecorder, successfully: Boolean) {
+            if (this@IosMicCapture.recorder === recorder) state.value.session?.let {
+                fail("Microphone recording ended unexpectedly", it)
+            }
+        }
     }
 }
