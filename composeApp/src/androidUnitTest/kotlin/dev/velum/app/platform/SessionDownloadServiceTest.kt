@@ -12,6 +12,7 @@ import androidx.core.app.NotificationCompat
 import androidx.test.core.app.ApplicationProvider
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import org.junit.After
@@ -114,7 +115,65 @@ class SessionDownloadServiceTest {
         startCommand()
         service.onTimeout(startId, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
         assertEquals(1, cancelled)
+        assertFalse(SessionDownloadService.wanted)
         assertTrue(shadowOf(service).isStoppedBySelf)
+    }
+
+    @Test fun timeout_from_an_older_start_does_not_cancel_the_current_download() {
+        var cancelled = 0
+        DownloadProgressNotifier.setCancelHandler(DownloadNotifyKind.DeviceSession) { cancelled++ }
+        startCommand()
+        val oldStartId = startId
+        SessionDownloadService.stop()
+        SessionDownloadService.start(app)
+        startCommand()
+
+        service.onTimeout(oldStartId, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+
+        assertEquals(0, cancelled)
+        assertTrue(SessionDownloadService.wanted)
+        service.onTimeout(startId, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+        assertEquals(1, cancelled)
+    }
+
+    @Test fun timeout_from_a_replaced_instance_does_not_cancel_the_current_download() {
+        startCommand()
+        SessionDownloadService.stop()
+        controller.destroy()
+        val replacement = Robolectric.buildService(SessionDownloadService::class.java).create()
+        try {
+            replacement.get().promote = { _, _, _, _ -> }
+            var cancelled = 0
+            DownloadProgressNotifier.setCancelHandler(DownloadNotifyKind.DeviceSession) { cancelled++ }
+            SessionDownloadService.start(app)
+            replacement.get().onStartCommand(Intent(app, SessionDownloadService::class.java), 0, startId)
+
+            service.onTimeout(startId, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+
+            assertEquals(0, cancelled)
+            assertTrue(SessionDownloadService.wanted)
+            assertFalse(shadowOf(replacement.get()).isStoppedBySelf)
+        } finally {
+            SessionDownloadService.stop()
+            replacement.destroy()
+        }
+    }
+
+    @Test fun timeout_stops_even_when_the_cancel_callback_throws_and_is_not_delivered_twice() {
+        var cancelled = 0
+        DownloadProgressNotifier.setCancelHandler(DownloadNotifyKind.DeviceSession) {
+            cancelled++
+            throw IllegalStateException("synthetic cancellation failure")
+        }
+        startCommand()
+
+        assertFailsWith<IllegalStateException> {
+            service.onTimeout(startId, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+        }
+        assertFalse(SessionDownloadService.wanted)
+        assertTrue(shadowOf(service).isStoppedBySelf)
+        service.onTimeout(startId, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+        assertEquals(1, cancelled)
     }
 
     @Test fun merged_manifest_declares_both_types_and_their_permissions() {
