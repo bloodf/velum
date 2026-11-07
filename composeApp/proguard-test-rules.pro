@@ -75,6 +75,11 @@
 -keepclassmembers class dev.velum.app.VelumApplication { *; }
 # The real-catalog instrumentation fixture constructs this test store across APKs.
 -keep class dev.velum.core.security.InMemorySecureStore { *; }
+# The real-catalog fixture passes an explicit database name across APKs.
+# The app uses Kotlin's default-name constructor; R8 may remove this overload.
+-keepclassmembers class dev.velum.core.data.DriverFactory {
+    public <init>(android.content.Context, java.lang.String);
+}
 -keep class dev.velum.app.di.AppContainer { *; }
 -keepclassmembers class dev.velum.app.di.AppContainer { *; }
 # DeviceWalkUiTest gates DeviceScreen on this copy (cross-APK). R8 otherwise
