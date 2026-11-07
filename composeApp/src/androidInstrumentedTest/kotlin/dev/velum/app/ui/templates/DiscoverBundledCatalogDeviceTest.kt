@@ -233,7 +233,7 @@ class DiscoverBundledCatalogDeviceTest {
         // Search composition: category `meeting` plus a probe from another category is a clearable no-match.
         tap("category:meeting")
         until(what = "active category") { has("active:category") }
-        compose.onNode(hasSetTextAction()).performTextInput(probe.name)
+        compose.onNodeWithTag("search:query").performTextInput(probe.name)
         val miss = all.copy(category = "meeting", search = probe.name)
         assertEquals(0, awaitCount(miss))
         until(what = "empty state for meeting + probe") { has("templates:empty") }
