@@ -13,6 +13,7 @@ import dev.velum.ai.local.ModelStoreDir
 import dev.velum.ai.local.createLocalModelManager
 import dev.velum.core.model.AiProviderSettings
 import java.io.File
+import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -21,7 +22,7 @@ import kotlin.test.assertTrue
 
 /** #260: following the app's own recommendation must be enough for a first local summary. */
 class RecommendedModelsTest {
-    @Test fun the_recommended_set_is_enough_for_a_local_summary_on_every_device_class() {
+    @Test fun the_recommended_set_is_enough_for_a_local_summary_on_every_device_class() = runBlocking {
         DeviceComputeClass.entries.forEach { deviceClass ->
             val llms = ModelCatalogUi.recommendedModelIds("pt-BR", deviceClass).filter { id ->
                 DefaultLocalCatalog.first { it.id == id }.kind == LocalModelKind.Llm
@@ -32,6 +33,7 @@ class RecommendedModelsTest {
                 File(dir, "$id/${spec.archiveFileName}").apply { parentFile.mkdirs(); writeBytes(ByteArray(2048)) }
             }
             val manager = createLocalModelManager(ModelStoreDir(dir.absolutePath))
+            manager.awaitInitialization()
             assertTrue(resolveLocalLlmModelId(null, manager) in llms, "$deviceClass resolved outside $llms")
             assertIs<ModeResolution.Proceed>(resolveModeOrPrompt(AiTask.Summary, AiProviderSettings(), manager))
             dir.deleteRecursively()
