@@ -113,18 +113,6 @@ fun ApiSettingsScreen(
     var showKey by remember { mutableStateOf(false) }
     var modelQuery by remember { mutableStateOf("") }
 
-    val profileModels = settings.cachedModelsByProfile[selectedProfile.id]
-        ?.takeIf { it.isNotEmpty() }
-        ?: settings.cachedModels
-    val listingFailed = ui.error != null && !ui.refreshing
-    val filtered = remember(profileModels, modelQuery) {
-        val q = modelQuery.trim().lowercase()
-        if (q.isEmpty()) profileModels
-        else profileModels.filter {
-            it.id.lowercase().contains(q) || (it.ownedBy?.lowercase()?.contains(q) == true)
-        }
-    }
-
     fun taskLabel(task: AiApiTask): String = when (task) {
         AiApiTask.Transcription -> strings.settingsUi.modelForTranscription
         AiApiTask.Diarization -> strings.settingsUi.modelForDiarization
@@ -189,15 +177,7 @@ fun ApiSettingsScreen(
             BlackButton(
                 strings.settingsUi.addEndpointProfile,
                 {
-                    val id = "profile-${profiles.size + 1}"
-                    viewModel.upsertProfile(
-                        ApiEndpointProfile(
-                            id = id,
-                            name = id,
-                            baseUrl = SettingsRepository.DEFAULT_BASE_URL,
-                        ),
-                    )
-                    selectedProfileId = id
+                    viewModel.createProfile { id -> selectedProfileId = id }
                 },
                 Modifier.padding(horizontal = 20.dp),
             )
@@ -344,7 +324,7 @@ fun ApiSettingsScreen(
                 fontSize = 12.sp,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
             )
-            if (profileModels.isNotEmpty()) {
+            if (settings.cachedModelsByProfile.values.any { it.isNotEmpty() }) {
                 Spacer(Modifier.height(8.dp))
                 OutlinedTextField(
                     value = modelQuery,
@@ -362,8 +342,8 @@ fun ApiSettingsScreen(
                     binding = settings.taskBindings[task.name] ?: TaskModelBinding(),
                     profiles = profiles,
                     fallbackProfileId = selectedProfile.id,
-                    filteredModels = filtered,
-                    showManual = listingFailed || profileModels.isEmpty(),
+                    modelsByProfile = settings.cachedModelsByProfile,
+                    modelQuery = modelQuery,
                     onBind = viewModel::setTaskBinding,
                 )
             }
@@ -373,20 +353,21 @@ fun ApiSettingsScreen(
 }
 
 @Composable
-private fun TaskBindingEditor(
+internal fun TaskBindingEditor(
     task: AiApiTask,
     title: String,
     binding: TaskModelBinding,
     profiles: List<ApiEndpointProfile>,
     fallbackProfileId: String,
-    filteredModels: List<AiModelInfo>,
-    showManual: Boolean,
+    modelsByProfile: Map<String, List<AiModelInfo>>,
+    modelQuery: String,
     onBind: (AiApiTask, TaskModelBinding) -> Unit,
 ) {
     val strings = LocalStrings.current
     val selectedModel = binding.modelId
     val boundProfileId = binding.profileId ?: fallbackProfileId
-    var manual by remember(task.name, selectedModel) { mutableStateOf(selectedModel.orEmpty()) }
+    val filteredModels = profileModelChoices(modelsByProfile, boundProfileId, modelQuery)
+    var manual by remember(task.name, boundProfileId, selectedModel) { mutableStateOf(selectedModel.orEmpty()) }
     Spacer(Modifier.height(12.dp))
     Text(
         title,
@@ -414,7 +395,7 @@ private fun TaskBindingEditor(
                 onBind(task, binding.copy(profileId = boundProfileId, modelId = modelId))
             },
         )
-    } else if (showManual) {
+    } else {
         ManualModelField(
             label = title,
             value = manual,
@@ -429,6 +410,18 @@ private fun TaskBindingEditor(
                 )
             },
         )
+    }
+}
+
+internal fun profileModelChoices(
+    modelsByProfile: Map<String, List<AiModelInfo>>,
+    profileId: String,
+    query: String,
+): List<AiModelInfo> {
+    val q = query.trim()
+    return modelsByProfile[profileId].orEmpty().filter {
+        q.isEmpty() || it.id.contains(q, ignoreCase = true) ||
+            it.ownedBy?.contains(q, ignoreCase = true) == true
     }
 }
 

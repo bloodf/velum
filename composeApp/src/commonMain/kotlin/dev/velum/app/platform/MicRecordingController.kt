@@ -95,6 +95,17 @@ class MicRecordingController(private val capture: MicCapture, private val canSta
     /** Runs [action] under the same lock as finalize, so a write cannot interleave with Stop. */
     internal suspend fun <T> underLock(action: suspend () -> T): T = mutex.withLock { action() }
 
+    /** Only admission times out; an admitted permanent delete must finish its file/row writes. */
+    internal suspend fun underLock(timeout: kotlin.time.Duration, action: suspend () -> Boolean): Boolean {
+        var acquired = false
+        try {
+            kotlinx.coroutines.withTimeoutOrNull(timeout) { mutex.lock(); acquired = true }
+            return if (acquired) action() else false
+        } finally {
+            if (acquired) mutex.unlock()
+        }
+    }
+
     @kotlin.concurrent.Volatile private var uiStopId: String? = null
 
     /** The in-app Stop is about to finalize this recording itself (with the live text). */

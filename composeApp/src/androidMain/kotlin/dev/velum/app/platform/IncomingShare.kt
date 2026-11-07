@@ -29,21 +29,23 @@ object IncomingShare {
 
     private fun prefs(context: Context) = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-    // Entries are "<epochMs>|<attempts>|<absolute path>". Every write is a synchronous commit so a marker is on disk before the
+    // Entries are "<epochMs>|<attempts>|<absolute path>|<encoded display name>"; older entries have no name.
+    // Every write is a synchronous commit so a marker is on disk before the
     // path is offered (a kill right after the copy must still find it). Preference I/O: IO thread only, never the main thread.
     private val lock = Any()
 
     /** Paths marked by this process. Recovery runs once at process start and must not re-offer what this process just copied. */
     private val markedThisProcess = mutableSetOf<String>()
 
-    private class Entry(val at: Long, val attempts: Int, val path: String) {
-        fun encode() = "$at|$attempts|$path"
+    private class Entry(val at: Long, val attempts: Int, val path: String, val displayName: String? = null) {
+        fun encode() = "$at|$attempts|$path|${Uri.encode(displayName.orEmpty())}"
     }
 
     private fun parse(raw: String): Entry? {
-        val parts = raw.split('|', limit = 3)
-        if (parts.size != 3 || parts[2].isEmpty()) return null
-        return Entry(parts[0].toLongOrNull() ?: return null, parts[1].toIntOrNull() ?: return null, parts[2])
+        val parts = raw.split('|', limit = 4)
+        if (parts.size < 3 || parts[2].isEmpty()) return null
+        val name = parts.getOrNull(3)?.let { cleanName(Uri.decode(it)) }
+        return Entry(parts[0].toLongOrNull() ?: return null, parts[1].toIntOrNull() ?: return null, parts[2], name)
     }
 
     private fun entries(context: Context): List<Entry> = prefs(context).getStringSet(KEY, emptySet()).orEmpty().mapNotNull(::parse)
@@ -61,14 +63,14 @@ object IncomingShare {
         canonical.parentFile == dir && canonical.name.startsWith("share_")
     }.getOrDefault(false)
 
-    private fun mark(context: Context, path: String, nowMs: Long) = synchronized(lock) {
+    private fun mark(context: Context, path: String, nowMs: Long, displayName: String?) = synchronized(lock) {
         markedThisProcess += path
-        save(context, entries(context).filterNot { it.path == path } + Entry(nowMs, 0, path))
+        save(context, entries(context).filterNot { it.path == path } + Entry(nowMs, 0, path, displayName))
     }
 
     /** Counts an import start for [path], durably. A native crash or a kill mid-import never reaches [markHandled], so this is how it is noticed. */
     internal fun markAttempt(context: Context, path: String) = synchronized(lock) {
-        save(context, entries(context).map { if (it.path == path) Entry(it.at, it.attempts + 1, it.path) else it })
+        save(context, entries(context).map { if (it.path == path) Entry(it.at, it.attempts + 1, it.path, it.displayName) else it })
     }
 
     /** Forgets [path]; call once the share was handled (imported, duplicate, failed, refused). */
@@ -119,7 +121,10 @@ object IncomingShare {
         }
         if (capped > 0) android.util.Log.w("VelumShare", "dropped $capped share(s) whose import started $MAX_ATTEMPTS times without finishing")
         save(context, keep)
-        offered.forEach { enqueue(SharedFile.Ready(it.path, recoveredAtMs = it.at)) }
+        offered.forEach {
+            dev.velum.app.importing.ImportDisplayNames.put(it.path, it.displayName)
+            enqueue(SharedFile.Ready(it.path, recoveredAtMs = it.at))
+        }
         offered.map { it.path }
     }
 
@@ -181,9 +186,9 @@ object IncomingShare {
     internal fun copyShare(context: Context, uri: Uri): String? {
         // A provider query: IO thread only. Another app controls the name, so cap it and drop control characters.
         val displayName = cleanName(displayNameOf(context, uri))
-        val name = sanitizeImportFileName(displayName, "${java.util.UUID.randomUUID()}.audio")
+        val extension = displayName?.takeIf { ImportAudioFormats.isSupportedFileName(it) }?.substringAfterLast('.')?.lowercase() ?: "audio"
         val dest = File(context.cacheDir, "imports").apply { mkdirs() }
-        val outFile = File(dest, "share_${System.currentTimeMillis()}_$name")
+        val outFile = File(dest, "share_${java.util.UUID.randomUUID()}.$extension")
         if (!copyToCache({ context.contentResolver.openInputStream(uri) }, outFile)) {
             android.util.Log.w("VelumShare", "share copy failed") // never the URI or the exception message
             return null
@@ -191,7 +196,7 @@ object IncomingShare {
         dev.velum.app.importing.ImportDisplayNames.put(outFile.absolutePath, displayName)
         // Flush the copy to disk before the marker says it exists.
         runCatching { java.io.FileOutputStream(outFile, true).use { it.fd.sync() } }
-        mark(context, outFile.absolutePath, System.currentTimeMillis())
+        mark(context, outFile.absolutePath, System.currentTimeMillis(), displayName)
         return outFile.absolutePath
     }
 }

@@ -10,7 +10,6 @@ import dev.velum.app.platform.ImportAudioFormats
 import dev.velum.app.platform.deleteFileAtPath
 import dev.velum.app.platform.deleteFileIfPresent
 import dev.velum.app.platform.isImportCacheCopy
-import dev.velum.app.platform.sha256Bytes
 import dev.velum.app.platform.isSamePath
 import dev.velum.app.platform.sha256File
 import dev.velum.core.data.VelumRepository.Companion.IMPORT_DELETED_PREFIX
@@ -24,6 +23,8 @@ import kotlinx.coroutines.withContext
 sealed class ImportResult {
     data class Created(val recordingId: String, val wavPath: String, val sha256: String) : ImportResult()
     data class Duplicate(val existingRecordingId: String, val sha256: String) : ImportResult()
+    /** A dedupe match that stays in Trash. Never restore, enqueue or open it automatically. */
+    data class InTrash(val existingRecordingId: String, val sha256: String) : ImportResult()
     data class Failed(val message: String) : ImportResult()
     /** Watched-folder sync only: the user permanently deleted this file's recording. */
     data class Deleted(val sha256: String) : ImportResult()
@@ -47,28 +48,40 @@ class AudioImportPipeline(
         recoveredAtMs: Long? = null,
     ): ImportResult {
         var result: ImportResult? = null
+        var normalizedPath: String? = null
         try {
             // A wipe in progress refuses or stops the import before it creates a recording.
-            result = container.wipeGate.guard { importNow(absolutePath, source, titleHint, startedAtEpochSeconds, recoveredAtMs) }
-                ?: ImportResult.Failed(WIPE_IN_PROGRESS)
+            result = container.wipeGate.guard {
+                importNow(absolutePath, source, titleHint, startedAtEpochSeconds, recoveredAtMs) { normalizedPath = it }
+            } ?: ImportResult.Failed(WIPE_IN_PROGRESS)
             return result
         } finally {
-            withContext(NonCancellable + Dispatchers.IO) { discardSourceCopy(absolutePath, source, result) }
+            withContext(NonCancellable + Dispatchers.IO) {
+                discardSourceCopy(absolutePath)
+                discardUnusedOutput(normalizedPath, absolutePath, result)
+            }
         }
     }
 
     /** Runs [block] so that a wipe refuses or stops it, like an import. Null when it did. */
     suspend fun <T> underWipeGate(block: suspend () -> T): T? = container.wipeGate.guard(block)
 
+    /** Remove the app's scratch copy after every outcome, including cancellation. */
+    private fun discardSourceCopy(path: String) {
+        if (isImportCacheCopy(path)) deleteFileIfPresent(path)
+    }
+
     /**
-     * The app's copy of the source has done its job once the import ends, however it ended ([result] is null when
-     * cancelled). A watched folder's copy stays while it is useful, or every sync would copy the whole file again;
-     * it goes with its recording.
+     * A failed or cancelled import leaves the WAV it wrote, unless a row already points at it: a throw after the row
+     * exists (disk full, enqueue) or a cancel must not delete the only copy of a recording that is in the library.
+     * (A duplicate, trash match or deleted result already discarded its WAV in [discardNormalized].)
      */
-    private fun discardSourceCopy(path: String, source: String, result: ImportResult?) {
-        val refused = result is ImportResult.Deleted || result == ImportResult.Failed(WIPE_IN_PROGRESS)
-        val keep = source == WATCHED_SOURCE && !refused
-        if (!keep && isImportCacheCopy(path)) deleteFileIfPresent(path)
+    private suspend fun discardUnusedOutput(wavPath: String?, sourcePath: String, result: ImportResult?) {
+        if (wavPath == null || wavPath == sourcePath || !(result == null || result is ImportResult.Failed)) return
+        val inUse = runCatching {
+            container.repository.getAllRecordingFileRefs().any { (_, path) -> path != null && isSamePath(path, wavPath) }
+        }.getOrDefault(true) // unknown: keep it
+        if (!inUse) deleteFileIfPresent(wavPath)
     }
 
     /** A file shared into the app. Its cache copy goes when the import ends, like a picked one. */
@@ -105,6 +118,7 @@ class AudioImportPipeline(
         titleHint: String?,
         startedAtEpochSeconds: Long?,
         recoveredAtMs: Long?,
+        onNormalized: (String) -> Unit,
     ): ImportResult = withContext(Dispatchers.Default) {
         runCatching {
             val name = absolutePath.substringAfterLast('/')
@@ -116,12 +130,12 @@ class AudioImportPipeline(
             val sourceHash = sha256File(absolutePath)
             val existingBySource = importedRecording(sourceHash)
             if (existingBySource != null) {
-                rememberWatchedCopy(source, existingBySource, absolutePath)
-                return@withContext ImportResult.Duplicate(existingBySource, sourceHash)
+                return@withContext matchedRecordingResult(existingBySource, sourceHash)
             }
             if (source == WATCHED_SOURCE && wasDeleted(sourceHash)) return@withContext ImportResult.Deleted(sourceHash)
             if (recoveredAtMs != null && deletedSince(sourceHash, recoveredAtMs)) return@withContext ImportResult.Deleted(sourceHash)
             val normalized = normalize(absolutePath)
+            onNormalized(normalized.wavPath)
             val contentHash = normalized.contentSha256
             if (recoveredAtMs != null && deletedSince(contentHash, recoveredAtMs)) {
                 discardNormalized(normalized.wavPath, keptBy = null)
@@ -133,8 +147,7 @@ class AudioImportPipeline(
                 discardNormalized(normalized.wavPath, keptBy = existingByContent)
                 // Same audio after normalize — also record source hash for next lookup.
                 container.repository.setMeta("import_sha256_$sourceHash", existingByContent)
-                rememberWatchedCopy(source, existingByContent, absolutePath)
-                return@withContext ImportResult.Duplicate(existingByContent, contentHash)
+                return@withContext matchedRecordingResult(existingByContent, contentHash)
             }
             if (source == WATCHED_SOURCE && wasDeleted(contentHash)) {
                 // Tombstoned by source too: later syncs skip this copy without decoding it, and a codec update
@@ -169,8 +182,7 @@ class AudioImportPipeline(
             when (inserted) {
                 is KeyedInsert.Existing -> {
                     discardNormalized(normalized.wavPath, keptBy = inserted.recordingId)
-                    rememberWatchedCopy(source, inserted.recordingId, absolutePath)
-                    return@withContext ImportResult.Duplicate(inserted.recordingId, contentHash)
+                    return@withContext matchedRecordingResult(inserted.recordingId, contentHash)
                 }
                 KeyedInsert.Refused -> {
                     // Removed first, as in the early tombstone path: a crash in between only decodes it once more.
@@ -180,7 +192,6 @@ class AudioImportPipeline(
                 }
                 KeyedInsert.Inserted -> Unit
             }
-            rememberWatchedCopy(source, id, absolutePath)
             // AutoFlow is resolved before the first enqueue so KEEP cannot drop template/model.
             container.enqueueSavedWithAutoflow(id, source = source, durationSeconds = durationSeconds, title = title.orEmpty())
             ImportResult.Created(id, normalized.wavPath, contentHash)
@@ -204,12 +215,6 @@ class AudioImportPipeline(
         withContext(Dispatchers.IO) { deleteFileAtPath(wavPath) }
     }
 
-    private suspend fun rememberWatchedCopy(source: String, recordingId: String, path: String) {
-        if (source == WATCHED_SOURCE && isImportCacheCopy(path)) {
-            container.repository.addImportCopy(recordingId, sha256Bytes(path.encodeToByteArray()), path)
-        }
-    }
-
     /** True when [hash] was deleted at or after [sinceMs] (tombstone values are epoch seconds). */
     private suspend fun deletedSince(hash: String, sinceMs: Long): Boolean {
         val at = container.repository.getMeta(IMPORT_DELETED_PREFIX + hash)?.toLongOrNull() ?: return false
@@ -217,6 +222,10 @@ class AudioImportPipeline(
     }
 
     private suspend fun wasDeleted(hash: String) = container.repository.getMeta(IMPORT_DELETED_PREFIX + hash) != null
+
+    private suspend fun matchedRecordingResult(id: String, hash: String): ImportResult =
+        if (container.repository.getRecording(id)?.trashed == 1L) ImportResult.InTrash(id, hash)
+        else ImportResult.Duplicate(id, hash)
 
     /** The recording this audio was imported as, or null when there is none or it no longer exists (#327). */
     private suspend fun importedRecording(hash: String): String? =

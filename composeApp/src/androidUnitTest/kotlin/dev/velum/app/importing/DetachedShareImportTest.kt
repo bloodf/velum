@@ -39,7 +39,7 @@ class DetachedShareImportTest {
         val root = ModelStoreDir(Files.createTempDirectory("velum-detached").toString())
         val container = AppContainer(
             InMemorySecureStore(), DriverFactory(context), modelStoreRoot = root,
-            recordingJobSchedulerFactory = { _, _ -> RecordingJobScheduler { _, _, _, _ -> } },
+            recordingJobSchedulerFactory = { _, _ -> RecordingJobScheduler { _, _, _, _ -> dev.velum.ai.pipeline.EnqueueResult.STARTED_OR_REPLACED } },
         )
         val dir = File(context.cacheDir, "detached-fixtures").apply { deleteRecursively(); mkdirs() }
         try {
@@ -90,7 +90,7 @@ class DetachedShareImportTest {
         val root = ModelStoreDir(Files.createTempDirectory("velum-detached2").toString())
         val container = AppContainer(
             InMemorySecureStore(), DriverFactory(context), modelStoreRoot = root,
-            recordingJobSchedulerFactory = { _, _ -> RecordingJobScheduler { _, _, _, _ -> enqueues?.incrementAndGet() } },
+            recordingJobSchedulerFactory = { _, _ -> RecordingJobScheduler { _, _, _, _ -> enqueues?.incrementAndGet(); dev.velum.ai.pipeline.EnqueueResult.STARTED_OR_REPLACED } },
         )
         val dir = File(context.cacheDir, "detached-fixtures2").apply { deleteRecursively(); mkdirs() }
         try {

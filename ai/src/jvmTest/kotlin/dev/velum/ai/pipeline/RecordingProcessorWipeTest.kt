@@ -150,11 +150,12 @@ class RecordingProcessorWipeTest {
         holdCleanup = true
         val processor = processor()
         val job = launch(Dispatchers.Default) { processor.process("rec-cleanup", retranscribe = false).collect() }
-        llmStarted.await()
-        job.cancel()
-        cleanupStarted.await()
-        assertTrue(!processor.stopRuns("rec-cleanup", 100.milliseconds))
-        cleanupRelease.complete(Unit)
+        try {
+            llmStarted.await()
+            job.cancel()
+            cleanupStarted.await()
+            assertTrue(!processor.stopRuns("rec-cleanup", 100.milliseconds))
+        } finally { cleanupRelease.complete(Unit); job.cancel() }
         job.join()
         assertTrue(processor.stopRuns("rec-cleanup", 1.seconds))
     }

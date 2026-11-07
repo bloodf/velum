@@ -1,6 +1,8 @@
 package dev.velum.app.ui.recording
 
 import dev.velum.core.db.Speaker
+import dev.velum.app.i18n.En
+import dev.velum.app.i18n.PtBr
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -34,7 +36,7 @@ class SpeakerRenameTest {
     }
 
     private suspend fun Store.confirm(shown: List<Speaker>, renames: Map<String, String> = typed, onEnrol: () -> Unit = {}) =
-        confirmSpeakerNames(shown, ::current, renames, { r, n -> enrol(r, n); onEnrol() }, ::rename)
+        confirmSpeakerNames(shown, ::current, renames, { r, n -> enrol(r, n); onEnrol() }, ::rename, En)
 
     @Test fun a_normal_confirm_saves_every_speaker_even_though_each_save_changes_display_name() = runTest {
         val shown = run(300, 200)
@@ -66,7 +68,7 @@ class SpeakerRenameTest {
         val store = Store(shown)
         store.rows = run(1, 2) // replaced after the tap; the atomic rename refuses it
         // current() would also notice, so call the loop with a current that still looks unchanged.
-        val ok = confirmSpeakerNames(shown, { shown }, typed, { r, n -> store.enrol(r, n) }, store::rename)
+        val ok = confirmSpeakerNames(shown, { shown }, typed, { r, n -> store.enrol(r, n) }, store::rename, En)
         assertFalse(ok)
         assertEquals(emptyList(), store.enrolled)
         assertEquals(emptyList(), store.renamed)
@@ -88,4 +90,32 @@ class SpeakerRenameTest {
         assertTrue(store.confirm(shown, mapOf("rec-1-S1" to " Alex ", "rec-1-S9" to "Ghost", "rec-1-S2" to "  ")))
         assertEquals(listOf("rec-1-S1" to "Alex"), store.renamed)
     }
+    @Test fun unchanged_sheet_submission_writes_and_enrols_nothing_in_both_locales() = runTest {
+        for (strings in listOf(En, PtBr)) {
+            val shown = run(300, 200).mapIndexed { index, row ->
+                if (index == 0) row.copy(display_name = "Alice") else row
+            }
+            val store = Store(shown)
+            val defaults = mapOf("rec-1-S1" to " Alice ", "rec-1-S2" to strings.ux.speakerLabel.replace("%d", "2"))
+            assertTrue(confirmSpeakerNames(shown, { error("unchanged rows must not read or write") }, defaults,
+                store::enrol, store::rename, strings))
+            assertEquals(shown, store.rows)
+            assertEquals(emptyList(), store.renamed)
+            assertEquals(emptyList(), store.enrolled)
+        }
+    }
+
+    @Test fun one_edit_only_renames_and_enrols_that_row_in_both_locales() = runTest {
+        for (strings in listOf(En, PtBr)) {
+            val shown = run(300, 200) + Speaker("rec-1-S3", "rec-1", "S3", "Alice", 100)
+            val store = Store(shown)
+            val names = mapOf("rec-1-S1" to " Bob ",
+                "rec-1-S2" to strings.ux.speakerLabel.replace("%d", "2"), "rec-1-S3" to "Alice")
+            assertTrue(confirmSpeakerNames(shown, store::current, names, store::enrol, store::rename, strings))
+            assertEquals(listOf("rec-1-S1" to "Bob"), store.renamed)
+            assertEquals(listOf("rec-1-S1"), store.enrolled)
+            assertEquals(shown.drop(1), store.rows.drop(1))
+        }
+    }
+
 }
