@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [main]
 
+# Keep the running PR revision and replace only its pending revision; pushes stay independent.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: false
+
 # Android-first: JVM unit tests + Android assemble + emulator launch smoke.
 # iOS KMP targets stay in the project for later; no iOS CI until M3.
 
