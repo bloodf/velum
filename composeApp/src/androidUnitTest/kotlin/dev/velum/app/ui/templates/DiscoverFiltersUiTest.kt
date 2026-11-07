@@ -98,7 +98,9 @@ class DiscoverFiltersUiTest {
                 "${chipState("tag:agenda")}\n${chipState("active:tag:agenda")}\n" +
                     compose.onAllNodes(isRoot()).printToString(maxDepth = Int.MAX_VALUE)
             }.getOrElse { "diagnostic failed: $it" }
-            throw AssertionError("Timed out waiting for $what ($reason)\n${queryLog.dump()}\n$diagnostics", e)
+            val message = "Timed out waiting for $what ($reason)\n${queryLog.dump()}\n$diagnostics"
+            System.err.println(message)
+            throw AssertionError(message, e)
         }, condition = condition)
     }
 

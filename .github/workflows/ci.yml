@@ -113,7 +113,16 @@ jobs:
           echo "Checked $checked 64-bit libs: PT_LOAD Align >= 0x4000"
 
       - name: Record Compose UI screenshots (Roborazzi)
+        id: record-screenshots
         run: ./gradlew :composeApp:recordRoborazziDebug --stacktrace
+
+      - name: Upload Discover filter test results on failure
+        if: ${{ failure() && steps.record-screenshots.outcome == 'failure' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: discover-filter-junit
+          path: composeApp/build/test-results/testDebugUnitTest/TEST-dev.velum.app.ui.templates.DiscoverFiltersUiTest.xml
+          if-no-files-found: warn
 
       - name: Compile desktop JVM (shared shell)
         run: ./gradlew :composeApp:compileKotlinDesktop --stacktrace
