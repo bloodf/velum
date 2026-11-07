@@ -30,7 +30,9 @@ class LocalDiarizerNamingReadyTest {
             root.resolve("pyannote-segmentation-3.0").resolve("segmentation.onnx").writeBytes(ByteArray(8) { 1 })
             val embedding = DefaultLocalCatalog.first { it.id == "3dspeaker-eres2net-base" }
             root.resolve(embedding.id).resolve(embedding.archiveFileName).writeBytes(ByteArray(8) { 1 })
-            val manager = createLocalModelManager(storeRoot = root)
+            val manager = createLocalModelManager(storeRoot = root, catalog = DefaultLocalCatalog.map {
+                if (it.id == embedding.id) it.copy(sha256 = sha256Hex(ByteArray(8) { 1 })) else it
+            })
             assertTrue(manager.isReady("pyannote-segmentation-3.0") && manager.isReady(embedding.id), "fixture models are not Ready")
 
             val secure = InMemorySecureStore()

@@ -270,7 +270,7 @@ class LocalModelDownloadThreadingTest {
         }
         val manager = manager(client, gate)
         root.resolve("tiny").createDirectories()
-        root.resolve("tiny").resolve("tiny.bin").writeBytes(ByteArray(2048))
+        root.resolve("tiny").resolve("tiny.bin").writeBytes(payload)
         manager.refreshFromDisk()
         assertEquals(LocalModelStatus.Ready, manager.stateFor("tiny")?.status)
 

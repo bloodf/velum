@@ -142,6 +142,7 @@ kotlin {
         iosTarget.binaries.framework {
             baseName = "ComposeApp"
             isStatic = true
+            export(project(":ai"))
         }
     }
 
@@ -156,7 +157,7 @@ kotlin {
 
         commonMain.dependencies {
             implementation(project(":core"))
-            implementation(project(":ai"))
+            api(project(":ai"))
             implementation(project(":ble"))
             implementation(project(":plaud-protocol"))
             implementation(project(":recorder"))

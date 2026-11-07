@@ -3,6 +3,7 @@ package dev.velum.ai.local
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.distinctUntilChanged
 import dev.velum.ai.createDownloadHttpClient
+import dev.velum.ai.needle.NeedleWhistleEngine
 import io.ktor.client.HttpClient
 import io.ktor.client.request.prepareGet
 import io.ktor.client.statement.bodyAsChannel
@@ -733,22 +734,25 @@ object LocalAsrRouter {
      * Low-end / Tiny size pick: Whistle when the language is in its set, else Whisper Tiny
      * (covers Portuguese and other important languages).
      */
-    fun chooseLowEndModelId(languageHint: String?): String =
-        if (supportsWhistle(languageHint)) WHISTLE_ID else TINY_ID
+    fun chooseLowEndModelId(
+        languageHint: String?,
+        whistleAvailable: Boolean = NeedleWhistleEngine.isNativeAvailable,
+    ): String = if (whistleAvailable && supportsWhistle(languageHint)) WHISTLE_ID else TINY_ID
 
     fun chooseModelId(
         languageHint: String?,
         mixedAudio: Boolean = false,
         tier: AsrSizeTier = AsrSizeTier.Auto,
         deviceClass: DeviceComputeClass = detectDeviceComputeClass(),
+        whistleAvailable: Boolean = NeedleWhistleEngine.isNativeAvailable,
     ): String {
         when (tier) {
-            AsrSizeTier.Tiny -> return chooseLowEndModelId(languageHint)
+            AsrSizeTier.Tiny -> return chooseLowEndModelId(languageHint, whistleAvailable)
             AsrSizeTier.Quality -> return if (mixedAudio) QUALITY_ID else languageDefault(languageHint, preferQuality = true)
             AsrSizeTier.Standard -> return languageDefault(languageHint, preferQuality = false)
             AsrSizeTier.Auto -> Unit
         }
-        if (deviceClass == DeviceComputeClass.Low) return chooseLowEndModelId(languageHint)
+        if (deviceClass == DeviceComputeClass.Low) return chooseLowEndModelId(languageHint, whistleAvailable)
         if (mixedAudio) return QUALITY_ID
         return languageDefault(languageHint, preferQuality = deviceClass == DeviceComputeClass.High && mixedAudio)
     }

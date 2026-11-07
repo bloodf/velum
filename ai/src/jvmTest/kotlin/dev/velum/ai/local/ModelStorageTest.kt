@@ -40,6 +40,27 @@ class ModelStorageTest {
 
     private fun newRoot() = ModelStoreDir(File.createTempFile("velum-storage", "").apply { delete(); mkdirs() }.absolutePath)
 
+    @Test fun restart_verifies_single_file_weights_offline_and_preserves_valid_cached_bytes() {
+        val root = newRoot()
+        val bytes = "verified model".encodeToByteArray()
+        val spec = spec(bytes).copy(kind = LocalModelKind.Llm, archiveFileName = "model.litertlm")
+        val weights = root.resolve(id).resolve(spec.archiveFileName)
+        val client = HttpClient(MockEngine { error("restart must not access the network") })
+        try {
+            weights.writeBytes(bytes)
+            assertTrue(LocalModelManager(root, client, listOf(spec)).isReady(id))
+            assertTrue(weights.readBytes().contentEquals(bytes), "valid cache changed")
+            weights.writeBytes(ByteArray(bytes.size) { 1 })
+            assertFalse(LocalModelManager(root, client, listOf(spec)).isReady(id), "same-size corrupt file became Ready")
+            weights.writeBytes(byteArrayOf(1))
+            assertFalse(LocalModelManager(root, client, listOf(spec)).isReady(id), "truncated fallback copy became Ready")
+            assertTrue(weights.exists(), "verification must not delete the owner's cache")
+        } finally {
+            client.close()
+            root.deleteRecursively()
+        }
+    }
+
     @Test fun the_archive_is_removed_after_a_successful_extraction_and_the_model_stays_ready() = runTest {
         val bytes = zip(); val root = newRoot()
         val manager = LocalModelManager(root, HttpClient(MockEngine {

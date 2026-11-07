@@ -312,7 +312,7 @@ class ChangeTemplateOfflineAndRoutingTest {
             catalog = listOf(
                 LocalModelSpec(
                     id = "gemma-4-e4b", displayName = "Local LLM", kind = LocalModelKind.Llm, approxBytes = 1,
-                    license = "test", notes = "", languages = "en", downloadUrl = "https://example.test/m", sha256 = "00",
+                    license = "test", notes = "", languages = "en", downloadUrl = "https://example.test/m", sha256 = dev.velum.ai.local.sha256Hex(ByteArray(2048)),
                     archiveFileName = "weights.litertlm",
                 ),
             ),
