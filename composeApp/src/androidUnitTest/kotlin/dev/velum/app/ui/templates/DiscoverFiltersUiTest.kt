@@ -163,6 +163,7 @@ class DiscoverFiltersUiTest {
             tap("tier:all")
             waiting("Delta row loaded") { rowLoaded("ui102-d") }
             await("ZQ Delta")
+            compose.onNodeWithTag("templates:grid").performScrollToIndex(0)
             tap("tier:featured"); await("ZQ Alpha"); await("ZQ Delta", present = false)
             awaitRow("ui102-a")
             assertRowAbsent("ui102-d")
