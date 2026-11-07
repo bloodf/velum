@@ -113,7 +113,17 @@ jobs:
           echo "Checked $checked 64-bit libs: PT_LOAD Align >= 0x4000"
 
       - name: Record Compose UI screenshots (Roborazzi)
+        id: roborazzi
         run: ./gradlew :composeApp:recordRoborazziDebug --stacktrace
+
+      - name: Upload failed UI test results
+        if: failure() && steps.roborazzi.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: compose-ui-test-results
+          path: composeApp/build/test-results/testDebugUnitTest/TEST-*.xml
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Compile desktop JVM (shared shell)
         run: ./gradlew :composeApp:compileKotlinDesktop --stacktrace
