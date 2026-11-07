@@ -13,7 +13,10 @@ The build checks this digest before unpacking. Upstream copyright and license te
 
 `raw-path.patch` adds validation at libarchive's existing local-header, central-directory and Unicode
 extra-field name reads. This prevents embedded NUL truncation and DOS backslash conversion from hiding
-unsafe names from the adapter. It also rejects data-bearing directories, whose contents libarchive
+unsafe names from the adapter. Raw Unix file types in central-directory attributes and local/central
+`xl` extra fields are checked before upstream can turn FIFOs into regular files or special entries
+with trailing slashes into directories. Only missing types, regular files and directories are accepted.
+It also rejects data-bearing directories, whose contents libarchive
 otherwise skips without CRC verification. Consequently ZIP directories must be stored with zero
 compressed size, uncompressed size and CRC. ZIP parsing, ZIP64 handling, decompression and file CRC
 verification remain libarchive's implementation. Never enable `DONT_FAIL_ON_CRC_ERROR` or `ignorecrc32`.
