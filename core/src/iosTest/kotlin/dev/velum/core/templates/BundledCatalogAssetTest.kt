@@ -13,12 +13,16 @@ class BundledCatalogAssetTest {
         listOf(
             AutoFlowTemplateAsset.readJsonl(),
             PlaudTemplateAsset.readJsonl(),
-            VelumContributedAsset.readJsonl(),
         ).forEach { text ->
             val records = text.lineSequence().filter { it.isNotBlank() && !it.trimStart().startsWith("#") }.toList()
             assertTrue(records.isNotEmpty())
             records.forEach { assertTrue(Json.parseToJsonElement(it).jsonObject.isNotEmpty()) }
         }
+    }
+
+    @Test
+    fun checkedInContributedCatalogIsEmpty() {
+        assertEquals("", VelumContributedAsset.readJsonl())
     }
 
     @Test
