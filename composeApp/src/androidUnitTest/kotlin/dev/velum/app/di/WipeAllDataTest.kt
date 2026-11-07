@@ -15,6 +15,10 @@ import dev.velum.app.platform.FakeDocumentsProvider
 import dev.velum.app.platform.releaseGrants
 import dev.velum.app.platform.syncWatchedFolders
 import dev.velum.ai.pipeline.RecordingProcessor
+import dev.velum.ai.pipeline.AiRuntimeHolder
+import dev.velum.ai.pipeline.inAppLanguage
+import dev.velum.app.R
+import dev.velum.core.settings.SettingsRepository
 import dev.velum.core.settings.ApiModelOverride
 import android.content.Intent
 import android.net.Uri
@@ -301,6 +305,23 @@ class WipeAllDataTest {
         container.compactDatabaseForTest = { runs++; true }
         assertEquals(DownloadWipeResult.Clean, container.wipeAllData())
         assertEquals(1, runs)
+    }
+
+    @Test fun language_remains_visible_after_wipe_and_settings_reload() {
+        val store = InMemorySecureStore()
+        withContainer(store = store) { container, context ->
+            container.settingsRepository.setAppLanguage("pt-BR")
+            assertEquals(DownloadWipeResult.Clean, container.wipeAllData())
+            val restartedSettings = SettingsRepository(store)
+            restartedSettings.load()
+            AiRuntimeHolder.settings = restartedSettings
+            try {
+                assertEquals("pt-BR", restartedSettings.preferences.value.appLanguage)
+                assertEquals("Pausar", context.inAppLanguage().getString(R.string.mic_recording_pause))
+            } finally {
+                AiRuntimeHolder.settings = null
+            }
+        }
     }
 
     @Test fun a_failed_database_rewrite_makes_the_wipe_incomplete_and_the_other_steps_still_ran() = withContainer { container, _ ->
