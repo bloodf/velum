@@ -1,5 +1,7 @@
 package dev.velum.ble.wifi
 
+import android.Manifest
+import android.app.Application
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.LinkAddress
@@ -20,11 +22,23 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.Implementation
+import org.robolectric.annotation.Implements
+import org.robolectric.shadows.ShadowConnectivityManager
 import org.robolectric.shadows.ShadowNetwork
+
+@Implements(ConnectivityManager::class)
+class DeniedLinkPropertiesShadow : ShadowConnectivityManager() {
+    @Implementation
+    public override fun getLinkProperties(network: Network): LinkProperties? {
+        throw SecurityException("Network state access denied by platform")
+    }
+}
 
 /**
  * #96: [AndroidWifiSoftApJoiner] against Robolectric's ConnectivityManager shadow. Asserts the
@@ -39,6 +53,51 @@ class AndroidWifiSoftApJoinerTest {
     private val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
     private val shadowCm = shadowOf(cm)
     private val softAp: Network = ShadowNetwork.newInstance(42)
+
+    @Before
+    fun grantNetworkStatePermission() {
+        shadowOf(context as Application).grantPermissions(Manifest.permission.ACCESS_NETWORK_STATE)
+    }
+
+    @Test
+    @Config(sdk = [26, 28])
+    fun unsupportedApi_rejectsBeforeRequestingNetwork() = runTest {
+        val joiner = AndroidWifiSoftApJoiner(context)
+        val failure = assertFailsWith<IllegalStateException> { joiner.join("PLAUD-FAKE", "password12") }
+        assertEquals("SoftAP join requires Android 10+", failure.message)
+        assertTrue(shadowCm.networkCallbacks.isEmpty())
+        assertNull(joiner.boundNetwork())
+        assertNull(joiner.softApHostAddress())
+    }
+
+    @Test
+    @Config(sdk = [29, 34])
+    fun permissionDeniedAtCallback_failsJoinAndReleasesNetwork() = runTest {
+        val joiner = AndroidWifiSoftApJoiner(context)
+        val join = async(Dispatchers.Default) { runCatching { joiner.join("PLAUD-FAKE", "password12") } }
+        awaitRegistered()
+        shadowOf(context as Application).denyPermissions(Manifest.permission.ACCESS_NETWORK_STATE)
+        shadowCm.networkCallbacks.single().onAvailable(softAp)
+        assertIs<SecurityException>(join.await().exceptionOrNull())
+        assertTrue(shadowCm.networkCallbacks.isEmpty())
+        assertNull(joiner.boundNetwork())
+        assertNull(joiner.softApHostAddress())
+        assertNull(cm.boundNetworkForProcess)
+    }
+
+    @Test
+    @Config(sdk = [29, 34], shadows = [DeniedLinkPropertiesShadow::class])
+    fun platformPermissionDenial_failsJoinAndReleasesNetwork() = runTest {
+        val joiner = AndroidWifiSoftApJoiner(context)
+        val join = async(Dispatchers.Default) { runCatching { joiner.join("PLAUD-FAKE", "password12") } }
+        awaitRegistered()
+        shadowCm.networkCallbacks.single().onAvailable(softAp)
+        assertIs<SecurityException>(join.await().exceptionOrNull())
+        assertTrue(shadowCm.networkCallbacks.isEmpty())
+        assertNull(joiner.boundNetwork())
+        assertNull(joiner.softApHostAddress())
+        assertNull(cm.boundNetworkForProcess)
+    }
 
     private fun runTest(block: suspend kotlinx.coroutines.CoroutineScope.() -> Unit) {
         runBlocking { withTimeout(60_000) { block() } }
@@ -58,6 +117,7 @@ class AndroidWifiSoftApJoinerTest {
     }
 
     @Test
+    @Config(sdk = [29, 34])
     fun join_exposesNetworkAndHost_neverBindsProcess_andLeaveReleasesEverything() = runTest {
         val joiner = AndroidWifiSoftApJoiner(context)
         shadowCm.setLinkProperties(softAp, linkProps("192.168.43.1"))
