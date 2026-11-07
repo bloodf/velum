@@ -478,12 +478,14 @@ class DeviceWalkUiTest {
             "Todos",
         )
         covered += "templates/all"
-        // templates/search is a required marker: no runCatching, a missing or stuck sheet must fail.
-        clickTextPrefer(
-            if (lang == "en") "Search" else "Pesquisar",
-            "Search",
-            "Pesquisar",
-        )
+        // Match the toolbar description exactly: "Search tags" is a different input.
+        // templates/search remains required: a missing or stuck sheet must fail.
+        val searchDescription = if (lang == "en") "Search" else "Pesquisar"
+        waitUntil(10_000, "Templates search toolbar button not visible") {
+            composeRule.onAllNodesWithContentDescription(searchDescription, substring = false)
+                .fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty()
+        }
+        composeRule.onNodeWithContentDescription(searchDescription, substring = false).performClick()
         covered += "templates/search"
         dismissOpenSheet("Templates search sheet")
         shotWhenReady("07-templates-$tag", "Templates content not visible") {

@@ -1259,6 +1259,8 @@ val PtBr = Strings(
         noSpeakers = "Nenhum orador nesta gravação.",
         importMatchInTrash = "Uma gravação correspondente está na lixeira. Restaure-a pela lixeira para usá-la.",
         syncInTrashFormat = "%d na lixeira (sem nova importação)",
+        searchTags = "Buscar tags",
+        noMatchingTags = "Nenhuma tag encontrada.",
     ),
 )
 
@@ -1888,6 +1890,8 @@ val En = Strings(
         noSpeakers = "No speakers in this recording.",
         importMatchInTrash = "A matching recording is in Trash. Restore it from Trash to use it.",
         syncInTrashFormat = "%d in Trash (not imported)",
+        searchTags = "Search tags",
+        noMatchingTags = "No matching tags.",
     ),
 )
 

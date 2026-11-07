@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -120,6 +121,7 @@ internal fun TemplatesScreen(
     var showSearch by remember { mutableStateOf(false) }
     var selectedCategory by remember { mutableStateOf<String?>(null) }
     var selectedTags by remember { mutableStateOf(setOf<String>()) }
+    var tagQuery by remember { mutableStateOf("") }
     var selectedLang by remember { mutableStateOf<String?>(null) }
     var draftName by remember { mutableStateOf("") }
     var draftPrompt by remember { mutableStateOf("") }
@@ -430,14 +432,7 @@ internal fun TemplatesScreen(
                     }
 
                     if (tab == 1 && availableTags.isNotEmpty()) {
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState())
-                                .padding(vertical = 4.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
+                        Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
                             Text(
                                 strings.templateTags,
                                 modifier = Modifier.semantics { heading() },
@@ -445,14 +440,40 @@ internal fun TemplatesScreen(
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.SemiBold,
                             )
-                            availableTags.forEach { tag ->
-                                CategoryChip(
-                                    label = TemplateTagVocabulary.label(tag, languageTag),
-                                    selected = tag in selectedTags,
-                                    testTag = "tag:$tag",
-                                    enabled = !facetsLoading,
-                                ) {
-                                    selectedTags = if (tag in selectedTags) selectedTags - tag else selectedTags + tag
+                            BasicTextField(
+                                value = tagQuery,
+                                onValueChange = { tagQuery = it },
+                                singleLine = true,
+                                textStyle = TextStyle(color = VelumInk, fontSize = 14.sp),
+                                modifier = Modifier.fillMaxWidth()
+                                    .testTag("tags:search")
+                                    .semantics { contentDescription = strings.added.searchTags }
+                                    .border(1.dp, VelumDivider, RoundedCornerShape(10.dp))
+                                    .padding(10.dp),
+                                decorationBox = { inner ->
+                                    if (tagQuery.isEmpty()) Text(strings.added.searchTags, color = VelumInkSecondary)
+                                    inner()
+                                },
+                            )
+                            if (tagQuery.isNotEmpty()) {
+                                CategoryChip(strings.clearSearch, false, "tags:clear") { tagQuery = "" }
+                            }
+                            val matchingTags = availableTags.filter {
+                                TemplateTagVocabulary.label(it, languageTag).contains(tagQuery.trim(), ignoreCase = true)
+                            }
+                            Column(Modifier.fillMaxWidth().heightIn(max = 180.dp).verticalScroll(rememberScrollState())) {
+                                if (matchingTags.isEmpty()) {
+                                    Text(strings.added.noMatchingTags, Modifier.testTag("tags:empty").padding(10.dp), color = VelumInkSecondary)
+                                }
+                                matchingTags.forEach { tag ->
+                                    CategoryChip(
+                                        label = TemplateTagVocabulary.label(tag, languageTag),
+                                        selected = tag in selectedTags,
+                                        testTag = "tag:$tag",
+                                        enabled = !facetsLoading,
+                                    ) {
+                                        selectedTags = if (tag in selectedTags) selectedTags - tag else selectedTags + tag
+                                    }
                                 }
                             }
                         }
