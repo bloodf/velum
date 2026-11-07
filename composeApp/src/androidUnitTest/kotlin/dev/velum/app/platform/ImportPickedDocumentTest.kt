@@ -56,7 +56,12 @@ class ImportPickedDocumentTest {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         var failed = 0
         var picked: String? = null
-        importPickedDocument(context, uri, onFailed = { failed++ }, onPicked = { picked = it })
+        var openAttempts = 0
+        // Exercise the real throwing provider through the existing stream seam. Robolectric's
+        // bound-service shadow does not launch the private Android copy process.
+        importPickedDocument(context, uri, onFailed = { failed++ }, onPicked = { picked = it },
+            openStream = { openAttempts++; context.contentResolver.openInputStream(uri) })
+        assertEquals(1, openAttempts)
         assertEquals(1, failed)
         assertEquals(null, picked)
         val leftovers = File(context.cacheDir, "imports").listFiles().orEmpty()
