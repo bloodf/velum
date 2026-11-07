@@ -1,5 +1,6 @@
 package dev.velum.app.di
 
+import dev.velum.ai.pipeline.resolveTemplateForEnqueue
 import dev.velum.ai.createOpenAiCompatibleClient
 import dev.velum.ai.engine.AiTaskRouter
 import dev.velum.ai.local.LocalDiarizer
@@ -25,11 +26,23 @@ import dev.velum.app.devicewalk.DeviceWalkDiarizer
 import dev.velum.app.devicewalk.DeviceWalkLlm
 import dev.velum.app.devicewalk.DeviceWalkMode
 import dev.velum.app.devicewalk.DeviceWalkTranscriber
+import dev.velum.app.platform.ExportFolderResult
 import dev.velum.app.platform.ExportFolderStore
+import dev.velum.app.platform.clearWatchedFolders
+import dev.velum.app.platform.deleteFileIfPresent
+import dev.velum.app.platform.deleteImportCopies
+import dev.velum.app.platform.deleteDeviceTransferTemps
+import dev.velum.app.platform.deleteRecordingsDirectory
+import dev.velum.app.platform.deleteShareExports
+import dev.velum.app.platform.releaseFolderGrants
+import dev.velum.app.platform.writeMarkdownToExportFolder
+import dev.velum.core.integrations.MarkdownNoteExport
 import dev.velum.app.platform.MicCapture
 import dev.velum.app.platform.createMicCapture
 import dev.velum.app.platform.DOWNLOAD_PART_SUFFIX
 import dev.velum.app.platform.deleteFileAtPath
+import dev.velum.app.platform.deleteFileIfPresent
+import dev.velum.app.platform.isAppOwnedAudioPath
 import dev.velum.app.platform.isSamePath
 import dev.velum.app.platform.isSupersededOwnAudio
 import dev.velum.app.platform.recordingsDirectoryPath
@@ -49,6 +62,7 @@ import dev.velum.core.calendar.createCalendarEventProvider
 import dev.velum.core.data.DriverFactory
 import dev.velum.core.data.RecordingIds
 import dev.velum.core.data.VelumRepository
+import dev.velum.core.data.WipeGate
 import dev.velum.core.data.createDatabase
 import dev.velum.core.db.Recording
 import dev.velum.core.data.epochSecondsNow
@@ -65,8 +79,10 @@ import dev.velum.core.time.VelumDateTime
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -74,13 +90,20 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import dev.velum.ai.pipeline.deleteAllPcmSpill
+import dev.velum.ai.pipeline.shareMarkdownBody
+import dev.velum.core.settings.SettingsLoadState
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 
 class AppContainer(
     val secureStore: SecureStore,
     driverFactory: DriverFactory,
     val ble: BleTransport = createBleTransport(),
-    modelStoreRoot: ModelStoreDir = defaultModelStoreRoot(),
+    private val modelStoreRoot: ModelStoreDir = defaultModelStoreRoot(),
     val integrationConfig: IntegrationConfig = IntegrationConfig.defaults(),
     val calendarProvider: CalendarEventProvider = createCalendarEventProvider(),
     /**
@@ -89,10 +112,14 @@ class AppContainer(
     recordingJobSchedulerFactory: ((RecordingProcessor, CoroutineScope) -> RecordingJobScheduler)? = null,
     val micCapture: MicCapture = createMicCapture(),
     thermalPolicy: ThermalPolicy = NoOpThermalPolicy,
-    /** Platform data outside the container to reset after "Wipe all data", such as Android's boot language copy. */
-    private val onDataWiped: suspend () -> Unit = {},
 ) {
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    /** Replaces the last wipe step (the database rewrite) in tests, to count it or make it fail. Null in the app. */
+    internal var compactDatabaseForTest: (suspend () -> Boolean)? = null
+
+    /** Stops background work that writes user data during "Wipe all data"; see [wipeAllData]. */
+    val wipeGate = WipeGate()
 
     val databaseHandle = createDatabase(driverFactory)
     val database = databaseHandle.database
@@ -113,6 +140,25 @@ class AppContainer(
         runBlocking { !repository.isFirstRunDone() },
     )
     val firstRunPending: StateFlow<Boolean> = _firstRunPending.asStateFlow()
+
+    /**
+     * Runs [block] in the app's own scope instead of the caller's, so work started from a screen finishes when that screen
+     * is recreated (rotation, theme or locale change). The caller may stop waiting; the work goes on.
+     */
+    fun <T> runDetached(block: suspend () -> T): kotlinx.coroutines.Deferred<T> = appScope.async { block() }
+
+    /**
+     * The share import currently running or just finished and not yet reported to the user. Held here, not by the screen,
+     * because the screen's collector is cancelled at every ON_STOP and a result nobody saw would otherwise vanish.
+     * Read and written on the main thread only (from the Compose effect).
+     */
+    var pendingShare: kotlinx.coroutines.Deferred<dev.velum.app.importing.ImportResult>? = null
+
+    /** True when [pendingShare] is a share found pending after a restart: reported with a snackbar, never by navigating. */
+    var pendingShareRecovered: Boolean = false
+
+    /** One share import at a time across every instance of the activity (the pipeline is recreated per composition). */
+    val shareImportMutex = Mutex()
 
     /** Dismiss FirstRun in memory immediately; persist on [appScope]. */
     fun markFirstRunDone() {
@@ -146,6 +192,7 @@ class AppContainer(
     val webhookDispatcher = WebhookDispatcher(
         repository = repository,
         settings = webhookSettings,
+        wipeGate = wipeGate,
     )
 
     val localModelManager = createLocalModelManager(storeRoot = modelStoreRoot)
@@ -184,11 +231,17 @@ class AppContainer(
         repository = repository,
         settings = settingsRepository,
         thermal = thermalPolicy,
+        wipeGate = wipeGate,
+        pcmSpillRoot = modelStoreRoot,
+        voiceProfiles = voiceProfileStore,
     )
 
-    val recordingJobs: RecordingJobScheduler =
+    val recordingJobs: RecordingJobScheduler = dev.velum.ai.pipeline.admittingRecordingJobScheduler(
+        recordingProcessor,
+        appScope,
         recordingJobSchedulerFactory?.invoke(recordingProcessor, appScope)
-            ?: createCoroutineRecordingJobScheduler(recordingProcessor, appScope)
+            ?: createCoroutineRecordingJobScheduler(recordingProcessor, appScope),
+    )
 
     val askAiChat = AskAiChat(
         aiRouter = aiRouter,
@@ -208,14 +261,33 @@ class AppContainer(
         notifyEnabled = { settingsRepository.preferences.value.autoflowNotify },
         calendar = calendarProvider,
         jobScheduler = recordingJobs,
+        wipeGate = wipeGate,
     )
 
     val micRecordings = dev.velum.app.platform.MicRecordingController(micCapture) { id ->
-        repository.getRecording(id)?.let { it.source == "phone" && it.status == "recording" } == true
+        !wipeGate.isWiping && !recordingProcessor.isDeleting(id) && repository.getRecording(id)?.let { it.source == "phone" && it.status == "recording" } == true
     }
     val activeMicRecordingId: String? get() = micRecordings.owner.value?.recordingId
 
     init {
+        // Earlier versions also kept every speaker embedding in plaintext, and a recording deleted while its
+        // diarization ran can leave its embeddings behind (#320).
+        appScope.launch(Dispatchers.IO) {
+            // Each step on its own, so one failure does not skip the others.
+            runCatching { voiceProfileStore.sweepTemporaryFiles() }
+                .onFailure { println("VelumStartup: voice temp sweep failed: ${it::class.simpleName}") }
+            runCatching { voiceProfileStore.purgePlaintextClusterCache() }
+                .onFailure { println("VelumStartup: voice cache purge failed: ${it::class.simpleName}") }
+            runCatching {
+                // Listed before reading the recordings: a recording is stored before its processing caches anything.
+                val cached = voiceProfileStore.cachedRecordingIds()
+                val live = repository.recordingIds()
+                (cached - live).forEach { id -> runCatching { voiceProfileStore.deleteClusterCache(id) } }
+            }.onFailure { println("VelumStartup: voice cache orphan sweep failed: ${it::class.simpleName}") }
+            // Under the wipe gate: a wipe cancels it, so it can't recreate a profile after the wipe.
+            runCatching { wipeGate.guard { voiceProfileStore.migrateLegacyPlaintextProfiles() } }
+                .onFailure { println("VelumStartup: voice profile migration failed: ${it::class.simpleName}") }
+        }
         // Template catalogs lazily read packaged assets; warm them off the main thread so the
         // composition-time lookups (template names, AutoFlow library) never hit the disk (StrictMode).
         appScope.launch(Dispatchers.IO) {
@@ -235,13 +307,168 @@ class AppContainer(
         }
     }
 
-    fun enqueueProcessing(
+    /**
+     * Deletes a recording for good. False when a step failed: the recording stays, though its audio may already be
+     * gone, and trying again finishes the job. Not cancellable, so leaving the screen can't stop it halfway. It waits
+     * for a running device save, so it sees the file that save writes. A running or queued download of this recording's
+     * session is cancelled first, and that session's partial is removed, since the audio could be recovered from it.
+     */
+    suspend fun deleteRecordingForever(id: String, device: DeviceViewModel = deviceViewModel): Boolean = try {
+        withContext(NonCancellable + Dispatchers.IO) {
+            if (!recordingProcessor.beginDeletion(id)) return@withContext false
+            try {
+            // Before the row goes: a cancelled download can't save, and a running one would find no row and add it back (#407).
+            val row = repository.getRecording(id)
+            row?.session_id?.let(device::cancelDownloadOf)
+            if (kotlinx.coroutines.withTimeoutOrNull(WIPE_JOIN_TIMEOUT) { recordingJobs.cancel(id); true } != true) {
+                println("VelumDelete: recording scheduling did not stop")
+                return@withContext false
+            }
+            if (!recordingProcessor.stopRuns(id, WIPE_JOIN_TIMEOUT)) {
+                println("VelumDelete: recording processing did not stop")
+                return@withContext false
+            }
+            // Scheduler lock is released before taking the mic lock: finalize enqueues while holding it.
+            micRecordings.underLock(WIPE_JOIN_TIMEOUT) {
+            val (micStopped, micFile) = stopMicRecording(id)
+            if (!micStopped) return@underLock false
+            downloadPersistMutex.withLock {
+                // First: if it stays, the recording stays too, and trying again finishes the job.
+                if (row?.session_id?.let { device.deletePartialOf(it, row.device_serial) } == false) {
+                    println("VelumDelete: a recording's partial download could not be deleted")
+                    return@withLock false
+                }
+                val audio = repository.getRecording(id)?.local_path
+                val others = repository.getAllRecordingFileRefs().filter { it.first != id }.mapNotNull { it.second }
+                val dir = runCatching { recordingsDirectoryPath() }.getOrNull()
+                val draft = listOfNotNull(micFile) + listOfNotNull(dir).flatMap { listOf("$it/$id.wav", "$it/$id.wav.partial") }
+                // Copies first: if one fails, the recording still has its audio.
+                val deleted = (repository.importCopies(id) + draft + listOfNotNull(audio))
+                    .filter { path -> isAppOwnedAudioPath(path) && others.none { it == path || isSamePath(it, path) } }
+                    .all { deleteFileIfPresent(it) }
+                if (deleted) {
+                    repository.deleteRecordingHard(id)
+                    // The row is gone, so this can't fail the delete. Startup removes caches with no recording.
+                    runCatching { voiceProfileStore.deleteClusterCache(id) }
+                        .onFailure { println("VelumDelete: cluster cache delete failed: ${it::class.simpleName}") }
+                } else {
+                    println("VelumDelete: a recording's audio could not be deleted")
+                }
+                deleted
+            }
+            }
+            } finally {
+                recordingProcessor.endDeletion(id)
+            }
+        }
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (e: Exception) {
+        println("VelumDelete: deleting a recording failed: ${e::class.simpleName}")
+        false
+    }
+
+    suspend fun enqueueProcessing(
+        recordingId: String,
+        templateId: String? = null,
+        retranscribe: Boolean = true,
+        apiModelOverride: ApiModelOverride? = null,
+    ): dev.velum.ai.pipeline.EnqueueResult =
+        recordingJobs.enqueue(recordingId, templateId, retranscribe, apiModelOverride)
+
+    /**
+     * Enqueues the job for a row already saved as `queued`. If that fails or is cancelled the row would wait for a
+     * job that does not exist, so it is marked failed (Retry shows) before the error continues (#415).
+     */
+    suspend fun enqueueSavedRecording(
         recordingId: String,
         templateId: String? = null,
         retranscribe: Boolean = true,
         apiModelOverride: ApiModelOverride? = null,
     ) {
-        recordingJobs.enqueue(recordingId, templateId, retranscribe, apiModelOverride)
+        var accepted = false
+        try {
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+            withContext(NonCancellable) {
+                val result = recordingJobs.enqueueSaved(recordingId, templateId, retranscribe, apiModelOverride)
+                if (result == dev.velum.ai.pipeline.EnqueueResult.REJECTED) throw dev.velum.ai.pipeline.RecordingEnqueueRejected()
+                accepted = true
+            }
+        } catch (t: Throwable) {
+            if (!accepted && t !is dev.velum.ai.pipeline.EnqueueOutcomeUnknown) markQueuedFailed(recordingId)
+            throw t
+        }
+        kotlinx.coroutines.currentCoroutineContext().ensureActive()
+    }
+
+    /**
+     * [enqueueSavedRecording] for a row whose AutoFlow template and model come from the matching flow. The match and
+     * the template lookup are inside the same guard, so a cancel there cannot strand the row either. With
+     * [markFailedOnCancel] false a cancellation leaves the row queued (startup recovery: the next start retries it).
+     */
+    suspend fun enqueueSavedWithAutoflow(
+        recordingId: String,
+        source: String,
+        durationSeconds: Long,
+        title: String,
+        markFailedOnCancel: Boolean = true,
+        keepExisting: Boolean = false,
+    ) {
+        var accepted = false
+        try {
+            val match = repository.findMatchingAutoflow(source = source, durationSeconds = durationSeconds, title = title)
+            val templateId = resolveTemplateForEnqueue(repository, match?.template_id)
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+            withContext(NonCancellable) {
+                val result = recordingJobs.enqueueSaved(
+                    recordingId = recordingId,
+                    templateId = templateId,
+                    retranscribe = true,
+                    apiModelOverride = match?.let { AutoFlowResolve.modelOverride(it) },
+                    keepExisting = keepExisting,
+                )
+                if (result == dev.velum.ai.pipeline.EnqueueResult.REJECTED) throw dev.velum.ai.pipeline.RecordingEnqueueRejected()
+                accepted = true
+            }
+        } catch (t: Throwable) {
+            if (!accepted && t !is dev.velum.ai.pipeline.EnqueueOutcomeUnknown && (markFailedOnCancel || t !is kotlinx.coroutines.CancellationException)) markQueuedFailed(recordingId)
+            throw t
+        }
+        kotlinx.coroutines.currentCoroutineContext().ensureActive()
+    }
+
+    private suspend fun markQueuedFailed(recordingId: String) {
+        withContext(NonCancellable) { runCatching { repository.updateStatusIfEquals(recordingId, "queued", "failed") } }
+    }
+
+    /**
+     * Startup: a row left `queued` with no job (the process died, or enqueueing failed, after the row was saved) gets
+     * its job again, with the template and model of the AutoFlow that matches it. A row that already has work is left
+     * alone, so a job still held (WorkManager) or running (in-process) is never replaced. Waits for the settings to
+     * load first: a job started on unloaded defaults would pick the wrong model and language. Under the wipe gate: a
+     * wipe in progress recreates no work. A template picked by hand for a lost job cannot be recovered. Returns how
+     * many rows were handed to the scheduler.
+     */
+    suspend fun requeueStrandedRecordings(): Int {
+        settingsRepository.loadState.first {
+            it == SettingsLoadState.Ready || it == SettingsLoadState.Unavailable
+        }
+        return wipeGate.guard {
+            var handed = 0
+            repository.queuedRecordingIds().forEach { id ->
+                val row = repository.getRecording(id)?.takeIf { it.status == "queued" } ?: return@forEach
+                if (recordingJobs.hasActiveWork(id)) return@forEach
+                try {
+                    enqueueSavedWithAutoflow(id, row.source, row.duration_seconds, row.title, markFailedOnCancel = false, keepExisting = true)
+                    handed++
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    println("VelumStartup: requeue of a queued recording failed: ${e::class.simpleName}")
+                }
+            }
+            handed
+        } ?: 0
     }
 
     suspend fun createLocalRecording(
@@ -252,21 +479,24 @@ class AppContainer(
         id: String = RecordingIds.newId(),
     ): String {
         val now = epochSecondsNow()
-        repository.insertRecording(
-            id = id,
-            sessionId = null,
-            folderId = null,
-            title = title ?: formatRecordingTitle(now),
-            source = source,
-            deviceSerial = null,
-            startedAt = now,
-            durationSeconds = 0,
-            sizeBytes = 0,
-            localPath = localPath,
-            transcript = null,
-            summaryMarkdown = null,
-            status = status,
-        )
+        // Under the gate: a wipe either refuses the row or waits for it, so it can't outlive the wipe.
+        wipeGate.guard {
+            repository.insertRecording(
+                id = id,
+                sessionId = null,
+                folderId = null,
+                title = title ?: formatRecordingTitle(now),
+                source = source,
+                deviceSerial = null,
+                startedAt = now,
+                durationSeconds = 0,
+                sizeBytes = 0,
+                localPath = localPath,
+                transcript = null,
+                summaryMarkdown = null,
+                status = status,
+            )
+        } ?: throw WipeInProgressException()
         return id
     }
 
@@ -274,24 +504,147 @@ class AppContainer(
     private val downloadPersistMutex = Mutex()
 
     /**
+     * "Wipe all data". Work that writes user data (downloads, processing, imports, exports, webhooks, the mic)
+     * is stopped first and can't start again until the wipe ends, including when a step fails. The device keys
+     * go as soon as the downloads stop, so a step that fails later can't leave them for a download to use.
+     */
+    internal suspend fun wipeAllData(
+        device: DeviceViewModel = deviceViewModel,
+        joinTimeout: Duration = WIPE_JOIN_TIMEOUT,
+    ): DownloadWipeResult =
+        wipeGate.wiping(joinTimeout) { workStopped ->
+            device.holdingDownloads {
+                var complete = true
+                // Every step runs even if an earlier one failed: a locked keystore must not leave the rest behind.
+                suspend fun step(name: String, action: suspend () -> Boolean) {
+                    val done = try {
+                        action()
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (e: Exception) {
+                        println("VelumWipe: $name failed: ${e::class.simpleName}")
+                        false
+                    }
+                    if (!done) complete = false
+                }
+                // Until proven otherwise: if this step throws, a download may still be writing.
+                var downloads = DownloadWipeResult.StillRunning
+                step("downloads") { downloads = device.wipePartialDownloads(); true }
+                val nothingWriting = workStopped && downloads != DownloadWipeResult.StillRunning
+                // Before any data goes: if the process dies mid-wipe, no pending share copy may be offered again.
+                step("pending shares") { withContext(Dispatchers.IO) { dev.velum.app.platform.clearPendingShares() }; true }
+                step("device keys") { deviceKeyImporter.clearKeys(); true }
+                step("mic") { stopMicCapture() }
+                // Before the rows: a worker WorkManager starts in between is refused, and consumes its work.
+                step("queued jobs") { recordingJobs.cancelAll(); true }
+                step("recordings") {
+                    val left = mutableSetOf<String>()
+                    // Throws at its very end if the search index could not be cleared; step() turns that into Incomplete.
+                    repository.wipeAllUserData { path -> if (deleteFileIfPresent(path)) left -= path else left += path }
+                    left.isEmpty()
+                }
+                step("voice data") { withContext(Dispatchers.IO) { voiceProfileStore.wipeAll() } }
+                step("watched folders") { withContext(Dispatchers.IO) { clearWatchedFolders() }; true }
+                step("export folder") { withContext(Dispatchers.IO) { ExportFolderStore.clear() }; true }
+                step("folder grants") { withContext(Dispatchers.IO) { releaseFolderGrants() } }
+                step("import copies") { withContext(Dispatchers.IO) { deleteImportCopies() } }
+                step("share exports") { withContext(Dispatchers.IO) { deleteShareExports() } }
+                // A job or download that has not stopped may own these; StillRunning reports that case.
+                if (nothingWriting) {
+                    step("decoded audio") {
+                        withContext(Dispatchers.IO) {
+                            val current = deleteAllPcmSpill(recordingProcessor.pcmSpillRoot)
+                            // Earlier versions spilled under the default root.
+                            deleteAllPcmSpill(defaultModelStoreRoot()) && current
+                        }
+                    }
+                    step("recordings folder") { withContext(Dispatchers.IO) { deleteRecordingsDirectory() } }
+                    step("transfer temps") { withContext(Dispatchers.IO) { deleteDeviceTransferTemps() } }
+                }
+                step("api keys") {
+                    // Settings may not have loaded (locked keystore). Try once so the in-memory state is right;
+                    // clearing is by key prefix and does not depend on it, so a failed load is not a failed step.
+                    if (settingsRepository.loadState.value != SettingsLoadState.Ready) {
+                        try {
+                            settingsRepository.load()
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (_: Exception) {
+                            // Still locked: the removal below works without it.
+                        }
+                    }
+                    settingsRepository.clearAllApiKeys()
+                    true
+                }
+                step("webhook") { webhookSettings.clear(); true }
+                step("integrations") { integrationAuth.clearTokens(); true }
+                // Last: every step above that deletes rows has run, and VACUUM rewrites the file without them.
+                step("database") { (compactDatabaseForTest ?: repository::compactAfterWipe)() }
+                when {
+                    !complete -> DownloadWipeResult.Incomplete
+                    !nothingWriting -> DownloadWipeResult.StillRunning
+                    else -> downloads
+                }
+            }
+        }
+
+    /** The note to hand to another app for [recordingId], read now: null if a wipe is running or the recording is gone. */
+    suspend fun noteToShare(recordingId: String): SharedNote? = wipeGate.guard {
+        repository.getRecording(recordingId)?.let { row ->
+            SharedNote(row.title, row.summary_markdown.orEmpty(), shareMarkdownBody(row.title, row.summary_markdown, row.transcript))
+        }
+    }
+
+    private suspend fun stopMicRecording(recordingId: String): Pair<Boolean, String?> {
+        val owned = micRecordings.owner.value?.takeIf { it.recordingId == recordingId } ?: return true to null
+        val state = micCapture.sessions.value
+        if (state !is dev.velum.app.platform.MicSessionState.Stopped || state.session != owned.session) {
+            val stopped = kotlinx.coroutines.withTimeoutOrNull(WIPE_JOIN_TIMEOUT) { micCapture.stop(owned.session) }
+            val terminal = micCapture.sessions.value
+            if (stopped !is dev.velum.app.platform.MicStopResult.Stopped ||
+                terminal !is dev.velum.app.platform.MicSessionState.Stopped || terminal.session != owned.session) {
+                return false to null
+            }
+        }
+        micRecordings.release(owned)
+        return true to owned.session.absolutePath
+    }
+
+    /** Ends a mic recording in progress and deletes its file, which may not be on a recording row yet. */
+    private suspend fun stopMicCapture(): Boolean = micRecordings.underLock {
+        // Under the controller's lock: a start that passed its check before the wipe finishes first, then stops here.
+        val session = micCapture.sessions.value.session ?: return@underLock true
+        if (micCapture.isCapturing) micCapture.stop(session)
+        micRecordings.owner.value?.let { micRecordings.release(it) }
+        withContext(Dispatchers.IO) { deleteFileIfPresent(session.absolutePath) }
+    }
+
+    /** AutoFlow's export to folder. Null when the recording is gone; a wipe stops or refuses it. */
+    suspend fun exportRecordingToFolder(
+        recordingId: String,
+        write: (filename: String, markdown: String) -> ExportFolderResult = ::writeMarkdownToExportFolder,
+    ): ExportFolderResult? = wipeGate.guard {
+        val rec = repository.getRecording(recordingId) ?: return@guard null
+        val speakers = repository.getSpeakers(recordingId).mapNotNull { it.display_name ?: it.label }
+        val note = MarkdownNoteExport.Note(
+            title = rec.title,
+            startedAtEpochSeconds = rec.started_at,
+            durationSeconds = rec.duration_seconds,
+            source = rec.source,
+            speakers = speakers,
+            tags = listOf("velum"),
+            summaryMarkdown = rec.summary_markdown,
+            transcriptMarkdown = rec.transcript,
+        )
+        val markdown = MarkdownNoteExport.render(note)
+        withContext(Dispatchers.IO) { write(MarkdownNoteExport.filename(rec.title, rec.started_at), markdown) }
+    }
+
+    /**
      * One library row per device session (#113). A re-download atomically replaces the existing
      * row's audio and keeps its id, title, transcript, summary and template; a failed write leaves
      * the existing row and file untouched.
      */
-    /** "Wipe all data": downloads stay off until the keys are gone, including when a step fails. */
-    internal suspend fun wipeAllData(device: DeviceViewModel = deviceViewModel): DownloadWipeResult =
-        device.holdingDownloads {
-            val downloads = device.wipePartialDownloads()
-            repository.wipeAllUserData { path -> deleteFileAtPath(path) }
-            withContext(Dispatchers.IO) { voiceProfileStore.wipeAll() }
-            settingsRepository.clearAllApiKeys()
-            deviceKeyImporter.clearKeys()
-            webhookSettings.clear()
-            integrationAuth.clearTokens()
-            onDataWiped()
-            downloads
-        }
-
     suspend fun persistDownloadedSession(
         session: DownloadedSessionAudio,
     ): String = downloadPersistMutex.withLock {
@@ -377,18 +730,8 @@ class AppContainer(
     }
 
     private suspend fun enqueueDownloadedSession(id: String, title: String) {
-        // Resolve AutoFlow before first enqueue so KEEP cannot drop template/model.
-        val match = repository.findMatchingAutoflow(
-            source = "note_pro",
-            durationSeconds = 0,
-            title = title,
-        )
-        enqueueProcessing(
-            recordingId = id,
-            templateId = match?.template_id,
-            retranscribe = true,
-            apiModelOverride = match?.let { AutoFlowResolve.modelOverride(it) },
-        )
+        // AutoFlow is resolved before the first enqueue so KEEP cannot drop template/model.
+        enqueueSavedWithAutoflow(id, source = "note_pro", durationSeconds = 0, title = title)
     }
 
     private fun looksLikeOgg(bytes: ByteArray): Boolean =
@@ -406,7 +749,16 @@ class AppContainer(
             bytes[3] == 'F'.code.toByte()
 
 
-    private fun formatRecordingTitle(epochSeconds: Long): String {
+    internal fun formatRecordingTitle(epochSeconds: Long): String {
         return recordingTitle(epochSeconds, settingsRepository.preferences.value.appLanguage, systemLanguageTag())
     }
 }
+
+/** How long a wipe waits for background work to stop before going ahead and reporting it. */
+private val WIPE_JOIN_TIMEOUT = 15.seconds
+
+/** A new recording row was refused because "Wipe all data" is running. */
+class WipeInProgressException : IllegalStateException("Wipe all data is in progress")
+
+/** What AutoFlow hands to another app, read when it is sent. */
+data class SharedNote(val title: String, val summary: String, val markdown: String)

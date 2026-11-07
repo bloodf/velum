@@ -96,3 +96,25 @@ private fun purgeQuarantine(dir: File, quarantine: File, refs: Refs, nowMs: Long
     }
     return purged to failedRestores
 }
+
+/** A copy younger than this may belong to an import still running. */
+const val STALE_IMPORT_COPY_AGE_MS: Long = 24L * 60L * 60L * 1000L
+
+/**
+ * Removes picked or shared copies left in [importsDir] by older versions, cancelled imports or a crash: top-level
+ * regular files older than [minAgeMs] that no recording points at. watched/ and normalized/ are never entered.
+ * [pendingShares] are copies a share is still waiting to import: their own recovery expires and deletes them.
+ * Returns how many were removed.
+ */
+fun sweepStaleImportCopies(
+    importsDir: File,
+    localPaths: List<String?>,
+    pendingShares: Collection<String> = emptyList(),
+    nowMs: Long = System.currentTimeMillis(),
+    minAgeMs: Long = STALE_IMPORT_COPY_AGE_MS,
+): Int {
+    val referenced = (localPaths.filterNotNull() + pendingShares).map { File(it).canonicalFile }.toSet()
+    return importsDir.listFiles().orEmpty().count { file ->
+        file.isPlainFile() && file.olderThan(minAgeMs, nowMs) && file.canonicalFile !in referenced && file.delete()
+    }
+}

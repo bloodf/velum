@@ -253,7 +253,8 @@ fun DeviceScreenContent(
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Button(
                 onClick = onStartScan,
-                enabled = bleAvailable && state !is BleConnectionState.Connecting,
+                // Not during a download: a scan competes with the transfer for radio time and ends the live client's state.
+                enabled = bleAvailable && state !is BleConnectionState.Connecting && sessionUi.downloadingSessionId == null,
             ) {
                 Text(if (state is BleConnectionState.Scanning) strings.ux.scanning else strings.ux.scan)
             }

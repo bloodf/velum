@@ -151,6 +151,8 @@ class MonoPcmWavWriterTest {
         assertTrue(body.indexOf("onOutput(temp)") < body.indexOf("try {"), "the try starts where the output begins")
         assertTrue(body.indexOf("try {") < body.indexOf("MonoPcmWavWriter(temp"), "and wraps the writer")
         assertTrue(body.contains("ATOMIC_MOVE") && body.contains("temp.delete()"), "a private temp name, renamed on success")
+        assertTrue(body.contains("sweepStalePartFiles(outDir"), "stale temp files are swept before a new one is made")
+        assertTrue(body.indexOf("sweepStalePartFiles(outDir") < body.indexOf("MonoPcmWavWriter(temp"))
         val hint = src.substringAfter("private fun durationHintMs").substringBefore("private fun decodeWithMediaCodec")
         assertTrue(hint.contains("} finally {") && hint.contains("r.release()"), "MediaMetadataRetriever released in finally")
     }
@@ -183,6 +185,18 @@ class MonoPcmWavWriterTest {
         return f
     }
 
+    private fun extensibleWav(subFormat: Int): File {
+        val body = ByteBuffer.allocate(4 + 8 + 40 + 8 + 10).order(ByteOrder.LITTLE_ENDIAN)
+        body.put("WAVE".toByteArray()).put("fmt ".toByteArray()).putInt(40)
+        body.putShort(0xFFFE.toShort()).putShort(1).putInt(16_000).putInt(32_000).putShort(2).putShort(16)
+        body.putShort(22).putShort(16).putInt(4) // cbSize, valid bits, channel mask
+        body.putShort(subFormat.toShort()).put(ByteArray(14)) // sub-format GUID
+        body.put("data".toByteArray()).putInt(10).put(ByteArray(10))
+        val f = File(dir, "ext-$subFormat.wav")
+        f.writeBytes("RIFF".toByteArray() + ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN).putInt(body.capacity()).array() + body.array())
+        return f
+    }
+
     @Test fun wav_header_is_read_by_seeking_and_reports_the_bit_depth_instead_of_failing() {
         val h = readWavHeader(wav(rate = 44_100, ch = 2, pcm = ByteArray(100)))!!
         assertEquals(44_100, h.sampleRateHz); assertEquals(2, h.channels); assertEquals(100L, h.dataSize)
@@ -190,6 +204,11 @@ class MonoPcmWavWriterTest {
         assertEquals(null, readWavHeader(File(dir, "n.txt").apply { writeText("not a wav file at all") }))
         assertEquals(null, readWavHeader(wav(withData = false)), "no data chunk: the decoder reports it")
         assertEquals(null, readWavHeader(wav(fmtBits = 8)), "8-bit goes to the decoder instead of failing")
+        // Extensible with a full fmt chunk: only a PCM sub-format (code 1) takes the fast path.
+        for ((sub, expectNull) in listOf(1 to false, 3 to true)) {
+            val f = extensibleWav(sub)
+            assertEquals(expectNull, readWavHeader(f) == null, "extensible sub-format $sub")
+        }
         for ((format, expectNull) in listOf(1 to false, 0xFFFE to false, 3 to true, 2 to true, 6 to true)) {
             val f = wav()
             RandomAccessFile(f, "rw").use { it.seek(20); it.write(byteArrayOf(format.toByte(), (format shr 8).toByte())) }

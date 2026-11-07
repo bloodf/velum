@@ -125,6 +125,15 @@ UPDATE recording SET summary_markdown = ? WHERE id = ?;
 updateStatus:
 UPDATE recording SET status = ? WHERE id = ?;
 
+updateStatusIfActive:
+UPDATE recording SET status = ? WHERE id = ? AND status NOT IN ('ready', 'failed');
+
+updateStatusIfEquals:
+UPDATE recording SET status = ? WHERE id = ? AND status = ?;
+
+lastChanges:
+SELECT changes();
+
 updateProcessingWarning:
 UPDATE recording SET processing_warning = ? WHERE id = ?;
 
@@ -183,6 +192,9 @@ SELECT COUNT(*) FROM recording WHERE trashed = 0;
 selectAllFolders:
 SELECT * FROM folder ORDER BY name ASC;
 
+deleteAllFolders:
+DELETE FROM folder;
+
 insertFolder:
 INSERT OR REPLACE INTO folder(id, name, created_at) VALUES (?, ?, ?);
 
@@ -232,8 +244,17 @@ DELETE FROM memory_item;
 deleteAllGlossary:
 DELETE FROM glossary_term;
 
+deleteAllSpeakers:
+DELETE FROM speaker;
+
+deleteAllSummaryVersions:
+DELETE FROM summary_version;
+
 selectAllRecordingIds:
 SELECT id FROM recording;
+
+selectQueuedRecordingIds:
+SELECT id FROM recording WHERE status = 'queued' AND trashed = 0;
 
 selectAutoflows:
 SELECT * FROM autoflow ORDER BY name ASC;
@@ -298,8 +319,15 @@ INSERT OR REPLACE INTO app_meta(key, value) VALUES (?, ?);
 deleteMeta:
 DELETE FROM app_meta WHERE key = ?;
 
-deleteMetaWithPrefix:
-DELETE FROM app_meta WHERE key LIKE ? || '%';
+-- GLOB, not LIKE: LIKE treats `_` as a wildcard and ignores case. Patterns come from VelumRepository.globPrefix.
+deleteMetaMatching:
+DELETE FROM app_meta WHERE key GLOB :pattern;
+
+selectMetaMatching:
+SELECT key, value FROM app_meta WHERE key GLOB :pattern;
+
+selectMetaKeysWithPrefixAndValue:
+SELECT key FROM app_meta WHERE key GLOB :pattern AND value = :value;
 
 selectVersionsForRecording:
 SELECT * FROM summary_version WHERE recording_id = ? ORDER BY created_at DESC;

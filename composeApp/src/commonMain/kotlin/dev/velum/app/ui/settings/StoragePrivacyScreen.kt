@@ -68,6 +68,7 @@ fun StoragePrivacyScreen(
                             status = when (container.wipeAllData()) {
                                 DownloadWipeResult.Clean -> strings.settingsUi.wipeAllDataDone
                                 DownloadWipeResult.PartialsLeft -> strings.settingsUi.wipeAllDataPartialsLeft
+                                DownloadWipeResult.Incomplete -> strings.settingsUi.wipeAllDataIncomplete
                                 DownloadWipeResult.StillRunning -> strings.settingsUi.wipeAllDataDownloadRunning
                             }
                             val usage = container.repository.storageUsage()

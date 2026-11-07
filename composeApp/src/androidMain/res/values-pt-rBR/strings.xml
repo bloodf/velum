@@ -26,6 +26,5 @@
     <string name="mic_recording_cancelled">A gravação pelo microfone foi cancelada.</string>
     <!-- Overrides the Compose library string drawn on every ModalBottomSheet scrim ("Fechar planilha" = close spreadsheet). -->
     <string name="close_sheet">Fechar painel</string>
-    <!-- Shown when startup fails; in the app language from the boot copy, else the device language (#348). -->
     <string name="fatal_start_failed">O Velum não iniciou. Reinstale ou limpe o armazenamento do app.</string>
 </resources>

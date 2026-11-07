@@ -2,6 +2,13 @@ package dev.velum.app.importing
 
 /** Readable recording titles for imported files. */
 object ImportTitles {
+    const val MAX_TITLE_CHARS = 120
+
+    /** Zero-width, bidi-override and BOM characters other apps could use to disguise a name. */
+    private val invisible = setOf('\u200B', '\u200C', '\u200D', '\u200E', '\u200F', '\uFEFF') + ('\u202A'..'\u202E') + ('\u2066'..'\u2069')
+
+    /** A provider-supplied name without control characters and invisible formatting characters. */
+    fun cleanDisplayName(name: String): String = name.filterNot { it.isISOControl() || it in invisible }
     private val internalPrefix = Regex("""^(?:share_)?\d{9,}_""")
 
     /**
@@ -17,7 +24,7 @@ object ImportTitles {
 
     /** The name the user sees in the file picker, without its extension. */
     fun fromDisplayName(displayName: String): String? =
-        displayName.substringAfterLast('/').substringBeforeLast('.').trim().ifBlank { null }
+        cleanDisplayName(displayName).substringAfterLast('/').substringBeforeLast('.').trim().take(MAX_TITLE_CHARS).ifBlank { null }
 
     fun fromFileName(fileName: String): String? =
         fileName.substringBeforeLast('.')

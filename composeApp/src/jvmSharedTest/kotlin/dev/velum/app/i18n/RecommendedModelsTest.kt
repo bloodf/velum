@@ -54,8 +54,9 @@ class RecommendedModelsTest {
         assertEquals(PtBr.ux.localModelNotReady, processingFailureText("Local model 'x' is not Ready. Download it in Model manager first.", PtBr))
     }
 
-    @Test fun other_failures_are_left_alone() {
-        assertEquals("HTTP 500", processingFailureText("HTTP 500", En))
+    @Test fun other_failures_use_the_screen_generic_copy() {
+        assertEquals(null, processingFailureText("HTTP 500", En))
+        assertEquals(null, processingFailureText("HTTP 500.", PtBr))
         assertEquals(null, processingFailureText(null, En))
     }
 }
