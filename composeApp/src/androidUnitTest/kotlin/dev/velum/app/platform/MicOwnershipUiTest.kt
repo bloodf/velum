@@ -7,7 +7,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
-import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ApplicationProvider
@@ -122,20 +122,20 @@ class MicOwnershipUiTest {
                 }
             }
             compose.waitUntil(10_000) {
-                compose.onAllNodesWithText(PtBr.ux.livePause).fetchSemanticsNodes().isNotEmpty()
+                compose.onAllNodesWithContentDescription(PtBr.ux.livePause).fetchSemanticsNodes().isNotEmpty()
             }
-            compose.onNodeWithText(PtBr.ux.liveMark).assertIsDisplayed()
+            compose.onNodeWithContentDescription(PtBr.ux.liveMark).assertIsDisplayed()
             assertTrue(compose.onAllNodesWithText(PtBr.micStartFailed).fetchSemanticsNodes().isEmpty())
             assertTrue(mic.isCapturing)
             assertEquals(0, mic.stops)
-            compose.onNodeWithText(PtBr.ux.livePause).performClick()
+            compose.onNodeWithContentDescription(PtBr.ux.livePause).performClick()
             compose.waitUntil(10_000) {
-                compose.onAllNodesWithText(PtBr.ux.liveResume).fetchSemanticsNodes().isNotEmpty()
+                compose.onAllNodesWithContentDescription(PtBr.ux.liveResume).fetchSemanticsNodes().isNotEmpty()
             }
             assertEquals(1, mic.pauses)
-            compose.onNodeWithText(PtBr.ux.liveResume).performClick()
+            compose.onNodeWithContentDescription(PtBr.ux.liveResume).performClick()
             compose.waitUntil(10_000) {
-                compose.onAllNodesWithText(PtBr.ux.livePause).fetchSemanticsNodes().isNotEmpty()
+                compose.onAllNodesWithContentDescription(PtBr.ux.livePause).fetchSemanticsNodes().isNotEmpty()
             }
             assertEquals(1, mic.resumes)
         } finally {
