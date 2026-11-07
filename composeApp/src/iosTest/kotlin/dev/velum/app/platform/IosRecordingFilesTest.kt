@@ -6,6 +6,7 @@ import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import platform.Foundation.NSApplicationSupportDirectory
+import platform.Foundation.NSCachesDirectory
 import platform.Foundation.NSData
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSSearchPathForDirectoriesInDomains
@@ -68,6 +69,26 @@ class IosRecordingFilesTest {
         assertTrue(isSamePath(path, "/private$path"))
         assertFalse(isImportCacheCopy(path))
         assertTrue(deleteFileAtPath(path))
+    }
+
+    @Test
+    fun importsOnlyClassifyDirectSourceCopies() {
+        val caches = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, true).first() as String
+        fixture("$caches/imports") { dir ->
+            val path = "$dir/audio.wav"
+            file(path)
+            assertTrue(isAppOwnedAudioPath(path))
+            assertFalse(isImportCacheCopy(path))
+            assertTrue(deleteFileAtPath(path))
+        }
+        val direct = "$caches/imports/fixture-${NSUUID().UUIDString}.wav"
+        file(direct)
+        try {
+            assertTrue(isImportCacheCopy(direct))
+            assertTrue(isAppOwnedAudioPath(direct))
+        } finally {
+            files.removeItemAtPath(direct, null)
+        }
     }
 
     @Test
