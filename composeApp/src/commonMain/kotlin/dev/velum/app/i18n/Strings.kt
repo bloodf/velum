@@ -1242,6 +1242,8 @@ val PtBr = Strings(
         waveformA11y = "Progresso da reprodução",
     ),
     added = MoreStrings(
+        externalShareConsentTitle = "Importar áudio compartilhado?",
+        externalShareConsentBody = "Este áudio veio de outro aplicativo. Ao confirmar, ele será importado e processado conforme suas configurações, que podem enviar áudio e texto a provedores de IA e APIs externos. Cancele para não importar.",
         webhookFailedTimeout = "tempo esgotado",
         webhookFailedUnresolvedHost = "endereço não encontrado",
         webhookFailedTls = "falha na conexão segura",
@@ -1873,6 +1875,8 @@ val En = Strings(
         waveformA11y = "Playback progress",
     ),
     added = MoreStrings(
+        externalShareConsentTitle = "Import shared audio?",
+        externalShareConsentBody = "This audio came from another app. Confirming imports and processes it using your settings, which may send audio and text to external AI providers and APIs. Cancel to skip this import.",
         webhookFailedTimeout = "timed out",
         webhookFailedUnresolvedHost = "address not found",
         webhookFailedTls = "secure connection failed",
