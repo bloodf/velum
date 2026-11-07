@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowLeft, ArrowRight, ArrowUpRight, BookOpen, Check, ChevronRight, Clipboard, Command, ExternalLink, FileText, Github, Menu, Search, X } from 'lucide-react'
 import { Link, Navigate, useParams } from 'react-router-dom'
@@ -26,7 +26,7 @@ function SearchDialog({ open, onClose }: { open: boolean; onClose: () => void })
   }, [open])
   return (
     <AnimatePresence>
-      {open && <motion.div className="search-modal-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
+      {open && <motion.div className="search-modal-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={(e: MouseEvent<HTMLDivElement>) => { if (e.target === e.currentTarget) onClose() }}>
         <motion.div className="search-modal" role="dialog" aria-modal="true" aria-label="Search documentation" initial={{ opacity: 0, y: -18, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -10, scale: 0.98 }} transition={transitions.base}>
           <div className="search-modal-input"><Search size={20} /><input ref={inputRef} name="documentation-search" type="search" autoComplete="off" spellCheck={false} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search guides, apps, recorders…" aria-label="Search documentation" /><button onClick={onClose}>ESC</button></div>
           <div className="search-results">
