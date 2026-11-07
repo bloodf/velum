@@ -200,7 +200,7 @@ class DiscoverFiltersUiTest {
             assertRowAbsent("ui102-a")
             compose.onNode(
                 hasText(PtBr.templatesClearFilters) and hasAnyAncestor(hasTestTag("templates:empty")),
-            ).performClick()
+            ).performScrollTo().performClick()
             awaitTag("active:category", present = false)
             await("ZQ Alpha"); await("ZQ Beta"); await("ZQ Gamma")
 
