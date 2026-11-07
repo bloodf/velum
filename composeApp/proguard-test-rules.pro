@@ -73,6 +73,8 @@
 -keep class dev.velum.app.devicewalk.** { *; }
 -keep class dev.velum.app.VelumApplication { *; }
 -keepclassmembers class dev.velum.app.VelumApplication { *; }
+# The real-catalog instrumentation fixture constructs this test store across APKs.
+-keep class dev.velum.core.security.InMemorySecureStore { *; }
 -keep class dev.velum.app.di.AppContainer { *; }
 -keepclassmembers class dev.velum.app.di.AppContainer { *; }
 # DeviceWalkUiTest gates DeviceScreen on this copy (cross-APK). R8 otherwise

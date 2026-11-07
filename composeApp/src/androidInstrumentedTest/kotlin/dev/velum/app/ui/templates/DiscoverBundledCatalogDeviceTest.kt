@@ -78,9 +78,9 @@ class DiscoverBundledCatalogDeviceTest {
     @After fun close() {
         // Activity first: nothing may touch the database while it is closed.
         compose.activityRule.scenario.close()
-        container.databaseHandle.driver.close()
+        if (::container.isInitialized) container.databaseHandle.driver.close()
         context.deleteDatabase(DB_NAME)
-        root.deleteRecursively()
+        if (::root.isInitialized) root.deleteRecursively()
     }
 
     private fun has(tag: String) = compose.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()
