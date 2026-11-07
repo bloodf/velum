@@ -57,6 +57,8 @@ class TemplateImportCountLocaleUiTest {
                     }
                 }
             }
+            val queries = container.databaseHandle.database.velumQueries
+            val templatesBeforeImport = queries.selectTemplates().executeAsList()
             compose.onNodeWithText("JSON").performClick()
             compose.runOnIdle {
                 val shadow = shadowOf(activity.get())
@@ -68,7 +70,9 @@ class TemplateImportCountLocaleUiTest {
                 compose.onAllNodesWithText(expected).fetchSemanticsNodes().isNotEmpty()
             }
             compose.onNodeWithText(expected).assertIsDisplayed()
-            val queries = container.databaseHandle.database.velumQueries
+            if (count == 0) {
+                assertEquals(templatesBeforeImport, queries.selectTemplates().executeAsList())
+            }
             for (index in 1..count) {
                 val imported = queries.selectTemplateById("count-import-$index").executeAsOne()
                 assertEquals("Imported $index", imported.name)
