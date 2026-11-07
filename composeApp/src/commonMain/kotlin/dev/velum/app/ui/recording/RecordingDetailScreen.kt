@@ -1357,7 +1357,9 @@ internal fun LiveTranscriptPane(
                     is MicStartResult.Started -> {
                         ownedSession = started.session
                         pcmSubscription = container.micRecordings.attach(recordingId, started.session, push)
-                        usingMic = pcmSubscription != null
+                        // PCM is optional; capture succeeds while the owned session remains active.
+                        usingMic = container.micCapture.isCapturing &&
+                            container.micCapture.sessions.value.session == started.session
                         if (!usingMic && !alreadyStopped) micErrorState = MicError.StartFailed
                         markerCount = container.micCapture.markers.size
                         pausedUi = container.micCapture.isPaused || alreadyStopped
