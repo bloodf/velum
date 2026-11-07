@@ -145,7 +145,7 @@ class RecordingProcessorWipeTest {
         }
     }
 
-    @Test fun scheduler_rejects_during_deletion_and_checks_the_row_afterward() = runBlocking {
+    @Test fun scheduler_rejects_during_deletion_then_uses_the_remaining_row() = runBlocking {
         val processor = processor()
         val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.Default)
         val submitted = mutableListOf<String>()
@@ -155,8 +155,8 @@ class RecordingProcessorWipeTest {
         }
         val scheduler = admittingRecordingJobScheduler(processor, scope, delegate)
         try {
-            for (deleteSucceeds in listOf(false, true)) {
-                val id = if (deleteSucceeds) "rec-deleted" else "rec-retained"
+            for (removeRow in listOf(false, true)) {
+                val id = if (removeRow) "rec-deleted" else "rec-retained"
                 insertRunning(id)
                 val fenced = CompletableDeferred<Unit>()
                 val finishDeletion = CompletableDeferred<Unit>()
@@ -167,7 +167,8 @@ class RecordingProcessorWipeTest {
                         assertTrue(processor.stopRuns(id, 1.seconds))
                         fenced.complete(Unit)
                         finishDeletion.await()
-                        if (deleteSucceeds) repo.deleteRecordingHard(id)
+                        // The retained-row case models fence release without simulating a deletion failure.
+                        if (removeRow) repo.deleteRecordingHard(id)
                     } finally {
                         processor.endDeletion(id)
                     }
@@ -181,8 +182,8 @@ class RecordingProcessorWipeTest {
                     deletion.join()
                 }
                 val result = scheduler.enqueueSaved(id, null, false, null)
-                assertEquals(if (deleteSucceeds) EnqueueResult.REJECTED else EnqueueResult.STARTED_OR_REPLACED, result)
-                assertEquals(!deleteSucceeds, repo.getRecording(id) != null)
+                assertEquals(if (removeRow) EnqueueResult.REJECTED else EnqueueResult.STARTED_OR_REPLACED, result)
+                assertEquals(!removeRow, repo.getRecording(id) != null)
             }
             assertEquals(listOf("rec-retained"), submitted)
         } finally {
