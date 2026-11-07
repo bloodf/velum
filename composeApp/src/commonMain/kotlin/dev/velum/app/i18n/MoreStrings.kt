@@ -26,4 +26,6 @@ data class MoreStrings(
     val noSpeakers: String,
     val importMatchInTrash: String,
     val syncInTrashFormat: String,
+    val searchTags: String,
+    val noMatchingTags: String,
 )

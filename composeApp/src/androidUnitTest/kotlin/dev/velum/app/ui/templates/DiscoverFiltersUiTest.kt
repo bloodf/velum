@@ -160,7 +160,9 @@ class DiscoverFiltersUiTest {
             assertRowAbsent("ui102-d")
 
             // Tier switching: All adds the non-featured row, Featured removes it again.
-            tap("tier:all"); await("ZQ Delta")
+            tap("tier:all")
+            waiting("Delta row loaded") { rowLoaded("ui102-d") }
+            await("ZQ Delta")
             tap("tier:featured"); await("ZQ Alpha"); await("ZQ Delta", present = false)
             awaitRow("ui102-a")
             assertRowAbsent("ui102-d")
@@ -204,14 +206,14 @@ class DiscoverFiltersUiTest {
             // Search composes with the category filter.
             tap("category:meeting")
             compose.onNodeWithContentDescription(PtBr.search).performClick()
-            compose.onNode(hasSetTextAction()).performTextInput("ZQ Beta")
+            compose.onNodeWithTag("search:query").performTextInput("ZQ Beta")
             // Typing is debounced: wait for the old rows to go, then for the match to return.
             await("ZQ Alpha", present = false); await("ZQ Beta")
             awaitRow("ui102-b")
             assertRowAbsent("ui102-a")
 
             // Widen the search to every ZQ row: the category still excludes Gamma.
-            compose.onNode(hasSetTextAction()).performTextReplacement("ZQ")
+            compose.onNodeWithTag("search:query").performTextReplacement("ZQ")
             await("ZQ Alpha"); await("ZQ Beta")
             awaitRow("ui102-a")
             assertRowAbsent("ui102-c")
@@ -253,7 +255,7 @@ class DiscoverFiltersUiTest {
             // Every later facets/page query now fails; the selections must survive the failed load.
             container.databaseHandle.driver.close()
             compose.onNodeWithContentDescription(PtBr.search).performClick()
-            compose.onNode(hasSetTextAction()).performTextInput("zq")
+            compose.onNodeWithTag("search:query").performTextInput("zq")
             // The failed query is observable: the load error shows before we check the selections.
             await(PtBr.ux.genericError)
             // The facets effect is a separate coroutine from the page load: wait for its own failure, or the window
@@ -345,13 +347,27 @@ class DiscoverFiltersUiTest {
                 }
             }
             await("TG 0")
+            tap("category:meeting")
+            awaitTag("active:category")
+            val tagSearch = compose.onNodeWithTag("tags:search")
+            tagSearch.performScrollTo().performTextInput("no-such-synthetic-tag")
+            awaitTag("tags:empty")
+            assertTrue(hasTag("active:category"))
+            tagSearch.performTextReplacement(dev.velum.core.templates.TemplateTagVocabulary.label(last, PtBr.localeTag))
             awaitTag("tag:$last")
-            compose.onNodeWithTag("tag:$last").performScrollTo()
             tap("tag:$last")
             awaitTag("active:tag:$last")
             await("TG ${slugs.lastIndex}")
             awaitRow("tg-${slugs.lastIndex}")
             assertRowAbsent("tg-0")
+            assertTrue(hasTag("active:category"))
+            tap("active:tag:$last")
+            awaitTag("active:tag:$last", present = false)
+            assertTrue(hasTag("active:category"))
+            await("TG 0")
+            tap("tags:clear")
+            awaitTag("tag:${slugs.first()}")
+            assertTrue(hasTag("active:category"))
         } finally {
             activity.pause().stop().destroy()
             container.databaseHandle.driver.close()

@@ -6,7 +6,6 @@ import androidx.activity.compose.setContent
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasAnyAncestor
-import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
@@ -123,7 +122,7 @@ class DiscoverPruneUiTest {
     fun tier_switch_during_a_search_keeps_the_selection_until_the_search_is_cleared() = withScreen {
         tap("category:zqcat"); awaitTag("active:category")
         compose.onNodeWithContentDescription(PtBr.search).performClick()
-        compose.onNode(hasSetTextAction()).performTextInput("ZQ")
+        compose.onNodeWithTag("search:query").performTextInput("ZQ")
         // The search is debounced: switching tier before it applies would load facets for a blank search, which may
         // legitimately prune. Wait until the debounce has applied, i.e. a facets load for "ZQ" has started.
         waiting("debounced search applied") { queryLog.dump().contains("start facets(search='ZQ'") }
@@ -138,7 +137,7 @@ class DiscoverPruneUiTest {
         repeat(3) { compose.waitForIdle(); compose.mainClock.advanceTimeBy(100) }
         compose.waitForIdle()
         assertTrue(hasTag("active:category"), "category pruned while a search was narrowing the facets")
-        compose.onNode(hasSetTextAction()).performTextClearance()
+        compose.onNodeWithTag("search:query").performTextClearance()
         awaitTag("active:category", present = false)
     }
 }

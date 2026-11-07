@@ -170,7 +170,7 @@ class DiscoverCategorySearchUiTest {
             val facetsBeforeSearch = facetsFinished.get()
             // Search for a template that is only in the other category: the category must stay selected.
             compose.onNodeWithContentDescription(PtBr.search).performClick()
-            compose.onNode(hasSetTextAction()).performTextInput("ZQ Gamma")
+            compose.onNodeWithTag("search:query").performTextInput("ZQ Gamma")
             awaitTag("templates:empty")
             awaitTag("active:category")
             // Facets reload asynchronously after the search; the category must still be there once they landed.
@@ -225,7 +225,7 @@ class DiscoverCategorySearchUiTest {
     private fun searchThenExpectNoMatch(query: String, activeTag: String) {
         val facetsBeforeSearch = facetsFinished.get()
         compose.onNodeWithContentDescription(PtBr.search).performClick()
-        compose.onNode(hasSetTextAction()).performTextInput(query)
+        compose.onNodeWithTag("search:query").performTextInput(query)
         awaitTag("templates:empty")
         // Facets reload asynchronously after the search; the filter must still be selected once they landed.
         awaitFacetsReloadAfter(facetsBeforeSearch)
