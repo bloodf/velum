@@ -28,15 +28,28 @@ class RecommendedModelsTest {
                 DefaultLocalCatalog.first { it.id == id }.kind == LocalModelKind.Llm
             }
             val dir = File.createTempFile("velum-recommended", "").also { it.delete(); it.mkdirs() }
-            llms.forEach { id ->
-                val spec = DefaultLocalCatalog.first { it.id == id }
-                File(dir, "$id/${spec.archiveFileName}").apply { parentFile.mkdirs(); writeBytes(ByteArray(2048)) }
+            // Synthetic weights need their own checksum; production catalog pins remain unchanged.
+            val catalog = DefaultLocalCatalog.map { spec ->
+                if (spec.id in llms) spec.copy(
+                    sha256 = "e5a00aa9991ac8a5ee3109844d84a55583bd20572ad3ffcd42792f3c36b183ad",
+                ) else spec
             }
-            val manager = createLocalModelManager(ModelStoreDir(dir.absolutePath))
-            manager.awaitInitialization()
-            assertTrue(resolveLocalLlmModelId(null, manager) in llms, "$deviceClass resolved outside $llms")
-            assertIs<ModeResolution.Proceed>(resolveModeOrPrompt(AiTask.Summary, AiProviderSettings(), manager))
-            dir.deleteRecursively()
+            try {
+                llms.forEach { id ->
+                    val spec = catalog.first { it.id == id }
+                    File(dir, "$id/${spec.archiveFileName}").apply {
+                        parentFile?.mkdirs()
+                        writeBytes(ByteArray(2048))
+                    }
+                }
+                val manager = createLocalModelManager(ModelStoreDir(dir.absolutePath), catalog = catalog)
+                manager.awaitInitialization()
+                llms.forEach { assertTrue(manager.isReady(it), "$deviceClass fixture not verified: $it") }
+                assertTrue(resolveLocalLlmModelId(null, manager) in llms, "$deviceClass resolved outside $llms")
+                assertIs<ModeResolution.Proceed>(resolveModeOrPrompt(AiTask.Summary, AiProviderSettings(), manager))
+            } finally {
+                dir.deleteRecursively()
+            }
         }
     }
 
