@@ -92,6 +92,32 @@ class ResumableSessionDownloadTest {
         crcPolicy = policy,
     )
 
+    @Test fun complete_partial_returns_optional_mismatch_without_claiming_verification() = runTest {
+        val memory = MemoryStore().apply { write(ByteArray(10)) }
+        val mismatch = CrcStatus.Mismatch(123, 456)
+        val store = object : PartialTransferStore by memory {
+            override fun crcMismatchVerdict() = mismatch
+        }
+        val download = ResumableSessionDownload(
+            connect = { error("Complete partial must not reconnect") },
+            crcPolicy = CrcPolicy.ReportOnly,
+        )
+        assertEquals(mismatch, download.download(SESSION, 10, store).crc)
+        assertEquals(CrcStatus.NotProvided, download.download(SESSION, 10, memory).crc)
+    }
+
+    @Test fun verdict_persistence_failure_does_not_fall_through_to_complete_shortcut() = runTest {
+        val memory = MemoryStore()
+        val store = object : PartialTransferStore by memory {
+            override fun setCrcVerdict(crc: CrcStatus) { throw IOException("synthetic verdict write failure") }
+        }
+        val rig = rig(ByteArray(2000), stopCrc = StopCrc.Wrong)
+        assertFailsWith<TransferIntegrityException> {
+            downloader(rig, CrcPolicy.ReportOnly).download(SESSION, 2000, store)
+        }
+        assertEquals(1, rig.connects)
+    }
+
     @Test fun two_hour_synthetic_session_downloads_byte_exact_with_matching_crc() = runTest(timeout = 5.minutes) {
         // 2 h at 32 kbit/s (4,000 B/s) ≈ the Note Pro's Opus rate; 240-byte chunks ≈ 120k packets.
         val file = Random(2).nextBytes(2 * 60 * 60 * 4_000)
