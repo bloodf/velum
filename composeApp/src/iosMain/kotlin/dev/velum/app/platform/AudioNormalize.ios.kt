@@ -33,7 +33,7 @@ actual class AudioNormalizer actual constructor() {
                 ownedPath = temporary
                 try {
                     val frames = convertImport(sourcePath, temporary, targetSampleRateHz) { context.ensureActive() }
-                    val hash = sha256File(temporary)
+                    val hash = sha256FileWithCancellation(temporary) { context.ensureActive() }
                     context.ensureActive()
                     check(rename(temporary, output) == 0) { "Cannot publish normalized audio" }
                     ownedPath = output

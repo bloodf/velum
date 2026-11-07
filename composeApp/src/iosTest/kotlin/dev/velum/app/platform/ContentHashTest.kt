@@ -4,6 +4,7 @@ package dev.velum.app.platform
 
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.usePinned
+import kotlinx.coroutines.CancellationException
 import platform.Foundation.NSData
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSTemporaryDirectory
@@ -13,6 +14,7 @@ import platform.Foundation.writeToFile
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class ContentHashTest {
@@ -37,6 +39,25 @@ class ContentHashTest {
         val expected = "1ec3437cee3cccf3647e130524ade52848571960a3340ae33573beef17d330b3"
         assertEquals(expected, sha256Bytes(bytes))
         withFile(bytes) { path -> assertEquals(expected, sha256File(path)) }
+    }
+
+    @Test
+    fun cancellationAfterFirstChunkStopsHashingAndPreservesSource() {
+        val bytes = ByteArray(64 * 1024 * 2 + 17) { (it % 251).toByte() }
+        val expected = "1ec3437cee3cccf3647e130524ade52848571960a3340ae33573beef17d330b3"
+        val cancelled = CancellationException("Stop between hash chunks")
+        withFile(bytes) { path ->
+            var checks = 0
+            val failure = assertFailsWith<CancellationException> {
+                sha256FileWithCancellation(path) {
+                    checks++
+                    if (checks == 2) throw cancelled
+                }
+            }
+            assertSame(cancelled, failure)
+            assertEquals(2, checks)
+            assertEquals(expected, sha256File(path))
+        }
     }
 
     @Test
