@@ -4,6 +4,7 @@ import java.io.BufferedOutputStream
 import java.io.Closeable
 import java.io.File
 import java.io.FileOutputStream
+import java.io.OutputStream
 import java.io.RandomAccessFile
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -13,9 +14,23 @@ import java.nio.ByteOrder
  * resampled as it arrives, so time is linear in the input length and memory is bounded by one chunk (#319).
  * The resampled values equal the former whole-buffer code (`toMonoPcm16` then `resamplePcm16`); the WAV header is
  * written as a placeholder and patched in [finish].
+ *
+ * When constructed with a custom [sink] (and optional null [file]), output is streamed directly to that sink.
  */
-internal class MonoPcmWavWriter(private val file: File, private val targetRate: Int) : Closeable {
-    private val out = BufferedOutputStream(FileOutputStream(file), OUT_BUFFER_BYTES)
+internal class MonoPcmWavWriter(
+    private val file: File?,
+    private val targetRate: Int,
+    private val sink: OutputStream = BufferedOutputStream(FileOutputStream(checkNotNull(file)), OUT_BUFFER_BYTES),
+    private val writeHeaderPlaceholder: Boolean = (file != null),
+) : Closeable {
+    constructor(file: File, targetRate: Int) : this(
+        file = file,
+        targetRate = targetRate,
+        sink = BufferedOutputStream(FileOutputStream(file), OUT_BUFFER_BYTES),
+        writeHeaderPlaceholder = true,
+    )
+
+    private val out = sink
     private var channels = 1
     private var sourceRate = targetRate
     private var leftover = ByteArray(0) // an incomplete trailing frame of the previous chunk
@@ -30,7 +45,9 @@ internal class MonoPcmWavWriter(private val file: File, private val targetRate: 
         private set
 
     init {
-        out.write(ByteArray(HEADER_BYTES)) // patched in finish()
+        if (writeHeaderPlaceholder) {
+            out.write(ByteArray(HEADER_BYTES)) // patched in finish()
+        }
     }
 
     /** Declares the format of the chunks that follow. A change finishes the previous format's stage first. */
@@ -61,6 +78,13 @@ internal class MonoPcmWavWriter(private val file: File, private val targetRate: 
         }
         leftover = ByteArray(total - frames * frameBytes).also { src.get(it) }
         emit(mono)
+    }
+
+    /** Flushes any buffered samples in [pending] to [sink]. */
+    fun flush() {
+        check(!closed) { "writer is closed" }
+        flushPending()
+        out.flush()
     }
 
     /** Input samples kept back: enough for every output the end of the stream can still ask for. */
@@ -128,9 +152,12 @@ internal class MonoPcmWavWriter(private val file: File, private val targetRate: 
     }
 
     private fun flushPending() {
-        out.write(pending.array(), 0, pending.position())
-        pcmBytesWritten += pending.position()
-        pending.clear()
+        val count = pending.position()
+        if (count > 0) {
+            out.write(pending.array(), 0, count)
+            pcmBytesWritten += count
+            pending.clear()
+        }
     }
 
     /** Flushes everything and patches the WAV header. The file is complete only after this returns. */
@@ -141,10 +168,12 @@ internal class MonoPcmWavWriter(private val file: File, private val targetRate: 
         out.flush()
         out.close()
         closed = true
-        RandomAccessFile(file, "rw").use { raf ->
-            raf.seek(0)
-            raf.write(header(targetRate, pcmBytesWritten))
-            raf.fd.sync()
+        file?.let { targetFile ->
+            RandomAccessFile(targetFile, "rw").use { raf ->
+                raf.seek(0)
+                raf.write(header(targetRate, pcmBytesWritten))
+                raf.fd.sync()
+            }
         }
     }
 
@@ -170,6 +199,36 @@ internal class MonoPcmWavWriter(private val file: File, private val targetRate: 
                 put("data".toByteArray()); putInt(dataSize.toInt())
             }.array()
         }
+    }
+}
+
+/**
+ * An [OutputStream] that writes to an optional backing [fileOutputStream] and simultaneously
+ * forwards written chunks to an [onChunk] callback.
+ */
+internal class PcmChunkSink(
+    private val fileOutputStream: OutputStream? = null,
+    private val onChunk: ((ByteArray) -> Unit)? = null,
+) : OutputStream() {
+    override fun write(b: Int) {
+        val single = byteArrayOf(b.toByte())
+        write(single, 0, 1)
+    }
+
+    override fun write(b: ByteArray, off: Int, len: Int) {
+        if (len <= 0) return
+        fileOutputStream?.write(b, off, len)
+        if (onChunk != null) {
+            onChunk.invoke(b.copyOfRange(off, off + len))
+        }
+    }
+
+    override fun flush() {
+        fileOutputStream?.flush()
+    }
+
+    override fun close() {
+        fileOutputStream?.close()
     }
 }
 

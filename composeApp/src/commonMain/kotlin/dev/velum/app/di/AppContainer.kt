@@ -2,6 +2,7 @@ package dev.velum.app.di
 
 import dev.velum.ai.pipeline.resolveTemplateForEnqueue
 import dev.velum.ai.createOpenAiCompatibleClient
+import dev.velum.ai.OpenAiCompatibleClient
 import dev.velum.ai.engine.AiTaskRouter
 import dev.velum.ai.local.LocalDiarizer
 import dev.velum.ai.local.LocalLlmEngine
@@ -112,6 +113,7 @@ class AppContainer(
     recordingJobSchedulerFactory: ((RecordingProcessor, CoroutineScope) -> RecordingJobScheduler)? = null,
     val micCapture: MicCapture = createMicCapture(),
     thermalPolicy: ThermalPolicy = NoOpThermalPolicy,
+    injectedAiClient: OpenAiCompatibleClient? = null,
 ) {
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -170,7 +172,7 @@ class AppContainer(
 
     val settingsRepository = SettingsRepository(secureStore)
     val deviceKeyImporter: DeviceKeyImporter = SecureDeviceKeyImporter(secureStore)
-    val aiClient = createOpenAiCompatibleClient()
+    val aiClient = injectedAiClient ?: createOpenAiCompatibleClient()
     val settingsViewModel = SettingsViewModel(settingsRepository, aiClient)
     val deviceViewModel = DeviceViewModel(
         ble = ble,
