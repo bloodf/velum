@@ -46,6 +46,7 @@ internal class IosInboxIntake(
     cacheRoot: String,
     private val defaults: NSUserDefaults = NSUserDefaults.standardUserDefaults,
     private val key: String = "velum.inbox.v1",
+    private val copyFile: (String, String) -> Unit = { source, destination -> copyInboxFile(source, destination) },
 ) {
     private val originalSourceRoot = sourceRoot
     private val originalCacheRoot = cacheRoot
@@ -59,6 +60,7 @@ internal class IosInboxIntake(
     } ?: InboxState()
     private val delivered = mutableSetOf<String>()
     private val recovered = state.pending.map { it.path }.toSet()
+    private val copying = mutableMapOf<String, String>()
 
     private fun <T> locked(block: () -> T): T {
         lock.lock()
@@ -73,32 +75,50 @@ internal class IosInboxIntake(
 
     fun generation(): Long = locked { epoch }
 
-    internal fun receive(raw: String, generation: Long = generation()): Boolean = locked {
-        if (generation != epoch || state.pending.size >= 8 || !rootIsUnlinked(originalSourceRoot) || !rootIsUnlinked(originalCacheRoot)) return@locked false
-        val url = NSURL.URLWithString(raw) ?: return@locked false
-        if (!url.isFileURL() || !url.host.isNullOrEmpty() || url.query != null || url.fragment != null) return@locked false
-        val rawPath = url.path ?: return@locked false
-        if (rawPath.split('/').any { it == ".." || it == "." }) return@locked false
-        val path = rawPath.replaceFirst(directory(NSDocumentDirectory), canonical(directory(NSDocumentDirectory)) ?: directory(NSDocumentDirectory))
-        if (!directRegularFile(path, sourceRoot)) return@locked false
-        val attributes = NSFileManager.defaultManager.attributesOfItemAtPath(path, null) ?: return@locked false
-        val identity = "$path:${attributes[NSFileSystemFileNumber]}:${attributes[NSFileModificationDate]}:${attributes[NSFileSize]}"
-        if (identity in state.seen || state.pending.any { it.source == identity }) return@locked false
-        val files = NSFileManager.defaultManager
-        if (!files.createDirectoryAtPath(cacheRoot, true, null, null)) return@locked false
-        if (!safeRoot(cacheRoot)) return@locked false
-        val dest = "$cacheRoot/inbox-${NSUUID().UUIDString}_${sanitizeImportFileName(url.lastPathComponent)}"
+    internal fun receive(raw: String, generation: Long = generation()): Boolean {
+        val reservation = locked {
+            if (generation != epoch || state.pending.size + copying.size >= 8 || !rootIsUnlinked(originalSourceRoot) || !rootIsUnlinked(originalCacheRoot)) return@locked null
+            val url = NSURL.URLWithString(raw) ?: return@locked null
+            if (!url.isFileURL() || !url.host.isNullOrEmpty() || url.query != null || url.fragment != null) return@locked null
+            val rawPath = url.path ?: return@locked null
+            if (rawPath.split('/').any { it == ".." || it == "." }) return@locked null
+            val path = rawPath.replaceFirst(directory(NSDocumentDirectory), canonical(directory(NSDocumentDirectory)) ?: directory(NSDocumentDirectory))
+            if (!directRegularFile(path, sourceRoot)) return@locked null
+            val attributes = NSFileManager.defaultManager.attributesOfItemAtPath(path, null) ?: return@locked null
+            val identity = "$path:${attributes[NSFileSystemFileNumber]}:${attributes[NSFileModificationDate]}:${attributes[NSFileSize]}"
+            if (identity in copying || identity in state.seen || state.pending.any { it.source == identity }) return@locked null
+            val files = NSFileManager.defaultManager
+            if (!files.createDirectoryAtPath(cacheRoot, true, null, null)) return@locked null
+            if (!safeRoot(cacheRoot)) return@locked null
+            val dest = "$cacheRoot/inbox-${NSUUID().UUIDString}_${sanitizeImportFileName(url.lastPathComponent)}"
+            copying[identity] = dest
+            Triple(path, identity, dest)
+        } ?: return false
+        val (path, identity, dest) = reservation
         var copied = false
+        var published = false
         try {
-            copyInboxFile(path, dest)
+            copyFile(path, dest)
             copied = true
-            val record = InboxRecord(dest, identity, (NSDate().timeIntervalSince1970 * 1000).toLong())
-            save(state.copy(pending = state.pending + record, seen = (state.seen + identity).takeLast(64)))
-            wake.trySend(Unit)
-            true
+            return locked {
+                if (generation != epoch || copying[identity] != dest || state.pending.size >= 8 ||
+                    !rootIsUnlinked(originalSourceRoot) || !rootIsUnlinked(originalCacheRoot) ||
+                    !directRegularFile(dest, cacheRoot)) return@locked false
+                val record = InboxRecord(dest, identity, (NSDate().timeIntervalSince1970 * 1000).toLong())
+                save(state.copy(pending = state.pending + record, seen = (state.seen + identity).takeLast(64)))
+                published = true
+                wake.trySend(Unit)
+                true
+            }
         } catch (_: Exception) {
-            if (copied && directRegularFile(dest, cacheRoot)) files.removeItemAtPath(dest, null)
-            false
+            return false
+        } finally {
+            locked {
+                if (copying[identity] == dest) copying.remove(identity)
+                if (copied && !published && directRegularFile(dest, cacheRoot)) {
+                    NSFileManager.defaultManager.removeItemAtPath(dest, null)
+                }
+            }
         }
     }
 
