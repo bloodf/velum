@@ -532,18 +532,17 @@ class LocalModelManager(
             return@flow
         }
 
-        update(id) { it.copy(status = LocalModelStatus.Downloading, progress = 0f, error = null) }
-        emit(requireNotNull(stateFor(id)))
-
         val dir = storeRoot.resolve(id)
-        dir.createDirectories()
         val dest = dir.resolve(current.spec.archiveFileName)
         val partial = dir.resolve("${current.spec.archiveFileName}.partial")
-        if (partial.exists()) partial.deleteRecursively()
         var filesInPlace = false
         var complete = false
 
         try {
+            update(id) { it.copy(status = LocalModelStatus.Downloading, progress = 0f, error = null) }
+            emit(requireNotNull(stateFor(id)))
+            dir.createDirectories()
+            if (partial.exists()) partial.deleteRecursively()
             val digest = createSha256Digest()
             try {
                 httpClient.prepareGet(url).execute { response ->

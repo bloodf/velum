@@ -230,6 +230,22 @@ class LocalModelDownloadThreadingTest {
         assertEquals(LocalModelStatus.Ready, manager.stateFor("tiny")?.status)
     }
 
+    @Test fun cancel_on_the_first_downloading_state_restores_missing_state() = runBlocking {
+        val client = HttpClient(MockEngine { error("cancel must land before the request") })
+        val manager = manager(client)
+        manager.awaitInitialization()
+        val canceller = CoroutineScope(Dispatchers.Unconfined).launch {
+            manager.states.first { it.single().status == LocalModelStatus.Downloading }
+            manager.cancelDownload("tiny")
+        }
+        val job = manager.startDownloads(listOf("tiny"))
+        withTimeout(10_000) { job.join() }
+        canceller.cancelAndJoin()
+        assertTrue(job.isCancelled)
+        assertEquals(LocalModelStatus.NotDownloaded, manager.stateFor("tiny")?.status)
+        assertFalse(root.resolve("tiny").exists())
+    }
+
     @Test fun cancel_ends_a_started_download() = runBlocking {
         val body = ByteChannel(autoFlush = true)
         val client = HttpClient(MockEngine { respond(body, HttpStatusCode.OK, headersOf(HttpHeaders.ContentLength, "1000")) })
