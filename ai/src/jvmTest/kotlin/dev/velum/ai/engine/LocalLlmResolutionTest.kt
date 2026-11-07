@@ -36,7 +36,7 @@ class LocalLlmResolutionTest {
             ModelStoreDir(dir.absolutePath),
             HttpClient(MockEngine { respond("") }),
             listOf(spec(higherQuality), spec(DEFAULT_LOCAL_LLM_MODEL_ID), spec(other)),
-        )
+        ).also { runBlocking { it.awaitInitialization() } }
     }
 
     private fun summaryResolution(manager: LocalModelManager, selected: String? = null) =
