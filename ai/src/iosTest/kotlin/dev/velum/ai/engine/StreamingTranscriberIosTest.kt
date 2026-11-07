@@ -3,6 +3,7 @@ package dev.velum.ai.engine
 import dev.velum.ai.local.asr.IosLocalInference
 import dev.velum.ai.local.asr.IosLocalInferenceBridge
 import dev.velum.ai.local.asr.IosLocalInferenceTask
+import dev.velum.ai.local.asr.LocalAsrRuntime
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
@@ -120,6 +121,65 @@ class StreamingTranscriberIosTest {
             assertTrue(cancelled)
             assertTrue(worker.isCancelled)
             assertEquals(listOf("**partial** · 0:00\n"), emitted)
+        } finally { IosLocalInference.bridge = previous }
+    }
+
+    @Test fun successful_silence_does_not_stop_subsequent_speech_windows() = runTest {
+        val previous = IosLocalInference.bridge
+        var calls = 0
+        var cancels = 0
+        IosLocalInference.bridge = object : IosLocalInferenceBridge {
+            override fun start(request: String, samples: FloatArray, onText: (String) -> Unit,
+                onDone: () -> Unit, onError: (String) -> Unit): IosLocalInferenceTask {
+                calls++
+                assertEquals(24_000, samples.size)
+                onText(if (calls == 1) "{\"text\":\"   \"}" else "{\"text\":\"later speech\"}")
+                onDone()
+                return object : IosLocalInferenceTask { override fun cancel() { cancels++ } }
+            }
+        }
+        try {
+            val streamer = createStreamingTranscriber("/fake/ready", "whisper-tiny")
+            val emitted = mutableListOf<String>()
+            streamer.onPartial = { emitted += it }
+            streamer.start(8_000)
+            streamer.pushPcm(ByteArray(48_000))
+            assertEquals(1, calls)
+            streamer.pushPcm(ByteArray(48_000) { 1 })
+            assertEquals(2, calls)
+            assertEquals("**Speaker 1** · 0:00\nlater speech\n", streamer.finish())
+            streamer.cancel()
+            assertEquals(2, calls, "cleanup must not decode more audio")
+            assertEquals(0, cancels, "both native tasks already completed")
+            assertEquals(listOf("**partial** · 0:00\n", "**partial** · 0:03\n\n",
+                "**partial** · 0:06\nlater speech\n", "**Speaker 1** · 0:00\nlater speech\n"), emitted)
+        } finally { IosLocalInference.bridge = previous }
+    }
+
+    @Test fun successful_silence_has_no_segments_but_native_failures_still_propagate() = runTest {
+        val previous = IosLocalInference.bridge
+        var fail = false
+        IosLocalInference.bridge = object : IosLocalInferenceBridge {
+            override fun start(request: String, samples: FloatArray, onText: (String) -> Unit,
+                onDone: () -> Unit, onError: (String) -> Unit): IosLocalInferenceTask {
+                if (fail) onError("Cannot load Sherpa model") else {
+                    onText("{\"text\":\"\",\"language\":\"en\"}")
+                    onDone()
+                }
+                return object : IosLocalInferenceTask { override fun cancel() = Unit }
+            }
+        }
+        try {
+            val runtime = LocalAsrRuntime()
+            val result = runtime.transcribe(ByteArray(2), 16_000, "auto", "whisper-tiny", "/fake", null)
+            assertEquals("", result.text)
+            assertTrue(result.segments.isEmpty())
+            assertEquals("en", result.detectedLanguage)
+            fail = true
+            val failure = assertFailsWith<IllegalStateException> {
+                runtime.transcribe(ByteArray(2), 16_000, "auto", "whisper-tiny", "/fake", null)
+            }
+            assertEquals("Cannot load Sherpa model", failure.message)
         } finally { IosLocalInference.bridge = previous }
     }
 
