@@ -135,6 +135,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
@@ -1648,27 +1649,37 @@ internal suspend fun transcribeQueuedPcm(
 ): String? {
     fun logFailure(step: String, failure: Throwable) = println("VelumLivePcm: $step failed: ${failure::class.simpleName}")
     initialize()
-    val opened = runCatching(open).onFailure { logFailure("open", it) }
+    val opened = runCatching(open).onFailure {
+        if (it is kotlinx.coroutines.CancellationException) throw it
+        logFailure("open", it)
+    }
     val streamer = opened.getOrNull()
     if (streamer == null) {
         pcm.cancel() // nothing will read the backlog
         onNoTranscriber(opened.isFailure)
         return null
     }
-    val started = runCatching {
+    try {
         streamer.onPartial = onPartial
         streamer.start(16_000, languageHint, null)
-    }.onFailure { logFailure("start", it) }.isSuccess
-    if (started) onReady()
-    if (!started) {
-        pcm.cancel()
+        onReady()
+        while (true) {
+            val bytes = pcm.receiveCatching().getOrNull() ?: break
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+            streamer.pushPcm(bytes)
+        }
+        kotlinx.coroutines.currentCoroutineContext().ensureActive()
+        return streamer.finish()
+    } catch (cancelled: kotlinx.coroutines.CancellationException) {
+        throw cancelled
+    } catch (failure: Exception) {
+        logFailure("transcribe", failure)
         onNoTranscriber(true)
+        return null
+    } finally {
+        pcm.cancel()
+        withContext(NonCancellable) { streamer.cancel() }
     }
-    while (started) {
-        val chunk = pcm.receiveCatching().getOrNull() ?: break
-        runCatching { streamer.pushPcm(chunk) }.onFailure { logFailure("push", it) }
-    }
-    return runCatching { streamer.finish() }.onFailure { logFailure("finish", it) }.getOrNull()
 }
 
 /**
@@ -1694,7 +1705,13 @@ private fun openStreamingTranscriber(container: AppContainer): StreamingTranscri
     for (modelId in preferredIds) {
         val path = container.localModelManager.modelPath(modelId)?.absolutePath ?: continue
         if (container.localModelManager.stateFor(modelId)?.status != LocalModelStatus.Ready) continue
-        val created = runCatching { createStreamingTranscriber(path, modelId) }.getOrNull()
+        val created = try {
+            createStreamingTranscriber(path, modelId)
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            null
+        }
         if (created != null) return created
         readyButFailed = true
     }
