@@ -24,3 +24,18 @@ expect fun markShareAttempt(path: String)
 
 /** Forgets every pending share. A wipe calls this first, so wiped audio is never offered again after a restart. */
 expect fun clearPendingShares()
+
+/** One approval applies to one external share only. A restart creates a fresh gate. */
+class ExternalShareConsent {
+    private val decision = kotlinx.coroutines.CompletableDeferred<Boolean>()
+    private var consumed = false
+
+    fun decide(approved: Boolean) { decision.complete(approved) }
+
+    suspend fun runIfApproved(action: () -> Unit): Boolean {
+        if (!decision.await() || consumed) return false
+        consumed = true
+        action()
+        return true
+    }
+}
