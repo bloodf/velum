@@ -8,6 +8,7 @@ import kotlinx.cinterop.alloc
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.value
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
@@ -33,26 +34,54 @@ import platform.UIKit.UIWindow
 import platform.UniformTypeIdentifiers.UTTypeAudio
 import platform.darwin.NSObject
 
-/** The picker only keeps a weak delegate reference, so hold it until a result or cancel arrives. */
+/** The picker only keeps a weak delegate reference, so hold it through copying or cancellation. */
 private var activeDelegate: AudioPickerDelegate? = null
 private val importScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
-private class AudioPickerDelegate(val onPicked: (String) -> Unit, val onFailed: () -> Unit) : NSObject(), UIDocumentPickerDelegateProtocol {
+internal class AudioPickerDelegate(
+    private val onPicked: (String) -> Unit,
+    private val onFailed: () -> Unit,
+    private val scope: CoroutineScope = importScope,
+    private val copy: suspend (NSURL) -> String? = { url -> withContext(Dispatchers.IO) { moveIntoImports(url) } },
+) : NSObject(), UIDocumentPickerDelegateProtocol {
+    private var completed = false
+
+    // Called on Main, like every mutation of the active session and its terminal state.
+    internal fun activate(): Boolean {
+        if (activeDelegate != null || completed) return false
+        activeDelegate = this
+        return true
+    }
+
+    private fun release() {
+        if (activeDelegate === this) activeDelegate = null
+    }
+
     override fun documentPicker(controller: UIDocumentPickerViewController, didPickDocumentsAtURLs: List<*>) {
-        activeDelegate = null
-        val url = didPickDocumentsAtURLs.firstOrNull() as? NSURL
-        if (url == null) {
-            onFailed()
-            return
-        }
-        importScope.launch {
-            val path = withContext(Dispatchers.IO) { moveIntoImports(url) }
+        scope.launch {
+            if (activeDelegate !== this@AudioPickerDelegate || completed) return@launch
+            completed = true
+            val url = didPickDocumentsAtURLs.firstOrNull() as? NSURL
+            val path = try {
+                if (url == null) null else copy(url)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                NSLog("Velum import: cannot copy picked file")
+                null
+            } finally {
+                release()
+            }
             if (path != null) onPicked(path) else onFailed()
         }
     }
 
     override fun documentPickerWasCancelled(controller: UIDocumentPickerViewController) {
-        activeDelegate = null
+        scope.launch {
+            if (activeDelegate !== this@AudioPickerDelegate || completed) return@launch
+            completed = true
+            release()
+        }
     }
 }
 
@@ -61,16 +90,25 @@ private class AudioPickerDelegate(val onPicked: (String) -> Unit, val onFailed: 
 actual fun rememberAudioImporter(onFailed: () -> Unit, onPicked: (path: String) -> Unit): () -> Unit =
     remember(onPicked, onFailed) {
         {
-            val presenter = topViewController()
-            if (presenter != null) {
-                val delegate = AudioPickerDelegate(onPicked, onFailed)
-                activeDelegate = delegate
-                val picker = UIDocumentPickerViewController(forOpeningContentTypes = listOf(UTTypeAudio), asCopy = true)
-                picker.delegate = delegate
-                presenter.presentViewController(picker, animated = true, completion = null)
+            importScope.launch {
+                presentAudioImporter(topViewController(), onPicked, onFailed)
             }
+            Unit
         }
     }
+
+internal fun presentAudioImporter(presenter: UIViewController?, onPicked: (String) -> Unit, onFailed: () -> Unit) {
+    if (activeDelegate != null) return
+    if (presenter == null || presenter.isBeingDismissed() || presenter is UIDocumentPickerViewController) {
+        onFailed()
+        return
+    }
+    val delegate = AudioPickerDelegate(onPicked, onFailed)
+    if (!delegate.activate()) return
+    val picker = UIDocumentPickerViewController(forOpeningContentTypes = listOf(UTTypeAudio), asCopy = true)
+    picker.delegate = delegate
+    presenter.presentViewController(picker, animated = true, completion = null)
+}
 
 /**
  * Moves the picker's temporary copy into `Caches/imports` so it is not left behind. Failures are logged
