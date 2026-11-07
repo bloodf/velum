@@ -198,6 +198,7 @@ kotlin {
                 implementation(project(":ble-testing"))
                 implementation(libs.junit)
                 implementation(libs.androidx.test.ext.junit)
+                implementation(libs.androidx.work.testing)
                 implementation(libs.androidx.compose.ui.test.junit4)
                 implementation(libs.robolectric)
                 implementation(libs.roborazzi)

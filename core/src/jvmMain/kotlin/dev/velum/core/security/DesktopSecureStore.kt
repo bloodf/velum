@@ -44,6 +44,13 @@ class DesktopSecureStore(
         }
     }
 
+    override suspend fun removeWithPrefix(prefix: String) {
+        synchronized(props) {
+            props.stringPropertyNames().filter { it.startsWith(prefix) }.forEach { props.remove(it) }
+            flush()
+        }
+    }
+
     override suspend fun contains(key: String): Boolean =
         synchronized(props) { props.containsKey(key) }
 }

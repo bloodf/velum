@@ -28,6 +28,20 @@ actual class ModelStoreDir actual constructor(absolutePath: String) {
         file.writeBytes(bytes)
     }
 
+    actual fun writeBytesDurably(bytes: ByteArray) {
+        file.parentFile?.let(::ensureDir)
+        java.io.FileOutputStream(file).use { out ->
+            out.write(bytes)
+            out.fd.sync()
+        }
+    }
+
+    actual fun syncDirectory() {
+        runCatching {
+            java.nio.channels.FileChannel.open(file.toPath(), java.nio.file.StandardOpenOption.READ).use { it.force(true) }
+        }
+    }
+
     actual fun appendBytes(bytes: ByteArray) {
         file.parentFile?.let(::ensureDir)
         file.appendBytes(bytes)

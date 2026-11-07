@@ -85,9 +85,12 @@ class ChangeTemplateUiTest {
         store: SecureStore = InMemorySecureStore(),
         status: String = "ready",
         setup: suspend (AppContainer) -> Unit = {},
+        // false: the container keeps its real engines (a route that cannot work fails before any request is made).
+        walkMode: Boolean = true,
+        withApiKey: Boolean = true,
         block: (AppContainer) -> Unit,
     ) {
-        DeviceWalkMode.enabled = true
+        DeviceWalkMode.enabled = walkMode
         val context = ApplicationProvider.getApplicationContext<Context>()
         context.deleteDatabase("velum.db")
         val root = ModelStoreDir(Files.createTempDirectory("velum-ct-ui-test").toString())
@@ -95,7 +98,7 @@ class ChangeTemplateUiTest {
         runBlocking {
             container.settingsRepository.load()
             container.settingsRepository.setSummaryMode(summaryMode)
-            container.settingsRepository.setApiKey("sk-test-not-real") // configured, but only used when Summary is on API
+            if (withApiKey) container.settingsRepository.setApiKey("sk-test-not-real") // configured, but only used when Summary is on API
             container.repository.upsertTemplate(
                 // Category "aaa" sorts first, so the picker (a 220dp list) shows this row without scrolling.
                 id = "ui103-target", name = "ZQ Change Target", category = "aaa", description = "target",
@@ -161,11 +164,29 @@ class ChangeTemplateUiTest {
             setup = { it.repository.setProcessingError("rec", "The API could not be reached. Check the connection.") },
         ) { container ->
             await(PtBr.ux.failedProcessing)
-            await("The API could not be reached. Check the connection.")
+            assertTrue(!shows(PtBr.ux.processingFailedWithDetail.replace("%s", "The API could not be reached. Check the connection")))
             await(PtBr.ux.retryProcessing)
             assertTrue(shows("Prior heading"), "the previous summary must stay on screen")
             val rec = runBlocking { container.repository.getRecording("rec")!! }
             assertEquals("## Prior heading\n- prior point", rec.summary_markdown)
+        }
+
+    @Test
+    fun an_api_route_with_no_key_fails_on_screen_with_the_reason_and_retry_and_keeps_the_prior_summary() =
+        fixture(ComputeMode.Api, walkMode = false, withApiKey = false) { container ->
+            pickTemplateAndApply()
+
+            await(PtBr.ux.failedProcessing)
+            await(PtBr.ux.retryProcessing)
+            // The failed status renders before a separate effect finishes loading its reason.
+            awaitCond("the reason is shown in the app language") {
+                shows(PtBr.added.processingFailedApiKey)
+            }
+            assertTrue(compose.onAllNodes(hasText("API key required", substring = true)).fetchSemanticsNodes().isEmpty())
+            assertTrue(shows("Prior heading"), "the previous summary must stay on screen")
+            val rec = runBlocking { container.repository.getRecording("rec")!! }
+            assertEquals("## Prior heading\n- prior point", rec.summary_markdown)
+            assertEquals(0, runBlocking { container.repository.getSummaryVersions("rec") }.count { it.template_id == "ui103-target" })
         }
 
     @Test

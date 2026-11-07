@@ -2,6 +2,7 @@ package dev.velum.ble
 
 import dev.velum.ble.gatt.GattChar
 import dev.velum.ble.gatt.GattLink
+import dev.velum.ble.gatt.GattProfile
 import dev.velum.ble.gatt.GattProfiles
 import dev.velum.core.model.ConnectedDevice
 import kotlinx.coroutines.flow.Flow
@@ -21,7 +22,27 @@ interface BleTransport : GattLink {
     suspend fun startScan()
     suspend fun stopScan()
     suspend fun connect(deviceId: String)
+
+    /**
+     * Connect for [profile]'s family. A transport serves only the profiles it has a working driver path for; today
+     * that is [GattProfiles.Plaud] on every transport (the Kable transport is Plaud-only: it hardcodes the Plaud
+     * services and rejects other adverts). Any other profile is refused before a connection is attempted. This method
+     * does not decide what a scan lists: that is gated separately (today by the Kable transport accepting Plaud
+     * adverts only).
+     */
+    suspend fun connect(deviceId: String, profile: GattProfile) {
+        require(profile == GattProfiles.Plaud) { "No driver path for profile '${profile.id}' on this transport" }
+        connect(deviceId)
+    }
     suspend fun disconnect()
+
+    /**
+     * Identifies the current link to the device: changes when a link is established or lost, never on scan state or
+     * other bookkeeping. A client keeps the value it unlocked on and refuses to write once it differs, because its
+     * session secret and counter belong to that link. Abstract on purpose: a transport that does not track links would
+     * silently disable the check, so every implementation must say what its link is (see [requireSameLink]).
+     */
+    val linkGeneration: Long
 
     /** Notifications from the Plaud notify characteristic (2BB0). */
     fun notifications(): Flow<ByteArray>

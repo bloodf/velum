@@ -160,6 +160,17 @@ class ResumableSessionDownloadTest {
         assertContentEquals(received, store.bytes, "the file is kept as received")
     }
 
+    @Test fun a_scan_tap_during_the_transfer_does_not_cost_the_crc_report() = runTest {
+        val file = Random(6).nextBytes(20_000)
+        val rig = rig(file, TransferFaults(corruptAt = setOf(8_000)))
+        // Scan state changes around every write; the link itself never does.
+        rig.ble.beforeWrite = { rig.ble.startScan(); rig.ble.stopScan(); rig.ble.startScan() }
+        val store = MemoryStore()
+        val result = downloader(rig, CrcPolicy.ReportOnly).download(SESSION, file.size.toLong(), store)
+        assertIs<CrcStatus.Mismatch>(result.crc)
+        assertEquals(1, result.attempts)
+    }
+
     @Test fun device_without_crc_is_not_provided_not_verified() = runTest {
         val file = Random(8).nextBytes(5_000)
         val rig = rig(file, stopCrc = StopCrc.NotProvided)

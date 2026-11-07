@@ -6,9 +6,11 @@ import dev.velum.core.autoflow.AutoFlowMatcher
 import dev.velum.core.autoflow.AutoFlowPostAction
 import dev.velum.core.autoflow.AutoFlowResolve
 import dev.velum.core.calendar.CalendarEventProvider
+import dev.velum.core.time.VelumDateTime
 import dev.velum.core.calendar.CalendarLookupResult
 import dev.velum.core.calendar.createCalendarEventProvider
 import dev.velum.core.data.VelumRepository
+import dev.velum.core.data.WipeGate
 import dev.velum.core.db.Autoflow
 import dev.velum.core.db.Recording
 import dev.velum.core.settings.ApiModelOverride
@@ -49,6 +51,8 @@ class AutoFlowRunner internal constructor(
     private val calendar: CalendarEventProvider = createCalendarEventProvider(),
     private val nowEpochMs: () -> Long = { epochMsNow() },
     private val jobScheduler: RecordingJobScheduler? = null,
+    private val diagnostics: (String) -> Unit = {},
+    private val wipeGate: WipeGate = WipeGate(),
 ) {
     constructor(
         repository: VelumRepository,
@@ -58,10 +62,12 @@ class AutoFlowRunner internal constructor(
         calendar: CalendarEventProvider = createCalendarEventProvider(),
         nowEpochMs: () -> Long = { epochMsNow() },
         jobScheduler: RecordingJobScheduler? = null,
+        diagnostics: (String) -> Unit = {},
+        wipeGate: WipeGate = WipeGate(),
     ) : this(
         RepositoryAutoFlowRecordingStore(repository),
         { id, template, override -> processor.process(id, template, true, override) },
-        scope, notifyEnabled, calendar, nowEpochMs, jobScheduler,
+        scope, notifyEnabled, calendar, nowEpochMs, jobScheduler, diagnostics, wipeGate,
     )
 
     private val job = MutableStateFlow<Job?>(null)
@@ -80,6 +86,9 @@ class AutoFlowRunner internal constructor(
     /** Test observation hook: number of completed passes, including seed/error/cancel. */
     internal val passIndex = _passIndex.asStateFlow()
     internal val isRunning: Boolean get() = job.value?.isActive == true
+
+    /** Recordings this runner already requeued once for the flow's template (bounds the requeue to one per id). */
+    private val requeuedIds = mutableSetOf<String>()
 
     fun start() {
         while (true) {
@@ -106,7 +115,8 @@ class AutoFlowRunner internal constructor(
                     .distinctUntilChanged()
                     .collect { (recordings, flows) ->
                         try {
-                            runPass(recordings, flows)
+                            // A wipe refuses or stops the pass: it holds a stale list of what the wipe is deleting.
+                            wipeGate.guard { runPass(recordings, flows) }
                         } finally {
                             _passIndex.update { it + 1 }
                         }
@@ -133,8 +143,8 @@ class AutoFlowRunner internal constructor(
             if (recording.id in processedIds) continue
             var processingCompleted = isStableNonMatch(recording)
             try {
-                maybeApplyCalendarTitle(recording)
-                val match = enabledFlows.firstOrNull { matches(it, recording) }
+                val titledRecording = maybeApplyCalendarTitle(recording)
+                val match = enabledFlows.firstOrNull { matches(it, titledRecording) }
                 if (match == null || isStableNonMatch(recording)) {
                     if (isStableNonMatch(recording)) processedIds.add(recording.id)
                     continue
@@ -188,19 +198,54 @@ class AutoFlowRunner internal constructor(
     ): Boolean {
         val scheduler = jobScheduler
         if (scheduler != null) {
-            // Always move off terminal status before enqueue so awaitReadyStatus
-            // cannot treat a pre-existing `ready` as "this job finished" (that
-            // fired post-actions before WorkManager started). Marking queued also
-            // seeds sawInFlight for synchronous test schedulers that finish before
-            // the first poll.
-            repository.updateStatus(recordingId, "queued")
-            scheduler.enqueue(
-                recordingId = recordingId,
-                templateId = templateId,
-                retranscribe = true,
-                apiModelOverride = apiModelOverride,
-            )
-            return awaitReadyStatus(recordingId, alreadyInFlight = true)
+            // Move off the current status before enqueue so awaitReadyStatus cannot treat a pre-existing `ready` as
+            // "this job finished" (that fired post-actions before WorkManager started); "queued" also seeds
+            // sawInFlight for synchronous test schedulers that finish before the first poll. The write is
+            // conditional: a job that just finished leaves the row ready/failed, and a late "queued" plus a kept
+            // enqueue would strand it on queued.
+            // The effective id is resolved once, before any write, so a failing lookup cannot leave the row on queued.
+            val wanted = effectiveFlowTemplateId(templateId)
+            val priorStatus = repository.getRecording(recordingId)?.status
+            // A non-blank template is passed resolved, so the scheduler compares it with a running job's the way the
+            // processor will use it (tpl-meeting vs velum.meeting); blank stays null so null-only KEEP survives.
+            var enqueueTemplate = templateId?.takeIf { it.isNotBlank() }?.let { wanted }
+            if (!repository.markQueuedIfActive(recordingId)) {
+                // Terminal: the job that was running finished before we acted. The check runs here, after the
+                // conditional write failed, so no job can finish between a read and the mark.
+                val row = repository.getRecording(recordingId)
+                if (row?.status == "ready" && repository.activeSummaryTemplateId(recordingId) != wanted) {
+                    // Finished, but by other work (another template): this flow's work still has to run. Enqueue with
+                    // the effective template id so the scheduler sees real parameters and replaces the finished
+                    // worker instead of keeping it.
+                    // Conditional on still being ready: another run may have taken the row meanwhile.
+                    if (!repository.requeueIfReady(recordingId)) return false
+                    requeuedIds += recordingId
+                    enqueueTemplate = wanted
+                } else {
+                    return row?.status == "ready"
+                }
+            }
+            val result = try {
+                scheduler.enqueueSaved(
+                    recordingId = recordingId,
+                    templateId = enqueueTemplate,
+                    retranscribe = true,
+                    apiModelOverride = apiModelOverride,
+                )
+            } catch (_: EnqueueOutcomeUnknown) {
+                // Submission was accepted; observe its outcome without guessing whether KEEP inserted a request.
+                return awaitReadyStatus(scheduler, recordingId, wanted, apiModelOverride, alreadyInFlight = true)
+            }
+            // The running job was kept: give the row back the status it had (generating, paused_thermal, ...), not a
+            // hardcoded one, since the kept job may not have started yet.
+            if (result == EnqueueResult.REJECTED) {
+                repository.restoreStatusIfQueued(recordingId, "failed")
+                return false
+            }
+            if (result == EnqueueResult.KEPT && priorStatus != null && priorStatus != "queued" && priorStatus != "ready" && priorStatus != "failed") {
+                repository.restoreStatusIfQueued(recordingId, priorStatus)
+            }
+            return awaitReadyStatus(scheduler, recordingId, wanted, apiModelOverride, alreadyInFlight = true)
         }
         var succeeded = false
         processRecording(recordingId, templateId, apiModelOverride).collect { progress ->
@@ -209,8 +254,22 @@ class AutoFlowRunner internal constructor(
         return succeeded || repository.getRecording(recordingId)?.status == "ready"
     }
 
+    /**
+     * The id the processor would store for this flow's template: an edited row with that exact id wins over alias
+     * resolution (so an edited tpl-meeting is not the built-in velum.meeting). The flow's model override is not
+     * compared: only the template identifies whose summary is on the note (a recorded decision, #324).
+     */
+    private suspend fun effectiveFlowTemplateId(flowTemplateId: String?): String =
+        effectiveTemplateId(
+            exactRowId = flowTemplateId?.takeIf { it.isNotBlank() }?.let { repository.exactTemplateId(it) },
+            requestedTemplateId = flowTemplateId,
+        )
+
     private suspend fun awaitReadyStatus(
+        scheduler: RecordingJobScheduler,
         recordingId: String,
+        wantedTemplateId: String,
+        apiModelOverride: ApiModelOverride?,
         alreadyInFlight: Boolean = false,
     ): Boolean {
         var sawInFlight = alreadyInFlight
@@ -221,8 +280,34 @@ class AutoFlowRunner internal constructor(
                 when (status) {
                     "generating", "paused_thermal", "queued" -> sawInFlight = true
                     "ready" -> {
-                        // Only accept ready after in-flight (forced queued counts).
-                        if (sawInFlight) return@withTimeoutOrNull "ready"
+                        // Only accept ready after in-flight (forced queued counts), and only when the active summary is
+                        // this flow's template: a replaced run stopped by the OS can leave `ready` on another
+                        // template's summary, which must not fire this flow's post-action.
+                        if (sawInFlight) {
+                            if (repository.activeSummaryTemplateId(recordingId) == wantedTemplateId) {
+                                return@withTimeoutOrNull "ready"
+                            }
+                            if (requeuedIds.add(recordingId)) {
+                                // Do not wait for a summary that will not come: queue this flow's work once. An enqueue
+                                // with the same parameters is kept over a pending rerun; otherwise it replaces the
+                                // finished worker.
+                                if (repository.requeueIfReady(recordingId)) {
+                                    try {
+                                        if (scheduler.enqueueSaved(recordingId, wantedTemplateId, true, apiModelOverride) == EnqueueResult.REJECTED) {
+                                            repository.restoreStatusIfQueued(recordingId, "failed")
+                                            return@withTimeoutOrNull null
+                                        }
+                                    } catch (_: EnqueueOutcomeUnknown) {
+                                        // Accepted submission: keep observing rather than overwrite an active worker's status.
+                                    }
+                                }
+                            } else {
+                                // Bounded: one requeue per recording. A second mismatch is claimed without a
+                                // post-action rather than looping. Class and count only, never content.
+                                diagnostics("AutoFlow: ready on another template's summary after a requeue; claimed without a post-action (requeues=1)")
+                                return@withTimeoutOrNull "claimed"
+                            }
+                        }
                     }
                     "failed" -> if (sawInFlight) return@withTimeoutOrNull "failed"
                 }
@@ -233,13 +318,23 @@ class AutoFlowRunner internal constructor(
         return terminal == "ready"
     }
 
-    private suspend fun maybeApplyCalendarTitle(recording: Recording) {
-        when (val result = calendar.currentOrNextEvent(nowEpochMs())) {
+    /**
+     * True while the title is still the one the app generated (`formatFriendlyTitle` of the start time, in either
+     * language), so a title the user edited is never overwritten.
+     */
+    private fun hasAutomaticTitle(recording: Recording): Boolean =
+        listOf("pt-BR", "en").any { VelumDateTime.formatFriendlyTitle(recording.started_at, it) == recording.title }
+
+    // Looked up at the recording's own start: downloads keep the device start time, so "now" could be days later.
+    private suspend fun maybeApplyCalendarTitle(recording: Recording): Recording {
+        when (val result = calendar.currentOrNextEvent(recording.started_at * 1000)) {
             is CalendarLookupResult.Ok -> {
                 calendarPermissionAsked.value = false
-                val title = result.currentOrNext?.title?.trim().orEmpty()
-                if (title.isNotEmpty() && recording.title.startsWith("Recording ")) {
+                val event = result.currentOrNext?.takeIf { it.isOnAt(recording.started_at * 1000) }
+                val title = event?.title?.trim().orEmpty()
+                if (title.isNotEmpty() && hasAutomaticTitle(recording)) {
                     repository.updateRecordingTitle(recording.id, title)
+                    return recording.copy(title = title)
                 }
             }
             CalendarLookupResult.PermissionDenied -> {
@@ -256,6 +351,7 @@ class AutoFlowRunner internal constructor(
             }
             is CalendarLookupResult.Unavailable -> Unit
         }
+        return recording
     }
 
     private suspend fun firePostAction(flow: Autoflow, recordingId: String) {
@@ -264,8 +360,7 @@ class AutoFlowRunner internal constructor(
         when (AutoFlowPostAction.fromStored(flow.post_action)) {
             AutoFlowPostAction.None -> Unit
             AutoFlowPostAction.ShareMarkdown -> {
-                val body = shareMarkdownBody(recording.title, recording.summary_markdown, recording.transcript)
-                _actions.emit(AutoFlowUiAction.ShareMarkdown(recording.title, body))
+                _actions.emit(AutoFlowUiAction.ShareMarkdown(recording.id))
             }
             AutoFlowPostAction.CalendarInsert -> {
                 when (calendar.currentOrNextEvent(nowEpochMs())) {
@@ -279,10 +374,7 @@ class AutoFlowRunner internal constructor(
                     }
                     else -> {
                         _actions.emit(
-                            AutoFlowUiAction.InsertCalendarEvent(
-                                title = recording.title,
-                                description = recording.summary_markdown.orEmpty(),
-                            ),
+                            AutoFlowUiAction.InsertCalendarEvent(recording.id),
                         )
                     }
                 }
@@ -329,6 +421,16 @@ internal interface AutoFlowRecordingStore {
     fun observeAutoflows(): Flow<List<Autoflow>>
     suspend fun getRecording(id: String): Recording?
     suspend fun updateStatus(id: String, status: String)
+    /** Marks the row queued unless it is already ready/failed; false when it was terminal. */
+    suspend fun markQueuedIfActive(id: String): Boolean
+    /** ready -> queued, only while the row is still ready; false when something else took the row. */
+    suspend fun requeueIfReady(id: String): Boolean
+    /** queued -> [status], only while the row is still queued. */
+    suspend fun restoreStatusIfQueued(id: String, status: String): Boolean
+    /** Id of the template row stored under exactly [templateId] (an edited builtin keeps its id), or null. */
+    suspend fun exactTemplateId(templateId: String): String?
+    /** Template id of the recording's active summary version, or null. */
+    suspend fun activeSummaryTemplateId(id: String): String?
     suspend fun updateRecordingTitle(id: String, title: String)
 }
 
@@ -337,13 +439,19 @@ internal class RepositoryAutoFlowRecordingStore(private val repository: VelumRep
     override fun observeAutoflows() = repository.observeAutoflows()
     override suspend fun getRecording(id: String) = repository.getRecording(id)
     override suspend fun updateStatus(id: String, status: String) { repository.updateStatus(id, status) }
+    override suspend fun markQueuedIfActive(id: String) = repository.updateStatusIfActive(id, "queued")
+    override suspend fun requeueIfReady(id: String) = repository.updateStatusIfEquals(id, "ready", "queued")
+    override suspend fun restoreStatusIfQueued(id: String, status: String) = repository.updateStatusIfEquals(id, "queued", status)
+    override suspend fun activeSummaryTemplateId(id: String) = repository.activeSummaryTemplateId(id)
+    override suspend fun exactTemplateId(templateId: String) = repository.getTemplate(templateId)?.id
     override suspend fun updateRecordingTitle(id: String, title: String) { repository.updateRecordingTitle(id, title) }
 }
 
 sealed class AutoFlowUiAction {
     data object ProcessingFailed : AutoFlowUiAction()
-    data class ShareMarkdown(val title: String, val body: String) : AutoFlowUiAction()
-    data class InsertCalendarEvent(val title: String, val description: String) : AutoFlowUiAction()
+    /** Carry the id, not the text: an action can wait behind a snackbar while the recording is deleted or wiped. */
+    data class ShareMarkdown(val recordingId: String) : AutoFlowUiAction()
+    data class InsertCalendarEvent(val recordingId: String) : AutoFlowUiAction()
     data class ExportMarkdownToFolder(val recordingId: String) : AutoFlowUiAction()
     data class PostWebhook(val recordingId: String) : AutoFlowUiAction()
     data class BlockedOnPermission(val permission: String, val message: String) : AutoFlowUiAction()
@@ -355,7 +463,7 @@ expect fun epochMsNow(): Long
  * Body of the "share as Markdown" post action. Live-capture markers (the user's notes) stay in the body
  * under their own heading; the "Transcript" heading appears only when there is spoken text.
  */
-internal fun shareMarkdownBody(title: String, summary: String?, transcript: String?): String = buildString {
+fun shareMarkdownBody(title: String, summary: String?, transcript: String?): String = buildString {
     append("# ").append(title).append("\n\n")
     if (!summary.isNullOrBlank()) append(summary).append("\n\n")
     if (transcript.isNullOrBlank()) return@buildString

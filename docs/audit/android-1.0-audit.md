@@ -113,7 +113,7 @@ Status legend: `Open` · `Fixed` · `Deferred (owner/hardware)` · `Accepted ris
 
 ## Correctly verified
 
-- Forbidden opcodes **5 / 104 / 128 / 0xFE20 / 143** and settings **4 / 26** gated + tested
+- Forbidden opcodes **5 / 30 / 104 / 128 / 0xFE20 / 143** and settings **4 / 26** gated + tested
 - Android Keystore AES-GCM secure store; `allowBackup=false`; cleartext off
 - Only `MainActivity` exported; 16 KB CI packaging checks present
 - No telemetry / Velum login chrome in Settings hub

@@ -5,7 +5,7 @@ package dev.velum.protocol
  *
  * Android's `ChaCha20/Poly1305/NoPadding` cipher is documented from API 28 only, and minSdk is 26, so the BLE
  * session cipher falls back to this when the platform has no such cipher (#226). Messages here are small BLE/Wi-Fi
- * frames, so the whole MAC input is built in one array.
+ * frames and passphrase-sealed bundles share this implementation.
  */
 object ChaCha20Poly1305 {
     const val TAG_BYTES = 16
@@ -22,30 +22,31 @@ object ChaCha20Poly1305 {
         return ciphertext + tag(key, nonce, aad, ciphertext)
     }
 
-    /** Returns the plaintext, or null when [ciphertextAndTag] is too short or the tag does not verify. */
-    fun open(key: ByteArray, nonce: ByteArray, aad: ByteArray, ciphertextAndTag: ByteArray): ByteArray? {
-        if (ciphertextAndTag.size < TAG_BYTES) return null
-        val ciphertext = ciphertextAndTag.copyOfRange(0, ciphertextAndTag.size - TAG_BYTES)
-        val expected = tag(key, nonce, aad, ciphertext)
+    /** Returns the plaintext, or null when the input is too short or the tag does not verify. */
+    fun open(key: ByteArray, nonce: ByteArray, aad: ByteArray, ciphertextAndTag: ByteArray): ByteArray? =
+        open(key, nonce, aad, ciphertextAndTag, 0, ciphertextAndTag.size)
+
+    fun open(key: ByteArray, nonce: ByteArray, aad: ByteArray, ciphertextAndTag: ByteArray, offset: Int, length: Int): ByteArray? {
+        require(offset >= 0 && length >= 0 && length <= ciphertextAndTag.size && offset <= ciphertextAndTag.size - length) {
+            "Range out of bounds"
+        }
+        if (length < TAG_BYTES) return null
+        val ciphertextLength = length - TAG_BYTES
+        val expected = tag(key, nonce, aad, ciphertextAndTag, offset, ciphertextLength)
         var diff = 0
         for (i in 0 until TAG_BYTES) {
-            diff = diff or (expected[i].toInt() xor ciphertextAndTag[ciphertext.size + i].toInt())
+            diff = diff or (expected[i].toInt() xor ciphertextAndTag[offset + ciphertextLength + i].toInt())
         }
         if (diff != 0) return null
-        return ChaCha20.xor(key, nonce, 1, ciphertext)
+        return ChaCha20.xor(key, nonce, 1, ciphertextAndTag, offset, ciphertextLength)
     }
 
-    private fun tag(key: ByteArray, nonce: ByteArray, aad: ByteArray, ciphertext: ByteArray): ByteArray {
+    private fun tag(key: ByteArray, nonce: ByteArray, aad: ByteArray, ciphertext: ByteArray, offset: Int = 0, length: Int = ciphertext.size): ByteArray {
         val polyKey = ChaCha20.xor(key, nonce, 0, ByteArray(32))
-        val aadPad = (16 - aad.size % 16) % 16
-        val ctPad = (16 - ciphertext.size % 16) % 16
-        val message = ByteArray(aad.size + aadPad + ciphertext.size + ctPad + 16)
-        aad.copyInto(message, 0)
-        ciphertext.copyInto(message, aad.size + aadPad)
-        val lengths = aad.size + aadPad + ciphertext.size + ctPad
-        writeLongLe(message, lengths, aad.size.toLong())
-        writeLongLe(message, lengths + 8, ciphertext.size.toLong())
-        return poly1305(polyKey, message)
+        val lengths = ByteArray(16)
+        writeLongLe(lengths, 0, aad.size.toLong())
+        writeLongLe(lengths, 8, length.toLong())
+        return poly1305Blocks(polyKey, aad, ciphertext, offset, length, lengths)
     }
 
     private fun writeLongLe(out: ByteArray, at: Int, value: Long) {
@@ -65,6 +66,10 @@ object ChaCha20Poly1305 {
     internal fun poly1305(key: ByteArray, message: ByteArray): ByteArray {
         require(key.size == 32) { "Poly1305 key must be 32 bytes" }
         require(message.size % 16 == 0) { "Poly1305 message must be a multiple of 16 bytes" }
+        return poly1305Blocks(key, message, ByteArray(0), 0, 0, null)
+    }
+
+    private fun poly1305Blocks(key: ByteArray, first: ByteArray, second: ByteArray, secondOffset: Int, secondLength: Int, lengths: ByteArray?): ByteArray {
         val m26 = 0x3ffffffL
         val t0 = readIntLe(key, 0)
         val t1 = readIntLe(key, 4)
@@ -85,12 +90,29 @@ object ChaCha20Poly1305 {
         var h3 = 0L
         var h4 = 0L
 
+        val padded = ByteArray(16)
+        var stage = 0
         var at = 0
-        while (at < message.size) {
-            val b0 = readIntLe(message, at)
-            val b1 = readIntLe(message, at + 4)
-            val b2 = readIntLe(message, at + 8)
-            val b3 = readIntLe(message, at + 12)
+        while (stage < 3) {
+            val source = when (stage) { 0 -> first; 1 -> second; else -> lengths ?: break }
+            val start = if (stage == 1) secondOffset else 0
+            val size = if (stage == 1) secondLength else source.size
+            if (at >= size) {
+                stage++
+                at = 0
+                continue
+            }
+            val remaining = size - at
+            val block = if (remaining >= 16) source else {
+                padded.fill(0)
+                source.copyInto(padded, 0, start + at, start + size)
+                padded
+            }
+            val blockOffset = if (remaining >= 16) start + at else 0
+            val b0 = readIntLe(block, blockOffset)
+            val b1 = readIntLe(block, blockOffset + 4)
+            val b2 = readIntLe(block, blockOffset + 8)
+            val b3 = readIntLe(block, blockOffset + 12)
             h0 += b0 and m26
             h1 += ((b0 ushr 26) or (b1 shl 6)) and m26
             h2 += ((b1 ushr 20) or (b2 shl 12)) and m26
@@ -121,7 +143,7 @@ object ChaCha20Poly1305 {
             c = h0 ushr 26
             h0 = h0 and m26
             h1 += c
-            at += 16
+            at += minOf(16, remaining)
         }
 
         var c = h1 ushr 26

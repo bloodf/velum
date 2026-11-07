@@ -11,6 +11,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
@@ -171,7 +172,8 @@ class VoiceProfileStoreKeyTest {
         profile.writeBytes(byteArrayOf(1, 2, 3))
         cache.writeBytes(byteArrayOf(1, 2, 3))
         assertFailsWith<IllegalStateException> { store.withReady { listProfiles() } }
-        assertFailsWith<IllegalArgumentException> { store.withReady { cachedClusterEmbedding("recording", "speaker") } }
+        // A cache file that does not authenticate is a miss, not an error: it is only a convenience.
+        assertNull(store.withReady { cachedClusterEmbedding("recording", "speaker") })
         assertContentEquals(byteArrayOf(1, 2, 3), profile.readBytes())
         root.deleteRecursively()
     }

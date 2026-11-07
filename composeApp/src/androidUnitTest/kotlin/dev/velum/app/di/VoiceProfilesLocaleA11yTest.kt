@@ -11,6 +11,8 @@ import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsNodeInteraction
+import androidx.compose.ui.test.assertAll
+import androidx.compose.ui.test.isNotEnabled
 import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
@@ -92,6 +94,7 @@ class VoiceProfilesLocaleA11yTest {
         "VoiceProfilesFileUnavailable" to "needs a profile file that cannot be read (I/O error)",
         "VoiceProfilesFilesChanged" to "needs files repaired while the removal dialog is open",
         "VoiceProfilesImportedFormat" to "needs importing 2+ profiles; plural text is covered in VoiceProfilesLocalizationTest",
+        "VoiceProfilesNoCachedVoice" to "shown by the recording's speaker sheet, not by this screen",
         "VoiceProfilesChangeBlocked" to "needs saving a profile that turned unreadable",
     )
 
@@ -226,6 +229,15 @@ class VoiceProfilesLocaleA11yTest {
         runBlocking { VoiceProfileStore(root, memory).withReady { upsert("Synthetic Healthy", floatArrayOf(1f, 0f), id = "healthy") } }
     }
 
+    /** Secure store whose reads can be made to fail like an unavailable keystore. */
+    private class FlakyReads(private val inner: SecureStore) : SecureStore by inner {
+        @Volatile var failReads = false
+        override suspend fun getString(key: String): String? {
+            if (failReads) throw SecureStoreUnavailableException(RuntimeException("synthetic"))
+            return inner.getString(key)
+        }
+    }
+
     private fun runAll(s: Strings, other: Strings, scale: Float) {
         val seen = mutableSetOf<String>()
         val tag = "${s.localeTag}@$scale"
@@ -357,6 +369,35 @@ class VoiceProfilesLocaleA11yTest {
             source.deleteRecursively()
         }
 
+        // Lost key, then a different failure, then a wipe whose reload fails.
+        newRoot().let { root ->
+            val memory = InMemorySecureStore()
+            withProfile(root, memory)
+            runBlocking { memory.putString(VoiceProfileStore.PROFILE_KEY_SECURE, Base64.encode(ByteArray(32) { 37 })) }
+            val flaky = FlakyReads(memory)
+            screen(s, scale, flaky, root) {
+                awaitLabel(s.ux.voiceProfilesKeyUnavailable)
+                // A different failure after the lost key hides the recovery button: wiping fixes only a lost key.
+                flaky.failReads = true
+                tap(s.ux.retryProcessing)
+                awaitLabel(s.ux.secureStorageUnavailable)
+                compose.onAllNodesWithContentDescription(s.ux.voiceProfilesWipe).assertAll(isNotEnabled())
+                // Back to the lost key, wipe, and let the reload after the wipe fail.
+                flaky.failReads = false
+                tap(s.ux.retryProcessing)
+                awaitLabel(s.ux.voiceProfilesKeyUnavailable)
+                tap(s.ux.voiceProfilesWipe)
+                awaitLabel(s.ux.confirmWipeProfilesBody)
+                flaky.failReads = true
+                tap(s.confirm)
+                awaitLabel(s.ux.voiceProfilesWiped)
+                val texts = nodes().map { it.first }
+                assertTrue(texts.none { it.contains(s.ux.secureStorageUnavailable) || it.contains(s.ux.voiceProfilesKeyUnavailable) }, "$tag: a stale 'data kept' message after the wipe: $texts")
+                compose.onNodeWithContentDescription(s.ux.retryProcessing).performScrollTo().assertExists()
+            }
+            root.deleteRecursively()
+        }
+
         // Wrong key, then storage unavailable.
         newRoot().let { root ->
             val memory = InMemorySecureStore()
@@ -366,6 +407,12 @@ class VoiceProfilesLocaleA11yTest {
                 awaitLabel(s.ux.voiceProfilesKeyUnavailable)
                 compose.onNodeWithContentDescription(s.ux.retryProcessing).performScrollTo().assertExists()
                 assertState("$tag wrong key", s, other, seen)
+                // The recovery path: wiping needs no key and asks first.
+                tap(s.ux.voiceProfilesWipe)
+                awaitLabel(s.ux.confirmWipeProfilesBody)
+                tap(s.confirm)
+                awaitLabel(s.ux.voiceProfilesWiped)
+                assertState("$tag wiped after a lost key", s, other, seen)
             }
             val unavailable = object : SecureStore by memory {
                 override suspend fun getString(key: String): String? {
@@ -375,6 +422,8 @@ class VoiceProfilesLocaleA11yTest {
             }
             screen(s, scale, unavailable, root) {
                 awaitLabel(s.ux.secureStorageUnavailable)
+                // A transient failure keeps the data: wiping is not offered (the always-present wipe button is disabled).
+                compose.onAllNodesWithContentDescription(s.ux.voiceProfilesWipe).assertAll(isNotEnabled())
                 compose.onNodeWithContentDescription(s.ux.retryProcessing).performScrollTo().assertExists()
                 assertState("$tag storage unavailable", s, other, seen)
             }

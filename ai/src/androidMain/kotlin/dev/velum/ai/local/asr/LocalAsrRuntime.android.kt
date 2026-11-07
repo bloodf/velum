@@ -25,6 +25,7 @@ import dev.velum.ai.engine.DiarizationResult
 import dev.velum.ai.engine.LlmRequest
 import dev.velum.ai.engine.LlmResult
 import dev.velum.ai.engine.SpeakerSpan
+import dev.velum.ai.pipeline.TranscriptFormatter
 import dev.velum.ai.engine.TranscriptSegment
 import dev.velum.ai.engine.TranscriptionResult
 import dev.velum.ai.local.LocalAsrRouter
@@ -153,7 +154,7 @@ actual class LocalAsrRuntime actual constructor() {
             val segments = diarizer.process(samples)
             val spans = segments.map { seg ->
                 SpeakerSpan(
-                    speakerId = "S${seg.speaker}",
+                    speakerId = TranscriptFormatter.speakerIdForCluster(seg.speaker),
                     startMs = (seg.start * 1000f).toLong().coerceAtLeast(0L),
                     endMs = (seg.end * 1000f).toLong().coerceAtLeast(0L),
                 )
@@ -164,25 +165,10 @@ actual class LocalAsrRuntime actual constructor() {
                 spans = spans,
                 embeddingModelPath = embModel.absolutePath,
             )
-            val named = mutableMapOf<String, String>()
-            if (voiceProfiles != null) {
-                voiceProfiles.withReady {
-                    for ((speakerId, embedding) in embeddingsBySpeaker) {
-                        if (recordingId != null) {
-                            voiceProfiles.cacheClusterEmbedding(recordingId, speakerId, embedding)
-                        }
-                        val match = voiceProfiles.match(embedding, threshold = matchThreshold)
-                        if (match != null) {
-                            named[speakerId] = match.profile.displayName
-                        }
-                    }
-                }
-            }
-            return DiarizationResult(
-                spans = spans,
-                namedSpeakers = named,
-                engineId = "local-diarizer",
-                modelId = modelId,
+            // Naming only: the embeddings go back to the caller, which caches them with the speaker rows (#399).
+            val naming = voiceProfiles?.nameSpeakers(embeddingsBySpeaker, matchThreshold)
+            return VoiceProfileStore.SpeakerNaming.resultFor(
+                spans, naming, engineId = "local-diarizer", modelId = modelId, embeddings = embeddingsBySpeaker,
             )
         } finally {
             diarizer.release()

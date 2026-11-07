@@ -3,10 +3,12 @@ package dev.velum.ble.fake
 import dev.velum.ble.BleConnectionState
 import dev.velum.ble.BleTransport
 import dev.velum.ble.gatt.GattWrite
+import dev.velum.ble.gatt.requireSameLink
 import dev.velum.core.model.ConnectedDevice
 import dev.velum.protocol.Bytes
 import dev.velum.protocol.DeviceModel
 import dev.velum.protocol.PlaudUuids
+import kotlin.concurrent.Volatile
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -57,20 +59,30 @@ class FakeBleTransport(
         }
     }
 
+    // The link, kept apart from the published state: scanning changes the state but not the link (as on Kable).
+    @Volatile private var linked = false
+    @Volatile private var generation = 0L
+    override val linkGeneration: Long get() = generation
+
     override suspend fun connect(deviceId: String) {
         peripheral.resetUnlock()
         _state.value = BleConnectionState.Connecting(deviceId)
+        generation++
+        linked = true
         _state.value = BleConnectionState.Connected(device)
     }
 
     override suspend fun disconnect() {
         peripheral.resetUnlock()
+        linked = false
+        generation++
         _state.value = BleConnectionState.Idle
     }
 
     override suspend fun writeRaw(write: GattWrite) {
         beforeWrite()
-        check(_state.value is BleConnectionState.Connected) { "Not connected" }
+        check(linked) { "Not connected" }
+        requireSameLink(write.linkGeneration, generation)
         peripheral.onWrite(write.bytes)
     }
 

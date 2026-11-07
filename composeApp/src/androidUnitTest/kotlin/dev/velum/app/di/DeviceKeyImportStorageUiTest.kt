@@ -172,6 +172,7 @@ class DeviceKeyImportStorageUiTest {
         }
         override suspend fun getString(key: String) = values[key]
         override suspend fun contains(key: String) = key in values
+        override suspend fun removeWithPrefix(prefix: String) { values.keys.removeAll { it.startsWith(prefix) } }
         override suspend fun remove(key: String) { if (key.startsWith("device.")) fault?.let { throw it }; values.remove(key) }
     }
 }

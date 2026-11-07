@@ -99,6 +99,20 @@ class SettingsStorageFailureTest {
         assertFalse(repo.settings.value.hasApiKey)
     }
 
+    @Test
+    fun api_key_clear_removes_keys_of_profiles_that_were_never_loaded() = runTest {
+        val store = FixtureStore()
+        store.values[SecureKeys.AI_API_KEY] = "synthetic-legacy"
+        store.values[SecureKeys.apiKey("never-listed")] = "synthetic-unlisted"
+        store.values[SecureKeys.VOICE_PROFILE_AES_KEY] = "synthetic-voice"
+        // Reads fail like a locked keystore, so settings never load and no profile list exists.
+        store.failKey = "ai.endpoint_profiles_json"
+        val repo = SettingsRepository(store)
+        assertFailsWith<SecureStoreUnavailableException> { repo.load() }
+        repo.clearAllApiKeys()
+        assertEquals(mapOf(SecureKeys.VOICE_PROFILE_AES_KEY to "synthetic-voice"), store.values)
+    }
+
     private class FixtureStore : SecureStore {
         val values = linkedMapOf<String, String>()
         var failKey: String? = null
@@ -115,6 +129,7 @@ class SettingsStorageFailureTest {
         }
         override suspend fun putString(key: String, value: String) { values[key] = value }
         override suspend fun remove(key: String) { values.remove(key) }
+        override suspend fun removeWithPrefix(prefix: String) { values.keys.removeAll { it.startsWith(prefix) } }
         override suspend fun contains(key: String) = values.containsKey(key)
     }
 }

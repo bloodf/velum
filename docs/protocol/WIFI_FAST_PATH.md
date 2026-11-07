@@ -66,6 +66,13 @@ ephemeral loopback port (`ServerSocket(0)`, connect-retry, no fixed ports) with 
   | `AndroidWifiTransferServerTest`, `:8081` (Robolectric) | 4.53, 3.29, 2.69 | 1.35, 1.83, 2.14 |
   | `WifiSoftApMockServerTest` (JVM) | 3.73, 2.81, 2.71 | 2.40, 3.25, 3.32 |
 
+- **Known library limit (#349):** Java-WebSocket's server reads on a selector thread and decodes on a worker
+  thread. If it reads the end of the connection before the worker has decoded the frames that came before it, it closes
+  with code 1006 and drops those frames: `onClosing` never runs and they're never delivered. A device that closes right
+  after sending can lose its last frames this way. The transfer then ends as `wifi_peer_closed` and falls back to BLE,
+  so the file still comes whole, but the speedup is lost. On CI's Linux it happened in 10 to 18 of 872 test runs. The
+  tests' fake device closes only after the server has delivered its frames, so they check Velum's behaviour, not this
+  race. Whether a Note Pro closes that way is unknown (#8).
 - **Not covered (stays in #8):** real SoftAP join, `Network.bindSocket` on a real `Network`, normal-network
   restoration, hardware throughput.
 - **Nonce (#28):** `wifiFrameSealing_isDeterministicPerSecretAndSeq` characterizes sealing as deterministic per
