@@ -108,7 +108,12 @@ class ResumableSessionDownload(
         while (true) {
             coroutineContext.ensureActive()
             if (sizeBytes > 0 && store.length() == sizeBytes) {
-                return ResumableDownloadResult(sizeBytes, store.crcMismatchVerdict() ?: CrcStatus.NotProvided, attempts)
+                val savedMismatch = store.crcMismatchVerdict()
+                if (savedMismatch != null && crcPolicy == CrcPolicy.Enforce) {
+                    restartFromZero(TransferIntegrityException("Persisted CRC mismatch"))
+                } else {
+                    return ResumableDownloadResult(sizeBytes, savedMismatch ?: CrcStatus.NotProvided, attempts)
+                }
             }
             attempts++
             val before = store.length()
