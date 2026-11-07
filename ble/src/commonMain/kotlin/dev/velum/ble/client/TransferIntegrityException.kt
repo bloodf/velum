@@ -6,4 +6,9 @@ package dev.velum.ble.client
  * CRC mismatch there: decryption is positional, so a gapped file is useless. The message carries offsets
  * only, never identity values. Retrying (resuming) is safe.
  */
-class TransferIntegrityException(message: String, cause: Throwable? = null) : Exception(message, cause)
+class TransferIntegrityException(
+    message: String,
+    cause: Throwable? = null,
+    /** A lost chunk or short transfer: worth one more try at the same offset before the partial is discarded. */
+    val transient: Boolean = false,
+) : Exception(message, cause)

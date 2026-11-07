@@ -9,12 +9,23 @@ package dev.velum.protocol
  */
 object ChaCha20 {
     private const val BLOCK_BYTES = 64
+    private const val MAX_COUNTER = 0xFFFF_FFFFL
 
-    /** Encrypts or decrypts [data], starting at block [counter]. */
-    fun xor(key: ByteArray, nonce: ByteArray, counter: Long, data: ByteArray): ByteArray {
+    /**
+     * Encrypts or decrypts [data], starting at block [counter]. The 32-bit counter must not wrap inside [data]:
+     * that would reuse keystream, so it is rejected.
+     *
+     * This has no nonce guard. Never encrypt twice with the same [key] and [nonce], which reuses keystream too.
+     */
+    fun xor(key: ByteArray, nonce: ByteArray, counter: Long, data: ByteArray): ByteArray =
+        xor(key, nonce, counter, data, 0, data.size)
+
+    fun xor(key: ByteArray, nonce: ByteArray, counter: Long, data: ByteArray, offset: Int, length: Int): ByteArray {
+        require(offset >= 0 && length >= 0 && length <= data.size && offset <= data.size - length) { "Range out of bounds" }
         require(key.size == 32) { "ChaCha20 key must be 32 bytes" }
         require(nonce.size == 12) { "ChaCha20 nonce must be 12 bytes" }
-        require(counter in 0..0xFFFF_FFFFL) { "ChaCha20 counter out of range" }
+        val blocks = (length + BLOCK_BYTES - 1L) / BLOCK_BYTES
+        require(counter in 0..MAX_COUNTER && counter + blocks - 1 <= MAX_COUNTER) { "ChaCha20 counter out of range" }
         val state = IntArray(16)
         state[0] = 0x61707865
         state[1] = 0x3320646e
@@ -24,10 +35,10 @@ object ChaCha20 {
         state[12] = counter.toInt()
         for (i in 0 until 3) state[13 + i] = readInt(nonce, i * 4)
 
-        val out = ByteArray(data.size)
+        val out = ByteArray(length)
         val block = IntArray(16)
-        var offset = 0
-        while (offset < data.size) {
+        var at = 0
+        while (at < length) {
             state.copyInto(block)
             repeat(10) {
                 quarterRound(block, 0, 4, 8, 12)
@@ -40,13 +51,13 @@ object ChaCha20 {
                 quarterRound(block, 3, 4, 9, 14)
             }
             for (i in 0 until 16) block[i] += state[i]
-            val length = minOf(BLOCK_BYTES, data.size - offset)
-            for (i in 0 until length) {
+            val blockLength = minOf(BLOCK_BYTES, length - at)
+            for (i in 0 until blockLength) {
                 val keystream = block[i ushr 2] ushr ((i and 3) shl 3)
-                out[offset + i] = (data[offset + i].toInt() xor keystream).toByte()
+                out[at + i] = (data[offset + at + i].toInt() xor keystream).toByte()
             }
             state[12]++
-            offset += length
+            at += blockLength
         }
         return out
     }

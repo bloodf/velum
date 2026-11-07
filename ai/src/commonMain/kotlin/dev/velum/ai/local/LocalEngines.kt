@@ -8,6 +8,7 @@ import dev.velum.ai.engine.LlmRequest
 import dev.velum.ai.engine.LlmResult
 import dev.velum.ai.engine.Transcriber
 import dev.velum.ai.engine.TranscriptionResult
+import dev.velum.ai.engine.resolveLocalLlmModelId
 import dev.velum.ai.local.asr.LocalAsrRuntime
 
 /**
@@ -39,11 +40,7 @@ class LocalTranscriber(
     private fun ensureReady(modelId: String) {
         val state = modelManager.stateFor(modelId)
         if (state?.status != LocalModelStatus.Ready) {
-            throw ModelNotReadyException(
-                modelId,
-                "Local ASR model '$modelId' is not Ready (status=${state?.status}). " +
-                    "Download it in Model manager before using Local transcription.",
-            )
+            throw ModelNotReadyException(modelId)
         }
     }
 }
@@ -59,22 +56,23 @@ class LocalDiarizer(
 ) : Diarizer {
     override val engineId: String = "local-diarizer"
 
+    /** Mirrors the gate in [diarize]: without the models it never runs, so there is nothing to overwrite. */
+    override suspend fun speakerNamingReady(modelId: String): Boolean {
+        val resolved = modelId.ifBlank { "pyannote-segmentation-3.0" }
+        val wouldRun = modelManager.stateFor(resolved)?.status == LocalModelStatus.Ready &&
+            modelManager.modelPath(resolved) != null &&
+            chooseReadyEmbeddingId()?.let { modelManager.modelPath(it) } != null
+        return !wouldRun || voiceProfiles.speakerNamingReady()
+    }
+
     override suspend fun diarize(input: AudioInput, modelId: String): DiarizationResult {
         val resolved = modelId.ifBlank { "pyannote-segmentation-3.0" }
         val state = modelManager.stateFor(resolved)
         if (state?.status != LocalModelStatus.Ready) {
-            throw ModelNotReadyException(
-                resolved,
-                "Local diarization model '$resolved' is not Ready (status=${state?.status}). " +
-                    "Download it in Model manager, or switch Diarization to API.",
-            )
+            throw ModelNotReadyException(resolved)
         }
         val embeddingId = chooseReadyEmbeddingId()
-            ?: throw ModelNotReadyException(
-                "3dspeaker-eres2net-base",
-                "Local speaker embedding model is not Ready. " +
-                    "Download 3D-Speaker (preferred), WeSpeaker, or TitaNet in Model manager.",
-            )
+            ?: throw ModelNotReadyException("3dspeaker-eres2net-base")
         val modelPath = modelManager.modelPath(resolved)
             ?: throw ModelNotReadyException(resolved)
         val embeddingPath = modelManager.modelPath(embeddingId)
@@ -112,14 +110,10 @@ class LocalLlmEngine(
     override val engineId: String = "local-llm"
 
     override suspend fun complete(request: LlmRequest, modelId: String): LlmResult {
-        val resolved = modelId.ifBlank { "gemma-4-e4b" }
+        val resolved = resolveLocalLlmModelId(modelId, modelManager)
         val state = modelManager.stateFor(resolved)
         if (state?.status != LocalModelStatus.Ready) {
-            throw ModelNotReadyException(
-                resolved,
-                "Local LLM '$resolved' is not Ready (status=${state?.status}). " +
-                    "Download it in Model manager, or switch Summaries to API.",
-            )
+            throw ModelNotReadyException(resolved)
         }
         val modelPath = modelManager.modelPath(resolved)
             ?: throw ModelNotReadyException(resolved)

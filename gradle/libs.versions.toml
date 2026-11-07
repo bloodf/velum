@@ -94,6 +94,7 @@ kopus = { module = "eu.buney.kopus:kopus", version.ref = "kopus" }
 commons-compress = { module = "org.apache.commons:commons-compress", version.ref = "commons-compress" }
 litertlm-android = { module = "com.google.ai.edge.litertlm:litertlm-android", version.ref = "litertlm" }
 androidx-work-runtime = { module = "androidx.work:work-runtime-ktx", version.ref = "work" }
+androidx-work-testing = { module = "androidx.work:work-testing", version.ref = "work" }
 androidx-graphics-path = { module = "androidx.graphics:graphics-path", version.ref = "androidx-graphics-path" }
 java-websocket = { module = "org.java-websocket:Java-WebSocket", version.ref = "java-websocket" }
 

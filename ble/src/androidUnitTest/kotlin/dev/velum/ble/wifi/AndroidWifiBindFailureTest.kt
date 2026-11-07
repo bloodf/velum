@@ -7,6 +7,7 @@ import android.net.wifi.WifiNetworkSpecifier
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.io.IOException
+import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
 import java.net.URI
@@ -76,7 +77,7 @@ class AndroidWifiBindFailureTest {
 
     @Test
     fun bindFailureIsReported_andTheDeviceIsStillServed() = runTest {
-        val port = ServerSocket(0).use { it.localPort }
+        val port = ServerSocket(0, 1, InetAddress.getByName("127.0.0.1")).use { it.localPort }
         val failures = CopyOnWriteArrayList<Throwable>()
         val server = AndroidWifiTransferServer(softApNetwork = { ShadowNetwork.newInstance(7) }, onBindFailure = { failures += it })
         server.start(port, "127.0.0.1", preamble)
@@ -107,23 +108,44 @@ class AndroidWifiBindFailureTest {
         }
     }
 
-    @Test
-    fun joinRequestCarriesAWifiNetworkSpecifier() = runTest {
+    private fun specifierFor(ssidIsPattern: Boolean): WifiNetworkSpecifier = runBlocking {
         RecordingConnectivityShadow.requests.clear()
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         val joiner = AndroidWifiSoftApJoiner(context)
-        val join = async(Dispatchers.Default) { joiner.join("PLAUD-FAKE", "password12") }
+        val join = async(Dispatchers.Default) { joiner.join("PLAUD-FAKE", "password12", ssidIsPattern) }
         withTimeout(15_000) { while (RecordingConnectivityShadow.requests.isEmpty()) delay(10) }
         val request = RecordingConnectivityShadow.requests.single()
         assertTrue(request.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI))
         assertTrue(!request.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR))
         val spec = assertIs<WifiNetworkSpecifier>(request.networkSpecifier, "join must use WifiNetworkSpecifier")
-        // WifiNetworkSpecifier has no public getters; read the framework fields (synthetic values only).
-        fun field(name: String): Any? = spec.javaClass.getDeclaredField(name).apply { isAccessible = true }.get(spec)
-        val ssid = field("ssidPatternMatcher") as android.os.PatternMatcher
+        join.cancel()
+        spec
+    }
+
+    // WifiNetworkSpecifier has no public getters; read the framework fields (synthetic values only).
+    private fun WifiNetworkSpecifier.field(name: String): Any? =
+        javaClass.getDeclaredField(name).apply { isAccessible = true }.get(this)
+
+    @Test
+    fun joinRequestCarriesAWifiNetworkSpecifier() {
+        val spec = specifierFor(ssidIsPattern = false)
+        val ssid = spec.field("ssidPatternMatcher") as android.os.PatternMatcher
         assertEquals("PLAUD-FAKE", ssid.path)
         assertEquals(android.os.PatternMatcher.PATTERN_LITERAL, ssid.type)
-        assertEquals("\"password12\"", (field("wifiConfiguration") as android.net.wifi.WifiConfiguration).preSharedKey)
-        join.cancel()
+        assertEquals("\"password12\"", (spec.field("wifiConfiguration") as android.net.wifi.WifiConfiguration).preSharedKey)
+    }
+
+    @Test
+    fun patternJoinMatchesTheSsidByPrefix() {
+        val ssid = specifierFor(ssidIsPattern = true).field("ssidPatternMatcher") as android.os.PatternMatcher
+        assertEquals("PLAUD-FAKE", ssid.path)
+        assertEquals(android.os.PatternMatcher.PATTERN_PREFIX, ssid.type)
+    }
+
+    @Test
+    fun joinIsWpa2PskOnly_notWpa3() {
+        val config = specifierFor(ssidIsPattern = false).field("wifiConfiguration") as android.net.wifi.WifiConfiguration
+        assertTrue(config.allowedKeyManagement.get(android.net.wifi.WifiConfiguration.KeyMgmt.WPA_PSK), "WPA2-PSK")
+        assertTrue(!config.allowedKeyManagement.get(android.net.wifi.WifiConfiguration.KeyMgmt.SAE), "no WPA3-SAE")
     }
 }

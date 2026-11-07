@@ -3,4 +3,6 @@
     <string name="velum_processing_channel_name">Processamento de gravação</string>
     <string name="velum_processing_notification_title">Processando gravação</string>
     <string name="velum_processing_notification_body">Transcrevendo e resumindo no aparelho</string>
+    <string name="velum_processing_refused_title">O processamento pode ser interrompido</string>
+    <string name="velum_processing_refused_body">O Android não permitiu manter o processamento visível em segundo plano. Mantenha o Velum aberto ou tente de novo na gravação.</string>
 </resources>

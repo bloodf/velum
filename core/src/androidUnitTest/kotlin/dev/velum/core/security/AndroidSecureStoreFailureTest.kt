@@ -204,6 +204,28 @@ class AndroidSecureStoreFailureTest {
     }
 
     @Test
+    fun removing_by_prefix_deletes_only_that_family_without_needing_the_alias() = runTest {
+        val b = SyntheticBackend.seeded(); val key = b.key
+        b.entries["${SecureKeys.API_KEY_PREFIX}other"] = "x"
+        b.entries["${SecureKeys.API_KEY_PREFIX}default"] = "y"
+        val before = b.entries.toMap()
+        b.failAt = Stage.LoadKey // Deleting must not need decryption, like a locked keystore.
+        AndroidSecureStore(b, StandardTestDispatcher(testScheduler)).removeWithPrefix(SecureKeys.API_KEY_PREFIX)
+        assertEquals(before.filterKeys { !it.startsWith(SecureKeys.API_KEY_PREFIX) }, b.entries)
+        assertSame(key, b.key); assertEquals(0, b.creations)
+    }
+
+    @Test
+    fun failed_prefix_removal_reports_failure_and_keeps_everything() = runTest {
+        val b = SyntheticBackend.seeded(); val before = b.entries.toMap(); val key = b.key
+        b.failAt = Stage.Remove
+        assertFailsWith<SecureStoreUnavailableException> {
+            AndroidSecureStore(b, StandardTestDispatcher(testScheduler)).removeWithPrefix(SecureKeys.API_KEY_PREFIX)
+        }
+        b.assertPreserved(before, key)
+    }
+
+    @Test
     fun failed_explicit_remove_keeps_all_siblings_and_reports_failure() = runTest {
         val b = SyntheticBackend.seeded(); val before = b.entries.toMap(); val key = b.key
         b.failAt = Stage.Remove
@@ -245,6 +267,7 @@ class AndroidSecureStoreFailureTest {
             entries[name] = value; return true
         }
         override suspend fun removeCiphertext(name: String): Boolean { stage(Stage.Remove); entries.remove(name); removals++; return true }
+        override suspend fun removeCiphertextsWithPrefix(prefix: String): Boolean { stage(Stage.Remove); entries.keys.removeAll { it.startsWith(prefix) }; removals++; return true }
         override suspend fun loadKey(): SecretKey? { keyReads++; stage(Stage.LoadKey); return key }
         override suspend fun createKey(): SecretKey {
             creationAttempts++; stage(Stage.Create)

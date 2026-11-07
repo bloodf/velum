@@ -166,6 +166,15 @@ object FtsIndex {
         clearTemplates(driver)
     }
 
+    /**
+     * Merge all segments of both tables so deleted words no longer sit in the index data. Wipe-time only: it rewrites the
+     * whole index.
+     */
+    fun optimize(driver: SqlDriver) {
+        driver.execute(identifier = null, sql = "INSERT INTO recording_fts(recording_fts) VALUES('optimize')", parameters = 0)
+        driver.execute(identifier = null, sql = "INSERT INTO template_fts(template_fts) VALUES('optimize')", parameters = 0)
+    }
+
     fun clearRecordings(driver: SqlDriver) {
         driver.execute(identifier = null, sql = "DELETE FROM recording_fts", parameters = 0)
     }
@@ -174,6 +183,7 @@ object FtsIndex {
         driver.execute(identifier = null, sql = "DELETE FROM template_fts", parameters = 0)
     }
 
+    /** Delete + insert, not atomic by itself: VelumRepository wraps the pair in db.transaction. */
     fun upsertRecording(
         driver: SqlDriver,
         id: String,
@@ -181,22 +191,20 @@ object FtsIndex {
         transcript: String?,
         summaryMarkdown: String?,
     ) {
-        inTransaction(driver) {
-            driver.execute(
-                identifier = null,
-                sql = "DELETE FROM recording_fts WHERE recording_id = ?",
-                parameters = 1,
-            ) { bindString(0, id) }
-            driver.execute(
-                identifier = null,
-                sql = "INSERT INTO recording_fts(recording_id, title, transcript, summary_markdown) VALUES (?, ?, ?, ?)",
-                parameters = 4,
-            ) {
-                bindString(0, id)
-                bindString(1, title)
-                bindString(2, transcript.orEmpty())
-                bindString(3, summaryMarkdown.orEmpty())
-            }
+        driver.execute(
+            identifier = null,
+            sql = "DELETE FROM recording_fts WHERE recording_id = ?",
+            parameters = 1,
+        ) { bindString(0, id) }
+        driver.execute(
+            identifier = null,
+            sql = "INSERT INTO recording_fts(recording_id, title, transcript, summary_markdown) VALUES (?, ?, ?, ?)",
+            parameters = 4,
+        ) {
+            bindString(0, id)
+            bindString(1, title)
+            bindString(2, transcript.orEmpty())
+            bindString(3, summaryMarkdown.orEmpty())
         }
     }
 
@@ -222,26 +230,24 @@ object FtsIndex {
          */
         replaceExisting: Boolean = true,
     ) {
-        inTransaction(driver) {
-            if (replaceExisting) {
-                driver.execute(
-                    identifier = null,
-                    sql = "DELETE FROM template_fts WHERE template_id = ?",
-                    parameters = 1,
-                ) { bindString(0, id) }
-            }
+        if (replaceExisting) {
             driver.execute(
                 identifier = null,
-                sql = "INSERT INTO template_fts(template_id, name, description, category, system_prompt, tags) VALUES (?, ?, ?, ?, ?, ?)",
-                parameters = 6,
-            ) {
-                bindString(0, id)
-                bindString(1, name)
-                bindString(2, description)
-                bindString(3, category)
-                bindString(4, systemPrompt)
-                bindString(5, tags)
-            }
+                sql = "DELETE FROM template_fts WHERE template_id = ?",
+                parameters = 1,
+            ) { bindString(0, id) }
+        }
+        driver.execute(
+            identifier = null,
+            sql = "INSERT INTO template_fts(template_id, name, description, category, system_prompt, tags) VALUES (?, ?, ?, ?, ?, ?)",
+            parameters = 6,
+        ) {
+            bindString(0, id)
+            bindString(1, name)
+            bindString(2, description)
+            bindString(3, category)
+            bindString(4, systemPrompt)
+            bindString(5, tags)
         }
     }
 
@@ -284,25 +290,4 @@ object FtsIndex {
         ) {
             bindString(0, matchQuery)
         }.value
-
-    /**
-     * Wrap delete+insert so a crash mid-upsert cannot leave a missing FTS row.
-     * Skips BEGIN/COMMIT when already inside a SQLDelight Transacter transaction.
-     */
-    private inline fun inTransaction(driver: SqlDriver, block: () -> Unit) {
-        if (driver.currentTransaction() != null) {
-            block()
-            return
-        }
-        driver.execute(identifier = null, sql = "BEGIN", parameters = 0)
-        try {
-            block()
-            driver.execute(identifier = null, sql = "COMMIT", parameters = 0)
-        } catch (t: Throwable) {
-            runCatching {
-                driver.execute(identifier = null, sql = "ROLLBACK", parameters = 0)
-            }
-            throw t
-        }
-    }
 }

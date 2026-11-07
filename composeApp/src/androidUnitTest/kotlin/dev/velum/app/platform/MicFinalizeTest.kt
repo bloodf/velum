@@ -152,6 +152,25 @@ class MicFinalizeTest {
             assertEquals(1, queued); assertEquals(1, mic.stops); assertContentEquals(original, wav.readBytes())
         }
     }
+    @Test fun cancellation_after_enqueue_submission_releases_mic_after_acceptance() = fixture {
+        kotlinx.coroutines.coroutineScope {
+            mic.result = MicStopResult.Stopped(wav.path, 0, wav.length())
+            enqueueEntered = CompletableDeferred()
+            enqueueGate = CompletableDeferred()
+            val finishing = launch { finalizeMicRecording(container, id, wav.path) }
+            try {
+                withTimeout(5_000) { enqueueEntered!!.await() }
+                finishing.cancel()
+                assertFalse(finishing.isCompleted, "finalize returned before acceptance")
+                assertEquals(id, container.activeMicRecordingId)
+            } finally { enqueueGate!!.complete(Unit) }
+            finishing.join()
+            assertEquals(true, finishing.isCancelled)
+            assertEquals(1, queued)
+            assertEquals("queued", recording().status)
+            assertEquals(null, container.activeMicRecordingId)
+        }
+    }
     @Test fun a_new_recording_cannot_rebind_ownership_during_an_in_flight_finalization() = fixture {
         kotlinx.coroutines.coroutineScope {
             val other = container.createLocalRecording(status = "recording")
@@ -210,9 +229,18 @@ class MicFinalizeTest {
         val wav = File(root, "synthetic.wav").also { WavWriter(it.path, 16_000).apply { writePcm(ByteArray(32)) }.finish() }
         val mic = FakeCapture()
         var queued = 0
+        var enqueueEntered: CompletableDeferred<Unit>? = null
+        var enqueueGate: CompletableDeferred<Unit>? = null
         val container = AppContainer(InMemorySecureStore(), DriverFactory(context),
             modelStoreRoot = ModelStoreDir(File(root, "models").path), micCapture = mic,
-            recordingJobSchedulerFactory = { _, _ -> RecordingJobScheduler { _, _, _, _ -> queued++ } })
+            recordingJobSchedulerFactory = { _, _ -> object : RecordingJobScheduler {
+                override suspend fun enqueue(recordingId: String, templateId: String?, retranscribe: Boolean, apiModelOverride: dev.velum.core.settings.ApiModelOverride?): dev.velum.ai.pipeline.EnqueueResult { queued++; return dev.velum.ai.pipeline.EnqueueResult.STARTED_OR_REPLACED }
+                override suspend fun enqueueSaved(recordingId: String, templateId: String?, retranscribe: Boolean, apiModelOverride: dev.velum.core.settings.ApiModelOverride?, keepExisting: Boolean): dev.velum.ai.pipeline.EnqueueResult {
+                    enqueueEntered?.complete(Unit)
+                    enqueueGate?.await()
+                    return enqueue(recordingId, templateId, retranscribe, apiModelOverride)
+                }
+            } })
         lateinit var id: String
         suspend fun recording() = container.repository.observeRecording(id).first()!!
     }

@@ -38,6 +38,9 @@ internal class StubBleTransport(
         _state.value = BleConnectionState.Failed(unavailableReason)
     }
 
+    // Never links, so there is never a link to go stale.
+    override val linkGeneration: Long = 0L
+
     override suspend fun disconnect() {
         _state.value = BleConnectionState.Idle
     }

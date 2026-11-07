@@ -56,49 +56,71 @@ object OmiAudioPackets {
     }
 }
 
+object OmiLimits {
+    /** Upper bound for one reassembled frame (an Opus frame is at most 1275 bytes; BLE payloads are far smaller). */
+    const val MAX_FRAME_BYTES: Int = 4096
+}
+
 /**
- * Reassembles fragments the way Friend.swift does: on fragment index 0, flush
- * the previous packet; append payload bytes to the current packet number.
+ * Frame reassembly as upstream does it (BasedHardware/omi `app/lib/utils/audio/wav_bytes.dart`, `storeFramePacket`):
+ * each notification carries a 16-bit packet index that must advance by exactly one, and a fragment id that is 0 for
+ * the first fragment of a frame and then counts up. A gap in either, or a frame that would exceed [maxFrameBytes],
+ * drops the pending frame, counts a sync loss in [syncLosses] and waits for the next fragment 0.
+ * Deviation from upstream: the 16-bit packet index wraps (65535 then 0) without counting a loss.
  */
-class OmiPacketReassembler {
-    private val counter = BleAudioPacketCounter()
-    private var currentNumber: Int? = null
-    private val current = ArrayList<Byte>()
+class OmiFrameAssembler(private val maxFrameBytes: Int = OmiLimits.MAX_FRAME_BYTES) {
+    private var lastPacketIndex = -1
+    private var lastFragmentId = -1
+    private var pending = ByteArray(0)
 
-    /**
-     * @return completed packet payload when a new packet (index 0) starts after
-     * a previous one, or null while still accumulating.
-     */
-    fun push(fragment: OmiAudioFragment): ByteArray? {
-        val notification = ByteArray(3 + fragment.payload.size)
-        notification[0] = (fragment.packetNumber and 0xff).toByte()
-        notification[1] = ((fragment.packetNumber ushr 8) and 0xff).toByte()
-        notification[2] = (fragment.fragmentIndex and 0xff).toByte()
-        fragment.payload.copyInto(notification, 3)
-        counter.record(notification)
+    var syncLosses: Long = 0
+        private set
 
-        var flushed: ByteArray? = null
-        if (fragment.fragmentIndex == 0) {
-            if (current.isNotEmpty()) {
-                flushed = current.toByteArray()
-                current.clear()
-            }
-            currentNumber = fragment.packetNumber
+    /** The previous frame when [notification] starts a new one in sequence, else null. */
+    fun accept(notification: ByteArray): ByteArray? {
+        val f = OmiAudioPackets.parseFragment(notification) ?: return null
+        if (lastPacketIndex == -1) {
+            if (f.fragmentIndex != 0) return null // not in sync yet: wait for a frame start
+            start(f)
+            return null
         }
-        if (currentNumber == null) {
-            currentNumber = fragment.packetNumber
+        val inSequence = f.packetNumber == (lastPacketIndex + 1) and 0xFFFF &&
+            (f.fragmentIndex == 0 || f.fragmentIndex == lastFragmentId + 1)
+        if (!inSequence) return lose()
+        if (f.fragmentIndex == 0) {
+            val done = pending
+            start(f)
+            return done
         }
-        current.addAll(fragment.payload.toList())
-        return flushed
+        if (pending.size + f.payload.size > maxFrameBytes) return lose()
+        pending += f.payload
+        lastFragmentId = f.fragmentIndex
+        lastPacketIndex = f.packetNumber
+        return null
     }
 
-    fun flush(): ByteArray? {
-        if (current.isEmpty()) return null
-        val out = current.toByteArray()
-        current.clear()
-        currentNumber = null
+    /** The in-sync trailing frame when the stream ends. */
+    fun finish(): ByteArray? {
+        val out = pending.takeIf { lastPacketIndex != -1 && it.isNotEmpty() }
+        reset()
         return out
     }
 
-    fun stats(): Pair<Long, Long> = counter.snapshot()
+    private fun start(f: OmiAudioFragment) {
+        pending = if (f.payload.size > maxFrameBytes) { syncLosses++; reset(); return } else f.payload
+        lastPacketIndex = f.packetNumber
+        lastFragmentId = 0
+    }
+
+    private fun lose(): ByteArray? {
+        syncLosses++
+        reset()
+        return null
+    }
+
+    private fun reset() {
+        lastPacketIndex = -1
+        lastFragmentId = -1
+        pending = ByteArray(0)
+    }
 }

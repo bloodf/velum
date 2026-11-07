@@ -2,6 +2,7 @@ package dev.velum.ble.wifi
 
 import dev.velum.ble.crypto.createSessionCipher
 import dev.velum.protocol.Protocol20SessionSecret
+import java.net.InetAddress
 import java.net.ServerSocket
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -140,7 +141,7 @@ class WifiFastPathE2ETest {
             bindHost = "127.0.0.1",
             assemble = { s ->
                 withTimeout(5_000) {
-                    val sealed = (s.server.incomingEncryptedFrames() as SharedFlow<ByteArray>)
+                    val sealed = (s.incomingEncryptedFrames() as SharedFlow<ByteArray>)
                         .onSubscription { subscribed.countDown() }
                         .first()
                     s.openIncoming(sealed) ?: error("open failed")
@@ -155,7 +156,7 @@ class WifiFastPathE2ETest {
     }
 
     // Ephemeral port: avoids collisions between concurrent test runs.
-    private fun freePort(): Int = ServerSocket(0).use { it.localPort }
+    private fun freePort(): Int = ServerSocket(0, 1, InetAddress.getByName("127.0.0.1")).use { it.localPort }
 
     // Retry until the server accepts (bounded) instead of a fixed sleep.
     private fun connectWhenReady(port: Int, timeoutMs: Long = 10_000): FakeWifiDeviceClient {

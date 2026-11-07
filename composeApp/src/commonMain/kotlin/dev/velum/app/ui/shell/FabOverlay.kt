@@ -9,6 +9,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
@@ -34,6 +37,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.velum.app.platform.PlatformBackHandler
 import dev.velum.app.i18n.LocalStrings
 import dev.velum.app.ui.motion.Motion
 import dev.velum.app.ui.motion.pressableScale
@@ -47,6 +51,8 @@ fun FabOverlay(
     isCapturing: Boolean = false,
 ) {
     val strings = LocalStrings.current
+    // System Back closes the menu instead of leaving the app (#300); only while it is open.
+    PlatformBackHandler(enabled = visible, onBack = onDismiss)
     val onScrim = Color.White
     val reduce = Motion.reduceMotion()
     AnimatedVisibility(
@@ -86,6 +92,7 @@ fun FabOverlay(
             Column(
                 Modifier
                     .fillMaxWidth()
+                    .windowInsetsPadding(WindowInsets.navigationBars)
                     .padding(horizontal = 28.dp)
                     .padding(bottom = 96.dp)
                     .clickable(

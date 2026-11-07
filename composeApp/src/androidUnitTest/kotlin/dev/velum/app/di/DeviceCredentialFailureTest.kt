@@ -92,6 +92,7 @@ class DeviceCredentialFailureTest {
 
     private class SyntheticTransport : BleTransport {
         override val isAvailable = true
+        override val linkGeneration = 0L
         override val connectionState = MutableStateFlow<BleConnectionState>(BleConnectionState.Idle)
         override val discoveredDevices = MutableStateFlow(emptyList<ConnectedDevice>())
         var writes = 0

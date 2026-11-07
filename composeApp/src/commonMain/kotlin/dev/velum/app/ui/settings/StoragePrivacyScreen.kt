@@ -24,8 +24,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.velum.app.di.AppContainer
 import dev.velum.app.i18n.LocalStrings
+import dev.velum.app.i18n.countText
 import dev.velum.app.i18n.formatFixed
-import dev.velum.app.platform.deleteFileAtPath
+import dev.velum.app.ui.DownloadWipeResult
 import dev.velum.app.platform.shareText
 import dev.velum.app.ui.components.BlackButton
 import dev.velum.app.ui.components.OutlineButton
@@ -35,6 +36,7 @@ import dev.velum.app.ui.components.ToggleRow
 import dev.velum.app.ui.theme.VelumInk
 import dev.velum.app.ui.theme.VelumInkSecondary
 import dev.velum.app.ui.theme.VelumSurface
+import kotlinx.coroutines.IO
 
 @Composable
 fun StoragePrivacyScreen(
@@ -49,9 +51,8 @@ fun StoragePrivacyScreen(
 
     LaunchedEffect(container) {
         val usage = container.repository.storageUsage()
-        usageLabel = strings.settingsUi.storageUsageFormat
-            .replace("%d", usage.recordingCount.toString())
-                .replace("%s", formatStorageBytes(usage.bytesClaimed))
+        usageLabel = countText(usage.recordingCount, strings.settingsUi.storageUsageFormatOne, strings.settingsUi.storageUsageFormat)
+            .replace("%s", formatStorageBytes(usage.bytesClaimed))
     }
 
     if (confirmWipe) {
@@ -64,19 +65,14 @@ fun StoragePrivacyScreen(
                     onClick = {
                         confirmWipe = false
                         container.settingsViewModel.runStorageAction {
-                            val partialsDeleted = container.deviceViewModel.wipePartialDownloads()
-                            container.repository.wipeAllUserData { path ->
-                                deleteFileAtPath(path)
+                            status = when (container.wipeAllData()) {
+                                DownloadWipeResult.Clean -> strings.settingsUi.wipeAllDataDone
+                                DownloadWipeResult.PartialsLeft -> strings.settingsUi.wipeAllDataPartialsLeft
+                                DownloadWipeResult.Incomplete -> strings.settingsUi.wipeAllDataIncomplete
+                                DownloadWipeResult.StillRunning -> strings.settingsUi.wipeAllDataDownloadRunning
                             }
-                            container.voiceProfileStore.wipeAll()
-                            container.settingsRepository.clearAllApiKeys()
-                            container.deviceKeyImporter.clearKeys()
-                            container.webhookSettings.clear()
-                            container.integrationAuth.clearTokens()
-                            status = if (partialsDeleted) strings.settingsUi.wipeAllDataDone else strings.settingsUi.wipeAllDataPartialsLeft
                             val usage = container.repository.storageUsage()
-                            usageLabel = strings.settingsUi.storageUsageFormat
-                                .replace("%d", usage.recordingCount.toString())
+                            usageLabel = countText(usage.recordingCount, strings.settingsUi.storageUsageFormatOne, strings.settingsUi.storageUsageFormat)
                                 .replace("%s", formatStorageBytes(usage.bytesClaimed))
                         }
                     },

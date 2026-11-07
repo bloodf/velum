@@ -160,6 +160,17 @@ class ResumableSessionDownloadTest {
         assertContentEquals(received, store.bytes, "the file is kept as received")
     }
 
+    @Test fun a_scan_tap_during_the_transfer_does_not_cost_the_crc_report() = runTest {
+        val file = Random(6).nextBytes(20_000)
+        val rig = rig(file, TransferFaults(corruptAt = setOf(8_000)))
+        // Scan state changes around every write; the link itself never does.
+        rig.ble.beforeWrite = { rig.ble.startScan(); rig.ble.stopScan(); rig.ble.startScan() }
+        val store = MemoryStore()
+        val result = downloader(rig, CrcPolicy.ReportOnly).download(SESSION, file.size.toLong(), store)
+        assertIs<CrcStatus.Mismatch>(result.crc)
+        assertEquals(1, result.attempts)
+    }
+
     @Test fun device_without_crc_is_not_provided_not_verified() = runTest {
         val file = Random(8).nextBytes(5_000)
         val rig = rig(file, stopCrc = StopCrc.NotProvided)
@@ -304,6 +315,26 @@ class ResumableSessionDownloadTest {
         assertEquals(listOf(2_000L), rig.peripheral.syncStartOffsets)
     }
 
+    @Test fun a_leftover_chunk_without_a_session_id_does_not_wipe_a_good_partial() = runTest {
+        // Protocol < 7 has no session id on recording data, so another session's leftover chunk cannot be
+        // told from the repeat the guard compares. One unattributable mismatch must not cost the partial (#212).
+        val file = Random(32).nextBytes(5_000)
+        val rig = rig(file, TransferFaults(legacyProtocol = true, leftoverBeforeStream = true))
+        val store = storeHolding(file.copyOf(2_000))
+        downloader(rig, CrcPolicy.Enforce).download(SESSION, file.size.toLong(), store)
+        assertContentEquals(file, store.bytes)
+        assertEquals(listOf(2_000L), rig.peripheral.syncStartOffsets)
+    }
+
+    @Test fun repeated_mismatching_chunks_without_a_session_id_still_restart_from_zero() = runTest {
+        val file = Random(33).nextBytes(5_000)
+        val rig = rig(file, TransferFaults(legacyProtocol = true, ignoreStartOffset = true))
+        val store = storeHolding(ByteArray(2_000) { 0x11 })
+        downloader(rig, CrcPolicy.ReportOnly).download(SESSION, file.size.toLong(), store)
+        assertContentEquals(file, store.bytes)
+        assertEquals(listOf(2_000L, 0L), rig.peripheral.syncStartOffsets)
+    }
+
     @Test fun stored_bytes_are_compared_once_per_attempt() = runTest {
         val file = Random(29).nextBytes(5_000)
         val rig = rig(file, TransferFaults(ignoreStartOffset = true), StopCrc.NotProvided)
@@ -318,6 +349,70 @@ class ResumableSessionDownloadTest {
         downloader(rig, CrcPolicy.Enforce).download(SESSION, file.size.toLong(), store)
         assertContentEquals(file, base.bytes)
         assertEquals(1, reads)
+    }
+
+    @Test fun a_device_that_cannot_resume_on_a_flaky_link_stops_after_a_few_restarts() = runTest {
+        // Each pass from 0 makes progress then loses the link; the resume is refused, so the partial is thrown
+        // away and the new bytes reset the no-progress count. Without a restart cap this never ends (#212).
+        val file = Random(31).nextBytes(5_000)
+        val rig = rig(file, TransferFaults(refuseNonZeroStart = true, disconnectEveryPassAt = 1_000))
+        val base = MemoryStore()
+        var wipes = 0
+        val store = object : PartialTransferStore by base {
+            override fun truncate(length: Long) {
+                if (length == 0L && base.length() > 0 && ++wipes > 20) throw AssertionError("restarted $wipes times, no cap")
+                base.truncate(length)
+            }
+        }
+        val e = assertFailsWith<TransferIntegrityException> {
+            downloader(rig, CrcPolicy.Enforce).download(SESSION, file.size.toLong(), store)
+        }
+        assertTrue(e.message.orEmpty().contains("restart"), e.message)
+        assertTrue(wipes <= 3, "wipes=$wipes")
+        assertTrue(base.length() > 0, "the partial is kept when giving up")
+    }
+
+    @Test fun a_single_lost_chunk_right_after_a_resume_keeps_the_partial_and_retries_the_same_offset() = runTest {
+        val file = Random(43).nextBytes(5_000)
+        val rig = rig(file, TransferFaults(dropAt = setOf(2_000)))
+        val store = storeHolding(file.copyOf(2_000))
+        downloader(rig, CrcPolicy.Enforce).download(SESSION, file.size.toLong(), store)
+        assertContentEquals(file, store.bytes)
+        assertEquals(listOf(2_000L, 2_000L), rig.peripheral.syncStartOffsets)
+    }
+
+    @Test fun the_same_gap_twice_restarts_from_zero() = runTest {
+        // The chunk at 2,000 never arrives (on any pass): retry once at 2,000, then restart from 0, and the
+        // restart cap ends it because the gap is still there.
+        val file = Random(44).nextBytes(5_000)
+        val rig = rig(file, TransferFaults(dropAlwaysAt = setOf(2_000)))
+        val store = storeHolding(file.copyOf(2_000))
+        assertFailsWith<TransferIntegrityException> {
+            downloader(rig, CrcPolicy.ReportOnly).download(SESSION, file.size.toLong(), store)
+        }
+        // Each stretch: resume at 2,000, retry it once, then restart; the pass from 0 reaches the gap again. Three restarts, then the cap.
+        assertEquals(listOf(2_000L, 2_000L, 0L, 2_000L, 2_000L, 0L, 2_000L, 2_000L, 0L, 2_000L, 2_000L), rig.peripheral.syncStartOffsets)
+    }
+
+    @Test fun a_permanent_gap_with_lost_links_still_terminates() = runTest {
+        // Every pass from 0 loses the link at 1,000, the resume then runs to the gap at 10,000 and adds bytes
+        // each cycle, and the chunk at 10,000 never arrives. Resumed progress must not reset the restart cap,
+        // or this loops until cancelled.
+        val file = Random(46).nextBytes(20_000)
+        val rig = rig(file, TransferFaults(disconnectEveryPassAt = 1_000, dropAlwaysAt = setOf(10_000)))
+        val base = MemoryStore()
+        var wipes = 0
+        val store = object : PartialTransferStore by base {
+            override fun truncate(length: Long) {
+                if (length == 0L && base.length() > 0 && ++wipes > 20) throw AssertionError("restarted $wipes times, no end")
+                base.truncate(length)
+            }
+        }
+        val e = assertFailsWith<TransferIntegrityException> {
+            downloader(rig, CrcPolicy.Enforce).download(SESSION, file.size.toLong(), store)
+        }
+        assertTrue(e.message.orEmpty().contains("restart"), e.message)
+        assertEquals(3, wipes)
     }
 
     @Test fun device_silent_on_a_resume_restarts_from_zero_after_the_retries() = runTest {
@@ -369,7 +464,45 @@ class ResumableSessionDownloadTest {
         }
         assertEquals("synthetic: no space left on device", failure.cause?.message)
         assertContentEquals(file.copyOf(2_000), base.bytes)
-        assertEquals(List(5) { 2_000L }, rig.peripheral.syncStartOffsets)
+        assertEquals(List(2) { 2_000L }, rig.peripheral.syncStartOffsets, "a permanent storage error stops after two tries")
+    }
+
+    @Test fun a_storage_error_that_clears_up_after_one_try_still_completes() = runTest {
+        val file = Random(41).nextBytes(5_000)
+        val rig = rig(file)
+        val base = storeHolding(file.copyOf(2_000))
+        var failures = 1
+        val store = object : PartialTransferStore by base {
+            override fun write(data: ByteArray) {
+                if (failures-- > 0) throw IOException("synthetic: no space left on device")
+                base.write(data)
+            }
+        }
+        downloader(rig, CrcPolicy.Enforce).download(SESSION, file.size.toLong(), store)
+        assertContentEquals(file, base.bytes)
+        assertEquals(listOf(2_000L, 2_000L), rig.peripheral.syncStartOffsets)
+    }
+
+    @Test fun a_torn_write_keeps_its_valid_prefix_and_the_next_attempt_continues_after_it() = runTest {
+        // A full disk can land part of a chunk before failing. The bytes written are a prefix of the stream,
+        // so length() may exceed the last whole chunk and the retry must start from that length.
+        val file = Random(42).nextBytes(5_000)
+        val rig = rig(file)
+        val base = storeHolding(file.copyOf(2_000))
+        var tear = true
+        val store = object : PartialTransferStore by base {
+            override fun write(data: ByteArray) {
+                if (tear) {
+                    tear = false
+                    base.write(data.copyOf(100))
+                    throw IOException("synthetic: no space left on device")
+                }
+                base.write(data)
+            }
+        }
+        downloader(rig, CrcPolicy.Enforce).download(SESSION, file.size.toLong(), store)
+        assertContentEquals(file, base.bytes)
+        assertEquals(listOf(2_000L, 2_100L), rig.peripheral.syncStartOffsets)
     }
 
     @Test fun failed_read_of_the_partial_on_every_attempt_keeps_the_partial() = runTest {

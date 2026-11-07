@@ -24,6 +24,7 @@ import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.printToString
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
@@ -102,6 +103,9 @@ class DeviceWalkUiTest {
             "recording/versions", "recording/sources", "settings/templates", "ask",
         )
 
+        /** Swipes tried on Storage & privacy in landscape (#118) before declaring "no overflow". */
+        private const val SCROLL_ATTEMPTS = 3
+
         private val SETTINGS_HUB_ROWS = listOf(
             "Phone recording", "Gravação no telefone", "AI processing", "Processamento de IA",
         )
@@ -136,6 +140,29 @@ class DeviceWalkUiTest {
     fun deviceWalk_en_dark() = runMatrix(lang = "en", theme = "dark")
 
     private fun runMatrix(lang: String, theme: String) {
+        try {
+            runMatrixSteps(lang, theme)
+        } catch (t: Throwable) {
+            // #345: "Detected multithreaded access to SnapshotStateObserver: previousThreadId=N" names a thread id and
+            // nothing else. Log every live thread (id, name, top frames) so the next failure can say who thread N is.
+            logThreads("failure ${t::class.java.simpleName}", stacks = true)
+            throw t
+        }
+    }
+
+    /** One logcat line per ~1000 chars: `id:name` for every live thread, plus top frames when [stacks]. */
+    private fun logThreads(label: String, stacks: Boolean = false) {
+        runCatching {
+            val all = Thread.getAllStackTraces().entries.sortedBy { it.key.id }
+            val text = all.joinToString(if (stacks) "\n" else " ") { (thread, frames) ->
+                val head = "${thread.id}:${thread.name}"
+                if (stacks) head + " [" + frames.take(8).joinToString(" < ") { "${it.className.substringAfterLast('.')}.${it.methodName}" } + "]" else head
+            }
+            text.chunked(1000).forEachIndexed { i, chunk -> Log.i("VelumDeviceWalk", "threads $label main=${android.os.Looper.getMainLooper().thread.id} test=${Thread.currentThread().id} [$i] $chunk") }
+        }
+    }
+
+    private fun runMatrixSteps(lang: String, theme: String) {
         val tag = "${lang}_$theme"
         waitForShell(lang)
         covered += "onboarding:$tag"
@@ -190,27 +217,29 @@ class DeviceWalkUiTest {
             }
             shellReady || skipVisible
         }
-        if (firstRunSkipVisible() || firstRunChromeVisible()) {
-            // Real Skip tap only — OutlineButton CD + role Button (#106 a11y).
-            // Coordinate fallback OK; never bypass via markFirstRunDone (#115).
-            if (!firstRunSkipVisible()) {
-                val w = device.displayWidth
-                val h = device.displayHeight
-                device.swipe(w / 2, (h * 0.75).toInt(), w / 2, (h * 0.25).toInt(), 30)
-                SystemClock.sleep(400)
+        // CI capture (#160): repeating "Pixel Launcher isn't responding" dialogs cover the app and swallow taps, leaving
+        // FirstRun on screen with Skip visible. Retry the tap while confirming the app is in front, instead of waiting longer.
+        // The shell bar can briefly exist before the FirstRun overlay is composed, so "ready" also requires no Skip/chrome.
+        // Real Skip tap only (#106 a11y), through Compose's input dispatcher: UiDevice injection can return before Compose
+        // consumes the gesture under its test clock. Never bypass via markFirstRunDone (#115).
+        waitUntil(150_000, "First run was not dismissed and the Files shell never became ready") {
+            lastAnrCheckMs = 0L
+            dismissSystemAnrDialog()
+            if (device.currentPackageName != appContext.packageName) return@waitUntil false
+            when {
+                firstRunSkipVisible() -> {
+                    val label = if (uiExists("Skip")) "Skip" else "Pular"
+                    runCatching { composeRule.onNodeWithContentDescription(label, useUnmergedTree = true).performClick() }
+                    covered += "first-run-skip"
+                    SystemClock.sleep(1_000)
+                }
+                !onFilesShellReady() && firstRunChromeVisible() -> {
+                    device.swipe(device.displayWidth / 2, (device.displayHeight * 0.75).toInt(), device.displayWidth / 2, (device.displayHeight * 0.25).toInt(), 30)
+                    SystemClock.sleep(400)
+                }
             }
-            waitUntil(20_000) { firstRunSkipVisible() || onFilesShellReady() }
-            if (!onFilesShellReady()) {
-                // Click the real button through Compose's synchronized input
-                // dispatcher. UiDevice injection can return before Compose
-                // consumes the gesture under its test clock.
-                val label = if (uiExists("Skip")) "Skip" else "Pular"
-                composeRule.onNodeWithContentDescription(label, useUnmergedTree = true).performClick()
-                covered += "first-run-skip"
-                waitUntil(45_000) { onFilesShellReady() }
-            }
+            onFilesShellReady() && !firstRunSkipVisible() && !firstRunChromeVisible()
         }
-        waitUntil(60_000) { onFilesShellReady() }
         restoreAllFilesFilterSoft()
         dismissSystemPermissionDialogs()
     }
@@ -655,11 +684,27 @@ class DeviceWalkUiTest {
                 val statement = str.settingsUi.privacyOnDeviceStatement
                 val backLabels = listOf(str.ux.back, "Back", "Voltar")
                 waitUntil(10_000, "Storage & privacy not shown in landscape") { composeExists(statement) && backTop(backLabels) != null }
-                val bodyTop0 = textTop(statement) ?: error("statement node missing")
+                // The display reports landscape before the activity has finished its configuration change, so a swipe
+                // sent then can hit the old window. Wait until Compose itself is landscape and the body has stopped moving.
+                awaitLandscapeLayoutSettled(statement)
                 val backTop0 = checkNotNull(backTop(backLabels))
-                device.swipe(device.displayWidth / 2, device.displayHeight * 4 / 5, device.displayWidth / 2, device.displayHeight / 5, 20)
-                waitUntil(5_000, "Storage & privacy body did not scroll in landscape (no overflow, or top bar moved with it): top was $bodyTop0") {
-                    (textTop(statement) ?: bodyTop0) < bodyTop0 - 1f
+                var scrolled = false
+                var bodyTop0 = Float.NaN
+                for (attempt in 1..SCROLL_ATTEMPTS) {
+                    // CI shows repeating "Pixel Launcher isn't responding" dialogs that cover the app and swallow the swipe.
+                    lastAnrCheckMs = 0L
+                    dismissSystemAnrDialog()
+                    waitUntil(5_000, "App window not in front before the landscape swipe") { device.currentPackageName == appContext.packageName }
+                    bodyTop0 = textTop(statement) ?: error("statement node missing")
+                    device.swipe(device.displayWidth / 2, device.displayHeight * 4 / 5, device.displayWidth / 2, device.displayHeight / 5, 20)
+                    scrolled = runCatching {
+                        waitUntil(3_000, "scroll attempt $attempt") { (textTop(statement) ?: bodyTop0) < bodyTop0 - 1f }
+                    }.isSuccess
+                    if (scrolled) break
+                }
+                check(scrolled) {
+                    "Storage & privacy body did not scroll in landscape after $SCROLL_ATTEMPTS swipes " +
+                        "(no overflow, or top bar moved with it): top was $bodyTop0; ${landscapeScrollDiagnostics()}"
                 }
                 val backTop1 = backTop(backLabels)
                 check(backTop1 != null && kotlin.math.abs(backTop1 - backTop0) < 1f) {
@@ -683,6 +728,40 @@ class DeviceWalkUiTest {
             check(device.displayHeight > device.displayWidth) { "Display not back in portrait after Storage & privacy step" }
         }
         pressBackToFiles(lang)
+    }
+
+    /** Compose is landscape (root and activity configuration) and [statement]'s top has been constant for 500 ms. */
+    private fun awaitLandscapeLayoutSettled(statement: String) {
+        var last = Float.NaN
+        var since = 0L
+        waitUntil(10_000, "Storage & privacy layout did not settle in landscape: ${landscapeScrollDiagnostics()}") {
+            val root = composeRule.onRoot().fetchSemanticsNode().size
+            val landscape = root.width > root.height &&
+                composeRule.activity.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+            val top = textTop(statement)
+            val now = SystemClock.uptimeMillis()
+            if (!landscape || top == null) {
+                last = Float.NaN
+                false
+            } else {
+                if (top != last) {
+                    last = top
+                    since = now
+                }
+                now - since >= 500
+            }
+        }
+    }
+
+    /** Root size and the first vertical scroll container's value/max: tells "no overflow" from "swipe lost". */
+    private fun landscapeScrollDiagnostics(): String {
+        val root = runCatching { composeRule.onRoot().fetchSemanticsNode().size }.getOrNull()
+        val range = runCatching {
+            composeRule.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.VerticalScrollAxisRange))
+                .fetchSemanticsNodes(atLeastOneRootRequired = false).firstOrNull()
+                ?.config?.get(SemanticsProperties.VerticalScrollAxisRange)?.let { "value=${it.value()} max=${it.maxValue()}" }
+        }.getOrNull()
+        return "root=$root scrollRange=${range ?: "none"} display=${device.displayWidth}x${device.displayHeight}"
     }
 
     /** Unclipped top (px) of the first node showing [text], or null. */
@@ -1283,6 +1362,7 @@ class DeviceWalkUiTest {
     }
 
     private fun shot(name: String) {
+        logThreads(name) // the ids alive at each step, in case the offending thread is gone by the failure
         runCatching {
             device.takeScreenshot(File(shotDir, "$name.png"))
         }

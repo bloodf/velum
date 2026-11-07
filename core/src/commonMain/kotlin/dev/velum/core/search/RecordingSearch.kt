@@ -1,5 +1,6 @@
 package dev.velum.core.search
 
+import dev.velum.core.data.TranscriptMarkers
 import dev.velum.core.db.Recording
 import dev.velum.core.db.Template
 
@@ -23,7 +24,7 @@ object RecordingSearch {
             if (fromFts.isNotEmpty()) return fromFts
         }
         return ListSearch.filter(items, q) {
-            listOf(it.title, it.transcript, it.summary_markdown)
+            listOf(it.title, TranscriptMarkers.spoken(it.transcript), it.summary_markdown)
         }
     }
 

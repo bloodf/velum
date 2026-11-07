@@ -33,6 +33,7 @@ class AndroidCalendarEventProvider(
                 CalendarContract.Instances.TITLE,
                 CalendarContract.Instances.BEGIN,
                 CalendarContract.Instances.END,
+                CalendarContract.Instances.ALL_DAY,
             )
             val uri = CalendarContract.Instances.CONTENT_URI.buildUpon()
                 .appendPath(windowStart.toString())
@@ -48,6 +49,7 @@ class AndroidCalendarEventProvider(
                 val titleIdx = cursor.getColumnIndex(CalendarContract.Instances.TITLE)
                 val beginIdx = cursor.getColumnIndex(CalendarContract.Instances.BEGIN)
                 val endIdx = cursor.getColumnIndex(CalendarContract.Instances.END)
+                val allDayIdx = cursor.getColumnIndex(CalendarContract.Instances.ALL_DAY)
                 if (titleIdx < 0 || beginIdx < 0 || endIdx < 0) {
                     return@withContext CalendarLookupResult.Ok(null)
                 }
@@ -55,10 +57,12 @@ class AndroidCalendarEventProvider(
                 while (cursor.moveToNext()) {
                     val title = cursor.getString(titleIdx)?.trim().orEmpty()
                     if (title.isEmpty()) continue
+                    // All-day rows are stored at UTC midnight, which leaks into the neighbouring local day.
+                    if (allDayIdx >= 0 && cursor.getInt(allDayIdx) == 1) continue
                     val begin = cursor.getLong(beginIdx)
                     val end = cursor.getLong(endIdx)
                     val summary = CalendarEventSummary(title, begin, end)
-                    if (begin <= aroundEpochMs && aroundEpochMs <= end) {
+                    if (begin <= aroundEpochMs && aroundEpochMs < end) {
                         return@withContext CalendarLookupResult.Ok(summary)
                     }
                     if (begin >= aroundEpochMs) {
