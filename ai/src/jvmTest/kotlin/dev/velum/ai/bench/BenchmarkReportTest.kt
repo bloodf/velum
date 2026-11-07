@@ -26,7 +26,7 @@ class BenchmarkReportTest {
         ram: Long = 1L shl 30,
         chars: Int = 10,
         runtime: String = "local-asr",
-        timeBoundary: String = "wall_clock_engine_call_sum",
+        timeBoundary: String = "windowed_asr_engine_transcribe_wall_clock_sum",
         rtfUnit: String = "ratio_elapsed_over_source_duration",
     ) = BenchResult(BenchTask.Transcription, model, "60s", input, elapsed, ram, chars, runtime, timeBoundary, rtfUnit)
 
@@ -39,7 +39,7 @@ class BenchmarkReportTest {
     @Test fun json_carries_every_required_field() {
         val json = BenchReport(env, listOf(result())).toJson()
         listOf(
-            "modelId", "workload", "rtf", "inputDurationMs", "elapsedMs", "peakRamBytes",
+            "schemaVersion", "modelId", "workload", "rtf", "inputDurationMs", "elapsedMs", "peakRamBytes",
             "outputChars", "runtime", "timeBoundary", "rtfUnit", "sdkInt", "abi",
             "isEmulator", "device", "settings", "fixtureSensitivity", "peakRamMethod",
         ).forEach { assertTrue("\"$it\"" in json, "missing $it in $json") }
@@ -66,7 +66,7 @@ class BenchmarkReportTest {
     }
 
     @Test fun a_summary_run_needs_the_transcript_hash_but_not_the_audio_hash() {
-        val summary = BenchResult(BenchTask.Summary, "g", "fixed-transcript", 34_000, 1_000, 1L shl 30, 10, runtime = "local-llm")
+        val summary = BenchResult(BenchTask.Summary, "g", "fixed-transcript", 34_000, 1_000, 1L shl 30, 10, runtime = "local-llm", timeBoundary = "single_complete_call_wall_clock")
         val onlyTranscript = env.copy(settings = env.settings - "audioSha256" - "audioFormat")
         BenchReport(onlyTranscript, listOf(summary)).requireValid(setOf("g"))
         val none = env.copy(settings = env.settings - "summaryTranscriptSha256")
@@ -104,6 +104,22 @@ class BenchmarkReportTest {
         }
         assertFailsWith<IllegalArgumentException> {
             BenchReport(env, listOf(result().copy(rtfUnit = "seconds"))).requireValid(setOf("m"))
+        }
+    }
+
+    @Test fun unsupported_schema_and_plausible_wrong_metadata_fail() {
+        assertFailsWith<IllegalArgumentException> {
+            BenchReport(env, listOf(result()), schemaVersion = 1).requireValid(setOf("m"))
+        }
+        assertFailsWith<IllegalArgumentException> {
+            BenchReport(env, listOf(result(runtime = "local-llm"))).requireValid(setOf("m"))
+        }
+        assertFailsWith<IllegalArgumentException> {
+            BenchReport(env, listOf(result(timeBoundary = "single_complete_call_wall_clock"))).requireValid(setOf("m"))
+        }
+        val missingMetadata = BenchResult(BenchTask.Transcription, "m", "60s", 60_000, 100, 1024, 1)
+        assertFailsWith<IllegalArgumentException> {
+            BenchReport(env, listOf(missingMetadata)).requireValid(setOf("m"))
         }
     }
 
