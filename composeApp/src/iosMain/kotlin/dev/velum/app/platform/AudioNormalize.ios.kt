@@ -9,7 +9,6 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import platform.AudioToolbox.*
 import platform.CoreAudioTypes.*
-import platform.CoreCrypto.*
 import platform.Foundation.NSFileManager
 import platform.CoreFoundation.CFURLCreateFromFileSystemRepresentation
 import platform.CoreFoundation.CFRelease
@@ -34,7 +33,7 @@ actual class AudioNormalizer actual constructor() {
                 ownedPath = temporary
                 try {
                     val frames = convertImport(sourcePath, temporary, targetSampleRateHz) { context.ensureActive() }
-                    val hash = hashNormalizedImport(temporary) { context.ensureActive() }
+                    val hash = sha256File(temporary)
                     context.ensureActive()
                     check(rename(temporary, output) == 0) { "Cannot publish normalized audio" }
                     ownedPath = output
@@ -135,26 +134,4 @@ private fun importWavHeader(rate: Int, bytes: Long): ByteArray = ByteArray(44).a
     number(16, 16, 4); number(20, 1, 2); number(22, 1, 2)
     number(24, rate.toLong(), 4); number(28, rate.toLong() * 2, 4)
     number(32, 2, 2); number(34, 16, 2); text(36, "data"); number(40, bytes, 4)
-}
-
-// The shared iOS sha256File loads the entire file; imports must stay bounded even during hashing.
-private fun hashNormalizedImport(path: String, checkCancelled: () -> Unit): String = memScoped {
-    val file = fopen(path, "rb") ?: error("Cannot hash normalized WAV")
-    try {
-        val context = alloc<CC_SHA256_CTX>()
-        CC_SHA256_Init(context.ptr)
-        val buffer = allocArray<UByteVar>(8192)
-        while (true) {
-            checkCancelled()
-            val count = fread(buffer, 1u, 8192u, file)
-            if (count == 0uL) break
-            CC_SHA256_Update(context.ptr, buffer, count.toUInt())
-        }
-        check(ferror(file) == 0) { "Cannot read normalized WAV" }
-        val digest = allocArray<UByteVar>(32)
-        CC_SHA256_Final(digest, context.ptr)
-        (0 until 32).joinToString("") { digest[it].toString(16).padStart(2, '0') }
-    } finally {
-        fclose(file)
-    }
 }
