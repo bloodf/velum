@@ -23,10 +23,18 @@ actual fun streamToFileAtomically(
     // O_EXCL also refuses symlinks and preserves a pre-existing part owned by another transfer.
     val fd = open(partPath, O_WRONLY or O_CREAT or O_EXCL or O_NOFOLLOW, 384)
     check(fd >= 0) { "Cannot create download part: errno=$errno" }
-    var published = false
+    var open = true
+    var ownedDevice = 0L
+    var ownedInode = 0UL
     var headLength = 0
     var size = 0L
     try {
+        memScoped {
+            val info = alloc<stat>()
+            check(fstat(fd, info.ptr) == 0) { "Cannot inspect download part" }
+            ownedDevice = info.st_dev.toLong()
+            ownedInode = info.st_ino.toULong()
+        }
         check(flock(fd, LOCK_EX or LOCK_NB) == 0) { "Cannot lock download part: errno=$errno" }
         produce { chunk ->
             val count = minOf(headBytes - headLength, chunk.size)
@@ -49,25 +57,64 @@ actual fun streamToFileAtomically(
             check(fstat(fd, info.ptr) == 0 && info.st_size == size) { "Download part length mismatch" }
         }
         val finalPath = finalPathFor(head.copyOf(headLength))
-        // link publishes the complete inode atomically and never replaces an existing target.
-        check(link(partPath, finalPath) == 0) { "Cannot publish download: errno=$errno" }
-        published = true
-        val finalParent = finalPath.substringBeforeLast('/', ".").ifEmpty { "/" }
-        val directory = open(finalParent, O_RDONLY or O_DIRECTORY)
-        check(directory >= 0) { "Cannot open download directory: errno=$errno" }
-        try {
-            check(fsync(directory) == 0) { "Cannot sync download directory: errno=$errno" }
-        } finally {
-            close(directory)
+        require(finalPath != partPath) { "Download target must differ from part" }
+        val result = finalPath to size
+        // Close errors are pre-commit failures. Never retry close: the fd may already be released.
+        open = false
+        check(close(fd) == 0) { "Cannot close download part: errno=$errno" }
+        memScoped {
+            val current = alloc<stat>()
+            check(lstat(partPath, current.ptr) == 0 && current.st_dev.toLong() == ownedDevice &&
+                current.st_ino.toULong() == ownedInode) { "Download part ownership changed" }
         }
-        check(unlink(partPath) == 0) { "Cannot remove published download part: errno=$errno" }
-        return finalPath to size
+        publishDownloadPart(partPath, finalPath)
+        return result
     } catch (failure: Throwable) {
-        // If publication durability is uncertain, retain the source as a recovery copy.
-        if (!published) unlink(partPath)
+        memScoped {
+            val current = alloc<stat>()
+            if (lstat(partPath, current.ptr) == 0 && current.st_dev.toLong() == ownedDevice &&
+                current.st_ino.toULong() == ownedInode) unlink(partPath)
+        }
         throw failure
     } finally {
-        close(fd)
+        if (open) close(fd)
+    }
+}
+
+/** Directory sync is best effort after commit, as on JVM; publication must reach caller cleanup. */
+internal fun publishDownloadPart(
+    partPath: String,
+    finalPath: String,
+    syncDirectory: (String) -> Unit = ::syncDownloadDirectory,
+) {
+    memScoped {
+        val source = alloc<stat>()
+        check(lstat(partPath, source.ptr) == 0 &&
+            (source.st_mode.toInt() and S_IFMT.toInt()) == S_IFREG.toInt()) { "Invalid download part" }
+        val target = alloc<stat>()
+        if (lstat(finalPath, target.ptr) == 0) {
+            check(source.st_dev != target.st_dev || source.st_ino != target.st_ino) { "Download target aliases part" }
+            check((target.st_mode.toInt() and S_IFMT.toInt()) == S_IFREG.toInt()) {
+                "Download target is not a regular file"
+            }
+        } else {
+            check(errno == ENOENT) { "Cannot inspect download target: errno=$errno" }
+        }
+    }
+    check(rename(partPath, finalPath) == 0) { "Cannot publish download: errno=$errno" }
+    // No rollback or part deletion here: another writer may already have replaced the target.
+    runCatching {
+        syncDirectory(finalPath.substringBeforeLast('/', ".").ifEmpty { "/" })
+    }
+}
+
+private fun syncDownloadDirectory(parent: String) {
+    val directory = open(parent, O_RDONLY or O_DIRECTORY)
+    check(directory >= 0) { "Cannot open download directory: errno=$errno" }
+    try {
+        check(fsync(directory) == 0) { "Cannot sync download directory: errno=$errno" }
+    } finally {
+        close(directory)
     }
 }
 

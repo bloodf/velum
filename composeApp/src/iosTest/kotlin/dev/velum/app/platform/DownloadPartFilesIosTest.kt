@@ -82,16 +82,57 @@ class DownloadPartFilesIosTest {
         assertFalse(exists("$dir/rec-publish.part"))
     }
 
-    @Test fun collisionsPreserveExistingBytes() = inDirectory { dir ->
+    @Test fun replacementPreservesOldBytesUntilCommitAndOnFailure() = inDirectory { dir ->
         val target = "$dir/final"
         streamToFileAtomically("$dir/seed.part", 1, { target }) { it(byteArrayOf(42)) }
         assertFails {
-            streamToFileAtomically("$dir/rec-collision.part", 1, { target }) { it(byteArrayOf(9)) }
+            streamToFileAtomically("$dir/rec-error.part", 1, { target }) {
+                it(byteArrayOf(9)); error("producer failed")
+            }
         }
         assertContentEquals(byteArrayOf(42), read(target))
-        assertFalse(exists("$dir/rec-collision.part"))
+        assertFalse(exists("$dir/rec-error.part"))
+        assertEquals(target to 1L, streamToFileAtomically("$dir/rec-replace.part", 1, {
+            assertContentEquals(byteArrayOf(42), read(target))
+            target
+        }) { it(byteArrayOf(9)) })
+        assertContentEquals(byteArrayOf(9), read(target))
+        assertFalse(exists("$dir/rec-replace.part"))
         assertFails { streamToFileAtomically(target, 1, { "$dir/other" }) { error("must not produce") } }
-        assertContentEquals(byteArrayOf(42), read(target))
+        assertContentEquals(byteArrayOf(9), read(target))
+        assertEquals(0, symlink(target, "$dir/link"))
+        assertFails { streamToFileAtomically("$dir/rec-link.part", 1, { "$dir/link" }) { it(byteArrayOf(8)) } }
+        assertContentEquals(byteArrayOf(9), read(target))
+        assertFalse(exists("$dir/rec-link.part"))
+    }
+
+    @Test fun postPublicationSyncFailureStillReportsSuccessAndAllowsCallerCleanup() = inDirectory { dir ->
+        val part = "$dir/rec-ready.part"
+        val target = "$dir/final"
+        streamToFileAtomically("$dir/seed.part", 1, { part }) { it(byteArrayOf(7)) }
+        var callerPath: String? = null
+        publishDownloadPart(part, target) {
+            assertContentEquals(byteArrayOf(7), read(target))
+            error("directory sync failed after commit")
+        }.also { callerPath = target }
+        assertEquals(target, callerPath)
+        assertFalse(exists(part))
+        assertContentEquals(byteArrayOf(7), read(target))
+        assertEquals(0, unlink(requireNotNull(callerPath)))
+        assertFalse(exists(target))
+    }
+
+    @Test fun postPublicationFailureNeverRollsBackAnotherWritersReplacement() = inDirectory { dir ->
+        val part = "$dir/rec-ready.part"
+        val target = "$dir/final"
+        streamToFileAtomically("$dir/seed.part", 1, { part }) { it(byteArrayOf(7)) }
+        publishDownloadPart(part, target) {
+            streamToFileAtomically("$dir/rec-other.part", 1, { target }) { sink -> sink(byteArrayOf(8)) }
+            error("directory sync failed after another writer committed")
+        }
+        assertContentEquals(byteArrayOf(8), read(target))
+        assertFalse(exists(part))
+        assertFalse(exists("$dir/rec-other.part"))
     }
 
     @Test fun sweepPreservesLivePartsSymlinksAndUnmatchedFiles() = inDirectory { dir ->
