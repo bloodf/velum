@@ -6,6 +6,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import dev.velum.ai.local.ModelStoreDir
 import dev.velum.ai.pipeline.RecordingJobScheduler
 import dev.velum.app.di.AppContainer
+import dev.velum.app.platform.installRecordingFilesDir
 import dev.velum.core.data.DriverFactory
 import dev.velum.core.security.InMemorySecureStore
 import java.io.File
@@ -36,8 +37,20 @@ class DetachedShareImportTest {
         dev.velum.app.platform.providerCopyTestTransport = null
     }
 
+    private lateinit var recordingFiles: File
+
+    @org.junit.Before fun installRecordingFiles() {
+        recordingFiles = Files.createTempDirectory("velum-detached-recordings").toFile()
+        installRecordingFilesDir(recordingFiles.path)
+    }
+
     @org.junit.After fun drainSharedChannel() = runBlocking {
-        while (kotlinx.coroutines.withTimeoutOrNull(300) { dev.velum.app.platform.IncomingShare.next() } != null) Unit
+        try {
+            while (kotlinx.coroutines.withTimeoutOrNull(300) { dev.velum.app.platform.IncomingShare.next() } != null) Unit
+        } finally {
+            installRecordingFilesDir(null)
+            recordingFiles.deleteRecursively()
+        }
     }
 
     @Test fun cancelling_the_collector_mid_normalize_still_creates_the_recording() {
