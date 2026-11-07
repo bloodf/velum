@@ -67,8 +67,6 @@ fun AskAcrossScreen(
 
     fun cancelAsk() {
         askJob?.cancel()
-        askJob = null
-        busy = false
     }
 
     Column(
@@ -128,9 +126,11 @@ fun AskAcrossScreen(
                             error = null
                             askJob = scope.launch {
                                 try {
-                                    runCatching { container.askAcross.ask(question) }
-                                        .onSuccess { answer = it }
-                                        .onFailure { error = strings.ux.genericError }
+                                    answer = container.askAcross.ask(question)
+                                } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                                    throw cancelled
+                                } catch (_: Exception) {
+                                    error = strings.ux.genericError
                                 } finally {
                                     busy = false
                                     askJob = null

@@ -8,7 +8,7 @@ import dev.velum.ai.local.VoiceProfileStore
 
 /**
  * Platform ASR / diarization / local LLM bridge.
- * Android wires sherpa-onnx OfflineRecognizer + LiteRT-LM; JVM/iOS fail loudly.
+ * Android uses Sherpa + LiteRT-LM directly; iOS uses their Swift bindings. JVM fails loudly.
  */
 expect class LocalAsrRuntime() {
     suspend fun transcribe(
