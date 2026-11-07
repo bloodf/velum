@@ -25,8 +25,7 @@ class BundleUnreadableException : IllegalArgumentException("The bundle could not
  * only requires a non-empty passphrase of valid Unicode. The passphrase is normalized to NFC on every platform, so the
  * same typed text opens the same bundle everywhere; lone surrogates are rejected.
  *
- * Size: sealed bundles above [MAX_BUNDLE_BYTES] are refused before any KDF or buffer work, since the AEAD builds whole
- * arrays in memory and a large file with a valid header needs no passphrase to be read.
+ * Size: sealed bundles above [MAX_BUNDLE_BYTES] are refused before any KDF or buffer work, before a large file with a valid header can trigger key derivation or decryption.
  *
  * Randomness: [seal] uses the platform CSPRNG ([secureRandomBytes]); the internal overload exists for tests only.
  * Bluetooth transport and key pairing are out of scope; this only seals and opens bytes.
@@ -83,7 +82,7 @@ object SealedBundle {
         val nonce = sealed.copyOfRange(10 + SALT, HEADER)
         val key = pbkdf2HmacSha256(pass, salt, iterations, 32)
         try {
-            return ChaCha20Poly1305.open(key, nonce, header, sealed.copyOfRange(HEADER, sealed.size)) ?: throw BundleUnreadableException()
+            return ChaCha20Poly1305.open(key, nonce, header, sealed, HEADER, sealed.size - HEADER) ?: throw BundleUnreadableException()
         } finally {
             key.fill(0)
         }

@@ -6,7 +6,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
-import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
@@ -109,9 +108,7 @@ class DiscoverBundledCatalogDeviceTest {
     private val countText = Regex("(\\d+) results?")
 
     /** The result count rendered by the search sheet, or null while it is not composed. */
-    private fun uiCount(): Int? = compose.onAllNodes(SemanticsMatcher("English result count") { node ->
-        node.config.getOrNull(SemanticsProperties.Text)?.any { countText.matches(it.text) } == true
-    }).fetchSemanticsNodes()
+    private fun uiCount(): Int? = compose.onAllNodes(hasText("result", substring = true)).fetchSemanticsNodes()
         .firstNotNullOfOrNull { n ->
             n.config.getOrNull(SemanticsProperties.Text)?.firstNotNullOfOrNull {
                 countText.matchEntire(it.text)?.groupValues?.get(1)?.toInt()

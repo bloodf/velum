@@ -13,4 +13,10 @@ class SyncSummaryTest {
         assertEquals("Pronto · 1 novo · 1 duplicado · 1 falha · 1 ignorado", syncSummary(PtBr, 1, 1, 1, 1))
         assertEquals("Pronto · 3 novos · 0 duplicados · 2 falhas · 4 ignorados", syncSummary(PtBr, 3, 0, 2, 4))
     }
+    @Test
+    fun trashMatchesAreReportedSeparatelyFromLiveDuplicatesAndPermanentDeletion() {
+        assertEquals("Done · 0 new · 1 dupe · 0 failed · 1 skipped · 2 in Trash (not imported)", syncSummary(En, 0, 1, 0, 1, 2))
+        assertEquals("Pronto · 0 novos · 1 duplicado · 0 falhas · 1 ignorado · 2 na lixeira (sem nova importação)", syncSummary(PtBr, 0, 1, 0, 1, 2))
+    }
+
 }
