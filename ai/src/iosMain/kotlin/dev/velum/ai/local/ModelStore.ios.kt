@@ -79,11 +79,16 @@ actual class ModelStoreDir actual constructor(absolutePath: String) {
             bytes.usePinned { pinned ->
                 while (written < bytes.size) {
                     val n = platform.posix.write(fd, pinned.addressOf(written), (bytes.size - written).toULong())
+                    if (n < 0 && platform.posix.errno == platform.posix.EINTR) continue
                     check(n > 0) { "Unable to write a file." }
                     written += n.toInt()
                 }
             }
-            check(platform.posix.fsync(fd) == 0) { "Unable to flush a file." }
+            var flushResult: Int
+            do {
+                flushResult = platform.posix.fsync(fd)
+            } while (flushResult < 0 && platform.posix.errno == platform.posix.EINTR)
+            check(flushResult == 0) { "Unable to flush a file." }
         } finally {
             platform.posix.close(fd)
         }

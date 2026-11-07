@@ -36,16 +36,23 @@ internal object TarModelArchive {
                 require(size <= 1024 * 1024) { "Tar metadata too large" }
                 val metadata = exact(size.toInt())
                 if (kind == 'L') {
-                    nextPath = metadata.decodeToString(throwOnInvalidSequence = true).trimEnd('\u0000', '\n')
+                    require(nextPath == null) { "Conflicting tar path metadata" }
+                    nextPath = metadata.decodeToString(throwOnInvalidSequence = true).trimEnd('\u0000')
                 } else {
                     var offset = 0
                     while (offset < metadata.size) {
-                        val space = (offset until metadata.size).first { metadata[it] == 32.toByte() }
-                        val length = metadata.copyOfRange(offset, space).decodeToString().toInt()
+                        val space = (offset until metadata.size).firstOrNull { metadata[it] == 32.toByte() }
+                            ?: throw IllegalArgumentException("Invalid PAX record")
+                        val digits = metadata.copyOfRange(offset, space).decodeToString()
+                        require(digits.isNotEmpty() && digits.all { it in '0'..'9' }) { "Invalid PAX record" }
+                        val length = digits.toIntOrNull() ?: throw IllegalArgumentException("Invalid PAX record")
                         require(length > space - offset + 1 && length <= metadata.size - offset) { "Invalid PAX record" }
-                        val record = metadata.copyOfRange(space + 1, offset + length).decodeToString(throwOnInvalidSequence = true).trimEnd('\n')
+                        require(metadata[offset + length - 1] == 10.toByte()) { "Invalid PAX record newline" }
+                        val record = metadata.copyOfRange(space + 1, offset + length - 1).decodeToString(throwOnInvalidSequence = true)
+                        require(record.indexOf('=') > 0) { "Invalid PAX attribute" }
                         if (record.startsWith("path=")) {
                             require(kind == 'x') { "Global tar path is not supported" }
+                            require(nextPath == null) { "Conflicting tar path metadata" }
                             nextPath = record.removePrefix("path=")
                         }
                         require(!record.startsWith("size=") && !record.startsWith("linkpath=")) { "Unsupported PAX size or link" }
@@ -63,6 +70,7 @@ internal object TarModelArchive {
                 val output = destination.resolve(components.joinToString("/"))
                 if (kind == '5') {
                     require(size == 0L) { "Invalid tar directory size" }
+                    require(!output.exists() || output.isDirectory()) { "Tar directory collides with file" }
                     output.createDirectories()
                 } else {
                     require(components.isNotEmpty() && !output.exists()) { "Duplicate or invalid tar file" }
