@@ -65,10 +65,11 @@ class AndroidWifiSoftApJoiner(
             val cb = object : ConnectivityManager.NetworkCallback() {
                 override fun onAvailable(network: Network) {
                     try {
-                        if (context.checkSelfPermission(Manifest.permission.ACCESS_NETWORK_STATE) != PackageManager.PERMISSION_GRANTED) {
+                        val properties = if (context.checkSelfPermission(Manifest.permission.ACCESS_NETWORK_STATE) == PackageManager.PERMISSION_GRANTED) {
+                            cm.getLinkProperties(network)
+                        } else {
                             throw SecurityException("SoftAP join requires ACCESS_NETWORK_STATE")
                         }
-                        val properties = cm.getLinkProperties(network)
                         boundNetwork = network
                         linkProperties = properties
                         if (cont.isActive) cont.resume(Unit)
