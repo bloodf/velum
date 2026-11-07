@@ -6,6 +6,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import dev.velum.ai.local.ModelStoreDir
 import dev.velum.ai.pipeline.RecordingJobScheduler
 import dev.velum.app.di.AppContainer
+import dev.velum.app.platform.installRecordingFilesDir
 import dev.velum.core.data.DriverFactory
 import dev.velum.core.security.InMemorySecureStore
 import java.io.File
@@ -29,8 +30,20 @@ import org.robolectric.annotation.Config
 @RunWith(AndroidJUnit4::class)
 @Config(application = android.app.Application::class, sdk = [34])
 class DetachedShareImportTest {
+    private lateinit var recordingFiles: File
+
+    @org.junit.Before fun installRecordingFiles() {
+        recordingFiles = Files.createTempDirectory("velum-detached-recordings").toFile()
+        installRecordingFilesDir(recordingFiles.path)
+    }
+
     @org.junit.After fun drainSharedChannel() = runBlocking {
-        while (kotlinx.coroutines.withTimeoutOrNull(300) { dev.velum.app.platform.IncomingShare.next() } != null) Unit
+        try {
+            while (kotlinx.coroutines.withTimeoutOrNull(300) { dev.velum.app.platform.IncomingShare.next() } != null) Unit
+        } finally {
+            installRecordingFilesDir(null)
+            recordingFiles.deleteRecursively()
+        }
     }
 
     @Test fun cancelling_the_collector_mid_normalize_still_creates_the_recording() {
@@ -114,6 +127,21 @@ class DetachedShareImportTest {
         gate.complete(Unit)
         val pending = checkNotNull(container.pendingShare) { "the in-flight import was dropped with its collector" }
         assertIs<ImportResult.Failed>(withTimeout(30_000) { pending.await() }) // the next collector reports this once
+    }
+
+    @Test fun stale_share_approval_returns_a_handled_failure_without_starting_normalization() = withContainer { container, dir ->
+        var normalized = false
+        val pipeline = AudioImportPipeline(container,
+            normalize = { normalized = true; error("Stale share must not normalize") },
+            markAttempt = { error("Incoming share was cleared") },
+        )
+        val result = withTimeout(5_000) {
+            pipeline.startSharedDetached(silentWav(File(dir, "stale.wav")).path).await()
+        }
+        assertEquals("Incoming share was cleared", assertIs<ImportResult.Failed>(result).message)
+        assertEquals(false, normalized)
+        val next = AudioImportPipeline(container).startSharedDetached(silentWav(File(dir, "next.wav")).path)
+        assertIs<ImportResult.Created>(withTimeout(30_000) { next.await() })
     }
 
     @Test fun the_same_file_shared_twice_at_once_makes_one_recording_and_one_job() {

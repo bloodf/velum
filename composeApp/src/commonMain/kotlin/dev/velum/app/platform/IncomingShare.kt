@@ -15,12 +15,27 @@ expect suspend fun awaitIncomingSharePath(): SharedFile?
 
 /**
  * Tells the platform a copied share has been fully handled (imported, found duplicate, failed or refused), so it is not
- * offered again after a restart. Android persists a pending marker per copy; iOS and desktop have no share intake.
+ * offered again after a restart. Android and iOS persist a pending marker per copy. Desktop has no share intake.
  */
 expect fun markShareHandled(path: String)
 
-/** Counts that the import of [path] has started, durably (Android). A share whose import never finishes is dropped after a few starts. */
+/** Counts that the import of [path] has started, durably (Android and iOS). A share whose import never finishes is dropped after a few starts. */
 expect fun markShareAttempt(path: String)
 
 /** Forgets every pending share. A wipe calls this first, so wiped audio is never offered again after a restart. */
 expect fun clearPendingShares()
+
+/** One approval applies to one external share only. A restart creates a fresh gate. */
+class ExternalShareConsent {
+    private val decision = kotlinx.coroutines.CompletableDeferred<Boolean>()
+    private var consumed = false
+
+    fun decide(approved: Boolean) { decision.complete(approved) }
+
+    suspend fun runIfApproved(action: () -> Unit): Boolean {
+        if (!decision.await() || consumed) return false
+        consumed = true
+        action()
+        return true
+    }
+}
