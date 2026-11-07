@@ -8,7 +8,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
 import java.io.File
-import java.io.FileOutputStream
+import java.io.IOException
+import java.nio.file.Files
+import java.nio.file.StandardOpenOption
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -56,13 +58,14 @@ internal suspend fun importPickedDocument(
             displayName = displayNameOf(context, uri)
             val extension = displayName?.takeIf { ImportAudioFormats.isSupportedFileName(it) }?.substringAfterLast('.')?.lowercase() ?: "audio"
             val dest = File(context.cacheDir, "imports").apply { mkdirs() }
-            val target = File(dest, "${UUID.randomUUID()}.$extension").also { outFile = it }
+            val target = File(dest, "${UUID.randomUUID()}.$extension")
             val copyContext = currentCoroutineContext()
             val copied = copyToCache(openStream, target, checkCancelled = { copyContext.ensureActive() }) {
                 // Class name only: the message and path can carry the user's file names.
                 android.util.Log.w(TAG, "Import copy failed (${it::class.java.simpleName})")
             }
             if (copied) {
+                outFile = target
                 target.absolutePath
             } else {
                 null
@@ -81,41 +84,59 @@ internal suspend fun importPickedDocument(
     }
 }
 
+internal const val MAX_PROVIDER_COPY_BYTES = 1_073_741_824L
+
 /**
- * Copies a picked document into the cache. A provider error (offline Drive, revoked grant) or an empty
- * stream returns false and leaves no partial file; cancellation still propagates.
+ * Bounds actual bytes, including providers with absent or incorrect lengths. Only a file created by
+ * this invocation is removed on failure. Blocking provider open/read still requires a separate
+ * cancellable I/O boundary before a wall-clock deadline can be guaranteed.
  */
 internal fun copyToCache(
     open: () -> java.io.InputStream?,
     outFile: File,
     checkCancelled: () -> Unit = {},
+    knownLength: Long? = null,
+    maxBytes: Long = MAX_PROVIDER_COPY_BYTES,
     onError: (Exception) -> Unit = {},
 ): Boolean {
+    require(maxBytes in 0..MAX_PROVIDER_COPY_BYTES)
+    var owned = false
+    var complete = false
     try {
         checkCancelled()
+        if (knownLength != null && knownLength > maxBytes) throw IOException("Import exceeds size limit")
         open()?.use { input ->
-            FileOutputStream(outFile).use { output ->
+            // CREATE_NEW refuses existing files and symlinks without truncating or deleting them.
+            val output = Files.newOutputStream(outFile.toPath(), StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)
+            owned = true
+            output.use {
                 val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                var copied = 0L
                 while (true) {
                     checkCancelled()
-                    val count = input.read(buffer)
+                    // Probe one byte beyond the inclusive limit without writing that byte.
+                    val requested = minOf(buffer.size.toLong(), maxBytes - copied + 1).toInt()
+                    val count = input.read(buffer, 0, requested)
                     checkCancelled()
                     if (count < 0) break
+                    if (count > maxBytes - copied) throw IOException("Import exceeds size limit")
                     output.write(buffer, 0, count)
+                    copied += count
                 }
+                if (copied == 0L) throw IOException("Empty import")
             }
-        }
+        } ?: return false
+        checkCancelled()
+        complete = true
+        return true
     } catch (cancelled: CancellationException) {
-        outFile.delete()
         throw cancelled
     } catch (failure: Exception) {
         onError(failure)
-        outFile.delete()
         return false
+    } finally {
+        if (owned && !complete) outFile.delete()
     }
-    if (outFile.exists() && outFile.length() > 0L) return true
-    outFile.delete()
-    return false
 }
 
 /** The provider's display name ("two-speakers.wav"); the last path segment is an opaque id ("msf:1000000063") for document providers. */
