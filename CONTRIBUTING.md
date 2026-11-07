@@ -16,7 +16,7 @@ Thanks for helping build a local-first, subscription-free recorder companion.
 - JDK 17+
 - Android Studio / SDK 35 for Android
 
-**Android-first:** prefer changes that ship on Android. iOS source sets may exist for shared code, but there is no Xcode project or iOS CI yet.
+**Android-first:** prefer changes that ship on Android. iOS source sets may exist for shared code, and the Xcode project is generated from `iosApp/project.yml` (see `iosApp/README.md`); there is no iOS CI yet.
 
 ```bash
 ./gradlew :plaud-protocol:jvmTest :ai:jvmTest
@@ -30,6 +30,27 @@ keystore), `VELUM_UPLOAD_STORE_PASSWORD`, `VELUM_UPLOAD_KEY_ALIAS`, and
 `VELUM_UPLOAD_KEY_PASSWORD`. Supply them through your local secret manager or CI;
 never commit them or print their values. Missing or blank values fail the release
 build. A shipping release never falls back to the committed public debug key.
+
+Release APKs: `./gradlew :composeApp:assembleRelease -Pvelum.abiSplits=true` writes
+`composeApp-arm64-v8a-release.apk`, `composeApp-armeabi-v7a-release.apk` and
+`composeApp-universal-release.apk` (native code for `arm64-v8a`, `armeabi-v7a`, `x86` and
+`x86_64`, for sideload / ChromeOS)
+under `composeApp/build/outputs/apk/release/`. Without the property you get one universal
+`composeApp-release.apk`. Build the Play AAB in a separate invocation without the property
+(`./gradlew :composeApp:bundleRelease`); combining the property with a bundle task fails.
+Release versionCode is `defaultConfig.versionCode` (a literal multiple of 10) plus an ABI digit: universal / AAB `+0`,
+`armeabi-v7a` `1`, `arm64-v8a` `2`, so a universal install can move to its ABI APK and the
+next release outranks every output of this one.
+Play gets only the AAB (versionCode `base * 10`, e.g. 1000); never upload the per-ABI
+APKs (1001 / 1002) alongside it. `check-release-signing.sh --package` also requires
+`fastlane/metadata/android/*/changelogs/<universal versionCode>.txt` and the F-Droid draft
+`versionCode` to match the universal APK.
+
+APK size target and the 10% growth check: `docs/APK_SIZE.md`, `scripts/check-apk-size.sh`.
+
+F-Droid builds the unsigned universal APK with `-Pvelum.unsignedRelease=true` (no upload key; F-Droid
+signs it). The property is refused when `VELUM_UPLOAD_*` variables are set, so a shipping build can
+never come out unsigned by accident. Never distribute that unsigned APK yourself.
 
 To check R8 locally without upload credentials, run
 `./gradlew :composeApp:assembleMinifiedTest`. This explicitly named test variant
@@ -49,6 +70,7 @@ packaging and resource shrinking; never distribute those test artifacts.
 | `ai` | Audio decoding, local/API engines, model management and processing jobs |
 | `recorder` | Recorder driver interfaces and Plaud session/handshake logic |
 | `ble` | Transport interface; Kable on mobile; stub on desktop |
+| `ble-testing` | Test-only BLE fakes; add only as a test dependency |
 | `composeApp` | Shared Compose UI + platform entry points |
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the verified module/dependency map and input-to-storage/UI flow.

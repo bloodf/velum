@@ -38,6 +38,12 @@ class MicDraftRecoveryTest {
         val before = container.repository.getAllRecordings(); assertTrue(reconcile().failedIds.isEmpty())
         assertEquals(before, container.repository.getAllRecordings()); assertEquals(0, enqueued)
     }
+    // #205: markers saved while recording are not progress; the interrupted draft must still be failed.
+    @Test fun a_draft_with_only_saved_markers_is_still_failed_when_the_audio_is_missing() = fixture {
+        insert(); container.repository.updateTranscript(id, "## Markers\n- **0:30** synthetic note")
+        assertEquals(listOf(id), reconcile().failedIds); assertEquals("failed", row()!!.status)
+        assertTrue(row()!!.transcript!!.contains("## Markers")) // the markers are kept
+    }
     @Test fun cancellation_before_insert_leaves_no_row_or_audio() = fixture {
         coroutineScope {
             val entered = CompletableDeferred<Unit>(); val gate = CompletableDeferred<Unit>()
@@ -212,7 +218,7 @@ class MicDraftRecoveryTest {
         val id = "rec-draft-${UUID.randomUUID()}"; val audio = File(root, "$id.wav")
         val mic = SyntheticCapture(); var enqueued = 0
         val container = AppContainer(InMemorySecureStore(), DriverFactory(context), modelStoreRoot = ModelStoreDir(File(root, "models").path), micCapture = mic,
-            recordingJobSchedulerFactory = { _, _ -> RecordingJobScheduler { _, _, _, _ -> enqueued++ } })
+            recordingJobSchedulerFactory = { _, _ -> RecordingJobScheduler { _, _, _, _ -> enqueued++; dev.velum.ai.pipeline.EnqueueResult.STARTED_OR_REPLACED } })
         suspend fun insert() { container.createLocalRecording(status = "recording", id = id) }
         suspend fun row() = container.repository.getRecording(id)
         suspend fun reconcile() = reconcileInterruptedMicDrafts(container, root.path)

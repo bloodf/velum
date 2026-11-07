@@ -39,6 +39,7 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -57,6 +58,7 @@ import androidx.compose.ui.unit.sp
 import dev.velum.app.di.AppContainer
 import dev.velum.app.i18n.LocalStrings
 import dev.velum.app.i18n.Strings
+import dev.velum.app.platform.PlatformBackHandler
 import dev.velum.app.ui.components.DualActionRow
 import dev.velum.app.ui.components.EmptyState
 import dev.velum.app.ui.components.MetaRow
@@ -73,11 +75,14 @@ import dev.velum.app.ui.theme.VelumInkSecondary
 import dev.velum.app.ui.theme.VelumOnBlack
 import dev.velum.app.ui.theme.VelumSurface
 import dev.velum.core.autoflow.AutoFlowPostAction
+import dev.velum.core.autoflow.AutoFlowTemplate
 import dev.velum.core.autoflow.AutoFlowTemplateCatalog
 import dev.velum.core.autoflow.AutoFlowTemplateSetup
 import dev.velum.core.data.epochSecondsNow
 import dev.velum.core.integrations.IntegrationId
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 fun AutoFlowListScreen(
@@ -87,7 +92,7 @@ fun AutoFlowListScreen(
     onBrowseTemplates: () -> Unit,
 ) {
     val strings = LocalStrings.current
-    val flows by container.repository.observeAutoflows().collectAsState(emptyList())
+    val flows by remember(container) { container.repository.observeAutoflows() }.collectAsState(emptyList())
     val prefs by container.settingsRepository.preferences.collectAsState()
     val scope = rememberCoroutineScope()
 
@@ -211,7 +216,9 @@ fun AutoFlowListScreen(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** Result of resolving [AutoFlowEditScreen]'s seed template; [template] is null when the id is unknown. */
+private class SeedLookup(val template: AutoFlowTemplate?)
+
 @Composable
 fun AutoFlowEditScreen(
     container: AppContainer,
@@ -220,12 +227,44 @@ fun AutoFlowEditScreen(
     seedTemplateId: String? = null,
     onOpenIntegrations: () -> Unit = {},
 ) {
-    val strings = LocalStrings.current
-    val flows by container.repository.observeAutoflows().collectAsState(emptyList())
-    val templates by container.repository.observeTemplates().collectAsState(emptyList())
-    val seed = remember(seedTemplateId) {
-        seedTemplateId?.let { AutoFlowTemplateCatalog.byId(it) }
+    if (seedTemplateId == null) {
+        AutoFlowEditContent(container, flowId, onBack, null, onOpenIntegrations)
+        return
     }
+    // The catalog lazily reads a packaged asset on first use: resolve the seed off the main thread
+    // (StrictMode) and compose the editor only once it is known, so its remembered state starts right.
+    val lookup by produceState<SeedLookup?>(null, seedTemplateId) {
+        // A failed asset read must not leave the editor blank forever: fall back to "no seed".
+        value = SeedLookup(
+            runCatching { withContext(Dispatchers.Default) { AutoFlowTemplateCatalog.byId(seedTemplateId) } }
+                .onFailure {
+                    if (it is kotlinx.coroutines.CancellationException) throw it
+                    println("VelumAutoFlow: seed lookup failed: ${it::class.simpleName}")
+                }
+                .getOrNull(),
+        )
+    }
+    val resolved = lookup
+    if (resolved == null) {
+        Box(Modifier.fillMaxSize().background(VelumBg))
+    } else {
+        AutoFlowEditContent(container, flowId, onBack, resolved.template, onOpenIntegrations)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AutoFlowEditContent(
+    container: AppContainer,
+    flowId: String,
+    onBack: () -> Unit,
+    seed: AutoFlowTemplate?,
+    onOpenIntegrations: () -> Unit,
+) {
+    val strings = LocalStrings.current
+    val flows by remember(container) { container.repository.observeAutoflows() }.collectAsState(emptyList())
+    val templatesFlow = remember(container) { container.repository.observeTemplates() }
+    val templates by templatesFlow.collectAsState(emptyList())
     val isNew = flowId == "new" || seed != null
     val flow = flows.firstOrNull { it.id == flowId }
     val locale = strings.localeTag
@@ -327,6 +366,8 @@ fun AutoFlowEditScreen(
     fun tryBack() {
         if (dirty) showDiscard = true else onBack()
     }
+
+    PlatformBackHandler(enabled = true, onBack = ::tryBack)
 
     fun missingSetupFor(action: String): AutoFlowTemplateSetup? = when (AutoFlowPostAction.fromStored(action)) {
         AutoFlowPostAction.FolderExport ->
@@ -523,6 +564,12 @@ fun AutoFlowEditScreen(
     }
 
     if (editWhen) {
+        var sheetWakePhrase by remember { mutableStateOf(wakePhrase) }
+        var sheetDurationMin by remember { mutableStateOf(durationMin) }
+        var sheetDurationMax by remember { mutableStateOf(durationMax) }
+        var sheetDurationMinText by remember { mutableStateOf(durationMinText) }
+        var sheetDurationMaxText by remember { mutableStateOf(durationMaxText) }
+        var sheetSourceFilter by remember { mutableStateOf(sourceFilter) }
         ModalBottomSheet(
             onDismissRequest = { editWhen = false },
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
@@ -544,10 +591,9 @@ fun AutoFlowEditScreen(
                     modifier = Modifier.padding(horizontal = 20.dp),
                 )
                 BasicTextField(
-                    value = wakePhrase,
+                    value = sheetWakePhrase,
                     onValueChange = {
-                        wakePhrase = it
-                        markDirty()
+                        sheetWakePhrase = it
                     },
                     singleLine = true,
                     cursorBrush = SolidColor(VelumInk),
@@ -565,11 +611,10 @@ fun AutoFlowEditScreen(
                     modifier = Modifier.padding(horizontal = 20.dp),
                 )
                 BasicTextField(
-                    value = durationMinText,
+                    value = sheetDurationMinText,
                     onValueChange = { raw ->
-                        durationMinText = raw.filter { it.isDigit() }.take(5)
-                        durationMin = (durationMinText.toLongOrNull() ?: 0L) * 60L
-                        markDirty()
+                        sheetDurationMinText = raw.filter { it.isDigit() }.take(5)
+                        sheetDurationMin = (sheetDurationMinText.toLongOrNull() ?: 0L) * 60L
                     },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -586,12 +631,11 @@ fun AutoFlowEditScreen(
                     modifier = Modifier.padding(horizontal = 20.dp),
                 )
                 BasicTextField(
-                    value = durationMaxText,
+                    value = sheetDurationMaxText,
                     onValueChange = { raw ->
-                        durationMaxText = raw.filter { it.isDigit() }.take(3)
-                        val hours = durationMaxText.toLongOrNull() ?: 3L
-                        durationMax = (hours.coerceAtLeast(1L)) * 3600L
-                        markDirty()
+                        sheetDurationMaxText = raw.filter { it.isDigit() }.take(3)
+                        val hours = sheetDurationMaxText.toLongOrNull() ?: 3L
+                        sheetDurationMax = (hours.coerceAtLeast(1L)) * 3600L
                     },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -612,14 +656,29 @@ fun AutoFlowEditScreen(
                 listOf("note_pro", "phone", "import", "all").forEach { src ->
                     SelectableSheetRow(
                         label = sourceFilterLabel(src, strings),
-                        selected = sourceFilter == src,
+                        selected = sheetSourceFilter == src,
                         onClick = {
-                            sourceFilter = src
-                            markDirty()
+                            sheetSourceFilter = src
                         },
                     )
                 }
-                DualActionRow(strings.cancel, strings.done, { editWhen = false }, { editWhen = false })
+                DualActionRow(strings.cancel, strings.done, { editWhen = false }, {
+                    if (wakePhrase != sheetWakePhrase ||
+                        durationMin != sheetDurationMin ||
+                        durationMax != sheetDurationMax ||
+                        durationMinText != sheetDurationMinText ||
+                        durationMaxText != sheetDurationMaxText ||
+                        sourceFilter != sheetSourceFilter) {
+                        markDirty()
+                    }
+                    wakePhrase = sheetWakePhrase
+                    durationMin = sheetDurationMin
+                    durationMax = sheetDurationMax
+                    durationMinText = sheetDurationMinText
+                    durationMaxText = sheetDurationMaxText
+                    sourceFilter = sheetSourceFilter
+                    editWhen = false
+                })
             }
         }
     }
@@ -635,12 +694,18 @@ fun AutoFlowEditScreen(
     }
 
     if (editDo) {
+        var sheetTemplateId by remember { mutableStateOf(templateId) }
+        var sheetAutoLabel by remember { mutableStateOf(autoLabel) }
+        var sheetLanguage by remember { mutableStateOf(language) }
+        var sheetPostAction by remember { mutableStateOf(postAction) }
+        var sheetModelId by remember { mutableStateOf(modelId) }
+        var sheetEndpointProfileId by remember { mutableStateOf(endpointProfileId) }
         ModalBottomSheet(
             onDismissRequest = { editDo = false },
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
             containerColor = VelumSurface,
         ) {
-            Column(Modifier.padding(vertical = 8.dp)) {
+            Column(Modifier.verticalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
                 Text(
                     strings.doSection,
                     fontWeight = FontWeight.SemiBold,
@@ -658,16 +723,14 @@ fun AutoFlowEditScreen(
                 templateChoices.forEach { tpl ->
                     SelectableSheetRow(
                         label = tpl.name,
-                        selected = templateId == tpl.id,
+                        selected = sheetTemplateId == tpl.id,
                         onClick = {
-                            templateId = tpl.id
-                            markDirty()
+                            sheetTemplateId = tpl.id
                         },
                     )
                 }
-                ToggleRow(strings.autoSpeakerLabel, autoLabel, {
-                    autoLabel = it
-                    markDirty()
+                ToggleRow(strings.autoSpeakerLabel, sheetAutoLabel, {
+                    sheetAutoLabel = it
                 })
                 Spacer(Modifier.height(8.dp))
                 Text(
@@ -683,10 +746,9 @@ fun AutoFlowEditScreen(
                 ).forEach { (value, label) ->
                     SelectableSheetRow(
                         label = label,
-                        selected = language == value,
+                        selected = sheetLanguage == value,
                         onClick = {
-                            language = value
-                            markDirty()
+                            sheetLanguage = value
                         },
                     )
                 }
@@ -700,19 +762,17 @@ fun AutoFlowEditScreen(
                 postActionChoices.forEach { (value, label) ->
                     SelectableSheetRow(
                         label = label,
-                        selected = postAction == value,
+                        selected = sheetPostAction == value,
                         onClick = {
-                            postAction = value
-                            markDirty()
+                            sheetPostAction = value
                         },
                     )
                 }
                 Spacer(Modifier.height(8.dp))
                 OutlinedTextField(
-                    value = modelId,
+                    value = sheetModelId,
                     onValueChange = {
-                        modelId = it
-                        markDirty()
+                        sheetModelId = it
                     },
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
                     label = { Text(strings.settingsUi.modelForAutoFlow) },
@@ -721,17 +781,32 @@ fun AutoFlowEditScreen(
                 )
                 Spacer(Modifier.height(8.dp))
                 OutlinedTextField(
-                    value = endpointProfileId,
+                    value = sheetEndpointProfileId,
                     onValueChange = {
-                        endpointProfileId = it
-                        markDirty()
+                        sheetEndpointProfileId = it
                     },
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
                     label = { Text(strings.settingsUi.endpointProfile) },
                     singleLine = true,
                     shape = RoundedCornerShape(10.dp),
                 )
-                DualActionRow(strings.cancel, strings.done, { editDo = false }, { editDo = false })
+                DualActionRow(strings.cancel, strings.done, { editDo = false }, {
+                    if (templateId != sheetTemplateId ||
+                        autoLabel != sheetAutoLabel ||
+                        language != sheetLanguage ||
+                        postAction != sheetPostAction ||
+                        modelId != sheetModelId ||
+                        endpointProfileId != sheetEndpointProfileId) {
+                        markDirty()
+                    }
+                    templateId = sheetTemplateId
+                    autoLabel = sheetAutoLabel
+                    language = sheetLanguage
+                    postAction = sheetPostAction
+                    modelId = sheetModelId
+                    endpointProfileId = sheetEndpointProfileId
+                    editDo = false
+                })
             }
         }
     }

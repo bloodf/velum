@@ -9,10 +9,10 @@ Owner standing rule: nothing may remain stub/demo-only. Prefer **blocked-on-owne
 ### Protocol / BLE
 - [x] Pluggable `RecorderDriver` registry (`:recorder`): Plaud + Omi/Friend + Pocket; Limitless codec vendored; see `docs/DEVICES_ROADMAP.md` / `THIRD_PARTY.md` — **Omi/Pocket/Limitless not verified on hardware**
 - [x] Protocol-20 framing, unlock (FE10/FE11/FE12), handshake, list (26), download (28/type-2/29), battery (9)
-- [x] Forbidden opcodes never sent: **5, 104, 128, 0xFE20, 143 (OTA)**; never write settings **4 / 26** (every model)
+- [x] Forbidden opcodes never sent: **5, 30 (delete file, receive-only), 104, 128, 0xFE20, 143 (OTA)**; never write settings **4 / 26** (every model)
 - [x] Unused cmds left alone: 5, 13, 38, 50, 51, 109, 141, 142, 145, 151
 - [x] Fixed session key/nonce/aad; plaintext = `seq ‖ packet`; FE10 snSignature on every connect (prot ≥ 20)
-- [x] Cmd 138 feature bit 0x08 (AES-GCM Wi-Fi); SoftAP + **WebSocket `:8081`** (`org.java_websocket`, Plaud parity) with SoftAP per-socket bind, token preamble, fixed session nonce, BLE fallback (JVM fake E2E green; confirm on hardware)
+- [x] Cmd 138 feature bit 0x08 (AES-GCM Wi-Fi); SoftAP + **WebSocket `:8081`** (`org.java_websocket`, Plaud parity) with token preamble, fixed session nonce, BLE fallback (JVM fake E2E green; confirm on hardware). SoftAP per-socket bind is attempted, not proven: see `docs/protocol/WIFI_FAST_PATH.md` (#8)
 - [x] Android: `allowBackup=false`, cleartext off, networkSecurityConfig + dataExtractionRules; release R8 on
 - [x] Model downloads: HTTPS + SHA-256 required (streaming hash + atomic rename); ASR catalog pins included
 - [x] BYO API base URL validated (`AiBaseUrl`: HTTPS except localhost; block link-local metadata)
@@ -46,7 +46,7 @@ Phone-only / external (no Plaud required):
 | User template JSON | Templates → JSON import | Upserts local templates; built-ins untouched |
 
 ### Audio / AI
-- [x] Ogg demux + Opus decode (kopus) → PCM
+- [x] Ogg demux + Opus decode (kopus) → PCM 16 kHz mono (same contract as import; OpusHead rate/channels are metadata only, #95)
 - [x] OpenAI-compatible API: URL / key / model list refresh / transcribe / chat (BYO URL only; no Plaud hosts)
 - [x] Per-task Local vs API settings (mix allowed); **default Local** for every task
 - [x] `resolveModeOrPrompt`: Local when model Ready, else UI prompts Download or switch to API
@@ -63,17 +63,18 @@ Phone-only / external (no Plaud required):
 - [x] Streaming ASR catalog packs (Zipformer EN mobile / ES Kroko / multilingual) with verified SHA-256
 - [x] Diarization + embedding + LLM catalog URLs + verified SHA-256 (pyannote, 3D-Speaker preferred, WeSpeaker, TitaNet, Gemma E4B/E2B LiteRT-LM, Qwen3-4B GGUF) — see `docs/LOCAL_MODELS_RESEARCH.md` §8
 - [x] Android sherpa-onnx `OfflineRecognizer` (Parakeet / Whisper / SenseVoice)
-- [x] `StreamingTranscriber` (Android OnlineRecognizer when streaming pack Ready; else overlapping Offline windows; JVM `FakeStreamingTranscriber`)
+- [x] `StreamingTranscriber` (Android OnlineRecognizer when streaming pack Ready; else overlapping Offline windows)
 - [x] Phone mic: runtime RECORD_AUDIO + rationale → PCM WAV (`MicCapture` / `WavWriter`) → process via WorkManager
 - [x] Mic foreground service (`MicRecordingService`, `FOREGROUND_SERVICE_MICROPHONE`) + Pause/Stop notification; process-death WAV recover (`WavWriter.recoverOrFinalize`); POST_NOTIFICATIONS on API 33+
 - [x] Mic first-class: pause/resume, markers, input-source picker (Mic / VoiceCommunication / Unprocessed / Camcorder for BT/USB routes)
 - [x] External import hub + share intents + watched SAF folders + MediaCodec normalize + hash dedupe
 - [x] Phone-first onboarding: Use phone mic / Import from a recorder / Connect a Plaud
+- [x] Device session download FGS (`SessionDownloadService`, `connectedDevice`, or `dataSync` without `BLUETOOTH_CONNECT`), started and stopped with the download notification (#85). Background, Doze and process-death behaviour on real hardware is still unverified. Wi-Fi fast transfer is not wired into the app in 1.0, so BLE is the only path it covers today.
 - [x] Processing FGS via WorkManager `setForegroundAsync` (`FOREGROUND_SERVICE_DATA_SYNC`) on `RecordingProcessWorker`
-- [x] Live record UI with partial Markdown (mic when permitted; else PCM demo stream)
+- [x] Live record UI with partial Markdown (mic when permitted; with no streaming model the pane says so and the audio is saved)
 - [x] Mind-map from summary H2 + list items ("Mapa mental" sheet)
 - [x] Local diarization + cosine voice profiles (`VoiceProfileStore`); preferred embedding `3dspeaker-eres2net-base`
-- [x] Local LLM LiteRT-LM on Android when Gemma Ready (default catalog id `gemma-4-e4b`)
+- [x] Local LLM LiteRT-LM on Android when Gemma Ready (with no model selected: the best downloaded Gemma, else `gemma-4-e2b`, which the first-run recommendation downloads)
 - [x] Ask AI on recording notes via local/`AiTaskRouter` LLM (no Plaud ask endpoints)
 - [x] Compose Markdown preview for Fontes / Notas (deterministic Compose renderer: bold speakers, timestamps, headings/lists, task checkboxes; Roborazzi fixtures seed diarized transcript + summary)
 - [x] Summary/template H2 headings follow output language (pt-BR / en pinned; other langs via LLM instruction) — `SummaryLocalization`
@@ -90,6 +91,8 @@ Phone-only / external (no Plaud required):
 - [x] Glossary + memory tables in `Velum.sq`; CRUD under Personalization / Memory
 - [x] Local JSON/Markdown templates create/edit persist locally (community/cloud templates removed)
 - [x] Built-in catalog: **15 Velum originals** + curated **1,500 Plaud** templates (100×15 categories; unique names within category; lazy classpath asset) + optional Velum PR contributions (`contributor` credit on detail only). Plaud author/official stay in JSONL + `docs/TEMPLATES_CREDITS.md` (not shown in app UI). Discover: category tabs, FTS over name/description/body, popularity sort. Local JSON importer kept (`TemplateJsonImporter`). Sync via `scripts/sync-plaud-templates.sh`
+- [x] Official-template baseline (#101): the 41-row official baseline (`core/src/jvmTest/resources/templates/official_baseline.txt`) is the current official set and is enforced by `TemplateHygieneCatalogTest`. The Featured floor (100 distinct exact bodies per category, renamed copies counted once) is enforced by the same test.
+- [ ] Official-template external inventory check (#101): **blocked (#101 owner decision)**. No citable authoritative inventory exists given the Plaud branding rules, so the baseline is not checked against one. Nothing is invented to fill a gap.
 - [x] CalendarProvider read current/next event title to name recordings after sync (permission-denied reported clearly)
 - [x] Runtime READ_CALENDAR permission with rationale (Integrations + AutoFlow blocked path)
 
@@ -118,13 +121,13 @@ Phone-only / external (no Plaud required):
 
 - [x] Full security / systems / UX review → `docs/REVIEW_2026-10.md` (2026-10-26)
 - [x] Critical/high/medium findings fixed on `main` (`eb2b2b6`, `aa2af18`, `c61e5ae`) except intentional deferrals listed in that doc
-- [x] Forbidden opcodes **5 / 104 / 128 / 0xFE20 / 143** + settings **4 / 26** re-verified with client send-path tests
+- [x] Forbidden opcodes **5 / 30 / 104 / 128 / 0xFE20 / 143** + settings **4 / 26** re-verified with client send-path tests
 
 ## In progress
 
 - [x] Chunked / windowed ASR + BLE-to-file sync (Y14/Y17); PCM above ~48 MiB spills to temp file and is window-read (no 200 MiB hard fail)
 - [x] Mic + processing foreground services (FOREGROUND_SERVICE) — mic `microphone` + processing `dataSync`
-- [x] SoftAP + WebSocket `:8081` per-socket bind + token preamble + BLE fallback (fixed AEAD nonce kept for Plaud SoftAP parity — see `docs/protocol/WIFI_FAST_PATH.md`)
+- [x] SoftAP + WebSocket `:8081` token preamble + BLE fallback (fixed AEAD nonce kept for Plaud parity, on BLE too: S13 in `docs/REVIEW_2026-10.md`). Per-socket bind is attempted, not proven: see `docs/protocol/WIFI_FAST_PATH.md` (#8)
 
 ### Release / distribution (code-ready; Play upload needs owner secrets)
 
@@ -132,7 +135,7 @@ Phone-only / external (no Plaud required):
 - [x] Tag workflow `.github/workflows/release.yml` builds signed AAB when secrets present
 - [x] R8/ProGuard minify + shrink on release; crash-free process start (Keystore/`VoiceProfileStore` guarded)
 - [x] Privacy policy `docs/PRIVACY.md` + About link (pt-BR + en); Play/F-Droid metadata under `fastlane/metadata/` + `metadata/dev.velum.app.yml`
-- [x] OSV CI job (`osv-scan`); SoftAP fixed AEAD nonce **accepted** (S13) — see `docs/REVIEW_2026-10.md`
+- [x] OSV CI job (`osv-scan`); fixed AEAD nonce and segment keystream reuse (S13): Open, pending owner decision: BLE, files and Wi-Fi. An earlier document called the Wi-Fi case accepted on 2026-10-27; no owner decision is on record. See `docs/REVIEW_2026-10.md`
 - [ ] Owner: create upload keystore, set GitHub secrets, push `v*` tag, complete Play Console data-safety + internal track
 - [ ] Owner: decide Renovate PR #2; open F-Droid `fdroiddata` PR from `metadata/dev.velum.app.yml`
 
@@ -140,6 +143,8 @@ Phone-only / external (no Plaud required):
 
 - [ ] **One-time device identity values** (`snSignature` / `sn-sign` + bind token + optional RSA) from owner Plaud dump — **cannot be generated locally**. Import UI + JSON schema + unit tests ready (`docs/PLAUD_IMPORT.md`); waiting on Heitor export. Hardware checklist: `docs/HARDWARE_VALIDATION.md`.
 - [ ] Confirm Ogg Opus rate/channels + PLAUD.AI decrypt against a real Note Pro capture
+  - Synthetic coverage only (#95): `OggOpusPlaudSyntheticTest` (generated Ogg Opus mono/stereo x 8/12/16/24/48 kHz, malformed/truncated, PLAUD.AI round-trip, wrong key/nonce, tamper) and `OpusDecode16kMonoTest` (48 kHz stereo → 16 kHz mono: rate, channels, duration, pitch, OpusHead pre-skip dropped, multistream rejected). `OggOpusDecodeDeviceTest` (`:composeApp` androidInstrumentedTest, 3 tests: decrypt → native decode → 16 kHz mono, wrong key, MediaCodec normalizer) is compile-checked only until run on an emulator. Real-device rate/channels, listening and ASR quality remain unconfirmed (#7).
+- [ ] Real Note Pro BLE unlock / reconnect / battery (#5) and FE10-only with E2EE off (#9) — **simulated coverage only** (#93, #97): `SimulatedPeripheralScenariosTest` (`:ble:jvmTest`) and `DeviceSimulatedPeripheralTest` (`:composeApp:testDebugUnitTest`) run synthetic identity against the in-process fake peripheral. Simulator success is not evidence of device support. The client tolerates an FE10-only unlock (no FE11) in simulation; whether a real Note Pro accepts it is unconfirmed (#9). Reproduce: `./gradlew :ble:jvmTest --rerun` and `./gradlew :composeApp:testDebugUnitTest --tests '*DeviceSimulatedPeripheralTest*'`.
 
 ## Removed (server inventory → local)
 
@@ -152,7 +157,8 @@ Phone-only / external (no Plaud required):
 ## Confirm only on owner’s real Plaud Note Pro
 
 - Live BLE advertise `portVersion` / project 881, unlock with owner keys, battery notify
-- Full multi-hour download resume + CRC
+- Screen-off and background download on real hardware. **Simulated only** (#94): `DownloadBackgroundDeviceTest` runs a paced simulated transfer on an emulator under the download service. An emulator can't show Doze, CPU suspend or a real BLE link, and instrumentation keeps the process alive, so it doesn't show the service is what keeps a real download running
+- Full multi-hour download resume + CRC. **Simulated only** (#94): `ResumableSessionDownloadTest` and `TransferIntegrityTest` (`:ble:jvmTest`) cover a 2-hour synthetic transfer, resume after disconnects and integrity failures, and CRC handling against the fake peripheral. `DeviceResumeRestartTest` (`:composeApp:testDebugUnitTest`) covers resuming through `DeviceViewModel` from a partial left by an earlier process, kept in `filesDir/downloads`. Still unconfirmed on hardware (#6): whether a Note Pro honours a non-zero SYNC_FILE_START offset, whether chunk offsets are absolute (community protocol notes say so), how it answers SYNC_FILE_STOP and which CRC it reports (the only capture shows `0xFFFF`), real transfer time and battery drain. Offset gaps and short transfers are hard failures everywhere, because decryption is positional; real-device CRC mismatches are report-only. One real download under #6 should check the stop reply and the Ogg page CRCs of the result, and whether a resumed file decrypts: joining bytes across attempts assumes the device's encrypted file is the same on each transfer. Repeated chunks are compared with the stored bytes, but a device that honours the start offset sends none, so nothing checks the join on such a device except the CRC and the decrypt. It should also check that a hung Kable write honours cancellation, which the write timeouts depend on.
 - On-device Parakeet/Whisper/Gemma quality + thermal throttling on physical silicon
 - Whether FE10 alone works with E2EE off (no FE11) after one-time key import
 - Wi-Fi SoftAP against real Note Pro hardware (JVM fake path is green)

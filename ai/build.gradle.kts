@@ -8,8 +8,6 @@ kotlin {
     androidTarget {
         compilerOptions {
             jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
-            // litertlm-android ships Kotlin 2.4 metadata; keep compiling on 2.2.x toolchain.
-            freeCompilerArgs.add("-Xskip-metadata-version-check")
         }
     }
     jvm()
@@ -37,7 +35,10 @@ kotlin {
                 implementation(libs.kotlin.test)
                 implementation(libs.kotlinx.coroutines.test)
                 implementation(libs.ktor.client.mock)
+                implementation(libs.sqldelight.jvm)
+                implementation(libs.sqldelight.runtime)
                 implementation(project(":ble"))
+                implementation(project(":ble-testing"))
                 implementation(project(":plaud-protocol"))
             }
         }

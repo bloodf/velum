@@ -1,5 +1,7 @@
 # Ready-to-paste Claude continuation prompt
 
+> Historical snapshot from 2026-11-01. Instructions, permissions, model routing, issue status, PR state, paths, and validation claims below describe that date only. They are not current authority or a continuation prompt. Follow current owner instructions, AGENTS.md, and docs/ai-tooling.md; verify current source and remote state before acting. Preserve the safety and data protections described below.
+
 You are taking over maintenance of https://github.com/bloodf/velum from Codex on this Mac. The owner explicitly stopped Codex development and requested this handoff, publication of unfinished work, and continuation by Claude using up to 10 parallel isolated subagents: **Sonnet 5.5 for implementation/testing and Opus 5.5 for architecture/review**.
 
 First check that those exact requested models and the subagent capability are available in your environment. Do not pretend they exist or silently substitute models. If a requested model is unavailable, report the exact limitation and ask the owner to choose a substitute before launching model-dependent agents. You may inspect the repository and handoff while that is pending.

@@ -16,6 +16,7 @@ Dependencies below describe production source sets; tests may use extra modules.
 | [core](core/) | SQLDelight repository, settings, secure-store contracts, identity import, templates and AutoFlow definitions | plaud-protocol, exported with `api` |
 | [recorder](recorder/) | Recorder driver interfaces and Plaud handshake/session logic | core, plaud-protocol |
 | [ble](ble/) | BLE transport, mobile Kable implementation and transfer adapters | core, plaud-protocol, recorder |
+| [ble-testing](ble-testing/) | Test-only BLE and Wi-Fi fakes (`FakeBleTransport`, `FakePlaudPeripheral`, `FakeWifiSoftApJoiner`, `FakeWifiDeviceClient`); consumed only from test source sets | ble, core, plaud-protocol |
 | [ai](ai/) | Audio decoding, model management, engine routing, processing jobs and AutoFlow execution | core |
 | [composeApp](composeApp/) | Application composition, Compose screens, import/export, microphone capture and platform entry points | All five modules above |
 
@@ -43,17 +44,23 @@ There are three input paths:
    and the `DeviceKeyImporter` contract in
    [SecureStore.kt](core/src/commonMain/kotlin/dev/velum/core/security/SecureStore.kt).
    [PlaudRecorderDriver](recorder/src/commonMain/kotlin/dev/velum/recorder/plaud/PlaudRecorderDriver.kt)
-   handles recorder operations over the supplied transport. Downloaded bytes pass
-   through `PlaudFileCrypto` before `AppContainer.persistDownloadedSession`
-   writes a local file, inserts a recording and queues processing. The production
-   persistence boundary still accepts a full `ByteArray`; this is not proof of
-   bounded-memory multi-hour imports (#86). Session deduplication remains #113.
+   handles recorder operations over the supplied transport. Downloaded bytes go to
+   a temp file, then `PlaudFileCrypto.decryptStream` decrypts them in bounded
+   pieces into `<id>.part`, which `AppContainer.persistDownloadedSession` renames
+   to its final name before inserting a recording and queuing processing. JVM tests
+   bound the pieces and heap; multi-hour hardware captures are still unvalidated
+   (#86, #6). On iOS `createTempSessionFile()` returns null, so the encrypted
+   session is still held whole in memory before chunked decrypt; iOS recorder
+   import is not a supported target. Rows are unique on device session id plus
+   device serial (no dedup without a real serial); a re-download atomically
+   replaces the existing row's audio and keeps its title, transcript and summary (#113).
 2. File import starts in
    [AudioImportPipeline](composeApp/src/commonMain/kotlin/dev/velum/app/importing/AudioImportPipeline.kt).
    It hashes the source, normalizes audio using the platform `AudioNormalizer`,
    checks normalized content hashes, creates a local recording, resolves AutoFlow
-   parameters and enqueues the same processor. General interrupted-import and
-   orphan reconciliation remains #122.
+   parameters and enqueues the same processor. Before the container is published,
+   a startup sweep quarantines unreferenced final audio files older than 24 hours in
+   the recordings directory and purges quarantine after 7 days (#122).
 3. Android phone capture uses
    [MicCapture](composeApp/src/androidMain/kotlin/dev/velum/app/platform/MicCapture.android.kt),
    [MicRecordingService](composeApp/src/androidMain/kotlin/dev/velum/app/platform/MicRecordingService.kt)

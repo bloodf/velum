@@ -34,6 +34,7 @@ kotlin {
             dependencies {
                 implementation(libs.kotlin.test)
                 implementation(libs.kotlinx.coroutines.test)
+                implementation(project(":ble-testing"))
             }
         }
 
@@ -57,6 +58,16 @@ kotlin {
             }
         }
 
+        val androidUnitTest by getting {
+            dependencies {
+                implementation(libs.kotlin.test)
+                implementation(libs.junit)
+                implementation(libs.androidx.test.ext.junit)
+                implementation(libs.robolectric)
+                implementation(libs.kotlinx.coroutines.test)
+            }
+        }
+
         // With the default hierarchy, apple/ios intermediate sets exist after applyDefaultHierarchyTemplate.
         val iosMain by getting {
             dependsOn(mobileMain)
@@ -74,4 +85,31 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+        }
+    }
 }
+
+// BleFakesNotInProductionTest and GattArchitectureTest scan other modules' sources and build files;
+// declare them so the build cache cannot serve a stale result when only another module changed.
+tasks.matching { it.name == "jvmTest" }.configureEach {
+    inputs.files(
+        rootProject.fileTree(rootProject.projectDir) {
+            include("*/src/*/**/*.kt", "*/src/*/**/*.java", "**/build.gradle.kts")
+            exclude("**/build/**", "**/node_modules/**", "**/.gradle/**")
+        },
+    ).withPathSensitivity(PathSensitivity.RELATIVE).withPropertyName("sourceGuardScanSources")
+}
+
+// CI prints only the failing line otherwise, and its test reports aren't kept: a rare failure's message is lost.
+tasks.withType<Test>().configureEach {
+    testLogging {
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+        // A test that skipped, like the :8081 one when the port is taken, must not look like a pass.
+        events("skipped")
+    }
+}
+
+apply(from = rootProject.file("gradle/robolectric-offline.gradle.kts"))

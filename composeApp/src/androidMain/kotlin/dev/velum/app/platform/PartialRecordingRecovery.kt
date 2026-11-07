@@ -18,7 +18,7 @@ data class PartialMicRecoveryReport(
 suspend fun recoverPartialMicRecordings(
     recordingsDirPath: String,
     repository: VelumRepository,
-    onRecovered: (recordingId: String) -> Unit = {},
+    onRecovered: suspend (recordingId: String) -> Unit = {},
     activePath: () -> String? = {
         when (val state = MicRecordingService.state.value) {
             is MicSessionState.Starting -> state.session.absolutePath

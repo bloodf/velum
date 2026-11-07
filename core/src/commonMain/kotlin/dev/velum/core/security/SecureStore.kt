@@ -3,6 +3,12 @@ package dev.velum.core.security
 import dev.velum.protocol.DeviceIdentityKeys
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerializationException
+import kotlinx.serialization.json.Json
 
 /**
  * Platform secure storage (Android Keystore / iOS Keychain / OS keyring on desktop).
@@ -12,6 +18,12 @@ interface SecureStore {
     suspend fun putString(key: String, value: String)
     suspend fun getString(key: String): String?
     suspend fun remove(key: String)
+    /**
+     * Removes every entry whose key starts with [prefix]. The store has no way to list keys, so this is how a
+     * caller clears a family of entries (per-profile API keys) without having read the list that names them.
+     * Like [remove] it must not need the vault key: a locked keystore still lets entries be deleted.
+     */
+    suspend fun removeWithPrefix(prefix: String)
     suspend fun contains(key: String): Boolean
 }
 
@@ -26,13 +38,18 @@ object SecureKeys {
     const val AI_API_KEY = "ai.api_key"
 
     /** Per-endpoint-profile API key. Legacy [AI_API_KEY] mirrors the default profile. */
-    fun apiKey(profileId: String): String = "ai.api_key.$profileId"
+    fun apiKey(profileId: String): String = "$API_KEY_PREFIX$profileId"
+
+    /** Every per-profile API key starts with this; the legacy [AI_API_KEY] does not. */
+    const val API_KEY_PREFIX = "ai.api_key."
 
     const val DEVICE_PRIVATE_KEY_PEM = "device.private_key_pem"
     const val DEVICE_PUBLIC_KEY_PEM = "device.public_key_pem"
     const val DEVICE_SERIAL_SIGNATURE = "device.serial_signature_b64"
     const val DEVICE_BIND_TOKEN = "device.bind_token"
     const val DEVICE_SERIAL = "device.serial"
+    /** One encrypted value makes an identity update coherent across failures/readers. */
+    const val DEVICE_IDENTITY_BUNDLE = "device.identity_bundle_v1"
     const val WEBHOOK_URL = "integrations.webhook.url"
     const val WEBHOOK_SECRET = "integrations.webhook.secret"
 }
@@ -85,19 +102,19 @@ class SecureDeviceKeyImporter(
         require(signature.size == 256) {
             "snSignature must decode to 256 bytes (got ${signature.size})"
         }
-        store.putString(SecureKeys.DEVICE_SERIAL, serialNumber.trim())
-        store.putString(SecureKeys.DEVICE_SERIAL_SIGNATURE, serialSignatureBase64.trim())
-        store.putString(SecureKeys.DEVICE_BIND_TOKEN, bindToken.trim())
-        if (publicKeyPem.isNotBlank()) {
-            store.putString(SecureKeys.DEVICE_PUBLIC_KEY_PEM, publicKeyPem.trim())
-        } else {
-            store.remove(SecureKeys.DEVICE_PUBLIC_KEY_PEM)
-        }
-        if (privateKeyPem.isNotBlank()) {
-            store.putString(SecureKeys.DEVICE_PRIVATE_KEY_PEM, privateKeyPem.trim())
-        } else {
-            store.remove(SecureKeys.DEVICE_PRIVATE_KEY_PEM)
-        }
+        val bundle = StoredDeviceIdentity(
+            version = IDENTITY_BUNDLE_VERSION,
+            serial = serialNumber.trim(),
+            signatureBase64 = serialSignatureBase64.trim(),
+            bindToken = bindToken.trim(),
+            publicKeyPem = publicKeyPem.trim(),
+            privateKeyPem = privateKeyPem.trim(),
+        )
+        val encoded = identityJson.encodeToString(StoredDeviceIdentity.serializer(), bundle)
+        currentCoroutineContext().ensureActive()
+        // A provider may report an uncertain commit, but readers still see one
+        // complete identity, never fields from separate imports. Legacy bytes stay intact.
+        store.putString(SecureKeys.DEVICE_IDENTITY_BUNDLE, encoded)
     }
 
     override suspend fun clearKeys() {
@@ -107,15 +124,23 @@ class SecureDeviceKeyImporter(
             SecureKeys.DEVICE_PUBLIC_KEY_PEM,
             SecureKeys.DEVICE_PRIVATE_KEY_PEM,
             SecureKeys.DEVICE_BIND_TOKEN,
+            // Clear legacy entries before the active bundle so a failed clear
+            // cannot expose old credentials as a fallback after removing the bundle.
+            SecureKeys.DEVICE_IDENTITY_BUNDLE,
         ).forEach { store.remove(it) }
     }
 
     override suspend fun hasKeys(): Boolean =
-        store.contains(SecureKeys.DEVICE_SERIAL) &&
+        store.contains(SecureKeys.DEVICE_IDENTITY_BUNDLE) ||
+        (store.contains(SecureKeys.DEVICE_SERIAL) &&
             store.contains(SecureKeys.DEVICE_SERIAL_SIGNATURE) &&
-            store.contains(SecureKeys.DEVICE_BIND_TOKEN)
+            store.contains(SecureKeys.DEVICE_BIND_TOKEN))
 
     override suspend fun loadKeys(): DeviceIdentityKeys? {
+        store.getString(SecureKeys.DEVICE_IDENTITY_BUNDLE)?.let { raw ->
+            // An unreadable active bundle must not silently select a legacy identity.
+            return decodeBundle(raw)
+        }
         val serial = store.getString(SecureKeys.DEVICE_SERIAL) ?: return null
         val sigB64 = store.getString(SecureKeys.DEVICE_SERIAL_SIGNATURE) ?: return null
         val bind = store.getString(SecureKeys.DEVICE_BIND_TOKEN) ?: return null
@@ -135,4 +160,48 @@ class SecureDeviceKeyImporter(
             bindToken = bind,
         )
     }
+
+    private fun decodeBundle(raw: String): DeviceIdentityKeys? {
+        val bundle = try {
+            identityJson.decodeFromString(StoredDeviceIdentity.serializer(), raw)
+        } catch (_: SerializationException) {
+            return null
+        } catch (_: IllegalArgumentException) {
+            return null
+        }
+        if (bundle.version != IDENTITY_BUNDLE_VERSION || bundle.serial.isBlank() || bundle.bindToken.isBlank()) return null
+        val signature = try {
+            Base64.decode(bundle.signatureBase64)
+        } catch (_: IllegalArgumentException) {
+            return null
+        }
+        if (signature.size != 256) return null
+        return DeviceIdentityKeys(bundle.serial, signature, bundle.publicKeyPem, bundle.privateKeyPem, bundle.bindToken)
+    }
+
+    private companion object {
+        const val IDENTITY_BUNDLE_VERSION = 1
+
+        // Explicit defaults keep the stored form independent of Kotlin default values.
+        val identityJson = Json {
+            ignoreUnknownKeys = true
+            encodeDefaults = true
+        }
+    }
+}
+
+/**
+ * Internal storage format, independent of the public import/export schema.
+ * Serial names are pinned: renaming them makes every stored identity unreadable.
+ */
+@Serializable
+private data class StoredDeviceIdentity(
+    @SerialName("version") val version: Int,
+    @SerialName("serial") val serial: String,
+    @SerialName("signatureBase64") val signatureBase64: String,
+    @SerialName("bindToken") val bindToken: String,
+    @SerialName("publicKeyPem") val publicKeyPem: String = "",
+    @SerialName("privateKeyPem") val privateKeyPem: String = "",
+) {
+    override fun toString(): String = "StoredDeviceIdentity([redacted])"
 }

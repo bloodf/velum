@@ -70,6 +70,11 @@ class AndroidSecureStore internal constructor(
         check(backend.removeCiphertext(key)) { "Unable to remove the requested secure entry." }
     }
 
+    override suspend fun removeWithPrefix(prefix: String) = access {
+        currentCoroutineContext().ensureActive()
+        check(backend.removeCiphertextsWithPrefix(prefix)) { "Unable to remove the requested secure entries." }
+    }
+
     private suspend fun <T> access(block: suspend () -> T): T = withContext(ioDispatcher) {
         // Serialize key creation and preference operations across instances in this process.
         vaultMutex.withLock {
@@ -94,6 +99,8 @@ internal interface AndroidVaultBackend {
     suspend fun hasEntries(): Boolean
     suspend fun writeCiphertext(name: String, value: String): Boolean
     suspend fun removeCiphertext(name: String): Boolean
+    /** Removes every entry named with [prefix]; true when the change was committed. Needs no key. */
+    suspend fun removeCiphertextsWithPrefix(prefix: String): Boolean
     suspend fun loadKey(): SecretKey?
     suspend fun createKey(): SecretKey
     suspend fun encrypt(key: SecretKey, plain: ByteArray): VaultCiphertext
@@ -114,6 +121,8 @@ private class KeystoreVaultBackend(
     override suspend fun hasEntries(): Boolean = prefs.all.isNotEmpty()
     override suspend fun writeCiphertext(name: String, value: String): Boolean = prefs.edit().putString(name, value).commit()
     override suspend fun removeCiphertext(name: String): Boolean = prefs.edit().remove(name).commit()
+    override suspend fun removeCiphertextsWithPrefix(prefix: String): Boolean =
+        prefs.edit().apply { prefs.all.keys.filter { it.startsWith(prefix) }.forEach { remove(it) } }.commit()
 
     override suspend fun loadKey(): SecretKey? {
         val store = keyStore()

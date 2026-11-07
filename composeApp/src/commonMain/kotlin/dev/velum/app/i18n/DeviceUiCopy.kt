@@ -84,6 +84,10 @@ object DeviceUiCopy {
         if (isPt(localeTag)) "Não conectado. Conecte e desbloqueie primeiro."
         else "Not connected. Connect and unlock first."
 
+    fun connectBusy(localeTag: String): String =
+        if (isPt(localeTag)) "Finalizando o download anterior. Tente conectar de novo em instantes."
+        else "Still finishing the previous download. Try connecting again in a moment."
+
     fun importKeysToDownload(localeTag: String): String =
         if (isPt(localeTag)) "Importe as chaves de identidade do aparelho para baixar."
         else "Import device identity keys to download."
@@ -96,9 +100,23 @@ object DeviceUiCopy {
         if (isPt(localeTag)) "Sessão #$sessionId baixada"
         else "Downloaded session #$sessionId"
 
+    /** Session already in the library: replaces that recording's audio, keeps its notes. */
+    fun redownload(localeTag: String): String =
+        if (isPt(localeTag)) "Baixar de novo" else "Re-download"
+
+    /** Kept, but the device's checksum did not match; never reported as verified (#94). */
+    fun downloadedSessionCrcMismatch(localeTag: String, sessionId: Long): String =
+        if (isPt(localeTag)) "Sessão #$sessionId baixada, mas a verificação de integridade não confere"
+        else "Downloaded session #$sessionId, but its integrity check did not match"
+
     fun downloadFailed(localeTag: String): String =
         if (isPt(localeTag)) "Falha no download. Verifique a conexão e tente de novo."
         else "Download failed. Check the connection and try again."
+
+    /** The partial download was dropped after repeated read errors; the next attempt transfers everything again. */
+    fun savedDownloadUnreadable(localeTag: String): String =
+        if (isPt(localeTag)) "Não foi possível ler os dados já baixados. O próximo download recomeça do início."
+        else "The saved download data could not be read. The next download starts over."
 
     fun downloadCancelled(localeTag: String): String =
         if (isPt(localeTag)) "Download cancelado."

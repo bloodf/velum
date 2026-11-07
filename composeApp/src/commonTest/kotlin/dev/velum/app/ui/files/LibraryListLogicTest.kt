@@ -106,5 +106,6 @@ class LibraryListLogicTest {
             status = "ready",
             trashed = 0,
             created_at = startedAt,
+            processing_warning = null,
         )
 }

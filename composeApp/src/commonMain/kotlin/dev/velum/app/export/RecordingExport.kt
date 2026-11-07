@@ -1,5 +1,7 @@
 package dev.velum.app.export
 
+import dev.velum.ai.pipeline.TranscriptFormatter
+
 /**
  * Formats a recording transcript / summary for share and file export.
  * Pure formatting — no I/O.
@@ -120,7 +122,9 @@ object RecordingExport {
     )
 
     internal fun parseCues(transcriptMarkdown: String): List<Cue> {
-        if (transcriptMarkdown.isBlank()) return emptyList()
+        // Markers are the user's notes, not speech: they must not land in the last subtitle.
+        val spoken = TranscriptFormatter.splitMarkers(transcriptMarkdown).first
+        if (spoken.isBlank()) return emptyList()
         val cueHeader = Regex(
             """^\*\*(.+?)\*\*\s*·\s*(?:(\d+):)?(\d{1,2}):(\d{2})(?:[.,](\d{1,3}))?\s*$""",
         )
@@ -144,7 +148,7 @@ object RecordingExport {
             havePending = false
         }
 
-        transcriptMarkdown.lineSequence().forEach { raw ->
+        spoken.lineSequence().forEach { raw ->
             val line = raw.trimEnd()
             val match = cueHeader.matchEntire(line.trim())
             if (match != null) {
@@ -206,11 +210,16 @@ object RecordingExport {
     private const val DEFAULT_CUE_DURATION_MS = 3_000L
 }
 
-/** Copy [text] to the system clipboard when available. */
-expect fun copyToClipboard(text: String)
+/**
+ * Copy [text] to the system clipboard when available.
+ *
+ * Returns false when the platform has no clipboard to copy to (no context, no clipboard service, headless).
+ * A caller that tells the user "copied" must not claim success on a false result.
+ */
+expect fun copyToClipboard(text: String): Boolean
 
 /**
  * Share raw [bytes] via the platform share sheet / save path.
  * Android writes a cache file and fires ACTION_SEND through FileProvider.
  */
-expect fun shareBytes(filename: String, mime: String, bytes: ByteArray)
+expect suspend fun shareBytes(filename: String, mime: String, bytes: ByteArray)

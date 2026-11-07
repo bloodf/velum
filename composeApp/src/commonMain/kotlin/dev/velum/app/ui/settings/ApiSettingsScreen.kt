@@ -3,6 +3,8 @@ package dev.velum.app.ui.settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.semantics.Role
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,6 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -40,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.velum.app.di.AppContainer
 import dev.velum.app.i18n.LocalStrings
+import dev.velum.app.i18n.countText
 import dev.velum.app.ui.components.BlackButton
 import dev.velum.app.ui.components.ChevronRow
 import dev.velum.app.ui.components.OutlineButton
@@ -109,18 +113,6 @@ fun ApiSettingsScreen(
     var showKey by remember { mutableStateOf(false) }
     var modelQuery by remember { mutableStateOf("") }
 
-    val profileModels = settings.cachedModelsByProfile[selectedProfile.id]
-        ?.takeIf { it.isNotEmpty() }
-        ?: settings.cachedModels
-    val listingFailed = ui.error != null && !ui.refreshing
-    val filtered = remember(profileModels, modelQuery) {
-        val q = modelQuery.trim().lowercase()
-        if (q.isEmpty()) profileModels
-        else profileModels.filter {
-            it.id.lowercase().contains(q) || (it.ownedBy?.lowercase()?.contains(q) == true)
-        }
-    }
-
     fun taskLabel(task: AiApiTask): String = when (task) {
         AiApiTask.Transcription -> strings.settingsUi.modelForTranscription
         AiApiTask.Diarization -> strings.settingsUi.modelForDiarization
@@ -135,248 +127,247 @@ fun ApiSettingsScreen(
         Modifier
             .fillMaxSize()
             .background(VelumBg)
-            .verticalScroll(rememberScrollState()),
     ) {
         ScreenTopBar(strings.aiProvider, onBack = onBack)
-        Spacer(Modifier.height(8.dp))
-        ChevronRow(strings.aiProcessing, onAiProcessing)
-        ChevronRow(strings.modelManager, onModelManager, showDivider = false)
-        Spacer(Modifier.height(16.dp))
-        Text(
-            strings.settingsUi.apiHint,
-            color = VelumInkSecondary,
-            fontSize = 13.sp,
-            lineHeight = 18.sp,
-            modifier = Modifier.padding(horizontal = 20.dp),
-        )
-        Spacer(Modifier.height(16.dp))
-        SectionLabel(strings.settingsUi.endpointProfiles)
-        profiles.forEach { profile ->
-            val selected = profile.id == selectedProfileId
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 4.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(if (selected) VelumSurface else VelumBg)
-                    .border(1.dp, if (selected) VelumBlack else VelumDivider, RoundedCornerShape(10.dp))
-                    .clickable {
-                        selectedProfileId = profile.id
-                        viewModel.setActiveProfile(profile.id)
+        Column(
+            Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState()),
+        ) {
+            Spacer(Modifier.height(8.dp))
+            ChevronRow(strings.aiProcessing, onAiProcessing)
+            ChevronRow(strings.modelManager, onModelManager, showDivider = false)
+            Spacer(Modifier.height(16.dp))
+            Text(
+                strings.settingsUi.apiHint,
+                color = VelumInkSecondary,
+                fontSize = 13.sp,
+                lineHeight = 18.sp,
+                modifier = Modifier.padding(horizontal = 20.dp),
+            )
+            Spacer(Modifier.height(16.dp))
+            SectionLabel(strings.settingsUi.endpointProfiles)
+            profiles.forEach { profile ->
+                val selected = profile.id == selectedProfileId
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 4.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(if (selected) VelumSurface else VelumBg)
+                        .border(1.dp, if (selected) VelumBlack else VelumDivider, RoundedCornerShape(10.dp))
+                        .clickable {
+                            selectedProfileId = profile.id
+                            viewModel.setActiveProfile(profile.id)
+                        }
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(profile.name, fontWeight = FontWeight.Medium, color = VelumInk, fontSize = 14.sp)
+                        Text(profile.baseUrl, color = VelumInkSecondary, fontSize = 12.sp)
                     }
-                    .padding(12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text(profile.name, fontWeight = FontWeight.Medium, color = VelumInk, fontSize = 14.sp)
-                    Text(profile.baseUrl, color = VelumInkSecondary, fontSize = 12.sp)
-                }
-                if (selected) {
-                    Icon(Icons.Outlined.Check, contentDescription = null, tint = VelumInk, modifier = Modifier.size(18.dp))
+                    if (selected) {
+                        Icon(Icons.Outlined.Check, contentDescription = null, tint = VelumInk, modifier = Modifier.size(18.dp))
+                    }
                 }
             }
-        }
-        Spacer(Modifier.height(8.dp))
-        BlackButton(
-            strings.settingsUi.addEndpointProfile,
-            {
-                val id = "profile-${profiles.size + 1}"
-                viewModel.upsertProfile(
-                    ApiEndpointProfile(
-                        id = id,
-                        name = id,
-                        baseUrl = SettingsRepository.DEFAULT_BASE_URL,
-                    ),
-                )
-                selectedProfileId = id
-            },
-            Modifier.padding(horizontal = 20.dp),
-        )
-        Spacer(Modifier.height(16.dp))
-        OutlinedTextField(
-            value = profileName,
-            onValueChange = { profileName = it },
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
-            label = { Text(strings.settingsUi.profileName) },
-            singleLine = true,
-            shape = RoundedCornerShape(10.dp),
-        )
-        Spacer(Modifier.height(8.dp))
-        OutlinedTextField(
-            value = baseUrl,
-            onValueChange = { baseUrl = it },
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
-            label = { Text(strings.baseUrl) },
-            singleLine = true,
-            shape = RoundedCornerShape(10.dp),
-        )
-        Spacer(Modifier.height(8.dp))
-        BlackButton(
-            strings.save,
-            {
-                viewModel.upsertProfile(
-                    selectedProfile.copy(name = profileName.trim().ifBlank { selectedProfile.id }, baseUrl = baseUrl),
-                )
-            },
-            Modifier.padding(horizontal = 20.dp),
-        )
-        if (selectedProfile.id != ApiModelResolver.DEFAULT_PROFILE_ID) {
             Spacer(Modifier.height(8.dp))
-            OutlineButton(
-                strings.settingsUi.deleteProfile,
+            BlackButton(
+                strings.settingsUi.addEndpointProfile,
                 {
-                    viewModel.deleteProfile(selectedProfile.id)
-                    selectedProfileId = ApiModelResolver.DEFAULT_PROFILE_ID
+                    viewModel.createProfile { id -> selectedProfileId = id }
                 },
                 Modifier.padding(horizontal = 20.dp),
             )
-        }
-        Spacer(Modifier.height(12.dp))
-        OutlinedTextField(
-            value = apiKey,
-            onValueChange = { apiKey = it },
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
-            label = {
-                Text(
-                    if (settings.hasApiKey && selectedProfile.id == activeId) {
-                        "${strings.apiKey} (${strings.enabled})"
-                    } else {
-                        strings.apiKey
-                    },
-                )
-            },
-            singleLine = true,
-            visualTransformation = if (showKey) VisualTransformation.None else PasswordVisualTransformation(),
-            trailingIcon = {
-                Text(
-                    if (showKey) strings.settingsUi.hide else strings.settingsUi.show,
-                    modifier = Modifier.padding(end = 8.dp).clickable { showKey = !showKey },
-                    color = VelumInkSecondary,
-                )
-            },
-            shape = RoundedCornerShape(10.dp),
-        )
-        Spacer(Modifier.height(8.dp))
-        Row(
-            Modifier.padding(horizontal = 20.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            BlackButton(
-                strings.save,
-                {
-                    viewModel.setProfileApiKey(selectedProfile.id, apiKey)
-                    apiKey = ""
-                    viewModel.refreshModels(selectedProfile.id)
-                },
-                Modifier.weight(1f),
-                enabled = apiKey.isNotBlank(),
-            )
-            OutlineButton(
-                strings.settingsUi.clear,
-                {
-                    viewModel.setProfileApiKey(selectedProfile.id, "")
-                    apiKey = ""
-                },
-                Modifier.weight(1f),
-            )
-        }
-        Spacer(Modifier.height(20.dp))
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 20.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(strings.refreshModels, fontWeight = FontWeight.SemiBold, fontSize = 16.sp, color = VelumInk)
-            Box(
-                Modifier
-                    .size(44.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .border(1.dp, VelumDivider, RoundedCornerShape(10.dp))
-                    .clickable(enabled = !ui.refreshing) { viewModel.refreshModels(selectedProfile.id) },
-                contentAlignment = Alignment.Center,
-            ) {
-                if (ui.refreshing) {
-                    CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-                } else {
-                    Icon(Icons.Outlined.Refresh, contentDescription = strings.refreshModels, tint = VelumInk)
-                }
-            }
-        }
-        when {
-            ui.message?.startsWith("loaded:") == true -> {
-                val count = ui.message!!.removePrefix("loaded:")
-                Text(
-                    strings.settingsUi.modelsLoadedFormat.replace("%d", count),
-                    color = VelumInk,
-                    modifier = Modifier.padding(20.dp, 8.dp),
-                )
-            }
-            ui.error != null -> {
-                val mapped = when (ui.errorStatus) {
-                    401, 403 -> strings.settingsUi.modelsErrorUnauthorized
-                    404 -> strings.settingsUi.modelsErrorNotFound
-                    -1 -> strings.settingsUi.modelsErrorBadUrl
-                    else -> strings.settingsUi.modelsErrorGeneric
-                }
-                Text(
-                    mapped,
-                    color = VelumOnWarningContainer,
-                    fontSize = 13.sp,
-                    lineHeight = 18.sp,
-                    modifier = Modifier.padding(20.dp, 8.dp),
-                )
-            }
-        }
-        Spacer(Modifier.height(12.dp))
-        SectionLabel(strings.settingsUi.modelsByTask)
-        Text(
-            strings.settingsUi.diarizationApiLocalOnly,
-            color = VelumInkSecondary,
-            fontSize = 12.sp,
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
-        )
-        if (profileModels.isNotEmpty()) {
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(16.dp))
             OutlinedTextField(
-                value = modelQuery,
-                onValueChange = { modelQuery = it },
+                value = profileName,
+                onValueChange = { profileName = it },
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
-                label = { Text(strings.settingsUi.modelSearchHint) },
+                label = { Text(strings.settingsUi.profileName) },
                 singleLine = true,
                 shape = RoundedCornerShape(10.dp),
             )
-        }
-        AiApiTask.entries.forEach { task ->
-            TaskBindingEditor(
-                task = task,
-                title = taskLabel(task),
-                binding = settings.taskBindings[task.name] ?: TaskModelBinding(),
-                profiles = profiles,
-                fallbackProfileId = selectedProfile.id,
-                filteredModels = filtered,
-                showManual = listingFailed || profileModels.isEmpty(),
-                onBind = viewModel::setTaskBinding,
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = baseUrl,
+                onValueChange = { baseUrl = it },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+                label = { Text(strings.baseUrl) },
+                singleLine = true,
+                shape = RoundedCornerShape(10.dp),
             )
+            Spacer(Modifier.height(8.dp))
+            BlackButton(
+                strings.save,
+                {
+                    viewModel.upsertProfile(
+                        selectedProfile.copy(name = profileName.trim().ifBlank { selectedProfile.id }, baseUrl = baseUrl),
+                    )
+                },
+                Modifier.padding(horizontal = 20.dp),
+            )
+            if (selectedProfile.id != ApiModelResolver.DEFAULT_PROFILE_ID) {
+                Spacer(Modifier.height(8.dp))
+                OutlineButton(
+                    strings.settingsUi.deleteProfile,
+                    {
+                        viewModel.deleteProfile(selectedProfile.id)
+                        selectedProfileId = ApiModelResolver.DEFAULT_PROFILE_ID
+                    },
+                    Modifier.padding(horizontal = 20.dp),
+                )
+            }
+            Spacer(Modifier.height(12.dp))
+            OutlinedTextField(
+                value = apiKey,
+                onValueChange = { apiKey = it },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+                label = {
+                    Text(
+                        if (settings.hasApiKey && selectedProfile.id == activeId) {
+                            "${strings.apiKey} (${strings.enabled})"
+                        } else {
+                            strings.apiKey
+                        },
+                    )
+                },
+                singleLine = true,
+                visualTransformation = if (showKey) VisualTransformation.None else PasswordVisualTransformation(),
+                trailingIcon = {
+                    Text(
+                        if (showKey) strings.settingsUi.hide else strings.settingsUi.show,
+                        modifier = Modifier.padding(end = 8.dp).clickable { showKey = !showKey },
+                        color = VelumInkSecondary,
+                    )
+                },
+                shape = RoundedCornerShape(10.dp),
+            )
+            Spacer(Modifier.height(8.dp))
+            Row(
+                Modifier.padding(horizontal = 20.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                BlackButton(
+                    strings.save,
+                    {
+                        viewModel.setProfileApiKey(selectedProfile.id, apiKey)
+                        apiKey = ""
+                        viewModel.refreshModels(selectedProfile.id)
+                    },
+                    Modifier.weight(1f),
+                    enabled = apiKey.isNotBlank(),
+                )
+                OutlineButton(
+                    strings.settingsUi.clear,
+                    {
+                        viewModel.setProfileApiKey(selectedProfile.id, "")
+                        apiKey = ""
+                    },
+                    Modifier.weight(1f),
+                )
+            }
+            Spacer(Modifier.height(20.dp))
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(strings.refreshModels, fontWeight = FontWeight.SemiBold, fontSize = 16.sp, color = VelumInk)
+                Box(
+                    Modifier
+                        .size(44.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .border(1.dp, VelumDivider, RoundedCornerShape(10.dp))
+                        .clickable(enabled = !ui.refreshing) { viewModel.refreshModels(selectedProfile.id) },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (ui.refreshing) {
+                        CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                    } else {
+                        Icon(Icons.Outlined.Refresh, contentDescription = strings.refreshModels, tint = VelumInk)
+                    }
+                }
+            }
+            when {
+                ui.message?.startsWith("loaded:") == true -> {
+                    val count = ui.message!!.removePrefix("loaded:")
+                    Text(
+                        countText(count.toIntOrNull() ?: 0, strings.settingsUi.modelsLoadedFormatOne, strings.settingsUi.modelsLoadedFormat),
+                        color = VelumInk,
+                        modifier = Modifier.padding(20.dp, 8.dp),
+                    )
+                }
+                ui.error != null -> {
+                    val mapped = when (ui.errorStatus) {
+                        401, 403 -> strings.settingsUi.modelsErrorUnauthorized
+                        404 -> strings.settingsUi.modelsErrorNotFound
+                        -1 -> strings.settingsUi.modelsErrorBadUrl
+                        else -> strings.settingsUi.modelsErrorGeneric
+                    }
+                    Text(
+                        mapped,
+                        color = VelumOnWarningContainer,
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp,
+                        modifier = Modifier.padding(20.dp, 8.dp),
+                    )
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+            SectionLabel(strings.settingsUi.modelsByTask)
+            Text(
+                strings.settingsUi.diarizationApiLocalOnly,
+                color = VelumInkSecondary,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+            )
+            if (settings.cachedModelsByProfile.values.any { it.isNotEmpty() }) {
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = modelQuery,
+                    onValueChange = { modelQuery = it },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+                    label = { Text(strings.settingsUi.modelSearchHint) },
+                    singleLine = true,
+                    shape = RoundedCornerShape(10.dp),
+                )
+            }
+            AiApiTask.entries.forEach { task ->
+                TaskBindingEditor(
+                    task = task,
+                    title = taskLabel(task),
+                    binding = settings.taskBindings[task.name] ?: TaskModelBinding(),
+                    profiles = profiles,
+                    fallbackProfileId = selectedProfile.id,
+                    modelsByProfile = settings.cachedModelsByProfile,
+                    modelQuery = modelQuery,
+                    onBind = viewModel::setTaskBinding,
+                )
+            }
+            Spacer(Modifier.height(40.dp))
         }
-        Spacer(Modifier.height(40.dp))
     }
 }
 
 @Composable
-private fun TaskBindingEditor(
+internal fun TaskBindingEditor(
     task: AiApiTask,
     title: String,
     binding: TaskModelBinding,
     profiles: List<ApiEndpointProfile>,
     fallbackProfileId: String,
-    filteredModels: List<AiModelInfo>,
-    showManual: Boolean,
+    modelsByProfile: Map<String, List<AiModelInfo>>,
+    modelQuery: String,
     onBind: (AiApiTask, TaskModelBinding) -> Unit,
 ) {
     val strings = LocalStrings.current
     val selectedModel = binding.modelId
     val boundProfileId = binding.profileId ?: fallbackProfileId
-    var manual by remember(task.name, selectedModel) { mutableStateOf(selectedModel.orEmpty()) }
+    val filteredModels = profileModelChoices(modelsByProfile, boundProfileId, modelQuery)
+    var manual by remember(task.name, boundProfileId, selectedModel) { mutableStateOf(selectedModel.orEmpty()) }
     Spacer(Modifier.height(12.dp))
     Text(
         title,
@@ -404,7 +395,7 @@ private fun TaskBindingEditor(
                 onBind(task, binding.copy(profileId = boundProfileId, modelId = modelId))
             },
         )
-    } else if (showManual) {
+    } else {
         ManualModelField(
             label = title,
             value = manual,
@@ -422,8 +413,20 @@ private fun TaskBindingEditor(
     }
 }
 
+internal fun profileModelChoices(
+    modelsByProfile: Map<String, List<AiModelInfo>>,
+    profileId: String,
+    query: String,
+): List<AiModelInfo> {
+    val q = query.trim()
+    return modelsByProfile[profileId].orEmpty().filter {
+        q.isEmpty() || it.id.contains(q, ignoreCase = true) ||
+            it.ownedBy?.contains(q, ignoreCase = true) == true
+    }
+}
+
 @Composable
-private fun TaskModelPicker(
+internal fun TaskModelPicker(
     title: String,
     selectedId: String?,
     models: List<AiModelInfo>,
@@ -440,7 +443,8 @@ private fun TaskModelPicker(
                     .clip(RoundedCornerShape(10.dp))
                     .background(if (selected) VelumSurface else VelumBg)
                     .border(1.dp, if (selected) VelumBlack else VelumDivider, RoundedCornerShape(10.dp))
-                    .clickable { onSelect(model.id) }
+                    .selectable(selected = selected, role = Role.RadioButton) { onSelect(model.id) }
+                    .heightIn(min = 48.dp)
                     .padding(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {

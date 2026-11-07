@@ -1,9 +1,12 @@
 package dev.velum.app.platform
 
+import dev.velum.core.data.TranscriptMarkers
 import dev.velum.app.di.AppContainer
+import dev.velum.app.di.WipeInProgressException
 import dev.velum.core.data.RecordingIds
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -31,7 +34,7 @@ suspend fun reconcileInterruptedMicDrafts(
         for (row in rows) {
             currentCoroutineContext().ensureActive()
             if (row.source != "phone" || row.status != "recording" || row.duration_seconds != 0L || row.size_bytes != 0L ||
-                !row.transcript.isNullOrBlank() || !row.summary_markdown.isNullOrBlank()) continue
+                !TranscriptMarkers.spoken(row.transcript).isNullOrBlank() || !row.summary_markdown.isNullOrBlank()) continue
             fun active(): Boolean {
                 val state = container.micCapture.sessions.value
                 val activeSession = if (state is MicSessionState.Starting || state is MicSessionState.Recording || state is MicSessionState.Paused) state.session else null
@@ -73,6 +76,9 @@ internal suspend fun startPhoneMicDraft(
         }
         if (result !is MicStartResult.Started) reconcile()
         return PhoneMicDraftStart(id, result)
+    } catch (_: WipeInProgressException) {
+        // No draft row was written.
+        return PhoneMicDraftStart(id, MicStartResult.Failed(""))
     } catch (cancelled: CancellationException) {
         withContext(NonCancellable) { try { reconcile() } catch (_: Exception) { /* Retry at startup; preserve the original cancellation. */ } }
         throw cancelled

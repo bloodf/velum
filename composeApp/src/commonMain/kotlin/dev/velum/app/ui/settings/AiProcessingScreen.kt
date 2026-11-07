@@ -3,6 +3,9 @@ package dev.velum.app.ui.settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.semantics.Role
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -53,7 +56,7 @@ import dev.velum.app.ui.theme.VelumSurface
 import dev.velum.app.ui.theme.VelumWarningContainer
 import dev.velum.core.model.ComputeMode
 
-private data class LangOption(val code: String, val label: String)
+internal data class LangOption(val code: String, val label: String)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -91,121 +94,104 @@ fun AiProcessingScreen(
         Modifier
             .fillMaxSize()
             .background(VelumBg)
-            .verticalScroll(rememberScrollState()),
     ) {
         ScreenTopBar(strings.aiProcessing, onBack = onBack)
-        Text(
-            strings.aiProcessingHint,
-            color = VelumInkSecondary,
-            fontSize = 14.sp,
-            lineHeight = 20.sp,
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
-        )
-        if (missingLocal.isNotEmpty()) {
-            val first = missingLocal.first()
-            Column(
-                Modifier
-                    .padding(horizontal = 20.dp, vertical = 8.dp)
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(VelumWarningContainer)
-                    .padding(12.dp),
-            ) {
-                Text(
-                    strings.localModelMissingTitle,
-                    fontWeight = FontWeight.SemiBold,
-                    color = VelumOnWarningContainer,
-                    fontSize = 14.sp,
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    strings.localModelMissingBody.replace("%s", first.displayName),
-                    color = VelumOnWarningContainer,
-                    fontSize = 13.sp,
-                    lineHeight = 18.sp,
-                )
-                Spacer(Modifier.height(10.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    BlackButton(
-                        strings.downloadModel,
-                        onModelManager,
-                        Modifier.weight(1f),
-                    )
-                    OutlineButton(
-                        strings.switchToApi,
-                        {
-                            container.settingsViewModel.runStorageAction {
-                                container.settingsRepository.setTranscriptionMode(ComputeMode.Api)
-                                // Diarization has no remote contract — stay Local.
-                                container.settingsRepository.setSummaryMode(ComputeMode.Api)
-                            }
-                        },
-                        Modifier.weight(1f),
-                    )
-                }
-            }
-        }
-        Spacer(Modifier.height(12.dp))
-        SectionLabel(strings.taskTranscription)
-        ModePicker(
-            selected = settings.transcriptionMode,
-            onSelect = { mode ->
-                if (mode == ComputeMode.Local) {
-                    when (
-                        val r = container.aiRouter.resolveModeOrPrompt(
-                            AiTask.Transcription,
-                            container.localModelManager,
-                        )
-                    ) {
-                        is ModeResolution.NeedLocalModel -> {
-                            modelPrompt = r
-                            return@ModePicker
-                        }
-                        is ModeResolution.Proceed -> Unit
-                    }
-                }
-                container.settingsViewModel.runStorageAction { container.settingsRepository.setTranscriptionMode(mode) }
-            },
-        )
-        Spacer(Modifier.height(16.dp))
-        SectionLabel(strings.taskDiarization)
-        // API diarization has no remote contract — Local only.
-        LaunchedEffect(settings.diarizationMode) {
-            if (settings.diarizationMode == ComputeMode.Api) {
-                container.settingsViewModel.handleStorageFailure {
-                    container.settingsRepository.setDiarizationMode(ComputeMode.Local)
-                }
-            }
-        }
-        ModePicker(
-            selected = ComputeMode.Local,
-            onSelect = { mode ->
-                if (mode != ComputeMode.Local) return@ModePicker
-                when (
-                    val r = container.aiRouter.resolveModeOrPrompt(
-                        AiTask.Diarization,
-                        container.localModelManager,
-                    )
+        Column(
+            Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState()),
+        ) {
+            Text(
+                strings.aiProcessingHint,
+                color = VelumInkSecondary,
+                fontSize = 14.sp,
+                lineHeight = 20.sp,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+            )
+            if (missingLocal.isNotEmpty()) {
+                val first = missingLocal.first()
+                Column(
+                    Modifier
+                        .padding(horizontal = 20.dp, vertical = 8.dp)
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(VelumWarningContainer)
+                        .padding(12.dp),
                 ) {
-                    is ModeResolution.NeedLocalModel -> {
-                        modelPrompt = r
-                        return@ModePicker
+                    Text(
+                        strings.localModelMissingTitle,
+                        fontWeight = FontWeight.SemiBold,
+                        color = VelumOnWarningContainer,
+                        fontSize = 14.sp,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        strings.localModelMissingBody.replace("%s", first.displayName),
+                        color = VelumOnWarningContainer,
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp,
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        BlackButton(
+                            strings.downloadModel,
+                            onModelManager,
+                            Modifier.weight(1f),
+                        )
+                        OutlineButton(
+                            strings.switchToApi,
+                            {
+                                container.settingsViewModel.runStorageAction {
+                                    container.settingsRepository.setTranscriptionMode(ComputeMode.Api)
+                                    // Diarization has no remote contract — stay Local.
+                                    container.settingsRepository.setSummaryMode(ComputeMode.Api)
+                                }
+                            },
+                            Modifier.weight(1f),
+                        )
                     }
-                    is ModeResolution.Proceed -> Unit
                 }
-                container.settingsViewModel.runStorageAction { container.settingsRepository.setDiarizationMode(ComputeMode.Local) }
-            },
-            allowApi = false,
-        )
-        Spacer(Modifier.height(16.dp))
-        SectionLabel(strings.taskSummaries)
-        ModePicker(
-            selected = settings.summaryMode,
-            onSelect = { mode ->
-                if (mode == ComputeMode.Local) {
+            }
+            Spacer(Modifier.height(12.dp))
+            SectionLabel(strings.taskTranscription)
+            ModePicker(
+                selected = settings.transcriptionMode,
+                onSelect = { mode ->
+                    if (mode == ComputeMode.Local) {
+                        when (
+                            val r = container.aiRouter.resolveModeOrPrompt(
+                                AiTask.Transcription,
+                                container.localModelManager,
+                            )
+                        ) {
+                            is ModeResolution.NeedLocalModel -> {
+                                modelPrompt = r
+                                return@ModePicker
+                            }
+                            is ModeResolution.Proceed -> Unit
+                        }
+                    }
+                    container.settingsViewModel.runStorageAction { container.settingsRepository.setTranscriptionMode(mode) }
+                },
+            )
+            Spacer(Modifier.height(16.dp))
+            SectionLabel(strings.taskDiarization)
+            // API diarization has no remote contract — Local only.
+            LaunchedEffect(settings.diarizationMode) {
+                if (settings.diarizationMode == ComputeMode.Api) {
+                    container.settingsViewModel.handleStorageFailure {
+                        container.settingsRepository.setDiarizationMode(ComputeMode.Local)
+                    }
+                }
+            }
+            ModePicker(
+                selected = ComputeMode.Local,
+                onSelect = { mode ->
+                    if (mode != ComputeMode.Local) return@ModePicker
                     when (
                         val r = container.aiRouter.resolveModeOrPrompt(
-                            AiTask.Summary,
+                            AiTask.Diarization,
                             container.localModelManager,
                         )
                     ) {
@@ -215,51 +201,74 @@ fun AiProcessingScreen(
                         }
                         is ModeResolution.Proceed -> Unit
                     }
-                }
-                container.settingsViewModel.runStorageAction { container.settingsRepository.setSummaryMode(mode) }
-            },
-        )
-        Spacer(Modifier.height(20.dp))
-        SectionLabel(strings.ux.asrSizeSection)
-        Text(
-            strings.ux.asrSizeHint,
-            color = VelumInkSecondary,
-            fontSize = 13.sp,
-            lineHeight = 18.sp,
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
-        )
-        AsrTierPicker(
-            selected = settings.asrSizeTier,
-            onSelect = { tier ->
-                container.settingsViewModel.runStorageAction { container.settingsRepository.setAsrSizeTier(tier) }
-            },
-        )
-        Spacer(Modifier.height(16.dp))
-        ChevronRow(
-            strings.audioLanguage,
-            { pickAudio = true },
-            value = labelFor(settings.audioLanguage),
-        )
-        ChevronRow(
-            strings.outputLanguage,
-            { pickOutput = true },
-            value = labelFor(settings.outputLanguage),
-            showDivider = false,
-        )
-        Spacer(Modifier.height(12.dp))
-        ChevronRow(
-            strings.modelManager,
-            onModelManager,
-            value = null,
-            showDivider = false,
-        )
-        Text(
-            strings.modelManagerHint,
-            color = VelumInkSecondary,
-            fontSize = 13.sp,
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
-        )
-        Spacer(Modifier.height(40.dp))
+                    container.settingsViewModel.runStorageAction { container.settingsRepository.setDiarizationMode(ComputeMode.Local) }
+                },
+                allowApi = false,
+            )
+            Spacer(Modifier.height(16.dp))
+            SectionLabel(strings.taskSummaries)
+            ModePicker(
+                selected = settings.summaryMode,
+                onSelect = { mode ->
+                    if (mode == ComputeMode.Local) {
+                        when (
+                            val r = container.aiRouter.resolveModeOrPrompt(
+                                AiTask.Summary,
+                                container.localModelManager,
+                            )
+                        ) {
+                            is ModeResolution.NeedLocalModel -> {
+                                modelPrompt = r
+                                return@ModePicker
+                            }
+                            is ModeResolution.Proceed -> Unit
+                        }
+                    }
+                    container.settingsViewModel.runStorageAction { container.settingsRepository.setSummaryMode(mode) }
+                },
+            )
+            Spacer(Modifier.height(20.dp))
+            SectionLabel(strings.ux.asrSizeSection)
+            Text(
+                strings.ux.asrSizeHint,
+                color = VelumInkSecondary,
+                fontSize = 13.sp,
+                lineHeight = 18.sp,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+            )
+            AsrTierPicker(
+                selected = settings.asrSizeTier,
+                onSelect = { tier ->
+                    container.settingsViewModel.runStorageAction { container.settingsRepository.setAsrSizeTier(tier) }
+                },
+            )
+            Spacer(Modifier.height(16.dp))
+            ChevronRow(
+                strings.audioLanguage,
+                { pickAudio = true },
+                value = labelFor(settings.audioLanguage),
+            )
+            ChevronRow(
+                strings.outputLanguage,
+                { pickOutput = true },
+                value = labelFor(settings.outputLanguage),
+                showDivider = false,
+            )
+            Spacer(Modifier.height(12.dp))
+            ChevronRow(
+                strings.modelManager,
+                onModelManager,
+                value = null,
+                showDivider = false,
+            )
+            Text(
+                strings.modelManagerHint,
+                color = VelumInkSecondary,
+                fontSize = 13.sp,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+            )
+            Spacer(Modifier.height(40.dp))
+        }
     }
 
     if (pickAudio) {
@@ -293,20 +302,19 @@ fun AiProcessingScreen(
                 modelPrompt = null
                 onModelManager()
             },
-            onSwitchToApi = {
-                container.settingsViewModel.runStorageAction {
-                    when (need.task) {
-                        AiTask.Transcription ->
-                            container.settingsRepository.setTranscriptionMode(ComputeMode.Api)
-                        AiTask.Diarization -> {
-                            // No API diarization — keep prompting for local download.
-                            modelPrompt = need
-                            return@runStorageAction
+            // No API diarization contract: that prompt only offers the local download.
+            onSwitchToApi = if (need.task == AiTask.Diarization) null else {
+                {
+                    container.settingsViewModel.runStorageAction {
+                        when (need.task) {
+                            AiTask.Transcription ->
+                                container.settingsRepository.setTranscriptionMode(ComputeMode.Api)
+                            AiTask.Summary ->
+                                container.settingsRepository.setSummaryMode(ComputeMode.Api)
+                            AiTask.Diarization -> Unit
                         }
-                        AiTask.Summary ->
-                            container.settingsRepository.setSummaryMode(ComputeMode.Api)
+                        modelPrompt = null
                     }
-                    modelPrompt = null
                 }
             },
             onDismiss = { modelPrompt = null },
@@ -316,7 +324,7 @@ fun AiProcessingScreen(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun LanguagePickerSheet(
+internal fun LanguagePickerSheet(
     title: String,
     options: List<LangOption>,
     selected: String,
@@ -336,7 +344,8 @@ private fun LanguagePickerSheet(
                     opt.label,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { onSelect(opt.code) }
+                        .selectable(selected = opt.code == selected, role = Role.RadioButton) { onSelect(opt.code) }
+                        .heightIn(min = 48.dp)
                         .padding(vertical = 14.dp),
                     color = if (opt.code == selected) VelumInk else VelumInkSecondary,
                     fontWeight = if (opt.code == selected) FontWeight.SemiBold else FontWeight.Normal,

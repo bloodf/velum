@@ -7,8 +7,11 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -76,10 +79,15 @@ val DarkVelumColors = VelumColors(
 
 val LocalVelumColors = staticCompositionLocalOf { LightVelumColors }
 
-/** Active palette bridge so existing Velum* call sites follow [VelumTheme]. */
+/**
+ * Active palette bridge so existing Velum* call sites follow [VelumTheme].
+ *
+ * Invariant: one live [VelumTheme] per process. The bridge is a single global value; two live
+ * compositions with different palettes would overwrite each other and recompose forever.
+ */
 internal object VelumTokenBridge {
-    @Volatile
-    var current: VelumColors = LightVelumColors
+    // Snapshot state so Velum* getters are observed by Compose and recompose on theme change.
+    var current: VelumColors by mutableStateOf(LightVelumColors)
 }
 
 val VelumBg: Color get() = VelumTokenBridge.current.bg
@@ -144,14 +152,14 @@ private val darkScheme = darkColorScheme(
     onErrorContainer = DarkVelumColors.onWarningContainer,
 )
 
-private val type = Typography(
+private fun typographyFor(c: VelumColors) = Typography(
     displayLarge = TextStyle(
         fontFamily = FontFamily.SansSerif,
         fontWeight = FontWeight.Thin,
         fontSize = 36.sp,
         lineHeight = 42.sp,
         letterSpacing = (-0.5).sp,
-        color = LightVelumColors.ink,
+        color = c.ink,
     ),
     headlineMedium = TextStyle(
         fontFamily = FontFamily.SansSerif,
@@ -181,7 +189,7 @@ private val type = Typography(
         fontWeight = FontWeight.Normal,
         fontSize = 14.sp,
         lineHeight = 20.sp,
-        color = LightVelumColors.inkSecondary,
+        color = c.inkSecondary,
     ),
     labelLarge = TextStyle(
         fontFamily = FontFamily.SansSerif,
@@ -202,14 +210,15 @@ fun VelumTheme(
     content: @Composable () -> Unit,
 ) {
     val palette = if (darkTheme) DarkVelumColors else LightVelumColors
-    DisposableEffect(palette) {
-        VelumTokenBridge.current = palette
-        onDispose { }
-    }
+    // Intentional write during composition: children composed later in this pass read the new
+    // palette in the same frame (an effect would lag one frame, #118). Safe because nothing reads
+    // Velum* tokens before VelumTheme in the tree (no backwards write), the guard keeps it to one
+    // write per flip, and a discarded composition rolls the write back with its snapshot.
+    if (VelumTokenBridge.current != palette) VelumTokenBridge.current = palette
     CompositionLocalProvider(LocalVelumColors provides palette) {
         MaterialTheme(
             colorScheme = if (darkTheme) darkScheme else lightScheme,
-            typography = type,
+            typography = remember(palette) { typographyFor(palette) },
             content = content,
         )
     }

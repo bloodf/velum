@@ -3,6 +3,7 @@ package dev.velum.app.ui.autoflow
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -47,8 +48,11 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -87,9 +91,13 @@ fun AutoFlowTemplateLibraryScreen(
     var category by remember { mutableStateOf<String?>(null) }
     var preview by remember { mutableStateOf<AutoFlowTemplate?>(null) }
 
-    val categories = remember { AutoFlowTemplateCatalog.categoriesPresent() }
-    val filtered = remember(query, category, locale) {
-        AutoFlowTemplateCatalog.search(query, category, locale)
+    // The catalog lazily reads a packaged asset on first use: never touch it during composition
+    // (main-thread disk read, caught by StrictMode). Lists stay empty until it has loaded.
+    val categories by produceState(emptyList<String>()) {
+        value = withContext(Dispatchers.Default) { AutoFlowTemplateCatalog.categoriesPresent() }
+    }
+    val filtered by produceState(emptyList<AutoFlowTemplate>(), query, category, locale) {
+        value = withContext(Dispatchers.Default) { AutoFlowTemplateCatalog.search(query, category, locale) }
     }
 
     Column(
@@ -134,7 +142,8 @@ fun AutoFlowTemplateLibraryScreen(
                 .clip(RoundedCornerShape(10.dp))
                 .background(VelumSurface)
                 .border(1.dp, VelumDivider, RoundedCornerShape(10.dp))
-                .padding(horizontal = 12.dp, vertical = 10.dp),
+                // Vertical padding is 0: the 48dp clear target below is always reserved, so the row never changes height.
+                .padding(start = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(Icons.Outlined.Search, strings.search, tint = VelumInkSecondary, modifier = Modifier.size(18.dp))
@@ -154,12 +163,14 @@ fun AutoFlowTemplateLibraryScreen(
                 },
             )
             if (query.isNotEmpty()) {
-                Icon(
-                    Icons.Outlined.Close,
-                    strings.cancel,
-                    tint = VelumInkSecondary,
-                    modifier = Modifier.size(20.dp).clickable { query = "" },
-                )
+                Box(
+                    Modifier.size(48.dp).clickable(role = Role.Button) { query = "" },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(Icons.Outlined.Close, strings.clearSearch, tint = VelumInkSecondary, modifier = Modifier.size(20.dp))
+                }
+            } else {
+                Spacer(Modifier.size(48.dp))
             }
         }
         Spacer(Modifier.height(10.dp))
@@ -226,11 +237,12 @@ fun AutoFlowTemplateLibraryScreen(
                             fontSize = 13.sp,
                         )
                     }
-                    Icon(
-                        Icons.Outlined.Close,
-                        strings.cancel,
-                        modifier = Modifier.clickable { preview = null },
-                    )
+                    Box(
+                        Modifier.size(48.dp).clickable(role = Role.Button) { preview = null },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(Icons.Outlined.Close, strings.close)
+                    }
                 }
                 Spacer(Modifier.height(12.dp))
                 Text(

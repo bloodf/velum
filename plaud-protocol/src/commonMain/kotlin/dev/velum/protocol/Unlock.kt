@@ -114,6 +114,9 @@ data class Protocol20SessionSecret(
 
     override fun hashCode(): Int =
         31 * (31 * key.contentHashCode() + nonce.contentHashCode()) + aad.contentHashCode()
+
+    /** Never prints the key, nonce or aad (a data class would, and test failures and logs show toString). */
+    override fun toString(): String = "Protocol20SessionSecret([redacted])"
 }
 
 /**
@@ -195,7 +198,7 @@ interface SessionCipher {
     /** RSA PKCS#1 v1.5 encrypt (device → app unlock secret, tests / fake peripheral). */
     fun rsaEncryptPkcs1(publicKeyPem: String, plaintext: ByteArray): ByteArray
 
-    /** ChaCha20-Poly1305 open; returns plaintext or null on auth failure. */
+    /** ChaCha20-Poly1305 open; returns plaintext, or null on auth failure. Other failures throw. */
     fun chacha20Poly1305Open(
         key: ByteArray,
         nonce: ByteArray,

@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.AlertDialog
@@ -18,17 +20,22 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.velum.ai.local.InvalidVoiceProfileBackupException
 import dev.velum.ai.local.ProfileCipherUnavailableException
+import dev.velum.ai.local.ProfileCiphertextUnreadableException
 import dev.velum.ai.local.UnreadableVoiceProfile
 import dev.velum.ai.local.UnreadableVoiceProfileException
 import dev.velum.ai.local.VoiceProfileKeyUnavailableException
@@ -36,7 +43,9 @@ import dev.velum.ai.local.VoiceProfileReadProblem
 import dev.velum.core.security.SecureStoreUnavailableException
 import dev.velum.ai.local.VoiceProfile
 import dev.velum.app.di.AppContainer
+import dev.velum.app.export.copyToClipboard
 import dev.velum.app.i18n.LocalStrings
+import dev.velum.app.i18n.Strings
 import dev.velum.app.ui.components.BlackButton
 import dev.velum.app.ui.components.OutlineButton
 import dev.velum.app.ui.components.ScreenTopBar
@@ -59,11 +68,17 @@ fun VoiceProfilesScreen(
     val scope = rememberCoroutineScope()
     var profiles by remember(container) { mutableStateOf(emptyList<VoiceProfile>()) }
     var loaded by remember(container) { mutableStateOf(false) }
+    // Wiping is the recovery for a lost key only; a transient storage/cipher failure keeps the data and just needs a retry.
+    var keyLost by remember(container) { mutableStateOf(false) }
+    val settings by container.settingsRepository.settings.collectAsState()
     var unreadable by remember(container) { mutableStateOf(emptyList<UnreadableVoiceProfile>()) }
     var pendingRemoval by remember(container) { mutableStateOf<UnreadableVoiceProfile?>(null) }
     var selected by remember { mutableStateOf<VoiceProfile?>(null) }
     var status by remember { mutableStateOf<String?>(null) }
     var exportText by remember { mutableStateOf<String?>(null) }
+    // The copy confirmation sits next to the button that copies, not in the status line at the bottom of the
+    // screen: the user has just pressed the button and must not have to scroll to learn whether it worked.
+    var exportCopy by remember { mutableStateOf(VoiceExportCopy.NONE) }
     var importDraft by remember { mutableStateOf("") }
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showWipeConfirm by remember { mutableStateOf(false) }
@@ -74,6 +89,7 @@ fun VoiceProfilesScreen(
             profiles = inventory.profiles
             unreadable = inventory.unreadable
             loaded = true
+            keyLost = false
             selected = selected?.id?.let { id -> profiles.firstOrNull { it.id == id } }
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -89,6 +105,7 @@ fun VoiceProfilesScreen(
     }
 
     fun showFailure(failure: Exception) {
+        keyLost = isKeyLostFailure(failure)
         val global = failure is VoiceProfileKeyUnavailableException ||
             failure is ProfileCipherUnavailableException || failure is SecureStoreUnavailableException
         if (global) {
@@ -132,184 +149,230 @@ fun VoiceProfilesScreen(
         Modifier
             .fillMaxSize()
             .background(VelumBg)
-            .verticalScroll(rememberScrollState()),
     ) {
         ScreenTopBar(strings.voiceProfiles, onBack = onBack)
-        Column(Modifier.padding(20.dp)) {
-            Text(
-                strings.ux.voiceProfilesHint,
-                color = VelumInkSecondary,
-                fontSize = 14.sp,
-                lineHeight = 20.sp,
-            )
-            Spacer(Modifier.height(16.dp))
-            if (!loaded && status == null) {
-                CircularProgressIndicator()
-            } else if (!loaded) {
-                Text(status.orEmpty(), color = VelumInkSecondary)
-                Spacer(Modifier.height(8.dp))
-                OutlineButton(strings.ux.retryProcessing, { launchAction { container.voiceProfileStore.reloadKey(); refresh(); status = null } })
-            } else if (profiles.isEmpty() && unreadable.isEmpty()) {
-                Text(strings.ux.voiceProfilesEmpty, color = VelumInkSecondary)
-            } else {
-                profiles.forEach { p ->
-                    Column(
-                        Modifier
-                            .fillMaxWidth()
-                            .clickable { selected = p }
-                            .padding(vertical = 10.dp),
-                    ) {
-                        Text(p.displayName, fontWeight = FontWeight.SemiBold, color = VelumInk)
+        Column(
+            Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState()),
+        ) {
+            Column(Modifier.padding(20.dp)) {
+                Text(
+                    strings.ux.voiceProfilesHint,
+                    color = VelumInkSecondary,
+                    fontSize = 14.sp,
+                    lineHeight = 20.sp,
+                )
+                Spacer(Modifier.height(16.dp))
+                if (!loaded && status == null) {
+                    CircularProgressIndicator()
+                } else if (!loaded) {
+                    Text(status.orEmpty(), color = VelumInkSecondary)
+                    Spacer(Modifier.height(8.dp))
+                    OutlineButton(strings.ux.retryProcessing, { launchAction { container.voiceProfileStore.reloadKey(); refresh(); status = null } })
+                    // Recovery when the key is lost for good: wiping needs no key (and asks for confirmation).
+                    if (keyLost) {
+                        Spacer(Modifier.height(8.dp))
+                        OutlineButton(strings.ux.voiceProfilesWipe, { showWipeConfirm = true }, modifier = Modifier.fillMaxWidth())
+                    }
+                } else if (profiles.isEmpty() && unreadable.isEmpty()) {
+                    Text(strings.ux.voiceProfilesEmpty, color = VelumInkSecondary)
+                } else {
+                    profiles.forEach { p ->
+                        Column(
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable { selected = p }
+                                .padding(vertical = 10.dp),
+                        ) {
+                            Text(p.displayName, fontWeight = FontWeight.SemiBold, color = VelumInk)
+                            Text(
+                                buildString {
+                                    append(
+                                        sampleCountLabel(strings, p.sampleCount),
+                                    )
+                                    if (p.role.isNotBlank()) append(" · ${p.role}")
+                                    if (p.company.isNotBlank()) append(" · ${p.company}")
+                                    if (p.email.isNotBlank()) append(" · ${p.email}")
+                                },
+                                color = VelumInkSecondary,
+                                fontSize = 12.sp,
+                            )
+                        }
+                    }
+                }
+                if (loaded && unreadable.isNotEmpty()) {
+                    Spacer(Modifier.height(16.dp))
+                    Text(strings.ux.voiceProfilesUnreadableTitle, fontWeight = FontWeight.SemiBold, color = VelumInk)
+                    unreadable.forEach { item ->
+                        Spacer(Modifier.height(12.dp))
+                        Text(item.displayName, fontWeight = FontWeight.SemiBold, color = VelumInk)
                         Text(
-                            buildString {
-                                append(
-                                    strings.ux.voiceProfilesSamplesFormat.replace(
-                                        "%d",
-                                        p.sampleCount.toString(),
-                                    ),
-                                )
-                                if (p.role.isNotBlank()) append(" · ${p.role}")
-                                if (p.company.isNotBlank()) append(" · ${p.company}")
-                                if (p.email.isNotBlank()) append(" · ${p.email}")
+                            when (item.problem) {
+                                VoiceProfileReadProblem.MissingMetadata -> strings.ux.voiceProfilesMissingMetadata
+                                VoiceProfileReadProblem.MissingEmbedding -> strings.ux.voiceProfilesMissingEmbedding
+                                VoiceProfileReadProblem.InvalidMetadata -> strings.ux.voiceProfilesInvalidMetadata
+                                VoiceProfileReadProblem.InvalidEmbedding -> strings.ux.voiceProfilesInvalidEmbedding
+                                VoiceProfileReadProblem.CannotDecrypt -> strings.ux.voiceProfilesCannotDecrypt
+                                VoiceProfileReadProblem.FileUnavailable -> strings.ux.voiceProfilesFileUnavailable
                             },
                             color = VelumInkSecondary,
-                            fontSize = 12.sp,
+                            fontSize = 13.sp,
                         )
+                        if (item.canRemove) {
+                            OutlineButton(strings.ux.voiceProfilesRemoveFiles, { pendingRemoval = item })
+                        }
                     }
+                    Spacer(Modifier.height(8.dp))
+                    OutlineButton(strings.ux.retryProcessing, { launchAction { container.voiceProfileStore.reloadKey(); refresh(); status = null } })
                 }
-            }
-            if (loaded && unreadable.isNotEmpty()) {
                 Spacer(Modifier.height(16.dp))
-                Text(strings.ux.voiceProfilesUnreadableTitle, fontWeight = FontWeight.SemiBold, color = VelumInk)
-                unreadable.forEach { item ->
-                    Spacer(Modifier.height(12.dp))
-                    Text(item.displayName, fontWeight = FontWeight.SemiBold, color = VelumInk)
-                    Text(
-                        when (item.problem) {
-                            VoiceProfileReadProblem.MissingMetadata -> strings.ux.voiceProfilesMissingMetadata
-                            VoiceProfileReadProblem.MissingEmbedding -> strings.ux.voiceProfilesMissingEmbedding
-                            VoiceProfileReadProblem.InvalidMetadata -> strings.ux.voiceProfilesInvalidMetadata
-                            VoiceProfileReadProblem.InvalidEmbedding -> strings.ux.voiceProfilesInvalidEmbedding
-                            VoiceProfileReadProblem.CannotDecrypt -> strings.ux.voiceProfilesCannotDecrypt
-                            VoiceProfileReadProblem.FileUnavailable -> strings.ux.voiceProfilesFileUnavailable
-                        },
-                        color = VelumInkSecondary,
-                        fontSize = 13.sp,
-                    )
-                    if (item.canRemove) {
-                        OutlineButton(strings.ux.voiceProfilesRemoveFiles, { pendingRemoval = item })
-                    }
-                }
-                Spacer(Modifier.height(8.dp))
-                OutlineButton(strings.ux.retryProcessing, { launchAction { container.voiceProfileStore.reloadKey(); refresh(); status = null } })
-            }
-            Spacer(Modifier.height(16.dp))
-            selected?.let { p ->
-                ProfileEditor(
-                    profile = p,
-                    onSave = { name, role, company, email, notes ->
-                        launchAction {
-                            container.voiceProfileStore.withReady {
-                                rename(p.id, name)
-                                updateMeta(
-                                    p.id,
-                                    role = role,
-                                    company = company,
-                                    email = email,
-                                    notes = notes,
-                                )
+                selected?.let { p ->
+                    ProfileEditor(
+                        profile = p,
+                        onSave = { name, role, company, email, notes ->
+                            launchAction {
+                                container.voiceProfileStore.withReady {
+                                    rename(p.id, name)
+                                    updateMeta(
+                                        p.id,
+                                        role = role,
+                                        company = company,
+                                        email = email,
+                                        notes = notes,
+                                    )
+                                }
+                                refresh()
+                                status = strings.ux.voiceProfilesSaved
                             }
-                            refresh()
-                            status = strings.ux.voiceProfilesSaved
+                        },
+                        onDelete = { showDeleteConfirm = true },
+                    )
+                    Spacer(Modifier.height(12.dp))
+                }
+                OutlineButton(
+                    strings.ux.voiceProfilesExport,
+                    {
+                        launchAction {
+                            if (profiles.isEmpty()) {
+                                exportText = null
+                                exportCopy = VoiceExportCopy.NONE
+                                status = strings.ux.voiceProfilesExportEmpty
+                            } else {
+                                exportText = container.voiceProfileStore.withReady { exportEncrypted() }
+                                exportCopy = VoiceExportCopy.NONE
+                                status = strings.ux.voiceProfilesExportReady
+                            }
                         }
                     },
-                    onDelete = { showDeleteConfirm = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = loaded && unreadable.isEmpty(),
                 )
-                Spacer(Modifier.height(12.dp))
-            }
-            OutlineButton(
-                strings.ux.voiceProfilesExport,
-                {
-                    launchAction {
-                        exportText = container.voiceProfileStore.withReady { exportEncrypted() }
-                        status = strings.ux.voiceProfilesExportReady
-                    }
-                },
-                modifier = Modifier.fillMaxWidth(),
-                enabled = loaded && unreadable.isEmpty(),
-            )
-            if (loaded && unreadable.isNotEmpty()) {
-                Text(strings.ux.voiceProfilesExportBlocked, color = VelumInkSecondary, fontSize = 12.sp)
-            }
-            Spacer(Modifier.height(8.dp))
-            exportText?.let {
-                Text(it.take(400) + if (it.length > 400) "…" else "", color = VelumInkSecondary, fontSize = 11.sp)
-                Spacer(Modifier.height(8.dp))
-            }
-            Text(strings.ux.voiceProfilesImportTitle, fontWeight = FontWeight.SemiBold, color = VelumInk)
-            Spacer(Modifier.height(6.dp))
-            BasicTextField(
-                value = importDraft,
-                onValueChange = { importDraft = it },
-                textStyle = TextStyle(color = VelumInk, fontSize = 13.sp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(100.dp)
-                    .background(VelumBg)
-                    .padding(8.dp),
-            )
-            Spacer(Modifier.height(8.dp))
-            OutlineButton(
-                strings.ux.voiceProfilesImport,
-                {
-                    val draft = importDraft
-                    launchAction {
-                        val n = container.voiceProfileStore.withReady { importEncrypted(draft) }
-                        refresh()
-                        status = strings.ux.voiceProfilesImportedFormat.replace("%d", n.toString())
-                        importDraft = ""
-                    }
-                },
-                modifier = Modifier.fillMaxWidth(),
-                enabled = loaded,
-            )
-            Spacer(Modifier.height(8.dp))
-            OutlineButton(
-                strings.ux.voiceProfilesWipe,
-                { showWipeConfirm = true },
-                modifier = Modifier.fillMaxWidth(),
-                enabled = loaded,
-            )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                strings.ux.voiceProfilesThreshold,
-                fontWeight = FontWeight.SemiBold,
-                color = VelumInk,
-            )
-            Row(Modifier.fillMaxWidth()) {
-                listOf(0.45f, 0.55f, 0.65f, 0.75f).forEach { t ->
-                    OutlineButton(
-                        "%.2f".format(t),
-                        {
-                            container.settingsViewModel.runStorageAction {
-                                container.settingsRepository.setSpeakerMatchThreshold(t)
-                                status = strings.ux.voiceProfilesThresholdSet
-                            }
-                        },
-                        modifier = Modifier.weight(1f).padding(horizontal = 2.dp),
-                    )
+                if (loaded && unreadable.isNotEmpty()) {
+                    Text(strings.ux.voiceProfilesExportBlocked, color = VelumInkSecondary, fontSize = 12.sp)
                 }
+                exportText?.let { payload ->
+                    // A backup the user cannot take out of the app is not a backup. This used to render only the
+                    // first 400 characters of the export in a plain Text (nothing to select, nothing to copy), so a
+                    // normal profile set could never be recovered (#107 finding 2a). The whole export is now
+                    // delivered by an explicit action: one press copies the complete encrypted payload.
+                    Spacer(Modifier.height(8.dp))
+                    OutlineButton(
+                        strings.added.voiceProfilesExportCopy,
+                        {
+                            // The platform can refuse the copy (no clipboard). Say so instead of claiming success.
+                            exportCopy = if (copyToClipboard(payload)) VoiceExportCopy.COPIED else VoiceExportCopy.FAILED
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    when (exportCopy) {
+                        VoiceExportCopy.COPIED -> {
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                strings.added.voiceProfilesExportCopied,
+                                color = VelumInkSecondary,
+                                fontSize = 13.sp,
+                            )
+                        }
+                        VoiceExportCopy.FAILED -> {
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                strings.added.voiceProfilesExportCopyFailed,
+                                color = VelumInkSecondary,
+                                fontSize = 13.sp,
+                            )
+                        }
+                        VoiceExportCopy.NONE -> Unit
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                Text(strings.ux.voiceProfilesImportTitle, fontWeight = FontWeight.SemiBold, color = VelumInk)
+                Spacer(Modifier.height(6.dp))
+                BasicTextField(
+                    value = importDraft,
+                    onValueChange = { importDraft = it },
+                    textStyle = TextStyle(color = VelumInk, fontSize = 13.sp),
+                    modifier = Modifier
+                    .semantics { contentDescription = strings.ux.voiceProfilesImportTitle }
+                        .fillMaxWidth()
+                        .height(100.dp)
+                        .border(1.dp, VelumInk, RoundedCornerShape(8.dp))
+                        .padding(8.dp),
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlineButton(
+                    strings.ux.voiceProfilesImport,
+                    {
+                        val draft = importDraft
+                        launchAction {
+                            val n = try {
+                                container.voiceProfileStore.withReady { importEncrypted(draft) }
+                            } catch (bad: InvalidVoiceProfileBackupException) {
+                                status = strings.ux.voiceProfilesImportInvalid
+                                return@launchAction
+                            } catch (bad: ProfileCiphertextUnreadableException) {
+                                status = strings.ux.voiceProfilesImportWrongKey
+                                return@launchAction
+                            }
+                            refresh()
+                            status = importedStatus(strings, n)
+                            importDraft = ""
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = loaded,
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlineButton(
+                    strings.ux.voiceProfilesWipe,
+                    { showWipeConfirm = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = loaded,
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    strings.ux.voiceProfilesThreshold,
+                    fontWeight = FontWeight.SemiBold,
+                    color = VelumInk,
+                )
+                SensitivityOptions(strings, settings.speakerMatchThreshold) { t ->
+                    container.settingsViewModel.runStorageAction {
+                        container.settingsRepository.setSpeakerMatchThreshold(t)
+                        status = strings.ux.voiceProfilesThresholdSet
+                    }
+                }
+                status?.takeIf { loaded }?.let {
+                    Spacer(Modifier.height(12.dp))
+                    Text(it, color = VelumInkSecondary, fontSize = 13.sp)
+                }
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    strings.ux.voiceProfilesEnrollHint,
+                    color = VelumInkSecondary,
+                    fontSize = 12.sp,
+                )
             }
-            status?.takeIf { loaded }?.let {
-                Spacer(Modifier.height(12.dp))
-                Text(it, color = VelumInkSecondary, fontSize = 13.sp)
-            }
-            Spacer(Modifier.height(8.dp))
-            Text(
-                strings.ux.voiceProfilesEnrollHint,
-                color = VelumInkSecondary,
-                fontSize = 12.sp,
-            )
         }
     }
 
@@ -360,7 +423,10 @@ fun VoiceProfilesScreen(
             },
         )
     }
-    if (showWipeConfirm) {
+    // The state the dialog was opened in can change under it (a retry that succeeds, or fails differently):
+    // close it then, so a confirm never wipes data that is no longer in the state the wipe was meant for.
+    LaunchedEffect(keyLost) { showWipeConfirm = false }
+    if (wipeDialogVisible(showWipeConfirm, loaded, keyLost)) {
         AlertDialog(
             onDismissRequest = { showWipeConfirm = false },
             title = { Text(strings.ux.confirmDeleteTitle) },
@@ -370,9 +436,16 @@ fun VoiceProfilesScreen(
                     onClick = {
                         showWipeConfirm = false
                         launchAction {
-                            container.voiceProfileStore.withReady { wipeAll() }
+                            container.voiceProfileStore.wipeVoiceData()
                             selected = null
-                            refresh()
+                            try {
+                                refresh()
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (_: Exception) {
+                                // The wipe is done; only the reload failed. Say so, with the retry button the
+                                // not-loaded state already shows, not "your data has been kept".
+                            }
                             status = strings.ux.voiceProfilesWiped
                         }
                     },
@@ -382,6 +455,37 @@ fun VoiceProfilesScreen(
                 TextButton(onClick = { showWipeConfirm = false }) { Text(strings.cancel) }
             },
         )
+    }
+}
+
+/** What the last copy of the encrypted export did. A refused copy must not be reported as a success. */
+internal enum class VoiceExportCopy { NONE, COPIED, FAILED }
+
+internal fun sampleCountLabel(strings: Strings, n: Int): String =
+    if (n == 1) strings.ux.voiceProfilesSampleOne else strings.ux.voiceProfilesSamplesFormat.replace("%d", n.toString())
+
+internal fun importedStatus(strings: Strings, n: Int): String =
+    if (n == 1) strings.ux.voiceProfilesImportedOne else strings.ux.voiceProfilesImportedFormat.replace("%d", n.toString())
+
+internal fun thresholdOptions(strings: Strings): List<Pair<Float, String>> = listOf(
+    0.45f to strings.ux.voiceProfilesSensitivityFlexible,
+    0.55f to strings.ux.voiceProfilesSensitivityBalanced,
+    0.65f to strings.ux.voiceProfilesSensitivityStrict,
+    0.75f to strings.ux.voiceProfilesSensitivityVeryStrict,
+)
+
+/** One full-width button per level: a word never has to break to fit a quarter-width cell. */
+@Composable
+internal fun SensitivityOptions(strings: Strings, current: Float, onSelect: (Float) -> Unit) {
+    Column(Modifier.fillMaxWidth()) {
+        thresholdOptions(strings).forEach { (t, label) ->
+            OutlineButton(
+                label,
+                { onSelect(t) },
+                modifier = Modifier.padding(vertical = 3.dp),
+                selected = kotlin.math.abs(current - t) < 0.005f,
+            )
+        }
     }
 }
 
@@ -418,7 +522,17 @@ private fun Field(label: String, value: String, onChange: (String) -> Unit) {
         onValueChange = onChange,
         textStyle = TextStyle(color = VelumInk, fontSize = 15.sp),
         modifier = Modifier
+            .semantics { contentDescription = label }
             .fillMaxWidth()
-            .padding(vertical = 6.dp),
+            .padding(vertical = 6.dp)
+            .border(1.dp, VelumInk, RoundedCornerShape(8.dp))
+            .padding(10.dp),
     )
 }
+
+/** Wiping is the recovery for a lost key only; a transient storage or cipher failure keeps the data and needs a retry. */
+internal fun isKeyLostFailure(failure: Exception): Boolean = failure is VoiceProfileKeyUnavailableException
+
+/** The wipe confirmation is only meaningful while there is data to wipe or the key is lost. */
+internal fun wipeDialogVisible(requested: Boolean, loaded: Boolean, keyLost: Boolean): Boolean =
+    requested && (loaded || keyLost)

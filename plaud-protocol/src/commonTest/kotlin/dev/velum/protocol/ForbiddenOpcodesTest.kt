@@ -18,6 +18,15 @@ class ForbiddenOpcodesTest {
         assertTrue(ForbiddenOpcodes.RESET_FINDMY in ForbiddenOpcodes.ALL)
     }
 
+    /** Receive-only (#326): a stop may be answered with 30, but 30 is delete-file and is never sent. */
+    @Test
+    fun deleteFileIsForbidden_andEncodeCommandRejectsIt() {
+        assertTrue(ForbiddenOpcodes.isForbidden(30))
+        assertTrue(ForbiddenOpcodes.isForbidden(Commands.DELETE_FILE))
+        assertFailsWith<IllegalArgumentException> { Framing.encodeCommand(30) }
+        assertFailsWith<IllegalArgumentException> { Framing.encodeCommand(30, byteArrayOf(1, 2, 3, 4)) }
+    }
+
     @Test
     fun safeOpcodesAllowed() {
         listOf(1, 9, 26, 28, 29, 0xFE10, 0xFE11, 0xFE12, 138).forEach { op ->
@@ -59,7 +68,7 @@ class ForbiddenOpcodesTest {
         val ok = CommonSettings.encodeWrite(1, byteArrayOf(0x0A))
         assertEquals(Framing.APP_PREFIX, ok[0])
         assertEquals(8, ok[1].toInt() and 0xFF)
-        // Reads of forbidden ids remain framed (only writes are gated).
+        // encodeRead still frames forbidden ids; the :ble PlaudWriteGuard is what rejects them on the wire.
         val read = CommonSettings.encodeRead(ForbiddenSettings.AUTO_DELETE)
         assertEquals(Framing.APP_PREFIX, read[0])
         assertEquals(CommonSettings.CMD, Bytes.readU16Le(read, 1))

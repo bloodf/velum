@@ -1,5 +1,7 @@
 # Issue coverage snapshot — 2026-11-01
 
+> Historical snapshot from 2026-11-01. Instructions, permissions, model routing, issue status, PR state, paths, and validation claims below describe that date only. They are not current authority or a continuation prompt. Follow current owner instructions, AGENTS.md, and docs/ai-tooling.md; verify current source and remote state before acting. Preserve the safety and data protections described below.
+
 Remote main: `1f30a0f18fb959a6020606f50e82d5ac0bb2601d`. 101 open, 16 closed, 117 total issues; PRs excluded. Both open pages were read. Closed-page size is below100.
 
 This is complete by issue ID. Many rows have not had a full source audit. Read the linked issue before implementation. See [machine-readable inventory](issue-coverage-2026-11-01.json) for acceptance excerpts, evidence, gaps and references.

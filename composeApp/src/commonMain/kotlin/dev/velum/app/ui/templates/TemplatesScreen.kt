@@ -31,6 +31,7 @@ import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
@@ -46,6 +47,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
@@ -56,13 +58,20 @@ import androidx.compose.ui.unit.sp
 import dev.velum.app.di.AppContainer
 import dev.velum.core.data.UserContentIds
 import dev.velum.app.i18n.LocalStrings
+import dev.velum.app.i18n.countText
 import dev.velum.app.platform.rememberJsonFileImporter
 import dev.velum.app.ui.components.BlackButton
 import dev.velum.app.ui.components.DisplayTitle
 import dev.velum.app.ui.components.EmptyState
 import dev.velum.app.ui.components.SearchSheet
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import dev.velum.app.ui.theme.VelumBg
 import dev.velum.app.ui.theme.VelumBlack
 import dev.velum.app.ui.theme.VelumDivider
@@ -71,31 +80,44 @@ import dev.velum.app.ui.theme.VelumInkSecondary
 import dev.velum.app.ui.theme.VelumOnBlack
 import dev.velum.app.ui.theme.VelumSurface
 import dev.velum.core.db.Template
-import dev.velum.core.search.FtsQuery
-import dev.velum.core.search.RecordingSearch
 import dev.velum.core.templates.BuiltinTemplateCatalog
+import dev.velum.core.templates.DiscoverFacets
+import dev.velum.core.templates.DiscoverFilter
+import dev.velum.core.templates.DiscoverTier
 import dev.velum.core.templates.TemplateJsonImporter
-import dev.velum.core.templates.TemplateTagFilter
 import dev.velum.core.templates.TemplateTagVocabulary
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.random.Random
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TemplatesScreen(
     container: AppContainer,
     onBack: () -> Unit,
     onOpenTemplate: (String) -> Unit,
+) = TemplatesScreen(container, onBack, onOpenTemplate, remember(container) { container.repository.discoverQueries() })
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun TemplatesScreen(
+    container: AppContainer,
+    onBack: () -> Unit,
+    onOpenTemplate: (String) -> Unit,
+    queries: DiscoverQueries,
 ) {
     val strings = LocalStrings.current
-    val templates by container.repository.observeTemplates().collectAsState(emptyList())
+    val templateChanges = remember(container) { container.repository.observeTemplateChanges() }
+    // null until the flow delivers its first value: loading before that would run every query twice (tick 0, then 1).
+    val templateTickOrNull by templateChanges.collectAsState(null as Long?)
+    val tickReady = templateTickOrNull != null
+    val templateTick = templateTickOrNull ?: 0L
     var tab by remember { mutableStateOf(1) } // 0 my space, 1 discover
     /** Discover tier: true = Featured builtins, false = All builtins. */
     var discoverFeaturedOnly by remember { mutableStateOf(true) }
     var showTypeCreate by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
     var showSearch by remember { mutableStateOf(false) }
-    var filtered by remember { mutableStateOf<List<Template>>(emptyList()) }
     var selectedCategory by remember { mutableStateOf<String?>(null) }
     var selectedTags by remember { mutableStateOf(setOf<String>()) }
     var selectedLang by remember { mutableStateOf<String?>(null) }
@@ -131,92 +153,160 @@ fun TemplatesScreen(
                         builtin = false,
                     )
                 }
-                importStatus = strings.templatesImportOkFormat.replace("%d", specs.size.toString())
+                importStatus = countText(specs.size, strings.templatesImportOkFormatOne, strings.templatesImportOkFormat)
             }.onFailure {
                 importStatus = strings.templatesImportFailed
             }
         }
     }
 
-    LaunchedEffect(templates, searchQuery) {
-        val match = FtsQuery.fromUserInput(searchQuery)
-        val ftsIds = if (match != null) {
-            try {
-                container.repository.searchTemplateIdsFts(match)
-            } catch (_: Throwable) {
-                null
+    val tier = when {
+        tab == 0 -> DiscoverTier.Mine
+        discoverFeaturedOnly -> DiscoverTier.Featured
+        else -> DiscoverTier.All
+    }
+    // Facet values come from catalog metadata for the current tier + search (+ category for tags/langs).
+    // `loadedFacets` stays null until a load succeeds; a failed load keeps the previous facets and never prunes.
+    // One state object, written once per load: the facets and the search they were loaded for must never be
+    // observed out of step (a recomposition between two separate writes pruned a selection against new facets while
+    // the old blank search still allowed pruning). Only a blank-search load may prune selections (#102).
+    var loadedFacets by remember { mutableStateOf<LoadedFacets?>(null) }
+    val facets = loadedFacets?.facets ?: NoFacets
+    // Debounced so each keystroke does not re-run the facet and page queries.
+    var debouncedQuery by remember { mutableStateOf(searchQuery) }
+    LaunchedEffect(searchQuery) {
+        // Clearing the search applies at once; only typing is debounced.
+        delay(searchApplyDelayMs(searchQuery, debouncedQuery))
+        debouncedQuery = searchQuery
+    }
+    // True while a facets reload is in flight: the chip rows may reflow when it lands, so they are not tappable
+    // until then (a tap aimed at the old layout would otherwise hit a neighbouring chip).
+    var facetsLoading by remember { mutableStateOf(false) }
+    LaunchedEffect(tier, debouncedQuery, selectedCategory, templateTick, tickReady) {
+        if (!tickReady) return@LaunchedEffect
+        facetsLoading = true
+        try {
+            loadedFacets = loadFacets(queries, DiscoverFilter(tier, debouncedQuery, selectedCategory))
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            // Keep the previous facets (and the user's selections) on failure.
+        }
+        facetsLoading = false
+    }
+    val canPrune = tab == 1 && loadedFacets?.search?.isBlank() == true
+    // The selected category stays listed even when the current search has no hit in it (#102).
+    val categoryTabs = remember(facets, selectedCategory) {
+        val categories = facets.categories.let { c -> if (selectedCategory != null && selectedCategory !in c) c + selectedCategory!! else c }
+        BuiltinTemplateCatalog.CategoryOrder.filter { it in categories } +
+            categories.filter { it !in BuiltinTemplateCatalog.CategoryOrder && it != "mine" }
+    }
+    // Alphabetical by what the user reads, not by slug.
+    val availableTags = remember(facets, languageTag) {
+        facets.tags.sortedBy { TemplateTagVocabulary.label(it, languageTag).lowercase() }
+    }
+    val availableLangs = facets.langs
+    LaunchedEffect(facets, selectedCategory, canPrune) {
+        val kept = pruneSelection(selectedCategory, facets.categories, canPrune)
+        if (kept != selectedCategory) selectedCategory = kept
+    }
+    LaunchedEffect(availableTags, selectedTags, canPrune) {
+        val kept = pruneSelection(selectedTags, availableTags, canPrune)
+        if (kept != selectedTags) selectedTags = kept
+    }
+    LaunchedEffect(availableLangs, selectedLang, canPrune) {
+        val kept = pruneSelection(selectedLang, availableLangs, canPrune)
+        if (kept != selectedLang) selectedLang = kept
+    }
+    val filter = DiscoverFilter(
+        tier = tier,
+        search = debouncedQuery,
+        category = selectedCategory.takeIf { tab == 1 },
+        tags = if (tab == 1) selectedTags else emptySet(),
+        lang = selectedLang.takeIf { tab == 1 },
+    )
+    // Any filter/tier/search/catalog change resets paging to the first page.
+    var pages by remember(filter, templateTick) { mutableStateOf(1) }
+    // null = nothing loaded yet for this filter (no empty-state flash, no stale rows).
+    var shown by remember { mutableStateOf<List<Template>?>(null) }
+    var shownFilter by remember { mutableStateOf<DiscoverFilter?>(null) }
+    // Catalog tick the rows were loaded at; the paging sentinel stays off while they are older than the catalog.
+    var shownTick by remember { mutableStateOf(-1L) }
+    var totalMatches by remember { mutableStateOf(0L) }
+    var loadFailed by remember { mutableStateOf(false) }
+    // Bumped by the retry button after a failed load.
+    var retryTick by remember { mutableStateOf(0) }
+    LaunchedEffect(filter, pages, templateTick, retryTick, tickReady) {
+        if (!tickReady) return@LaunchedEffect
+        // Snapshot before the first suspension: the tick may move while the queries run.
+        val loadTick = templateTick
+        // A different filter must not keep the previous filter's rows (or its paging sentinel) on screen.
+        if (shownFilter != filter) {
+            shown = null
+            // The previous filter's failure must not hide this filter's spinner.
+            loadFailed = false
+        }
+        try {
+            val current = shown.orEmpty()
+            val offset = if (pages == 1) 0 else current.size
+            val limit = reloadLimit(pages, if (shownFilter == filter) current.size else 0, PAGE_SIZE)
+            val rows = queries.page(filter, limit, offset)
+            val total = queries.count(filter)
+            shown = if (pages == 1) rows else appendPage(current, rows)
+            shownFilter = filter
+            shownTick = loadTick
+            totalMatches = total
+            loadFailed = false
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            // A failed later page keeps the rows already loaded for this filter; anything else must not
+            // keep the previous filter's rows on screen.
+            if (pages == 1 || shownFilter != filter) {
+                shown = emptyList()
+                shownFilter = filter
+                shownTick = loadTick
+                totalMatches = 0
             }
-        } else {
-            null
-        }
-        filtered = RecordingSearch.templates(templates, searchQuery, ftsIds)
-    }
-
-    val scoped = remember(filtered, tab, discoverFeaturedOnly) {
-        when (tab) {
-            0 -> filtered.filter { it.builtin == 0L }
-            else -> {
-                val builtins = filtered.filter { it.builtin != 0L }
-                if (discoverFeaturedOnly) builtins.filter { it.featured != 0L } else builtins
-            }
+            loadFailed = true
         }
     }
-    val filterRows = remember(scoped) {
-        scoped.map { tpl ->
-            TemplateTagFilter.Row(
-                id = tpl.id,
-                tags = TemplateTagVocabulary.decode(tpl.tags),
-                lang = tpl.lang,
-                category = tpl.category,
-            )
-        }
-    }
-    val categoryTabs = remember(scoped) {
-        BuiltinTemplateCatalog.CategoryOrder.filter { key -> scoped.any { it.category == key } } +
-            scoped.map { it.category }
-                .filter { it !in BuiltinTemplateCatalog.CategoryOrder && it != "mine" }
-                .distinct()
-    }
-    val availableTags = remember(filterRows, selectedCategory) {
-        val base = if (selectedCategory == null) filterRows
-        else filterRows.filter { it.category == selectedCategory }
-        TemplateTagFilter.tagsPresentIn(base)
-    }
-    val availableLangs = remember(filterRows, selectedCategory) {
-        val base = if (selectedCategory == null) filterRows
-        else filterRows.filter { it.category == selectedCategory }
-        TemplateTagFilter.langsPresentIn(base).filter { it != "und" }
-    }
-    LaunchedEffect(categoryTabs, selectedCategory) {
-        if (selectedCategory != null && selectedCategory !in categoryTabs) {
-            selectedCategory = null
-        }
-    }
-    LaunchedEffect(availableTags, selectedTags) {
-        val pruned = selectedTags.filter { it in availableTags }.toSet()
-        if (pruned != selectedTags) selectedTags = pruned
-    }
-    LaunchedEffect(availableLangs, selectedLang) {
-        if (selectedLang != null && selectedLang !in availableLangs) {
-            selectedLang = null
-        }
-    }
-    val shown = remember(scoped, filterRows, selectedCategory, selectedTags, selectedLang) {
-        val byId = scoped.associateBy { it.id }
-        val rows = TemplateTagFilter.filter(
-            items = filterRows,
-            selectedTags = selectedTags,
-            selectedLang = selectedLang,
-            selectedCategory = selectedCategory,
-        )
-        rows.mapNotNull { byId[it.id] }.sortedByDescending { it.uses }
-    }
+    // Rows from another filter are never visible, even for the frame before the effect clears them.
+    val visible = shown.takeIf { shownFilter == filter }
+    val rows = visible.orEmpty()
     // Weekly ranking uses Featured builtins only.
-    val ranking = remember(filtered) {
-        filtered
-            .filter { it.builtin != 0L && it.featured != 0L }
-            .sortedByDescending { it.uses }
-            .take(5)
+    var ranking by remember { mutableStateOf<List<Template>>(emptyList()) }
+    LaunchedEffect(templateTick, tickReady) {
+        if (!tickReady) return@LaunchedEffect
+        ranking = try {
+            queries.page(DiscoverFilter(DiscoverTier.Featured), 5, 0)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+    // Every optional block of the grid, fixed for this composition. The grid scope below reads only these plain
+    // values: state read inside it could change between the grid's reads of the item count (#202).
+    val rankingNow = ranking
+    val plan = discoverGridPlan(
+        discoverTab = tab == 1,
+        featuredOnly = discoverFeaturedOnly,
+        hasRanking = rankingNow.isNotEmpty(),
+        searchBlank = searchQuery.isBlank(),
+        noFacetSelected = selectedCategory == null && selectedTags.isEmpty() && selectedLang == null,
+        shown = visible,
+        fullImportRunning = fullImportRunning,
+        loadFailed = loadFailed,
+        shownTick = shownTick,
+        currentTick = templateTick,
+        loadedTarget = PAGE_SIZE * pages,
+        totalMatches = totalMatches,
+    )
+    fun clearFilters() {
+        selectedCategory = null
+        selectedTags = emptySet()
+        selectedLang = null
     }
 
     Column(Modifier.fillMaxSize().background(VelumBg)) {
@@ -228,19 +318,18 @@ fun TemplatesScreen(
                 Icons.AutoMirrored.Outlined.ArrowBack,
                 contentDescription = strings.ux.back,
                 modifier = Modifier
-                    .size(40.dp)
-                    .semantics { contentDescription = strings.ux.back }
-                    .clickable(onClick = onBack)
-                    .padding(8.dp),
+                    .size(48.dp)
+                    .clickable(role = Role.Button, onClick = onBack)
+                    .padding(12.dp),
                 tint = VelumInk,
             )
             Spacer(Modifier.weight(1f))
-            Icon(
-                Icons.Outlined.Search,
-                strings.search,
-                tint = VelumInk,
-                modifier = Modifier.size(22.dp).clickable { showSearch = true },
-            )
+            Box(
+                Modifier.size(48.dp).clickable(role = Role.Button) { showSearch = true },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Outlined.Search, strings.search, tint = VelumInk, modifier = Modifier.size(22.dp))
+            }
             Spacer(Modifier.width(12.dp))
             Text(
                 strings.templatesImportJson,
@@ -266,6 +355,7 @@ fun TemplatesScreen(
         }
         val statusLine = when {
             fullImportRunning -> strings.templatesImportingFull
+            loadFailed -> strings.ux.genericError
             else -> importStatus
         }
         statusLine?.let { status ->
@@ -283,110 +373,158 @@ fun TemplatesScreen(
         }
         Spacer(Modifier.height(8.dp))
 
-        if (tab == 1) {
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                CategoryChip(
-                    label = strings.templatesFeatured,
-                    selected = discoverFeaturedOnly,
-                ) { discoverFeaturedOnly = true }
-                CategoryChip(
-                    label = strings.templatesAll,
-                    selected = !discoverFeaturedOnly,
-                ) { discoverFeaturedOnly = false }
-            }
-        }
-
-        if (tab == 1 && categoryTabs.isNotEmpty()) {
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                CategoryChip(
-                    label = strings.templatesAll,
-                    selected = selectedCategory == null,
-                ) { selectedCategory = null }
-                categoryTabs.forEach { cat ->
-                    CategoryChip(
-                        label = BuiltinTemplateCatalog.categoryLabel(cat, languageTag),
-                        selected = selectedCategory == cat,
-                    ) { selectedCategory = cat }
-                }
-            }
-        }
-
-        if (tab == 1 && availableTags.isNotEmpty()) {
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    strings.templateTags,
-                    color = VelumInkSecondary,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                availableTags.take(24).forEach { tag ->
-                    CategoryChip(
-                        label = TemplateTagVocabulary.label(tag, languageTag),
-                        selected = tag in selectedTags,
-                    ) {
-                        selectedTags = if (tag in selectedTags) selectedTags - tag else selectedTags + tag
-                    }
-                }
-            }
-        }
-
-        if (tab == 1 && availableLangs.isNotEmpty()) {
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    strings.templateLangFilter,
-                    color = VelumInkSecondary,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                CategoryChip(
-                    label = strings.templatesAll,
-                    selected = selectedLang == null,
-                ) { selectedLang = null }
-                availableLangs.forEach { lang ->
-                    CategoryChip(
-                        label = templateLangLabel(lang, languageTag),
-                        selected = selectedLang == lang,
-                    ) { selectedLang = lang }
-                }
-            }
-        }
-
         LazyVerticalGrid(
             columns = GridCells.Fixed(2),
-            modifier = Modifier.weight(1f).fillMaxWidth(),
+            modifier = Modifier.weight(1f).fillMaxWidth().testTag("templates:grid"),
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            if (tab == 1 && discoverFeaturedOnly && ranking.isNotEmpty() && searchQuery.isBlank() &&
-                selectedCategory == null && selectedTags.isEmpty() && selectedLang == null
-            ) {
+            // Filter rows scroll with the results so short screens / the keyboard never squeeze the grid to 0 height.
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                Column {
+                    if (tab == 1) {
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState())
+                                .padding(vertical = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            CategoryChip(
+                                label = strings.templatesFeatured,
+                                selected = discoverFeaturedOnly,
+                                testTag = "tier:featured",
+                            ) { discoverFeaturedOnly = true }
+                            CategoryChip(
+                                label = strings.templatesAll,
+                                selected = !discoverFeaturedOnly,
+                                testTag = "tier:all",
+                            ) { discoverFeaturedOnly = false }
+                        }
+                    }
+
+                    if (tab == 1 && categoryTabs.isNotEmpty()) {
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState())
+                                .padding(vertical = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            CategoryChip(
+                                label = strings.templatesAll,
+                                selected = selectedCategory == null,
+                                testTag = "category:all",
+                                enabled = !facetsLoading,
+                            ) { selectedCategory = null }
+                            categoryTabs.forEach { cat ->
+                                CategoryChip(
+                                    label = BuiltinTemplateCatalog.categoryLabel(cat, languageTag),
+                                    selected = selectedCategory == cat,
+                                    testTag = "category:$cat",
+                                    enabled = !facetsLoading,
+                                ) { selectedCategory = cat }
+                            }
+                        }
+                    }
+
+                    if (tab == 1 && availableTags.isNotEmpty()) {
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState())
+                                .padding(vertical = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                strings.templateTags,
+                                modifier = Modifier.semantics { heading() },
+                                color = VelumInkSecondary,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            availableTags.forEach { tag ->
+                                CategoryChip(
+                                    label = TemplateTagVocabulary.label(tag, languageTag),
+                                    selected = tag in selectedTags,
+                                    testTag = "tag:$tag",
+                                    enabled = !facetsLoading,
+                                ) {
+                                    selectedTags = if (tag in selectedTags) selectedTags - tag else selectedTags + tag
+                                }
+                            }
+                        }
+                    }
+
+                    if (tab == 1 && availableLangs.isNotEmpty()) {
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState())
+                                .padding(vertical = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                strings.templateLangFilter,
+                                color = VelumInkSecondary,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            CategoryChip(
+                                label = strings.templatesAll,
+                                selected = selectedLang == null,
+                                testTag = "lang:all",
+                                enabled = !facetsLoading,
+                            ) { selectedLang = null }
+                            availableLangs.forEach { lang ->
+                                CategoryChip(
+                                    label = templateLangLabel(lang, languageTag),
+                                    selected = selectedLang == lang,
+                                    testTag = "lang:$lang",
+                                    enabled = !facetsLoading,
+                                ) { selectedLang = lang }
+                            }
+                        }
+                    }
+
+                    if (tab == 1 && filter.hasFacetSelection) {
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState())
+                                .padding(vertical = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                strings.templatesActiveFilters,
+                                color = VelumInkSecondary,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            val removeFormat = strings.templatesRemoveFilterFormat
+                            selectedCategory?.let { cat ->
+                                val label = BuiltinTemplateCatalog.categoryLabel(cat, languageTag)
+                                ActiveFilterChip(label, removeFormat.replace("%s", label), "active:category") { selectedCategory = null }
+                            }
+                            selectedTags.sorted().forEach { tag ->
+                                val label = TemplateTagVocabulary.label(tag, languageTag)
+                                ActiveFilterChip(label, removeFormat.replace("%s", label), "active:tag:$tag") { selectedTags = selectedTags - tag }
+                            }
+                            selectedLang?.let { lang ->
+                                val label = templateLangLabel(lang, languageTag)
+                                ActiveFilterChip(label, removeFormat.replace("%s", label), "active:lang") { selectedLang = null }
+                            }
+                            CategoryChip(label = strings.templatesClearFilters, selected = false, testTag = "filters:clear") { clearFilters() }
+                        }
+                    }
+
+                }
+            }
+            if (plan.showRanking) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     Column {
                         DisplayTitle(strings.weeklyRanking)
@@ -395,7 +533,7 @@ fun TemplatesScreen(
                             Modifier.horizontalScroll(rememberScrollState()),
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
-                            ranking.forEachIndexed { index, tpl ->
+                            rankingNow.forEachIndexed { index, tpl ->
                                 RankingCard(tpl, index + 1, languageTag) { onOpenTemplate(tpl.id) }
                             }
                         }
@@ -404,20 +542,36 @@ fun TemplatesScreen(
                     }
                 }
             }
-            if (shown.isEmpty() && !fullImportRunning) {
+            if (plan.showLoading) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
-                    Box(
-                        Modifier.fillMaxWidth().padding(vertical = 48.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        EmptyState(
-                            title = strings.templatesEmptyTitle,
-                            subtitle = strings.templatesEmptyHint,
-                        )
+                    Box(Modifier.fillMaxWidth().padding(vertical = 48.dp).testTag("templates:loading"), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
                     }
                 }
             }
-            items(shown, key = { it.id }) { tpl ->
+            if (plan.showEmpty) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Box(
+                        Modifier.fillMaxWidth().padding(vertical = 48.dp).testTag("templates:empty"),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        if (filter.hasFacetSelection) {
+                            EmptyState(
+                                title = strings.templatesEmptyTitle,
+                                subtitle = strings.templatesNoMatchHint,
+                                actionLabel = strings.templatesClearFilters,
+                                onAction = { clearFilters() },
+                            )
+                        } else {
+                            EmptyState(
+                                title = strings.templatesEmptyTitle,
+                                subtitle = strings.templatesEmptyHint,
+                            )
+                        }
+                    }
+                }
+            }
+            items(rows, key = { it.id }) { tpl ->
                 TemplateGridCard(
                     name = templateDisplayName(tpl, languageTag),
                     description = tpl.description,
@@ -428,6 +582,21 @@ fun TemplatesScreen(
                     modifier = Modifier.fillMaxWidth(),
                 ) { onOpenTemplate(tpl.id) }
             }
+            // Retry sits after the rows so a failed later page is retried where the user is looking.
+            if (plan.showRetry) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Box(Modifier.fillMaxWidth().padding(vertical = 12.dp), contentAlignment = Alignment.Center) {
+                        CategoryChip(label = strings.ux.retryProcessing, selected = false, testTag = "templates:retry") { retryTick += 1 }
+                    }
+                }
+            }
+            if (plan.showPagingSentinel) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    // Composed only when scrolled to the end: load the next page.
+                    LaunchedEffect(rows.size) { pages += 1 }
+                    Spacer(Modifier.height(1.dp))
+                }
+            }
         }
     }
 
@@ -436,7 +605,7 @@ fun TemplatesScreen(
             query = searchQuery,
             onQueryChange = { searchQuery = it },
             onDismiss = { showSearch = false },
-            resultCount = shown.size,
+            resultCount = totalMatches.toInt(),
         )
     }
 
@@ -526,8 +695,11 @@ fun TemplatesScreen(
     }
 }
 
+private const val PAGE_SIZE = 60
+
 @Composable
-private fun CategoryChip(label: String, selected: Boolean, onClick: () -> Unit) {
+private fun CategoryChip(label: String, selected: Boolean, testTag: String, enabled: Boolean = true, onClick: () -> Unit) {
+    val selectedState = LocalStrings.current.templatesFilterSelected
     Text(
         label,
         color = if (selected) VelumOnBlack else VelumInk,
@@ -536,9 +708,34 @@ private fun CategoryChip(label: String, selected: Boolean, onClick: () -> Unit) 
         modifier = Modifier
             .clip(RoundedCornerShape(8.dp))
             .background(if (selected) VelumBlack else VelumSurface)
-            .clickable(onClick = onClick)
+            .testTag(testTag)
+            .semantics {
+                this.selected = selected
+                role = Role.Button
+                if (selected) stateDescription = selectedState
+            }
+            .alpha(if (enabled) 1f else 0.5f)
+            .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 8.dp),
     )
+}
+
+@Composable
+private fun ActiveFilterChip(label: String, removeDescription: String, testTag: String, onRemove: () -> Unit) {
+    Row(
+        Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(VelumBlack)
+            .testTag(testTag)
+            .semantics { contentDescription = removeDescription; role = Role.Button }
+            .clickable(onClick = onRemove)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(label, color = VelumOnBlack, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+        Spacer(Modifier.width(6.dp))
+        Icon(Icons.Outlined.Close, null, tint = VelumOnBlack, modifier = Modifier.size(14.dp))
+    }
 }
 
 @Composable
@@ -561,7 +758,7 @@ private fun Tab(label: String, selected: Boolean, onClick: () -> Unit) {
 }
 
 private fun templateDisplayName(tpl: Template, languageTag: String): String {
-    val catalog = BuiltinTemplateCatalog.get(tpl.id)
+    val catalog = if (tpl.builtin != 0L) BuiltinTemplateCatalog.get(tpl.id) else null
     return catalog?.displayName(languageTag) ?: tpl.name
 }
 
@@ -671,17 +868,18 @@ fun TemplateDetailScreen(
     onBack: () -> Unit,
 ) {
     val strings = LocalStrings.current
-    val templates by container.repository.observeTemplates().collectAsState(emptyList())
-    val tpl = templates.firstOrNull { it.id == templateId }
+    val templateFlow = remember(container, templateId) { container.repository.observeTemplate(templateId) }
+    val tpl = templateFlow.collectAsState(null).value
     val contributorCredit = tpl?.let { templateUiCredit(it) }
 
     Column(Modifier.fillMaxSize().background(VelumBg).verticalScroll(rememberScrollState())) {
-        Icon(
-            Icons.Outlined.Close,
-            null,
-            modifier = Modifier.padding(16.dp).size(28.dp).clickable(onClick = onBack),
-            tint = VelumInk,
-        )
+        // 48dp target, same 16dp inset around the 28dp glyph as before.
+        Box(
+            Modifier.padding(6.dp).size(48.dp).clickable(role = Role.Button, onClick = onBack),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(Icons.Outlined.Close, strings.close, modifier = Modifier.size(28.dp), tint = VelumInk)
+        }
         Box(
             Modifier
                 .size(56.dp)
@@ -763,7 +961,7 @@ fun TemplateDetailScreen(
         var promptDraft by remember(tpl?.id) { mutableStateOf(tpl?.system_prompt.orEmpty()) }
         var nameDraft by remember(tpl?.id) { mutableStateOf(tpl?.name.orEmpty()) }
         val scope = rememberCoroutineScope()
-        if (editing && tpl != null && tpl.builtin == 0L) {
+        if (editing && tpl != null) {
             BasicTextField(
                 value = nameDraft,
                 onValueChange = { nameDraft = it },
@@ -800,6 +998,10 @@ fun TemplateDetailScreen(
                             author = tpl.author,
                             builtin = false,
                             uses = tpl.uses,
+                            tags = TemplateTagVocabulary.decode(tpl.tags),
+                            lang = tpl.lang,
+                            preferredModel = tpl.preferred_model,
+                            preferredEndpointProfileId = tpl.preferred_endpoint_profile_id,
                         )
                         editing = false
                     }
@@ -821,16 +1023,22 @@ fun TemplateDetailScreen(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(
-                Modifier
-                    .size(52.dp)
-                    .border(1.dp, VelumDivider, RoundedCornerShape(10.dp))
-                    .clickable {
-                        if (tpl?.builtin == 0L) editing = !editing
-                    },
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(Icons.Outlined.Edit, null, tint = VelumInk)
+            if (tpl != null) {
+                Box(
+                    Modifier
+                        .size(52.dp)
+                        .border(1.dp, VelumDivider, RoundedCornerShape(10.dp))
+                        .clickable(role = Role.Button) {
+                            if (!editing) {
+                                nameDraft = tpl.name
+                                promptDraft = tpl.system_prompt
+                            }
+                            editing = !editing
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(if (editing) Icons.Outlined.Close else Icons.Outlined.Edit, if (editing) strings.cancel else strings.edit, tint = VelumInk)
+                }
             }
             BlackButton(strings.close, onBack, Modifier.weight(1f))
         }

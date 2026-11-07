@@ -1,5 +1,6 @@
 package dev.velum.ble
 
+import dev.velum.ble.gatt.GattWrite
 import dev.velum.core.model.ConnectedDevice
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -11,7 +12,7 @@ import kotlinx.coroutines.flow.flowOf
 /**
  * No-op transport for desktop JVM and for UI wiring before permissions/hardware.
  */
-class StubBleTransport(
+internal class StubBleTransport(
     override val isAvailable: Boolean = false,
     private val unavailableReason: String = "BLE is not available on this platform yet",
 ) : BleTransport {
@@ -37,11 +38,14 @@ class StubBleTransport(
         _state.value = BleConnectionState.Failed(unavailableReason)
     }
 
+    // Never links, so there is never a link to go stale.
+    override val linkGeneration: Long = 0L
+
     override suspend fun disconnect() {
         _state.value = BleConnectionState.Idle
     }
 
-    override suspend fun write(payload: ByteArray, withoutResponse: Boolean) {
+    override suspend fun writeRaw(write: GattWrite) {
         error(unavailableReason)
     }
 

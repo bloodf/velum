@@ -5,6 +5,7 @@ import dev.velum.app.i18n.DeviceUiCopy
 import dev.velum.app.ui.DeviceViewModel
 import dev.velum.ble.BleConnectionState
 import dev.velum.ble.BleTransport
+import dev.velum.ble.gatt.GattWrite
 import dev.velum.core.model.ConnectedDevice
 import dev.velum.core.security.DeviceKeyImporter
 import dev.velum.core.security.SecureStoreUnavailableException
@@ -91,6 +92,7 @@ class DeviceCredentialFailureTest {
 
     private class SyntheticTransport : BleTransport {
         override val isAvailable = true
+        override val linkGeneration = 0L
         override val connectionState = MutableStateFlow<BleConnectionState>(BleConnectionState.Idle)
         override val discoveredDevices = MutableStateFlow(emptyList<ConnectedDevice>())
         var writes = 0
@@ -102,6 +104,6 @@ class DeviceCredentialFailureTest {
             connectionState.value = BleConnectionState.Connected(ConnectedDevice("synthetic", "PLAUD NOTE", null, null, null, -40))
         }
         override suspend fun disconnect() { connectionState.value = BleConnectionState.Idle }
-        override suspend fun write(payload: ByteArray, withoutResponse: Boolean) { writes++; error("No device command is allowed in this fixture") }
+        override suspend fun writeRaw(write: GattWrite) { writes++; error("No device command is allowed in this fixture") }
     }
 }

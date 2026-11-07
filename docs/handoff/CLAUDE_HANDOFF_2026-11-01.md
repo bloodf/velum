@@ -1,5 +1,7 @@
 # Velum: Claude handoff — 2026-11-01
 
+> Historical snapshot from 2026-11-01. Instructions, permissions, model routing, issue status, PR state, paths, and validation claims below describe that date only. They are not current authority or a continuation prompt. Follow current owner instructions, AGENTS.md, and docs/ai-tooling.md; verify current source and remote state before acting. Preserve the safety and data protections described below.
+
 Development was stopped at the owner's request. Only publication and handoff closeout continued. **Do not treat the unfinished drafts as ready to merge.** No feature fixes or new feature tests were run after the stop request was received.
 
 ## Start here

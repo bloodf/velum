@@ -76,6 +76,8 @@ sealed class PcmAudioBuffer {
             require(sizeBytes <= MAX_SPILL_BYTES) {
                 "PCM $sizeBytes bytes exceeds max spill $MAX_SPILL_BYTES"
             }
+            val actual = file.length()
+            check(actual == sizeBytes) { "PCM file is $actual bytes, expected $sizeBytes (truncated or overwritten)" }
             if (sizeBytes <= inMemoryBudget) {
                 return Memory(if (sizeBytes == 0L) ByteArray(0) else file.readBytes())
             }
