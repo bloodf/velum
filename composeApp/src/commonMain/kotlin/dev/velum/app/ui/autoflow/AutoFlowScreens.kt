@@ -58,6 +58,7 @@ import androidx.compose.ui.unit.sp
 import dev.velum.app.di.AppContainer
 import dev.velum.app.i18n.LocalStrings
 import dev.velum.app.i18n.Strings
+import dev.velum.app.platform.PlatformBackHandler
 import dev.velum.app.ui.components.DualActionRow
 import dev.velum.app.ui.components.EmptyState
 import dev.velum.app.ui.components.MetaRow
@@ -365,6 +366,8 @@ private fun AutoFlowEditContent(
     fun tryBack() {
         if (dirty) showDiscard = true else onBack()
     }
+
+    PlatformBackHandler(enabled = true, onBack = ::tryBack)
 
     fun missingSetupFor(action: String): AutoFlowTemplateSetup? = when (AutoFlowPostAction.fromStored(action)) {
         AutoFlowPostAction.FolderExport ->
