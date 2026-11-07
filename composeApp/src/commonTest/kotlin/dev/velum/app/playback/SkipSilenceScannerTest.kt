@@ -2,6 +2,7 @@ package dev.velum.app.playback
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -92,4 +93,20 @@ class SkipSilenceScannerTest {
 
     private fun shortLe(value: Int): ByteArray =
         byteArrayOf((value and 0xFF).toByte(), ((value shr 8) and 0xFF).toByte())
+
+    @Test fun late_scan_results_do_not_undo_a_user_seek() {
+        val apply = SkipSilenceScanner::shouldApplySkip
+        assertTrue(apply(10_000, 10_300, 14_000, true), "normal: playback moved a little during the scan")
+        assertTrue(apply(10_000, 9_700, 14_000, true), "within a poll of the start")
+        assertFalse(apply(10_000, 2_000, 14_000, true), "user sought back")
+        assertFalse(apply(10_000, 20_000, 14_000, true), "user sought past the target")
+        assertFalse(apply(10_000, 10_100, 14_000, false), "paused meanwhile")
+        assertFalse(apply(10_000, 10_000, 10_040, true), "the skip would be under 50 ms")
+        assertFalse(apply(10_000, 10_000, 10_050, true), "a skip of exactly 50 ms is not worth a seek")
+        assertTrue(apply(10_000, 10_000, 10_051, true), "just over 50 ms is")
+        assertTrue(apply(10_000, 9_500, 14_000, true), "exactly a poll-and-a-bit before the start is still near")
+        assertFalse(apply(10_000, 9_499, 14_000, true), "one ms further back is a user seek")
+        assertTrue(apply(10_000, 14_000, 14_000, true), "playback already at the target")
+        assertFalse(apply(10_000, 14_001, 14_000, true), "one ms past the target")
+    }
 }

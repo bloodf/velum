@@ -43,6 +43,7 @@ import dev.velum.ai.local.VoiceProfileReadProblem
 import dev.velum.core.security.SecureStoreUnavailableException
 import dev.velum.ai.local.VoiceProfile
 import dev.velum.app.di.AppContainer
+import dev.velum.app.export.copyToClipboard
 import dev.velum.app.i18n.LocalStrings
 import dev.velum.app.i18n.Strings
 import dev.velum.app.ui.components.BlackButton
@@ -67,12 +68,17 @@ fun VoiceProfilesScreen(
     val scope = rememberCoroutineScope()
     var profiles by remember(container) { mutableStateOf(emptyList<VoiceProfile>()) }
     var loaded by remember(container) { mutableStateOf(false) }
+    // Wiping is the recovery for a lost key only; a transient storage/cipher failure keeps the data and just needs a retry.
+    var keyLost by remember(container) { mutableStateOf(false) }
     val settings by container.settingsRepository.settings.collectAsState()
     var unreadable by remember(container) { mutableStateOf(emptyList<UnreadableVoiceProfile>()) }
     var pendingRemoval by remember(container) { mutableStateOf<UnreadableVoiceProfile?>(null) }
     var selected by remember { mutableStateOf<VoiceProfile?>(null) }
     var status by remember { mutableStateOf<String?>(null) }
     var exportText by remember { mutableStateOf<String?>(null) }
+    // The copy confirmation sits next to the button that copies, not in the status line at the bottom of the
+    // screen: the user has just pressed the button and must not have to scroll to learn whether it worked.
+    var exportCopy by remember { mutableStateOf(VoiceExportCopy.NONE) }
     var importDraft by remember { mutableStateOf("") }
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showWipeConfirm by remember { mutableStateOf(false) }
@@ -83,6 +89,7 @@ fun VoiceProfilesScreen(
             profiles = inventory.profiles
             unreadable = inventory.unreadable
             loaded = true
+            keyLost = false
             selected = selected?.id?.let { id -> profiles.firstOrNull { it.id == id } }
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -98,6 +105,7 @@ fun VoiceProfilesScreen(
     }
 
     fun showFailure(failure: Exception) {
+        keyLost = isKeyLostFailure(failure)
         val global = failure is VoiceProfileKeyUnavailableException ||
             failure is ProfileCipherUnavailableException || failure is SecureStoreUnavailableException
         if (global) {
@@ -163,6 +171,11 @@ fun VoiceProfilesScreen(
                     Text(status.orEmpty(), color = VelumInkSecondary)
                     Spacer(Modifier.height(8.dp))
                     OutlineButton(strings.ux.retryProcessing, { launchAction { container.voiceProfileStore.reloadKey(); refresh(); status = null } })
+                    // Recovery when the key is lost for good: wiping needs no key (and asks for confirmation).
+                    if (keyLost) {
+                        Spacer(Modifier.height(8.dp))
+                        OutlineButton(strings.ux.voiceProfilesWipe, { showWipeConfirm = true }, modifier = Modifier.fillMaxWidth())
+                    }
                 } else if (profiles.isEmpty() && unreadable.isEmpty()) {
                     Text(strings.ux.voiceProfilesEmpty, color = VelumInkSecondary)
                 } else {
@@ -244,9 +257,11 @@ fun VoiceProfilesScreen(
                         launchAction {
                             if (profiles.isEmpty()) {
                                 exportText = null
+                                exportCopy = VoiceExportCopy.NONE
                                 status = strings.ux.voiceProfilesExportEmpty
                             } else {
                                 exportText = container.voiceProfileStore.withReady { exportEncrypted() }
+                                exportCopy = VoiceExportCopy.NONE
                                 status = strings.ux.voiceProfilesExportReady
                             }
                         }
@@ -257,11 +272,41 @@ fun VoiceProfilesScreen(
                 if (loaded && unreadable.isNotEmpty()) {
                     Text(strings.ux.voiceProfilesExportBlocked, color = VelumInkSecondary, fontSize = 12.sp)
                 }
-                Spacer(Modifier.height(8.dp))
-                exportText?.let {
-                    Text(it.take(400) + if (it.length > 400) "…" else "", color = VelumInkSecondary, fontSize = 11.sp)
+                exportText?.let { payload ->
+                    // A backup the user cannot take out of the app is not a backup. This used to render only the
+                    // first 400 characters of the export in a plain Text (nothing to select, nothing to copy), so a
+                    // normal profile set could never be recovered (#107 finding 2a). The whole export is now
+                    // delivered by an explicit action: one press copies the complete encrypted payload.
                     Spacer(Modifier.height(8.dp))
+                    OutlineButton(
+                        strings.added.voiceProfilesExportCopy,
+                        {
+                            // The platform can refuse the copy (no clipboard). Say so instead of claiming success.
+                            exportCopy = if (copyToClipboard(payload)) VoiceExportCopy.COPIED else VoiceExportCopy.FAILED
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    when (exportCopy) {
+                        VoiceExportCopy.COPIED -> {
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                strings.added.voiceProfilesExportCopied,
+                                color = VelumInkSecondary,
+                                fontSize = 13.sp,
+                            )
+                        }
+                        VoiceExportCopy.FAILED -> {
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                strings.added.voiceProfilesExportCopyFailed,
+                                color = VelumInkSecondary,
+                                fontSize = 13.sp,
+                            )
+                        }
+                        VoiceExportCopy.NONE -> Unit
+                    }
                 }
+                Spacer(Modifier.height(8.dp))
                 Text(strings.ux.voiceProfilesImportTitle, fontWeight = FontWeight.SemiBold, color = VelumInk)
                 Spacer(Modifier.height(6.dp))
                 BasicTextField(
@@ -378,7 +423,10 @@ fun VoiceProfilesScreen(
             },
         )
     }
-    if (showWipeConfirm) {
+    // The state the dialog was opened in can change under it (a retry that succeeds, or fails differently):
+    // close it then, so a confirm never wipes data that is no longer in the state the wipe was meant for.
+    LaunchedEffect(keyLost) { showWipeConfirm = false }
+    if (wipeDialogVisible(showWipeConfirm, loaded, keyLost)) {
         AlertDialog(
             onDismissRequest = { showWipeConfirm = false },
             title = { Text(strings.ux.confirmDeleteTitle) },
@@ -388,9 +436,16 @@ fun VoiceProfilesScreen(
                     onClick = {
                         showWipeConfirm = false
                         launchAction {
-                            container.voiceProfileStore.withReady { wipeAll() }
+                            container.voiceProfileStore.wipeVoiceData()
                             selected = null
-                            refresh()
+                            try {
+                                refresh()
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (_: Exception) {
+                                // The wipe is done; only the reload failed. Say so, with the retry button the
+                                // not-loaded state already shows, not "your data has been kept".
+                            }
                             status = strings.ux.voiceProfilesWiped
                         }
                     },
@@ -402,6 +457,9 @@ fun VoiceProfilesScreen(
         )
     }
 }
+
+/** What the last copy of the encrypted export did. A refused copy must not be reported as a success. */
+internal enum class VoiceExportCopy { NONE, COPIED, FAILED }
 
 internal fun sampleCountLabel(strings: Strings, n: Int): String =
     if (n == 1) strings.ux.voiceProfilesSampleOne else strings.ux.voiceProfilesSamplesFormat.replace("%d", n.toString())
@@ -471,3 +529,10 @@ private fun Field(label: String, value: String, onChange: (String) -> Unit) {
             .padding(10.dp),
     )
 }
+
+/** Wiping is the recovery for a lost key only; a transient storage or cipher failure keeps the data and needs a retry. */
+internal fun isKeyLostFailure(failure: Exception): Boolean = failure is VoiceProfileKeyUnavailableException
+
+/** The wipe confirmation is only meaningful while there is data to wipe or the key is lost. */
+internal fun wipeDialogVisible(requested: Boolean, loaded: Boolean, keyLost: Boolean): Boolean =
+    requested && (loaded || keyLost)

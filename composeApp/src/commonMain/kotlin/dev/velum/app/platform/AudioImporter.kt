@@ -9,3 +9,9 @@ import androidx.compose.runtime.Composable
  */
 @Composable
 expect fun rememberAudioImporter(onFailed: () -> Unit = {}, onPicked: (path: String) -> Unit): () -> Unit
+
+/** Deletes the app's copies of picked or shared audio (kept in the cache until imported). False if some remain. */
+expect fun deleteImportCopies(): Boolean
+
+/** Deletes exported transcripts and other files handed to the share sheet (kept in the cache). False if some remain. */
+expect fun deleteShareExports(): Boolean

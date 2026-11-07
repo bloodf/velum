@@ -4,12 +4,17 @@ import dev.velum.ai.engine.DEFAULT_LOCAL_LLM_MODEL_ID
 import dev.velum.ai.local.DefaultLocalCatalog
 import dev.velum.ai.local.DeviceComputeClass
 import dev.velum.ai.local.LOCAL_MODEL_NOT_READY_MESSAGE
+import dev.velum.ai.pipeline.SPEAKER_NAMES_KEPT_MESSAGE
 import dev.velum.ai.local.LocalAsrRouter
 import dev.velum.ai.local.detectDeviceComputeClass
+import dev.velum.ai.local.SPEAKER_CACHE_NOT_DROPPED_MESSAGE
+import dev.velum.ai.pipeline.AUDIO_FILE_EMPTY_MESSAGE
+import dev.velum.ai.pipeline.AUDIO_FILE_MISSING_MESSAGE
 import dev.velum.ai.pipeline.INSUFFICIENT_STORAGE_MESSAGE
 import dev.velum.ai.pipeline.NO_AUDIO_OR_TRANSCRIPT_MESSAGE
 import dev.velum.ai.pipeline.NO_TRANSCRIPT_TO_SUMMARIZE_MESSAGE
 import dev.velum.ai.pipeline.PROCESSING_STOPPED_MESSAGE
+import dev.velum.ai.pipeline.WAV_NO_DATA_MESSAGE
 
 /**
  * User-facing copy for on-device models (pt-BR + en). Catalog technical
@@ -182,8 +187,7 @@ object ModelCatalogUi {
 /**
  * Stored processing failures come from common code and engines in English, sometimes with file paths. Show each
  * known one in the app's language, matched on the stable start of its text so failures saved by older versions are
- * translated too (#348). Anything else, such as a provider's HTTP error, keeps its sanitized text inside localized
- * copy, so it stays diagnosable.
+ * translated too (#348). Unknown failures use the generic message already shown by the screen.
  */
 internal fun processingFailureText(raw: String?, strings: Strings): String? {
     if (raw == null) return null
@@ -191,6 +195,12 @@ internal fun processingFailureText(raw: String?, strings: Strings): String? {
     return when {
         raw == LOCAL_MODEL_NOT_READY_MESSAGE || LEGACY_MODEL_NOT_READY.containsMatchIn(raw) -> ux.localModelNotReady
         raw == INSUFFICIENT_STORAGE_MESSAGE -> ux.insufficientStorage
+        raw.startsWith("API key required") -> strings.added.processingFailedApiKey
+        raw == AUDIO_FILE_MISSING_MESSAGE -> strings.added.processingFailedAudioMissing
+        raw == AUDIO_FILE_EMPTY_MESSAGE -> strings.added.processingFailedAudioEmpty
+        raw == WAV_NO_DATA_MESSAGE -> strings.added.processingFailedWavNoData
+        raw == SPEAKER_CACHE_NOT_DROPPED_MESSAGE -> strings.added.speakerCacheNotDropped
+        raw == SPEAKER_NAMES_KEPT_MESSAGE -> strings.speakerNamesKept
         raw.startsWith("Unsupported audio format (") -> ux.processingFailedUnsupportedFormat
         raw == NO_TRANSCRIPT_TO_SUMMARIZE_MESSAGE -> ux.processingFailedNoTranscript
         raw == NO_AUDIO_OR_TRANSCRIPT_MESSAGE -> ux.processingFailedNoAudio
@@ -199,39 +209,9 @@ internal fun processingFailureText(raw: String?, strings: Strings): String? {
         MODEL_PRODUCED_NO_TEXT.containsMatchIn(raw) -> ux.processingFailedNoText
         LOCAL_ENGINE_FAILED.containsMatchIn(raw) -> ux.processingFailedLocalEngine
         raw == PROCESSING_STOPPED_MESSAGE || raw in LEGACY_PROCESSING_STOPPED -> ux.processingStoppedByAndroid
-        else -> failureDetail(raw)?.let { ux.processingFailedWithDetail.replace("%s", it) }
+        else -> null
     }
 }
-
-/**
- * The saved text of an unknown failure, fit to show: anything that can name the user, the device or a server is cut,
- * and it is capped at [FAILURE_DETAIL_MAX] characters. Null when nothing readable is left: the screen's "could not
- * process" line above it already says all there is.
- */
-private fun failureDetail(raw: String): String? {
-    val unquoted = QUOTED_HOST.replace(raw) { "${it.groupValues[1]}…" }
-    val cut = IDENTIFYING_TEXT.replace(unquoted, "…").trim().removeSuffix(".")
-    if (cut.none { it.isLetterOrDigit() }) return null
-    return if (cut.length <= FAILURE_DETAIL_MAX) cut else cut.take(FAILURE_DETAIL_MAX - 1).trimEnd() + "…"
-}
-
-private const val FAILURE_DETAIL_MAX = 120
-private val QUOTED_HOST = Regex("""(\b[Hh]ost(?:name)?\s*[=:]?\s*)["'][^"']*["']""")
-private val IDENTIFYING_TEXT = Regex(
-    listOf(
-        """\b[A-Za-z][A-Za-z0-9+.-]*://\S+""", // URL, first so no "https:/" is left behind
-        """(?:[A-Za-z]:)?(?:[/\\][^\s/\\]+){2,}[/\\]?""", // file path
-        """[\w.+-]+@[\w-]+(?:\.[\w-]+)+""", // email
-        """\b[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}\b""", // UUID
-        """\b(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}\b""", // MAC
-        """\b[0-9A-Fa-f]{12,}\b""", // MAC without separators, hashes and other long hex
-        """(?<![\w:])(?:[0-9A-Fa-f]{0,4}:){2,7}(?:\d{1,3}(?:\.\d{1,3}){3}|[0-9A-Fa-f]{0,4})(?![\w:])""", // IPv6
-        """\b(?:\d{1,3}\.){3}\d{1,3}\b""", // IPv4
-        """\b[A-Za-z]+-?\d{5,}\b""", // serial such as ABC-1234567
-        """\b\d{3,}[A-Z]{2,}\d*\b""", // serial such as 123ABC4
-        """\b\d{7,}\b""", // bare serial or phone number
-    ).joinToString("|"),
-)
 
 private val MODEL_FILES_MISSING = Regex(
     "^(ASR model directory missing|Model archive at .* is not extracted|(Whisper|SenseVoice|Parakeet/transducer) ASR config " +

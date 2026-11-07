@@ -71,4 +71,35 @@ class StartupSequenceTest {
         val install = src.indexOf("AiRuntimeHolder.install(")
         assertTrue(sweep in 0 until install, "sweepOrphanPcmSpill must precede AiRuntimeHolder.install")
     }
+
+    /** #348: on main the saved language cannot be read, so a channel created there would get the device's language. */
+    @Test fun channels_are_first_created_off_main() {
+        val src = listOf(
+            File("src/androidMain/kotlin/dev/velum/app/VelumApplication.kt"),
+            File("composeApp/src/androidMain/kotlin/dev/velum/app/VelumApplication.kt"),
+        ).first { it.isFile }.readText()
+        val launch = src.indexOf("appScope.launch {")
+        val install = src.indexOf("AiRuntimeHolder.install(")
+        val publish = "publishNotificationChannels(appContext)"
+        assertTrue(src.indexOf(publish) in (launch + 1) until install, "the first publish must run in the IO coroutine, before install")
+        assertTrue(src.lastIndexOf(publish) in (install + 1) until src.indexOf("cleanupThenPublish("), "the only other publish is the language collector")
+        assertEquals(3, src.split(publish).size, "exactly two publishes")
+        for (direct in listOf("ensureNotificationChannel(", "ensureChannel(", "ensureProcessingChannel(")) {
+            assertEquals(-1, src.indexOf(direct), "$direct must go through the guarded publishNotificationChannels")
+        }
+    }
+
+    /** #348: the fatal screen's text is resolved on the handoff thread, not in the main-thread post. */
+    @Test fun fatal_text_is_resolved_off_main() {
+        val src = listOf(
+            File("src/androidMain/kotlin/dev/velum/app/MainActivity.kt"),
+            File("composeApp/src/androidMain/kotlin/dev/velum/app/MainActivity.kt"),
+        ).first { it.isFile }.readText()
+        val handoff = src.substring(src.indexOf("HANDOFF_EXECUTOR.execute {"))
+        val resolvedBeforePost = Regex("""val fatalText = [^\n]*fatalStartText\(\)[^\n]*\n\s*mainHandler\.post \{""")
+        assertEquals(2, resolvedBeforePost.findAll(handoff).count(), "both failure paths must resolve the text before posting to main")
+        assertTrue(src.indexOf("fatalStartText(") > src.indexOf("HANDOFF_EXECUTOR.execute {"), "not on main before the handoff")
+        assertTrue(src.lastIndexOf("fatalStartText(") < src.indexOf("override fun onNewIntent"), "not on main after it")
+        assertEquals(3, src.split("fatalStartText(").size, "only those two calls")
+    }
 }

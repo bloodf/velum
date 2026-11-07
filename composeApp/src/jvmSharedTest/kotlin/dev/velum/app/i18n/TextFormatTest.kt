@@ -31,8 +31,8 @@ class TextFormatTest {
     fun formatTemplate_on_jvm_matches_string_format_for_every_shipped_template() = withLocale(Locale.ROOT) {
         for (strings in listOf(PtBr, En)) {
             assertEquals(
-                String.format(strings.ux.syncDoneFormat, 3, 0, 12),
-                formatTemplate(strings.ux.syncDoneFormat, 3, 0, 12),
+                String.format(strings.ux.syncDoneFormat, "3", "0", "12", "1"),
+                formatTemplate(strings.ux.syncDoneFormat, "3", "0", "12", "1"),
             )
             for (t in listOf(strings.ux.webhookPostedFormat, strings.ux.webhookFailedFormat)) {
                 assertEquals(String.format(t, "HTTP 200"), formatTemplate(t, "HTTP 200"))

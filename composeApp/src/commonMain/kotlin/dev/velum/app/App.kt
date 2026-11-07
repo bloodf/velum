@@ -21,6 +21,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -53,7 +54,8 @@ import dev.velum.app.platform.ExportFolderResult
 import dev.velum.app.platform.LocalHaptics
 import dev.velum.app.platform.MicStartResult
 import dev.velum.app.platform.PermissionOutcome
-import dev.velum.app.platform.consumeIncomingSharePath
+import dev.velum.app.platform.SharedFile
+import dev.velum.app.platform.awaitIncomingSharePath
 import dev.velum.app.platform.observeMicFailures
 import dev.velum.app.platform.MicStopResult
 import dev.velum.app.platform.finalizeMicRecording
@@ -66,9 +68,7 @@ import dev.velum.app.platform.rememberPermissionRequester
 import dev.velum.app.platform.shareText
 import dev.velum.app.platform.syncWatchedFolders
 import dev.velum.app.platform.systemLanguageTag
-import dev.velum.app.platform.writeMarkdownToExportFolder
 import dev.velum.app.ui.settings.ModelDownloadNotification
-import dev.velum.core.integrations.MarkdownNoteExport
 import dev.velum.app.ui.DeviceScreen
 import dev.velum.app.ui.importing.ImportHubScreen
 import dev.velum.app.ui.motion.Motion
@@ -195,7 +195,11 @@ private fun VelumRoot(container: AppContainer) {
         if (loaded == dev.velum.core.settings.SettingsLoadState.Ready &&
             container.settingsRepository.preferences.value.autoSyncWatchedFolders
         ) {
-            runCatching { syncWatchedFolders(importPipeline) }
+            runCatching { syncWatchedFolders(importPipeline) }.getOrNull()?.let { results ->
+                if (results.any { it is ImportResult.InTrash }) {
+                    snackbar.showSnackbar(strings.added.importMatchInTrash)
+                }
+            }
         }
     }
     ModelDownloadNotification(container)
@@ -236,6 +240,8 @@ private fun VelumRoot(container: AppContainer) {
                 is ImportResult.Failed -> {
                     snackbar.showSnackbar(strings.ux.genericError)
                 }
+                is ImportResult.InTrash -> snackbar.showSnackbar(strings.added.importMatchInTrash)
+                is ImportResult.Deleted -> Unit // watched-folder sync only
             }
         }
     }
@@ -248,53 +254,78 @@ private fun VelumRoot(container: AppContainer) {
         }
     }
 
-    LaunchedEffect(container) {
-        consumeIncomingSharePath()?.let { path ->
-            when (val result = importPipeline.importFile(path, source = "share")) {
+    // Only a started (visible) instance takes a share: with several instances (Recents) a hidden one must not import and navigate.
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    LaunchedEffect(container, lifecycleOwner) {
+      lifecycleOwner.lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
+        suspend fun report(result: ImportResult, recovered: Boolean) {
+            if (recovered) {
+                // A share re-offered after a restart can be up to a day old: say what happened, never move the user.
+                when (result) {
+                    is ImportResult.Created -> snackbar.showSnackbar(strings.ux.imported)
+                    is ImportResult.Duplicate -> snackbar.showSnackbar(strings.ux.importDuplicate)
+                    is ImportResult.Failed -> snackbar.showSnackbar(strings.ux.genericError)
+                    is ImportResult.InTrash -> snackbar.showSnackbar(strings.added.importMatchInTrash)
+                    is ImportResult.Deleted -> Unit
+                }
+                return
+            }
+            when (result) {
                 is ImportResult.Created -> navController.navigate(Routes.recording(result.recordingId))
                 is ImportResult.Duplicate -> {
                     snackbar.showSnackbar(strings.ux.importDuplicate)
                     navController.navigate(Routes.recording(result.existingRecordingId))
                 }
                 is ImportResult.Failed -> snackbar.showSnackbar(strings.ux.genericError)
+                is ImportResult.InTrash -> snackbar.showSnackbar(strings.added.importMatchInTrash)
+                is ImportResult.Deleted -> Unit // watched-folder sync only
             }
         }
+        // Each share is copied off the main thread and arrives here when ready; null means this platform has none.
+        while (true) {
+            // An import started before this collector (re)started, or finished while the app was stopped, is reported once.
+            container.pendingShare?.let { pending ->
+                val result = try {
+                    pending.await()
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    if (!pending.isCancelled) throw e // this collector was cancelled
+                    null // the import itself was cancelled (a wipe); nothing to report
+                }
+                if (container.pendingShare === pending) {
+                    container.pendingShare = null
+                    val recovered = container.pendingShareRecovered
+                    result?.let { report(it, recovered) }
+                }
+            }
+            val shared = awaitIncomingSharePath() ?: break
+            val path = when (shared) {
+                is SharedFile.Ready -> shared.path
+                SharedFile.CopyFailed -> {
+                    snackbar.showSnackbar(strings.ux.importCopyFailed)
+                    continue
+                }
+            }
+            // The import is owned by the container, so recreating this screen cannot cancel it.
+            container.pendingShareRecovered = (shared as SharedFile.Ready).recoveredAtMs != null
+            container.pendingShare = importPipeline.startSharedDetached(path, shared.recoveredAtMs)
+        }
+      }
     }
 
     LaunchedEffect(container) {
         container.autoFlowRunner.actions.collect { action ->
             when (action) {
                 AutoFlowUiAction.ProcessingFailed -> snackbar.showSnackbar(strings.ux.genericError)
-                is AutoFlowUiAction.ShareMarkdown -> shareText(action.title, action.body)
-                is AutoFlowUiAction.InsertCalendarEvent ->
-                    openCalendarInsert(action.title, action.description)
+                is AutoFlowUiAction.ShareMarkdown -> container.noteToShare(action.recordingId)
+                    ?.let { shareText(it.title, it.markdown) }
+                is AutoFlowUiAction.InsertCalendarEvent -> container.noteToShare(action.recordingId)
+                    ?.let { openCalendarInsert(it.title, it.summary) }
                 is AutoFlowUiAction.ExportMarkdownToFolder -> {
-                    val rec = container.repository.getRecording(action.recordingId)
-                    if (rec == null) {
-                        snackbar.showSnackbar(strings.ux.recordingMissing)
-                    } else {
-                        val speakers = container.repository.getSpeakers(action.recordingId)
-                            .mapNotNull { it.display_name ?: it.label }
-                        val note = MarkdownNoteExport.Note(
-                            title = rec.title,
-                            startedAtEpochSeconds = rec.started_at,
-                            durationSeconds = rec.duration_seconds,
-                            source = rec.source,
-                            speakers = speakers,
-                            tags = listOf("velum"),
-                            summaryMarkdown = rec.summary_markdown,
-                            transcriptMarkdown = rec.transcript,
-                        )
-                        val md = MarkdownNoteExport.render(note)
-                        val name = MarkdownNoteExport.filename(rec.title, rec.started_at)
-                        when (val result = withContext(Dispatchers.IO) { writeMarkdownToExportFolder(name, md) }) {
-                            is ExportFolderResult.Ok ->
-                                snackbar.showSnackbar(
-                                    strings.ux.folderExportOkFormat.replace("%s", result.displayPath),
-                                )
-                            is ExportFolderResult.Failed ->
-                                snackbar.showSnackbar(strings.ux.genericError)
-                        }
+                    when (val result = container.exportRecordingToFolder(action.recordingId)) {
+                        null -> snackbar.showSnackbar(strings.ux.recordingMissing)
+                        is ExportFolderResult.Ok ->
+                            snackbar.showSnackbar(strings.ux.folderExportOkFormat.replace("%s", result.displayPath))
+                        is ExportFolderResult.Failed -> snackbar.showSnackbar(strings.ux.genericError)
                     }
                 }
                 is AutoFlowUiAction.PostWebhook -> {
@@ -305,7 +336,8 @@ private fun VelumRoot(container: AppContainer) {
                         } else {
                             strings.ux.webhookFailedFormat.replace(
                                 "%s",
-                                msg ?: strings.ux.webhookNotConfigured,
+                                msg?.let { dev.velum.app.ui.integrations.WebhookTestResult.failureText(it, strings) }
+                                    ?: strings.ux.webhookNotConfigured,
                             )
                         },
                     )
@@ -732,8 +764,8 @@ private fun VelumRoot(container: AppContainer) {
                     val ids = ModelCatalogUi.recommendedModelIds(
                         languageHint = strings.localeTag,
                     )
-                    scope.launch {
-                        // Disk queries stay off the main thread.
+                    scope.launch(Dispatchers.Main.immediate) {
+                        // Disk queries stay off the main thread; the writes after them are on Main (also under a test clock).
                         val (needed, free) = withContext(Dispatchers.Default) {
                             container.localModelManager.bytesNeededFor(ids) to container.localModelManager.freeSpaceBytes()
                         }

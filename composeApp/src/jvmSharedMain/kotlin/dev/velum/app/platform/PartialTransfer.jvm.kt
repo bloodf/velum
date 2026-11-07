@@ -14,6 +14,9 @@ private fun partialTransfersDir() = File(File(recordingsDirectoryPath()).parentF
 actual fun openPartialTransfer(sessionId: Long, deviceSerial: String?): PartialTransfer? =
     PartialTransferFileStore.open(partialTransfersDir(), sessionId, deviceSerial)
 
+actual fun deletePartialTransfer(sessionId: Long, deviceSerial: String?): Boolean =
+    PartialTransferFileStore.delete(partialTransfersDir(), sessionId, deviceSerial)
+
 actual fun sweepStalePartialTransfers(nowEpochMs: Long): Int =
     PartialTransferFileStore.sweepStale(partialTransfersDir(), nowEpochMs)
 
@@ -38,7 +41,7 @@ internal class PartialTransferFileStore private constructor(
     init {
         val durable = checkpoint.takeIf { it.isFile }?.readText()?.trim()?.toLongOrNull()
         val length = durable?.takeIf { it in 0..file.length() } ?: 0L
-        if (length == 0L) { mismatchMark.delete(); readFailMark.delete() } // data restarts from zero: old verdicts no longer apply
+        if (length == 0L) { checkpoint.delete(); mismatchMark.delete(); readFailMark.delete() } // data restarts from zero: old verdicts no longer apply
         file.setLength(length)
         file.seek(length)
     }
@@ -116,6 +119,7 @@ internal class PartialTransferFileStore private constructor(
         private const val READ_FAIL_SUFFIX = ".readfail"
         private const val SALT_FILE = "serial-key.salt"
         private const val SALT_BYTES = 16
+        private const val NO_SERIAL = "noserial"
 
         fun open(
             dir: File,
@@ -124,11 +128,38 @@ internal class PartialTransferFileStore private constructor(
             checkpointBytes: Int = DEFAULT_CHECKPOINT_BYTES,
         ): PartialTransferFileStore {
             dir.mkdirs()
-            val key = "$sessionId-${serialKey(dir, deviceSerial)}"
+            val key = keyOf(sessionId, serialKey(dir, deviceSerial))
             val store = PartialTransferFileStore(File(dir, key + DATA_SUFFIX), File(dir, key + CHECKPOINT_SUFFIX), checkpointBytes)
             if (deviceSerial.isNullOrBlank()) store.truncate(0)
             return store
         }
+
+        /**
+         * Removes the session's files by name, without opening or creating anything, so it works on a full disk.
+         * Only the data file decides the result: it holds the audio, and a writer still unwinding can leave a late
+         * `.offset`, which the next open ignores. Without a valid salt, all files for the session are removed.
+         */
+        fun delete(dir: File, sessionId: Long, deviceSerial: String?): Boolean {
+            val serialPart = if (deviceSerial.isNullOrBlank()) {
+                NO_SERIAL
+            } else {
+                val salt = File(dir, SALT_FILE).takeIf { it.isFile }?.readBytes()?.takeIf { it.size == SALT_BYTES }
+                if (salt == null) {
+                    if (!dir.exists()) return true
+                    val files = dir.listFiles()?.filter { it.name.startsWith("$sessionId-") } ?: return false
+                    files.forEach { it.delete() }
+                    return files.none { it.name.endsWith(DATA_SUFFIX) && it.exists() }
+                }
+                serialHash(salt, deviceSerial)
+            }
+            val key = keyOf(sessionId, serialPart)
+            listOf(CHECKPOINT_SUFFIX, CRC_MISMATCH_SUFFIX, READ_FAIL_SUFFIX).forEach { File(dir, key + it).delete() }
+            val data = File(dir, key + DATA_SUFFIX)
+            data.delete()
+            return !data.exists()
+        }
+
+        private fun keyOf(sessionId: Long, serialPart: String) = "$sessionId-$serialPart"
 
         /**
          * A file name must not reveal the serial. Serials are short, so a bare hash could be reversed by
@@ -136,9 +167,13 @@ internal class PartialTransferFileStore private constructor(
          * The salt sits beside the files, so it does not help against someone holding this directory.
          */
         private fun serialKey(dir: File, deviceSerial: String?): String {
-            if (deviceSerial.isNullOrBlank()) return "noserial"
+            if (deviceSerial.isNullOrBlank()) return NO_SERIAL
+            return serialHash(installSalt(dir), deviceSerial)
+        }
+
+        private fun serialHash(salt: ByteArray, deviceSerial: String): String {
             val digest = MessageDigest.getInstance("SHA-256").apply {
-                update(installSalt(dir))
+                update(salt)
                 update(deviceSerial.encodeToByteArray())
             }.digest()
             return digest.take(16).joinToString("") { (it.toInt() and 0xFF).toString(16).padStart(2, '0') }

@@ -7,7 +7,9 @@ import com.juul.kable.State
 import com.juul.kable.WriteType
 import com.juul.kable.characteristicOf
 import dev.velum.ble.gatt.GattProfiles
+import dev.velum.ble.gatt.requireTransportAllowed
 import dev.velum.ble.gatt.GattWrite
+import dev.velum.ble.gatt.requireSameLink
 import dev.velum.core.model.ConnectedDevice
 import dev.velum.protocol.PlaudAdvertisement
 import dev.velum.protocol.PlaudUuids
@@ -18,6 +20,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelAndJoin
+import kotlin.concurrent.Volatile
+import kotlin.concurrent.atomics.AtomicLong
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
+import kotlin.concurrent.atomics.incrementAndFetch
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -32,7 +38,7 @@ import kotlinx.coroutines.launch
  * Kable-backed BLE transport for Android and iOS.
  * Desktop uses [StubBleTransport] until a SimpleBLE (or similar) binding exists.
  */
-@OptIn(ExperimentalUuidApi::class)
+@OptIn(ExperimentalUuidApi::class, ExperimentalAtomicApi::class)
 class KableBleTransport : BleTransport {
     override val isAvailable: Boolean = true
 
@@ -77,6 +83,10 @@ class KableBleTransport : BleTransport {
             }
         }
     }
+
+    // Atomic: the connect path and the disconnect watcher can both bump it, and two bumps must not collapse into one.
+    private val generation = AtomicLong(0L)
+    override val linkGeneration: Long get() = generation.load()
 
     override fun advertisements(): Flow<ConnectedDevice> = advertisementFlow.asSharedFlow()
 
@@ -127,6 +137,8 @@ class KableBleTransport : BleTransport {
         try {
             peripheral?.close()
             val p = Peripheral(adv)
+            // Bumped before the peripheral is visible: a write for the old link can never meet the new peripheral.
+            generation.incrementAndFetch()
             peripheral = p
             p.connect()
             notifyJob?.cancel()
@@ -139,16 +151,20 @@ class KableBleTransport : BleTransport {
                 p.state
                     .filter { it is State.Disconnected }
                     .collect {
-                        notifyJob?.cancel()
-                        notifyJob = null
+                        // Only for the link this watcher belongs to: a late event from an old watcher must not tear
+                        // down, or publish Idle over, a newer link.
                         if (peripheral === p) {
+                            notifyJob?.cancel()
+                            notifyJob = null
                             runCatching { p.close() }
                             peripheral = null
+                            generation.incrementAndFetch()
+                            _state.value = BleConnectionState.Idle
                         }
-                        _state.value = BleConnectionState.Idle
                     }
             }
         } catch (t: Throwable) {
+            generation.incrementAndFetch()
             _state.value = BleConnectionState.Failed(t.message ?: t.toString())
         }
     }
@@ -161,12 +177,16 @@ class KableBleTransport : BleTransport {
         runCatching { peripheral?.disconnect() }
         peripheral?.close()
         peripheral = null
+        generation.incrementAndFetch()
         _state.value = BleConnectionState.Idle
     }
 
     override suspend fun writeRaw(write: GattWrite) {
         val p = peripheral ?: error("Not connected")
         require(write.char in GattProfiles.Plaud.writes) { "Unsupported write characteristic ${write.char}" }
+        requireTransportAllowed(write)
+        // The write goes to the peripheral read above, which belongs to one link, so a later change cannot send it to a newer one.
+        requireSameLink(write.linkGeneration, generation.load())
         val type = if (write.withoutResponse) WriteType.WithoutResponse else WriteType.WithResponse
         p.write(writeCharacteristic, write.bytes, type)
     }
