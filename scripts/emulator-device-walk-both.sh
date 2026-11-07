@@ -10,9 +10,13 @@ cd "$ROOT"
 ARTIFACT_DIR="${1:-device-walk-artifacts}"
 debug_code=0
 release_code=0
+catalog_debug_code=0
+catalog_release_code=0
 bash scripts/emulator-device-walk.sh debug "$ARTIFACT_DIR" || debug_code=$?
 bash scripts/emulator-device-walk.sh minifiedTest "$ARTIFACT_DIR" || release_code=$?
-if [[ "$debug_code" -ne 0 || "$release_code" -ne 0 ]]; then
-  echo "Device walk failed (debug=$debug_code minifiedTest=$release_code)"
+bash scripts/emulator-device-walk.sh debug "$ARTIFACT_DIR/discover-catalog" discover-catalog || catalog_debug_code=$?
+bash scripts/emulator-device-walk.sh minifiedTest "$ARTIFACT_DIR/discover-catalog" discover-catalog || catalog_release_code=$?
+if [[ "$debug_code" -ne 0 || "$release_code" -ne 0 || "$catalog_debug_code" -ne 0 || "$catalog_release_code" -ne 0 ]]; then
+  echo "Device walk failed (debug=$debug_code minifiedTest=$release_code catalogDebug=$catalog_debug_code catalogMinifiedTest=$catalog_release_code)"
   exit 1
 fi

@@ -5,6 +5,7 @@ set -euo pipefail
 
 BUILD_TYPE="${1:-debug}" # debug | release | minifiedTest | minifiedWalk | r8
 ARTIFACT_DIR="${2:-device-walk-artifacts}"
+TEST_SCOPE="${3:-walk}"
 mkdir -p "$ARTIFACT_DIR"
 
 echo "=== Device walk ($BUILD_TYPE) ==="
@@ -30,8 +31,23 @@ case "$BUILD_TYPE" in
     ;;
 esac
 
+case "$TEST_SCOPE" in
+  walk) ;;
+  discover-catalog)
+    # Run the real bundled catalog instead of the device-walk fixture.
+    # CLI runner overrides need configuration caching disabled.
+    GRADLE_PROPS+=(--no-configuration-cache
+      -Pandroid.testInstrumentationRunnerArguments.class=dev.velum.app.ui.templates.DiscoverBundledCatalogDeviceTest
+      -Pandroid.testInstrumentationRunnerArguments.velumDeviceWalk=false)
+    ;;
+  *)
+    echo "Unknown test scope: $TEST_SCOPE"
+    exit 1
+    ;;
+esac
+
 set +e
-# Runner args (class filter + velumDeviceWalk) come from composeApp/build.gradle.kts DSL.
+# Default runner arguments come from the DSL; catalog runs override them above.
 ./gradlew "${GRADLE_PROPS[@]}" "$TASK" --stacktrace
 CODE=$?
 set -e
