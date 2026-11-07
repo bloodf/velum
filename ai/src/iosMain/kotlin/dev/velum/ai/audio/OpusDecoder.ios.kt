@@ -33,6 +33,13 @@ import platform.CoreAudioTypes.kAudioFormatFlagIsPacked
 import platform.CoreAudioTypes.kAudioFormatFlagIsSignedInteger
 import platform.CoreAudioTypes.kAudioFormatLinearPCM
 import platform.CoreAudioTypes.kAudioFormatOpus
+import platform.posix.EINTR
+import platform.posix.close
+import platform.posix.errno
+import platform.posix.mkstemp
+import platform.posix.rename
+import platform.posix.unlink
+import platform.posix.write
 import platform.posix.SEEK_END
 import platform.posix.SEEK_SET
 import platform.posix.fclose
@@ -110,13 +117,54 @@ private class AppleOpusDecoder : OpusDecoder {
         dest: ModelStoreDir,
         demux: ((Int, Int, Int) -> Unit, (ByteArray) -> Unit) -> OpusStreamMeta,
     ): SpilledPcmMeta {
-        dest.writeBytes(ByteArray(0))
-        var size = 0L
-        val meta = decode(demux) {
-            dest.appendBytes(it)
-            size += it.size
+        val parent = dest.absolutePath.substringBeforeLast('/', "")
+        if (parent.isNotEmpty()) ModelStoreDir(parent).createDirectories()
+        val template = (dest.absolutePath + ".opus-XXXXXX").encodeToByteArray() + byteArrayOf(0)
+        var fd = template.usePinned { mkstemp(it.addressOf(0)) }
+        check(fd >= 0) { "Cannot create PCM spill: errno $errno" }
+        val temporaryPath = template.usePinned { it.addressOf(0).toKString() }
+        var published = false
+        var failure: Throwable? = null
+        try {
+            var size = 0L
+            val meta = decode(demux) { bytes ->
+                bytes.usePinned { pinned ->
+                    var offset = 0
+                    while (offset < bytes.size) {
+                        val written = write(fd, pinned.addressOf(offset), (bytes.size - offset).toULong())
+                        val writeError = errno
+                        if (written < 0 && writeError == EINTR) continue
+                        check(written > 0) { "Cannot write PCM spill: errno $writeError, wrote $written" }
+                        offset += written.toInt()
+                    }
+                }
+                size += bytes.size
+            }
+            val outputFd = fd
+            fd = -1 // Never retry close after an error: the descriptor may already have been released.
+            check(close(outputFd) == 0) { "Cannot close PCM spill: errno $errno" }
+            check(rename(temporaryPath, dest.absolutePath) == 0) { "Cannot publish PCM spill: errno $errno" }
+            published = true
+            return SpilledPcmMeta(DECODED_PCM_RATE_HZ, DECODED_PCM_CHANNELS, size, meta.truncated)
+        } catch (caught: Throwable) {
+            failure = caught
+            throw caught
+        } finally {
+            // Only the exclusively created temporary file is ours to remove on failure.
+            val cleanup = runCatching {
+                val closeResult = if (fd >= 0) close(fd) else 0
+                val closeError = errno
+                val removeResult = if (!published) unlink(temporaryPath) else 0
+                val removeError = errno
+                check(closeResult == 0 && removeResult == 0) {
+                    "Cannot clean PCM spill: close=$closeResult errno=$closeError, unlink=$removeResult errno=$removeError"
+                }
+            }.exceptionOrNull()
+            if (cleanup != null) {
+                val original = failure
+                if (original != null) original.addSuppressed(cleanup) else throw cleanup
+            }
         }
-        return SpilledPcmMeta(DECODED_PCM_RATE_HZ, DECODED_PCM_CHANNELS, size, meta.truncated)
     }
 
     private fun decode(
