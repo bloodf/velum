@@ -392,6 +392,14 @@ compose.desktop {
             }
             macOS {
                 iconFile.set(project.file("src/desktopMain/resources/icons/velum-512.png"))
+                bundleID = "dev.velum.app"
+                infoPlist {
+                    extraKeysRawXml = """
+                        <key>NSMicrophoneUsageDescription</key>
+                        <string>Velum requires microphone access to record voice memos and meetings.</string>
+                    """.trimIndent()
+                }
+                entitlementsFile.set(project.file("src/desktopMain/resources/macOS/entitlements.plist"))
             }
         }
     }

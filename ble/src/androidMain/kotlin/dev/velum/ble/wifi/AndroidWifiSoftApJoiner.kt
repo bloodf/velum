@@ -1,6 +1,8 @@
 package dev.velum.ble.wifi
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.LinkProperties
 import android.net.Network
@@ -41,8 +43,8 @@ class AndroidWifiSoftApJoiner(
     }
 
     override suspend fun join(ssid: String, password: String, ssidIsPattern: Boolean) {
-        check(Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            "SoftAP join requires Android 10+"
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            error("SoftAP join requires Android 10+")
         }
         val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         connectivityManager = cm
@@ -62,9 +64,18 @@ class AndroidWifiSoftApJoiner(
         suspendCancellableCoroutine { cont ->
             val cb = object : ConnectivityManager.NetworkCallback() {
                 override fun onAvailable(network: Network) {
-                    boundNetwork = network
-                    linkProperties = cm.getLinkProperties(network)
-                    if (cont.isActive) cont.resume(Unit)
+                    try {
+                        if (context.checkSelfPermission(Manifest.permission.ACCESS_NETWORK_STATE) != PackageManager.PERMISSION_GRANTED) {
+                            throw SecurityException("SoftAP join requires ACCESS_NETWORK_STATE")
+                        }
+                        val properties = cm.getLinkProperties(network)
+                        boundNetwork = network
+                        linkProperties = properties
+                        if (cont.isActive) cont.resume(Unit)
+                    } catch (failure: SecurityException) {
+                        leaveInternal()
+                        if (cont.isActive) cont.resumeWithException(failure)
+                    }
                 }
 
                 override fun onLinkPropertiesChanged(network: Network, properties: LinkProperties) {
