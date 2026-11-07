@@ -111,6 +111,7 @@ class ResumableSessionDownload(
             var reachedTransfer = false
             var storageFailed = false
             var writeFailed = false
+            var readingCrc = false
             fun <T> storage(block: () -> T): T = try {
                 block()
             } catch (e: Exception) {
@@ -136,7 +137,9 @@ class ResumableSessionDownload(
                     startOffset = before,
                     storedBytes = { offset, length -> storage { store.read(offset, length) } },
                 )
+                readingCrc = true
                 val crc = crcStatus(deviceCrc, store)
+                readingCrc = false
                 if (crc !is CrcStatus.Mismatch || crcPolicy == CrcPolicy.ReportOnly) {
                     succeeded = true
                     onSuccess(current)
@@ -151,6 +154,7 @@ class ResumableSessionDownload(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: TransferIntegrityException) {
+                if (readingCrc) throw TransferIntegrityException("Failed to read downloaded bytes for CRC validation", e)
                 lastError = e
                 // The device may not support resuming (#6): refused it, or sent what can't be joined to the
                 // partial. Restart from 0. A lost link or timeout doesn't get here, so it keeps the partial.
@@ -162,6 +166,8 @@ class ResumableSessionDownload(
             } finally {
                 if (!succeeded) client?.close()
             }
+            // Retrying a full store would return NotProvided and lose the device CRC verdict.
+            if (readingCrc) throw TransferIntegrityException("Failed to read downloaded bytes for CRC validation", lastError)
             // Lost links between complete transfers reset noProgress, so mismatches have their own cap.
             if (crcMismatches >= MAX_CRC_MISMATCHES) {
                 throw TransferIntegrityException("CRC mismatch on $crcMismatches complete transfers", lastError)
