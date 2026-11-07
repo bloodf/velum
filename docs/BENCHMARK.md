@@ -64,4 +64,3 @@ The pure parts (RTF calculation, schema validation, required metadata fields, an
 Reports use `schemaVersion: 2`. Runtime and time-boundary fields must match the task; omitted values fail validation. The caller must explicitly pass `bench.fixtureSensitivity=non-sensitive` after checking the external speech fixture. This declaration is not an automatic content or privacy audit. Audio hashes identify the decoded PCM payload, not the WAV container.
 
 The engine identifiers describe the application wrappers, not a native library version or backend configuration. Model IDs do not prove the installed artifact hash. Artifact hashes, native runtime versions, build fingerprints and detailed hardware identity remain follow-up work for #98. These schema tests and source changes provide no measured performance or physical-device acceptance.
-
