@@ -13,6 +13,7 @@ fun sanitizeImportFileName(raw: String?, fallback: String = "import.audio"): Str
         ?.substringAfterLast('\\')
         ?.trim()
         .orEmpty()
+        .replace(' ', '_') // title derivation turns underscores back into spaces
         .replace("..", "")
         .filter { it.isLetterOrDigit() || it == '.' || it == '_' || it == '-' }
     if (cleaned.isBlank()) return fallback

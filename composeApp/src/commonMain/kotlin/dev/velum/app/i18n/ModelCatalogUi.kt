@@ -4,8 +4,17 @@ import dev.velum.ai.engine.DEFAULT_LOCAL_LLM_MODEL_ID
 import dev.velum.ai.local.DefaultLocalCatalog
 import dev.velum.ai.local.DeviceComputeClass
 import dev.velum.ai.local.LOCAL_MODEL_NOT_READY_MESSAGE
+import dev.velum.ai.pipeline.SPEAKER_NAMES_KEPT_MESSAGE
 import dev.velum.ai.local.LocalAsrRouter
 import dev.velum.ai.local.detectDeviceComputeClass
+import dev.velum.ai.local.SPEAKER_CACHE_NOT_DROPPED_MESSAGE
+import dev.velum.ai.pipeline.AUDIO_FILE_EMPTY_MESSAGE
+import dev.velum.ai.pipeline.AUDIO_FILE_MISSING_MESSAGE
+import dev.velum.ai.pipeline.INSUFFICIENT_STORAGE_MESSAGE
+import dev.velum.ai.pipeline.NO_AUDIO_OR_TRANSCRIPT_MESSAGE
+import dev.velum.ai.pipeline.NO_TRANSCRIPT_TO_SUMMARIZE_MESSAGE
+import dev.velum.ai.pipeline.PROCESSING_STOPPED_MESSAGE
+import dev.velum.ai.pipeline.WAV_NO_DATA_MESSAGE
 
 /**
  * User-facing copy for on-device models (pt-BR + en). Catalog technical
@@ -175,12 +184,48 @@ object ModelCatalogUi {
 }
 
 
-/** Stored processing failures come from common code in English; show known ones in the user's language. */
-internal fun processingFailureText(raw: String?, strings: Strings): String? = when {
-    raw == null -> null
-    raw == LOCAL_MODEL_NOT_READY_MESSAGE || LEGACY_MODEL_NOT_READY.containsMatchIn(raw) -> strings.ux.localModelNotReady
-    else -> raw
+/**
+ * Stored processing failures come from common code and engines in English, sometimes with file paths. Show each
+ * known one in the app's language, matched on the stable start of its text so failures saved by older versions are
+ * translated too (#348). Unknown failures use the generic message already shown by the screen.
+ */
+internal fun processingFailureText(raw: String?, strings: Strings): String? {
+    if (raw == null) return null
+    val ux = strings.ux
+    return when {
+        raw == LOCAL_MODEL_NOT_READY_MESSAGE || LEGACY_MODEL_NOT_READY.containsMatchIn(raw) -> ux.localModelNotReady
+        raw == INSUFFICIENT_STORAGE_MESSAGE -> ux.insufficientStorage
+        raw.startsWith("API key required") -> strings.added.processingFailedApiKey
+        raw == AUDIO_FILE_MISSING_MESSAGE -> strings.added.processingFailedAudioMissing
+        raw == AUDIO_FILE_EMPTY_MESSAGE -> strings.added.processingFailedAudioEmpty
+        raw == WAV_NO_DATA_MESSAGE -> strings.added.processingFailedWavNoData
+        raw == SPEAKER_CACHE_NOT_DROPPED_MESSAGE -> strings.added.speakerCacheNotDropped
+        raw == SPEAKER_NAMES_KEPT_MESSAGE -> strings.speakerNamesKept
+        raw.startsWith("Unsupported audio format (") -> ux.processingFailedUnsupportedFormat
+        raw == NO_TRANSCRIPT_TO_SUMMARIZE_MESSAGE -> ux.processingFailedNoTranscript
+        raw == NO_AUDIO_OR_TRANSCRIPT_MESSAGE -> ux.processingFailedNoAudio
+        raw.startsWith("Audio is too large to process") -> ux.processingFailedTooLarge
+        MODEL_FILES_MISSING.containsMatchIn(raw) -> ux.processingFailedModelFiles
+        MODEL_PRODUCED_NO_TEXT.containsMatchIn(raw) -> ux.processingFailedNoText
+        LOCAL_ENGINE_FAILED.containsMatchIn(raw) -> ux.processingFailedLocalEngine
+        raw == PROCESSING_STOPPED_MESSAGE || raw in LEGACY_PROCESSING_STOPPED -> ux.processingStoppedByAndroid
+        else -> null
+    }
 }
+
+private val MODEL_FILES_MISSING = Regex(
+    "^(ASR model directory missing|Model archive at .* is not extracted|(Whisper|SenseVoice|Parakeet/transducer) ASR config " +
+        "incomplete|Whistle weights missing|Diarization segmentation ONNX missing|Speaker embedding ONNX missing|" +
+        "Local LLM weights missing)",
+)
+private val MODEL_PRODUCED_NO_TEXT = Regex("^[\\w -]{1,40} returned empty (text|transcript)\\b")
+private val LOCAL_ENGINE_FAILED = Regex("^(Needle whistle transcription failed|needle_load failed|Whistle/Needle requires 16 kHz)")
+
+/** What the worker saved before #348, in the system language. */
+private val LEGACY_PROCESSING_STOPPED = setOf(
+    "Processing was stopped by Android because it could not run in the foreground. Open Velum and retry.",
+    "O processamento foi interrompido pelo Android porque não pôde rodar em primeiro plano. Abra o Velum e tente de novo.",
+)
 
 /** Recordings that failed before #260 keep the old text, with a model id and status, in their saved error. */
 private val LEGACY_MODEL_NOT_READY = Regex("""^Local .* is not Ready\b""")

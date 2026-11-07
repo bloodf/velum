@@ -27,6 +27,7 @@ import androidx.compose.material.icons.outlined.DeleteForever
 import androidx.compose.material.icons.outlined.DeleteSweep
 import androidx.compose.material.icons.outlined.DriveFileRenameOutline
 import androidx.compose.material.icons.outlined.ExpandMore
+import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.Headphones
 import androidx.compose.material.icons.outlined.IosShare
 import androidx.compose.material.icons.outlined.MicExternalOn
@@ -118,6 +119,7 @@ fun FilesScreen(
     var selectedIds by remember { mutableStateOf(setOf<String>()) }
     var confirmTrash by remember { mutableStateOf(false) }
     var confirmDeleteForever by remember { mutableStateOf(false) }
+    var deleteFailed by remember { mutableStateOf(false) }
     var confirmEmptyTrash by remember { mutableStateOf(false) }
     var renameTarget by remember { mutableStateOf<Recording?>(null) }
 
@@ -403,6 +405,13 @@ fun FilesScreen(
             },
         )
     }
+    if (deleteFailed) {
+        AlertDialog(
+            onDismissRequest = { deleteFailed = false },
+            text = { Text(strings.added.deleteForeverFailed) },
+            confirmButton = { TextButton(onClick = { deleteFailed = false }) { Text(strings.confirm) } },
+        )
+    }
     if (confirmDeleteForever) {
         AlertDialog(
             onDismissRequest = { confirmDeleteForever = false },
@@ -414,7 +423,7 @@ fun FilesScreen(
                         haptics.perform(HapticKind.Medium)
                         confirmDeleteForever = false
                         scope.launch {
-                            selectedIds.forEach { container.repository.deleteRecordingHard(it) }
+                            deleteFailed = !selectedIds.map { container.deleteRecordingForever(it) }.all { it }
                             exitSelection()
                         }
                     },
@@ -436,7 +445,7 @@ fun FilesScreen(
                         haptics.perform(HapticKind.Medium)
                         confirmEmptyTrash = false
                         scope.launch {
-                            trashed.forEach { container.repository.deleteRecordingHard(it.id) }
+                            deleteFailed = !trashed.map { container.deleteRecordingForever(it.id) }.all { it }
                             exitSelection()
                         }
                     },
@@ -537,12 +546,11 @@ private fun RecordingRow(
     onLongClick: () -> Unit,
 ) {
     val strings = LocalStrings.current
-    val durationLabel = libraryDurationLabel(rec.duration_seconds, strings.durationMinutesFormat, strings.durationSecondsFormat)
     val timeLabel = VelumDateTime.formatClock(rec.started_at)
     val deviceLabel = when (rec.source) {
         "note_pro" -> strings.ux.sourceNotePro
         "phone" -> strings.ux.sourcePhone
-        "import" -> strings.ux.sourceImport
+        "import", "share", "watched" -> strings.ux.sourceImport
         else -> null
     }
     val highlightBg = VelumWarningContainer
@@ -555,12 +563,12 @@ private fun RecordingRow(
             highlightForeground = highlightFg,
         )
     }
-    val sourceIcon = if (rec.source == "note_pro") Icons.Outlined.MicExternalOn else Icons.Outlined.Headphones
-    val sourceA11y = when (rec.source) {
-        "note_pro" -> strings.ux.noteProMicA11y
-        "import", "share" -> strings.ux.sourceImport
-        else -> strings.ux.headphonesA11y
+    val sourceIcon = when (LibraryListLogic.sourceIcon(rec.source)) {
+        LibraryListLogic.SourceIcon.NotePro -> Icons.Outlined.MicExternalOn
+        LibraryListLogic.SourceIcon.Import -> Icons.Outlined.FileDownload
+        LibraryListLogic.SourceIcon.Phone -> Icons.Outlined.Headphones
     }
+    val sourceA11y = LibraryListLogic.sourceA11y(rec.source, strings)
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -592,7 +600,7 @@ private fun RecordingRow(
             Spacer(Modifier.height(4.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    "$timeLabel | $durationLabel",
+                    "$timeLabel | ${LibraryListLogic.durationLabel(rec.duration_seconds, strings)}",
                     color = VelumInkSecondary,
                     fontSize = 13.sp,
                 )

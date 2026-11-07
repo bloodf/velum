@@ -529,6 +529,30 @@ class VelumRepository(
         q.updateStatus(status, id)
     }
 
+    /**
+     * Sets [status] unless the recording is already `ready`/`failed` (a job that just finished) or gone, in one
+     * statement. Returns whether a row changed, so a caller can tell the work ended before it acted (#324).
+     */
+    suspend fun updateStatusIfActive(id: String, status: String): Boolean = withContext(dbContext) {
+        db.transactionWithResult {
+            q.updateStatusIfActive(status, id)
+            q.lastChanges().executeAsOne() > 0L
+        }
+    }
+
+    /** Sets [to] only while the status is still [from], in one statement; returns whether a row changed. */
+    suspend fun updateStatusIfEquals(id: String, from: String, to: String): Boolean = withContext(dbContext) {
+        db.transactionWithResult {
+            q.updateStatusIfEquals(to, id, from)
+            q.lastChanges().executeAsOne() > 0L
+        }
+    }
+
+    /** The template id of the recording's active summary version, or null when it has none. */
+    suspend fun activeSummaryTemplateId(recordingId: String): String? = withContext(dbContext) {
+        q.getActiveVersion(recordingId).executeAsOneOrNull()?.template_id
+    }
+
     /** [code] is a [dev.velum.core.model.ProcessingWarning] constant, or null to clear. */
     suspend fun setProcessingWarning(id: String, code: String?) = withContext(dbContext) {
         q.updateProcessingWarning(code, id)
@@ -571,13 +595,46 @@ class VelumRepository(
         q.setMeta(key, value)
     }
 
+    /** Deletes the keys starting with [prefix], taken literally. Callers must run on [dbContext]. */
+    private fun deleteMetaPrefix(prefix: String) = q.deleteMetaMatching(globPrefix(prefix))
+
+    suspend fun deleteMeta(key: String) = withContext(dbContext) {
+        q.deleteMeta(key)
+    }
+
     /** Last processing failure for [recordingId] (already sanitized), or null. Previous notes are never touched. */
     suspend fun getProcessingError(recordingId: String): String? =
         getMeta(processingErrorKey(recordingId))?.takeIf { it.isNotBlank() }
 
     /** Null removes the row; provider error text must not outlive the recording or a wipe. */
     suspend fun setProcessingError(recordingId: String, message: String?) = withContext(dbContext) {
-        if (message == null) q.deleteMeta(processingErrorKey(recordingId)) else q.setMeta(processingErrorKey(recordingId), message)
+        when {
+            message == null -> q.deleteMeta(processingErrorKey(recordingId))
+            // A worker running on after a wipe or delete must not leave error text with no recording.
+            q.selectRecordingById(recordingId).executeAsOneOrNull() != null -> q.setMeta(processingErrorKey(recordingId), message)
+        }
+    }
+
+    /**
+     * The work id of a run that could not be promoted to the foreground and has not ended on its own, or null.
+     * A stop leaves it set; a retry keeps the id, a REPLACE enqueue gets a new one (so it is not mistaken for a rerun).
+     */
+    suspend fun unpromotedRunOwner(recordingId: String): String? = getMeta("$UNPROMOTED_RUN_PREFIX$recordingId")
+
+    /** Null clears it. */
+    suspend fun setUnpromotedRun(recordingId: String, workId: String?) = withContext(dbContext) {
+        when {
+            workId == null -> q.deleteMeta("$UNPROMOTED_RUN_PREFIX$recordingId")
+            q.selectRecordingById(recordingId).executeAsOneOrNull() != null -> q.setMeta("$UNPROMOTED_RUN_PREFIX$recordingId", workId)
+        }
+    }
+
+    /** Clears the flag only if [workId] still owns it, so a newer run's flag is never removed by an older one. */
+    suspend fun clearUnpromotedRunIfOwner(recordingId: String, workId: String) = withContext(dbContext) {
+        val key = "$UNPROMOTED_RUN_PREFIX$recordingId"
+        db.transaction {
+            if (q.getMeta(key).executeAsOneOrNull() == workId) q.deleteMeta(key)
+        }
     }
 
     private fun processingErrorKey(recordingId: String) = "$PROCESSING_ERROR_PREFIX$recordingId"
@@ -696,21 +753,68 @@ class VelumRepository(
         tryIndex { if (ftsAvailable) FtsIndex.deleteTemplate(driver, id) }
     }
 
+    /** Remembers an app-owned source copy of [recordingId], so a permanent delete can remove it. */
+    suspend fun addImportCopy(recordingId: String, pathHash: String, path: String) = withContext(dbContext) {
+        q.setMeta("$IMPORT_COPY_PREFIX$recordingId:$pathHash", path)
+    }
+
+    suspend fun importCopies(recordingId: String): List<String> = withContext(dbContext) {
+        q.selectMetaMatching(globPrefix("$IMPORT_COPY_PREFIX$recordingId:")).executeAsList().map { it.value_ }
+    }
+
+    /** Ids of recordings waiting for a processing job (trash excluded). */
+    suspend fun queuedRecordingIds(): List<String> = withContext(dbContext) {
+        q.selectQueuedRecordingIds().executeAsList()
+    }
+
+    /** Every recording id, including those in the trash. */
+    suspend fun recordingIds(): Set<String> = withContext(dbContext) {
+        q.selectAllRecordingIds().executeAsList().toSet()
+    }
+
     suspend fun deleteRecordingHard(id: String) = withContext(dbContext) {
-        q.deleteVersionsForRecording(id)
-        q.deleteSpeakersForRecording(id)
-        q.deleteRecordingHard(id)
-        q.deleteMeta(processingErrorKey(id))
+        // One transaction: a failure can't leave a deleted recording without its tombstones.
+        db.transaction {
+            q.deleteVersionsForRecording(id)
+            q.deleteSpeakersForRecording(id)
+            q.deleteRecordingHard(id)
+            q.deleteMeta(processingErrorKey(id))
+            q.deleteMeta("$UNPROMOTED_RUN_PREFIX$id")
+            deleteMetaPrefix("$IMPORT_COPY_PREFIX$id:")
+            // Import dedupe keys (import_sha256_<hash> -> id) become tombstones: a manual import of the file works
+            // again, but a watched folder does not bring the deleted recording back (#327).
+            val deletedAt = epochSeconds().toString()
+            q.selectMetaKeysWithPrefixAndValue(globPrefix(IMPORT_HASH_PREFIX), id).executeAsList().forEach { key ->
+                q.setMeta(IMPORT_DELETED_PREFIX + key.removePrefix(IMPORT_HASH_PREFIX), deletedAt)
+                q.deleteMeta(key)
+            }
+        }
         tryIndex { if (ftsAvailable) FtsIndex.deleteRecording(driver, id) }
     }
 
     /**
      * Local wipe: recordings, custom templates, AutoFlows, memory, glossary. Built-ins reseed.
      * [deleteLocalFile] removes on-disk audio for each recording's `local_path` (privacy).
+     *
+     * Throws [IllegalStateException] at the very end, after every row is gone, when the search index could not be
+     * cleared or rebuilt: normal-use indexing swallows such failures (the row is the only copy, so the index is flagged
+     * stale and rebuilt later), but a wipe must say that index text may remain.
      */
     suspend fun wipeAllUserData(
         deleteLocalFile: (absolutePath: String) -> Unit = {},
     ) = withContext(dbContext) {
+        var indexClean = true
+        fun wipeIndex(block: () -> Unit) {
+            try {
+                block()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                indexClean = false
+                q.setMeta(META_FTS_DIRTY, "1")
+                onIndexFailure?.invoke(e::class.simpleName ?: "Exception")
+            }
+        }
         val audioPaths = q.selectAllRecordingIds().executeAsList().mapNotNull { id ->
             q.selectRecordingById(id).executeAsOneOrNull()?.local_path?.takeIf { it.isNotBlank() }
         }
@@ -723,19 +827,55 @@ class VelumRepository(
             q.deleteVersionsForRecording(id)
             q.deleteSpeakersForRecording(id)
             q.deleteRecordingHard(id)
-            tryIndex { if (ftsAvailable) FtsIndex.deleteRecording(driver, id) }
+            wipeIndex { if (ftsAvailable) FtsIndex.deleteRecording(driver, id) }
         }
         q.deleteAllCustomTemplates()
         q.deleteAllAutoflows()
         q.deleteAllMemories()
         q.deleteAllGlossary()
-        q.deleteMetaWithPrefix(PROCESSING_ERROR_PREFIX)
+        // Folders hold user-chosen names; the seed below puts the defaults back.
+        q.deleteAllFolders()
+        // By table, not per recording: a job that finished after its recording was deleted leaves orphans.
+        q.deleteAllSpeakers()
+        q.deleteAllSummaryVersions()
+        deleteMetaPrefix(PROCESSING_ERROR_PREFIX)
+        deleteMetaPrefix(IMPORT_HASH_PREFIX)
+        deleteMetaPrefix(IMPORT_DELETED_PREFIX)
+        deleteMetaPrefix(IMPORT_COPY_PREFIX)
+        deleteMetaPrefix(UNPROMOTED_RUN_PREFIX)
         // Clear seed marker so maybeSeed re-inserts default AutoFlow + builtins.
         SeedData.clearSeedMarker(db)
         SeedData.maybeSeed(db)
-        tryIndex { if (ftsAvailable) rebuildFtsIndex() }
+        wipeIndex { if (ftsAvailable) rebuildFtsIndex() }
         audioPaths.forEach { path ->
             runCatching { deleteLocalFile(path) }
+        }
+        check(indexClean) { "The search index could not be cleared" }
+    }
+
+    /**
+     * Run at the very end of "Wipe all data": deleted rows stay readable in SQLite free pages (and in the WAL
+     * when the driver uses one) until the file is rewritten. VACUUM rewrites it; the truncating checkpoint empties
+     * the WAL and does nothing in rollback-journal mode. Returns false when either step failed (no disk, locked
+     * database), so the caller can report the wipe as incomplete without stopping its other steps.
+     */
+    suspend fun compactAfterWipe(): Boolean = withContext(dbContext) {
+        try {
+            // DELETE only tombstones FTS5 entries; the words stay in the index segments (and VACUUM keeps them as live
+            // data). 'optimize' merges every segment, which drops the deleted entries, so run it before the rewrite.
+            if (ftsAvailable) FtsIndex.optimize(driver)
+            driver.execute(null, "VACUUM", 0)
+            // (busy, log, checkpointed): busy != 0 means another connection held the WAL and it was not emptied.
+            val busy = driver.executeQuery(
+                null,
+                "PRAGMA wal_checkpoint(TRUNCATE)",
+                { c -> QueryResult.Value(if (c.next().value) c.getLong(0) ?: 0L else 0L) },
+                0,
+            ).value
+            busy == 0L
+        } catch (e: Exception) {
+            println("VelumWipe: database compaction failed: ${e::class.simpleName}")
+            false
         }
     }
 
@@ -823,6 +963,58 @@ class VelumRepository(
             created_at = createdAt,
         )
         tryIndex { indexRecording(id, title, transcript, summaryMarkdown) }
+    }
+
+    /**
+     * Inserts a recording and its dedupe [keys] (meta keys, each mapped to the new id) in one transaction.
+     * First, if any of [refuseKeys] is set (a watched-folder tombstone), nothing is written and it is [KeyedInsert.Refused].
+     * Then, if a key already maps to a recording that exists, nothing is inserted, every key is pointed at that
+     * recording and it is [KeyedInsert.Existing]. Otherwise the row and the keys are written and [clearKeys] removed.
+     * Two imports of the same audio cannot both insert, and a failure cannot leave a recording without its keys.
+     */
+    suspend fun insertRecordingUnlessKeyed(
+        id: String,
+        title: String,
+        source: String,
+        startedAt: Long,
+        durationSeconds: Long,
+        localPath: String,
+        status: String,
+        keys: List<String>,
+        refuseKeys: List<String> = emptyList(),
+        clearKeys: List<String> = emptyList(),
+        createdAt: Long = epochSeconds(),
+    ): KeyedInsert = withContext(dbContext) {
+        val result = db.transactionWithResult {
+            if (refuseKeys.any { q.getMeta(it).executeAsOneOrNull() != null }) return@transactionWithResult KeyedInsert.Refused
+            val found = keys.firstNotNullOfOrNull { key ->
+                q.getMeta(key).executeAsOneOrNull()?.takeIf { it.isNotBlank() && q.selectRecordingById(it).executeAsOneOrNull() != null }
+            }
+            if (found == null) {
+                q.insertRecording(
+                    id = id,
+                    session_id = null,
+                    folder_id = null,
+                    title = title,
+                    source = source,
+                    device_serial = null,
+                    started_at = startedAt,
+                    duration_seconds = durationSeconds,
+                    size_bytes = 0,
+                    local_path = localPath,
+                    transcript = null,
+                    summary_markdown = null,
+                    status = status,
+                    trashed = 0,
+                    created_at = createdAt,
+                )
+                clearKeys.forEach { q.deleteMeta(it) }
+            }
+            keys.forEach { q.setMeta(it, found ?: id) }
+            if (found == null) KeyedInsert.Inserted else KeyedInsert.Existing(found)
+        }
+        if (result == KeyedInsert.Inserted) tryIndex { indexRecording(id, title, null, null) }
+        result
     }
 
     /**
@@ -943,6 +1135,7 @@ class VelumRepository(
         createdAt: Long = epochSeconds(),
     ): String = withContext(dbContext) {
         val resolvedVersionId = versionId ?: newSummaryVersionId(recordingId)
+        if (q.selectRecordingById(recordingId).executeAsOneOrNull() == null) return@withContext resolvedVersionId
         val saved = db.transactionWithResult {
             ensureBaselineVersionLocked(recordingId)
             q.clearActiveVersionsForRecording(recordingId)
@@ -1047,6 +1240,7 @@ class VelumRepository(
 
     suspend fun updateSpeakers(recordingId: String, speakers: List<SpeakerUpsert>) =
         withContext(dbContext) {
+            if (q.selectRecordingById(recordingId).executeAsOneOrNull() == null) return@withContext
             db.transaction {
                 q.deleteSpeakersForRecording(recordingId)
                 speakers.forEach { s ->
@@ -1059,6 +1253,18 @@ class VelumRepository(
                     )
                 }
             }
+        }
+
+    /**
+     * [renameSpeaker] only if the stored row is still the run [expected] was read from (same label and talk time;
+     * ids repeat across runs). The check and the write share one dispatcher turn, so a replacement cannot land between.
+     */
+    suspend fun renameSpeakerIfUnchanged(recordingId: String, expected: Speaker, displayName: String): Boolean =
+        withContext(dbContext) {
+            val stored = q.selectSpeakersForRecording(recordingId).executeAsList().firstOrNull { it.id == expected.id }
+            if (stored == null || stored.label != expected.label || stored.talk_seconds != expected.talk_seconds) return@withContext false
+            renameSpeaker(recordingId, expected.id, displayName)
+            true
         }
 
     suspend fun renameSpeaker(
@@ -1079,6 +1285,7 @@ class VelumRepository(
                 .replace("**${target.label}**", "**$displayName**")
             if (updated != transcript) {
                 q.updateTranscript(updated, recordingId)
+                tryIndex { reindexRecording(recordingId) }
             }
         }
     }
@@ -1091,7 +1298,25 @@ class VelumRepository(
         const val META_TEMPLATE_ALIASES_RECONCILED = "template_aliases_reconciled"
         const val META_FTS_DIRTY = "fts_dirty"
         private const val PROCESSING_ERROR_PREFIX = "processing_error:"
+        private const val UNPROMOTED_RUN_PREFIX = "unpromoted_run:"
+        /** Audio import dedupe: import_sha256_<hash> -> recording id. */
+        const val IMPORT_HASH_PREFIX = "import_sha256_"
+        /** import_copy:<recording id>:<sha-256 of the path> -> path of a watched-folder copy kept for that recording. */
+        private const val IMPORT_COPY_PREFIX = "import_copy:"
+
+        /** A GLOB pattern matching keys that start with [prefix] (case-sensitive; GLOB metacharacters escaped). */
+        internal fun globPrefix(prefix: String): String =
+            prefix.map { if (it == '*' || it == '?' || it == '[') "[$it]" else it.toString() }.joinToString("") + "*"
+        /** import_deleted_<hash> -> epoch seconds: that file's recording was permanently deleted; watched folders skip it. */
+        const val IMPORT_DELETED_PREFIX = "import_deleted_"
     }
 }
 
 expect fun epochSecondsNow(): Long
+
+/** Outcome of [VelumRepository.insertRecordingUnlessKeyed]. */
+sealed interface KeyedInsert {
+    data object Inserted : KeyedInsert
+    data class Existing(val recordingId: String) : KeyedInsert
+    data object Refused : KeyedInsert
+}

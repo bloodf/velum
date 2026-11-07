@@ -72,7 +72,7 @@ class WifiTransferCoordinator(
                 coroutineScope {
                     // Subscribe before start so no early failure is missed.
                     val failure = async(start = CoroutineStart.UNDISPATCHED) {
-                        session.server.pathFailures().first()
+                        session.pathFailures().first()
                     }
                     val work = async {
                         session.start(
@@ -114,7 +114,7 @@ class WifiTransferCoordinator(
 
     /** Collect first sealed frame, open it, return plaintext (demo / tests). */
     suspend fun receiveOnePlainFrame(session: WifiFastTransferSession): ByteArray {
-        val sealed = session.server.incomingEncryptedFrames().first()
+        val sealed = session.incomingEncryptedFrames().first()
         return session.openIncoming(sealed)
             ?: error("Failed to open Wi-Fi frame (seq/cipher mismatch)")
     }

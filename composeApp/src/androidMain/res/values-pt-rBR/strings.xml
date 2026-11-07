@@ -24,4 +24,7 @@
     <string name="mic_recording_start_failed">Não foi possível iniciar a gravação. Tente de novo com o Velum aberto.</string>
     <string name="mic_recording_capture_failed">A gravação pelo microfone foi interrompida. Tente de novo.</string>
     <string name="mic_recording_cancelled">A gravação pelo microfone foi cancelada.</string>
+    <!-- Overrides the Compose library string drawn on every ModalBottomSheet scrim ("Fechar planilha" = close spreadsheet). -->
+    <string name="close_sheet">Fechar painel</string>
+    <string name="fatal_start_failed">O Velum não iniciou. Reinstale ou limpe o armazenamento do app.</string>
 </resources>
