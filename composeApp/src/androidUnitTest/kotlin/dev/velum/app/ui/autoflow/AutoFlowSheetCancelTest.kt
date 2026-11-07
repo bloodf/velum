@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.SemanticsMatcher
@@ -27,6 +29,9 @@ import dev.velum.app.ui.theme.VelumTheme
 import dev.velum.core.data.DriverFactory
 import dev.velum.core.security.InMemorySecureStore
 import java.nio.file.Files
+import java.util.concurrent.atomic.AtomicReference
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.runBlocking
 import org.junit.Rule
 import org.junit.Test
@@ -63,11 +68,23 @@ class AutoFlowSheetCancelTest {
         )
     }
 
+    @OptIn(ExperimentalCoroutinesApi::class)
     private fun fixture(seedFlow: Boolean = true, block: (AppContainer, () -> Unit) -> Unit) {
         val context = ApplicationProvider.getApplicationContext<Context>()
         context.deleteDatabase("velum.db")
         val root = ModelStoreDir(Files.createTempDirectory("autoflow-sheet-test").toString())
         var container: AppContainer? = null
+        val phase = AtomicReference("setup")
+        val effects = AtomicReference<Job?>(null)
+        fun logJobs(label: String) {
+            phase.set(label)
+            fun dump(job: Job, depth: Int) {
+                println("AutoFlowFixture $label ${"  ".repeat(depth)}$job")
+                job.children.forEach { dump(it, depth + 1) }
+            }
+            println("AutoFlowFixture $label effects=${effects.get()}")
+            effects.get()?.let { dump(it, 0) }
+        }
         val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup()
         try {
             val app = AppContainer(InMemorySecureStore(), DriverFactory(context), modelStoreRoot = root)
@@ -75,6 +92,19 @@ class AutoFlowSheetCancelTest {
             if (seedFlow) runBlocking { insertFlow(app) }
             val visible = mutableStateOf(true)
             activity.get().setContent {
+                // This effect is a sibling of collectAsState's producers. Observe their
+                // shared owner without changing its dispatcher, cancellation or errors.
+                LaunchedEffect(Unit) {
+                    val owner = coroutineContext[Job]?.parent
+                    effects.set(owner)
+                    owner?.invokeOnCompletion { cause ->
+                        println("AutoFlowFixture effects completed phase=${phase.get()} cause=$cause")
+                        cause?.printStackTrace()
+                    }
+                }
+                DisposableEffect(Unit) {
+                    onDispose { println("AutoFlowFixture composition disposed phase=${phase.get()}") }
+                }
                 CompositionLocalProvider(LocalStrings provides En) {
                     VelumTheme(darkTheme = false) {
                         if (visible.value) AutoFlowEditScreen(app, "sheet-test", onBack = { visible.value = false })
@@ -88,10 +118,17 @@ class AutoFlowSheetCancelTest {
             if (seedFlow) {
                 compose.waitUntil(20_000) { compose.onAllNodesWithText("original").fetchSemanticsNodes().isNotEmpty() }
             }
+            phase.set("test-body")
             block(app, ::reopen)
+            logJobs("body-returned")
         } finally {
+            // The hosted failure names a collectAsState SQLDelight mapToList
+            // collector, but cannot distinguish observeAutoflows from observeTemplates.
+            logJobs("before-activity-destroy")
             activity.pause().stop().destroy()
+            logJobs("after-activity-destroy-before-driver-close")
             container?.databaseHandle?.driver?.close()
+            logJobs("after-driver-close")
             root.deleteRecursively()
         }
     }
