@@ -1,0 +1,5 @@
+package = dev.velum.ai.zip
+headers = archive.h archive_entry.h
+headerFilter = archive.h archive_entry.h
+staticLibraries = libarchive.a
+linkerOpts = -lz

@@ -22,7 +22,9 @@ actual object ModelArchiveExtractor {
     actual fun extract(archiveFile: ModelStoreDir, destDir: ModelStoreDir) {
         val name = archiveFile.name.lowercase()
         require(archiveFile.exists() && archiveFile.length() > 0L) { "Archive missing or empty" }
-        if (name.endsWith(".tar.bz2") || name.endsWith(".tbz2")) {
+        if (name.endsWith(".zip")) {
+            IosZipArchive.extract(archiveFile, destDir)
+        } else if (name.endsWith(".tar.bz2") || name.endsWith(".tbz2")) {
             val stream = requireNotNull(velum_bzopen(archiveFile.absolutePath)) { "Cannot open bzip2 archive" }
             try {
                 TarModelArchive.extract({ buffer ->
