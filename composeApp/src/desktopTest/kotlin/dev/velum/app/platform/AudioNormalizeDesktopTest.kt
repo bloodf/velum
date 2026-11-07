@@ -23,6 +23,62 @@ import kotlinx.coroutines.withTimeout
 
 class AudioNormalizeDesktopTest {
 
+    @Test
+    fun cancellation_interrupts_chunk_scan_and_hash_after_progress() = withTempRoots { input, _ ->
+        val source = writePcmWav(File(input, "chunks.wav"), pcm = ByteArray(2),
+            extraChunksBefore = List(8) { "JUNK" to ByteArray(8) })
+        val cancellation = CancellationException("cancel during scan")
+        var chunks = 0
+        val scanFailure = assertFailsWith<CancellationException> {
+            readWavInfo(source) { if (++chunks == 3) throw cancellation }
+        }
+        assertTrue(scanFailure === cancellation)
+        assertEquals(3, chunks)
+
+        val hashSource = File(input, "hash.wav").apply { writeBytes(ByteArray(128 * 1024 + 17) { it.toByte() }) }
+        val expectedHash = sha256File(hashSource.absolutePath)
+        var reads = 0
+        val hashFailure = assertFailsWith<CancellationException> {
+            sha256FileWithCancellation(hashSource.absolutePath) { if (++reads == 2) throw cancellation }
+        }
+        assertTrue(hashFailure === cancellation)
+        assertEquals(2, reads)
+        assertEquals(expectedHash, sha256File(hashSource.absolutePath))
+    }
+
+    @Test
+    fun extensible_pcm_requires_full_guid_and_consistent_extension_fields() = withTempRoots { input, _ ->
+        val source = writePcmWav(File(input, "extensible.wav"), pcm = ByteArray(8))
+        val pcm = source.readBytes()
+        val valid = ByteBuffer.allocate(pcm.size + 24).order(ByteOrder.LITTLE_ENDIAN).apply {
+            put(pcm, 0, 36)
+            putShort(22)
+            putShort(16)
+            putInt(4) // mono front-center
+            put(byteArrayOf(1, 0, 0, 0, 0, 0, 16, 0, -128, 0, 0, -86, 0, 56, -101, 113))
+            put(pcm, 36, pcm.size - 36)
+            putInt(4, capacity() - 8)
+            putInt(16, 40)
+            putShort(20, 0xFFFE.toShort())
+        }.array()
+        source.writeBytes(valid)
+        assertEquals(8L, readWavInfo(source).dataSize)
+        assertEquals(16, readWavInfo(source).bitsPerSample)
+        // Every subtype byte matters, including bytes beyond the original two-byte check.
+        for (offset in 44 until 60) {
+            val invalid = valid.copyOf()
+            invalid[offset] = (invalid[offset].toInt() xor 1).toByte()
+            source.writeBytes(invalid)
+            assertFailsWith<UnsupportedOperationException> { readWavInfo(source) }
+        }
+        for ((offset, value) in listOf(36 to 21, 38 to 12, 40 to 3, 32 to 4, 28 to 1)) {
+            val invalid = valid.copyOf()
+            invalid[offset] = value.toByte()
+            source.writeBytes(invalid)
+            assertFailsWith<IOException> { readWavInfo(source) }
+        }
+    }
+
     private inline fun withTempRoots(block: (inputDir: File, outputDir: File) -> Unit) {
         val root = Files.createTempDirectory("velum-desktop-normalize-test").toFile()
         try {

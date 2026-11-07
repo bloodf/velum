@@ -67,7 +67,7 @@ actual class AudioNormalizer(
 
         when {
             name.endsWith(".wav") || name.endsWith(".wave") -> {
-                val wavInfo = readWavInfo(source)
+                val wavInfo = readWavInfo(source, checkCancelled)
                 val outFile = File(outDir, "import_$outputId.wav")
                 val temp = File(outDir, "${outFile.name}.${System.nanoTime()}.part")
                 onOutput(temp)
@@ -81,7 +81,8 @@ actual class AudioNormalizer(
                     }
                     checkCancelled()
 
-                    val contentHash = sha256File(temp.absolutePath)
+                    val contentHash = sha256FileWithCancellation(temp.absolutePath, checkCancelled)
+                    checkCancelled()
                     try {
                         Files.move(temp.toPath(), outFile.toPath(), StandardCopyOption.ATOMIC_MOVE)
                     } catch (_: AtomicMoveNotSupportedException) {
@@ -111,7 +112,8 @@ actual class AudioNormalizer(
                     streamCopy(source, temp, checkCancelled)
                     checkCancelled()
 
-                    val contentHash = sha256File(temp.absolutePath)
+                    val contentHash = sha256FileWithCancellation(temp.absolutePath, checkCancelled)
+                    checkCancelled()
                     try {
                         Files.move(temp.toPath(), dest.toPath(), StandardCopyOption.ATOMIC_MOVE)
                     } catch (_: AtomicMoveNotSupportedException) {
@@ -149,7 +151,8 @@ internal data class WavInfo(
 
 private const val WAV_SLICE_BYTES = 64 * 1024
 
-internal fun readWavInfo(file: File): WavInfo = RandomAccessFile(file, "r").use { raf ->
+internal fun readWavInfo(file: File, checkCancelled: () -> Unit = {}): WavInfo = RandomAccessFile(file, "r").use { raf ->
+    checkCancelled()
     val length = raf.length()
     if (length < 12) throw IOException("Truncated WAV: file size ($length bytes) is less than RIFF header")
     val riffHeader = ByteArray(12).also { raf.readFully(it) }
@@ -171,6 +174,7 @@ internal fun readWavInfo(file: File): WavInfo = RandomAccessFile(file, "r").use 
 
     val chunkHeader = ByteArray(8)
     while (offset < length) {
+        checkCancelled()
         if (offset + 8 > length) {
             throw IOException("Truncated WAV: incomplete chunk header at offset $offset")
         }
@@ -193,8 +197,8 @@ internal fun readWavInfo(file: File): WavInfo = RandomAccessFile(file, "r").use 
                 audioFormat = bb.short.toInt() and 0xFFFF
                 channels = bb.short.toInt() and 0xFFFF
                 sampleRate = bb.int
-                bb.int // byte rate
-                bb.short // block align
+                val byteRate = bb.int.toLong() and 0xFFFF_FFFFL
+                val blockAlign = bb.short.toInt() and 0xFFFF
                 bitsPerSample = bb.short.toInt() and 0xFFFF
 
                 var subFormat = 1
@@ -203,6 +207,17 @@ internal fun readWavInfo(file: File): WavInfo = RandomAccessFile(file, "r").use 
                         throw IOException("Malformed extensible fmt chunk: size $chunkSize is less than 40")
                     }
                     subFormat = (fmtBytes[24].toInt() and 0xFF) or ((fmtBytes[25].toInt() and 0xFF) shl 8)
+                    val extensionSize = bb.getShort(16).toInt() and 0xFFFF
+                    val validBits = bb.getShort(18).toInt() and 0xFFFF
+                    val channelMask = bb.getInt(20)
+                    val pcmGuid = byteArrayOf(1, 0, 0, 0, 0, 0, 16, 0, -128, 0, 0, -86, 0, 56, -101, 113)
+                    if (!fmtBytes.copyOfRange(24, 40).contentEquals(pcmGuid)) {
+                        throw UnsupportedOperationException("Unsupported extensible WAV subtype")
+                    }
+                    if (extensionSize < 22 || 18L + extensionSize > chunkSize || validBits != 16 ||
+                        (channelMask != 0 && Integer.bitCount(channelMask) != channels)) {
+                        throw IOException("Malformed extensible WAV format fields")
+                    }
                 }
 
                 val isPcm = audioFormat == 1 || (audioFormat == 0xFFFE && subFormat == 1)
@@ -217,6 +232,9 @@ internal fun readWavInfo(file: File): WavInfo = RandomAccessFile(file, "r").use 
                 }
                 if (sampleRate <= 0) {
                     throw IOException("Malformed WAV: invalid sample rate $sampleRate")
+                }
+                if (blockAlign != channels * 2 || byteRate != sampleRate.toLong() * blockAlign) {
+                    throw IOException("Malformed PCM WAV byte rate or block alignment")
                 }
                 fmtFound = true
             }
