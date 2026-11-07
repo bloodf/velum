@@ -3,6 +3,7 @@ package dev.velum.ble.wifi
 import dev.velum.protocol.Bytes
 import dev.velum.protocol.Protocol20SessionSecret
 import dev.velum.protocol.SessionCipher
+import javax.crypto.BadPaddingException
 import javax.crypto.Cipher
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
@@ -42,6 +43,8 @@ internal class AesGcmWifiFrameCipher(
     }
 
     override fun open(sequence: Long, ciphertextAndTag: ByteArray): Pair<Long, ByteArray>? {
+        // SunJCE throws ProviderException for this, which the catches below rightly don't cover.
+        if (ciphertextAndTag.size < GCM_TAG_BYTES) return null
         return try {
             val c = Cipher.getInstance("AES/GCM/NoPadding")
             c.init(
@@ -55,8 +58,11 @@ internal class AesGcmWifiFrameCipher(
             val seq = Bytes.readU32Le(plain, 0)
             if (seq != sequence) return null
             seq to plain.copyOfRange(4, plain.size)
-        } catch (_: Exception) {
+        } catch (_: BadPaddingException) {
+            // A bad tag. Anything else, like a missing algorithm, isn't an auth failure, so it throws for the caller.
             null
         }
     }
 }
+
+private const val GCM_TAG_BYTES = 16

@@ -3,21 +3,16 @@ package dev.velum.ai.pipeline
 import dev.velum.ai.engine.DiarizationResult
 import dev.velum.ai.engine.TranscriptSegment
 import dev.velum.ai.engine.TranscriptionResult
+import dev.velum.core.data.TranscriptMarkers
 
 object TranscriptFormatter {
-    const val MARKERS_HEADING = "## Markers"
+    const val MARKERS_HEADING = TranscriptMarkers.HEADING
 
     /**
      * Separates spoken text from the trailing section of live-capture markers. Markers are the user's
      * notes, not speech: they survive retranscribing and are never summarized.
      */
-    fun splitMarkers(markdown: String): Pair<String, String?> {
-        val start = if (markdown.startsWith("$MARKERS_HEADING\n")) 0 else markdown.lastIndexOf("\n$MARKERS_HEADING\n") + 1
-        if (start == 0 && !markdown.startsWith("$MARKERS_HEADING\n")) return markdown to null
-        val section = markdown.substring(start)
-        if (!section.lines().drop(1).all { it.isBlank() || it.startsWith("- **") }) return markdown to null
-        return markdown.substring(0, start).trimEnd() to section.trimEnd()
-    }
+    fun splitMarkers(markdown: String): Pair<String, String?> = TranscriptMarkers.split(markdown)
 
     fun toMarkdown(
         transcription: TranscriptionResult,
@@ -62,6 +57,9 @@ object TranscriptFormatter {
             }
         }
     }
+
+    /** The stored speaker id for the diarizer's zero-based cluster index. */
+    fun speakerIdForCluster(index: Int): String = "S${index + 1}"
 
     fun mergeSpeakerLabels(
         segments: List<TranscriptSegment>,

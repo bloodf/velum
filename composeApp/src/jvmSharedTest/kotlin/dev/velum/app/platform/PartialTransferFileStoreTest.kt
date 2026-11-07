@@ -22,6 +22,102 @@ class PartialTransferFileStoreTest {
     private fun open(session: Long = 1L, serial: String? = "SYNTH-SN-1", checkpointBytes: Int = 1_000) =
         PartialTransferFileStore.open(root, session, serial, checkpointBytes)
 
+    private fun deleteByName(session: Long = 1L, serial: String? = "SYNTH-SN-1") = PartialTransferFileStore.delete(root, session, serial)
+
+    @Test fun delete_by_name_removes_the_files_and_only_that_session() {
+        open().run { write(ByteArray(10)); length(); setCrcMismatch(true); setReadFailures(1); close() }
+        open(session = 2L).run { write(ByteArray(10)); length(); close() }
+        val other = root.listFiles()!!.filter { it.name.startsWith("2-") }
+
+        assertTrue(deleteByName())
+
+        assertEquals(other.toSet(), root.listFiles()!!.filter { it.name != "serial-key.salt" }.toSet())
+    }
+
+    @Test fun delete_by_name_without_a_serial_finds_the_no_serial_partial() {
+        open(serial = null).run { write(ByteArray(10)); length(); close() }
+        assertTrue(partialFiles().isNotEmpty())
+        assertTrue(deleteByName(serial = null))
+        assertTrue(partialFiles().isEmpty())
+    }
+
+    @Test fun delete_by_name_creates_nothing() {
+        val missing = File(root, "not-created-yet")
+        assertTrue(PartialTransferFileStore.delete(missing, 1L, "SYNTH-SN-1"))
+        assertEquals(false, missing.exists())
+
+        missing.mkdirs()
+        assertTrue(PartialTransferFileStore.delete(missing, 1L, "SYNTH-SN-1"))
+        assertEquals(emptyList(), missing.listFiles()!!.toList())
+    }
+
+    @Test fun delete_with_damaged_salt_removes_only_the_requested_session() {
+        open(session = 5L).run { write(ByteArray(10)); length(); close() }
+        open(session = 55L).run { write(ByteArray(10)); length(); close() }
+        val other = root.listFiles()!!.filter { it.name.startsWith("55-") }.toSet()
+        val salt = File(root, "serial-key.salt").apply { writeBytes(byteArrayOf(1)) }
+
+        assertTrue(deleteByName(session = 5L))
+        assertTrue(root.listFiles()!!.none { it.name.startsWith("5-") })
+        assertEquals(other, root.listFiles()!!.filter { it.name.startsWith("55-") }.toSet())
+        assertContentEquals(byteArrayOf(1), salt.readBytes())
+    }
+
+    @Test fun delete_with_missing_salt_removes_orphaned_partial() {
+        open().run { write(ByteArray(10)); length(); close() }
+        assertTrue(File(root, "serial-key.salt").delete())
+        assertTrue(deleteByName())
+        assertTrue(root.listFiles()!!.isEmpty())
+    }
+
+    @Test fun delete_with_missing_salt_reports_remaining_audio() {
+        open().run { write(ByteArray(10)); length(); close() }
+        assertTrue(File(root, "serial-key.salt").delete())
+        assertTrue(root.setWritable(false), "this test needs a directory that keeps its files")
+        try {
+            assertFalse(deleteByName())
+            assertTrue(partialFiles().any { it.name.endsWith(".partial") })
+        } finally {
+            root.setWritable(true)
+        }
+    }
+
+    @Test fun delete_by_name_works_in_a_directory_that_refuses_new_files() {
+        open().delete() // leaves the salt, as after any earlier download
+        assertTrue(root.setWritable(false), "this test needs a directory that refuses new files")
+        try {
+            assertTrue(deleteByName())
+        } finally {
+            root.setWritable(true)
+        }
+    }
+
+    @Test fun delete_by_name_reports_a_data_file_that_stays() {
+        open().run { write(ByteArray(10)); length(); close() }
+        assertTrue(root.setWritable(false), "this test needs a directory that keeps its files")
+        try {
+            assertEquals(false, deleteByName())
+        } finally {
+            root.setWritable(true)
+        }
+        assertTrue(partialFiles().isNotEmpty())
+    }
+
+    @Test fun a_writer_still_unwinding_after_a_delete_leaves_nothing_a_later_open_uses() {
+        val writer = open()
+        writer.write(ByteArray(10))
+        writer.length()
+        open().delete()
+        writer.write(ByteArray(5_000)) // past the checkpoint size: it writes a new .offset for the removed file
+        writer.close()
+        assertTrue(File(root.listFiles()!!.first { it.name.endsWith(".offset") }.path).readText().toLong() > 0)
+
+        val next = open()
+        assertEquals(0L, next.length(), "a late .offset must be ignored")
+        assertEquals(emptyList(), root.listFiles()!!.filter { it.name.endsWith(".offset") }, "and removed, so a later crash can't trust it")
+        next.close()
+    }
+
     @Test fun length_reports_all_written_bytes_because_it_flushes() {
         val store = open()
         store.write(ByteArray(10) { 1 })
@@ -53,6 +149,35 @@ class PartialTransferFileStoreTest {
         assertEquals(0L, open().length())
         sidecar.writeText("999999") // claims more than the file holds
         assertEquals(0L, open().length())
+    }
+
+    @Test fun crc_mismatch_mark_is_kept_with_the_data_and_dropped_when_the_data_restarts() {
+        val store = open()
+        store.write(ByteArray(50))
+        store.setCrcMismatch(true)
+        store.length()
+        store.close()
+        assertTrue(open().also { it.close() }.crcMismatch(), "a valid checkpoint keeps the verdict")
+        partialFiles().single { it.name.endsWith(".offset") }.writeText("not a number")
+        val restarted = open()
+        assertEquals(0L, restarted.length())
+        assertFalse(restarted.crcMismatch(), "bytes restarting from zero must not inherit the old verdict")
+        restarted.close()
+        assertTrue(root.listFiles()!!.none { it.name.endsWith(".crcmismatch") })
+    }
+
+    @Test fun read_failure_count_survives_a_reopen_and_is_dropped_with_restarted_data() {
+        val store = open()
+        store.write(ByteArray(50))
+        store.setReadFailures(1)
+        store.length()
+        store.close()
+        assertEquals(1, open().also { it.close() }.readFailures())
+        partialFiles().single { it.name.endsWith(".offset") }.writeText("not a number")
+        val restarted = open()
+        assertEquals(0, restarted.readFailures(), "bytes restarting from zero have no read history")
+        restarted.close()
+        assertTrue(root.listFiles()!!.none { it.name.endsWith(".readfail") })
     }
 
     @Test fun truncate_and_delete() {

@@ -7,4 +7,4 @@ expect fun canExportPdf(): Boolean
  * Build a simple multi-page PDF from [bodyPlain] and open the share sheet / save path.
  * No-op when [canExportPdf] is false.
  */
-expect fun sharePdf(title: String, bodyPlain: String)
+expect suspend fun sharePdf(title: String, bodyPlain: String)

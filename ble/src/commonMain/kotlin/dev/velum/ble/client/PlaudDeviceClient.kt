@@ -6,6 +6,7 @@ import dev.velum.ble.gatt.GuardedLink
 import dev.velum.protocol.Battery
 import dev.velum.protocol.BatteryReading
 import dev.velum.protocol.Bytes
+import dev.velum.protocol.ChaCha20Poly1305
 import dev.velum.protocol.Commands
 import dev.velum.protocol.DeviceIdentityKeys
 import dev.velum.protocol.Framing
@@ -24,6 +25,7 @@ import dev.velum.ble.wifi.WifiFastTransferSession
 import dev.velum.ble.wifi.WifiTransferCoordinator
 import dev.velum.ble.wifi.WifiTransferPreamble
 import dev.velum.ble.wifi.WifiTransferServer
+import kotlin.concurrent.Volatile
 import kotlin.coroutines.coroutineContext
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
@@ -45,7 +47,7 @@ import kotlinx.coroutines.withTimeout
 /**
  * Protocol-20 client over [BleTransport].
  *
- * Never sends forbidden opcodes (5 / 104 / 128 / 0xFE20 / 143). Outbound frames
+ * Never sends forbidden opcodes (5 / 30 / 104 / 128 / 0xFE20 / 143). Outbound frames
  * are checked before every write. For protocol ≥ 20, FE10 snSignature from the
  * imported keys is sent on every [unlock] / connect.
  */
@@ -62,13 +64,30 @@ class PlaudDeviceClient(
     private val inbound = Channel<ByteArray>(capacity = 128)
     private val writeMutex = Mutex()
     private var notifyJob: Job? = null
+    @Volatile private var closed = false
+
+    /**
+     * The transport's link generation taken when the current [unlock] began (null before any unlock). The secret and
+     * counter belong to that link: once the transport reports another generation, every write is refused here, and the
+     * transport refuses a write already past this check (the generation travels on the write).
+     */
+    @Volatile private var linkGen: Long? = null
+
+    /** True only after an unlock finished. A re-unlock that fails leaves the old secret unusable, not re-armed. */
+    @Volatile private var unlocked = false
+
+    private fun checkLink() {
+        val g = linkGen
+        check(g == null || ble.linkGeneration == g) { "Link changed since unlock" }
+    }
 
     private var secret: Protocol20SessionSecret? = null
     private var sendSeq: Long = 2
     private var recvSeq: Long = 0
     private var protocolVersion: Int = 20
 
-    val sessionSecret: Protocol20SessionSecret? get() = secret
+    /** Null once the client is closed; the secret itself is kept so a write already past the check cannot go out in plain. */
+    internal val sessionSecret: Protocol20SessionSecret? get() = if (closed) null else secret
     val linkProtocolVersion: Int get() = protocolVersion
 
     suspend fun start() {
@@ -84,6 +103,9 @@ class PlaudDeviceClient(
     }
 
     fun close() {
+        // A closed client never writes again: its session secret and counter belong to the link it was opened on, and
+        // the same transport may be connected to the device again by a new client.
+        closed = true
         notifyJob?.cancel()
         notifyJob = null
         inbound.close()
@@ -97,8 +119,13 @@ class PlaudDeviceClient(
      * on every call (every connect). Missing / empty signature fails clearly.
      */
     suspend fun unlock() {
+        check(!closed) { "Client is closed" }
         start()
         writeMutex.withLock {
+            // Under the lock, and before anything is written: no write from the old session can interleave, and a failure
+            // below leaves this client locked rather than holding the old secret.
+            unlocked = false
+            linkGen = ble.linkGeneration
             if (protocolVersionHint >= 20) {
                 require(keys.serialSignature.isNotEmpty()) {
                     "snSignature missing — import sn-sign once from Plaud storage; " +
@@ -156,6 +183,7 @@ class PlaudDeviceClient(
             secret = parsed
             sendSeq = 2
             recvSeq = 0
+            unlocked = true
         }
     }
 
@@ -279,12 +307,18 @@ class PlaudDeviceClient(
         if (startRsp.refused) throw TransferIntegrityException("Sync start refused status=${startRsp.status}")
 
         var next = startOffset
-        var ignoredFrames = 0
-        var smallestChunk = Int.MAX_VALUE
+        var otherIgnoredFrames = 0 // frames without new data that are not part of a prefix replay
+        var replayedBytes = 0L
+        var lastIgnoredOffset = -1L
         var resumeCheck = if (startOffset > 0) storedBytes else null
+        // Protocol < 7 has no session id on recording data, so another session's leftover chunk looks like ours.
+        // The first such mismatch is skipped; a second one is a real fault. Ids present: strays are told apart.
+        var unattributedMismatches = 0
+        fun tolerateUnattributed(packetSessionId: Long?) = packetSessionId == null && ++unattributedMismatches <= 1
         try {
             while (true) {
                 val before = next
+                var replayingPrefix = false
                 val raw = awaitDecryptedFrame(responseTimeout) { true }
                 when (val inboundPacket = Framing.decodeInbound(raw)) {
                     is InboundPacket.RecordingData -> {
@@ -292,18 +326,29 @@ class PlaudDeviceClient(
                             is RecordingDataPacket.Chunk -> {
                                 val end = data.offset + data.data.size
                                 val ignored = isStray(data.sessionId, sessionId) || end <= next
-                                if (!isStray(data.sessionId, sessionId)) smallestChunk = minOf(smallestChunk, data.data.size)
+                                if (!isStray(data.sessionId, sessionId) && end <= next) {
+                                    // A device ignoring the start offset resends the stored prefix once, offsets rising.
+                                    replayingPrefix = lastIgnoredOffset >= 0 && data.offset > lastIgnoredOffset
+                                    lastIgnoredOffset = data.offset
+                                    if (replayingPrefix) replayedBytes += data.data.size
+                                }
                                 resumeCheck?.let { stored ->
                                     if (!isStray(data.sessionId, sessionId) && data.data.isNotEmpty()) {
                                         resumeCheck = null
                                         if (end <= next && !stored(data.offset, data.data.size).contentEquals(data.data)) {
-                                            throw TransferIntegrityException("Repeated chunk at offset ${data.offset} differs from the stored bytes")
+                                            if (tolerateUnattributed(data.sessionId)) {
+                                                resumeCheck = stored // compare the next chunk too
+                                            } else {
+                                                throw TransferIntegrityException("Repeated chunk at offset ${data.offset} differs from the stored bytes")
+                                            }
                                         }
                                     }
                                 }
-                                if (!ignored) {
+                                if (!ignored && data.offset != next && tolerateUnattributed(data.sessionId)) {
+                                    // Skipped: a chunk that fits nowhere and cannot be attributed to another session.
+                                } else if (!ignored) {
                                     if (data.offset != next) {
-                                        throw TransferIntegrityException("Chunk at offset ${data.offset}, expected $next")
+                                        throw TransferIntegrityException("Chunk at offset ${data.offset}, expected $next", transient = data.offset > next)
                                     }
                                     if (sizeBytes > 0 && end > sizeBytes) {
                                         throw TransferIntegrityException("Chunk ending at $end overruns size $sizeBytes")
@@ -326,16 +371,24 @@ class PlaudDeviceClient(
                 }
                 if (sizeBytes > 0 && next >= sizeBytes) break
                 // Every frame restarts the response timeout, so a device stuck repeating needs its own limit.
-                ignoredFrames = if (next != before) 0 else ignoredFrames + 1
-                // A device ignoring the start offset resends from 0, so the limit must allow a full catch-up.
-                // Rising offsets alone don't reset the count: a device looping through the file must still stop.
-                val limit = maxOf(MAX_CONSECUTIVE_IGNORED_FRAMES.toLong(), next / smallestChunk.coerceAtLeast(1))
-                if (ignoredFrames > limit) {
-                    throw TransferIntegrityException("No new data in $ignoredFrames frames at offset $next")
+                // A device ignoring the start offset resends the stored prefix from 0: rising offsets, at most
+                // `next` bytes. That replay may take many frames and is not counted. Every other frame without
+                // new data (a repeat, a loop back, a stray, anything else) counts against the fixed limit, so a
+                // stray mid catch-up costs one frame, and a stuck device stops at any offset or chunk size.
+                if (next != before) {
+                    otherIgnoredFrames = 0
+                    replayedBytes = 0L
+                    lastIgnoredOffset = -1L
+                } else if (!replayingPrefix) {
+                    otherIgnoredFrames++
+                }
+                // One chunk of slack: a tolerated leftover can sit just inside the replayed range.
+                if (otherIgnoredFrames > MAX_CONSECUTIVE_IGNORED_FRAMES || replayedBytes > next + MAX_CHUNK_BYTES) {
+                    throw TransferIntegrityException("No new data in $otherIgnoredFrames frames at offset $next")
                 }
             }
             if (sizeBytes > 0 && next != sizeBytes) {
-                throw TransferIntegrityException("Transfer ended at offset $next of $sizeBytes")
+                throw TransferIntegrityException("Transfer ended at offset $next of $sizeBytes", transient = true)
             }
         } catch (e: Exception) {
             sendStopBestEffort()
@@ -412,12 +465,20 @@ class PlaudDeviceClient(
         return decoded.payload
     }
 
-    private suspend fun writePlain(packet: ByteArray, withoutResponse: Boolean) =
-        withTimeout(responseTimeout) { link.write(GattProfiles.PLAUD_WRITE, packet, withoutResponse) }
+    private suspend fun writePlain(packet: ByteArray, withoutResponse: Boolean) {
+        check(!closed) { "Client is closed" }
+        checkLink()
+        withTimeout(responseTimeout) {
+            link.writeGuarded(GattProfiles.PLAUD_WRITE, packet, withoutResponse, seal = null, linkGeneration = linkGen)
+        }
+    }
 
     private suspend fun writeOutbound(packet: ByteArray) {
         writeMutex.withLock {
+            check(!closed) { "Client is closed" }
+            checkLink()
             val sec = secret
+            check(sec == null || unlocked) { "Not unlocked on this link" }
             if (sec == null) {
                 writePlain(packet, withoutResponse = false)
             } else {
@@ -425,11 +486,20 @@ class PlaudDeviceClient(
                 // A write that times out leaves sendSeq advanced. Later commands then fail on a device that
                 // requires exact sequence numbers (unverified, #6) until a reconnect brings a new client.
                 withTimeout(responseTimeout) {
-                    link.write(GattProfiles.PLAUD_WRITE, packet, withoutResponse = false) {
-                        val sealed = cipher.sealPacket(sec, sendSeq, it)
+                    link.writeGuarded(GattProfiles.PLAUD_WRITE, packet, withoutResponse = false, linkGeneration = linkGen, seal = {
+                        // The cipher gets its own copy: one that edits its input then seals the edit cannot also change what we compare.
+                        val sealed = cipher.sealPacket(sec, sendSeq, it.copyOf()).copyOf() // the cipher keeps nothing we send
+                        // The guard checked [it]. The cipher is a separate component: the bytes that go out must open
+                        // to exactly that plaintext, or nothing is written (sealed bytes are never parsed as opcodes).
+                        // Opened with the protocol's own AEAD, not the injected cipher, so a cipher cannot vouch for itself.
+                        val plain = ChaCha20Poly1305.open(sec.key, sec.nonce, sec.aad, sealed)
+                        check(
+                            plain != null && plain.size >= 4 && Bytes.readU32Le(plain, 0) == sendSeq &&
+                                plain.copyOfRange(4, plain.size).contentEquals(it),
+                        ) { "Sealed packet does not match the checked plaintext" }
                         sendSeq += 1
                         sealed
-                    }
+                    })
                 }
             }
         }
@@ -484,6 +554,7 @@ class PlaudDeviceClient(
 
         /** Frames in a row that add no bytes before a transfer is abandoned (about 1 MiB of 255-byte chunks). */
         const val MAX_CONSECUTIVE_IGNORED_FRAMES: Int = 4096
+        private const val MAX_CHUNK_BYTES = 255 // the chunk length is one byte on the wire
 
         /** Hard cap for a single session download (512 MiB). */
         const val MAX_SESSION_DOWNLOAD_BYTES: Long = 512L * 1024 * 1024

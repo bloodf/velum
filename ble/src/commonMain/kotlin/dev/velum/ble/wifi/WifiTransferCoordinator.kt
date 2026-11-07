@@ -8,7 +8,6 @@ import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.selects.select
-import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeout
 import kotlin.time.Duration
@@ -32,8 +31,6 @@ class WifiTransferCoordinator(
     private val bleDownload: suspend () -> ByteArray,
     private val wifiTimeout: Duration = 45.seconds,
     private val capabilities: DeviceCapabilities? = null,
-    /** After the device closes its socket, how long [assemble] may still finish from frames already received. */
-    private val peerClosedGrace: Duration = 2.seconds,
 ) {
     sealed class Outcome {
         data class Wifi(val bytes: ByteArray) : Outcome() {
@@ -75,7 +72,7 @@ class WifiTransferCoordinator(
                 coroutineScope {
                     // Subscribe before start so no early failure is missed.
                     val failure = async(start = CoroutineStart.UNDISPATCHED) {
-                        session.server.pathFailures().first()
+                        session.pathFailures().first()
                     }
                     val work = async {
                         session.start(
@@ -91,15 +88,7 @@ class WifiTransferCoordinator(
                     try {
                         select<Outcome> {
                             work.onAwait { it }
-                            failure.onAwait { code ->
-                                // A close right after the last frame is normal: let assemble drain what arrived.
-                                val drained = if (code == WifiTransferServer.FAILURE_PEER_CLOSED) {
-                                    withTimeoutOrNull(peerClosedGrace) { work.await() }
-                                } else {
-                                    null
-                                }
-                                drained ?: throw WifiTransferFailure(code)
-                            }
+                            failure.onAwait { code -> throw WifiTransferFailure(code) }
                         }
                     } finally {
                         failure.cancel()
@@ -125,7 +114,7 @@ class WifiTransferCoordinator(
 
     /** Collect first sealed frame, open it, return plaintext (demo / tests). */
     suspend fun receiveOnePlainFrame(session: WifiFastTransferSession): ByteArray {
-        val sealed = session.server.incomingEncryptedFrames().first()
+        val sealed = session.incomingEncryptedFrames().first()
         return session.openIncoming(sealed)
             ?: error("Failed to open Wi-Fi frame (seq/cipher mismatch)")
     }

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Fail when the arm64-v8a release APK is more than 10% above, or less than half of, the baseline (#91).
-# The lower bound catches an empty, truncated or wrong file.
+# The lower bound catches a truncated file; the ABI check catches the wrong APK.
 # Usage: scripts/check-apk-size.sh <apk> [baseline-file]    scripts/check-apk-size.sh --self-test
 # The baseline file holds one number: the target size in bytes (scripts/apk-size-baseline.txt).
 set -euo pipefail

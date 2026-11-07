@@ -73,6 +73,7 @@ class SettingsViewModel(
     fun setBaseUrl(url: String) { storageAction { settingsRepository.setBaseUrl(url) } }
     fun setApiKey(key: String) { storageAction { settingsRepository.setApiKey(key) } }
     fun setProfileApiKey(profileId: String, key: String) { storageAction { settingsRepository.setProfileApiKey(profileId, key) } }
+    fun createProfile(onCreated: (String) -> Unit) { storageAction { onCreated(settingsRepository.createProfile().id) } }
     fun upsertProfile(profile: ApiEndpointProfile) { storageAction { settingsRepository.upsertProfile(profile) } }
     fun deleteProfile(profileId: String) { storageAction { settingsRepository.deleteProfile(profileId) } }
     fun setActiveProfile(profileId: String) { storageAction { settingsRepository.setActiveProfile(profileId) } }

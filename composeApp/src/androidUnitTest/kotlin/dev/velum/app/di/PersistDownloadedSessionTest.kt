@@ -44,7 +44,7 @@ class PersistDownloadedSessionTest {
             DriverFactory(context),
             modelStoreRoot = ModelStoreDir(File(base, "models").path),
             recordingJobSchedulerFactory = { _, _ ->
-                RecordingJobScheduler { id, _, _, _ -> enqueued += id }
+                RecordingJobScheduler { id, _, _, _ -> enqueued += id; dev.velum.ai.pipeline.EnqueueResult.STARTED_OR_REPLACED }
             },
         )
     }

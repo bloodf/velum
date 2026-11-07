@@ -1,6 +1,8 @@
-# Velum desktop plan (research only)
+# Velum desktop plan
 
-**Status:** docs-only research for a future Mac + Windows desktop. **Do not start desktop implementation while Android remains first** (see [ROADMAP.md](../ROADMAP.md) M1 → M2). This note maps ideas from [anarlog](https://github.com/fastrepl/anarlog) and the [MeetingMint / offline note-taker Medium article](https://medium.com/data-science-collective/i-built-an-self-hosted-ai-meeting-note-taker-that-runs-100-offline-heres-how-you-can-too-d110b7ef0b95) onto Velum’s existing KMP modules.
+**Current scope — owner decision, 2026-11-05 ([#29](https://github.com/bloodf/velum/issues/29)):** desktop targets **macOS only in this phase**. Android remains the priority; independent desktop work may proceed without delaying Android. Windows is deferred, and iOS follows the Android-first phase. This acknowledgement does not establish Android M1, macOS runtime acceptance, or release readiness.
+
+The research below maps ideas from [anarlog](https://github.com/fastrepl/anarlog) and the [MeetingMint / offline note-taker Medium article](https://medium.com/data-science-collective/i-built-an-self-hosted-ai-meeting-note-taker-that-runs-100-offline-heres-how-you-can-too-d110b7ef0b95) onto Velum’s existing KMP modules. Windows and Linux references are retained as future research, not current delivery criteria.
 
 **Studied revision:** shallow clone of `fastrepl/anarlog` (community MIT layer + `LICENSING.md` path split). Product docs under `docs/*.mdx` describe the shipped desktop UX.
 
@@ -122,20 +124,20 @@ These are **upstream** dependencies anarlog uses (or equivalents Velum can use).
 
 ## 6. Phased plan (capability order, Android still first)
 
-Phases are **capability slices**, not calendar estimates. Ship Android M1 items before spending implementation on these.
+Phases are **capability slices**, not calendar estimates. Android remains the priority; this phase’s desktop delivery criteria cover macOS only. Keep Android acceptance gates separate from desktop work.
 
 ### Phase D0 — Research freeze (this doc)
 
 - [x] License boundary MIT vs `enterprise/`
 - [x] Feature → module map
 - [x] Permissive upstream crate list
-- [ ] Owner ack: desktop stays behind Android until M1 gate
+- [x] Owner ack (2026-11-05, #29): Android remains the priority; desktop is macOS only in this phase, Windows is deferred, and iOS comes later. This checkbox records scope and order, not platform acceptance.
 
 ### Phase D1 — Desktop audio foundation (ROADMAP M2 start)
 
 - `LivePcmCapture` desktop: mic PCM → same WAV → `RecordingProcessor` path as Android.
-- System-audio loopback **macOS** (ScreenCaptureKit / AVAudioEngine tap) and **Windows** (WASAPI loopback), separate channels.
-- Permission UX: mic, system-audio (macOS TCC), Windows privacy settings.
+- System-audio loopback **macOS** (ScreenCaptureKit / AVAudioEngine tap), separate channels. Windows WASAPI loopback is deferred.
+- Permission UX: mic and system-audio (macOS TCC). Windows privacy settings are deferred.
 - No Tauri; Compose Desktop window + optional tiny native helper licensed Apache-2.0/MIT.
 
 ### Phase D2 — Near-live STT on desktop
@@ -160,7 +162,7 @@ Phases are **capability slices**, not calendar estimates. Ship Android M1 items 
 
 - Local-first SQLDelight + E2E user-cloud (not Anarlog Pro).
 - MCP/CLI exposing Velum notes (inspired by anarlog’s agent skill, clean-room API).
-- Linux PipeWire as follow-on if Mac/Win solid.
+- Windows and Linux PipeWire remain future scope, outside this macOS phase.
 
 ### Explicit non-goals (near term)
 

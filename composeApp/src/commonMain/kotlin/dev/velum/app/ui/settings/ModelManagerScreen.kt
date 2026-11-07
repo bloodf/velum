@@ -1,5 +1,6 @@
 package dev.velum.app.ui.settings
 
+import dev.velum.ai.local.LocalModelErrors
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -49,19 +50,47 @@ import dev.velum.app.ui.theme.VelumBg
 import dev.velum.app.ui.theme.VelumInk
 import dev.velum.app.ui.theme.VelumInkSecondary
 import dev.velum.app.ui.theme.VelumSurface
-import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.launch
 
+/**
+ * A download outlives Model manager: when one fails while the user is elsewhere, say so with a way back.
+ * [currentRoute] is read when the failure happens; Model manager itself already shows its rows.
+ */
 @Composable
-fun ModelManagerScreen(
-    container: AppContainer,
-    onBack: () -> Unit,
+fun ModelFailureNotifier(
+    states: kotlinx.coroutines.flow.Flow<List<LocalModelState>>,
+    snackbar: androidx.compose.material3.SnackbarHostState,
+    currentRoute: () -> String?,
+    onOpenModelManager: () -> Unit,
 ) {
+    val latestStrings by androidx.compose.runtime.rememberUpdatedState(LocalStrings.current)
+    LaunchedEffect(states) {
+        var before: Map<String, LocalModelStatus>? = null
+        states.collect { list ->
+            val previous = before
+            before = list.associate { it.spec.id to it.status }
+            if (previous == null) return@collect
+            for (failed in dev.velum.ai.local.newlyFailed(previous, list)) {
+                if (currentRoute() == dev.velum.app.navigation.Routes.MODEL_MANAGER) continue // the row shows it
+                launch {
+                    val result = snackbar.showSnackbar(
+                        message = modelFailureNotice(failed, latestStrings),
+                        actionLabel = latestStrings.modelManager,
+                        withDismissAction = true,
+                    )
+                    if (result == androidx.compose.material3.SnackbarResult.ActionPerformed) onOpenModelManager()
+                }
+            }
+        }
+    }
+}
+
+/** Lives at the app level: a download outlives the Model manager screen, so its notification must too. */
+@Composable
+fun ModelDownloadNotification(container: AppContainer) {
     val strings = LocalStrings.current
     val states by container.localModelManager.states.collectAsState()
-    val scope = rememberCoroutineScope()
-    var pendingDeleteId by remember { mutableStateOf<String?>(null) }
-
     val downloading = states.firstOrNull { it.status == LocalModelStatus.Downloading }
     LaunchedEffect(downloading?.spec?.id, downloading?.progress) {
         val active = downloading
@@ -93,6 +122,18 @@ fun ModelManagerScreen(
             DownloadProgressNotifier.setCancelHandler(DownloadNotifyKind.LocalModel, null)
         }
     }
+}
+
+@Composable
+fun ModelManagerScreen(
+    container: AppContainer,
+    onBack: () -> Unit,
+) {
+    val strings = LocalStrings.current
+    val states by container.localModelManager.states.collectAsState()
+    val queued by container.localModelManager.queuedIds.collectAsState(initial = emptySet())
+    val scope = rememberCoroutineScope()
+    var pendingDeleteId by remember { mutableStateOf<String?>(null) }
 
     Column(Modifier.fillMaxSize().background(VelumBg)) {
         ScreenTopBar(strings.modelManager, onBack = onBack)
@@ -112,11 +153,8 @@ fun ModelManagerScreen(
             items(states, key = { it.spec.id }) { state ->
                 ModelCard(
                     state = state,
-                    onDownload = {
-                        scope.launch {
-                            container.localModelManager.download(state.spec.id).collect()
-                        }
-                    },
+                    queued = state.spec.id in queued,
+                    onDownload = { container.localModelManager.startDownloads(listOf(state.spec.id)) },
                     onCancel = { container.localModelManager.cancelDownload(state.spec.id) },
                     onDelete = { pendingDeleteId = state.spec.id },
                 )
@@ -133,7 +171,7 @@ fun ModelManagerScreen(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        scope.launch { container.localModelManager.delete(modelId) }
+                        scope.launch(start = CoroutineStart.UNDISPATCHED) { container.localModelManager.delete(modelId) }
                         pendingDeleteId = null
                     },
                 ) { Text(strings.delete) }
@@ -148,6 +186,7 @@ fun ModelManagerScreen(
 @Composable
 private fun ModelCard(
     state: LocalModelState,
+    queued: Boolean,
     onDownload: () -> Unit,
     onCancel: () -> Unit,
     onDelete: () -> Unit,
@@ -157,8 +196,8 @@ private fun ModelCard(
     val statusLabel = when (state.status) {
         LocalModelStatus.Ready -> strings.modelReady
         LocalModelStatus.Downloading -> strings.modelDownloading
-        LocalModelStatus.Failed -> strings.modelFailed
-        LocalModelStatus.NotDownloaded -> strings.modelNotDownloaded
+        LocalModelStatus.Failed -> if (queued) strings.ux.modelQueued else strings.modelFailed
+        LocalModelStatus.NotDownloaded -> if (queued) strings.ux.modelQueued else strings.modelNotDownloaded
         LocalModelStatus.BlockedOnUrl -> strings.modelBlockedOnUrl
     }
     Column(
@@ -195,7 +234,8 @@ private fun ModelCard(
         }
         Spacer(Modifier.height(8.dp))
         Text(statusLabel, fontWeight = FontWeight.Medium, fontSize = 13.sp, color = VelumInk)
-        state.error?.let { err ->
+        state.error?.takeIf { !queued }?.let { raw ->
+            val err = modelErrorText(raw, strings)
             Spacer(Modifier.height(4.dp))
             Text(err, color = VelumInkSecondary, fontSize = 12.sp, lineHeight = 16.sp)
         }
@@ -225,8 +265,13 @@ private fun ModelCard(
                     Spacer(Modifier.weight(1f))
                 }
                 LocalModelStatus.NotDownloaded, LocalModelStatus.Failed -> {
-                    BlackButton(strings.download, onDownload, Modifier.weight(1f))
-                    Spacer(Modifier.width(0.dp))
+                    // A queued row starts by itself when its turn comes; a second start would run beside the current one.
+                    if (queued) {
+                        Spacer(Modifier.weight(1f))
+                    } else {
+                        BlackButton(strings.download, onDownload, Modifier.weight(1f))
+                        Spacer(Modifier.width(0.dp))
+                    }
                 }
             }
         }
@@ -239,6 +284,38 @@ private fun kindLabel(kind: LocalModelKind, strings: Strings): String = when (ki
     LocalModelKind.Embedding -> strings.ux.modelKindEmbedding
     LocalModelKind.Llm -> strings.ux.modelKindLlm
 }
+
+/** Plain notice for a download that failed while Model manager is not open. */
+internal fun modelFailureNotice(state: LocalModelState, strings: dev.velum.app.i18n.Strings): String =
+    if (state.error == LocalModelErrors.StorageFull) {
+        "${state.spec.displayName}: ${strings.ux.modelStorageFull}"
+    } else {
+        strings.ux.modelDownloadFailedFormat.replace("%s", state.spec.displayName)
+    }
+
+/**
+ * Every stored error code ([LocalModelErrors]) is shown as plain localized copy, with the HTTP status for
+ * `http_<status>`. Any other text is a legacy error saved by an older build: it is shown with URLs removed (it can
+ * carry a signed download URL with its query string), or as the generic download-failed copy if nothing is left.
+ */
+internal fun modelErrorText(raw: String, strings: dev.velum.app.i18n.Strings): String {
+    val ux = strings.ux
+    LocalModelErrors.httpStatus(raw)?.let { return ux.modelHttpErrorFormat.replace("%d", it.toString()) }
+    return when (raw) {
+        LocalModelErrors.StorageFull -> ux.modelStorageFull
+        LocalModelErrors.DownloadFailed -> ux.modelDownloadFailed
+        LocalModelErrors.DownloadError -> ux.modelDownloadError
+        LocalModelErrors.ChecksumMismatch -> ux.modelChecksumMismatch
+        LocalModelErrors.Incomplete -> ux.modelIncomplete
+        LocalModelErrors.NoDownloadUrl -> ux.modelNoDownloadUrl
+        LocalModelErrors.ChecksumNotPinned -> ux.modelChecksumNotPinned
+        LocalModelErrors.HttpsRequired -> ux.modelHttpsRequired
+        else -> raw.replace(URL_IN_TEXT, "").replace(WHITESPACE, " ").trim().ifEmpty { ux.modelDownloadFailed }
+    }
+}
+
+private val URL_IN_TEXT = Regex("""(?i)https?://\S+""")
+private val WHITESPACE = Regex("""\s+""")
 
 private fun formatBytes(bytes: Long): String {
     val mb = bytes / (1024.0 * 1024.0)

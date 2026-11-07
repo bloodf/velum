@@ -183,8 +183,15 @@ class VoiceProfileRecoveryTest {
         assertSnapshot(before)
         profiles.resolve("healthy.json").deleteRecursively(); profiles.resolve("healthy.enc").deleteRecursively()
         val single = snapshot()
-        assertFailsWith<VoiceProfileKeyUnavailableException> { store.withReady { inspectProfiles() } }
+        // The key check file written with the profiles authenticates, so the key is right and the one damaged
+        // blob is reported as that profile's problem, not as a lost key.
+        assertEquals(VoiceProfileReadProblem.CannotDecrypt, store.withReady { inspectProfiles() }.unreadable.single().problem)
         assertSnapshot(single)
+        // Without the key check (an install from before it existed) a lone unauthenticated blob is ambiguous again.
+        root.resolve("voices/.keycheck.enc").deleteRecursively()
+        val noCheck = snapshot()
+        assertFailsWith<VoiceProfileKeyUnavailableException> { store.withReady { inspectProfiles() } }
+        assertSnapshot(noCheck)
     }
 
     @Test

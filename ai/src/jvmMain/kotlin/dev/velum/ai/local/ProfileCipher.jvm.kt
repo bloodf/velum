@@ -11,7 +11,11 @@ import kotlinx.coroutines.CancellationException
 actual fun createProfileCipher(keyMaterial: ByteArray): ProfileCipher = AesGcmProfileCipher(keyMaterial)
 
 private class AesGcmProfileCipher(keyMaterial: ByteArray) : ProfileCipher {
-    private val key = SecretKeySpec(keyMaterial.copyOf(32), "AES")
+    // A short key must never be zero-padded into a weak AES key: treat it like any unusable stored key (#334).
+    private val key = SecretKeySpec(
+        keyMaterial.takeIf { it.size == 32 } ?: throw VoiceProfileKeyUnavailableException(),
+        "AES",
+    )
 
     override fun encrypt(plain: ByteArray): ByteArray = cipherAccess {
         val iv = ByteArray(12).also { SecureRandom().nextBytes(it) }

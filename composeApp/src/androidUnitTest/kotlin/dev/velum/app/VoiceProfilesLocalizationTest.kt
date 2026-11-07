@@ -19,14 +19,15 @@ class VoiceProfilesLocalizationTest {
         s.ux.voiceProfilesMissingEmbedding, s.ux.voiceProfilesInvalidMetadata, s.ux.voiceProfilesInvalidEmbedding,
         s.ux.voiceProfilesCannotDecrypt, s.ux.voiceProfilesFileUnavailable, s.ux.voiceProfilesKeyUnavailable,
         s.ux.voiceProfilesRemoveFiles, s.ux.voiceProfilesRemoveFilesConfirm, s.ux.voiceProfilesFilesChanged,
-        s.ux.voiceProfilesExportBlocked, s.ux.voiceProfilesChangeBlocked, s.ux.voiceProfilesEmpty,
+        s.ux.voiceProfilesExportBlocked, s.ux.voiceProfilesChangeBlocked, s.ux.voiceProfilesEmpty, s.ux.voiceProfilesNoCachedVoice,
         s.ux.voiceProfilesSaved, s.ux.voiceProfilesDeleted, s.ux.voiceProfilesExport,
-        s.ux.voiceProfilesExportReady, s.ux.voiceProfilesImportTitle, s.ux.voiceProfilesImport,
+        s.ux.voiceProfilesExportReady, s.ux.voiceProfilesExportEmpty, s.ux.voiceProfilesImportInvalid, s.ux.voiceProfilesImportWrongKey, s.ux.voiceProfilesImportTitle, s.ux.voiceProfilesImport,
         s.ux.voiceProfilesImportedFormat, s.ux.voiceProfilesWipe, s.ux.voiceProfilesWiped,
         s.ux.voiceProfilesThreshold, s.ux.voiceProfilesThresholdSet, s.ux.voiceProfilesEnrollHint,
         s.ux.voiceProfilesSamplesFormat, s.ux.voiceProfilesSampleOne, s.ux.voiceProfilesImportedOne, s.ux.voiceProfilesSensitivityFlexible,
         s.ux.voiceProfilesSensitivityBalanced, s.ux.voiceProfilesSensitivityStrict,
         s.ux.voiceProfilesSensitivityVeryStrict,
+        s.added.voiceProfilesExportCopy, s.added.voiceProfilesExportCopied, s.added.voiceProfilesExportCopyFailed,
     )
 
     @Test

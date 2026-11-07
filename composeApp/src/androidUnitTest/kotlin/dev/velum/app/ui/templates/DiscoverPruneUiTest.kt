@@ -59,16 +59,18 @@ class DiscoverPruneUiTest {
 
     /** waitUntil that fails with the semantics tree so a timeout is diagnosable. */
     private fun waiting(what: String, condition: () -> Boolean) {
-        try {
-            compose.waitUntil(10_000, condition)
-        } catch (e: androidx.compose.ui.test.ComposeTimeoutException) {
-            val tree = compose.onRoot().printToString(maxDepth = 12).take(6000)
-            throw AssertionError("Timed out waiting for $what\n$tree", e)
-        }
+        compose.waitWhileBusy(queryLog, onTimeout = { reason, e ->
+            // An open search sheet is a second root, which makes onRoot() throw and hide the timeout.
+            val tree = runCatching { compose.onAllNodes(androidx.compose.ui.test.isRoot()).printToString(maxDepth = Int.MAX_VALUE) }
+                .getOrElse { "diagnostic failed: $it" }
+            throw AssertionError("Timed out waiting for $what ($reason)\n${queryLog.dump()}\n$tree", e)
+        }, condition = condition)
     }
 
     // Chips appear once the facets loaded, which is after the first rows: wait for the chip before tapping it.
     private fun tap(tag: String) { awaitTag(tag); compose.onNodeWithTag(tag).performScrollTo().performClick() }
+
+    private val queryLog = QueryLog()
 
     private fun withScreen(block: () -> Unit) {
         val context = ApplicationProvider.getApplicationContext<Context>()
@@ -89,7 +91,7 @@ class DiscoverPruneUiTest {
         try {
             activity.get().setContent {
                 CompositionLocalProvider(LocalStrings provides PtBr) {
-                    VelumTheme(darkTheme = false) { TemplatesScreen(container, onBack = {}, onOpenTemplate = {}) }
+                    VelumTheme(darkTheme = false) { TemplatesScreen(container, onBack = {}, onOpenTemplate = {}, queries = queryLog.wrap(container)) }
                 }
             }
             await("ZQ Alpha")
@@ -122,8 +124,18 @@ class DiscoverPruneUiTest {
         tap("category:zqcat"); awaitTag("active:category")
         compose.onNodeWithContentDescription(PtBr.search).performClick()
         compose.onNode(hasSetTextAction()).performTextInput("ZQ")
+        // The search is debounced: switching tier before it applies would load facets for a blank search, which may
+        // legitimately prune. Wait until the debounce has applied, i.e. a facets load for "ZQ" has started.
+        waiting("debounced search applied") { queryLog.dump().contains("start facets(search='ZQ'") }
+        // The tier is part of the facets effect's key, so the switch starts one more facets load. Wait for that load
+        // itself (started after the tap, none running), not for a fixed time, then let the state write and any
+        // pruning effect run on the test clock before asserting that nothing was pruned.
+        val facetsStartedBefore = queryLog.count("start facets(")
         tap("tier:featured")
-        Thread.sleep(1500)
+        waiting("the facets reload after the tier switch") {
+            queryLog.count("start facets(") > facetsStartedBefore && queryLog.inFlight() == 0
+        }
+        repeat(3) { compose.waitForIdle(); compose.mainClock.advanceTimeBy(100) }
         compose.waitForIdle()
         assertTrue(hasTag("active:category"), "category pruned while a search was narrowing the facets")
         compose.onNode(hasSetTextAction()).performTextClearance()

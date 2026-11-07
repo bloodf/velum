@@ -9,15 +9,21 @@ import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
-import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performScrollToIndex
+import androidx.compose.ui.test.performScrollToKey
 import androidx.compose.ui.test.printToString
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.isEnabled
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -30,6 +36,7 @@ import dev.velum.core.data.DriverFactory
 import dev.velum.core.data.SeedData
 import dev.velum.core.security.InMemorySecureStore
 import java.nio.file.Files
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
 import org.junit.Rule
@@ -48,6 +55,25 @@ class DiscoverCategorySearchUiTest {
     private fun shows(text: String) = compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()
     private fun hasTag(tag: String) = compose.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()
 
+    /** Sees every loaded row by its key, where text checks only see composed ones. Only a missing key means absent. */
+    private fun rowLoaded(key: String): Boolean {
+        assertTrue(hasTag("templates:grid"), "no grid to look in")
+        return try {
+            compose.onNodeWithTag("templates:grid").performScrollToKey(key)
+            true
+        } catch (_: IllegalArgumentException) {
+            false
+        }
+    }
+
+    /** A result row by key, not a ranking card with the same name: the filtered rows have landed once this returns. */
+    private fun awaitRow(key: String) {
+        waiting("row $key") { hasTag("templates:grid") && rowLoaded(key) }
+        compose.onNodeWithTag("templates:grid").performScrollToIndex(0)
+    }
+
+    private fun assertRowAbsent(key: String) = assertTrue(!rowLoaded(key), "row $key should not be loaded")
+
     private fun await(text: String, present: Boolean = true) = waiting("text '$text' present=$present") {
         shows(text) == present
     }
@@ -58,20 +84,58 @@ class DiscoverCategorySearchUiTest {
 
     /** waitUntil that fails with the semantics tree so a timeout is diagnosable. */
     private fun waiting(what: String, condition: () -> Boolean) {
-        try {
-            compose.waitUntil(10_000, condition)
-        } catch (e: androidx.compose.ui.test.ComposeTimeoutException) {
-            val tree = compose.onRoot().printToString(maxDepth = 12).take(6000)
-            throw AssertionError("Timed out waiting for $what\n$tree", e)
-        }
+        compose.waitWhileBusy(queryLog, onTimeout = { reason, e ->
+            // Diagnostics must never replace the timeout; an open sheet is a second root.
+            val diagnostics = runCatching { compose.onAllNodes(isRoot()).printToString(maxDepth = Int.MAX_VALUE) }
+                .getOrElse { "diagnostic failed: $it" }
+            throw AssertionError("Timed out waiting for $what ($reason)\n${queryLog.dump()}\n$diagnostics", e)
+        }, condition = condition)
     }
 
     // Chips appear once the facets loaded, which is after the first rows: wait for the chip before tapping it.
     private fun tap(tag: String) {
-        awaitTag(tag)
-        // Chips sit in horizontally scrolling rows; bring the target into view first, like a user would.
-        runCatching { compose.onNodeWithTag(tag).performScrollTo() }
-        compose.onNodeWithTag(tag).performClick()
+        // Wait until the chip is enabled (a facets reload disables the rows) and actually on screen, then act on it.
+        waiting("tappable chip '$tag'") {
+            compose.onAllNodes(hasTestTag(tag) and hasClickAction() and isEnabled()).fetchSemanticsNodes().isNotEmpty() &&
+                run {
+                    runCatching { compose.onNodeWithTag(tag).performScrollTo() }
+                    runCatching { compose.onNodeWithTag(tag).assertIsDisplayed() }.isSuccess
+                }
+        }
+        // By node identity, not coordinates: a coordinate click could land on a neighbour if the row reflowed.
+        compose.onNodeWithTag(tag).performSemanticsAction(SemanticsActions.OnClick)
+    }
+
+    /** Facets queries started and finished, so a test waits for the reload itself instead of sleeping. */
+    private val queryLog = QueryLog()
+    private val facetsStarted = AtomicInteger()
+    private val facetsFinished = AtomicInteger()
+
+    private fun countedQueries(container: AppContainer): DiscoverQueries {
+        val real = queryLog.wrap(container)
+        return DiscoverQueries(
+            page = real.page, count = real.count,
+            facets = { f ->
+                facetsStarted.incrementAndGet()
+                try { real.facets(f) } finally { facetsFinished.incrementAndGet() }
+            },
+        )
+    }
+
+    /** Waits until a facets reload that began after [finishedBefore] has completed and none is in flight. */
+    private fun awaitFacetsReloadAfter(finishedBefore: Int) = waiting("a facets reload after $finishedBefore") {
+        facetsFinished.get() > finishedBefore && facetsStarted.get() == facetsFinished.get()
+    }
+
+    /**
+     * The reload counter moves before the screen stores the new facets, so a wrong prune lands after it. Poll the
+     * selection across a short window instead of checking it once.
+     */
+    private fun assertStaysSelected(tag: String) = repeat(6) {
+        // Frames of the test clock, not wall time: a wrong prune is a LaunchedEffect that runs on a later frame.
+        compose.mainClock.advanceTimeBy(100)
+        compose.waitForIdle()
+        assertTrue(hasTag(tag), "$tag was pruned after the facets reload")
     }
 
     @Test
@@ -93,23 +157,29 @@ class DiscoverCategorySearchUiTest {
         try {
             activity.get().setContent {
                 CompositionLocalProvider(LocalStrings provides PtBr) {
-                    VelumTheme(darkTheme = false) { TemplatesScreen(container, onBack = {}, onOpenTemplate = {}) }
+                    VelumTheme(darkTheme = false) { TemplatesScreen(container, onBack = {}, onOpenTemplate = {}, queries = countedQueries(container)) }
                 }
             }
             await("ZQ Alpha"); await("ZQ Gamma")
             tap("category:meeting")
+            // Wait for the filtered rows first: "Gamma absent" alone is also true while the list is cleared.
+            await("ZQ Alpha")
             await("ZQ Gamma", present = false)
+            awaitRow("cs102-a")
+            assertRowAbsent("cs102-c")
+            val facetsBeforeSearch = facetsFinished.get()
             // Search for a template that is only in the other category: the category must stay selected.
             compose.onNodeWithContentDescription(PtBr.search).performClick()
             compose.onNode(hasSetTextAction()).performTextInput("ZQ Gamma")
             awaitTag("templates:empty")
             awaitTag("active:category")
             // Facets reload asynchronously after the search; the category must still be there once they landed.
-            Thread.sleep(1500)
-            compose.waitForIdle()
-            assertTrue(hasTag("templates:empty") && hasTag("active:category"))
+            awaitFacetsReloadAfter(facetsBeforeSearch)
+            assertStaysSelected("active:category")
+            assertTrue(hasTag("templates:empty"))
             // The search field itself contains "ZQ Gamma"; only result cards would be non-editable matches.
             assertTrue(compose.onAllNodes(hasText("ZQ Gamma") and !hasSetTextAction()).fetchSemanticsNodes().isEmpty())
+            assertRowAbsent("cs102-c")
             // Individual clear brings the match back, search kept.
             tap("active:category")
             await("ZQ Gamma")
@@ -140,7 +210,7 @@ class DiscoverCategorySearchUiTest {
         try {
             activity.get().setContent {
                 CompositionLocalProvider(LocalStrings provides PtBr) {
-                    VelumTheme(darkTheme = false) { TemplatesScreen(container, onBack = {}, onOpenTemplate = {}) }
+                    VelumTheme(darkTheme = false) { TemplatesScreen(container, onBack = {}, onOpenTemplate = {}, queries = countedQueries(container)) }
                 }
             }
             await("ZQ Alpha"); await("ZQ Beta")
@@ -153,13 +223,14 @@ class DiscoverCategorySearchUiTest {
     }
 
     private fun searchThenExpectNoMatch(query: String, activeTag: String) {
+        val facetsBeforeSearch = facetsFinished.get()
         compose.onNodeWithContentDescription(PtBr.search).performClick()
         compose.onNode(hasSetTextAction()).performTextInput(query)
         awaitTag("templates:empty")
         // Facets reload asynchronously after the search; the filter must still be selected once they landed.
-        Thread.sleep(1500)
-        compose.waitForIdle()
-        assertTrue(hasTag("templates:empty") && hasTag(activeTag))
+        awaitFacetsReloadAfter(facetsBeforeSearch)
+        assertStaysSelected(activeTag)
+        assertTrue(hasTag("templates:empty"))
         tap(activeTag)
         await(query)
         awaitTag("templates:empty", present = false)
@@ -169,6 +240,8 @@ class DiscoverCategorySearchUiTest {
     fun tag_survives_search_without_hits_and_clears() = withScreen {
         tap("tag:agenda") // only ZQ Alpha
         await("ZQ Beta", present = false)
+        awaitRow("fs-a")
+        assertRowAbsent("fs-b")
         searchThenExpectNoMatch("ZQ Beta", "active:tag:agenda")
     }
 
@@ -176,6 +249,8 @@ class DiscoverCategorySearchUiTest {
     fun language_survives_search_without_hits_and_clears() = withScreen {
         tap("lang:en") // only ZQ Alpha
         await("ZQ Beta", present = false)
+        awaitRow("fs-a")
+        assertRowAbsent("fs-b")
         searchThenExpectNoMatch("ZQ Beta", "active:lang")
     }
 }

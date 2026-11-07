@@ -17,7 +17,7 @@ enum class DeviceAudioFormat {
 /**
  * Static + handshake-refined capability profile for a Plaud product code.
  *
- * Forbidden opcodes (5, 104, 128, 0xFE20, 143) and forbidden settings (4, 26)
+ * Forbidden opcodes (5, 30, 104, 128, 0xFE20, 143) and forbidden settings (4, 26)
  * apply to **every** model — see [ForbiddenOpcodes] / [ForbiddenSettings].
  */
 data class DeviceCapabilities(

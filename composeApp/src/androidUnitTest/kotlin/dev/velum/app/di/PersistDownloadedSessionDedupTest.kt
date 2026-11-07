@@ -21,6 +21,7 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Test
@@ -65,6 +66,48 @@ class PersistDownloadedSessionDedupTest {
         assertEquals("queued", row(id).status)
         assertEquals(0, row(id).trashed)
         assertEquals(2, enqueued, "unprocessed row must be re-enqueued once")
+    }
+
+    @Test fun cancel_after_the_rename_leaves_no_orphan_file_and_no_row() = fixture {
+        val persisting = coroutineScope {
+            var self: kotlinx.coroutines.Job? = null
+            val job = launch(start = kotlinx.coroutines.CoroutineStart.LAZY) {
+                container.persistDownloadedSession(
+                    DownloadedSessionAudio(1_700_000_000, "SYNTH-SN-1", 1_700_000_000) { sink ->
+                        sink(ogg(1))
+                        self!!.cancel() // lands after the rename, before the row
+                        ogg(1).size.toLong()
+                    },
+                )
+            }
+            self = job
+            job.start()
+            job.join()
+            job
+        }
+        assertTrue(persisting.isCancelled)
+        assertEquals(emptyList(), audioFiles(), "the renamed file must not outlive the cancelled save")
+        assertEquals(0, container.repository.getAllRecordings().size)
+    }
+
+    @Test fun failure_after_the_row_commits_keeps_the_recording_file() = fixture {
+        onEnqueue = { error("synthetic: scheduler failed after the row was written") }
+        assertFailsWith<IllegalStateException> { container.persistDownloadedSession(session(ogg(1))) }
+        val rows = container.repository.getAllRecordings()
+        assertEquals(1, rows.size, "the row committed before the failure")
+        assertTrue(File(rows.single().local_path!!).isFile, "a file a row points to must never be removed")
+        assertEquals(1, audioFiles().size)
+    }
+
+    @Test fun crc_mismatch_warning_is_stored_on_insert_and_follows_a_redownload() = fixture {
+        fun withWarning(bytes: ByteArray, warning: String?) =
+            DownloadedSessionAudio(1_700_000_000, "SYNTH-SN-1", 1_700_000_000, warning) { sink -> sink(bytes); bytes.size.toLong() }
+        val id = container.persistDownloadedSession(withWarning(ogg(1), dev.velum.core.model.ProcessingWarning.DEVICE_CRC_MISMATCH))
+        assertEquals(dev.velum.core.model.ProcessingWarning.DEVICE_CRC_MISMATCH, row(id).processing_warning)
+        container.persistDownloadedSession(withWarning(ogg(2), null)) // a verified re-download clears it
+        assertEquals(null, row(id).processing_warning)
+        container.persistDownloadedSession(withWarning(ogg(3), dev.velum.core.model.ProcessingWarning.DEVICE_CRC_MISMATCH))
+        assertEquals(dev.velum.core.model.ProcessingWarning.DEVICE_CRC_MISMATCH, row(id).processing_warning)
     }
 
     @Test fun failed_redownload_leaves_existing_row_and_audio_untouched() = fixture {
@@ -164,9 +207,10 @@ class PersistDownloadedSessionDedupTest {
     private class Fixture(context: Application) {
         val root: File = Files.createTempDirectory("velum-dedup-synthetic").toFile().also { installRecordingFilesDir(it.path) }
         var enqueued = 0
+        var onEnqueue: () -> Unit = {}
         val container = AppContainer(
             InMemorySecureStore(), DriverFactory(context), modelStoreRoot = ModelStoreDir(File(root, "models").path),
-            recordingJobSchedulerFactory = { _, _ -> RecordingJobScheduler { _, _, _, _ -> enqueued++ } },
+            recordingJobSchedulerFactory = { _, _ -> RecordingJobScheduler { _, _, _, _ -> enqueued++; onEnqueue(); dev.velum.ai.pipeline.EnqueueResult.STARTED_OR_REPLACED } },
         )
         fun dir() = recordingsDirectoryPath()
         fun audioFiles() = File(dir()).listFiles().orEmpty().filter { it.isFile }.map { it.name }.sorted()
