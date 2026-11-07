@@ -55,6 +55,7 @@ internal class DesktopCaptureSession(
 
 internal class DesktopMicCapture(
     private val lineFactory: DesktopAudioLineFactory = JavaSoundAudioLineFactory,
+    private val checkpoint: (RandomAccessFile) -> Unit = { it.fd.sync() },
 ) : MicCapture {
 
     private val startMutex = Mutex()
@@ -253,7 +254,8 @@ internal class DesktopMicCapture(
 
     private fun failAndCloseSession(session: DesktopCaptureSession, message: String) {
         if (!session.capturing.getAndSet(false)) return
-        session.closeResources()
+        runCatching { session.line.stop() }
+        runCatching { session.line.close() }
         val failState = MicSessionState.Failed(message, permissionRequired = false, session = session.session)
         _sessions.value = failState
         _failures.value = message
@@ -263,10 +265,9 @@ internal class DesktopMicCapture(
         val raf = session.raf
         val line = session.line
         val writer = session.resampler
-        val readBuffer = ByteArray(line.bufferSizeBytes.coerceAtLeast(4096))
-        var lastSyncedBytes = 0L
-
         try {
+            val readBuffer = ByteArray(line.bufferSizeBytes.coerceAtLeast(4096))
+            var lastSyncedBytes = 0L
             line.start()
 
             while (session.capturing.get()) {
@@ -304,7 +305,7 @@ internal class DesktopMicCapture(
                         val savedPos = raf.filePointer
                         raf.seek(0)
                         raf.write(pcm16MonoWavHeader(currentWritten, 16_000))
-                        raf.fd.sync()
+                        checkpoint(raf)
                         raf.seek(savedPos)
                         lastSyncedBytes = currentWritten
                         // Never publish Recording if paused occurred in-flight
@@ -314,7 +315,10 @@ internal class DesktopMicCapture(
                     }
                 }
             }
+        } catch (t: Throwable) {
+            failAndCloseSession(session, "Microphone capture failed: ${t.message ?: t::class.simpleName}")
         } finally {
+            runCatching { raf.seek(raf.length()) }
             runCatching { writer.finish() }
             runCatching {
                 val finalBytes = writer.pcmBytesWritten

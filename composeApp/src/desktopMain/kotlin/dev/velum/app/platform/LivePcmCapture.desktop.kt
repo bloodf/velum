@@ -9,11 +9,11 @@ internal class DesktopLivePcmCapture(
 ) : LivePcmCapture {
     override val sampleRateHz: Int = 16_000
 
-    private val running = AtomicBoolean(false)
+    @Volatile private var running = AtomicBoolean(false)
     private var line: DesktopAudioLine? = null
     private var worker: Thread? = null
 
-    override fun start(onPcm: (ByteArray) -> Unit): Boolean {
+    @Synchronized override fun start(onPcm: (ByteArray) -> Unit): Boolean {
         if (running.get()) return true
 
         val audioLine = try {
@@ -30,7 +30,8 @@ internal class DesktopLivePcmCapture(
         }
 
         line = audioLine
-        running.set(true)
+        val running = AtomicBoolean(true)
+        this.running = running
 
         val sink = PcmChunkSink(
             fileOutputStream = null,
@@ -39,7 +40,9 @@ internal class DesktopLivePcmCapture(
                     try {
                         onPcm(chunk)
                     } catch (_: Throwable) {
-                        stop()
+                        running.set(false)
+                        runCatching { audioLine.stop() }
+                        runCatching { audioLine.close() }
                     }
                 }
             },
@@ -84,7 +87,7 @@ internal class DesktopLivePcmCapture(
         return true
     }
 
-    override fun stop() {
+    @Synchronized override fun stop() {
         if (!running.getAndSet(false)) return
         val l = line
         line = null

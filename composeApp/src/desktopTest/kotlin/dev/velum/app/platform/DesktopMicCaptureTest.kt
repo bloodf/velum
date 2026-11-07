@@ -44,7 +44,9 @@ class DesktopMicCaptureTest {
         var isLineClosed = false
 
         private val stopLatch = CountDownLatch(1)
+        private val initialChunkRead = AtomicBoolean(false)
         val hangLatch = CountDownLatch(1)
+        val readEntered = CountDownLatch(1)
 
         override fun open() {
             onOpenAction?.invoke()
@@ -60,6 +62,7 @@ class DesktopMicCaptureTest {
         override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
             if (!isLineRunning || isLineClosed) return -1
             if (hangForeverOnRead) {
+                readEntered.countDown()
                 try {
                     hangLatch.await(10, TimeUnit.SECONDS)
                 } catch (_: InterruptedException) {
@@ -68,6 +71,12 @@ class DesktopMicCaptureTest {
                 return -1
             }
             if (blockOnReadUntilStopped) {
+                if (chunkProvider != null && initialChunkRead.compareAndSet(false, true)) {
+                    val chunk = chunkProvider.invoke() ?: return -1
+                    val size = minOf(chunk.size, length)
+                    System.arraycopy(chunk, 0, buffer, offset, size)
+                    return size
+                }
                 try {
                     stopLatch.await(500, TimeUnit.MILLISECONDS)
                 } catch (_: InterruptedException) {
@@ -93,6 +102,56 @@ class DesktopMicCaptureTest {
             closeCount.incrementAndGet()
             stopLatch.countDown()
         }
+    }
+
+    @Test
+    fun worker_start_failure_publishes_failed() = runBlocking {
+        val dir = Files.createTempDirectory("mic-start-failure").toFile()
+        try {
+            val line = FakeAudioLine(onStartAction = { error("start failed") })
+            val capture = DesktopMicCapture(lineFactory = { line })
+            capture.start(File(dir, "test.wav").absolutePath)
+            repeat(100) { if (capture.sessions.value !is MicSessionState.Failed) delay(10) }
+            assertTrue(assertIs<MicSessionState.Failed>(capture.sessions.value).message.contains("start failed"))
+        } finally { dir.deleteRecursively() }
+    }
+
+    @Test
+    fun checkpoint_failure_publishes_failed_and_finalizes_wav() = runBlocking {
+        val dir = Files.createTempDirectory("mic-checkpoint-failure").toFile()
+        try {
+            val file = File(dir, "test.wav")
+            val line = FakeAudioLine(bufferSizeBytes = 32_000, chunkProvider = { ByteArray(32_000) })
+            val capture = DesktopMicCapture(lineFactory = { line }, checkpoint = { error("checkpoint failed") })
+            capture.start(file.absolutePath)
+            repeat(100) { if (line.closeCount.get() < 2) delay(10) }
+            assertTrue(assertIs<MicSessionState.Failed>(capture.sessions.value).message.contains("checkpoint failed"))
+            RandomAccessFile(file, "r").use { raf ->
+                val header = ByteArray(44)
+                raf.readFully(header)
+                assertTrue(raf.length() > 44)
+                assertEquals(raf.length() - 44, ByteBuffer.wrap(header).order(ByteOrder.LITTLE_ENDIAN).getInt(40).toLong())
+            }
+        } finally { dir.deleteRecursively() }
+    }
+
+    @Test
+    fun failure_finalizes_written_wav() = runBlocking {
+        val dir = Files.createTempDirectory("mic-failure-header").toFile()
+        try {
+            val file = File(dir, "test.wav")
+            val count = AtomicInteger()
+            val line = FakeAudioLine(chunkProvider = { if (count.getAndIncrement() == 0) ByteArray(4096) else null })
+            val capture = DesktopMicCapture(lineFactory = { line })
+            capture.start(file.absolutePath)
+            repeat(100) { if (line.closeCount.get() < 2) delay(10) }
+            RandomAccessFile(file, "r").use { raf ->
+                val header = ByteArray(44)
+                raf.readFully(header)
+                assertTrue(raf.length() > 44)
+                assertEquals(raf.length() - 44, ByteBuffer.wrap(header).order(ByteOrder.LITTLE_ENDIAN).getInt(40).toLong())
+            }
+        } finally { dir.deleteRecursively() }
     }
 
     @Test
@@ -123,7 +182,7 @@ class DesktopMicCaptureTest {
         val tempDir = Files.createTempDirectory("velum-mic-token-test").toFile()
         try {
             val audioFile = File(tempDir, "recordings/test.wav")
-            val fakeLine = FakeAudioLine(sampleRateHz = 16_000, channels = 1)
+            val fakeLine = FakeAudioLine(sampleRateHz = 16_000, channels = 1, blockOnReadUntilStopped = true)
             val capture = DesktopMicCapture(lineFactory = { fakeLine })
 
             val controller = MicRecordingController(capture)
@@ -144,6 +203,7 @@ class DesktopMicCaptureTest {
             assertIs<MicStartResult.Failed>(secondStart)
 
             capture.stop(started.session)
+            Unit
         } finally {
             tempDir.deleteRecursively()
         }
@@ -154,7 +214,7 @@ class DesktopMicCaptureTest {
         val tempDir = Files.createTempDirectory("velum-mic-stale-test").toFile()
         try {
             val audioFile = File(tempDir, "session_a.wav")
-            val fakeLine = FakeAudioLine(sampleRateHz = 16_000, channels = 1)
+            val fakeLine = FakeAudioLine(sampleRateHz = 16_000, channels = 1, blockOnReadUntilStopped = true, chunkProvider = { ByteArray(4096) })
             val capture = DesktopMicCapture(lineFactory = { fakeLine })
 
             val startResult = assertIs<MicStartResult.Started>(capture.start(audioFile.absolutePath))
@@ -174,6 +234,8 @@ class DesktopMicCaptureTest {
             val marker = assertIs<MicMarkerResult.Ok>(capture.addMarker(activeSession, "valid"))
             assertEquals("valid", marker.marker.label)
 
+            repeat(100) { if (audioFile.length() <= 44) delay(10) }
+            assertTrue(audioFile.length() > 44)
             val stopResult = assertIs<MicStopResult.Stopped>(capture.stop(activeSession))
             assertEquals(audioFile.absolutePath, stopResult.absolutePath)
         } finally {
@@ -191,13 +253,18 @@ class DesktopMicCaptureTest {
             // Emit exactly 32,000 bytes (1,000 ms of audio)
             val chunk1 = ByteArray(32_000) { 1 }
             val chunk2 = ByteArray(16_000) { 2 }
-            val chunks = ArrayDeque(listOf(chunk1, chunk2))
+            val allowSecond = AtomicBoolean(false)
+            val emitted = AtomicInteger()
 
             val fakeLine = FakeAudioLine(
                 sampleRateHz = 16_000,
                 channels = 1,
-                bufferSizeBytes = 4096,
-                chunkProvider = { if (chunks.isNotEmpty()) chunks.removeFirst() else ByteArray(0) },
+                bufferSizeBytes = 32_000,
+                chunkProvider = {
+                    if (emitted.compareAndSet(0, 1)) chunk1
+                    else if (allowSecond.get() && emitted.compareAndSet(1, 2)) chunk2
+                    else ByteArray(0)
+                },
             )
 
             val capture = DesktopMicCapture(lineFactory = { fakeLine })
@@ -221,6 +288,7 @@ class DesktopMicCaptureTest {
             val m2 = assertIs<MicMarkerResult.Ok>(capture.addMarker(session, "m2"))
             assertEquals(1_000L, m2.marker.offsetMs)
 
+            allowSecond.set(true)
             // Resume capture: second chunk (16,000 bytes = 500 ms) is processed
             assertEquals(MicPauseResult.Ok, capture.resume(session))
 
@@ -234,6 +302,7 @@ class DesktopMicCaptureTest {
             assertEquals(1_500L, m3.marker.offsetMs)
 
             capture.stop(session)
+            Unit
         } finally {
             tempDir.deleteRecursively()
         }
@@ -271,6 +340,7 @@ class DesktopMicCaptureTest {
             assertIs<MicSessionState.Paused>(stateAfter, "In-flight reads while paused must not publish Recording state")
 
             capture.stop(session)
+            Unit
         } finally {
             tempDir.deleteRecursively()
         }
@@ -359,7 +429,7 @@ class DesktopMicCaptureTest {
                 channels = 2,
                 bufferSizeBytes = 1920,
                 chunkProvider = {
-                    if (emittedChunks.getAndIncrement() < 20) chunk else null
+                    if (emittedChunks.getAndIncrement() < 20) chunk else ByteArray(0)
                 },
             )
 
@@ -419,6 +489,7 @@ class DesktopMicCaptureTest {
                 sampleRateHz = 16_000,
                 channels = 1,
                 blockOnReadUntilStopped = true,
+                chunkProvider = { ByteArray(4096) },
             )
 
             val capture = DesktopMicCapture(lineFactory = { fakeLine })
@@ -426,11 +497,14 @@ class DesktopMicCaptureTest {
             val session = startResult.session
 
             assertEquals(1, fakeLine.openCount.get())
+            repeat(100) { if (fakeLine.startCount.get() == 0) delay(10) }
             assertEquals(1, fakeLine.startCount.get())
 
+            repeat(100) { if (audioFile.length() <= 44) delay(10) }
+            assertTrue(audioFile.length() > 44)
             val stopResult = assertIs<MicStopResult.Stopped>(capture.stop(session))
-            assertEquals(1, fakeLine.stopCount.get())
-            assertEquals(1, fakeLine.closeCount.get())
+            assertTrue(fakeLine.stopCount.get() >= 1)
+            assertTrue(fakeLine.closeCount.get() >= 1)
             assertEquals(audioFile.absolutePath, stopResult.absolutePath)
         } finally {
             tempDir.deleteRecursively()
@@ -480,6 +554,32 @@ class DesktopMicCaptureTest {
             assertTrue(state.permissionRequired, "SecurityException must report permissionRequired = true")
         } finally {
             tempDir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun old_live_worker_cannot_stop_restarted_capture() {
+        val oldLine = FakeAudioLine(hangForeverOnRead = true)
+        val newLine = FakeAudioLine(blockOnReadUntilStopped = true)
+        val creations = AtomicInteger()
+        val capture = DesktopLivePcmCapture { if (creations.getAndIncrement() == 0) oldLine else newLine }
+        try {
+            assertTrue(capture.start { error("old worker published") })
+            assertTrue(oldLine.readEntered.await(2, TimeUnit.SECONDS))
+            capture.stop()
+            assertTrue(capture.start {})
+            oldLine.hangLatch.countDown()
+            // Wait for the old worker's final cleanup before checking the new generation.
+            repeat(100) {
+                if (oldLine.closeCount.get() < 2) Thread.sleep(10)
+            }
+            assertTrue(oldLine.closeCount.get() >= 2)
+            assertTrue(capture.start {})
+            assertEquals(2, creations.get())
+            assertFalse(newLine.isLineClosed)
+        } finally {
+            oldLine.hangLatch.countDown()
+            capture.stop()
         }
     }
 
