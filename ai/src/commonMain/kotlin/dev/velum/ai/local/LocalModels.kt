@@ -35,6 +35,8 @@ import kotlinx.coroutines.flow.transformWhile
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 enum class LocalModelKind {
@@ -327,16 +329,31 @@ class LocalModelManager(
     private val freeSpace: () -> Long? = { storeRoot.freeSpaceBytes() },
 ) {
     private val _states = MutableStateFlow(
-        catalog.map { initialState(it) },
+        catalog.map { unverifiedState(it) },
     )
     val states: StateFlow<List<LocalModelState>> = _states.asStateFlow()
-
-    init { reclaimExtractedArchives() }
 
     // Atomic CAS map (common; `synchronized` is JVM-only), same pattern as cancelRequested.
     private val downloadJobs = MutableStateFlow<Map<String, Job>>(emptyMap())
     private val cancelRequested = MutableStateFlow(setOf<String>())
     private val downloadScope = CoroutineScope(SupervisorJob() + ioDispatcher)
+    private val diskLocks = catalog.associate { it.id to Mutex() }
+    private val initialization = downloadScope.launch { scanDisk() }
+
+    /** Ready remains false until the installed bytes have been verified on IO. */
+    suspend fun awaitInitialization() { initialization.join() }
+
+    private suspend fun scanDisk() {
+        for (state in _states.value) {
+            diskLocks.getValue(state.spec.id).withLock {
+                val verified = initialState(state.spec)
+                if (verified.status == LocalModelStatus.Ready && state.spec.usesArchiveExtract()) {
+                    runCatching { storeRoot.resolve(state.spec.id).resolve(state.spec.archiveFileName).deleteFile() }
+                }
+                update(state.spec.id) { verified }
+            }
+        }
+    }
 
     fun stateFor(id: String): LocalModelState? = _states.value.firstOrNull { it.spec.id == id }
 
@@ -350,9 +367,10 @@ class LocalModelManager(
         return ModelReadiness.resolveWeightsDir(dir, spec)
     }
 
-    fun refreshFromDisk() {
-        reclaimExtractedArchives()
-        _states.update { list -> list.map { initialState(it.spec) } }
+    /** The returned job completes after verification; disk scans never run on the caller's dispatcher. */
+    fun refreshFromDisk(): Job = downloadScope.launch {
+        awaitInitialization()
+        scanDisk()
     }
 
     fun freeSpaceBytes(): Long? = freeSpace()
@@ -368,15 +386,6 @@ class LocalModelManager(
         return pending.sumOf { it.spec.approxBytes } + extractHeadroom
     }
 
-    /** The archive is only needed to extract; once the model is Ready it is dead weight (Parakeet kept ~487 MB). */
-    private fun reclaimExtractedArchives() {
-        _states.value.forEach { state ->
-            val spec = state.spec
-            if (state.status != LocalModelStatus.Ready || !spec.usesArchiveExtract()) return@forEach
-            runCatching { storeRoot.resolve(spec.id).resolve(spec.archiveFileName).deleteFile() }
-        }
-    }
-
     /** Cancel an in-flight [download] for [id], if any. */
     fun cancelDownload(id: String) {
         cancelRequested.update { it + id }
@@ -389,6 +398,7 @@ class LocalModelManager(
      * large transfer. [cancelDownload] on the current model ends the whole sequence.
      */
     fun startDownloads(ids: List<String>): Job = downloadScope.launch {
+        awaitInitialization()
         val pending = ids.filterNot { isReady(it) }
         val waiting = pending.toMutableList()
         adjustQueued(pending, +1)
@@ -439,6 +449,7 @@ class LocalModelManager(
      * The collector's job stays registered, so [cancelDownload] still ends the caller's coroutine.
      */
     fun download(id: String): Flow<LocalModelState> = flow {
+        awaitInitialization()
         val collectorJob = currentCoroutineContext().job
         // Single flight: two bodies would write the same directory. A later caller follows the running one.
         val running = downloadJobs.getAndUpdate { if (id in it) it else it + (id to collectorJob) }
@@ -451,7 +462,8 @@ class LocalModelManager(
         }
         cancelRequested.update { it - id }
         try {
-            emitAll(downloadBody(id).flowOn(ioDispatcher))
+            val lock = diskLocks[id] ?: return@flow
+            lock.withLock { emitAll(downloadBody(id).flowOn(ioDispatcher)) }
         } finally {
             downloadJobs.update { if (it[id] === collectorJob) it - id else it }
             cancelRequested.update { it - id }
@@ -648,10 +660,23 @@ class LocalModelManager(
         val dir = storeRoot.resolve(id)
         // NonCancellable: stopping between the delete and the state update would show Ready with no files.
         withContext(NonCancellable + ioDispatcher) {
-            if (dir.exists()) dir.deleteRecursively()
-            update(id) { initialState(it.spec).copy(status = statusForMissingUrl(it.spec)) }
+            awaitInitialization()
+            val lock = diskLocks[id] ?: return@withContext
+            lock.withLock {
+                if (dir.exists()) dir.deleteRecursively()
+                update(id) { unverifiedState(it.spec) }
+            }
         }
     }
+
+    // No filesystem access during construction. Missing URL/checksum errors are already known.
+    private fun unverifiedState(spec: LocalModelSpec) = LocalModelState(
+        spec, statusForMissingUrl(spec), error = when {
+            spec.downloadUrl.isNullOrBlank() -> LocalModelErrors.NoDownloadUrl
+            spec.sha256.isNullOrBlank() -> LocalModelErrors.ChecksumNotPinned
+            else -> null
+        },
+    )
 
     private fun initialState(spec: LocalModelSpec): LocalModelState {
         val dir = storeRoot.resolve(spec.id)

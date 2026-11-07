@@ -317,6 +317,7 @@ class ChangeTemplateOfflineAndRoutingTest {
                 ),
             ),
         )
+        manager.awaitInitialization()
         val net = Network()
         val repo = VelumRepository(createDatabase(DriverFactory()))
         val settings = SettingsRepository(InMemorySecureStore()).also { it.load(); it.setSummaryMode(ComputeMode.Local) }
