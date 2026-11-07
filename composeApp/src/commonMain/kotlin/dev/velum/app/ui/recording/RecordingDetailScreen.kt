@@ -233,19 +233,22 @@ fun RecordingDetailScreen(
         } else {
             listOf(AiTask.Summary)
         }
-        for (task in tasks) {
-            when (val resolution = container.aiRouter.resolveModeOrPrompt(task, container.localModelManager)) {
-                is ModeResolution.NeedLocalModel -> {
-                    pendingRetranscribe = retranscribe
-                    pendingTemplateId = templateId
-                    pendingApiOverride = apiModelOverride
-                    modelPrompt = resolution
-                    return
-                }
-                is ModeResolution.Proceed -> Unit
-            }
-        }
         scope.launch {
+            for (task in tasks) {
+                when (val resolution = dev.velum.ai.engine.resolveModeAfterInitialization(
+                    task, { container.settingsRepository.settings.value }, container.localModelManager,
+                )) {
+                    is ModeResolution.NeedLocalModel -> {
+                        pendingRetranscribe = retranscribe
+                        pendingTemplateId = templateId
+                        pendingApiOverride = apiModelOverride
+                        modelPrompt = resolution
+                        return@launch
+                    }
+                    ModeResolution.Initializing -> return@launch
+                    is ModeResolution.Proceed -> Unit
+                }
+            }
             try {
                 if (container.enqueueProcessing(
                         recordingId = recordingId,
@@ -1315,9 +1318,11 @@ internal fun LiveTranscriptPane(
             finalTranscript.complete(null)
             return@LaunchedEffect
         }
+        container.localModelManager.awaitInitialization()
         withContext(NonCancellable + Dispatchers.IO) {
             finalTranscript.complete(
                 transcribeQueuedPcm(
+                    initialize = { container.localModelManager.awaitInitialization() },
                     open = { openTranscriber(container) },
                     pcm = pcmQueue,
                     languageHint = container.settingsRepository.settings.value.audioLanguage,
@@ -1630,7 +1635,8 @@ internal fun savableLiveTranscript(markdown: String): String? {
  * Returns the final transcript, or null when no model could produce one (the WAV is unaffected).
  * Audio captured before the screen attaches never reaches this queue, only the WAV.
  */
-private suspend fun transcribeQueuedPcm(
+internal suspend fun transcribeQueuedPcm(
+    initialize: suspend () -> Unit,
     open: () -> StreamingTranscriber?,
     pcm: ReceiveChannel<ByteArray>,
     languageHint: String?,
@@ -1641,6 +1647,7 @@ private suspend fun transcribeQueuedPcm(
     onNoTranscriber: (modelFailed: Boolean) -> Unit,
 ): String? {
     fun logFailure(step: String, failure: Throwable) = println("VelumLivePcm: $step failed: ${failure::class.simpleName}")
+    initialize()
     val opened = runCatching(open).onFailure { logFailure("open", it) }
     val streamer = opened.getOrNull()
     if (streamer == null) {

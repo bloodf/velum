@@ -338,7 +338,11 @@ class LocalModelManager(
     private val cancelRequested = MutableStateFlow(setOf<String>())
     private val downloadScope = CoroutineScope(SupervisorJob() + ioDispatcher)
     private val diskLocks = catalog.associate { it.id to Mutex() }
-    private val initialization = downloadScope.launch { scanDisk() }
+    private val _initialized = MutableStateFlow(false)
+    val initialized: StateFlow<Boolean> = _initialized.asStateFlow()
+    private val initialization = downloadScope.launch {
+        try { scanDisk() } finally { _initialized.value = true }
+    }
 
     /** Ready remains false until the installed bytes have been verified on IO. */
     suspend fun awaitInitialization() { initialization.join() }
