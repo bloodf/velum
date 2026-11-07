@@ -43,6 +43,48 @@ class IosAudioNormalizerTest {
     }
 
     @Test
+    fun sourceHashNormalizationAndDuplicateCleanupUsePersistentOwnedFiles() = runBlocking {
+        val fixture = wavFixture()
+        val cache = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, true).first() as String
+        val sourceDirectory = "$cache/imports"
+        val source = "$sourceDirectory/${NSUUID().UUIDString}.wav"
+        val outputs = mutableListOf<String>()
+        try {
+            assertTrue(NSFileManager.defaultManager.createDirectoryAtPath(sourceDirectory, true, null, null))
+            assertTrue(NSFileManager.defaultManager.copyItemAtPath(fixture, source, null))
+            assertTrue(isImportCacheCopy(source))
+            // AudioImportPipeline hashes the source before normalizing, then keys the row by both hashes.
+            val sourceHash = sha256File(source)
+            assertEquals(sha256Bytes(read(fixture)), sourceHash)
+            val kept = AudioNormalizer().normalizeToWav(source)
+            outputs += kept.wavPath
+            val applicationSupport = NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, true).first() as String
+            assertTrue(kept.wavPath.startsWith("$applicationSupport/velum/recordings/"))
+            assertTrue(isAppOwnedAudioPath(kept.wavPath))
+            assertFalse(isImportCacheCopy(kept.wavPath))
+            assertEquals(kept.contentSha256, sha256File(kept.wavPath))
+            assertEquals(sourceHash, sha256File(source))
+
+            val duplicate = AudioNormalizer().normalizeToWav(source)
+            outputs += duplicate.wavPath
+            assertNotEquals(kept.wavPath, duplicate.wavPath)
+            assertEquals(kept.contentSha256, duplicate.contentSha256)
+            // The pipeline discards the duplicate WAV and its scratch source, preserving the kept row's file.
+            assertTrue(deleteFileAtPath(duplicate.wavPath))
+            assertTrue(deleteFileIfPresent(source))
+            assertFalse(NSFileManager.defaultManager.fileExistsAtPath(source))
+            assertFalse(NSFileManager.defaultManager.fileExistsAtPath(duplicate.wavPath))
+            assertTrue(NSFileManager.defaultManager.fileExistsAtPath(kept.wavPath))
+            assertEquals(kept.contentSha256, sha256File(kept.wavPath))
+            assertFalse(deleteFileAtPath(fixture))
+        } finally {
+            outputs.forEach { deleteFileIfPresent(it) }
+            deleteFileIfPresent(source)
+            NSFileManager.defaultManager.removeItemAtPath(fixture, null)
+        }
+    }
+
+    @Test
     fun nativeCafContainerDecodes() = runBlocking {
         val source = NSTemporaryDirectory() + NSUUID().UUIDString + ".caf"
         var output: String? = null
