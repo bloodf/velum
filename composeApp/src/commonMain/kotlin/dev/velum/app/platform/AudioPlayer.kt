@@ -4,9 +4,12 @@ import kotlinx.coroutines.flow.StateFlow
 
 /**
  * Local audio playback with speed control and optional silence skipping.
- * Android uses [android.media.MediaPlayer]; desktop/iOS return a no-op stub.
+ * Platform engines expose optional playback controls through capabilities.
  */
 interface AudioPlayer {
+    val supportsPlaybackSpeed: Boolean get() = true
+    val supportsSkipSilence: Boolean get() = true
+
     val isPlaying: StateFlow<Boolean>
     val positionMs: StateFlow<Long>
     val durationMs: StateFlow<Long>

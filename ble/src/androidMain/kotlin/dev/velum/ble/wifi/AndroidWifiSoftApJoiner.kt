@@ -28,9 +28,11 @@ class AndroidWifiSoftApJoiner(
     private var boundNetwork: Network? = null
     private var linkProperties: LinkProperties? = null
 
+    @Synchronized
     fun boundNetwork(): Network? = boundNetwork
 
     /** IPv4 host on the SoftAP network for binding the WS listener, if known. */
+    @Synchronized
     fun softApHostAddress(): String? {
         val props = linkProperties ?: return null
         return props.linkAddresses
@@ -41,11 +43,10 @@ class AndroidWifiSoftApJoiner(
     }
 
     override suspend fun join(ssid: String, password: String, ssidIsPattern: Boolean) {
-        check(Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            "SoftAP join requires Android 10+"
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            error("SoftAP join requires Android 10+")
         }
         val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-        connectivityManager = cm
         val specifier = WifiNetworkSpecifier.Builder().apply {
             if (ssidIsPattern) {
                 setSsidPattern(PatternMatcher(ssid, PatternMatcher.PATTERN_PREFIX))
@@ -61,29 +62,51 @@ class AndroidWifiSoftApJoiner(
 
         suspendCancellableCoroutine { cont ->
             val cb = object : ConnectivityManager.NetworkCallback() {
+                private var requestedNetwork: Network? = null
+
                 override fun onAvailable(network: Network) {
-                    boundNetwork = network
-                    linkProperties = cm.getLinkProperties(network)
-                    if (cont.isActive) cont.resume(Unit)
+                    synchronized(this@AndroidWifiSoftApJoiner) {
+                        if (callback !== this || cont.isCancelled) return
+                        requestedNetwork = network
+                    }
                 }
 
                 override fun onLinkPropertiesChanged(network: Network, properties: LinkProperties) {
-                    if (network == boundNetwork) {
+                    synchronized(this@AndroidWifiSoftApJoiner) {
+                        if (callback !== this || cont.isCancelled || network != requestedNetwork) return
+                        boundNetwork = network
                         linkProperties = properties
+                        if (cont.isActive) cont.resume(Unit)
                     }
                 }
 
                 override fun onUnavailable() {
-                    if (cont.isActive) {
-                        cont.resumeWithException(
-                            WifiTransferFailure("SoftAP network unavailable"),
-                        )
+                    synchronized(this@AndroidWifiSoftApJoiner) {
+                        if (callback !== this || cont.isCancelled) return
+                        leaveInternal()
+                        if (cont.isActive) {
+                            cont.resumeWithException(
+                                WifiTransferFailure("SoftAP network unavailable"),
+                            )
+                        }
                     }
                 }
             }
-            callback = cb
-            cm.requestNetwork(request, cb)
-            cont.invokeOnCancellation { leaveInternal() }
+            synchronized(this) {
+                connectivityManager = cm
+                callback = cb
+                try {
+                    cm.requestNetwork(request, cb)
+                    cont.invokeOnCancellation {
+                        synchronized(this) {
+                            if (callback === cb) leaveInternal()
+                        }
+                    }
+                } catch (failure: SecurityException) {
+                    leaveInternal()
+                    if (cont.isActive) cont.resumeWithException(failure)
+                }
+            }
         }
     }
 
@@ -91,15 +114,16 @@ class AndroidWifiSoftApJoiner(
         leaveInternal()
     }
 
+    @Synchronized
     private fun leaveInternal() {
         val cm = connectivityManager
         val cb = callback
-        if (cm != null && cb != null) {
-            runCatching { cm.unregisterNetworkCallback(cb) }
-        }
         callback = null
         boundNetwork = null
         linkProperties = null
         connectivityManager = null
+        if (cm != null && cb != null) {
+            runCatching { cm.unregisterNetworkCallback(cb) }
+        }
     }
 }
