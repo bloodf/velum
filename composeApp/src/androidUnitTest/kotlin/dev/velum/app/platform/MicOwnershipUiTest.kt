@@ -4,8 +4,10 @@ import android.app.Application
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ApplicationProvider
@@ -100,7 +102,51 @@ class MicOwnershipUiTest {
         assertEquals(1, mic.starts); assertEquals(0, mic.stops)
     }
 
-    private class SyntheticCapture : MicCapture {
+    @Test fun recording_controls_remain_available_without_optional_pcm() {
+        val context = ApplicationProvider.getApplicationContext<Application>()
+        context.deleteDatabase("velum.db")
+        val root = Files.createTempDirectory("velum-no-pcm-ui").toFile()
+        installRecordingFilesDir(root.path)
+        val mic = SyntheticCapture(pcmSupported = false)
+        val container = AppContainer(InMemorySecureStore(), DriverFactory(context),
+            modelStoreRoot = ModelStoreDir(File(root, "models").path), micCapture = mic,
+            recordingJobSchedulerFactory = { _, _ -> RecordingJobScheduler { _, _, _, _ ->
+                dev.velum.ai.pipeline.EnqueueResult.STARTED_OR_REPLACED
+            } })
+        val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup()
+        try {
+            val id = runBlocking { container.createLocalRecording(status = "recording") }
+            activity.get().setContent {
+                CompositionLocalProvider(LocalStrings provides PtBr) {
+                    VelumTheme(darkTheme = false) { RecordingDetailScreen(container, id, onBack = {}) }
+                }
+            }
+            compose.waitUntil(10_000) {
+                compose.onAllNodesWithContentDescription(PtBr.ux.livePause).fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithContentDescription(PtBr.ux.liveMark).assertIsDisplayed()
+            assertTrue(compose.onAllNodesWithText(PtBr.micStartFailed).fetchSemanticsNodes().isEmpty())
+            assertTrue(mic.isCapturing)
+            assertEquals(0, mic.stops)
+            compose.onNodeWithContentDescription(PtBr.ux.livePause).performClick()
+            compose.waitUntil(10_000) {
+                compose.onAllNodesWithContentDescription(PtBr.ux.liveResume).fetchSemanticsNodes().isNotEmpty()
+            }
+            assertEquals(1, mic.pauses)
+            compose.onNodeWithContentDescription(PtBr.ux.liveResume).performClick()
+            compose.waitUntil(10_000) {
+                compose.onAllNodesWithContentDescription(PtBr.ux.livePause).fetchSemanticsNodes().isNotEmpty()
+            }
+            assertEquals(1, mic.resumes)
+        } finally {
+            activity.pause().stop().destroy()
+            installRecordingFilesDir(context.filesDir.path)
+            container.databaseHandle.driver.close()
+            root.deleteRecursively()
+        }
+    }
+
+    private class SyntheticCapture(private val pcmSupported: Boolean = true) : MicCapture {
         override val sessions = MutableStateFlow<MicSessionState>(MicSessionState.Idle)
         override val isSupported = true
         override val isCapturing get() = sessions.value is MicSessionState.Recording
@@ -108,14 +154,20 @@ class MicOwnershipUiTest {
         override val markers = emptyList<MicMarker>()
         override var onPcmChunk: ((ByteArray) -> Unit)? = null
         var starts = 0; var stops = 0
+        var pauses = 0; var resumes = 0
+        override fun attachPcm(session: MicSessionIdentity, listener: (ByteArray) -> Unit): Boolean {
+            if (!pcmSupported || sessions.value.session != session) return false
+            onPcmChunk = listener
+            return true
+        }
         override suspend fun start(absolutePath: String, inputSource: MicInputSource): MicStartResult {
             val session = MicSessionIdentity((++starts).toLong(), absolutePath)
             sessions.value = MicSessionState.Recording(absolutePath, 0, session.token)
             return MicStartResult.Started(session)
         }
         override suspend fun stop(): MicStopResult { stops++; return MicStopResult.Failed("Synthetic unexpected stop") }
-        override suspend fun pause() = MicPauseResult.Ok
-        override suspend fun resume() = MicPauseResult.Ok
+        override suspend fun pause(): MicPauseResult { pauses++; return MicPauseResult.Ok }
+        override suspend fun resume(): MicPauseResult { resumes++; return MicPauseResult.Ok }
         override suspend fun addMarker(label: String) = MicMarkerResult.NotCapturing
     }
 }

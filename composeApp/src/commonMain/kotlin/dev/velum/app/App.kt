@@ -254,6 +254,28 @@ private fun VelumRoot(container: AppContainer) {
         }
     }
 
+    // Save the pending identity, never approval. Recovery and recreation must ask again.
+    var consentPath by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
+    var consentRecoveredAt by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<Long?>(null) }
+    var shareConsent by remember { mutableStateOf(dev.velum.app.platform.ExternalShareConsent()) }
+    if (consentPath != null) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { shareConsent.decide(false) },
+            title = { androidx.compose.material3.Text(strings.added.externalShareConsentTitle) },
+            text = { androidx.compose.material3.Text(strings.added.externalShareConsentBody) },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = { shareConsent.decide(true) }) {
+                    androidx.compose.material3.Text(strings.confirm)
+                }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { shareConsent.decide(false) }) {
+                    androidx.compose.material3.Text(strings.cancel)
+                }
+            },
+        )
+    }
+
     // Only a started (visible) instance takes a share: with several instances (Recents) a hidden one must not import and navigate.
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     LaunchedEffect(container, lifecycleOwner) {
@@ -297,7 +319,8 @@ private fun VelumRoot(container: AppContainer) {
                     result?.let { report(it, recovered) }
                 }
             }
-            val shared = awaitIncomingSharePath() ?: break
+            val shared = consentPath?.let { SharedFile.Ready(it, consentRecoveredAt) }
+                ?: awaitIncomingSharePath() ?: break
             val path = when (shared) {
                 is SharedFile.Ready -> shared.path
                 SharedFile.CopyFailed -> {
@@ -305,9 +328,22 @@ private fun VelumRoot(container: AppContainer) {
                     continue
                 }
             }
-            // The import is owned by the container, so recreating this screen cannot cancel it.
-            container.pendingShareRecovered = (shared as SharedFile.Ready).recoveredAtMs != null
-            container.pendingShare = importPipeline.startSharedDetached(path, shared.recoveredAtMs)
+            consentRecoveredAt = (shared as SharedFile.Ready).recoveredAtMs
+            consentPath = path
+            val gate = shareConsent
+            val approved = gate.runIfApproved {
+                container.pendingShareRecovered = shared.recoveredAtMs != null
+                container.pendingShare = importPipeline.startSharedDetached(path, shared.recoveredAtMs)
+            }
+            if (!approved) {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable + kotlinx.coroutines.Dispatchers.IO) {
+                    dev.velum.app.platform.markShareHandled(path)
+                    if (dev.velum.app.platform.isImportCacheCopy(path)) dev.velum.app.platform.deleteFileIfPresent(path)
+                }
+            }
+            consentPath = null
+            consentRecoveredAt = null
+            shareConsent = dev.velum.app.platform.ExternalShareConsent()
         }
       }
     }
