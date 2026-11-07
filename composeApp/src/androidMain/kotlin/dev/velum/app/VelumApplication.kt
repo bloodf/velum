@@ -55,6 +55,11 @@ class VelumApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        when (dev.velum.app.platform.providerCopyProcessRole(this)) {
+            dev.velum.app.platform.ProviderCopyProcessRole.COPY -> return
+            dev.velum.app.platform.ProviderCopyProcessRole.MAIN -> Unit
+            dev.velum.app.platform.ProviderCopyProcessRole.UNKNOWN -> error("Cannot establish application process identity")
+        }
         // Context installs only — no filesDir / SharedPreferences / File I/O on main
         // (device-walk StrictMode penaltyDeath is active before Application.onCreate).
         ShareTextHolder.context = applicationContext

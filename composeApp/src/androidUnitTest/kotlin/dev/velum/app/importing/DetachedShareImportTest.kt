@@ -29,6 +29,13 @@ import org.robolectric.annotation.Config
 @RunWith(AndroidJUnit4::class)
 @Config(application = android.app.Application::class, sdk = [34])
 class DetachedShareImportTest {
+    @org.junit.Before fun installProviderCopyTransport() {
+        dev.velum.app.platform.installLocalProviderCopyTestTransport()
+    }
+    @org.junit.After fun resetProviderCopyTransport() {
+        dev.velum.app.platform.providerCopyTestTransport = null
+    }
+
     @org.junit.After fun drainSharedChannel() = runBlocking {
         while (kotlinx.coroutines.withTimeoutOrNull(300) { dev.velum.app.platform.IncomingShare.next() } != null) Unit
     }

@@ -49,12 +49,19 @@ internal suspend fun importPickedDocument(
     uri: Uri,
     onFailed: () -> Unit,
     onPicked: (path: String) -> Unit,
-    openStream: () -> java.io.InputStream? = { context.contentResolver.openInputStream(uri) },
+    openStream: (() -> java.io.InputStream?)? = null,
 ) {
     var outFile: File? = null
     var displayName: String? = null
     val path = try {
         withContext(Dispatchers.IO) {
+            if (openStream == null) {
+                val result = copyProviderInPrivateProcess(context, uri, share = false)
+                outFile = result?.file
+                displayName = result?.displayName
+                return@withContext result?.file?.absolutePath
+            }
+            // Explicit stream injection is a unit-test seam; production always uses private IPC.
             displayName = displayNameOf(context, uri)
             val extension = displayName?.takeIf { ImportAudioFormats.isSupportedFileName(it) }?.substringAfterLast('.')?.lowercase() ?: "audio"
             val dest = File(context.cacheDir, "imports").apply { mkdirs() }
@@ -74,6 +81,9 @@ internal suspend fun importPickedDocument(
     } catch (cancelled: CancellationException) {
         outFile?.delete()
         throw cancelled
+    } catch (failure: Exception) {
+        android.util.Log.w(TAG, "Import copy failed (${failure::class.java.simpleName})")
+        null
     }
     if (path != null) {
         // Only for a copy that survived: a cancelled or failed import must not leave a registry entry.
@@ -110,20 +120,7 @@ internal fun copyToCache(
             val output = Files.newOutputStream(outFile.toPath(), StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)
             owned = true
             output.use {
-                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-                var copied = 0L
-                while (true) {
-                    checkCancelled()
-                    // Probe one byte beyond the inclusive limit without writing that byte.
-                    val requested = minOf(buffer.size.toLong(), maxBytes - copied + 1).toInt()
-                    val count = input.read(buffer, 0, requested)
-                    checkCancelled()
-                    if (count < 0) break
-                    if (count > maxBytes - copied) throw IOException("Import exceeds size limit")
-                    output.write(buffer, 0, count)
-                    copied += count
-                }
-                if (copied == 0L) throw IOException("Empty import")
+                copyProviderBytes(input, output, maxBytes, checkCancelled)
             }
         } ?: return false
         checkCancelled()
@@ -137,6 +134,28 @@ internal fun copyToCache(
     } finally {
         if (owned && !complete) outFile.delete()
     }
+}
+
+internal fun copyProviderBytes(
+    input: java.io.InputStream,
+    output: java.io.OutputStream,
+    maxBytes: Long = MAX_PROVIDER_COPY_BYTES,
+    checkCancelled: () -> Unit = {},
+) {
+    require(maxBytes in 0..MAX_PROVIDER_COPY_BYTES)
+    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+    var copied = 0L
+    while (true) {
+        checkCancelled()
+        val requested = minOf(buffer.size.toLong(), maxBytes - copied + 1).toInt()
+        val count = input.read(buffer, 0, requested)
+        checkCancelled()
+        if (count < 0) break
+        if (count > maxBytes - copied) throw IOException("Import exceeds size limit")
+        output.write(buffer, 0, count)
+        copied += count
+    }
+    if (copied == 0L) throw IOException("Empty import")
 }
 
 /** The provider's display name ("two-speakers.wav"); the last path segment is an opaque id ("msf:1000000063") for document providers. */
