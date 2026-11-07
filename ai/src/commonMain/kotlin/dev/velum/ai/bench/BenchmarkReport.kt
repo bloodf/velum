@@ -26,8 +26,8 @@ data class BenchResult(
     val elapsedMs: Long,
     val peakRamBytes: Long,
     val outputChars: Int,
-    val runtime: String = "local-engine",
-    val timeBoundary: String = "wall_clock_engine_call_sum",
+    val runtime: String = "",
+    val timeBoundary: String = "",
     val rtfUnit: String = "ratio_elapsed_over_source_duration",
 ) {
     /** Real-time factor: elapsed time divided by source audio duration. Serialized into the report. */
@@ -45,7 +45,7 @@ data class BenchEnvironment(
 )
 
 @Serializable
-data class BenchReport(val environment: BenchEnvironment, val results: List<BenchResult>) {
+data class BenchReport(val environment: BenchEnvironment, val results: List<BenchResult>, val schemaVersion: Int = 2) {
     fun toJson(): String = JSON.encodeToString(this)
 
     private companion object {
@@ -62,6 +62,7 @@ fun rtf(elapsedMs: Long, inputDurationMs: Long): Double {
 
 /** Throws unless the report is complete: a missing measurement must fail the run, not pass it. */
 fun BenchReport.requireValid(expectedModels: Set<String>) {
+    require(schemaVersion == 2) { "unsupported benchmark schema version" }
     require(expectedModels.isNotEmpty() && expectedModels.none { it.isBlank() }) { "no benchmark models requested" }
     require(results.isNotEmpty()) { "report has no results" }
     require(!environment.isEmulator) { "model inference is permitted only on physical devices" }
@@ -74,8 +75,16 @@ fun BenchReport.requireValid(expectedModels: Set<String>) {
         require(r.elapsedMs > 0) { "$who: elapsed missing" }
         require(r.peakRamBytes > 0) { "$who: peak RAM missing" }
         require(r.outputChars > 0) { "$who: empty output" }
-        require(r.runtime.isNotBlank()) { "$who: runtime metadata missing" }
-        require(r.timeBoundary.isNotBlank()) { "$who: time boundary missing" }
+        val expectedRuntime = when (r.task) {
+            BenchTask.Transcription -> "local-asr"
+            BenchTask.Summary -> "local-llm"
+        }
+        val expectedBoundary = when (r.task) {
+            BenchTask.Transcription -> "windowed_asr_engine_transcribe_wall_clock_sum"
+            BenchTask.Summary -> "single_complete_call_wall_clock"
+        }
+        require(r.runtime == expectedRuntime) { "$who: invalid runtime metadata" }
+        require(r.timeBoundary == expectedBoundary) { "$who: invalid time boundary" }
         require(r.rtfUnit == "ratio_elapsed_over_source_duration") { "$who: invalid rtfUnit '${r.rtfUnit}'" }
     }
     // Another run can only reproduce this one if the exact inputs are identified, not just their paths.

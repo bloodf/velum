@@ -54,6 +54,9 @@ class LocalModelBenchmarkDeviceTest {
         reportFile.parentFile?.mkdirs()
         check(!reportFile.exists() || reportFile.delete()) { "cannot remove stale benchmark report" }
         check(!isEmulator()) { "model inference is permitted only on physical devices" }
+        require(args.getString("bench.fixtureSensitivity") == "non-sensitive") {
+            "bench.fixtureSensitivity must explicitly declare non-sensitive input"
+        }
         val models = (args.getString("bench.models") ?: DEFAULT_MODELS).split(',').map(String::trim).filter(String::isNotEmpty)
         assertTrue("bench.models is empty", models.isNotEmpty())
         val workloadSec = (args.getString("bench.workloadSeconds") ?: "60").toInt()
@@ -134,7 +137,7 @@ class LocalModelBenchmarkDeviceTest {
             "audio" to audio,
             "audioSha256" to sha256(clip),
             "audioFormat" to "PCM16_MONO_16KHZ",
-            "fixtureSensitivity" to "non-sensitive",
+            "fixtureSensitivity" to requireNotNull(args.getString("bench.fixtureSensitivity")),
             "summaryTranscriptSha256" to sha256(TRANSCRIPT.encodeToByteArray()),
             "asrWindowSeconds" to "${WindowedAsr.DEFAULT_WINDOW_SECONDS}/hop ${WindowedAsr.DEFAULT_HOP_SECONDS}",
             "summaryTranscriptChars" to TRANSCRIPT.length.toString(),
