@@ -28,6 +28,7 @@ internal data class ProviderCopyResult(val file: File, val displayName: String?)
 
 /** A single live child at a time; the next request cannot reuse a child with another session. */
 private val providerCopyLock = Mutex()
+private val providerCopyRetirement = ProviderCopyRetirement()
 private val providerCopyTimer = Executors.newSingleThreadScheduledExecutor { task ->
     Thread(task, "provider-copy-deadline").apply { isDaemon = true }
 }
@@ -42,6 +43,7 @@ internal suspend fun copyProviderInPrivateProcess(context: Context, uri: Uri, sh
 }
 
 private suspend fun copyProviderViaBinder(context: Context, uri: Uri, share: Boolean): ProviderCopyResult? = providerCopyLock.withLock {
+    providerCopyRetirement.awaitPrevious()
     val deadline = SystemClock.elapsedRealtime() + PROVIDER_COPY_DEADLINE_MS
     val token = UUID.randomUUID().toString()
     val files = ProviderCopyFiles(File(context.cacheDir, "imports"), token, share)
@@ -50,6 +52,10 @@ private suspend fun copyProviderViaBinder(context: Context, uri: Uri, share: Boo
     val guard = ProviderCopySession(token, context.packageName, Process.myUid(), Process.myPid(), deadline)
     var remote: IBinder? = null
     var bound = false
+    var childDead = false
+    var detached = false
+    var bindingClosed = false
+    val retired = providerCopyRetirement.register()
     val monitor = Any()
     fun stop() {
         remote?.let { binder -> runCatching { sendCopyMessage(binder, COPY_STOP) { it.writeString(token) } } }
@@ -87,22 +93,44 @@ private suspend fun copyProviderViaBinder(context: Context, uri: Uri, share: Boo
             return true
         }
     }
-    val death = IBinder.DeathRecipient {
-        synchronized(monitor) { done.complete(guard.died(SystemClock.elapsedRealtime())) }
+    lateinit var connection: ServiceConnection
+    lateinit var death: IBinder.DeathRecipient
+    fun releaseBinding() {
+        if (bindingClosed) return
+        bindingClosed = true
+        if (bound) runCatching { context.unbindService(connection) }
+        remote?.let { runCatching { it.unlinkToDeath(death, 0) } }
+        retired.complete(Unit)
     }
-    val connection = object : ServiceConnection {
+    death = IBinder.DeathRecipient {
+        synchronized(monitor) {
+            childDead = true
+            done.complete(guard.died(SystemClock.elapsedRealtime()))
+            if (detached) releaseBinding()
+        }
+    }
+    connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName, service: IBinder) {
             synchronized(monitor) {
+                if (bindingClosed || remote != null) return
                 remote = service
                 try {
                     service.linkToDeath(death, 0)
                     sendCopyMessage(service, COPY_HELLO) { it.writeString(token); it.writeStrongBinder(callback) }
                     if (done.isCompleted) stop()
-                } catch (_: Exception) { guard.abort(); done.complete(false) }
+                } catch (_: Exception) {
+                    if (!service.isBinderAlive) childDead = true
+                    guard.abort()
+                    done.complete(false)
+                    if (detached && childDead) releaseBinding()
+                }
             }
         }
-        override fun onServiceDisconnected(name: ComponentName) { death.binderDied() }
-        override fun onBindingDied(name: ComponentName) { death.binderDied() }
+        // Only this endpoint's linked DeathRecipient releases retirement, not connection events.
+        override fun onServiceDisconnected(name: ComponentName) = Unit
+        override fun onBindingDied(name: ComponentName) {
+            synchronized(monitor) { guard.abort(); stop(); done.complete(false) }
+        }
         override fun onNullBinding(name: ComponentName) { synchronized(monitor) { guard.abort(); done.complete(false) } }
     }
     val deadlineWatchdog = ProviderCopyDeadline(deadline, SystemClock::elapsedRealtime) {
@@ -126,10 +154,16 @@ private suspend fun copyProviderViaBinder(context: Context, uri: Uri, share: Boo
     } finally {
         // Cancellation reaches this immediately; provider threads live in the reclaimable child only.
         withContext(NonCancellable) {
-            synchronized(monitor) { guard.abort(); stop() }
+            synchronized(monitor) {
+                guard.abort()
+                stop()
+                detached = true
+                // No HELLO was sent before a connection: close it now, and ignore any late callback.
+                // A connected endpoint retains its token, binding and death listener independently
+                // of the cancelled caller until actual death. Its existing child watchdog still runs.
+                if (remote == null || childDead) releaseBinding()
+            }
             timer.cancel(false)
-            if (bound) runCatching { context.unbindService(connection) }
-            remote?.let { runCatching { it.unlinkToDeath(death, 0) } }
             files.close()
         }
     }
@@ -202,4 +236,11 @@ internal class ProviderCopyFiles(private val imports: File, token: String, priva
         sessionDir.delete()
         if (!accepted) published?.delete()
     }
+}
+
+/** Access under providerCopyLock; each death callback completes only its own immutable ticket. */
+internal class ProviderCopyRetirement {
+    private var previous = CompletableDeferred<Unit>().apply { complete(Unit) }
+    suspend fun awaitPrevious() { previous.await() }
+    fun register(): CompletableDeferred<Unit> = CompletableDeferred<Unit>().also { previous = it }
 }
