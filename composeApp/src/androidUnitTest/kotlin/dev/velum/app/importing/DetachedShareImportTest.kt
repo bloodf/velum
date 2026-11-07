@@ -129,6 +129,21 @@ class DetachedShareImportTest {
         assertIs<ImportResult.Failed>(withTimeout(30_000) { pending.await() }) // the next collector reports this once
     }
 
+    @Test fun stale_share_approval_returns_a_handled_failure_without_starting_normalization() = withContainer { container, dir ->
+        var normalized = false
+        val pipeline = AudioImportPipeline(container,
+            normalize = { normalized = true; error("Stale share must not normalize") },
+            markAttempt = { error("Incoming share was cleared") },
+        )
+        val result = withTimeout(5_000) {
+            pipeline.startSharedDetached(silentWav(File(dir, "stale.wav")).path).await()
+        }
+        assertEquals("Incoming share was cleared", assertIs<ImportResult.Failed>(result).message)
+        assertEquals(false, normalized)
+        val next = AudioImportPipeline(container).startSharedDetached(silentWav(File(dir, "next.wav")).path)
+        assertIs<ImportResult.Created>(withTimeout(30_000) { next.await() })
+    }
+
     @Test fun the_same_file_shared_twice_at_once_makes_one_recording_and_one_job() {
         val enqueues = java.util.concurrent.atomic.AtomicInteger()
         withContainer(enqueues) { container, dir ->

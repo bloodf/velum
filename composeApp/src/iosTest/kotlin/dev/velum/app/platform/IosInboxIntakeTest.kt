@@ -3,6 +3,10 @@
 package dev.velum.app.platform
 
 import kotlinx.coroutines.async
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.runCurrent
 import kotlin.test.*
@@ -59,6 +63,31 @@ class IosInboxIntakeTest {
     }
 
     private fun isImportFixture(path: String, cache: String) = path.startsWith("$cache/inbox-")
+
+    @Test fun copy_does_not_block_url_generation_and_clear_rejects_late_publication() = fixture { source, cache, defaults ->
+        runBlocking {
+            val entered = CompletableDeferred<Unit>()
+            val release = CompletableDeferred<Unit>()
+            val intake = IosInboxIntake(source, cache, defaults, copyFile = { from, to ->
+                entered.complete(Unit)
+                runBlocking { withTimeout(5_000) { release.await() } }
+                copyInboxFile(from, to)
+            })
+            val generation = intake.generation()
+            val receiving = async(Dispatchers.Default) { intake.receive(file("$source/audio.wav")) }
+            try {
+                withTimeout(5_000) { entered.await() }
+                val duringCopy = async(Dispatchers.Default) { intake.generation() }
+                assertEquals(generation, withTimeout(1_000) { duringCopy.await() })
+                intake.clear()
+            } finally {
+                release.complete(Unit)
+            }
+            assertFalse(withTimeout(5_000) { receiving.await() })
+            assertTrue(files.contentsOfDirectoryAtPath(cache, null).isNullOrEmpty())
+            assertTrue(files.fileExistsAtPath("$source/audio.wav"))
+        }
+    }
 
     @Test fun rejectsExternalLinksTraversalAndRemoteUrls() = fixture { source, cache, defaults ->
         val intake = IosInboxIntake(source, cache, defaults)
