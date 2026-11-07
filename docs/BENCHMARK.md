@@ -48,14 +48,12 @@ and `whisper-tiny`; `whisper-tiny` is the default "standard" Whisper until the o
   elapsed divided by that.
 
 ## Definitions
-- **elapsed**: sum of the wall-clock of the engine calls (one per ASR window, one for the summary). The runtime builds its
-  recognizer inside each call, so **model load is included in every call**, as in the app.
+- **elapsed & time boundaries**: sum of wall-clock time spent inside the engine calls (`timeBoundary: windowed_asr_engine_transcribe_wall_clock_sum` for ASR, `timeBoundary: single_complete_call_wall_clock` for summary). Audio slice allocation and engine wrapper instantiation occur outside timed blocks. The runtime builds its recognizer inside each call, so **model load is included in every call**, as in the app.
 - Not included: the app's thermal gate (`thermal.awaitCool` pauses in `RecordingProcessor`) is not part of this harness, so a hot device shows up as slower elapsed time, not as a pause.
-- **RTF** = elapsed / source audio duration (`ai/.../bench/BenchmarkReport.kt`, serialized in the report as `rtf`, covered
-  by `BenchmarkReportTest`).
-- **peak RAM**: process peak resident set (`VmHWM` in `/proc/self/status`), reset before each model by writing `5` to
-  `/proc/self/clear_refs`; the run fails if the reset does not take. It is process-wide (app and test): app startup memory still resident at the reset is part of the first model's peak, so run a small warm-up model first or compare later models.
-- Report fields: device, Android release/SDK, ABI, physical-device flag, models, workload, audio path, window sizes, core count, and the SHA-256 of the exact PCM clip (`audioSha256`) and of the fixed transcript (`summaryTranscriptSha256`). A run is only reproducible with the same hashes; the report is rejected without them.
+- **RTF & units**: `rtfUnit: ratio_elapsed_over_source_duration`, defined as elapsed time divided by source audio duration (`ai/.../bench/BenchmarkReport.kt`, serialized in the report as `rtf`, covered by `BenchmarkReportTest`).
+- **peak RAM method**: `peakRamMethod: proc_self_clear_refs_5_vmhwm`. Process peak resident set (`VmHWM` in `/proc/self/status`), reset before each model by writing `5` to `/proc/self/clear_refs`; the run fails closed if the reset does not take within tolerance (`HWM_TOLERANCE_KB = 4096 KB`). It is process-wide (app and test): app startup memory still resident at the reset is part of the first model's peak, so run a small warm-up model first or compare later models.
+- **Model runtime & fixture metadata**: Every result records `runtime` (`local-asr`, `local-llm`), and the environment records hardware/OS details (`device`, `androidRelease`, `sdkInt`, `abi`, `isEmulator: false`, `cores`), exact fixture format (`audioFormat: PCM16_MONO_16KHZ`), explicit sensitivity declaration (`fixtureSensitivity: non-sensitive`), and the SHA-256 of the exact PCM clip (`audioSha256`) and fixed transcript (`summaryTranscriptSha256`). A run is only reproducible with the same hashes and settings; `requireValid()` rejects reports with missing or invalid metadata.
+- **Measurement discipline**: In adherence to the benchmark checklist, never report simulated, mocked, or unmeasured numbers. No emulator inference is allowed.
 
 ## CI
-The pure parts (RTF, required fields, failure on missing data) run in `:ai:jvmTest`. Actual model inference is not permitted in emulators or emulator CI.
+The pure parts (RTF calculation, schema validation, required metadata fields, and fail-closed rejections) run in `:ai:jvmTest`. Actual model inference is strictly prohibited on emulators and emulator CI.

@@ -13,6 +13,9 @@ enum class BenchTask { Transcription, Summary }
  * [elapsedMs] is the wall-clock of the engine calls as the app makes them; the runtime builds its recognizer
  * inside each call, so model load is INCLUDED (once per ASR window, once for the summary).
  * [peakRamBytes] is the process peak RSS (VmHWM) since the pre-run reset.
+ * [runtime] is the execution engine or runtime identifier (e.g. "local-asr", "local-llm").
+ * [timeBoundary] specifies what was included in [elapsedMs].
+ * [rtfUnit] specifies the units of [rtf] (ratio of elapsed time to source input duration).
  */
 @Serializable
 data class BenchResult(
@@ -23,6 +26,9 @@ data class BenchResult(
     val elapsedMs: Long,
     val peakRamBytes: Long,
     val outputChars: Int,
+    val runtime: String = "local-engine",
+    val timeBoundary: String = "wall_clock_engine_call_sum",
+    val rtfUnit: String = "ratio_elapsed_over_source_duration",
 ) {
     /** Real-time factor: elapsed time divided by source audio duration. Serialized into the report. */
     val rtf: Double = rtf(elapsedMs, inputDurationMs)
@@ -68,10 +74,30 @@ fun BenchReport.requireValid(expectedModels: Set<String>) {
         require(r.elapsedMs > 0) { "$who: elapsed missing" }
         require(r.peakRamBytes > 0) { "$who: peak RAM missing" }
         require(r.outputChars > 0) { "$who: empty output" }
+        require(r.runtime.isNotBlank()) { "$who: runtime metadata missing" }
+        require(r.timeBoundary.isNotBlank()) { "$who: time boundary missing" }
+        require(r.rtfUnit == "ratio_elapsed_over_source_duration") { "$who: invalid rtfUnit '${r.rtfUnit}'" }
     }
     // Another run can only reproduce this one if the exact inputs are identified, not just their paths.
-    if (results.any { it.task == BenchTask.Transcription }) requireSha256("audioSha256")
-    if (results.any { it.task == BenchTask.Summary }) requireSha256("summaryTranscriptSha256")
+    if (results.any { it.task == BenchTask.Transcription }) {
+        requireSha256("audioSha256")
+        require(environment.settings["audioFormat"] == "PCM16_MONO_16KHZ") {
+            "settings.audioFormat must be PCM16_MONO_16KHZ"
+        }
+    }
+    if (results.any { it.task == BenchTask.Summary }) {
+        requireSha256("summaryTranscriptSha256")
+        val sourceSec = environment.settings["summaryTranscriptSourceSeconds"]?.toIntOrNull()
+        require(sourceSec != null && sourceSec > 0) {
+            "settings.summaryTranscriptSourceSeconds must be positive"
+        }
+    }
+    require(environment.settings["fixtureSensitivity"] == "non-sensitive") {
+        "settings.fixtureSensitivity must be declared as 'non-sensitive'"
+    }
+    require(environment.settings["peakRamMethod"] == "proc_self_clear_refs_5_vmhwm") {
+        "settings.peakRamMethod must be proc_self_clear_refs_5_vmhwm"
+    }
     require(environment.device.isNotBlank() && environment.androidRelease.isNotBlank() && environment.abi.isNotBlank() && environment.sdkInt > 0) {
         "environment fields missing"
     }
