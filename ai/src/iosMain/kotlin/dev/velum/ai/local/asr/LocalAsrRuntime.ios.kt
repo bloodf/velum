@@ -46,10 +46,11 @@ actual class LocalAsrRuntime actual constructor() {
             put("initialPrompt", initialPrompt.orEmpty())
         }).jsonObject
         val text = result.getValue("text").jsonPrimitive.content.trim()
-        check(text.isNotEmpty()) { "Sherpa returned empty text" }
+        // A successful native decode may contain silence; it has no transcript segments.
         // ponytail: one segment per input window; use token timestamps when finer citations are required.
         TranscriptionResult(
-            text, listOf(TranscriptSegment(0, pcmOrEncoded.size.toLong() * 500 / sampleRateHz, text)),
+            text, if (text.isEmpty()) emptyList() else
+                listOf(TranscriptSegment(0, pcmOrEncoded.size.toLong() * 500 / sampleRateHz, text)),
             result["language"]?.jsonPrimitive?.content?.takeIf { it.isNotBlank() } ?: languageHint,
             "local-asr", modelId,
         )

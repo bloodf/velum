@@ -443,7 +443,7 @@ class LiveTranscriberHandoffTest {
         assertEquals(listOf<Byte>(1), transcriber.pushed.toList())
     }
 
-    @Test fun a_failed_start_still_finishes_the_transcriber_and_leaves_capture_alone() {
+    @Test fun a_failed_start_releases_the_transcriber_and_leaves_capture_alone() {
         transcriber.failStart = true
         showPane()
         modelLoad.countDown()
@@ -674,17 +674,18 @@ class LiveTranscriberHandoffTest {
         @Volatile var failStart = false
         @Volatile var pushGate = CountDownLatch(0)
         val pushEntered = CountDownLatch(1)
-        override fun start(sampleRateHz: Int, languageHint: String?, initialPrompt: String?) {
+        override suspend fun start(sampleRateHz: Int, languageHint: String?, initialPrompt: String?) {
             starts.incrementAndGet()
             check(!failStart) { "Synthetic start failure" }
         }
-        override fun pushPcm(pcm16Le: ByteArray) {
+        override suspend fun pushPcm(pcm16Le: ByteArray) {
             pushEntered.countDown()
             pushGate.await(30, TimeUnit.SECONDS)
             pushed += pcm16Le.toList()
         }
         @Volatile var finishGate = CountDownLatch(0)
-        override fun finish(): String { finishes.incrementAndGet(); finishGate.await(30, TimeUnit.SECONDS); finished.countDown(); return FINAL }
+        override suspend fun cancel() { finished.countDown() }
+        override suspend fun finish(): String { finishes.incrementAndGet(); finishGate.await(30, TimeUnit.SECONDS); finished.countDown(); return FINAL }
         companion object { const val FINAL = "Synthetic final transcript" }
     }
 
