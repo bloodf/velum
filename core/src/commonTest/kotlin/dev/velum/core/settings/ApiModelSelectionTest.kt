@@ -8,9 +8,43 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.test.runTest
 
 class ApiModelSelectionTest {
+    @Test
+    fun creationAfterDeletionPreservesExistingProfileAndRapidAdds() = runTest {
+        val store = InMemorySecureStore()
+        val repo = SettingsRepository(store)
+        repo.load()
+        val removed = repo.createProfile()
+        val existing = repo.createProfile()
+        val edited = existing.copy(name = "Synthetic endpoint", baseUrl = "https://synthetic.example/v1")
+        repo.upsertProfile(edited)
+        repo.setProfileApiKey(existing.id, "synthetic-key")
+        val models = listOf(AiModelInfo("synthetic-model"))
+        repo.setProfileModels(existing.id, models)
+        val binding = TaskModelBinding(profileId = existing.id, modelId = "synthetic-model")
+        repo.setTaskBinding(AiApiTask.Summary, binding)
+        repo.deleteProfile(removed.id)
+
+        val added = repo.createProfile()
+        val rapid = (1..10).map { async { repo.createProfile() } }.awaitAll()
+        val reloaded = SettingsRepository(store)
+        reloaded.load()
+        val profiles = reloaded.settings.value.profiles
+        assertEquals(13, profiles.size)
+        assertEquals(profiles.size, profiles.map { it.id }.distinct().size)
+        assertTrue((rapid + added).none { it.id == existing.id })
+        assertEquals(edited, profiles.single { it.id == existing.id })
+        assertEquals("synthetic-key", reloaded.getProfileApiKey(existing.id))
+        assertEquals(models, reloaded.settings.value.cachedModelsByProfile[existing.id])
+        assertEquals(binding, reloaded.settings.value.taskBindings[AiApiTask.Summary.name])
+        repo.upsertProfile(edited.copy(name = "Edited again"))
+        assertEquals("Edited again", repo.settings.value.profiles.single { it.id == existing.id }.name)
+    }
+
     @Test
     fun perTaskModelsRoundTripAndKeyNeverInPlainSettings() = runTest {
         val store = InMemorySecureStore()

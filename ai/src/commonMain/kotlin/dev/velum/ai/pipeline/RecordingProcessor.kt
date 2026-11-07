@@ -26,7 +26,12 @@ import dev.velum.core.settings.AiApiTask
 import dev.velum.core.settings.ApiModelOverride
 import dev.velum.core.settings.SettingsRepository
 import dev.velum.core.templates.BuiltinTemplateCatalog
+import kotlin.time.Duration
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -48,8 +53,25 @@ const val TRUNCATED_AUDIO_MESSAGE = "Audio file is truncated; processing the par
 /** Bytes read to tell an Ogg or WAV file apart when the file name does not say. */
 private const val SNIFF_BYTES = 16
 
+/** A WAV with more chunks than this before its data chunk is treated as having none. */
+private const val MAX_WAV_CHUNKS = 4096
+
+/** Saved as the processing error when the disk is full; the UI matches this exact text to translate it (#348). */
 const val INSUFFICIENT_STORAGE_MESSAGE =
     "Not enough free storage to process this recording. Free up space and try again."
+
+/** Saved failure texts the UI shows in the app's language; keep them stable (#348). */
+const val NO_TRANSCRIPT_TO_SUMMARIZE_MESSAGE = "This recording has no transcript to summarize."
+const val NO_AUDIO_OR_TRANSCRIPT_MESSAGE = "Recording has no local audio path and no existing transcript."
+const val PROCESSING_STOPPED_MESSAGE =
+    "Processing was stopped by Android because it could not run in the foreground. Open Velum and try again."
+
+/** Stored as the failure text when a rerun can't name speakers; shown translated by the app. */
+const val SPEAKER_NAMES_KEPT_MESSAGE =
+    "The voice key is unavailable, so speakers can't be named again. Your names were kept; try again after unlocking."
+
+/** A rerun that must not overwrite names the user typed because the voice key is unavailable. */
+class SpeakerNamesUnavailableException : IllegalStateException(SPEAKER_NAMES_KEPT_MESSAGE)
 
 /** True when [t] or a cause reports a full disk (ENOSPC); message text is all common code can see. */
 internal fun isOutOfStorage(t: Throwable): Boolean {
@@ -80,6 +102,20 @@ fun sweepOrphanPcmSpill(
         .filter { newestChangeMillis(it) < olderThanEpochMs }
         .count { runCatching { it.deleteRecursively() }; !it.exists() }
 
+/** The startup sweep: the models folder, and the default root earlier versions spilled under. */
+fun sweepOrphanPcmSpill(olderThanEpochMs: Long, modelsRoot: ModelStoreDir, defaultRoot: ModelStoreDir): Int =
+    sweepOrphanPcmSpill(olderThanEpochMs, defaultRoot) + sweepOrphanPcmSpill(olderThanEpochMs, modelsRoot)
+
+/**
+ * Removes every spilled PCM dir, whatever its age, for "Wipe all data". Only safe once no job can be decoding.
+ * False if some remain.
+ */
+fun deleteAllPcmSpill(root: ModelStoreDir = defaultModelStoreRoot()): Boolean =
+    root.resolve("tmp").takeIf { it.isDirectory() }?.listChildren().orEmpty()
+        .filter { it.name.startsWith("pcm-") }
+        .map { runCatching { it.deleteRecursively() }; !it.exists() }
+        .all { it }
+
 private fun newestChangeMillis(dir: ModelStoreDir): Long =
     maxOf(dir.lastModifiedMillis(), dir.walkFiles().maxOfOrNull { it.lastModifiedMillis() } ?: 0L)
 
@@ -95,8 +131,30 @@ class RecordingProcessor(
     },
     private val thermal: ThermalPolicy = NoOpThermalPolicy,
     private val opusDecoder: () -> OpusDecoder = ::createOpusDecoder,
+    private val voiceProfiles: dev.velum.ai.local.VoiceProfileStore? = null,
     private val wipeGate: WipeGate = WipeGate(),
+    /** Where decoded audio spills, under `tmp/`. The wipe and the startup sweep look here. */
+    val pcmSpillRoot: ModelStoreDir = ModelStoreDir(defaultModelStoreRoot().absolutePath),
 ) {
+    private data class Admission(val deleting: Set<String> = emptySet(), val runs: Map<String, Set<Deferred<*>>> = emptyMap())
+    private val admission = MutableStateFlow(Admission())
+
+    fun beginDeletion(recordingId: String): Boolean {
+        while (true) {
+            val current = admission.value
+            if (recordingId in current.deleting) return false
+            if (admission.compareAndSet(current, current.copy(deleting = current.deleting + recordingId))) return true
+        }
+    }
+
+    fun endDeletion(recordingId: String) {
+        admission.update { it.copy(deleting = it.deleting - recordingId) }
+    }
+    fun isDeleting(recordingId: String): Boolean = recordingId in admission.value.deleting
+
+    suspend fun canSchedule(recordingId: String): Boolean =
+        !isDeleting(recordingId) && repository.getRecording(recordingId) != null
+
     private val nextRun = MutableStateFlow(0L)
     private val activeRuns = MutableStateFlow<Map<String, Long>>(emptyMap())
     private val statusLock = Mutex()
@@ -108,10 +166,44 @@ class RecordingProcessor(
         retranscribe: Boolean = true,
         apiModelOverride: ApiModelOverride? = null,
     ): Flow<JobProgress> = channelFlow {
-        wipeGate.guard {
-            runProcess(recordingId, templateId, retranscribe, apiModelOverride).collect { send(it) }
+        val run = async(start = CoroutineStart.LAZY) {
+            wipeGate.guard {
+                runProcess(recordingId, templateId, retranscribe, apiModelOverride).collect { send(it) }
+            }
+        }
+        // Registration and deletion admission share one CAS, so a delete sees every accepted run.
+        while (true) {
+            val current = admission.value
+            if (recordingId in current.deleting) {
+                run.cancel()
+                return@channelFlow
+            }
+            val next = current.copy(runs = current.runs + (recordingId to (current.runs[recordingId].orEmpty() + run)))
+            if (admission.compareAndSet(current, next)) break
+        }
+        run.invokeOnCompletion {
+            admission.update { current ->
+                val left = current.runs[recordingId].orEmpty() - run
+                current.copy(runs = if (left.isEmpty()) current.runs - recordingId else current.runs + (recordingId to left))
+            }
+        }
+        try {
+            run.await()
+        } catch (stopped: RunStopped) {
+            // The recording is being deleted: the flow just ends, its collector is not cancelled.
+            ensureActive()
         }
     }.buffer(Channel.RENDEZVOUS)
+
+    /**
+     * Stops every run of [recordingId] and waits up to [timeout], so each removes its temp files before the recording
+     * is deleted. False if one had not stopped by then; it can write nothing once the row is gone.
+     */
+    suspend fun stopRuns(recordingId: String, timeout: Duration): Boolean {
+        val stopping = admission.value.runs[recordingId].orEmpty()
+        stopping.forEach { it.cancel(RunStopped()) }
+        return withTimeoutOrNull(timeout) { stopping.forEach { it.join() } } != null
+    }
 
     private fun runProcess(
         recordingId: String,
@@ -145,7 +237,7 @@ class RecordingProcessor(
             val sampleRate: Int
             val localPath = recording.local_path
             val job = currentCoroutineContext()[Job]
-            val spillRoot = ModelStoreDir(defaultModelStoreRoot().absolutePath)
+            val spillRoot = pcmSpillRoot
                 .resolve("tmp")
                 .resolve("pcm-$recordingId-$run-${kotlin.random.Random.nextLong().toString(16)}")
             var pcmBuffer: PcmAudioBuffer = PcmAudioBuffer.Memory(ByteArray(0))
@@ -162,6 +254,8 @@ class RecordingProcessor(
                     filename.endsWith(".opus", ignoreCase = true)
                 val wavByExt = filename.endsWith(".wav", ignoreCase = true)
                 val src = ModelStoreDir(localPath)
+                // Path-free: a missing file's own exception carries the absolute path into the saved error.
+                require(src.exists()) { AUDIO_FILE_MISSING_MESSAGE }
                 val fileLen = src.length()
                 // An unknown extension is sniffed from its first bytes, never read whole: the container decides.
                 val sniffed = if (oggByExt || wavByExt) {
@@ -181,22 +275,19 @@ class RecordingProcessor(
                         emit(JobProgress.Running(0.2f, TRUNCATED_AUDIO_MESSAGE))
                     }
                 } else if (isWav) {
-                    // Stream WAV from disk — probe header only, then copy PCM slices.
-                    val probeLen = fileLen.coerceAtMost(256L * 1024L).toInt()
-                    val probe = if (probeLen > 0) src.readRange(0, probeLen) else ByteArray(0)
-                    require(looksLikeWav(probe)) { "Not a WAV file: $localPath" }
-                    var header = locateWavPcmHeader(probe, fileLen)
-                    if (header.dataStart < 0 && fileLen > probeLen) {
-                        val wideLen = fileLen.coerceAtMost(2L * 1024 * 1024).toInt()
-                        header = locateWavPcmHeader(src.readRange(0, wideLen), fileLen)
+                    // Stream WAV from disk: walk the chunk headers on disk (8 bytes each), then copy PCM slices.
+                    val head = src.readRange(0, fileLen.coerceAtMost(12L).toInt())
+                    if (!looksLikeWav(head)) {
+                        // No path in the message. RF64 and other RIFF flavours are named, anything else is generic.
+                        throw IllegalArgumentException(unsupportedAudioMessage(unsupportedContainer(head) ?: "not a WAV file"))
                     }
+                    val header = locateWavPcmHeader(src, fileLen) { job?.ensureActive() }
+                    // No data chunk, or an empty one: reading the file as PCM would give a noise transcript and a
+                    // "successful" job, and an old transcript must not be reused silently.
+                    require(header.dataStart >= 0 && header.dataSize > 0) { WAV_NO_DATA_MESSAGE }
                     sampleRate = header.sampleRateHz
-                    val pcmStart = if (header.dataStart >= 0) header.dataStart.toLong() else 44L
-                    val pcmLen = if (header.dataSize >= 0) {
-                        header.dataSize.toLong().coerceAtMost(fileLen - pcmStart)
-                    } else {
-                        (fileLen - pcmStart).coerceAtLeast(0L)
-                    }
+                    val pcmStart = header.dataStart
+                    val pcmLen = header.dataSize
                     requireSpillable(pcmLen) // before copying: a too-large file must not fill the disk first
                     copyFileRangeToPcm(src, pcmStart, pcmLen, pcmFile) { job?.ensureActive() }
                     pcmBuffer = PcmAudioBuffer.fromExistingFile(pcmFile, pcmLen)
@@ -205,6 +296,8 @@ class RecordingProcessor(
                     // would give a noise transcript with no error. Anything else is raw 16 kHz mono PCM.
                     unsupportedContainer(sniffed)?.let { throw IllegalArgumentException(unsupportedAudioMessage(it)) }
                     sampleRate = 16_000
+                    // An empty file must not fall through to "reuse the existing transcript" as if it were fine.
+                    require(fileLen > 0) { AUDIO_FILE_EMPTY_MESSAGE }
                     requireSpillable(fileLen)
                     copyFileRangeToPcm(src, 0L, fileLen, pcmFile) { job?.ensureActive() }
                     pcmBuffer = PcmAudioBuffer.fromExistingFile(pcmFile, fileLen)
@@ -233,17 +326,27 @@ class RecordingProcessor(
             val (storedTranscript, storedMarkers) = TranscriptFormatter.splitMarkers(recording.transcript.orEmpty())
             var transcriptMarkdown = storedTranscript
             if (!retranscribe && transcriptMarkdown.isBlank()) {
-                throw IllegalStateException("This recording has no transcript to summarize.")
+                throw IllegalStateException(NO_TRANSCRIPT_TO_SUMMARIZE_MESSAGE)
             }
             if (retranscribe) {
                 if (pcmBuffer.sizeBytes <= 0L) {
                     if (transcriptMarkdown.isBlank()) {
                         throw IllegalStateException(
-                            "Recording has no local audio path and no existing transcript.",
+                            NO_AUDIO_OR_TRANSCRIPT_MESSAGE,
                         )
                     }
                     emit(JobProgress.Running(0.35f, "Using existing transcript (no audio file)"))
                 } else {
+                    // Named rows plus an unavailable voice key means this rerun would end in SpeakerNamesUnavailable
+                    // after the (possibly billed) transcription; fail first.
+                    if (cfg.diarizationMode == ComputeMode.Local &&
+                        repository.getSpeakers(recordingId).any { !it.display_name.isNullOrBlank() } &&
+                        !aiRouter.diarizer().speakerNamingReady(
+                            cfg.localDiarizationModelId?.takeIf { it.isNotBlank() } ?: DEFAULT_LOCAL_DIARIZATION_MODEL_ID,
+                        )
+                    ) {
+                        throw SpeakerNamesUnavailableException()
+                    }
                     emit(JobProgress.Running(0.25f, "Transcribing"))
                     awaitThermalGate { emit(it) }
                     ensureApiKeyIfNeeded(
@@ -286,12 +389,14 @@ class RecordingProcessor(
                             settings.resolveApiModel(AiApiTask.Diarization, apiModelOverride).modelId
                     }
                     val diarization = try {
-                        // Prefer in-memory buffer; for spilled PCM diarize the first 30 min window
-                        // (full-buffer diarizers cannot take multi-hour arrays without OOM).
+                        // Prefer in-memory buffer; for spilled PCM diarize a leading window of at most 30 min and at
+                        // most DIARIZATION_MAX_BYTES (30 min at 16 kHz mono, so 10 min at 48 kHz): full-buffer
+                        // diarizers cannot take multi-hour arrays without OOM.
                         val diarBytes = pcmBuffer.asFullArrayOrNull()
                             ?: pcmBuffer.slice(
                                 0,
                                 WindowedAsr.pcmWindowBytes(sampleRate, 30 * 60)
+                                    .coerceAtMost(DIARIZATION_MAX_BYTES)
                                     .coerceAtMost(pcmBuffer.sizeBytes.toInt()),
                             )
                         diar.diarize(
@@ -312,6 +417,14 @@ class RecordingProcessor(
                         null
                     }
 
+                    // Without the voice key nothing can be named. A first run goes on with bare labels; a rerun
+                    // fails as before so the names the user already typed (and the transcript) stay as they are.
+                    if (diarization != null && diarization.speakerNamesUnavailable &&
+                        repository.getSpeakers(recordingId).any { !it.display_name.isNullOrBlank() }
+                    ) {
+                        throw SpeakerNamesUnavailableException()
+                    }
+
                     val mergedSegments = if (diarization != null) {
                         TranscriptFormatter.mergeSpeakerLabels(transcription.segments, diarization)
                     } else {
@@ -319,9 +432,15 @@ class RecordingProcessor(
                     }
                     val withSpeakers = transcription.copy(segments = mergedSegments)
                     transcriptMarkdown = TranscriptFormatter.toMarkdown(withSpeakers, diarization)
+                    val newSpeakers = diarization != null && diarization.spans.isNotEmpty()
+                    // The transcript carries this run's speaker numbering from the next line on. The cached embeddings
+                    // are numbered like the speaker rows, so the previous run's go first: from here until this run's
+                    // are cached, a cancel or crash leaves "no cached voice" (nothing to promote), never the old
+                    // numbering beside new labels, which could enroll the wrong person's voice.
+                    if (newSpeakers) voiceProfiles?.dropSpeakerCache(recordingId)
                     repository.updateTranscript(recordingId, listOfNotNull(transcriptMarkdown, storedMarkers).joinToString("\n\n"))
 
-                    if (diarization != null && diarization.spans.isNotEmpty()) {
+                    if (diarization != null && newSpeakers) {
                         val bySpeaker = diarization.spans.groupBy { it.speakerId }
                         val speakers = bySpeaker.map { (id, spans) ->
                             val talkMs = spans.sumOf { (it.endMs - it.startMs).coerceAtLeast(0) }
@@ -333,6 +452,7 @@ class RecordingProcessor(
                             )
                         }
                         repository.updateSpeakers(recordingId, speakers)
+                        voiceProfiles?.cacheSpeakerEmbeddings(recordingId, diarization.embeddings)
                     }
                 }
             }
@@ -346,7 +466,7 @@ class RecordingProcessor(
             // Exact row first: an edited builtin keeps its id (builtin = 0) and must win over
             // legacy / removed-duplicate alias resolution (#99).
             val exactTemplate = templateId?.takeIf { it.isNotBlank() }?.let { repository.getTemplate(it) }
-            val resolvedTemplateId = exactTemplate?.id ?: BuiltinTemplateCatalog.resolveId(templateId)
+            val resolvedTemplateId = effectiveTemplateId(exactTemplate?.id, templateId)
             val dbTemplate = exactTemplate ?: repository.getTemplate(resolvedTemplateId)
             val catalogEntry = BuiltinTemplateCatalog.get(resolvedTemplateId)
             val baseTemplate = dbTemplate?.system_prompt
@@ -633,43 +753,52 @@ class RecordingProcessor(
 
 
     private data class WavPcmHeader(
-        val dataStart: Int,
-        /** Declared data chunk size from the header (-1 if unknown). */
-        val dataSize: Int,
+        val dataStart: Long,
+        /** Bytes of PCM in the data chunk, clamped to the file (-1 if there is no data chunk). */
+        val dataSize: Long,
         val sampleRateHz: Int,
     )
 
     /**
-     * Parse WAV fmt/data from a header probe. Does **not** clamp
-     * dataSize to the probe length — callers stream the full payload from disk.
+     * Walks the RIFF chunks on disk. Sizes are unsigned 32-bit (read as a signed Int, 0xFFFFFFF8 is -8 and the walk
+     * would never advance). A data size past the end of the file is clamped to it. A data size of 0 means "to the end
+     * of the file" (a writer that never finished the header) unless another chunk header follows, which makes it an
+     * empty data chunk.
      */
-    private fun locateWavPcmHeader(probe: ByteArray, fileLength: Long): WavPcmHeader {
-        if (!looksLikeWav(probe)) return WavPcmHeader(-1, -1, 16_000)
-        var offset = 12
+    private fun locateWavPcmHeader(src: ModelStoreDir, fileLength: Long, checkCancelled: () -> Unit): WavPcmHeader {
+        var offset = 12L
         var sampleRate = 16_000
-        while (offset + 8 <= probe.size) {
-            val id = fourCc(probe, offset)
-            val size = u32le(probe, offset + 4)
+        var steps = 0
+        while (offset + 8 <= fileLength && steps++ < MAX_WAV_CHUNKS) {
+            checkCancelled()
+            val head = src.readRange(offset, 8)
+            val id = fourCc(head, 0)
+            val size = u32le(head, 4).toLong() and 0xFFFF_FFFFL
             val body = offset + 8
             when (id) {
-                "fmt " -> {
-                    if (body + 16 <= probe.size) {
-                        sampleRate = u32le(probe, body + 4)
-                    }
-                }
+                "fmt " -> if (body + 16 <= fileLength) sampleRate = u32le(src.readRange(body, 16), 4)
                 "data" -> {
-                    val maxSize = (fileLength - body).coerceAtLeast(0L).coerceAtMost(Int.MAX_VALUE.toLong())
-                    return WavPcmHeader(
-                        dataStart = body,
-                        dataSize = size.toLong().coerceAtMost(maxSize).toInt(),
-                        sampleRateHz = sampleRate,
-                    )
+                    val rest = (fileLength - body).coerceAtLeast(0L)
+                    val dataSize = when {
+                        size != 0L -> size.coerceAtMost(rest)
+                        followedByAChunk(src, body, fileLength) -> 0L
+                        else -> rest
+                    }
+                    return WavPcmHeader(body, dataSize, sampleRate)
                 }
             }
             offset = body + size + (size % 2)
-            if (offset < 0) break // overflow guard
         }
-        return WavPcmHeader(-1, -1, sampleRate)
+        return WavPcmHeader(-1L, -1L, sampleRate)
+    }
+
+    /** True when a plausible chunk header (printable id, size inside the file) starts at [at]. */
+    private fun followedByAChunk(src: ModelStoreDir, at: Long, fileLength: Long): Boolean {
+        if (at + 8 > fileLength) return false
+        val head = src.readRange(at, 8)
+        val printable = (0 until 4).all { head[it].toInt() in 0x20..0x7E }
+        val size = u32le(head, 4).toLong() and 0xFFFF_FFFFL
+        return printable && at + 8 + size <= fileLength
     }
 
     private fun requireSpillable(pcmBytes: Long) =
@@ -760,6 +889,23 @@ class RecordingProcessor(
     }
 }
 
+/** The recording points at an audio file that is no longer there. */
+const val AUDIO_FILE_MISSING_MESSAGE = "The audio file for this recording is missing, so it was not processed."
+
+/** The recording's audio file is empty. */
+const val AUDIO_FILE_EMPTY_MESSAGE = "The audio file for this recording is empty, so it was not processed."
+
+/** The WAV file has a RIFF/WAVE header but no `data` chunk where one can be read, so it holds no audio to decode. */
+const val WAV_NO_DATA_MESSAGE =
+    "Unsupported audio format (WAV without audio data). The file looks damaged, so it was not transcribed; " +
+        "re-download it from the device or convert it to WAV or Ogg Opus."
+
+/**
+ * Upper bound, in bytes, of the one heap array diarization receives: 30 minutes of 16 kHz mono PCM. Seconds alone
+ * would let a 48 kHz recording ask for 172.8 MB.
+ */
+internal const val DIARIZATION_MAX_BYTES: Int = 30 * 60 * 16_000 * 2
+
 /** Plain error for audio whose container is recognised but not decoded by this path. */
 internal fun unsupportedAudioMessage(container: String) =
     "Unsupported audio format ($container). This file is not Ogg Opus, WAV or raw 16 kHz PCM, so it was not transcribed; " +
@@ -778,8 +924,12 @@ internal fun unsupportedContainer(head: ByteArray): String? {
         at(4, "ftyp") -> "MP4/M4A"
         at(0, "fLaC") -> "FLAC"
         at(0, "#!AMR") -> "AMR"
+        at(0, "RF64") -> "RF64"
         at(0, "RIFF") -> "RIFF (not WAVE)"
         head.size >= 4 && b(0) == 0x1A && b(1) == 0x45 && b(2) == 0xDF && b(3) == 0xA3 -> "WebM/Matroska"
         else -> null
     }
 }
+
+/** The cause a run is cancelled with when its recording is deleted, told apart from any other cancellation. */
+private class RunStopped : CancellationException("The recording is being deleted")

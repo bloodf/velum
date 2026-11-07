@@ -12,6 +12,8 @@ import java.io.FileOutputStream
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -32,10 +34,7 @@ actual fun rememberAudioImporter(onFailed: () -> Unit, onPicked: (path: String) 
     }
 }
 
-actual fun deleteImportCopies() {
-    val context = appContextOrNull() ?: return
-    File(context.cacheDir, "imports").deleteRecursively()
-}
+actual fun deleteImportCopies(): Boolean = deleteCacheDir("imports")
 
 private const val TAG = "AudioImporter"
 
@@ -55,10 +54,11 @@ internal suspend fun importPickedDocument(
     val path = try {
         withContext(Dispatchers.IO) {
             displayName = displayNameOf(context, uri)
-            val name = sanitizeImportFileName(displayName, "${UUID.randomUUID()}.audio")
+            val extension = displayName?.takeIf { ImportAudioFormats.isSupportedFileName(it) }?.substringAfterLast('.')?.lowercase() ?: "audio"
             val dest = File(context.cacheDir, "imports").apply { mkdirs() }
-            val target = File(dest, "${System.currentTimeMillis()}_$name").also { outFile = it }
-            val copied = copyToCache(openStream, target) {
+            val target = File(dest, "${UUID.randomUUID()}.$extension").also { outFile = it }
+            val copyContext = currentCoroutineContext()
+            val copied = copyToCache(openStream, target, checkCancelled = { copyContext.ensureActive() }) {
                 // Class name only: the message and path can carry the user's file names.
                 android.util.Log.w(TAG, "Import copy failed (${it::class.java.simpleName})")
             }
@@ -88,10 +88,23 @@ internal suspend fun importPickedDocument(
 internal fun copyToCache(
     open: () -> java.io.InputStream?,
     outFile: File,
+    checkCancelled: () -> Unit = {},
     onError: (Exception) -> Unit = {},
 ): Boolean {
     try {
-        open()?.use { input -> FileOutputStream(outFile).use { output -> input.copyTo(output) } }
+        checkCancelled()
+        open()?.use { input ->
+            FileOutputStream(outFile).use { output ->
+                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                while (true) {
+                    checkCancelled()
+                    val count = input.read(buffer)
+                    checkCancelled()
+                    if (count < 0) break
+                    output.write(buffer, 0, count)
+                }
+            }
+        }
     } catch (cancelled: CancellationException) {
         outFile.delete()
         throw cancelled
@@ -112,3 +125,12 @@ internal fun displayNameOf(context: android.content.Context, uri: Uri): String? 
             if (c.moveToFirst()) c.getString(0) else null
         }
     }.getOrNull()?.takeIf { it.isNotBlank() } ?: uri.lastPathSegment
+
+actual fun deleteShareExports(): Boolean = deleteCacheDir("share")
+
+private fun deleteCacheDir(name: String): Boolean {
+    val context = appContextOrNull() ?: return false
+    val dir = File(context.cacheDir, name)
+    dir.deleteRecursively()
+    return !dir.exists()
+}

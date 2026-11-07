@@ -286,6 +286,23 @@ internal fun TemplatesScreen(
             emptyList()
         }
     }
+    // Every optional block of the grid, fixed for this composition. The grid scope below reads only these plain
+    // values: state read inside it could change between the grid's reads of the item count (#202).
+    val rankingNow = ranking
+    val plan = discoverGridPlan(
+        discoverTab = tab == 1,
+        featuredOnly = discoverFeaturedOnly,
+        hasRanking = rankingNow.isNotEmpty(),
+        searchBlank = searchQuery.isBlank(),
+        noFacetSelected = selectedCategory == null && selectedTags.isEmpty() && selectedLang == null,
+        shown = visible,
+        fullImportRunning = fullImportRunning,
+        loadFailed = loadFailed,
+        shownTick = shownTick,
+        currentTick = templateTick,
+        loadedTarget = PAGE_SIZE * pages,
+        totalMatches = totalMatches,
+    )
     fun clearFilters() {
         selectedCategory = null
         selectedTags = emptySet()
@@ -507,9 +524,7 @@ internal fun TemplatesScreen(
 
                 }
             }
-            if (tab == 1 && discoverFeaturedOnly && ranking.isNotEmpty() && searchQuery.isBlank() &&
-                selectedCategory == null && selectedTags.isEmpty() && selectedLang == null
-            ) {
+            if (plan.showRanking) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     Column {
                         DisplayTitle(strings.weeklyRanking)
@@ -518,7 +533,7 @@ internal fun TemplatesScreen(
                             Modifier.horizontalScroll(rememberScrollState()),
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
-                            ranking.forEachIndexed { index, tpl ->
+                            rankingNow.forEachIndexed { index, tpl ->
                                 RankingCard(tpl, index + 1, languageTag) { onOpenTemplate(tpl.id) }
                             }
                         }
@@ -527,14 +542,14 @@ internal fun TemplatesScreen(
                     }
                 }
             }
-            if (showLoadingState(visible, loadFailed)) {
+            if (plan.showLoading) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     Box(Modifier.fillMaxWidth().padding(vertical = 48.dp).testTag("templates:loading"), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator()
                     }
                 }
             }
-            if (showEmptyState(visible, fullImportRunning, loadFailed)) {
+            if (plan.showEmpty) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     Box(
                         Modifier.fillMaxWidth().padding(vertical = 48.dp).testTag("templates:empty"),
@@ -568,14 +583,14 @@ internal fun TemplatesScreen(
                 ) { onOpenTemplate(tpl.id) }
             }
             // Retry sits after the rows so a failed later page is retried where the user is looking.
-            if (loadFailed) {
+            if (plan.showRetry) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     Box(Modifier.fillMaxWidth().padding(vertical = 12.dp), contentAlignment = Alignment.Center) {
                         CategoryChip(label = strings.ux.retryProcessing, selected = false, testTag = "templates:retry") { retryTick += 1 }
                     }
                 }
             }
-            if (showPagingSentinel(shownTick, templateTick, rows.size, PAGE_SIZE * pages, totalMatches)) {
+            if (plan.showPagingSentinel) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     // Composed only when scrolled to the end: load the next page.
                     LaunchedEffect(rows.size) { pages += 1 }
@@ -743,7 +758,7 @@ private fun Tab(label: String, selected: Boolean, onClick: () -> Unit) {
 }
 
 private fun templateDisplayName(tpl: Template, languageTag: String): String {
-    val catalog = BuiltinTemplateCatalog.get(tpl.id)
+    val catalog = if (tpl.builtin != 0L) BuiltinTemplateCatalog.get(tpl.id) else null
     return catalog?.displayName(languageTag) ?: tpl.name
 }
 
@@ -946,7 +961,7 @@ fun TemplateDetailScreen(
         var promptDraft by remember(tpl?.id) { mutableStateOf(tpl?.system_prompt.orEmpty()) }
         var nameDraft by remember(tpl?.id) { mutableStateOf(tpl?.name.orEmpty()) }
         val scope = rememberCoroutineScope()
-        if (editing && tpl != null && tpl.builtin == 0L) {
+        if (editing && tpl != null) {
             BasicTextField(
                 value = nameDraft,
                 onValueChange = { nameDraft = it },
@@ -983,6 +998,10 @@ fun TemplateDetailScreen(
                             author = tpl.author,
                             builtin = false,
                             uses = tpl.uses,
+                            tags = TemplateTagVocabulary.decode(tpl.tags),
+                            lang = tpl.lang,
+                            preferredModel = tpl.preferred_model,
+                            preferredEndpointProfileId = tpl.preferred_endpoint_profile_id,
                         )
                         editing = false
                     }
@@ -1004,16 +1023,22 @@ fun TemplateDetailScreen(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(
-                Modifier
-                    .size(52.dp)
-                    .border(1.dp, VelumDivider, RoundedCornerShape(10.dp))
-                    .clickable {
-                        if (tpl?.builtin == 0L) editing = !editing
-                    },
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(Icons.Outlined.Edit, null, tint = VelumInk)
+            if (tpl != null) {
+                Box(
+                    Modifier
+                        .size(52.dp)
+                        .border(1.dp, VelumDivider, RoundedCornerShape(10.dp))
+                        .clickable(role = Role.Button) {
+                            if (!editing) {
+                                nameDraft = tpl.name
+                                promptDraft = tpl.system_prompt
+                            }
+                            editing = !editing
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(if (editing) Icons.Outlined.Close else Icons.Outlined.Edit, if (editing) strings.cancel else strings.edit, tint = VelumInk)
+                }
             }
             BlackButton(strings.close, onBack, Modifier.weight(1f))
         }

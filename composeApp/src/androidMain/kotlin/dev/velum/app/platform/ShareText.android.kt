@@ -10,7 +10,9 @@ actual fun shareText(title: String, text: String) {
         putExtra(Intent.EXTRA_SUBJECT, title)
         putExtra(Intent.EXTRA_TEXT, text)
     }
-    context.startActivity(Intent.createChooser(intent, title))
+    val chooser = Intent.createChooser(intent, title)
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    context.startActivity(chooser)
 }
 
 object ShareTextHolder {

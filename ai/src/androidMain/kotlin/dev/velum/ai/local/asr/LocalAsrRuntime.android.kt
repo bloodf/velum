@@ -165,25 +165,10 @@ actual class LocalAsrRuntime actual constructor() {
                 spans = spans,
                 embeddingModelPath = embModel.absolutePath,
             )
-            val named = mutableMapOf<String, String>()
-            if (voiceProfiles != null) {
-                voiceProfiles.withReady {
-                    for ((speakerId, embedding) in embeddingsBySpeaker) {
-                        if (recordingId != null) {
-                            voiceProfiles.cacheClusterEmbedding(recordingId, speakerId, embedding)
-                        }
-                        val match = voiceProfiles.match(embedding, threshold = matchThreshold)
-                        if (match != null) {
-                            named[speakerId] = match.profile.displayName
-                        }
-                    }
-                }
-            }
-            return DiarizationResult(
-                spans = spans,
-                namedSpeakers = named,
-                engineId = "local-diarizer",
-                modelId = modelId,
+            // Naming only: the embeddings go back to the caller, which caches them with the speaker rows (#399).
+            val naming = voiceProfiles?.nameSpeakers(embeddingsBySpeaker, matchThreshold)
+            return VoiceProfileStore.SpeakerNaming.resultFor(
+                spans, naming, engineId = "local-diarizer", modelId = modelId, embeddings = embeddingsBySpeaker,
             )
         } finally {
             diarizer.release()

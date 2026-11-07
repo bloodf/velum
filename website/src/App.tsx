@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { MotionConfig } from 'framer-motion'
+import { Analytics } from '@vercel/analytics/react'
 import Marketing from './Marketing'
 import Docs from './Docs'
 import { ScrollToTop } from './Shared'
@@ -15,6 +16,7 @@ export default function App() {
         <Route path="/docs/:slug" element={<Docs />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      <Analytics />
     </MotionConfig>
   )
 }

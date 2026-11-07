@@ -157,17 +157,23 @@ class WifiFastTransferSession(
         server.stop()
     }
 
+    // Note: unlike the BLE client, this does no link check. The session has no BLE link or session secret to compare against
+    // (it holds a frame cipher only), and nothing builds it outside tests today (no production caller of sendPacket). If it is
+    // wired, bind it to the Wi-Fi socket's own lifetime and add the check then.
     suspend fun sendPacket(packet: ByteArray) {
-        // The same plaintext check as every BLE write: forbidden opcodes and settings never leave the app (#350).
+        // The same plaintext guard as every BLE write: forbidden opcodes and settings never leave the app (#350).
         // Before sealing, so a rejected packet neither uses a sequence number nor reaches the server.
-        // The guard and the seal see the same copy, so a caller cannot change the bytes between them (as GuardedLink).
+        // The caller's array is copied once, then checked and sealed from that copy, so the caller cannot change the
+        // bytes between the check and the seal (as GuardedLink does).
         val checked = packet.copyOf()
         PlaudWriteGuard.check(checked)
         // One send at a time: the sequence number is taken, and the frame written, in the same order for everyone.
         sendMutex.withLock {
-            val sealed = frameCipher.seal(sendSeq, checked)
-            // What goes out must open to exactly the packet the guard checked, at this sequence.
-            val opened = frameCipher.open(sendSeq, sealed)
+            // Copies on both sides: what the cipher returns is not kept by it, and open() cannot edit what we send.
+            val sealed = frameCipher.seal(sendSeq, checked.copyOf()).copyOf()
+            // What goes out must open to exactly the packet the guard checked, at this sequence. This uses the same
+            // cipher's own open, so it catches a broken or swapped seal, not a cipher whose seal and open agree on a lie.
+            val opened = frameCipher.open(sendSeq, sealed.copyOf())
             check(opened != null && opened.first == sendSeq && opened.second.contentEquals(checked)) {
                 "Sealed frame does not match the checked packet"
             }

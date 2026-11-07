@@ -11,5 +11,6 @@ fun MainViewController(): UIViewController {
         secureStore = IosSecureStore(),
         driverFactory = DriverFactory(),
     )
+    container.runDetached { container.requeueStrandedRecordings() }
     return ComposeUIViewController { App(container) }
 }

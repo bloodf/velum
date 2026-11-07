@@ -77,6 +77,20 @@ class SealedWriteTrustTest {
         }
     }
 
+    @Test fun a_cipher_that_edits_its_input_then_seals_the_edit_is_refused() = runTest {
+        val editing = object : SessionCipher by real {
+            override fun sealPacket(secret: Protocol20SessionSecret, sequence: Long, packet: ByteArray): ByteArray {
+                if (sequence >= FIRST_COMMAND_SEQ) { packet[1] = 0x20; packet[2] = 0xFE.toByte() } // becomes FE20
+                return real.sealPacket(secret, sequence, packet)
+            }
+        }
+        val (client, wire) = connected(editing)
+        val before = wire.writes
+        assertFailsWith<IllegalStateException> { client.writeCommandForTest(Commands.BATTERY_LIKELY, byteArrayOf(1, 2, 3)) }
+        assertEquals(before, wire.writes)
+        client.close()
+    }
+
     @Test fun a_cipher_returning_garbage_is_refused_too() = runTest {
         val garbage = object : SessionCipher by real {
             override fun sealPacket(secret: Protocol20SessionSecret, sequence: Long, packet: ByteArray) =
@@ -86,6 +100,26 @@ class SealedWriteTrustTest {
         val before = wire.writes
         assertFailsWith<IllegalStateException> { client.writeCommandForTest(Commands.BATTERY_LIKELY) }
         assertEquals(before, wire.writes)
+        client.close()
+    }
+
+    @Test fun a_cipher_that_keeps_and_edits_its_output_cannot_change_the_bytes_written() = runTest {
+        var kept: ByteArray? = null
+        val retaining = object : SessionCipher by real {
+            override fun sealPacket(secret: Protocol20SessionSecret, sequence: Long, packet: ByteArray): ByteArray =
+                real.sealPacket(secret, sequence, packet).also { if (sequence >= FIRST_COMMAND_SEQ) kept = it }
+        }
+        val peripheral = FakePlaudPeripheral(real, keys, ByteArray(10), requirePublicKey = false)
+        val ble = FakeBleTransport(peripheral)
+        ble.connect("fake-note-pro")
+        val client = PlaudDeviceClient(ble, retaining, keys, responseTimeout = 5.seconds)
+        client.unlock()
+        // After the client's own check and before the radio: the cipher scribbles on the array it returned.
+        ble.beforeWrite = { kept?.fill(0x7F) }
+        val before = peripheral.receivedCommands.size
+        client.writeCommandForTest(Commands.BATTERY_LIKELY)
+        assertEquals(before + 1, peripheral.receivedCommands.size, "the peripheral must still open the checked packet")
+        assertEquals(Commands.BATTERY_LIKELY, peripheral.receivedCommands.last())
         client.close()
     }
 
@@ -117,6 +151,71 @@ class SealedWriteTrustTest {
         val before = wire.writes
         assertFailsWith<IllegalStateException> { client.writeCommandForTest(Commands.BATTERY_LIKELY) }
         assertEquals(before, wire.writes, "a stale session wrote ${wire.writes - before} packet(s)")
+    }
+
+    @Test fun an_unclosed_client_cannot_write_after_the_link_was_remade() = runTest {
+        val (client, wire) = connected(real)
+        client.writeCommandForTest(Commands.BATTERY_LIKELY) // fine while the link it unlocked on is up
+        wire.ble.disconnect()
+        wire.ble.connect("fake-note-pro") // same device, new link: the old secret and counter are void
+        val before = wire.writes
+        val refused = assertFailsWith<IllegalStateException> { client.writeCommandForTest(Commands.BATTERY_LIKELY) }
+        assertEquals("Link changed since unlock", refused.message)
+        assertEquals(before, wire.writes, "a stale client wrote ${wire.writes - before} packet(s)")
+        client.close()
+    }
+
+    @Test fun a_client_unlocked_again_on_the_new_link_writes_normally() = runTest {
+        val (client, wire) = connected(real)
+        wire.ble.disconnect()
+        wire.ble.connect("fake-note-pro")
+        client.unlock() // a fresh handshake on the new link is allowed
+        val before = wire.writes
+        client.writeCommandForTest(Commands.BATTERY_LIKELY)
+        assertEquals(before + 1, wire.writes)
+        client.close()
+    }
+
+    @Test fun scanning_changes_the_published_state_but_not_the_link() = runTest {
+        val (client, wire) = connected(real)
+        wire.ble.startScan() // a Scan tap during a download: state becomes Scanning, the peripheral stays connected
+        val before = wire.writes
+        client.writeCommandForTest(Commands.BATTERY_LIKELY)
+        wire.ble.stopScan()
+        client.writeCommandForTest(Commands.BATTERY_LIKELY)
+        assertEquals(before + 2, wire.writes, "a live link must keep writing while the scan state changes")
+        client.close()
+    }
+
+    @Test fun a_failed_re_unlock_leaves_the_client_locked_not_re_armed() = runTest {
+        val (client, wire) = connected(real)
+        wire.ble.disconnect()
+        wire.ble.connect("fake-note-pro")
+        val failing = wire.ble.beforeWrite
+        wire.ble.beforeWrite = { throw IllegalStateException("link dropped during unlock") }
+        assertFailsWith<IllegalStateException> { client.unlock() }
+        wire.ble.beforeWrite = failing
+        val before = wire.writes
+        val refused = assertFailsWith<IllegalStateException> { client.writeCommandForTest(Commands.BATTERY_LIKELY) }
+        assertEquals("Not unlocked on this link", refused.message)
+        assertEquals(before, wire.writes, "the old secret must not reach the radio")
+        client.close()
+    }
+
+    @Test fun a_link_change_between_the_check_and_the_write_is_refused_by_the_transport() = runTest {
+        val (client, wire) = connected(real)
+        // The client's own check has passed when the write reaches the transport; the link is re-made right there.
+        wire.ble.beforeWrite = { wire.ble.disconnect(); wire.ble.connect("fake-note-pro") }
+        val refused = assertFailsWith<IllegalStateException> { client.writeCommandForTest(Commands.BATTERY_LIKELY) }
+        assertEquals("Link changed since the write was checked", refused.message)
+        client.close()
+    }
+
+    @Test fun requireSameLink_refuses_only_a_write_made_for_another_generation() {
+        requireSameLink(null, 7) // a write that names no link is not constrained
+        requireSameLink(7, 7)
+        assertFailsWith<IllegalStateException> { requireSameLink(6, 7) }
+        assertFailsWith<IllegalStateException> { requireSameLink(8, 7) }
     }
 
     @Test fun a_closed_client_cannot_unlock_again_and_hides_its_secret() = runTest {
