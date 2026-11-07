@@ -73,6 +73,13 @@
 -keep class dev.velum.app.devicewalk.** { *; }
 -keep class dev.velum.app.VelumApplication { *; }
 -keepclassmembers class dev.velum.app.VelumApplication { *; }
+# The real-catalog instrumentation fixture constructs this test store across APKs.
+-keep class dev.velum.core.security.InMemorySecureStore { *; }
+# The real-catalog fixture passes an explicit database name across APKs.
+# The app uses Kotlin's default-name constructor; R8 may remove this overload.
+-keepclassmembers class dev.velum.core.data.DriverFactory {
+    public <init>(android.content.Context, java.lang.String);
+}
 -keep class dev.velum.app.di.AppContainer { *; }
 -keepclassmembers class dev.velum.app.di.AppContainer { *; }
 # DeviceWalkUiTest gates DeviceScreen on this copy (cross-APK). R8 otherwise
@@ -102,6 +109,20 @@
 }
 -keepclassmembers,allowobfuscation class dev.velum.core.data.VelumRepository {
     java.lang.Object getRecording(java.lang.String,kotlin.coroutines.Continuation);
+    java.lang.Object countDiscoverTemplates(dev.velum.core.templates.DiscoverFilter,kotlin.coroutines.Continuation);
+    java.lang.Object getMeta(java.lang.String,kotlin.coroutines.Continuation);
+}
+# Real-catalog fixture calls, including its nested coroutines. Exact descriptors
+# were absent from the 357218679 app DEX; retain members while names may obfuscate.
+-keepclassmembers,allowobfuscation class dev.velum.app.ui.theme.ThemeKt {
+    public static void VelumTheme(boolean,kotlin.jvm.functions.Function2,androidx.compose.runtime.Composer,int,int);
+}
+-keepclassmembers,allowobfuscation class dev.velum.core.templates.DiscoverFilter {
+    public <init>(dev.velum.core.templates.DiscoverTier,java.lang.String,java.lang.String,java.util.Set,java.lang.String,int,kotlin.jvm.internal.DefaultConstructorMarker);
+    public static dev.velum.core.templates.DiscoverFilter copy$default(dev.velum.core.templates.DiscoverFilter,dev.velum.core.templates.DiscoverTier,java.lang.String,java.lang.String,java.util.Set,java.lang.String,int,java.lang.Object);
+}
+-keepclassmembers,allowobfuscation class dev.velum.core.data.DatabaseHandle {
+    public app.cash.sqldelight.db.SqlDriver getDriver();
 }
 -keepclassmembers,allowobfuscation class dev.velum.core.db.Recording {
     java.lang.String getStatus();
