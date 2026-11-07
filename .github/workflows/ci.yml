@@ -5,13 +5,24 @@ on:
     branches: [main, "cursor/**"]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      extended:
+        description: Run extended build, packaging, screenshots and emulator checks
+        type: boolean
+        default: false
 
-# Android-first: JVM unit tests + Android assemble + emulator launch smoke.
+# Keep the running PR revision and replace only its pending revision; pushes stay independent.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: false
+
+# Ordinary CI runs JVM unit tests and Android lint; extended checks require manual opt-in.
 # iOS KMP targets stay in the project for later; no iOS CI until M3.
 
 jobs:
   jvm-android:
-    name: JVM tests + Android assemble
+    name: JVM unit tests + Android lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -35,6 +46,31 @@ jobs:
 
       - name: Protocol + BLE + AI + core unit tests (JVM)
         run: ./gradlew :plaud-protocol:jvmTest :ble:jvmTest :core:jvmTest :ai:jvmTest :recorder:jvmTest --stacktrace
+
+      - name: Android lint (AI + BLE + Compose app)
+        run: ./gradlew :ai:lintDebug :ble:lintDebug :composeApp:lintDebug --stacktrace
+
+  android-extended:
+    name: Extended Android build + packaging + screenshots
+    if: github.event_name == 'workflow_dispatch' && inputs.extended
+    needs: jvm-android
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: "platform-tools platforms;android-35 build-tools;35.0.0 ndk;28.2.13676358"
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
 
       - name: Assemble signed debug APK
         run: ./gradlew :composeApp:assembleDebug --stacktrace
@@ -177,7 +213,8 @@ jobs:
 
   android-launch-smoke:
     name: Emulator launch smoke
-    needs: jvm-android
+    if: github.event_name == 'workflow_dispatch' && inputs.extended
+    needs: android-extended
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -250,7 +287,8 @@ jobs:
 
   android-device-walk:
     name: Emulator device walk (debug + R8 release)
-    needs: jvm-android
+    if: github.event_name == 'workflow_dispatch' && inputs.extended
+    needs: android-extended
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
