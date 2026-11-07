@@ -46,11 +46,47 @@ case "$TEST_SCOPE" in
     ;;
 esac
 
+# Isolate catalog results so an earlier variant cannot satisfy the gate.
+RESULTS_DIR="composeApp/build/outputs/androidTest-results"
+if [ "$TEST_SCOPE" = discover-catalog ] && [ -d "$RESULTS_DIR" ]; then
+  mkdir -p "$ARTIFACT_DIR/prior-test-results-${BUILD_TYPE}"
+  cp -R "$RESULTS_DIR/." "$ARTIFACT_DIR/prior-test-results-${BUILD_TYPE}/"
+  rm -rf "$RESULTS_DIR"
+fi
+
 set +e
 # Default runner arguments come from the DSL; catalog runs override them above.
 ./gradlew "${GRADLE_PROPS[@]}" "$TASK" --stacktrace
 CODE=$?
 set -e
+
+if [ "$TEST_SCOPE" = discover-catalog ] && [ "$CODE" -eq 0 ]; then
+  if ! python3 - "$RESULTS_DIR" <<'PY_CATALOG'
+import pathlib
+import sys
+import xml.etree.ElementTree as ET
+
+expected = {
+    "count_matcher_accepts_current_english_labels_only",
+    "bundled_catalog_tiers_filters_search_and_clear",
+}
+seen = set()
+for path in pathlib.Path(sys.argv[1]).rglob("*.xml"):
+    for case in ET.parse(path).getroot().iter("testcase"):
+        if case.get("classname") != "dev.velum.app.ui.templates.DiscoverBundledCatalogDeviceTest":
+            continue
+        if any(case.find(tag) is not None for tag in ("skipped", "failure", "error")):
+            raise SystemExit("Catalog gate contains a skipped or failed test: " + str(case.get("name")))
+        seen.add(case.get("name"))
+missing = expected - seen
+if missing:
+    raise SystemExit("Catalog gate did not execute required tests: " + ", ".join(sorted(missing)))
+print("Catalog gate: required tests executed successfully")
+PY_CATALOG
+  then
+    CODE=1
+  fi
+fi
 
 echo "=== Collecting logcat + screenshots ==="
 adb logcat -d -v threadtime > "$ARTIFACT_DIR/logcat-${BUILD_TYPE}.txt" || true
