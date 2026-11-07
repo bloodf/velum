@@ -19,8 +19,11 @@ import platform.posix.errno
 import platform.posix.open
 import platform.posix.read
 
+actual fun sha256File(absolutePath: String): String =
+    sha256FileWithCancellation(absolutePath) {}
+
 @OptIn(ExperimentalForeignApi::class)
-actual fun sha256File(absolutePath: String): String {
+internal fun sha256FileWithCancellation(absolutePath: String, checkCancelled: () -> Unit): String {
     val fd = open(absolutePath, O_RDONLY)
     check(fd >= 0) { "Cannot open $absolutePath (errno=$errno)" }
     try {
@@ -30,6 +33,7 @@ actual fun sha256File(absolutePath: String): String {
             val buffer = ByteArray(64 * 1024)
             buffer.usePinned { input ->
                 while (true) {
+                    checkCancelled()
                     val count = read(fd, input.addressOf(0), buffer.size.toULong())
                     if (count < 0) {
                         val readError = errno
