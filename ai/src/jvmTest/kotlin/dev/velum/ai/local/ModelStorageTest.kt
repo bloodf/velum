@@ -40,31 +40,54 @@ class ModelStorageTest {
 
     private fun newRoot() = ModelStoreDir(File.createTempFile("velum-storage", "").apply { delete(); mkdirs() }.absolutePath)
 
+    @Test fun restart_verifies_single_file_weights_offline_and_preserves_valid_cached_bytes() = runTest {
+        val root = newRoot()
+        val bytes = "verified model".encodeToByteArray()
+        val spec = spec(bytes).copy(kind = LocalModelKind.Llm, archiveFileName = "model.litertlm")
+        val weights = root.resolve(id).resolve(spec.archiveFileName)
+        val client = HttpClient(MockEngine { error("restart must not access the network") })
+        try {
+            weights.writeBytes(bytes)
+            assertTrue(LocalModelManager(root, client, listOf(spec)).also { it.awaitInitialization() }.isReady(id))
+            assertTrue(weights.readBytes().contentEquals(bytes), "valid cache changed")
+            weights.writeBytes(ByteArray(bytes.size) { 1 })
+            assertFalse(LocalModelManager(root, client, listOf(spec)).also { it.awaitInitialization() }.isReady(id), "same-size corrupt file became Ready")
+            weights.writeBytes(byteArrayOf(1))
+            assertFalse(LocalModelManager(root, client, listOf(spec)).also { it.awaitInitialization() }.isReady(id), "truncated fallback copy became Ready")
+            assertTrue(weights.exists(), "verification must not delete the owner's cache")
+        } finally {
+            client.close()
+            root.deleteRecursively()
+        }
+    }
+
     @Test fun the_archive_is_removed_after_a_successful_extraction_and_the_model_stays_ready() = runTest {
         val bytes = zip(); val root = newRoot()
         val manager = LocalModelManager(root, HttpClient(MockEngine {
             respond(bytes, HttpStatusCode.OK, headersOf(HttpHeaders.ContentLength, bytes.size.toString()))
         }), listOf(spec(bytes)))
+        manager.awaitInitialization()
         assertEquals(LocalModelStatus.Ready, manager.download(id).toList().last().status)
         assertFalse(root.resolve(id).resolve("model.zip").exists(), "archive kept next to the extracted files")
         assertTrue(manager.modelPath(id)!!.resolve("tokens.txt").exists())
-        manager.refreshFromDisk()
+        manager.refreshFromDisk().join()
         assertTrue(manager.isReady(id), "readiness must not depend on the archive")
         root.deleteRecursively()
     }
 
-    @Test fun an_archive_left_by_an_earlier_version_is_reclaimed_on_startup() {
+    @Test fun an_archive_left_by_an_earlier_version_is_reclaimed_on_startup() = runTest {
         val bytes = zip(); val root = newRoot()
         val dir = root.resolve(id).also { it.createDirectories() }
         files.forEach { (name, text) -> dir.resolve(name.substringAfter('/')).writeBytes(text.encodeToByteArray()) }
         dir.resolve("model.zip").writeBytes(bytes)
         val manager = LocalModelManager(root, HttpClient(MockEngine { respond("") }), listOf(spec(bytes)))
+        manager.awaitInitialization()
         assertTrue(manager.isReady(id))
         assertFalse(dir.resolve("model.zip").exists())
         root.deleteRecursively()
     }
 
-    @Test fun no_archive_based_catalog_model_is_ready_from_its_archive_alone() {
+    @Test fun no_archive_based_catalog_model_is_ready_from_its_archive_alone() = runTest {
         val archives = DefaultLocalCatalog.filter { it.usesArchiveExtract() }
         assertTrue(archives.size >= 6, "expected the archive-based models, got ${archives.map { it.id }}")
         for (spec in archives) {
@@ -78,6 +101,7 @@ class ModelStorageTest {
     @Test fun not_enough_free_space_fails_before_any_request_with_the_storage_marker() = runTest {
         val bytes = zip(); val root = newRoot(); val requests = AtomicInteger()
         val manager = LocalModelManager(root, HttpClient(MockEngine { requests.incrementAndGet(); respond(bytes) }), listOf(spec(bytes)), freeSpace = { 1L })
+        manager.awaitInitialization()
         val last = manager.download(id).toList().last()
         assertEquals(LocalModelStatus.Failed, last.status)
         assertEquals(LocalModelErrors.StorageFull, last.error)
@@ -88,6 +112,7 @@ class ModelStorageTest {
     @Test fun a_write_failure_from_the_disk_becomes_the_storage_marker_not_errno_text() = runTest {
         val bytes = zip(); val root = newRoot()
         val manager = LocalModelManager(root, HttpClient(MockEngine { throw IOException("write failed: ENOSPC (No space left on device)") }), listOf(spec(bytes)))
+        manager.awaitInitialization()
         val last = manager.download(id).toList().last()
         assertEquals(LocalModelStatus.Failed, last.status)
         assertEquals(LocalModelErrors.StorageFull, last.error)
@@ -98,13 +123,15 @@ class ModelStorageTest {
     @Test fun an_http_failure_is_stored_as_its_status_code() = runTest {
         val bytes = zip(); val root = newRoot()
         val manager = LocalModelManager(root, HttpClient(MockEngine { respond("", HttpStatusCode.NotFound) }), listOf(spec(bytes)))
+        manager.awaitInitialization()
         assertEquals("http_404", manager.download(id).toList().last().error)
         root.deleteRecursively()
     }
 
-    @Test fun space_needed_counts_pending_downloads_plus_room_to_extract_the_largest_archive() {
+    @Test fun space_needed_counts_pending_downloads_plus_room_to_extract_the_largest_archive() = runTest {
         val bytes = zip(); val root = newRoot()
         val manager = LocalModelManager(root, HttpClient(MockEngine { respond("") }), listOf(spec(bytes)))
+        manager.awaitInitialization()
         val size = bytes.size.toLong()
         assertEquals(size, manager.downloadBytesFor(listOf(id)))
         assertEquals(size * 2, manager.bytesNeededFor(listOf(id)))
@@ -120,6 +147,7 @@ class ModelStorageTest {
         val manager = LocalModelManager(root, HttpClient(MockEngine {
             respond(bytes, HttpStatusCode.OK, headersOf(HttpHeaders.ContentLength, bytes.size.toString()))
         }), listOf(spec(bytes)), freeSpace = { capacity - used(File(root.absolutePath)) })
+        manager.awaitInitialization()
         val last = manager.download(id).toList().last()
         assertEquals(LocalModelStatus.Ready, last.status, last.error)
         root.deleteRecursively()
@@ -131,29 +159,33 @@ class ModelStorageTest {
         val manager = LocalModelManager(root, HttpClient(MockEngine {
             respond(cut, HttpStatusCode.OK, headersOf(HttpHeaders.ContentLength, cut.size.toString()))
         }), listOf(spec(cut)))
+        manager.awaitInitialization()
         val last = manager.download(id).toList().last()
         assertEquals(LocalModelStatus.Failed, last.status)
         assertFalse(root.resolve(id).resolve("tokens.txt").exists() || root.resolve(id).resolve("weights").exists())
         val restarted = LocalModelManager(root, HttpClient(MockEngine { respond("") }), listOf(spec(cut)))
+        restarted.awaitInitialization()
         assertFalse(restarted.isReady(id))
         root.deleteRecursively()
     }
 
-    @Test fun weights_left_in_the_staging_tree_by_a_kill_are_never_ready() {
+    @Test fun weights_left_in_the_staging_tree_by_a_kill_are_never_ready() = runTest {
         val bytes = zip(); val root = newRoot()
         val staging = root.resolve(id).resolve(ModelReadiness.STAGING_DIR).also { it.createDirectories() }
         files.forEach { (name, text) -> staging.resolve(name.substringAfter('/')).writeBytes(text.encodeToByteArray()) }
         val manager = LocalModelManager(root, HttpClient(MockEngine { respond("") }), listOf(spec(bytes)))
+        manager.awaitInitialization()
         assertFalse(manager.isReady(id))
         assertEquals(null, manager.modelPath(id))
         root.deleteRecursively()
     }
 
-    @Test fun ready_models_are_not_counted_in_what_is_left_to_download() {
+    @Test fun ready_models_are_not_counted_in_what_is_left_to_download() = runTest {
         val bytes = zip(); val root = newRoot()
         val dir = root.resolve(id).also { it.createDirectories() }
         files.forEach { (name, text) -> dir.resolve(name.substringAfter('/')).writeBytes(text.encodeToByteArray()) }
         val manager = LocalModelManager(root, HttpClient(MockEngine { respond("") }), listOf(spec(bytes)))
+        manager.awaitInitialization()
         assertTrue(manager.isReady(id))
         assertEquals(0L, manager.downloadBytesFor(listOf(id)))
         assertEquals(0L, manager.bytesNeededFor(listOf(id)))
@@ -166,6 +198,7 @@ class ModelStorageTest {
         val dir = root.resolve(id).also { it.createDirectories() }
         files.forEach { (name, text) -> dir.resolve(name.substringAfter('/')).writeBytes(text.encodeToByteArray()) }
         val manager = LocalModelManager(root, HttpClient(MockEngine { requests.incrementAndGet(); respond("", HttpStatusCode.InternalServerError) }), listOf(spec(bytes)))
+        manager.awaitInitialization()
         assertTrue(manager.isReady(id))
         manager.startDownloads(listOf(id)).join()
         assertEquals(0, requests.get())
@@ -181,6 +214,7 @@ class ModelStorageTest {
         val dir = root.resolve(id).also { it.createDirectories() }
         files.forEach { (name, text) -> dir.resolve(name.substringAfter('/')).writeBytes(text.encodeToByteArray()) }
         val manager = LocalModelManager(root, HttpClient(MockEngine { requests.incrementAndGet(); respond("", HttpStatusCode.InternalServerError) }), listOf(spec(bytes)))
+        manager.awaitInitialization()
         assertEquals(LocalModelStatus.Ready, manager.download(id).toList().last().status)
         assertEquals(0, requests.get())
         assertTrue(dir.resolve("tokens.txt").exists())
