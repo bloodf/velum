@@ -176,6 +176,7 @@ kotlin {
             implementation(libs.markdown.renderer.m3)
         }
         commonTest.dependencies {
+            implementation(libs.kotlinx.coroutines.test)
             implementation(libs.kotlin.test)
             implementation(compose.ui)
         }
@@ -392,6 +393,14 @@ compose.desktop {
             }
             macOS {
                 iconFile.set(project.file("src/desktopMain/resources/icons/velum-512.png"))
+                bundleID = "dev.velum.app"
+                infoPlist {
+                    extraKeysRawXml = """
+                        <key>NSMicrophoneUsageDescription</key>
+                        <string>Velum requires microphone access to record voice memos and meetings.</string>
+                    """.trimIndent()
+                }
+                entitlementsFile.set(project.file("src/desktopMain/resources/macOS/entitlements.plist"))
             }
         }
     }
