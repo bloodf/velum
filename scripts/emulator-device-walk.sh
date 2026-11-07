@@ -99,11 +99,11 @@ adb pull "$REMOTE_SHOTS" "$ARTIFACT_DIR/screenshots-${BUILD_TYPE}/" 2>/dev/null 
   echo "No screenshots at $REMOTE_SHOTS (tests may have failed before capture)"
 
 # Also pull orchestrator / test results if present
-if ls composeApp/build/outputs/androidTest-results/**/*.xml >/dev/null 2>&1; then
+if [ -d composeApp/build/outputs/androidTest-results ]; then
   mkdir -p "$ARTIFACT_DIR/test-results-${BUILD_TYPE}"
   cp -R composeApp/build/outputs/androidTest-results/. "$ARTIFACT_DIR/test-results-${BUILD_TYPE}/" || true
 fi
-if ls composeApp/build/reports/androidTests/**/* >/dev/null 2>&1; then
+if [ -d composeApp/build/reports/androidTests ]; then
   mkdir -p "$ARTIFACT_DIR/reports-${BUILD_TYPE}"
   cp -R composeApp/build/reports/androidTests/. "$ARTIFACT_DIR/reports-${BUILD_TYPE}/" || true
 fi
