@@ -1054,6 +1054,8 @@ private fun SourcesPane(
             durationLabel = "$pos / $dur",
             enabled = hasLocalAudio,
             isPlaying = playing,
+            supportsPlaybackSpeed = player.supportsPlaybackSpeed,
+            supportsSkipSilence = player.supportsSkipSilence,
             speedLabel = formatSpeedLabel(speed),
             skipSilence = skipSilence,
             progress = if (effectiveDurationMs > 0) {
@@ -1896,6 +1898,8 @@ private fun PlayerBar(
     durationLabel: String,
     enabled: Boolean = true,
     isPlaying: Boolean = false,
+    supportsPlaybackSpeed: Boolean = true,
+    supportsSkipSilence: Boolean = true,
     speedLabel: String = "1x",
     skipSilence: Boolean = false,
     progress: Float = 0f,
@@ -2008,7 +2012,7 @@ private fun PlayerBar(
                     modifier = Modifier.size(26.dp),
                 )
             }
-            Text(
+            if (supportsPlaybackSpeed) Text(
                 speedLabel,
                 color = tint,
                 fontWeight = FontWeight.Medium,
@@ -2017,7 +2021,7 @@ private fun PlayerBar(
                     .clickable(enabled = enabled, onClick = onCycleSpeed)
                     .padding(horizontal = 8.dp, vertical = 12.dp),
             )
-            Text(
+            if (supportsSkipSilence) Text(
                 strings.ux.skipSilence,
                 color = if (skipSilence) VelumInk else tint,
                 fontWeight = if (skipSilence) FontWeight.SemiBold else FontWeight.Medium,
