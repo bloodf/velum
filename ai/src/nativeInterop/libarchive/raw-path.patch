@@ -1,0 +1,71 @@
+--- a/libarchive/archive_read_support_format_zip.c
++++ b/libarchive/archive_read_support_format_zip.c
+@@ -683,6 +683,25 @@
+  *	id1+size1+data1 + id2+size2+data2 ...
+  *  triplets.  id and size are 2 bytes each.
+  */
++/* Velum: validate raw ZIP names before libarchive converts or terminates them. */
++static int
++velum_zip_name(struct archive_read *a, const char *p, size_t n)
++{
++ size_t i, start = 0;
++ if (n == 0 || p[0] == '/') goto unsafe;
++ for (i = 0; i <= n; ++i) {
++  if (i < n && (p[i] == 0 || p[i] == '\\' || p[i] == ':')) goto unsafe;
++  if (i == n || p[i] == '/') {
++   if (i - start == 2 && p[start] == '.' && p[start + 1] == '.') goto unsafe;
++   start = i + 1;
++  }
++ }
++ return ARCHIVE_OK;
++unsafe:
++ archive_set_error(&a->archive, ARCHIVE_ERRNO_FILE_FORMAT, "Unsafe raw ZIP path");
++ return ARCHIVE_FATAL;
++}
++
+ static int
+ process_extra(struct archive_read *a, struct archive_entry *entry,
+      const char *p, size_t extra_length, struct zip_entry* zip_entry)
+@@ -1111,6 +1130,8 @@
+ 			offset += 5;
+ 			datasize -= 5;
+ 
++			if (velum_zip_name(a, p + offset, datasize) != ARCHIVE_OK) return ARCHIVE_FATAL;
++
+ 			/* The path name in this field is always encoded
+ 			 * in UTF-8. */
+ 			if (zip->sconv_utf8 == NULL) {
+@@ -1319,6 +1340,7 @@
+ 		    "Truncated ZIP file header");
+ 		return (ARCHIVE_FATAL);
+ 	}
++	if (velum_zip_name(a, h, filename_length) != ARCHIVE_OK) return ARCHIVE_FATAL;
+ 	if (zip_entry->zip_flags & ZIP_UTF8_NAME) {
+ 		/* The filename is stored to be UTF-8. */
+ 		if (zip->sconv_utf8 == NULL) {
+@@ -3554,8 +3576,15 @@
+ 		return (ARCHIVE_EOF);
+ 
+ 	/* Return EOF immediately if this is a non-regular file. */
+-	if (AE_IFREG != (zip->entry->mode & AE_IFMT))
+-		return (ARCHIVE_EOF);
++	if (AE_IFREG != (zip->entry->mode & AE_IFMT)) {
++                if (zip->entry->crc32 != 0 || zip->entry->compressed_size != 0 ||
++                    zip->entry->uncompressed_size != 0) {
++                        archive_set_error(&a->archive, ARCHIVE_ERRNO_FILE_FORMAT,
++                            "Nonempty ZIP directory or special entry");
++                        return ARCHIVE_FATAL;
++                }
++                return ARCHIVE_EOF;
++        }
+ 
+ 	__archive_read_consume(a, zip->unconsumed);
+ 	zip->unconsumed = 0;
+@@ -4444,6 +4473,7 @@
+ 			    "Truncated ZIP file header");
+ 			return ARCHIVE_FATAL;
+ 		}
++		if (velum_zip_name(a, p, filename_length) != ARCHIVE_OK) return ARCHIVE_FATAL;
+ 		if (ARCHIVE_OK != process_extra(a, entry, p + filename_length,
+ 		    extra_length, zip_entry)) {
+ 			return ARCHIVE_FATAL;

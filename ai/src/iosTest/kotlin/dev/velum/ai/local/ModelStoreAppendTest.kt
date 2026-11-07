@@ -27,7 +27,7 @@ class ModelStoreAppendTest {
         }
     }
 
-    @Test fun unsupported_zip_is_rejected_without_creating_extracted_files() {
+    @Test fun corrupt_zip_is_rejected_without_creating_extracted_files() {
         val root = ModelStoreDir(NSTemporaryDirectory() + NSUUID().UUIDString)
         try {
             val archive = root.resolve("model.ZIP")
@@ -35,10 +35,9 @@ class ModelStoreAppendTest {
             val destination = root.resolve("extracted")
             // ZIP must stay classified as an archive so download/readiness never treat it as raw weights.
             assertEquals(true, ModelArchiveExtractor.isArchive(archive.name))
-            val failure = assertFailsWith<IllegalArgumentException> {
+            assertFailsWith<IllegalArgumentException> {
                 ModelArchiveExtractor.extract(archive, destination)
             }
-            assertEquals("Unsupported model archive format", failure.message)
             assertEquals(false, destination.exists())
             assertContentEquals(byteArrayOf(0x50, 0x4b, 3, 4), archive.readBytes())
         } finally {
