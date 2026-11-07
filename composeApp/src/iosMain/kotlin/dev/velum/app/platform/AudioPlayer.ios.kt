@@ -42,14 +42,10 @@ private class IosAudioPlayer : AudioPlayer {
             val candidate = AVAudioPlayer(contentsOfURL = NSURL.fileURLWithPath(path), error = null)
             candidate.enableRate = true
             candidate.rate = _playbackSpeed.value
-            if (!candidate.prepareToPlay()) {
-                candidate.stop()
-                false
-            } else {
-                player = candidate
-                _durationMs.value = (candidate.duration * 1000).toLong().coerceAtLeast(0L)
-                true
-            }
+            // Opening validates the file. play() prepares the output and reports whether it starts.
+            player = candidate
+            _durationMs.value = (candidate.duration * 1000).toLong().coerceAtLeast(0L)
+            true
         } catch (_: Exception) {
             false
         }
