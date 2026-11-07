@@ -107,3 +107,30 @@ tasks.matching { it.name == "jvmTest" }.configureEach {
         },
     ).withPathSensitivity(PathSensitivity.RELATIVE).withPropertyName("portabilityScanSources")
 }
+
+// The existing Xcode Gradle phase supplies these paths. Keep catalog ownership in core.
+val copyIosCatalogAssets = tasks.register<Copy>("copyIosCatalogAssets") {
+    dependsOn(validateAutoflowTemplates)
+    from("src/commonMain/resources") {
+        include("autoflow_templates.jsonl", "plaud_templates.jsonl", "plaud_templates_full.jsonl.gz", "velum_contributed.jsonl")
+    }
+    val products = providers.environmentVariable("TARGET_BUILD_DIR")
+    val resources = providers.environmentVariable("UNLOCALIZED_RESOURCES_FOLDER_PATH")
+    onlyIf { products.isPresent && resources.isPresent }
+    into(products.zip(resources) { base, folder -> "$base/$folder/velum-core-catalog" }.orElse(layout.buildDirectory.dir("unused-ios-catalog").map { it.asFile.path }))
+}
+
+tasks.matching { it.name.startsWith("compileKotlinIos") }.configureEach {
+    dependsOn(copyIosCatalogAssets)
+}
+
+listOf("iosX64", "iosArm64", "iosSimulatorArm64").forEach { target ->
+    val copyTestCatalog = tasks.register<Copy>("${target}CopyTestCatalogAssets") {
+        dependsOn(validateAutoflowTemplates)
+        from("src/commonMain/resources")
+        into(layout.buildDirectory.dir("bin/$target/debugTest/velum-core-catalog"))
+    }
+    tasks.matching { it.name == "${target}Test" }.configureEach {
+        dependsOn(copyTestCatalog)
+    }
+}
