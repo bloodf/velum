@@ -44,6 +44,12 @@ kotlin {
                 implementation(project(":plaud-protocol"))
             }
         }
+        val androidInstrumentedTest by getting {
+            dependencies {
+                implementation(libs.androidx.test.ext.junit)
+                implementation(libs.androidx.test.runner)
+            }
+        }
         androidMain.dependencies {
             implementation(libs.ktor.client.okhttp)
             implementation(libs.sherpa.onnx.android)
@@ -69,6 +75,7 @@ android {
     compileSdk = libs.versions.android.compileSdk.get().toInt()
     defaultConfig {
         minSdk = libs.versions.android.minSdk.get().toInt()
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             // Needle/Whistle JNI (libvelum_needle) + libc++_shared; x86 emulators use Whisper Tiny.
             abiFilters += listOf("arm64-v8a", "armeabi-v7a")
