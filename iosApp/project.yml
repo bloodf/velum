@@ -26,6 +26,8 @@ targets:
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         NSBluetoothAlwaysUsageDescription: Velum talks to your voice recorder over Bluetooth to sync recordings.
         NSBluetoothPeripheralUsageDescription: Velum talks to your voice recorder over Bluetooth to sync recordings.
+        NSMicrophoneUsageDescription: Velum uses your microphone to record audio you choose to capture.
+        UIBackgroundModes: [audio]
         UILaunchScreen: {}
         # Compose Multiplatform aborts at launch without this (PlistSanityCheck).
         CADisableMinimumFrameDurationOnPhone: true
