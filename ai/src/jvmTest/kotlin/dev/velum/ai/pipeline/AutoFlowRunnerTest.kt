@@ -51,6 +51,22 @@ class AutoFlowRunnerTest {
         assertFalse(AutoFlowRunner.isStableNonMatch(recording("import", "imported", 0)))
     }
 
+    private fun shareBody(transcript: String): String = shareMarkdownBody("Title", null, transcript)
+
+    @Test
+    fun shareMarkdown_omitsTheTranscriptSectionWhenOnlyMarkersExist() {
+        val body = shareBody("## Markers\n- **0:05** budget question")
+        assertFalse("## Transcript" in body, body)
+        assertTrue("## Markers" in body && "budget question" in body, body)
+    }
+
+    @Test
+    fun shareMarkdown_keepsTheTranscriptSectionWhenThereIsSpokenText() {
+        val body = shareBody("Speaker 1: ship on Friday.\n\n## Markers\n- **0:05** budget question")
+        assertTrue("## Transcript" in body && "ship on Friday" in body, body)
+        assertTrue("## Markers" in body && "budget question" in body, body)
+    }
+
     @Test
     fun incompleteDuration_thenMatch_runsOnceAndPostsOnReady() = runTest {
         val f = Fixture(this, rule = rule(durationMin = 5))
