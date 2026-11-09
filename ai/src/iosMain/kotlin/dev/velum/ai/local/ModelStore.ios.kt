@@ -62,7 +62,7 @@ actual class ModelStoreDir actual constructor(absolutePath: String) {
             )
         }
         bytes.usePinned { pinned ->
-            val data = NSData.dataWithBytes(pinned.addressOf(0), bytes.size.toULong())
+            val data = NSData.dataWithBytes(if (bytes.isEmpty()) null else pinned.addressOf(0), bytes.size.toULong())
             check(data.writeToFile(absolutePath, atomically = true)) { "Unable to write a file." }
         }
     }
@@ -97,8 +97,23 @@ actual class ModelStoreDir actual constructor(absolutePath: String) {
     }
 
     actual fun appendBytes(bytes: ByteArray) {
-        val existing = if (exists()) readBytes() else ByteArray(0)
-        writeBytes(existing + bytes)
+        val parentPath = absolutePath.substringBeforeLast('/', missingDelimiterValue = "")
+        if (parentPath.isNotEmpty()) ModelStoreDir(parentPath).createDirectories()
+        val fd = platform.posix.open(absolutePath, platform.posix.O_WRONLY or platform.posix.O_CREAT or platform.posix.O_APPEND, 0x1A4)
+        check(fd >= 0) { "Unable to open a file for appending." }
+        try {
+            bytes.usePinned { pinned ->
+                var written = 0
+                while (written < bytes.size) {
+                    val count = platform.posix.write(fd, pinned.addressOf(written), (bytes.size - written).toULong())
+                    if (count < 0 && platform.posix.errno == platform.posix.EINTR) continue
+                    check(count > 0) { "Unable to append to a file." }
+                    written += count.toInt()
+                }
+            }
+        } finally {
+            platform.posix.close(fd)
+        }
     }
 
     actual fun readBytes(): ByteArray {
@@ -115,10 +130,25 @@ actual class ModelStoreDir actual constructor(absolutePath: String) {
 
     actual fun readRange(offset: Long, length: Int): ByteArray {
         require(offset >= 0 && length >= 0) { "offset=$offset length=$length" }
-        // iOS path is not the 6h Android processing target; slice from full read.
-        val all = readBytes()
-        require(offset + length <= all.size) { "range $offset+$length exceeds ${all.size}" }
-        return all.copyOfRange(offset.toInt(), (offset + length).toInt())
+        val fd = platform.posix.open(absolutePath, platform.posix.O_RDONLY, 0)
+        check(fd >= 0) { "Unable to open a file for reading." }
+        try {
+            check(platform.posix.lseek(fd, offset, platform.posix.SEEK_SET) == offset) { "Unable to seek in a file." }
+            val bytes = ByteArray(length)
+            bytes.usePinned { pinned ->
+                var read = 0
+                while (read < length) {
+                    val count = platform.posix.read(fd, pinned.addressOf(read), (length - read).toULong())
+                    if (count < 0 && platform.posix.errno == platform.posix.EINTR) continue
+                    check(count >= 0) { "Unable to read a file." }
+                    require(count > 0) { "File truncated while reading range $offset+$length" }
+                    read += count.toInt()
+                }
+            }
+            return bytes
+        } finally {
+            platform.posix.close(fd)
+        }
     }
 
     actual fun deleteFile(): Boolean = platform.posix.unlink(absolutePath) == 0

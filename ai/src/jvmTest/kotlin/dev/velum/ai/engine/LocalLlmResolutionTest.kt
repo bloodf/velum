@@ -29,7 +29,7 @@ class LocalLlmResolutionTest {
         ready.forEach { id -> File(dir, "$id/weights.litertlm").apply { parentFile.mkdirs(); writeBytes(ByteArray(2048)) } }
         fun spec(id: String) = LocalModelSpec(
             id = id, displayName = "Synthetic $id", kind = LocalModelKind.Llm, approxBytes = 1, license = "test",
-            notes = "", languages = "en", downloadUrl = "https://example.test/$id", sha256 = "00",
+            notes = "", languages = "en", downloadUrl = "https://example.test/$id", sha256 = dev.velum.ai.local.sha256Hex(ByteArray(2048)),
             archiveFileName = "weights.litertlm",
         )
         return LocalModelManager(

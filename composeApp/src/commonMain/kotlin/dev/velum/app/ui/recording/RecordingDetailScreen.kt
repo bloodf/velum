@@ -626,6 +626,8 @@ fun RecordingDetailScreen(
                             askError = null
                             try {
                                 askAnswer = container.askAiChat.ask(recordingId, askDraft)
+                            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                                throw cancelled
                             } catch (_: Throwable) {
                                 askError = strings.ux.genericError
                             } finally {
