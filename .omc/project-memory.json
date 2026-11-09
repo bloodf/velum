@@ -1,0 +1,309 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1794002071609,
+  "projectRoot": "/home/cortexos/.local/share/t3-cortexos/worktrees/velum/t3-919bcf8e",
+  "techStack": {
+    "languages": [
+      {
+        "name": "Kotlin",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "build.gradle.kts"
+        ]
+      }
+    ],
+    "frameworks": [],
+    "packageManager": "gradle",
+    "runtime": null
+  },
+  "build": {
+    "buildCommand": null,
+    "testCommand": null,
+    "lintCommand": null,
+    "devCommand": null,
+    "scripts": {}
+  },
+  "conventions": {
+    "namingStyle": null,
+    "importStyle": null,
+    "testPattern": null,
+    "fileOrganization": null
+  },
+  "structure": {
+    "isMonorepo": false,
+    "workspaces": [],
+    "mainDirectories": [
+      "docs",
+      "scripts"
+    ],
+    "gitBranches": {
+      "defaultBranch": "main",
+      "branchingStrategy": null
+    }
+  },
+  "customNotes": [],
+  "directoryMap": {
+    "ai": {
+      "path": "ai",
+      "purpose": null,
+      "fileCount": 1,
+      "lastAccessed": 1794002071598,
+      "keyFiles": [
+        "build.gradle.kts"
+      ]
+    },
+    "ble": {
+      "path": "ble",
+      "purpose": null,
+      "fileCount": 1,
+      "lastAccessed": 1794002071599,
+      "keyFiles": [
+        "build.gradle.kts"
+      ]
+    },
+    "ble-testing": {
+      "path": "ble-testing",
+      "purpose": null,
+      "fileCount": 1,
+      "lastAccessed": 1794002071599,
+      "keyFiles": [
+        "build.gradle.kts"
+      ]
+    },
+    "branding": {
+      "path": "branding",
+      "purpose": null,
+      "fileCount": 9,
+      "lastAccessed": 1794002071602,
+      "keyFiles": [
+        "README.md",
+        "ic_launcher_foreground_1080.png",
+        "velum-icon-3d-dark.jpg",
+        "velum-icon-3d-light.jpg",
+        "velum-icon-dark-cropped.png"
+      ]
+    },
+    "composeApp": {
+      "path": "composeApp",
+      "purpose": null,
+      "fileCount": 4,
+      "lastAccessed": 1794002071603,
+      "keyFiles": [
+        "build.gradle.kts",
+        "debug.keystore",
+        "proguard-rules.pro",
+        "proguard-test-rules.pro"
+      ]
+    },
+    "core": {
+      "path": "core",
+      "purpose": null,
+      "fileCount": 1,
+      "lastAccessed": 1794002071603,
+      "keyFiles": [
+        "build.gradle.kts"
+      ]
+    },
+    "docs": {
+      "path": "docs",
+      "purpose": "Documentation",
+      "fileCount": 26,
+      "lastAccessed": 1794002071603,
+      "keyFiles": [
+        "APK_ANALYSIS.md",
+        "APK_SIZE.md",
+        "ARCHITECTURE_AI.md",
+        "BENCHMARK.md",
+        "DEPENDENCY_AUDIT.md"
+      ]
+    },
+    "fastlane": {
+      "path": "fastlane",
+      "purpose": null,
+      "fileCount": 0,
+      "lastAccessed": 1794002071604,
+      "keyFiles": []
+    },
+    "gradle": {
+      "path": "gradle",
+      "purpose": null,
+      "fileCount": 2,
+      "lastAccessed": 1794002071604,
+      "keyFiles": [
+        "libs.versions.toml",
+        "robolectric-offline.gradle.kts"
+      ]
+    },
+    "iosApp": {
+      "path": "iosApp",
+      "purpose": null,
+      "fileCount": 2,
+      "lastAccessed": 1794002071604,
+      "keyFiles": [
+        "README.md",
+        "project.yml"
+      ]
+    },
+    "metadata": {
+      "path": "metadata",
+      "purpose": null,
+      "fileCount": 1,
+      "lastAccessed": 1794002071605,
+      "keyFiles": [
+        "dev.velum.app.yml"
+      ]
+    },
+    "plaud-protocol": {
+      "path": "plaud-protocol",
+      "purpose": null,
+      "fileCount": 1,
+      "lastAccessed": 1794002071605,
+      "keyFiles": [
+        "build.gradle.kts"
+      ]
+    },
+    "recorder": {
+      "path": "recorder",
+      "purpose": null,
+      "fileCount": 1,
+      "lastAccessed": 1794002071605,
+      "keyFiles": [
+        "build.gradle.kts"
+      ]
+    },
+    "scripts": {
+      "path": "scripts",
+      "purpose": "Build/utility scripts",
+      "fileCount": 16,
+      "lastAccessed": 1794002071605,
+      "keyFiles": [
+        "apk-size-baseline.txt",
+        "check-apk-size.sh",
+        "check-identity-persistence.py",
+        "check-ios-plist.sh",
+        "check-release-signing.sh"
+      ]
+    },
+    "templates": {
+      "path": "templates",
+      "purpose": null,
+      "fileCount": 0,
+      "lastAccessed": 1794002071606,
+      "keyFiles": []
+    },
+    "tools": {
+      "path": "tools",
+      "purpose": null,
+      "fileCount": 0,
+      "lastAccessed": 1794002071606,
+      "keyFiles": []
+    },
+    "velum-icon": {
+      "path": "velum-icon",
+      "purpose": null,
+      "fileCount": 3,
+      "lastAccessed": 1794002071606,
+      "keyFiles": [
+        "velum-icon-3d-dark.jpg",
+        "velum-icon-3d-light.jpg",
+        "velum-v.svg"
+      ]
+    },
+    "website": {
+      "path": "website",
+      "purpose": null,
+      "fileCount": 9,
+      "lastAccessed": 1794002071606,
+      "keyFiles": [
+        "AUDIT.md",
+        "index.html",
+        "package-lock.json",
+        "package.json",
+        "playwright.config.ts"
+      ]
+    },
+    "ai/src": {
+      "path": "ai/src",
+      "purpose": "Source code",
+      "fileCount": 0,
+      "lastAccessed": 1794002071606,
+      "keyFiles": []
+    },
+    "ble/src": {
+      "path": "ble/src",
+      "purpose": "Source code",
+      "fileCount": 0,
+      "lastAccessed": 1794002071607,
+      "keyFiles": []
+    },
+    "ble-testing/src": {
+      "path": "ble-testing/src",
+      "purpose": "Source code",
+      "fileCount": 0,
+      "lastAccessed": 1794002071607,
+      "keyFiles": []
+    },
+    "composeApp/src": {
+      "path": "composeApp/src",
+      "purpose": "Source code",
+      "fileCount": 0,
+      "lastAccessed": 1794002071607,
+      "keyFiles": []
+    },
+    "core/src": {
+      "path": "core/src",
+      "purpose": "Source code",
+      "fileCount": 0,
+      "lastAccessed": 1794002071607,
+      "keyFiles": []
+    },
+    "plaud-protocol/src": {
+      "path": "plaud-protocol/src",
+      "purpose": "Source code",
+      "fileCount": 0,
+      "lastAccessed": 1794002071608,
+      "keyFiles": []
+    },
+    "recorder/src": {
+      "path": "recorder/src",
+      "purpose": "Source code",
+      "fileCount": 0,
+      "lastAccessed": 1794002071608,
+      "keyFiles": []
+    },
+    "website/public": {
+      "path": "website/public",
+      "purpose": "Public files",
+      "fileCount": 2,
+      "lastAccessed": 1794002071609,
+      "keyFiles": [
+        "favicon.svg",
+        "robots.txt"
+      ]
+    },
+    "website/src": {
+      "path": "website/src",
+      "purpose": "Source code",
+      "fileCount": 10,
+      "lastAccessed": 1794002071609,
+      "keyFiles": [
+        "App.tsx",
+        "Docs.tsx",
+        "Marketing.tsx"
+      ]
+    },
+    "website/tests": {
+      "path": "website/tests",
+      "purpose": "Test files",
+      "fileCount": 2,
+      "lastAccessed": 1794002071609,
+      "keyFiles": [
+        "audit.spec.ts",
+        "site.spec.ts"
+      ]
+    }
+  },
+  "hotPaths": [],
+  "userDirectives": []
+}
