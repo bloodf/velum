@@ -26,4 +26,4 @@ Recordings and transcripts can contain personal data of third parties. Users are
 
 ## License
 
-Source code is under the [Apache License 2.0](../LICENSE).
+Source code is under the [MIT License](../LICENSE).

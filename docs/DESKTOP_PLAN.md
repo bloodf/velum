@@ -10,9 +10,9 @@ The research below maps ideas from [anarlog](https://github.com/fastrepl/anarlog
 
 ## 1. License verdict (exact)
 
-| Source | License | What Velum (Apache-2.0) may do |
+| Source | License | What Velum (MIT) may do |
 | --- | --- | --- |
-| anarlog paths **outside** `enterprise/**` | **MIT** ([LICENSE](https://github.com/fastrepl/anarlog/blob/main/LICENSE), [LICENSING.md](https://github.com/fastrepl/anarlog/blob/main/LICENSING.md)) | **May copy, modify, merge, and redistribute code**, including substantial portions, **if** the MIT copyright notice and permission text are preserved (typically via `NOTICE` / `THIRD_PARTY` and file headers). Apache-2.0 may combine MIT-licensed material; MIT portions keep their notices. |
+| anarlog paths **outside** `enterprise/**` | **MIT** ([LICENSE](https://github.com/fastrepl/anarlog/blob/main/LICENSE), [LICENSING.md](https://github.com/fastrepl/anarlog/blob/main/LICENSING.md)) | **May copy, modify, merge, and redistribute code**, including substantial portions, **if** the MIT copyright notice and permission text are preserved (typically via `NOTICE` / `THIRD_PARTY` and file headers). MIT may combine MIT-licensed material; MIT portions keep their notices. |
 | anarlog **`enterprise/**`** | **Commercial** ([enterprise/LICENSE](https://github.com/fastrepl/anarlog/blob/main/enterprise/LICENSE)) | **Must not copy, vendor, or redistribute.** No production use of that source without a Fastrepl agreement. Treat as closed for Velum: **ideas only after clean-room**, and prefer not to study implementation detail there at all. |
 | Moving code across anarlog’s `enterprise/` boundary | Path-based (LICENSING.md) | A file does **not** keep MIT merely because it once lived outside `enterprise/`. Never import anarlog enterprise trees into Velum. |
 | Medium article / MeetingMint Flask write-up | Article prose + paid/App Store product | **Architecture inspiration only.** The article is not a license grant. Do **not** paste article code into Velum. The described Flask+Whisper+Ollama pipeline is a common pattern Velum already largely owns in Kotlin (`RecordingProcessor`, BYO Ollama/LM Studio). |

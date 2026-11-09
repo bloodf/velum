@@ -18,7 +18,7 @@
 </p>
 
 <p align="center">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-171717?style=flat-square" alt="License: Apache 2.0" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-171717?style=flat-square" alt="License: MIT" /></a>
   <img src="https://img.shields.io/badge/Android-first-171717?style=flat-square" alt="Android first" />
   <img src="https://img.shields.io/badge/status-in_development-666666?style=flat-square" alt="In development" />
 </p>
@@ -157,4 +157,4 @@ Para experimentar, siga [Build from source](#build-from-source). Para participar
 
 ## License and acknowledgments
 
-Velum is licensed under [Apache 2.0](LICENSE). Protocol research builds on community work, including [plaude-archiver](https://github.com/roopen219/plaude-archiver) and [OpenPlod](https://github.com/OpenPlod/OpenPlod). Attribution and interoperability details are in [docs/protocol](docs/protocol/README.md) and the [legal notes](docs/LEGAL.md).
+Velum is licensed under [MIT](LICENSE). Protocol research builds on community work, including [plaude-archiver](https://github.com/roopen219/plaude-archiver) and [OpenPlod](https://github.com/OpenPlod/OpenPlod). Attribution and interoperability details are in [docs/protocol](docs/protocol/README.md) and the [legal notes](docs/LEGAL.md).
