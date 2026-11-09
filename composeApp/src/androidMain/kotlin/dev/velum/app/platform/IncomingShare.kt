@@ -182,17 +182,21 @@ object IncomingShare {
     internal fun cleanName(raw: String?): String? =
         raw?.let(dev.velum.app.importing.ImportTitles::cleanDisplayName)?.take(MAX_DISPLAY_NAME)?.ifBlank { null }
 
-    /** Copies [uri] into `cacheDir/imports` (via [copyToCache]); a failed or empty copy leaves no file and returns null. */
+    /** Copies [uri] into `cacheDir/imports` in the private provider-copy process; a failed or empty copy leaves no file and returns null. */
     internal fun copyShare(context: Context, uri: Uri): String? {
-        // A provider query: IO thread only. Another app controls the name, so cap it and drop control characters.
-        val displayName = cleanName(displayNameOf(context, uri))
-        val extension = displayName?.takeIf { ImportAudioFormats.isSupportedFileName(it) }?.substringAfterLast('.')?.lowercase() ?: "audio"
-        val dest = File(context.cacheDir, "imports").apply { mkdirs() }
-        val outFile = File(dest, "share_${java.util.UUID.randomUUID()}.$extension")
-        if (!copyToCache({ context.contentResolver.openInputStream(uri) }, outFile)) {
-            android.util.Log.w("VelumShare", "share copy failed") // never the URI or the exception message
+        val result = try {
+            kotlinx.coroutines.runBlocking { copyProviderInPrivateProcess(context, uri, share = true) }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            null
+        }
+        if (result == null) {
+            android.util.Log.w("VelumShare", "share copy failed")
             return null
         }
+        val outFile = result.file
+        val displayName = result.displayName
         dev.velum.app.importing.ImportDisplayNames.put(outFile.absolutePath, displayName)
         // Flush the copy to disk before the marker says it exists.
         runCatching { java.io.FileOutputStream(outFile, true).use { it.fd.sync() } }

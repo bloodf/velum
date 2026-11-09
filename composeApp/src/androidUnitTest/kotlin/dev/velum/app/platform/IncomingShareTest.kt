@@ -21,6 +21,13 @@ import org.robolectric.annotation.Config
 @RunWith(AndroidJUnit4::class)
 @Config(sdk = [34])
 class IncomingShareTest {
+    @org.junit.Before fun installProviderCopyTransport() {
+        dev.velum.app.platform.installLocalProviderCopyTestTransport()
+    }
+    @org.junit.After fun resetProviderCopyTransport() {
+        dev.velum.app.platform.providerCopyTestTransport = null
+    }
+
     private val context: Context = ApplicationProvider.getApplicationContext()
     private val own = "dev.velum.app.fileprovider"
 
