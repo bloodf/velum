@@ -52,7 +52,8 @@ class LocalModelBenchmarkDeviceTest {
 
     @Test fun benchmark_local_models() = runBlocking {
         reportFile.parentFile?.mkdirs()
-        reportFile.delete() // a failed run must leave nothing stale to pull
+        check(!reportFile.exists() || reportFile.delete()) { "cannot remove stale benchmark report" }
+        check(!isEmulator()) { "model inference is permitted only on physical devices" }
         val models = (args.getString("bench.models") ?: DEFAULT_MODELS).split(',').map(String::trim).filter(String::isNotEmpty)
         assertTrue("bench.models is empty", models.isNotEmpty())
         val workloadSec = (args.getString("bench.workloadSeconds") ?: "60").toInt()
@@ -77,7 +78,7 @@ class LocalModelBenchmarkDeviceTest {
     }
 
     private suspend fun transcribe(manager: LocalModelManager, id: String, clip: ByteArray, sec: Int): BenchResult {
-        val total = sec * SAMPLE_RATE * 2
+        val total = Math.multiplyExact(sec, SAMPLE_RATE * 2)
         val transcriber = LocalTranscriber(manager)
         var chars = 0
         var ns = 0L
@@ -103,7 +104,7 @@ class LocalModelBenchmarkDeviceTest {
         androidRelease = Build.VERSION.RELEASE,
         sdkInt = Build.VERSION.SDK_INT,
         abi = Build.SUPPORTED_ABIS.first(),
-        isEmulator = Build.FINGERPRINT.contains("generic") || Build.HARDWARE.contains("ranchu") || Build.HARDWARE.contains("goldfish"),
+        isEmulator = isEmulator(),
         settings = mapOf(
             "models" to models.joinToString(","),
             "workloadSeconds" to workloadSec.toString(),
@@ -116,6 +117,11 @@ class LocalModelBenchmarkDeviceTest {
             "cores" to Runtime.getRuntime().availableProcessors().toString(),
         ),
     )
+
+    private fun isEmulator(): Boolean =
+        Build.FINGERPRINT.contains("generic") || Build.FINGERPRINT.contains("unknown") ||
+            Build.HARDWARE.contains("ranchu") || Build.HARDWARE.contains("goldfish") ||
+            Build.MODEL.contains("Emulator", ignoreCase = true) || Build.PRODUCT.contains("sdk", ignoreCase = true)
 
     private fun sha256(bytes: ByteArray): String =
         java.security.MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }

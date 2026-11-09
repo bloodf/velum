@@ -2,17 +2,17 @@
 
 One entry point, `dev.velum.app.bench.LocalModelBenchmarkDeviceTest`, runs **real** on-device inference
 (no mocked model calls) through the shipping engines (`LocalTranscriber`, `LocalLlmEngine`) and writes a JSON report.
-Hardware evidence for phones stays in #12; **emulator numbers are not phone-performance or quality evidence**.
+Hardware evidence for phones stays in #12; **Actual model inference is permitted only on physical devices.**
 
 ## Prerequisites
 - Each model must already be Ready in the app's model store (`filesDir/models`; download it in Model manager on that
-  device/emulator). A model that is not Ready, throws, or returns empty output fails the run; there is no partial pass.
+  physical device). A model that is not Ready, throws, or returns empty output fails the run; there is no partial pass.
 - A speech WAV, **16 kHz mono PCM16**, non-sensitive, pushed to the device. There is no bundled input: the engines reject
   silence and tones with an empty-text error. Any short public-domain speech clip works; sherpa-onnx model archives ship
   `test_wavs/`. The test rejects any other format.
 
-## Run (emulator or a connected phone, same command)
-Always pass the serial explicitly (`adb devices -l`): with an emulator and a phone attached, a bare `adb` is ambiguous.
+## Run (physical Android phone only)
+Always pass the serial explicitly (`adb devices -l`): a bare `adb` can select the wrong device. Never run model inference on an emulator.
 ```
 S=<serial>
 ./gradlew :composeApp:assembleDebug :composeApp:assembleDebugAndroidTest
@@ -55,9 +55,7 @@ and `whisper-tiny`; `whisper-tiny` is the default "standard" Whisper until the o
   by `BenchmarkReportTest`).
 - **peak RAM**: process peak resident set (`VmHWM` in `/proc/self/status`), reset before each model by writing `5` to
   `/proc/self/clear_refs`; the run fails if the reset does not take. It is process-wide (app and test): app startup memory still resident at the reset is part of the first model's peak, so run a small warm-up model first or compare later models.
-- Report fields: device, Android release/SDK, ABI, emulator flag, models, workload, audio path, window sizes, core count, and the SHA-256 of the exact PCM clip (`audioSha256`) and of the fixed transcript (`summaryTranscriptSha256`). A run is only reproducible with the same hashes; the report is rejected without them.
+- Report fields: device, Android release/SDK, ABI, physical-device flag, models, workload, audio path, window sizes, core count, and the SHA-256 of the exact PCM clip (`audioSha256`) and of the fixed transcript (`summaryTranscriptSha256`). A run is only reproducible with the same hashes; the report is rejected without them.
 
 ## CI
-The pure parts (RTF, required fields, failure on missing data) run in `:ai:jvmTest`. Running the models in CI needs the
-model downloads (about 1.5 GB) on the emulator job, a speech fixture, and an artifact upload step, i.e. a `.github`
-change that is not in this PR.
+The pure parts (RTF, required fields, failure on missing data) run in `:ai:jvmTest`. Actual model inference is not permitted in emulators or emulator CI.
