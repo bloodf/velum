@@ -1,0 +1,9 @@
+Lease: a3a47520-2e5c-4448-bc09-32c5c708092f
+Base and HEAD: 963663004e44f7a9b3816fc4c247a8053a2f6578 (local origin/main)
+Original PR head inspected: 347f7d4706816886c10c7a98cb44d38912292bef
+Tracked patch: empty; SHA-256 of git diff --binary: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+Original tests asserted no Transcript heading for markers-only, and a Transcript heading plus spoken text for mixed input. Current ai/src/jvmTest/kotlin/dev/velum/ai/pipeline/ShareMarkdownBodyTest.kt:12-22 already asserts both, plus retained markers and exact mixed output.
+Current flow: AutoFlowRunner.kt:362-363 emits recording ID; App.kt:319-320 resolves it via AppContainer.kt:591-594, which calls shareMarkdownBody. No duplicate tests added.
+Tests NOT RUN: global heavy slot ownership cannot be verified from this container; no bypass. Fresh /proc/loadavg load1 6.67; MemAvailable 13071244 KiB, above 12 GiB (12582912 KiB). Slot verification remains unavailable.
+CodeGraph 1.6.2 uninitialized; used bounded rg. Referenced /Users/heitor/.codex/RTK.md unavailable.
+Coordinator followup: review existing coverage and run applicable Linux tests only after verifying global heavy slot and fresh resource thresholds.
