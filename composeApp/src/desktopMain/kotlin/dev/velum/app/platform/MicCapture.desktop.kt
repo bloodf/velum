@@ -253,7 +253,8 @@ internal class DesktopMicCapture(
 
     private fun failAndCloseSession(session: DesktopCaptureSession, message: String) {
         if (!session.capturing.getAndSet(false)) return
-        session.closeResources()
+        runCatching { session.line.stop() }
+        runCatching { session.line.close() }
         val failState = MicSessionState.Failed(message, permissionRequired = false, session = session.session)
         _sessions.value = failState
         _failures.value = message
@@ -314,6 +315,8 @@ internal class DesktopMicCapture(
                     }
                 }
             }
+        } catch (e: Exception) {
+            failAndCloseSession(session, "Microphone capture failed: ${e.message}")
         } finally {
             runCatching { writer.finish() }
             runCatching {
