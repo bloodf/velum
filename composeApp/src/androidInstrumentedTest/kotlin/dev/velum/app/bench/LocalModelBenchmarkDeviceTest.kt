@@ -52,7 +52,8 @@ class LocalModelBenchmarkDeviceTest {
 
     @Test fun benchmark_local_models() = runBlocking {
         reportFile.parentFile?.mkdirs()
-        reportFile.delete() // a failed run must leave nothing stale to pull
+        check(!reportFile.exists() || reportFile.delete()) { "cannot remove stale benchmark report" }
+        check(!isEmulator()) { "model inference is permitted only on physical devices" }
         val models = (args.getString("bench.models") ?: DEFAULT_MODELS).split(',').map(String::trim).filter(String::isNotEmpty)
         assertTrue("bench.models is empty", models.isNotEmpty())
         val workloadSec = (args.getString("bench.workloadSeconds") ?: "60").toInt()
@@ -77,7 +78,7 @@ class LocalModelBenchmarkDeviceTest {
     }
 
     private suspend fun transcribe(manager: LocalModelManager, id: String, clip: ByteArray, sec: Int): BenchResult {
-        val total = sec * SAMPLE_RATE * 2
+        val total = Math.multiplyExact(sec, SAMPLE_RATE * 2)
         val transcriber = LocalTranscriber(manager)
         var chars = 0
         var ns = 0L
@@ -86,16 +87,39 @@ class LocalModelBenchmarkDeviceTest {
             val window = ByteArray(w.endByte - w.startByte) { clip[(w.startByte + it) % clip.size] }
             ns += measureNanoTime { chars += transcriber.transcribe(AudioInput("bench.pcm", window, SAMPLE_RATE), id).text.length }
         }
-        return BenchResult(BenchTask.Transcription, id, "${sec}s", sec * 1000L, ns / 1_000_000, peakRssBytes(), chars)
+        return BenchResult(
+            task = BenchTask.Transcription,
+            modelId = id,
+            workload = "${sec}s",
+            inputDurationMs = sec * 1000L,
+            elapsedMs = ns / 1_000_000,
+            peakRamBytes = peakRssBytes(),
+            outputChars = chars,
+            runtime = transcriber.engineId,
+            timeBoundary = "windowed_asr_engine_transcribe_wall_clock_sum",
+            rtfUnit = "ratio_elapsed_over_source_duration",
+        )
     }
 
     private suspend fun summarize(manager: LocalModelManager, id: String): BenchResult {
+        val engine = LocalLlmEngine(manager)
         var text = ""
         resetPeak()
         val ns = measureNanoTime {
-            text = LocalLlmEngine(manager).complete(LlmRequest("Summarize the meeting in five bullet points.", TRANSCRIPT), id).text
+            text = engine.complete(LlmRequest("Summarize the meeting in five bullet points.", TRANSCRIPT), id).text
         }
-        return BenchResult(BenchTask.Summary, id, "fixed-transcript", TRANSCRIPT_SOURCE_SECONDS * 1000L, ns / 1_000_000, peakRssBytes(), text.length)
+        return BenchResult(
+            task = BenchTask.Summary,
+            modelId = id,
+            workload = "fixed-transcript",
+            inputDurationMs = TRANSCRIPT_SOURCE_SECONDS * 1000L,
+            elapsedMs = ns / 1_000_000,
+            peakRamBytes = peakRssBytes(),
+            outputChars = text.length,
+            runtime = engine.engineId,
+            timeBoundary = "single_complete_call_wall_clock",
+            rtfUnit = "ratio_elapsed_over_source_duration",
+        )
     }
 
     private fun environment(models: List<String>, workloadSec: Int, audio: String, clip: ByteArray) = BenchEnvironment(
@@ -103,19 +127,28 @@ class LocalModelBenchmarkDeviceTest {
         androidRelease = Build.VERSION.RELEASE,
         sdkInt = Build.VERSION.SDK_INT,
         abi = Build.SUPPORTED_ABIS.first(),
-        isEmulator = Build.FINGERPRINT.contains("generic") || Build.HARDWARE.contains("ranchu") || Build.HARDWARE.contains("goldfish"),
+        isEmulator = isEmulator(),
         settings = mapOf(
             "models" to models.joinToString(","),
             "workloadSeconds" to workloadSec.toString(),
             "audio" to audio,
             "audioSha256" to sha256(clip),
+            "audioFormat" to "PCM16_MONO_16KHZ",
+            "fixtureSensitivity" to "non-sensitive",
             "summaryTranscriptSha256" to sha256(TRANSCRIPT.encodeToByteArray()),
             "asrWindowSeconds" to "${WindowedAsr.DEFAULT_WINDOW_SECONDS}/hop ${WindowedAsr.DEFAULT_HOP_SECONDS}",
             "summaryTranscriptChars" to TRANSCRIPT.length.toString(),
             "summaryTranscriptSourceSeconds" to TRANSCRIPT_SOURCE_SECONDS.toString(),
+            "peakRamMethod" to PEAK_RAM_METHOD,
+            "rtfUnit" to "ratio_elapsed_over_source_duration",
             "cores" to Runtime.getRuntime().availableProcessors().toString(),
         ),
     )
+
+    private fun isEmulator(): Boolean =
+        Build.FINGERPRINT.contains("generic") || Build.FINGERPRINT.contains("unknown") ||
+            Build.HARDWARE.contains("ranchu") || Build.HARDWARE.contains("goldfish") ||
+            Build.MODEL.contains("Emulator", ignoreCase = true) || Build.PRODUCT.contains("sdk", ignoreCase = true)
 
     private fun sha256(bytes: ByteArray): String =
         java.security.MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
@@ -163,6 +196,7 @@ class LocalModelBenchmarkDeviceTest {
         const val TAG = "VelumBench98"
         const val SAMPLE_RATE = 16_000
         const val HWM_TOLERANCE_KB = 4096L
+        const val PEAK_RAM_METHOD = "proc_self_clear_refs_5_vmhwm"
         const val DEFAULT_MODELS = "parakeet-tdt-0.6b-v3-int8,whisper-large-v3-turbo,whisper-tiny,gemma-4-e4b"
 
         /** The fixed summary workload (84 words). */
