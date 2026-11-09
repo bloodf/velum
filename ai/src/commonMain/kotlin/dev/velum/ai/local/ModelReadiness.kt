@@ -22,11 +22,14 @@ object ModelReadiness {
             is ModelLayout.SingleLlmFile,
             is ModelLayout.SingleCactFile,
             -> {
-                return if (archive.exists() && archive.length() > 0L) {
-                    emptyList()
-                } else {
-                    listOf("expected file ${spec.archiveFileName}")
+                if (!archive.exists() || archive.isDirectory() || archive.length() <= 0L) {
+                    return listOf("expected file ${spec.archiveFileName}")
                 }
+                val expected = spec.sha256?.trim()?.takeIf { it.isNotEmpty() }
+                    ?: return listOf("checksum not pinned")
+                return if (runCatching { modelFileSha256(archive).equals(expected, ignoreCase = true) }.getOrDefault(false)) {
+                    emptyList()
+                } else listOf("checksum mismatch for ${spec.archiveFileName}")
             }
             else -> Unit
         }
@@ -81,6 +84,20 @@ object ModelReadiness {
             LocalModelKind.Llm -> ModelLayout.LlmWeights
         }
     }
+}
+
+internal fun modelFileSha256(file: ModelStoreDir): String {
+    val digest = createSha256Digest()
+    val size = file.length()
+    var offset = 0L
+    while (offset < size) {
+        val bytes = file.readRange(offset, minOf(1024 * 1024L, size - offset).toInt())
+        check(bytes.isNotEmpty()) { "Model file truncated during verification" }
+        digest.update(bytes)
+        offset += bytes.size
+    }
+    check(file.length() == size) { "Model file changed during verification" }
+    return digest.digestHex()
 }
 
 sealed class ModelLayout {
