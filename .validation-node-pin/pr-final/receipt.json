@@ -1,0 +1,53 @@
+{
+  "sha": "e99eecc55d4e1a0e8a07ee38579071278ad7f5f0",
+  "node": "v24.22.2",
+  "pnpm": "12.18.0",
+  "host": "CortexOS SSH in native T3 prepared worktree",
+  "load1": 4.36181640625,
+  "memAvailableKB": 45313144,
+  "steps": [
+    {
+      "step": "install",
+      "command": [
+        "pnpm",
+        "install",
+        "--frozen-lockfile"
+      ],
+      "exit": 0,
+      "log": "/home/cortexos/.local/share/t3-cortexos/worktrees/velum/t3-b38ad9e3/.validation-node-pin/pr-final/install.log"
+    },
+    {
+      "step": "build",
+      "command": [
+        "pnpm",
+        "build"
+      ],
+      "exit": 0,
+      "log": "/home/cortexos/.local/share/t3-cortexos/worktrees/velum/t3-b38ad9e3/.validation-node-pin/pr-final/build.log"
+    },
+    {
+      "step": "browsers",
+      "command": [
+        "pnpm",
+        "exec",
+        "playwright",
+        "install",
+        "chromium"
+      ],
+      "exit": 0,
+      "log": "/home/cortexos/.local/share/t3-cortexos/worktrees/velum/t3-b38ad9e3/.validation-node-pin/pr-final/browsers.log"
+    },
+    {
+      "step": "test",
+      "command": [
+        "pnpm",
+        "test",
+        "--workers=2"
+      ],
+      "exit": 0,
+      "log": "/home/cortexos/.local/share/t3-cortexos/worktrees/velum/t3-b38ad9e3/.validation-node-pin/pr-final/test.log"
+    }
+  ],
+  "lockUnchanged": true,
+  "utc": "2026-11-06T23:33:02.217096+00:00"
+}
