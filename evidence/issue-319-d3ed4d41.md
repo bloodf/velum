@@ -1,0 +1,10 @@
+# Issue 319 bounded source diagnosis
+
+Lease: d3ed4d41-b0ad-495d-9f88-39ca4f56de4f
+Source: 963663004e44f7a9b3816fc4c247a8053a2f6578 (HEAD and locally recorded origin/main). Remote freshness unverified: GitHub API unavailable. Issue body unavailable. CodeGraph query and explore reported no index; no index was created.
+
+The non-WAV PCM accumulation concern is already addressed in this source. AudioImportPipeline.kt:40,137 calls AudioNormalizer.normalizeToWav. AudioNormalize.android.kt:52-73 routes matching mono PCM WAV through slices and all other inputs through decodeWithMediaCodec into the same writer. At lines 155-200 each MediaCodec output buffer is copied into one chunk and immediately passed to writer.write; it does not retain preceding chunks. Lines 203-210 release codec and extractor. MonoPcmWavWriter.kt:18-25,45-63,69-93 retains incomplete frame and resampler tail and allocates per chunk; output is buffered to disk. This is source evidence, not a runtime memory measurement. Chunk and codec buffer size affect peak memory.
+
+Existing coverage: MonoPcmWavWriterTest.kt:70-80 compares odd chunk splits, channels and rates with the former whole-buffer result; lines 109-131 cover a long generated stream and length. AudioNormalizeFixturesTest.kt:89-104 covers the WAV fast path; lines 122-139 explicitly say Robolectric cannot decode that fallback. AudioNormalizeLongDeviceTest.kt:28-38,50-111 exercises real stereo AAC/M4A decoding, time and sampled post-GC Java heap; sampler-off is explicitly not a heap measurement. Git history contains fix 27bd47ba4 and device-test commits b3dda51fb and f0d489c0c for #319. No tests were run.
+
+Conclusion: no remaining non-WAV accumulation defect established. Existing device regression is the relevant next gate, not a new implementation task: on an authorized Android device run AudioNormalizeLongDeviceTest.long_stereo_m4a_normalizes_in_linear_time_with_bounded_heap with heap sampler enabled and inspect its assertions and output. Device result and issue acceptance criteria remain unverified. Issue #323 was not investigated or proposed as work. Product development remains HOLD.
