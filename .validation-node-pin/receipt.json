@@ -1,0 +1,22 @@
+{
+  "sha": "30f1cf364fc98385d337747c8eadf0607e33f63e",
+  "node": "v24.22.2",
+  "pnpm": "12.18.0",
+  "host": "CortexOS via SSH in T3 prepared worktree",
+  "memAvailableKB": 46604024,
+  "load1": 2.50146484375,
+  "steps": [
+    {
+      "step": "install",
+      "command": [
+        "pnpm",
+        "install",
+        "--frozen-lockfile"
+      ],
+      "exit": 1,
+      "log": "/home/cortexos/.local/share/t3-cortexos/worktrees/velum/t3-b38ad9e3/.validation-node-pin/install.log"
+    }
+  ],
+  "lockUnchanged": true,
+  "utc": "2026-11-06T23:21:47.140974+00:00"
+}
