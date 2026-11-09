@@ -2,8 +2,11 @@ package dev.velum.app.importing
 
 import dev.velum.app.di.AppContainer
 import dev.velum.app.di.WipeInProgressException
+import dev.velum.core.autoflow.AutoFlowResolve
 import dev.velum.core.data.KeyedInsert
 import dev.velum.core.data.RecordingIds
+import dev.velum.core.model.ComputeMode
+import dev.velum.core.settings.SettingsLoadState
 import dev.velum.app.platform.AudioNormalizer
 import dev.velum.app.platform.NormalizedAudio
 import dev.velum.app.platform.ImportAudioFormats
@@ -17,6 +20,7 @@ import dev.velum.core.data.epochSecondsNow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
@@ -46,13 +50,14 @@ class AudioImportPipeline(
         startedAtEpochSeconds: Long? = null,
         /** Set for a share re-offered after a restart: a recording deleted since then must not come back. */
         recoveredAtMs: Long? = null,
+        userConsented: Boolean = false,
     ): ImportResult {
         var result: ImportResult? = null
         var normalizedPath: String? = null
         try {
             // A wipe in progress refuses or stops the import before it creates a recording.
             result = container.wipeGate.guard {
-                importNow(absolutePath, source, titleHint, startedAtEpochSeconds, recoveredAtMs) { normalizedPath = it }
+                importNow(absolutePath, source, titleHint, startedAtEpochSeconds, recoveredAtMs, userConsented) { normalizedPath = it }
             } ?: ImportResult.Failed(WIPE_IN_PROGRESS)
             return result
         } finally {
