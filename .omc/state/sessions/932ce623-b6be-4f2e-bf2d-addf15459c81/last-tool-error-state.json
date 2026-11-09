@@ -1,0 +1,7 @@
+{
+  "tool_name": "mcp__t3-code__t3_thread_send",
+  "tool_input_preview": "{\"environmentId\":\"8d75066b-9e79-4593-baff-2e2fdce77ca8\",\"threadId\":\"6f8c8c19-f973-40c2-bac6-1998b8ca0c40\",\"message\":\"PR #356 terminal. Head 347f7d4706816886c10c7a98cb44d38912292bef, live==expected==wo...",
+  "error": "{\"_tag\":\"OrchestratorMcpFailure\",\"code\":\"capability_denied\",\"message\":\"This work was started from T3 Code · Heitor’s MacBook Pro through a linked environment, so it cannot use this environment's links. A link paired with full access is not limited this way.\"}",
+  "timestamp": "2026-11-06T21:56:46.270Z",
+  "retry_count": 1
+}

@@ -1,0 +1,240 @@
+{
+  "version": 1,
+  "jobId": "85c4b4dc-0d88-48ab-83c9-7ebfa49579c5",
+  "sessionId": "932ce623-b6be-4f2e-bf2d-addf15459c81",
+  "scopeKey": "9e0548a7430de2af9cf12f812c6ef63d19444a732ffb4d2c4943aed07ce9b62b",
+  "revision": 7,
+  "createdAt": "2026-11-06T22:26:53.539Z",
+  "updatedAt": "2026-11-06T22:26:53.808Z",
+  "producerGraceExpiresAt": "2026-11-06T22:27:23.540Z",
+  "bestEffortDeadlineAt": "2026-11-06T22:28:16.540Z",
+  "producers": {
+    "core": {
+      "state": "prepared",
+      "intentKey": "7fc38d74c3f1c9b622731afdd4ffc37986b83175824336c263e977effb6fa7fb",
+      "payloadDigest": "7fc38d74c3f1c9b622731afdd4ffc37986b83175824336c263e977effb6fa7fb"
+    },
+    "wiki": {
+      "state": "no-op",
+      "sealedAt": "2026-11-06T22:26:53.641Z",
+      "sealedBy": "wiki-producer"
+    }
+  },
+  "actions": {
+    "foreground-cleanup": {
+      "class": "required",
+      "phase": "deferred-required",
+      "status": "pending",
+      "attempts": 0,
+      "idempotencyKey": "4dbdc7904d9bb371b10af258748f09e07dc649432437a960c652ce0b7991713c",
+      "payload": {
+        "transcriptPath": "/home/cortexos/.local/share/t3-cortexos/profiles/claude-durindoor/projects/-home-cortexos--local-share-t3-cortexos-worktrees-velum-t3-919bcf8e/932ce623-b6be-4f2e-bf2d-addf15459c81.jsonl",
+        "cwd": "/home/cortexos/.local/share/t3-cortexos/worktrees/velum/t3-919bcf8e",
+        "reason": "other",
+        "input": {
+          "session_id": "932ce623-b6be-4f2e-bf2d-addf15459c81",
+          "transcript_path": "/home/cortexos/.local/share/t3-cortexos/profiles/claude-durindoor/projects/-home-cortexos--local-share-t3-cortexos-worktrees-velum-t3-919bcf8e/932ce623-b6be-4f2e-bf2d-addf15459c81.jsonl",
+          "cwd": "/home/cortexos/.local/share/t3-cortexos/worktrees/velum/t3-919bcf8e",
+          "prompt_id": "8b8f3512-8af2-4675-8b53-08a8eaab0b99",
+          "hook_event_name": "SessionEnd",
+          "reason": "other"
+        },
+        "initialTeamNames": [],
+        "openClawRouting": {}
+      },
+      "budgetMs": 9000
+    },
+    "wiki-capture": {
+      "class": "required",
+      "phase": "deferred-required",
+      "status": "completed",
+      "attempts": 0,
+      "idempotencyKey": "56937a0364fbe79130df23c6e9929093c8bbb8bc224aa1f3225ba705cafadf91",
+      "payload": {
+        "transcriptPath": "/home/cortexos/.local/share/t3-cortexos/profiles/claude-durindoor/projects/-home-cortexos--local-share-t3-cortexos-worktrees-velum-t3-919bcf8e/932ce623-b6be-4f2e-bf2d-addf15459c81.jsonl",
+        "cwd": "/home/cortexos/.local/share/t3-cortexos/worktrees/velum/t3-919bcf8e",
+        "reason": "other",
+        "input": {
+          "session_id": "932ce623-b6be-4f2e-bf2d-addf15459c81",
+          "transcript_path": "/home/cortexos/.local/share/t3-cortexos/profiles/claude-durindoor/projects/-home-cortexos--local-share-t3-cortexos-worktrees-velum-t3-919bcf8e/932ce623-b6be-4f2e-bf2d-addf15459c81.jsonl",
+          "cwd": "/home/cortexos/.local/share/t3-cortexos/worktrees/velum/t3-919bcf8e",
+          "prompt_id": "8b8f3512-8af2-4675-8b53-08a8eaab0b99",
+          "hook_event_name": "SessionEnd",
+          "reason": "other"
+        },
+        "initialTeamNames": [],
+        "openClawRouting": {}
+      },
+      "budgetMs": 9000,
+      "completedAt": "2026-11-06T22:26:53.641Z"
+    },
+    "team-cleanup": {
+      "class": "required",
+      "phase": "deferred-required",
+      "status": "pending",
+      "attempts": 0,
+      "idempotencyKey": "0dae115a3f9173ea7a2b737707c6911b66d2a2124956521334a010ddac378cef",
+      "payload": {
+        "transcriptPath": "/home/cortexos/.local/share/t3-cortexos/profiles/claude-durindoor/projects/-home-cortexos--local-share-t3-cortexos-worktrees-velum-t3-919bcf8e/932ce623-b6be-4f2e-bf2d-addf15459c81.jsonl",
+        "cwd": "/home/cortexos/.local/share/t3-cortexos/worktrees/velum/t3-919bcf8e",
+        "reason": "other",
+        "input": {
+          "session_id": "932ce623-b6be-4f2e-bf2d-addf15459c81",
+          "transcript_path": "/home/cortexos/.local/share/t3-cortexos/profiles/claude-durindoor/projects/-home-cortexos--local-share-t3-cortexos-worktrees-velum-t3-919bcf8e/932ce623-b6be-4f2e-bf2d-addf15459c81.jsonl",
+          "cwd": "/home/cortexos/.local/share/t3-cortexos/worktrees/velum/t3-919bcf8e",
+          "prompt_id": "8b8f3512-8af2-4675-8b53-08a8eaab0b99",
+          "hook_event_name": "SessionEnd",
+          "reason": "other"
+        },
+        "initialTeamNames": [],
+        "openClawRouting": {}
+      },
+      "budgetMs": 9000
+    },
+    "python-cleanup": {
+      "class": "required",
+      "phase": "deferred-required",
+      "status": "pending",
+      "attempts": 0,
+      "idempotencyKey": "d1cf11fac29da076b3bb877fe5a1891cc2e55e6dbddf38ca493d01e284f2af1b",
+      "payload": {
+        "transcriptPath": "/home/cortexos/.local/share/t3-cortexos/profiles/claude-durindoor/projects/-home-cortexos--local-share-t3-cortexos-worktrees-velum-t3-919bcf8e/932ce623-b6be-4f2e-bf2d-addf15459c81.jsonl",
+        "cwd": "/home/cortexos/.local/share/t3-cortexos/worktrees/velum/t3-919bcf8e",
+        "reason": "other",
+        "input": {
+          "session_id": "932ce623-b6be-4f2e-bf2d-addf15459c81",
+          "transcript_path": "/home/cortexos/.local/share/t3-cortexos/profiles/claude-durindoor/projects/-home-cortexos--local-share-t3-cortexos-worktrees-velum-t3-919bcf8e/932ce623-b6be-4f2e-bf2d-addf15459c81.jsonl",
+          "cwd": "/home/cortexos/.local/share/t3-cortexos/worktrees/velum/t3-919bcf8e",
+          "prompt_id": "8b8f3512-8af2-4675-8b53-08a8eaab0b99",
+          "hook_event_name": "SessionEnd",
+          "reason": "other"
+        },
+        "initialTeamNames": [],
+        "openClawRouting": {}
+      },
+      "budgetMs": 9000
+    },
+    "reply-cleanup": {
+      "class": "required",
+      "phase": "deferred-required",
+      "status": "pending",
+      "attempts": 0,
+      "idempotencyKey": "bbdbc139cb2020711c1bb57e1ee26496bba8a9dce76c498ab7b6fc817ced69e8",
+      "payload": {
+        "transcriptPath": "/home/cortexos/.local/share/t3-cortexos/profiles/claude-durindoor/projects/-home-cortexos--local-share-t3-cortexos-worktrees-velum-t3-919bcf8e/932ce623-b6be-4f2e-bf2d-addf15459c81.jsonl",
+        "cwd": "/home/cortexos/.local/share/t3-cortexos/worktrees/velum/t3-919bcf8e",
+        "reason": "other",
+        "input": {
+          "session_id": "932ce623-b6be-4f2e-bf2d-addf15459c81",
+          "transcript_path": "/home/cortexos/.local/share/t3-cortexos/profiles/claude-durindoor/projects/-home-cortexos--local-share-t3-cortexos-worktrees-velum-t3-919bcf8e/932ce623-b6be-4f2e-bf2d-addf15459c81.jsonl",
+          "cwd": "/home/cortexos/.local/share/t3-cortexos/worktrees/velum/t3-919bcf8e",
+          "prompt_id": "8b8f3512-8af2-4675-8b53-08a8eaab0b99",
+          "hook_event_name": "SessionEnd",
+          "reason": "other"
+        },
+        "initialTeamNames": [],
+        "openClawRouting": {}
+      },
+      "budgetMs": 9000
+    },
+    "callback": {
+      "class": "best-effort",
+      "phase": "deferred-best-effort",
+      "status": "pending",
+      "attempts": 0,
+      "idempotencyKey": "d6b4764cc9ec9c106d719eb567c9639fcd61d89f3852fb5c7c3cd963aabfaa48",
+      "payload": {
+        "transcriptPath": "/home/cortexos/.local/share/t3-cortexos/profiles/claude-durindoor/projects/-home-cortexos--local-share-t3-cortexos-worktrees-velum-t3-919bcf8e/932ce623-b6be-4f2e-bf2d-addf15459c81.jsonl",
+        "cwd": "/home/cortexos/.local/share/t3-cortexos/worktrees/velum/t3-919bcf8e",
+        "reason": "other",
+        "input": {
+          "session_id": "932ce623-b6be-4f2e-bf2d-addf15459c81",
+          "transcript_path": "/home/cortexos/.local/share/t3-cortexos/profiles/claude-durindoor/projects/-home-cortexos--local-share-t3-cortexos-worktrees-velum-t3-919bcf8e/932ce623-b6be-4f2e-bf2d-addf15459c81.jsonl",
+          "cwd": "/home/cortexos/.local/share/t3-cortexos/worktrees/velum/t3-919bcf8e",
+          "prompt_id": "8b8f3512-8af2-4675-8b53-08a8eaab0b99",
+          "hook_event_name": "SessionEnd",
+          "reason": "other"
+        },
+        "initialTeamNames": [],
+        "openClawRouting": {}
+      },
+      "budgetMs": 2000
+    },
+    "notification": {
+      "class": "best-effort",
+      "phase": "deferred-best-effort",
+      "status": "pending",
+      "attempts": 0,
+      "idempotencyKey": "cb97f51c00cdb2014a9817f8760199037b5dfd2b0e34b951c4276733a058829f",
+      "payload": {
+        "transcriptPath": "/home/cortexos/.local/share/t3-cortexos/profiles/claude-durindoor/projects/-home-cortexos--local-share-t3-cortexos-worktrees-velum-t3-919bcf8e/932ce623-b6be-4f2e-bf2d-addf15459c81.jsonl",
+        "cwd": "/home/cortexos/.local/share/t3-cortexos/worktrees/velum/t3-919bcf8e",
+        "reason": "other",
+        "input": {
+          "session_id": "932ce623-b6be-4f2e-bf2d-addf15459c81",
+          "transcript_path": "/home/cortexos/.local/share/t3-cortexos/profiles/claude-durindoor/projects/-home-cortexos--local-share-t3-cortexos-worktrees-velum-t3-919bcf8e/932ce623-b6be-4f2e-bf2d-addf15459c81.jsonl",
+          "cwd": "/home/cortexos/.local/share/t3-cortexos/worktrees/velum/t3-919bcf8e",
+          "prompt_id": "8b8f3512-8af2-4675-8b53-08a8eaab0b99",
+          "hook_event_name": "SessionEnd",
+          "reason": "other"
+        },
+        "initialTeamNames": [],
+        "openClawRouting": {}
+      },
+      "budgetMs": 2000
+    },
+    "openclaw": {
+      "class": "best-effort",
+      "phase": "deferred-best-effort",
+      "status": "pending",
+      "attempts": 0,
+      "idempotencyKey": "f93222d095c7b74e77a899af1696f50a7bd7087c4b84d2bce9f95fdec83c4e11",
+      "payload": {
+        "transcriptPath": "/home/cortexos/.local/share/t3-cortexos/profiles/claude-durindoor/projects/-home-cortexos--local-share-t3-cortexos-worktrees-velum-t3-919bcf8e/932ce623-b6be-4f2e-bf2d-addf15459c81.jsonl",
+        "cwd": "/home/cortexos/.local/share/t3-cortexos/worktrees/velum/t3-919bcf8e",
+        "reason": "other",
+        "input": {
+          "session_id": "932ce623-b6be-4f2e-bf2d-addf15459c81",
+          "transcript_path": "/home/cortexos/.local/share/t3-cortexos/profiles/claude-durindoor/projects/-home-cortexos--local-share-t3-cortexos-worktrees-velum-t3-919bcf8e/932ce623-b6be-4f2e-bf2d-addf15459c81.jsonl",
+          "cwd": "/home/cortexos/.local/share/t3-cortexos/worktrees/velum/t3-919bcf8e",
+          "prompt_id": "8b8f3512-8af2-4675-8b53-08a8eaab0b99",
+          "hook_event_name": "SessionEnd",
+          "reason": "other"
+        },
+        "initialTeamNames": [],
+        "openClawRouting": {}
+      },
+      "budgetMs": 2000
+    },
+    "spawn-next": {
+      "class": "best-effort",
+      "phase": "deferred-best-effort",
+      "status": "pending",
+      "attempts": 0,
+      "idempotencyKey": "441c2beb3629fc52cac2e7baddb3c52c96eb3049473a1d0445961f8b01d10d18",
+      "payload": {
+        "transcriptPath": "/home/cortexos/.local/share/t3-cortexos/profiles/claude-durindoor/projects/-home-cortexos--local-share-t3-cortexos-worktrees-velum-t3-919bcf8e/932ce623-b6be-4f2e-bf2d-addf15459c81.jsonl",
+        "cwd": "/home/cortexos/.local/share/t3-cortexos/worktrees/velum/t3-919bcf8e",
+        "reason": "other",
+        "input": {
+          "session_id": "932ce623-b6be-4f2e-bf2d-addf15459c81",
+          "transcript_path": "/home/cortexos/.local/share/t3-cortexos/profiles/claude-durindoor/projects/-home-cortexos--local-share-t3-cortexos-worktrees-velum-t3-919bcf8e/932ce623-b6be-4f2e-bf2d-addf15459c81.jsonl",
+          "cwd": "/home/cortexos/.local/share/t3-cortexos/worktrees/velum/t3-919bcf8e",
+          "prompt_id": "8b8f3512-8af2-4675-8b53-08a8eaab0b99",
+          "hook_event_name": "SessionEnd",
+          "reason": "other"
+        },
+        "initialTeamNames": [],
+        "openClawRouting": {}
+      },
+      "budgetMs": 2000
+    }
+  },
+  "owner": null,
+  "phase": "recoverable-failure",
+  "recoverableFailure": {
+    "reason": "actions-settled",
+    "releasedAt": "2026-11-06T22:26:53.799Z",
+    "ownerNonce": "df69e133-7cb3-40a8-bb8e-d1f6315ed6ed"
+  }
+}
