@@ -1,0 +1,6 @@
+PR 359 integration preparation
+Live PR head: 645c32007a41cb8f00576103ac43834e543e266a
+Live origin/main: 963663004e44f7a9b3816fc4c247a8053a2f6578
+Local merge: 4c1dfab8314dc94a4e83c7b8d41eda0d763abc4b
+Merge tree equals origin/main; PR changes are already represented by newer implementations on main. Conflict resolutions preserve main's import safety, title handling, duration and source display logic. Superseded PR-only helpers and tests were removed from the merge tree.
+Validation: git diff --cached --check passed before commit; merge tree compared equal to origin/main. No tests run: host-global heavy capacity was not verified. No push or GitHub mutation.
