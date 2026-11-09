@@ -1,18 +1,24 @@
 name: Release
 
-# Signed release AAB on version tags when upload-key secrets are configured.
+# Signed release AAB requires explicit manual dispatch and upload-key secrets.
 # Secrets (repository): VELUM_UPLOAD_KEYSTORE_BASE64, VELUM_UPLOAD_STORE_PASSWORD,
 # VELUM_UPLOAD_KEY_ALIAS, VELUM_UPLOAD_KEY_PASSWORD.
 
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   signed-aab:
     name: Signed release AAB
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 

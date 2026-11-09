@@ -1,10 +1,6 @@
 name: CI
 
 on:
-  push:
-    branches: [main, "cursor/**"]
-  pull_request:
-    branches: [main]
   workflow_dispatch:
     inputs:
       extended:
@@ -12,18 +8,22 @@ on:
         type: boolean
         default: false
 
-# Keep the running PR revision and replace only its pending revision; pushes stay independent.
+# Manual validation only. Keep one pending run per ref.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
 
-# Ordinary CI runs JVM unit tests and Android lint; extended checks require manual opt-in.
+# Run JVM tests and Android lint locally; hosted validation requires manual opt-in.
 # iOS KMP targets stay in the project for later; no iOS CI until M3.
+
+permissions:
+  contents: read
 
 jobs:
   jvm-android:
     name: JVM unit tests + Android lint
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -52,6 +52,7 @@ jobs:
 
   android-extended:
     name: Extended Android build + packaging + screenshots
+    timeout-minutes: 60
     if: github.event_name == 'workflow_dispatch' && inputs.extended
     needs: jvm-android
     runs-on: ubuntu-latest
@@ -177,39 +178,6 @@ jobs:
           name: velum-ui-screenshots
           path: composeApp/build/outputs/roborazzi/*.png
           if-no-files-found: warn
-
-  osv-scan:
-    name: OSV dependency scan
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install osv-scanner
-        run: |
-          set -euo pipefail
-          VER=2.0.1
-          curl -fsSL \
-            "https://github.com/google/osv-scanner/releases/download/v${VER}/osv-scanner_linux_amd64" \
-            -o /tmp/osv-scanner
-          sudo install -m 0755 /tmp/osv-scanner /usr/local/bin/osv-scanner
-          osv-scanner --version
-      - name: Scan repository
-        run: |
-          set +e
-          # v2 CLI: recursive source scan (no --skip-git; that flag was removed).
-          osv-scanner scan source -r --include-git-root ./
-          code=$?
-          set -e
-          # 0 = clean, 1 = vulnerabilities found — warn only until Renovate is enabled.
-          if [ "$code" -eq 0 ]; then
-            echo "OSV: no known vulnerabilities"
-            exit 0
-          fi
-          if [ "$code" -eq 1 ]; then
-            echo "::warning::OSV reported vulnerabilities (non-blocking; see docs/DEPENDENCY_AUDIT.md)"
-            exit 0
-          fi
-          echo "OSV scanner failed with exit $code"
-          exit "$code"
 
   android-launch-smoke:
     name: Emulator launch smoke

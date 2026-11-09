@@ -1,0 +1,48 @@
+name: Security
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  osv-scan:
+    name: OSV dependency scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install osv-scanner
+        run: |
+          set -euo pipefail
+          VER=2.0.1
+          curl -fsSL \
+            "https://github.com/google/osv-scanner/releases/download/v${VER}/osv-scanner_linux_amd64" \
+            -o /tmp/osv-scanner
+          sudo install -m 0755 /tmp/osv-scanner /usr/local/bin/osv-scanner
+          osv-scanner --version
+      - name: Scan repository
+        run: |
+          set +e
+          # v2 CLI: recursive source scan (no --skip-git; that flag was removed).
+          osv-scanner scan source -r --include-git-root ./
+          code=$?
+          set -e
+          # 0 = clean, 1 = vulnerabilities found — warn only until Renovate is enabled.
+          if [ "$code" -eq 0 ]; then
+            echo "OSV: no known vulnerabilities"
+            exit 0
+          fi
+          if [ "$code" -eq 1 ]; then
+            echo "::warning::OSV reported vulnerabilities (non-blocking; see docs/DEPENDENCY_AUDIT.md)"
+            exit 0
+          fi
+          echo "OSV scanner failed with exit $code"
+          exit "$code"
