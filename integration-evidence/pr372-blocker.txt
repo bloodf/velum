@@ -1,0 +1,7 @@
+PR 372 integration preparation, lease 2694736a-a4ee-42e6-bae0-e0700c19c026
+Worktree: /home/cortexos/.local/share/t3-cortexos/worktrees/velum/t3-689f6eed
+Branch: t3/pr372-ptbr-failure-sanitization
+Starting HEAD: 0f15c466a6a5af3e2c9126abd4d137555c0217e1 (matches expected)
+Locally cached origin/main: 963663004e44f7a9b3816fc4c247a8053a2f6578 (freshness unverified)
+Live verification failed: gh pr view 372 could not connect to api.github.com; git ls-remote origin refs/pull/372/head refs/heads/main failed to resolve github.com.
+No merge attempted because the live PR head and current main could not be confirmed. No tests run; global heavy capacity unverified. No remote changes made.
