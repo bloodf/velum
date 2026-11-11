@@ -21,6 +21,7 @@ class LocalTranscriber(
     override val engineId: String = "local-asr"
 
     override suspend fun transcribe(input: AudioInput, modelId: String): TranscriptionResult {
+        modelManager.awaitInitialization()
         val resolved = modelId.ifBlank {
             LocalAsrRouter.chooseModelId(input.languageHint)
         }
@@ -58,6 +59,7 @@ class LocalDiarizer(
 
     /** Mirrors the gate in [diarize]: without the models it never runs, so there is nothing to overwrite. */
     override suspend fun speakerNamingReady(modelId: String): Boolean {
+        modelManager.awaitInitialization()
         val resolved = modelId.ifBlank { "pyannote-segmentation-3.0" }
         val wouldRun = modelManager.stateFor(resolved)?.status == LocalModelStatus.Ready &&
             modelManager.modelPath(resolved) != null &&
@@ -66,6 +68,7 @@ class LocalDiarizer(
     }
 
     override suspend fun diarize(input: AudioInput, modelId: String): DiarizationResult {
+        modelManager.awaitInitialization()
         val resolved = modelId.ifBlank { "pyannote-segmentation-3.0" }
         val state = modelManager.stateFor(resolved)
         if (state?.status != LocalModelStatus.Ready) {
@@ -110,6 +113,7 @@ class LocalLlmEngine(
     override val engineId: String = "local-llm"
 
     override suspend fun complete(request: LlmRequest, modelId: String): LlmResult {
+        modelManager.awaitInitialization()
         val resolved = resolveLocalLlmModelId(modelId, modelManager)
         val state = modelManager.stateFor(resolved)
         if (state?.status != LocalModelStatus.Ready) {
