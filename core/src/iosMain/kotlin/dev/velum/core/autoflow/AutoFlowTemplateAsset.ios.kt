@@ -1,9 +1,7 @@
 package dev.velum.core.autoflow
 
-/**
- * iOS ships without the AutoFlow JSONL asset until the app bundle copies it.
- * Android-first: JVM/Android load from classpath resources.
- */
+import dev.velum.core.templates.BundledCatalogAsset
+
 internal actual object AutoFlowTemplateAsset {
-    actual fun readJsonl(): String = ""
+    actual fun readJsonl(): String = BundledCatalogAsset.readJsonl("autoflow_templates.jsonl")
 }
