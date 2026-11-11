@@ -1,5 +1,6 @@
 package dev.velum.app.platform
 
+import dev.velum.ble.client.CrcStatus
 import java.io.File
 import java.io.RandomAccessFile
 import java.nio.file.AtomicMoveNotSupportedException
@@ -47,6 +48,7 @@ internal class PartialTransferFileStore private constructor(
     }
 
     override fun write(data: ByteArray) {
+        if (data.isNotEmpty()) clearVerdict()
         file.write(data)
         pending += data.size
         if (pending >= checkpointBytes) flush()
@@ -59,6 +61,7 @@ internal class PartialTransferFileStore private constructor(
     }
 
     override fun truncate(length: Long) {
+        clearVerdict()
         if (length == 0L) { mismatchMark.delete(); readFailMark.delete() } // restarting from zero: old verdicts no longer apply
         file.setLength(length)
         file.seek(length)
@@ -94,10 +97,58 @@ internal class PartialTransferFileStore private constructor(
         if (count > 0) readFailMark.writeText(count.toString()) else readFailMark.delete()
     }
 
-    override fun crcMismatch(): Boolean = mismatchMark.isFile
+    private fun clearVerdict() {
+        check(!mismatchMark.exists() || mismatchMark.delete()) { "Could not clear partial CRC verdict" }
+    }
+
+    private fun contentDigest(): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        file.seek(0)
+        try {
+            val block = ByteArray(64 * 1024)
+            while (true) {
+                val count = file.read(block)
+                if (count < 0) break
+                digest.update(block, 0, count)
+            }
+        } finally {
+            file.seek(file.length())
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
+    }
+
+    override fun crcMismatchVerdict(): CrcStatus.Mismatch? {
+        flush()
+        val parts = mismatchMark.takeIf { it.isFile }?.readText()?.split(":") ?: return null
+        if (parts.size != 5 || parts[0] != "v1" || parts[1].toLongOrNull() != file.length()) return null
+        val device = parts[2].toIntOrNull()?.takeIf { it in 0..65535 } ?: return null
+        val computed = parts[3].toIntOrNull()?.takeIf { it in 0..65535 } ?: return null
+        if (parts[4] != contentDigest()) return null
+        return CrcStatus.Mismatch(device, computed)
+    }
+
+    override fun setCrcVerdict(crc: CrcStatus) {
+        flush()
+        if (crc !is CrcStatus.Mismatch) {
+            clearVerdict()
+            return
+        }
+        val value = "v1:${file.length()}:${crc.device}:${crc.computed}:${contentDigest()}"
+        // Sync the verdict before returning bytes to a caller whose later save may fail.
+        RandomAccessFile(mismatchMark, "rw").use { mark ->
+            mark.setLength(0)
+            mark.write(value.encodeToByteArray())
+            mark.fd.sync()
+        }
+    }
+
+    override fun crcMismatch(): Boolean =
+        mismatchMark.takeIf { it.isFile }?.readText() == "1" || crcMismatchVerdict() != null
 
     override fun setCrcMismatch(mismatch: Boolean) {
-        if (mismatch) mismatchMark.writeText("1") else mismatchMark.delete()
+        if (mismatch) {
+            if (crcMismatchVerdict() == null) mismatchMark.writeText("1")
+        } else clearVerdict()
     }
 
     override fun close() = file.close()
