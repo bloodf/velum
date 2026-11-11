@@ -63,6 +63,11 @@
         </activity>
 
         <service
+            android:name=".platform.ProviderCopyService"
+            android:exported="false"
+            android:process=":provider_copy" />
+
+        <service
             android:name=".platform.MicRecordingService"
             android:exported="false"
             android:foregroundServiceType="microphone" />

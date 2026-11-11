@@ -30,6 +30,13 @@ import org.robolectric.annotation.Config
 @RunWith(AndroidJUnit4::class)
 @Config(application = android.app.Application::class, sdk = [34])
 class DetachedShareImportTest {
+    @org.junit.Before fun installProviderCopyTransport() {
+        dev.velum.app.platform.installLocalProviderCopyTestTransport()
+    }
+    @org.junit.After fun resetProviderCopyTransport() {
+        dev.velum.app.platform.providerCopyTestTransport = null
+    }
+
     private lateinit var recordingFiles: File
 
     @org.junit.Before fun installRecordingFiles() {
