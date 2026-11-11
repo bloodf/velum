@@ -54,7 +54,7 @@ class WifiSoftApBleFallbackTest {
 
     private fun wifiCipher() = createWifiFrameCipher(createSessionCipher(), wifiSecret, WifiPayloadCipher.ChaCha20Poly1305)
     // On the address the server binds: on macOS a wildcard bind succeeds beside another process's loopback listener.
-    private fun freePort(): Int = ServerSocket(0, 1, InetAddress.getByName("127.0.0.1")).use { it.localPort }
+    private fun freePort(): Int = ServerSocket(0, 1, InetAddress.getByName("127.0.0.1")).use { it.localPort }.also { ZPortLog.record(it) }
     private fun crc(bytes: ByteArray): Long = CRC32().also { it.update(bytes) }.value
 
     /** Counts frames from the simulated peripheral, which only answers real client writes: the BLE path really ran. */
