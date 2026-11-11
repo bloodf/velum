@@ -42,9 +42,17 @@ class SessionDownloadService : Service() {
 
     /** Android 15's dataSync limit: the service must stop within seconds or the app crashes. */
     override fun onTimeout(startId: Int, fgsType: Int) {
-        Log.w(TAG, "Foreground time limit reached; cancelling the download")
-        DownloadProgressNotifier.cancelDeviceSession()
-        synchronized(lock) { stopNow() }
+        synchronized(lock) {
+            // A delayed timeout must not cancel the download owned by a newer start or instance.
+            if (active !== this || startId != latestStartId || !wanted) return
+            Log.w(TAG, "Foreground time limit reached; cancelling the download")
+            wanted = false
+            try {
+                DownloadProgressNotifier.cancelDeviceSession()
+            } finally {
+                stopNow()
+            }
+        }
     }
 
     override fun onDestroy() {
