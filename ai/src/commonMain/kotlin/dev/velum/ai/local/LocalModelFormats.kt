@@ -24,8 +24,7 @@ object LocalModelFormats {
  * Qwen3 GGUF, #273) in `models/<id>` with no UI to remove it, so the app deletes these directories at startup.
  * Iterating is idempotent: once gone, nothing is left to do. Call off the main thread.
  *
- * Local LLMs run only on Android (LiteRT-LM); the iOS and JVM runtimes throw UnsupportedOperationException, so no
- * platform other than Android has an LLM format to load.
+ * Android and iOS use LiteRT-LM bundles. The JVM runtime still rejects local LLM inference.
  */
 object RetiredModels {
     val ids: List<String> = listOf("qwen3-4b-instruct-2507")

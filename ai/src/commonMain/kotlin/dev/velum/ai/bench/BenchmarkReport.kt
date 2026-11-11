@@ -58,6 +58,7 @@ fun rtf(elapsedMs: Long, inputDurationMs: Long): Double {
 fun BenchReport.requireValid(expectedModels: Set<String>) {
     require(expectedModels.isNotEmpty() && expectedModels.none { it.isBlank() }) { "no benchmark models requested" }
     require(results.isNotEmpty()) { "report has no results" }
+    require(!environment.isEmulator) { "model inference is permitted only on physical devices" }
     val missing = expectedModels - results.map { it.modelId }.toSet()
     require(missing.isEmpty()) { "no measurement for models: $missing" }
     results.forEach { r ->
@@ -71,7 +72,7 @@ fun BenchReport.requireValid(expectedModels: Set<String>) {
     // Another run can only reproduce this one if the exact inputs are identified, not just their paths.
     if (results.any { it.task == BenchTask.Transcription }) requireSha256("audioSha256")
     if (results.any { it.task == BenchTask.Summary }) requireSha256("summaryTranscriptSha256")
-    require(environment.device.isNotBlank() && environment.abi.isNotBlank() && environment.sdkInt > 0) {
+    require(environment.device.isNotBlank() && environment.androidRelease.isNotBlank() && environment.abi.isNotBlank() && environment.sdkInt > 0) {
         "environment fields missing"
     }
 }

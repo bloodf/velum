@@ -54,6 +54,11 @@ class BenchmarkReportTest {
         assertFailsWith<IllegalArgumentException> { BenchReport(none, listOf(summary)).requireValid(setOf("g")) }
     }
 
+    @Test fun emulator_and_missing_android_release_fail() {
+        assertFailsWith<IllegalArgumentException> { BenchReport(env.copy(isEmulator = true), listOf(result())).requireValid(setOf("m")) }
+        assertFailsWith<IllegalArgumentException> { BenchReport(env.copy(androidRelease = ""), listOf(result())).requireValid(setOf("m")) }
+    }
+
     @Test fun missing_model_or_measurement_fails() {
         assertFailsWith<IllegalArgumentException> { BenchReport(env, listOf(result("a"))).requireValid(setOf("a", "b")) }
         assertFailsWith<IllegalArgumentException> { BenchReport(env, listOf(result(ram = 0))).requireValid(setOf("m")) }
