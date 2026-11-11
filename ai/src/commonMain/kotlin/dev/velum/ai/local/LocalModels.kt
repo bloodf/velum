@@ -3,6 +3,7 @@ package dev.velum.ai.local
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.distinctUntilChanged
 import dev.velum.ai.createDownloadHttpClient
+import dev.velum.ai.needle.NeedleWhistleEngine
 import io.ktor.client.HttpClient
 import io.ktor.client.request.prepareGet
 import io.ktor.client.statement.bodyAsChannel
@@ -34,6 +35,8 @@ import kotlinx.coroutines.flow.transformWhile
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 enum class LocalModelKind {
@@ -326,16 +329,35 @@ class LocalModelManager(
     private val freeSpace: () -> Long? = { storeRoot.freeSpaceBytes() },
 ) {
     private val _states = MutableStateFlow(
-        catalog.map { initialState(it) },
+        catalog.map { unverifiedState(it) },
     )
     val states: StateFlow<List<LocalModelState>> = _states.asStateFlow()
-
-    init { reclaimExtractedArchives() }
 
     // Atomic CAS map (common; `synchronized` is JVM-only), same pattern as cancelRequested.
     private val downloadJobs = MutableStateFlow<Map<String, Job>>(emptyMap())
     private val cancelRequested = MutableStateFlow(setOf<String>())
     private val downloadScope = CoroutineScope(SupervisorJob() + ioDispatcher)
+    private val diskLocks = catalog.associate { it.id to Mutex() }
+    private val _initialized = MutableStateFlow(false)
+    val initialized: StateFlow<Boolean> = _initialized.asStateFlow()
+    private val initialization = downloadScope.launch {
+        try { scanDisk() } finally { _initialized.value = true }
+    }
+
+    /** Ready remains false until the installed bytes have been verified on IO. */
+    suspend fun awaitInitialization() { initialization.join() }
+
+    private suspend fun scanDisk() {
+        for (state in _states.value) {
+            diskLocks.getValue(state.spec.id).withLock {
+                val verified = initialState(state.spec)
+                if (verified.status == LocalModelStatus.Ready && state.spec.usesArchiveExtract()) {
+                    runCatching { storeRoot.resolve(state.spec.id).resolve(state.spec.archiveFileName).deleteFile() }
+                }
+                update(state.spec.id) { verified }
+            }
+        }
+    }
 
     fun stateFor(id: String): LocalModelState? = _states.value.firstOrNull { it.spec.id == id }
 
@@ -349,9 +371,10 @@ class LocalModelManager(
         return ModelReadiness.resolveWeightsDir(dir, spec)
     }
 
-    fun refreshFromDisk() {
-        reclaimExtractedArchives()
-        _states.update { list -> list.map { initialState(it.spec) } }
+    /** The returned job completes after verification; disk scans never run on the caller's dispatcher. */
+    fun refreshFromDisk(): Job = downloadScope.launch {
+        awaitInitialization()
+        scanDisk()
     }
 
     fun freeSpaceBytes(): Long? = freeSpace()
@@ -367,15 +390,6 @@ class LocalModelManager(
         return pending.sumOf { it.spec.approxBytes } + extractHeadroom
     }
 
-    /** The archive is only needed to extract; once the model is Ready it is dead weight (Parakeet kept ~487 MB). */
-    private fun reclaimExtractedArchives() {
-        _states.value.forEach { state ->
-            val spec = state.spec
-            if (state.status != LocalModelStatus.Ready || !spec.usesArchiveExtract()) return@forEach
-            runCatching { storeRoot.resolve(spec.id).resolve(spec.archiveFileName).deleteFile() }
-        }
-    }
-
     /** Cancel an in-flight [download] for [id], if any. */
     fun cancelDownload(id: String) {
         cancelRequested.update { it + id }
@@ -388,6 +402,7 @@ class LocalModelManager(
      * large transfer. [cancelDownload] on the current model ends the whole sequence.
      */
     fun startDownloads(ids: List<String>): Job = downloadScope.launch {
+        awaitInitialization()
         val pending = ids.filterNot { isReady(it) }
         val waiting = pending.toMutableList()
         adjustQueued(pending, +1)
@@ -438,6 +453,7 @@ class LocalModelManager(
      * The collector's job stays registered, so [cancelDownload] still ends the caller's coroutine.
      */
     fun download(id: String): Flow<LocalModelState> = flow {
+        awaitInitialization()
         val collectorJob = currentCoroutineContext().job
         // Single flight: two bodies would write the same directory. A later caller follows the running one.
         val running = downloadJobs.getAndUpdate { if (id in it) it else it + (id to collectorJob) }
@@ -450,7 +466,8 @@ class LocalModelManager(
         }
         cancelRequested.update { it - id }
         try {
-            emitAll(downloadBody(id).flowOn(ioDispatcher))
+            val lock = diskLocks[id] ?: return@flow
+            lock.withLock { emitAll(downloadBody(id).flowOn(ioDispatcher)) }
         } finally {
             downloadJobs.update { if (it[id] === collectorJob) it - id else it }
             cancelRequested.update { it - id }
@@ -519,18 +536,17 @@ class LocalModelManager(
             return@flow
         }
 
-        update(id) { it.copy(status = LocalModelStatus.Downloading, progress = 0f, error = null) }
-        emit(requireNotNull(stateFor(id)))
-
         val dir = storeRoot.resolve(id)
-        dir.createDirectories()
         val dest = dir.resolve(current.spec.archiveFileName)
         val partial = dir.resolve("${current.spec.archiveFileName}.partial")
-        if (partial.exists()) partial.deleteRecursively()
         var filesInPlace = false
         var complete = false
 
         try {
+            update(id) { it.copy(status = LocalModelStatus.Downloading, progress = 0f, error = null) }
+            emit(requireNotNull(stateFor(id)))
+            dir.createDirectories()
+            if (partial.exists()) partial.deleteRecursively()
             val digest = createSha256Digest()
             try {
                 httpClient.prepareGet(url).execute { response ->
@@ -647,10 +663,23 @@ class LocalModelManager(
         val dir = storeRoot.resolve(id)
         // NonCancellable: stopping between the delete and the state update would show Ready with no files.
         withContext(NonCancellable + ioDispatcher) {
-            if (dir.exists()) dir.deleteRecursively()
-            update(id) { initialState(it.spec).copy(status = statusForMissingUrl(it.spec)) }
+            awaitInitialization()
+            val lock = diskLocks[id] ?: return@withContext
+            lock.withLock {
+                if (dir.exists()) dir.deleteRecursively()
+                update(id) { unverifiedState(it.spec) }
+            }
         }
     }
+
+    // No filesystem access during construction. Missing URL/checksum errors are already known.
+    private fun unverifiedState(spec: LocalModelSpec) = LocalModelState(
+        spec, statusForMissingUrl(spec), error = when {
+            spec.downloadUrl.isNullOrBlank() -> LocalModelErrors.NoDownloadUrl
+            spec.sha256.isNullOrBlank() -> LocalModelErrors.ChecksumNotPinned
+            else -> null
+        },
+    )
 
     private fun initialState(spec: LocalModelSpec): LocalModelState {
         val dir = storeRoot.resolve(spec.id)
@@ -733,22 +762,25 @@ object LocalAsrRouter {
      * Low-end / Tiny size pick: Whistle when the language is in its set, else Whisper Tiny
      * (covers Portuguese and other important languages).
      */
-    fun chooseLowEndModelId(languageHint: String?): String =
-        if (supportsWhistle(languageHint)) WHISTLE_ID else TINY_ID
+    fun chooseLowEndModelId(
+        languageHint: String?,
+        whistleAvailable: Boolean = NeedleWhistleEngine.isNativeAvailable,
+    ): String = if (whistleAvailable && supportsWhistle(languageHint)) WHISTLE_ID else TINY_ID
 
     fun chooseModelId(
         languageHint: String?,
         mixedAudio: Boolean = false,
         tier: AsrSizeTier = AsrSizeTier.Auto,
         deviceClass: DeviceComputeClass = detectDeviceComputeClass(),
+        whistleAvailable: Boolean = NeedleWhistleEngine.isNativeAvailable,
     ): String {
         when (tier) {
-            AsrSizeTier.Tiny -> return chooseLowEndModelId(languageHint)
+            AsrSizeTier.Tiny -> return chooseLowEndModelId(languageHint, whistleAvailable)
             AsrSizeTier.Quality -> return if (mixedAudio) QUALITY_ID else languageDefault(languageHint, preferQuality = true)
             AsrSizeTier.Standard -> return languageDefault(languageHint, preferQuality = false)
             AsrSizeTier.Auto -> Unit
         }
-        if (deviceClass == DeviceComputeClass.Low) return chooseLowEndModelId(languageHint)
+        if (deviceClass == DeviceComputeClass.Low) return chooseLowEndModelId(languageHint, whistleAvailable)
         if (mixedAudio) return QUALITY_ID
         return languageDefault(languageHint, preferQuality = deviceClass == DeviceComputeClass.High && mixedAudio)
     }
