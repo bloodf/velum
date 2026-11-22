@@ -71,11 +71,21 @@ object WindowedAsr {
         if (parts.isEmpty()) {
             return TranscriptionResult(text = "", segments = emptyList(), engineId = "", modelId = "")
         }
-        val text = parts.map { it.text.trim() }.filter { it.isNotEmpty() }.joinToString(" ")
+        // Consecutive windows share DEFAULT_WINDOW_SECONDS - DEFAULT_HOP_SECONDS of audio, so the words spoken there
+        // come back at the start of the next window; drop that repeated run once, from the text and the segments.
+        val texts = ArrayList<String>(parts.size)
         val segments = ArrayList<TranscriptSegment>()
+        var soFar = ""
         parts.forEachIndexed { index, part ->
+            val repeated = if (index == 0) 0 else overlapWordCount(soFar, part.text)
+            val partText = dropLeadingWords(part.text, repeated)
+            if (partText.isNotBlank()) {
+                texts += partText
+                soFar = (if (soFar.isEmpty()) "" else "$soFar ") + partText
+                soFar = soFar.takeLast(OVERLAP_TAIL_CHARS)
+            }
             val shift = windowStartMs[index]
-            for (seg in part.segments) {
+            for (seg in dropLeadingSegmentWords(part.segments, repeated)) {
                 segments += TranscriptSegment(
                     startMs = seg.startMs + shift,
                     endMs = seg.endMs + shift,
@@ -85,6 +95,7 @@ object WindowedAsr {
                 )
             }
         }
+        val text = texts.joinToString(" ")
         val first = parts.first()
         return TranscriptionResult(
             text = text,
@@ -94,4 +105,53 @@ object WindowedAsr {
             modelId = first.modelId,
         )
     }
+
+    /** Longest run of repeated words considered (two seconds of speech is well under this). */
+    private const val MAX_OVERLAP_WORDS = 12
+    private const val OVERLAP_TAIL_CHARS = 400
+
+    private fun words(text: String): List<String> = text.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }
+
+    private fun norm(word: String): String =
+        word.lowercase().filter { it.isLetterOrDigit() }.ifEmpty { word.lowercase() }
+
+    /**
+     * How many words at the start of [next] repeat the end of [previous] (the audio both windows share). A one-word
+     * match counts only for a word of four or more characters, so a genuinely repeated short word ("the", "no") is
+     * not taken for the overlap.
+     */
+    internal fun overlapWordCount(previous: String, next: String): Int {
+        val tail = words(previous).takeLast(MAX_OVERLAP_WORDS).map(::norm)
+        val head = words(next).take(MAX_OVERLAP_WORDS).map(::norm)
+        for (k in minOf(tail.size, head.size) downTo 1) {
+            if (tail.subList(tail.size - k, tail.size) == head.subList(0, k)) {
+                return if (k >= 2 || head[0].length >= 4) k else 0
+            }
+        }
+        return 0
+    }
+
+    private fun dropLeadingWords(text: String, count: Int): String =
+        if (count <= 0) text.trim() else words(text).drop(count).joinToString(" ")
+
+    /** Removes [count] leading words across [segments]: whole per-word segments, or words from a window-long one. */
+    private fun dropLeadingSegmentWords(segments: List<TranscriptSegment>, count: Int): List<TranscriptSegment> {
+        var left = count
+        val out = ArrayList<TranscriptSegment>(segments.size)
+        for (seg in segments) {
+            if (left <= 0) {
+                out += seg
+                continue
+            }
+            val segWords = words(seg.text)
+            if (segWords.size <= left) {
+                left -= segWords.size
+                continue
+            }
+            out += seg.copy(text = segWords.drop(left).joinToString(" "))
+            left = 0
+        }
+        return out
+    }
 }
+
