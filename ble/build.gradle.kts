@@ -65,6 +65,7 @@ kotlin {
                 implementation(libs.androidx.test.ext.junit)
                 implementation(libs.robolectric)
                 implementation(libs.kotlinx.coroutines.test)
+                implementation(project(":ble-testing"))
             }
         }
 
