@@ -32,6 +32,7 @@ import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -318,6 +319,34 @@ class RecordingProcessorDecodeCleanupTest {
         assertContentEquals(bytes, src.readBytes(), "source recording preserved")
         assertFalse(spillDir(id).exists(), "temp PCM removed")
         Triple(last, captured, h)
+    }
+
+    private fun fmt(format: Int, channels: Int, rate: Int, bits: Int) =
+        "fmt ".toByteArray() + le32(16) + le16(format) + le16(channels) + le32(rate) +
+            le32(rate * channels * bits / 8) + le16(channels * bits / 8) + le16(bits)
+
+    @Test
+    fun a_wav_that_is_not_16_bit_mono_pcm_fails_instead_of_being_transcribed_as_noise() {
+        for ((name, format) in listOf(
+            "stereo" to fmt(1, 2, 16_000, 16),
+            "24-bit" to fmt(1, 1, 16_000, 24),
+            "float" to fmt(3, 1, 16_000, 32),
+            "a-law" to fmt(6, 1, 8_000, 8),
+        )) {
+            val (last, captured, h) = runAudio("rec-wav-$name", ".wav", riff(format, chunk("data", ByteArray(32_000) { 7 })))
+            val failed = assertIs<JobProgress.Failed>(last, name)
+            assertTrue(failed.message.startsWith("Unsupported audio format (WAV"), "$name: ${failed.message}")
+            assertTrue(captured.isEmpty(), "$name: ASR must not run")
+            runBlocking { assertEquals("failed", h.repo.getRecording("rec-wav-$name")!!.status) }
+        }
+    }
+
+    @Test
+    fun an_extensible_16_bit_mono_wav_is_still_accepted() {
+        val pcm = ByteArray(16_000 * 2) { (it % 51).toByte() }
+        val (last, captured, _) = runAudio("rec-wav-ext", ".wav", riff(fmt(0xFFFE, 1, 16_000, 16), chunk("data", pcm)))
+        assertTrue(last is JobProgress.Succeeded, "last=$last")
+        assertContentEquals(pcm, captured.single().bytes)
     }
 
     @Test

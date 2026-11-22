@@ -776,7 +776,20 @@ class RecordingProcessor(
             val size = u32le(head, 4).toLong() and 0xFFFF_FFFFL
             val body = offset + 8
             when (id) {
-                "fmt " -> if (body + 16 <= fileLength) sampleRate = u32le(src.readRange(body, 16), 4)
+                "fmt " -> if (body + 16 <= fileLength) {
+                    val fmt = src.readRange(body, 16)
+                    sampleRate = u32le(fmt, 4)
+                    // The data is copied as 16-bit mono PCM: any other layout would be transcribed as noise with a
+                    // "successful" job. Imports are normalized to 16-bit mono; this guards anything that is not.
+                    val format = u16le(fmt, 0)
+                    val channels = u16le(fmt, 2)
+                    val bits = u16le(fmt, 14)
+                    if ((format != WAVE_FORMAT_PCM && format != WAVE_FORMAT_EXTENSIBLE) || channels != 1 || bits != 16) {
+                        throw IllegalArgumentException(
+                            unsupportedAudioMessage("WAV, format $format, $channels channel(s), $bits-bit"),
+                        )
+                    }
+                }
                 "data" -> {
                     val rest = (fileLength - body).coerceAtLeast(0L)
                     val dataSize = when {
@@ -834,6 +847,9 @@ class RecordingProcessor(
             ((bytes[at + 2].toInt() and 0xFF) shl 16) or
             ((bytes[at + 3].toInt() and 0xFF) shl 24)
     }
+
+    private fun u16le(bytes: ByteArray, at: Int): Int =
+        (bytes[at].toInt() and 0xFF) or ((bytes[at + 1].toInt() and 0xFF) shl 8)
 
     private fun fourCc(bytes: ByteArray, at: Int): String {
         if (at + 4 > bytes.size) return ""
@@ -905,6 +921,9 @@ const val WAV_NO_DATA_MESSAGE =
  * would let a 48 kHz recording ask for 172.8 MB.
  */
 internal const val DIARIZATION_MAX_BYTES: Int = 30 * 60 * 16_000 * 2
+
+private const val WAVE_FORMAT_PCM = 1
+private const val WAVE_FORMAT_EXTENSIBLE = 0xFFFE
 
 /** Plain error for audio whose container is recognised but not decoded by this path. */
 internal fun unsupportedAudioMessage(container: String) =
