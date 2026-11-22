@@ -421,6 +421,32 @@ class VoiceProfileStore(
         return best
     }
 
+    /**
+     * One person is at most one speaker of a recording: each speaker was matched on its own, so two similar voices
+     * could both be given the same name. Pairs above [threshold] are taken best score first, each profile and each
+     * speaker at most once. Profiles are read once, not once per speaker.
+     */
+    private fun assignNames(embeddingsBySpeaker: Map<String, FloatArray>, threshold: Float): Map<String, String> {
+        val profiles = inspectProfiles().profiles
+        val pairs = buildList {
+            for ((speakerId, embedding) in embeddingsBySpeaker) {
+                for (profile in profiles) {
+                    if (profile.embedding.size != embedding.size) continue
+                    val score = cosineSimilarity(embedding, profile.embedding)
+                    if (score >= threshold) add(Triple(speakerId, profile, score))
+                }
+            }
+        }.sortedByDescending { it.third }
+        val takenProfiles = mutableSetOf<String>()
+        return buildMap {
+            for ((speakerId, profile, _) in pairs) {
+                if (speakerId in this || profile.id in takenProfiles) continue
+                put(speakerId, profile.displayName)
+                takenProfiles += profile.id
+            }
+        }
+    }
+
     /** Confirm a match — averages the new sample into the centroid. */
     fun refine(id: String, embedding: FloatArray): VoiceProfile? {
         val existing = get(id) ?: return null
@@ -528,13 +554,7 @@ class VoiceProfileStore(
      */
     suspend fun nameSpeakers(embeddingsBySpeaker: Map<String, FloatArray>, matchThreshold: Float): SpeakerNaming = try {
         SpeakerNaming(
-            withReady {
-                buildMap {
-                    for ((speakerId, embedding) in embeddingsBySpeaker) {
-                        match(embedding, threshold = matchThreshold)?.let { put(speakerId, it.profile.displayName) }
-                    }
-                }
-            },
+            withReady { assignNames(embeddingsBySpeaker, matchThreshold) },
             unavailable = false,
         )
     } catch (e: VoiceProfileKeyUnavailableException) {

@@ -33,6 +33,33 @@ class VoiceProfileStoreTest {
     }
 
     @Test
+    fun two_speakers_are_never_both_given_the_same_person() = kotlinx.coroutines.runBlocking {
+        val store = tempStore()
+        store.upsert("Alice", floatArrayOf(1f, 0f, 0f))
+        store.upsert("Bob", floatArrayOf(0f, 0f, 1f))
+        // Both voices are closest to Alice; only the closer one can be Alice.
+        val naming = store.nameSpeakers(
+            mapOf("S1" to floatArrayOf(1f, 0.05f, 0f), "S2" to floatArrayOf(1f, 0.3f, 0f)),
+            matchThreshold = 0.8f,
+        )
+        assertEquals(mapOf("S1" to "Alice"), naming.names)
+    }
+
+    @Test
+    fun names_go_to_the_best_scoring_pairs_first() = kotlinx.coroutines.runBlocking {
+        val store = tempStore()
+        store.upsert("Alice", floatArrayOf(1f, 0f))
+        store.upsert("Bob", floatArrayOf(0f, 1f))
+        // S1 is slightly closer to Alice (0.75) than to Bob (0.66); S2 is almost exactly Alice (0.995). Matched one by
+        // one both became "Alice"; best pair first, S2 is Alice and S1 takes its next match, Bob.
+        val naming = store.nameSpeakers(
+            mapOf("S1" to floatArrayOf(0.75f, 0.66f), "S2" to floatArrayOf(1f, 0.1f)),
+            matchThreshold = 0.6f,
+        )
+        assertEquals(mapOf("S1" to "Bob", "S2" to "Alice"), naming.names)
+    }
+
+    @Test
     fun refine_averagesSamples() {
         val store = tempStore()
         store.upsert("Bob", floatArrayOf(1f, 0f, 0f))
