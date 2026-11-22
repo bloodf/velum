@@ -13,6 +13,8 @@ import com.k2fsa.sherpa.onnx.OnlineRecognizerConfig
 import com.k2fsa.sherpa.onnx.OnlineStream
 import com.k2fsa.sherpa.onnx.OnlineTransducerModelConfig
 import dev.velum.ai.pipeline.BoundedPcmRingBuffer
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -88,25 +90,30 @@ class OnlineStreamingTranscriber(
     override val engineId: String = "local-online-asr"
     override var onPartial: (markdown: String) -> Unit = {}
 
+    private var released = false
     private var sampleRate = 16_000
     private var stream: OnlineStream? = null
     private val committed = StringBuilder()
     private var started = false
 
-    override fun start(
+    override suspend fun start(
         sampleRateHz: Int,
         languageHint: String?,
         initialPrompt: String?,
     ) {
+        check(!released) { "Transcriber is closed" }
+        currentCoroutineContext().ensureActive()
         started = true
         sampleRate = sampleRateHz
         committed.clear()
         stream?.release()
         stream = recognizer.createStream()
+        currentCoroutineContext().ensureActive()
         onPartial("**partial** · 0:00\n")
     }
 
-    override fun pushPcm(pcm16Le: ByteArray) {
+    override suspend fun pushPcm(pcm16Le: ByteArray) {
+        currentCoroutineContext().ensureActive()
         check(started) { "start() required" }
         val s = stream ?: return
         val samples = pcm16LeToFloats(pcm16Le)
@@ -125,7 +132,8 @@ class OnlineStreamingTranscriber(
         emitPartial(text)
     }
 
-    override fun finish(): String {
+    override suspend fun finish(): String {
+        currentCoroutineContext().ensureActive()
         check(started) { "start() required" }
         started = false
         val s = stream
@@ -146,19 +154,39 @@ class OnlineStreamingTranscriber(
             try {
                 s?.release()
             } finally {
-                recognizer.release()
+                if (!released) {
+                    released = true
+                    recognizer.release()
+                }
             }
         }
         val md = "**Speaker 1** · 0:00\n${committed}\n"
+        currentCoroutineContext().ensureActive()
         onPartial(md)
         return md
     }
 
-    private fun emitPartial(live: String) {
+    // Sherpa decode is synchronous; cleanup runs after the in-flight lifecycle call returns.
+    override suspend fun cancel() {
+        started = false
+        onPartial = {}
+        try {
+            stream?.release()
+        } finally {
+            stream = null
+            if (!released) {
+                released = true
+                recognizer.release()
+            }
+        }
+    }
+
+    private suspend fun emitPartial(live: String) {
         val body = buildString {
             if (committed.isNotEmpty()) append(committed).append('\n')
             if (live.isNotBlank()) append(live)
         }
+        currentCoroutineContext().ensureActive()
         onPartial("**partial** · 0:00\n$body\n")
     }
 }
@@ -186,7 +214,7 @@ class OverlappingChunkedOfflineStreamingTranscriber(
     private var started = false
     private var totalPushedBytes = 0
 
-    override fun start(
+    override suspend fun start(
         sampleRateHz: Int,
         languageHint: String?,
         initialPrompt: String?,
@@ -199,10 +227,12 @@ class OverlappingChunkedOfflineStreamingTranscriber(
         lastCommittedEnd = 0
         totalPushedBytes = 0
         committed.clear()
+        currentCoroutineContext().ensureActive()
         onPartial("**partial** · 0:00\n")
     }
 
-    override fun pushPcm(pcm16Le: ByteArray) {
+    override suspend fun pushPcm(pcm16Le: ByteArray) {
+        currentCoroutineContext().ensureActive()
         check(started) { "start() required" }
         val before = pcm.size
         pcm.write(pcm16Le)
@@ -219,7 +249,8 @@ class OverlappingChunkedOfflineStreamingTranscriber(
         }
     }
 
-    override fun finish(): String {
+    override suspend fun finish(): String {
+        currentCoroutineContext().ensureActive()
         check(started) { "start() required" }
         started = false
         if (pcm.size > lastCommittedEnd) {
@@ -230,15 +261,23 @@ class OverlappingChunkedOfflineStreamingTranscriber(
             }
         }
         val md = "**Speaker 1** · 0:00\n${committed}\n"
+        currentCoroutineContext().ensureActive()
         onPartial(md)
         return md
+    }
+
+    override suspend fun cancel() {
+        started = false
+        pcm.clear()
+        committed.clear()
+        onPartial = {}
     }
 
     private fun hopBytes(): Int = sampleRate * 2 * hopSeconds
 
     private fun windowBytes(): Int = sampleRate * 2 * windowSeconds
 
-    private fun emitPartial() {
+    private suspend fun emitPartial() {
         val window = windowBytes()
         val hop = hopBytes()
         val commitUntil = (pcm.size - (window - hop)).coerceAtLeast(0)
@@ -251,12 +290,14 @@ class OverlappingChunkedOfflineStreamingTranscriber(
             lastCommittedEnd = commitUntil
         }
         val liveStart = (pcm.size - window).coerceAtLeast(lastCommittedEnd)
+        currentCoroutineContext().ensureActive()
         val live = decodeRange(liveStart, pcm.size)
         val elapsedMs = if (sampleRate <= 0) 0L else (totalPushedBytes / 2) * 1000L / sampleRate
         val body = buildString {
             if (committed.isNotEmpty()) append(committed).append('\n')
             if (live.isNotBlank()) append(live)
         }
+        currentCoroutineContext().ensureActive()
         onPartial("**partial** · ${formatClock(elapsedMs)}\n$body\n")
     }
 
