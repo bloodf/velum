@@ -9,6 +9,7 @@ import dev.velum.core.model.ComputeMode
 
 /** Outcome of checking whether Local is ready for a task, else prompt the user. */
 sealed class ModeResolution {
+    data object Initializing : ModeResolution()
     data class Proceed(val mode: ComputeMode) : ModeResolution()
     data class NeedLocalModel(
         val task: AiTask,
@@ -76,6 +77,8 @@ fun resolveModeOrPrompt(
     }
     if (mode == ComputeMode.Api) return ModeResolution.Proceed(ComputeMode.Api)
 
+    if (!modelManager.initialized.value) return ModeResolution.Initializing
+
     val modelId = requiredLocalModelId(task, settings, modelManager)
     if (!modelManager.isReady(modelId)) {
         val name = modelManager.stateFor(modelId)?.spec?.displayName ?: modelId
@@ -94,4 +97,14 @@ fun resolveModeOrPrompt(
         }
     }
     return ModeResolution.Proceed(ComputeMode.Local)
+}
+
+/** Action callers wait for verification before selecting a model or prompting for a download. */
+suspend fun resolveModeAfterInitialization(
+    task: AiTask,
+    settings: () -> AiProviderSettings,
+    modelManager: LocalModelManager,
+): ModeResolution {
+    modelManager.awaitInitialization()
+    return resolveModeOrPrompt(task, settings(), modelManager)
 }

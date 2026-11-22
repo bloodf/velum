@@ -29,14 +29,14 @@ class LocalLlmResolutionTest {
         ready.forEach { id -> File(dir, "$id/weights.litertlm").apply { parentFile.mkdirs(); writeBytes(ByteArray(2048)) } }
         fun spec(id: String) = LocalModelSpec(
             id = id, displayName = "Synthetic $id", kind = LocalModelKind.Llm, approxBytes = 1, license = "test",
-            notes = "", languages = "en", downloadUrl = "https://example.test/$id", sha256 = "00",
+            notes = "", languages = "en", downloadUrl = "https://example.test/$id", sha256 = dev.velum.ai.local.sha256Hex(ByteArray(2048)),
             archiveFileName = "weights.litertlm",
         )
         return LocalModelManager(
             ModelStoreDir(dir.absolutePath),
             HttpClient(MockEngine { respond("") }),
             listOf(spec(higherQuality), spec(DEFAULT_LOCAL_LLM_MODEL_ID), spec(other)),
-        )
+        ).also { runBlocking { it.awaitInitialization() } }
     }
 
     private fun summaryResolution(manager: LocalModelManager, selected: String? = null) =

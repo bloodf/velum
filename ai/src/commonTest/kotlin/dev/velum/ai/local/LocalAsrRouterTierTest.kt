@@ -28,11 +28,11 @@ class LocalAsrRouterTierTest {
     fun tinyTier_whistleForSupportedLanguage() {
         assertEquals(
             LocalAsrRouter.WHISTLE_ID,
-            LocalAsrRouter.chooseModelId("en", tier = AsrSizeTier.Tiny, deviceClass = DeviceComputeClass.High),
+            LocalAsrRouter.chooseModelId("en", tier = AsrSizeTier.Tiny, deviceClass = DeviceComputeClass.High, whistleAvailable = true),
         )
         assertEquals(
             LocalAsrRouter.WHISTLE_ID,
-            LocalAsrRouter.chooseModelId("de-DE", tier = AsrSizeTier.Tiny, deviceClass = DeviceComputeClass.Mid),
+            LocalAsrRouter.chooseModelId("de-DE", tier = AsrSizeTier.Tiny, deviceClass = DeviceComputeClass.Mid, whistleAvailable = true),
         )
     }
 
@@ -56,7 +56,7 @@ class LocalAsrRouterTierTest {
     fun autoLowRam_routesByLanguage() {
         assertEquals(
             LocalAsrRouter.WHISTLE_ID,
-            LocalAsrRouter.chooseModelId("es", tier = AsrSizeTier.Auto, deviceClass = DeviceComputeClass.Low),
+            LocalAsrRouter.chooseModelId("es", tier = AsrSizeTier.Auto, deviceClass = DeviceComputeClass.Low, whistleAvailable = true),
         )
         assertEquals(
             LocalAsrRouter.TINY_ID,
@@ -103,7 +103,18 @@ class LocalAsrRouterTierTest {
 
     @Test
     fun chooseLowEndModelId_helpers() {
-        assertEquals(LocalAsrRouter.WHISTLE_ID, LocalAsrRouter.chooseLowEndModelId("pl"))
+        assertEquals(LocalAsrRouter.WHISTLE_ID, LocalAsrRouter.chooseLowEndModelId("pl", whistleAvailable = true))
         assertEquals(LocalAsrRouter.TINY_ID, LocalAsrRouter.chooseLowEndModelId("hi"))
+    }
+
+    @Test
+    fun unavailableWhistle_usesWhisperTinyForEveryWhistleLanguage() {
+        for (language in listOf("en", "de", "fr", "es", "it", "nl", "pl")) {
+            assertEquals("whisper-tiny", LocalAsrRouter.chooseLowEndModelId(language, whistleAvailable = false))
+            assertEquals("whisper-tiny", LocalAsrRouter.chooseModelId(language,
+                tier = AsrSizeTier.Tiny, deviceClass = DeviceComputeClass.High, whistleAvailable = false))
+            assertEquals("whisper-tiny", LocalAsrRouter.chooseModelId(language,
+                tier = AsrSizeTier.Auto, deviceClass = DeviceComputeClass.Low, whistleAvailable = false))
+        }
     }
 }

@@ -68,6 +68,7 @@ fun AiProcessingScreen(
     val strings = LocalStrings.current
     val settings by container.settingsRepository.settings.collectAsState()
     val modelStates by container.localModelManager.states.collectAsState()
+    val modelsInitialized by container.localModelManager.initialized.collectAsState()
     var pickAudio by remember { mutableStateOf(false) }
     var pickOutput by remember { mutableStateOf(false) }
     var modelPrompt by remember { mutableStateOf<ModeResolution.NeedLocalModel?>(null) }
@@ -81,10 +82,11 @@ fun AiProcessingScreen(
     fun labelFor(code: String): String =
         languages.firstOrNull { it.code == code }?.label ?: code
 
-    val missingLocal = remember(settings, modelStates) {
+    val missingLocal = remember(settings, modelStates, modelsInitialized) {
         listOf(AiTask.Transcription, AiTask.Diarization, AiTask.Summary).mapNotNull { task ->
             when (val r = container.aiRouter.resolveModeOrPrompt(task, container.localModelManager)) {
                 is ModeResolution.NeedLocalModel -> r
+                ModeResolution.Initializing -> null
                 is ModeResolution.Proceed -> null
             }
         }
@@ -109,6 +111,9 @@ fun AiProcessingScreen(
                 lineHeight = 20.sp,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
             )
+            if (!modelsInitialized) {
+                androidx.compose.material3.CircularProgressIndicator(Modifier.padding(20.dp))
+            }
             if (missingLocal.isNotEmpty()) {
                 val first = missingLocal.first()
                 Column(
@@ -169,6 +174,7 @@ fun AiProcessingScreen(
                                 modelPrompt = r
                                 return@ModePicker
                             }
+                            ModeResolution.Initializing -> return@ModePicker
                             is ModeResolution.Proceed -> Unit
                         }
                     }
@@ -199,6 +205,7 @@ fun AiProcessingScreen(
                             modelPrompt = r
                             return@ModePicker
                         }
+                        ModeResolution.Initializing -> return@ModePicker
                         is ModeResolution.Proceed -> Unit
                     }
                     container.settingsViewModel.runStorageAction { container.settingsRepository.setDiarizationMode(ComputeMode.Local) }
@@ -221,6 +228,7 @@ fun AiProcessingScreen(
                                 modelPrompt = r
                                 return@ModePicker
                             }
+                            ModeResolution.Initializing -> return@ModePicker
                             is ModeResolution.Proceed -> Unit
                         }
                     }
