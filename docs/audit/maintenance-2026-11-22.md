@@ -174,6 +174,37 @@ for a public beta, and the website issues that can be finished without a domain.
   shows the filtered "1 result(s)" list that #23 is about. The footer's "velum®" implies a registered trademark;
   remove the ® unless one is registered.
 
+## 6. Follow-up session 2026-11-22: the open items of section 5
+
+- **UI tests for Slack / Notion.** The sandbox could not run Compose UI tests before (51 files were skipped). The mirror
+  has ui-test 1.11.4, so the sandbox now aligns the whole Compose Android stack of the unit-test build to 1.11.4
+  (`~/work/offline.init.gradle.kts`, not committed) and those files run: composeApp Android unit tests went from 712
+  to 1,007 (all passing). New `NoteDestinationUiTest` (6 tests) drives the cards and the export sheet against a mock HTTP engine
+  (`AppContainer(noteDestinationHttpClient = …)`).
+- **Real Slack / Notion.** `NoteDestinationsLiveTest` runs the production clients against the real APIs when
+  `VELUM_LIVE_*` credentials are set (skipped otherwise). Not run here: no credentials or internet.
+- **Bug found via the screenshots:** a recording whose audio file is missing showed `playback:Playback unavailable…`
+  in red above its note (the playback error shared the note's error slot with an internal prefix). Fixed; test
+  `PlaybackErrorPlacementTest` fails without the fix.
+- **#23 screenshots.** New demo data (ten recordings from ordinary work and study, one in progress, speakers, no
+  engineering jargon), an unfiltered desktop library, quiet demo WAVs so players look real, UTC-pinned clock, and
+  captures that wait for the data (the mobile live-recording shot used to be captured empty). Desktop shots render in
+  the sandbox again (desktop runtime pinned to 1.10.5 instead of 1.7.0).
+- **Website performance.** Prerendered HTML for every route, hydration in a transition after the first paint, lazy
+  docs chunk, self-hosted fonts (no Google Fonts request), WebP screenshots, WaveField paused off screen and static on
+  software renderers, analytics only on Vercel. Lighthouse in the sandbox (no GPU, brotli static server): desktop
+  98-100; mobile 73-86 (from 33-44); accessibility, best practices and SEO 100. Mobile ≥ 90 is not shown here: the
+  remaining cost is React + framer-motion hydration on a 4x-throttled CPU; check on the deployed site.
+- **Share metadata.** Absolute `og:image` / `og:url` / canonical, `sitemap.xml` and a robots `Sitemap:` line from
+  `VITE_SITE_URL` or Vercel's production URL; `®` removed from the footer.
+- **Store drafts.** `docs/STORE_LISTINGS.md`: Play data safety answers, permissions and other declarations,
+  IzzyOnDroid request text, F-Droid submission notes.
+- **Flaky test fixed:** `DesktopMicCaptureTest.streaming_downmix…` could emit all its audio before the PCM listener
+  was attached on a busy machine; the fake line now waits for the listener.
+- **Gate:** 2,703 tests (was 2,400), 0 failures after the flaky-test fix; iOS arm64 klibs compile.
+- **Still owner-only:** release key / secrets / tag / publish, Play and IzzyOnDroid submissions, domain + deploy,
+  uploading the social preview, running the live Slack / Notion check.
+
 ## Validation
 
 - JVM tests, Android (Robolectric) unit tests of every module, composeApp desktop tests, `validateAutoflowTemplates`,
