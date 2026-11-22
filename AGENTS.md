@@ -2,4 +2,4 @@
 
 @/Users/heitor/.codex/RTK.md
 
-Read [the tooling guide](docs/ai-tooling.md) before repository work. Preserve existing user instructions and ownership. Product development remains HOLD until the user explicitly resumes it; completing tooling does not release that HOLD.
+Read [the tooling guide](docs/ai-tooling.md) before repository work. Preserve existing user instructions and ownership. Product development is active: the owner resumed it on 2026-11-22. Work from the plan in [docs/PLAN_2026-11.md](docs/PLAN_2026-11.md), keep changes focused and tested, and follow the [engineering standards](docs/ENGINEERING_STANDARDS.md).

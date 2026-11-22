@@ -1,6 +1,6 @@
 # Agent tooling
 
-Product development remains HOLD until the user explicitly resumes it. Tooling completion, passing CI and background events do not authorize product work or product merges. Keep exact-head independent review, applicable validation and required remote protections.
+Product development is active (resumed by the owner on 2026-11-22; see [the plan](PLAN_2026-11.md)). Keep exact-head review, applicable validation and required remote protections.
 
 ## CodeGraph 1.6.2
 
@@ -34,7 +34,7 @@ Antigravity uses GOOGLE MODELS ONLY. Argon stays parked while quota-exhausted. R
 
 MiniMax M3.1 Flash requires the exact runtime-validated target `m:minimax:MiniMax-M3.1-Flash:v:thinking`. The empty variant advertised by T3 fails `Invalid model reasoning` because the runtime requires `FORCED_ON`; do not use or claim a nonthinking route. The earlier stale Preview default was a separate model/route failure, not quota evidence. Unknown quota stays unknown. Keep mechanical tasks bounded and retain risk-appropriate models and independent review gates. Children receive explicit ownership and no subdelegation unless authorized.
 
-Before any tooling worker launch, reserve with `t3-model-route reserve --project velum --purpose tooling --task '<bounded task>'`. Launch only the returned exact target and options, record task/run and release only that completed lease with evidence. If no route is eligible, retain HOLD. The dispatcher coordinates cooperating orchestrators; it does not intercept manual T3/UI launches. Global authority and limits are in `/Users/heitor/.config/ai-tooling/COORDINATION.md`. Routine coordinators use Codex `gpt-6.1-sol`, `reasoningEffort=high`, `serviceTier=default`; do not restart running turns to change models.
+Before any tooling worker launch, reserve with `t3-model-route reserve --project velum --purpose tooling --task '<bounded task>'`. Launch only the returned exact target and options, record task/run and release only that completed lease with evidence. If no route is eligible, wait for one instead of launching. The dispatcher coordinates cooperating orchestrators; it does not intercept manual T3/UI launches. Global authority and limits are in `/Users/heitor/.config/ai-tooling/COORDINATION.md`. Routine coordinators use Codex `gpt-6.1-sol`, `reasoningEffort=high`, `serviceTier=default`; do not restart running turns to change models.
 
 ## Delivery and propagation
 

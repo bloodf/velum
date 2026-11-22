@@ -1,7 +1,7 @@
 # Cloud CI and deployment cost control
 
-Product development remains HOLD. This policy changes tooling only. It does not
-authorize product work, release builds or deployment while HOLD remains active.
+This policy controls CI cost. Product development is active (resumed 2026-11-22); release builds and
+deployment still need an explicit owner decision.
 
 ## GitHub Actions
 
