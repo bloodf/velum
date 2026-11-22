@@ -21,6 +21,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -33,8 +34,10 @@ import org.junit.runner.RunWith
 class LiteRtCancellationDeviceTest {
     @Test fun cancelAfterNativeCallbackThenRestart() {
         val path = InstrumentationRegistry.getArguments().getString("modelPath").orEmpty()
+        // Opt-in: a plain connectedAndroidTest run without the argument skips instead of failing.
+        assumeTrue("Opt-in probe: pass -e modelPath <absolute path> to run it", path.isNotBlank())
         val model = File(path)
-        assertTrue("Pass readable installed supported model as -e modelPath <absolute path>", path.isNotBlank() && model.isFile && model.canRead())
+        assertTrue("modelPath must be a readable installed supported model: $path", model.isFile && model.canRead())
         val done = CountDownLatch(1)
         val first = CountDownLatch(1)
         val terminal = CountDownLatch(1)
