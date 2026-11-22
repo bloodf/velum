@@ -21,6 +21,12 @@ interface PartialTransferStore : SessionByteSink {
     fun truncate(length: Long)
 
     fun read(offset: Long, length: Int): ByteArray
+
+    /** Optional durable evidence, valid only for the same complete checkpoint content. */
+    fun crcMismatchVerdict(): CrcStatus.Mismatch? = null
+
+    /** Persist mismatch evidence before handing complete bytes to the caller. */
+    fun setCrcVerdict(crc: CrcStatus) {}
 }
 
 /**
@@ -56,7 +62,7 @@ data class ResumableDownloadResult(val sizeBytes: Long, val crc: CrcStatus, val 
  * The first attempt may use [initialClient], already unlocked. Otherwise [connect] brings the link up
  * and returns a new client, which this class unlocks and handshakes. A client is closed when its attempt
  * fails and passed to [onSuccess] otherwise. A store already holding all the bytes is returned without
- * connecting, with [CrcStatus.NotProvided]. Cancellation of the caller is never retried.
+ * connecting, with its persisted mismatch or [CrcStatus.NotProvided]. Cancellation of the caller is never retried.
  *
  * Simulated only: whether a real Note Pro honours a non-zero start offset is unverified (#6).
  */
@@ -102,7 +108,12 @@ class ResumableSessionDownload(
         while (true) {
             coroutineContext.ensureActive()
             if (sizeBytes > 0 && store.length() == sizeBytes) {
-                return ResumableDownloadResult(sizeBytes, CrcStatus.NotProvided, attempts)
+                val savedMismatch = store.crcMismatchVerdict()
+                if (savedMismatch != null && crcPolicy == CrcPolicy.Enforce) {
+                    restartFromZero(TransferIntegrityException("Persisted CRC mismatch"))
+                } else {
+                    return ResumableDownloadResult(sizeBytes, savedMismatch ?: CrcStatus.NotProvided, attempts)
+                }
             }
             attempts++
             val before = store.length()
@@ -139,6 +150,7 @@ class ResumableSessionDownload(
                 )
                 readingCrc = true
                 val crc = crcStatus(deviceCrc, store)
+                store.setCrcVerdict(crc)
                 readingCrc = false
                 if (crc !is CrcStatus.Mismatch || crcPolicy == CrcPolicy.ReportOnly) {
                     succeeded = true

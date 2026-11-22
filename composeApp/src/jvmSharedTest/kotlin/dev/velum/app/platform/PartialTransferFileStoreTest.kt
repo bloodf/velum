@@ -1,5 +1,16 @@
 package dev.velum.app.platform
 
+import dev.velum.ble.client.CrcPolicy
+import dev.velum.ble.client.CrcStatus
+import dev.velum.ble.client.PlaudDeviceClient
+import dev.velum.ble.client.ResumableSessionDownload
+import dev.velum.ble.crypto.createSessionCipher
+import dev.velum.ble.crypto.rsaKeyPairToPem
+import dev.velum.ble.fake.FakeBleTransport
+import dev.velum.ble.fake.FakePlaudPeripheral
+import dev.velum.protocol.DeviceIdentityKeys
+import kotlinx.coroutines.test.runTest
+import java.io.IOException
 import java.io.File
 import java.nio.file.Files
 import kotlin.test.AfterTest
@@ -23,6 +34,72 @@ class PartialTransferFileStoreTest {
         PartialTransferFileStore.open(root, session, serial, checkpointBytes)
 
     private fun deleteByName(session: Long = 1L, serial: String? = "SYNTH-SN-1") = PartialTransferFileStore.delete(root, session, serial)
+
+    private suspend fun retryComplete(size: Long): CrcStatus {
+        val store = open()
+        try {
+            return ResumableSessionDownload(
+                connect = { error("Complete partial must not reconnect") },
+                crcPolicy = CrcPolicy.ReportOnly,
+            ).download(1L, size, store).crc
+        } finally {
+            store.close()
+        }
+    }
+
+    @Test fun mismatch_survives_failed_save_and_process_restart() = runTest {
+        val pems = rsaKeyPairToPem()
+        val keys = DeviceIdentityKeys("SYNTH", ByteArray(256), pems.first, pems.second, "synthetic")
+        val cipher = createSessionCipher()
+        val bytes = ByteArray(2000) { it.toByte() }
+        val peripheral = FakePlaudPeripheral(cipher, keys, bytes, sessionId = 1L, stopCrc = FakePlaudPeripheral.StopCrc.Wrong)
+        val transport = FakeBleTransport(peripheral)
+        val store = open()
+        val result = ResumableSessionDownload(
+            connect = {
+                transport.connect("fake-note-pro")
+                PlaudDeviceClient(transport, cipher, keys)
+            },
+            crcPolicy = CrcPolicy.ReportOnly,
+            onSuccess = { it.close(); throw IOException("synthetic downstream save failure") },
+        ).download(1L, bytes.size.toLong(), store)
+        assertTrue(result.crc is CrcStatus.Mismatch)
+        // The downstream save fails; the complete partial is all the next process has.
+        store.close()
+        assertEquals(result.crc, retryComplete(bytes.size.toLong()))
+    }
+
+    @Test fun legacy_and_unknown_metadata_never_claim_verification() = runTest {
+        open().run { write(ByteArray(50)); length(); setCrcMismatch(true); close() }
+        assertEquals(CrcStatus.NotProvided, retryComplete(50))
+        root.listFiles()!!.single { it.name.endsWith(".crcmismatch") }.writeText("v99:unknown")
+        assertEquals(CrcStatus.NotProvided, retryComplete(50))
+    }
+
+    @Test fun changed_or_replaced_checkpoint_does_not_inherit_mismatch() = runTest {
+        val mismatch = CrcStatus.Mismatch(123, 456)
+        open().run { write(ByteArray(50)); setCrcVerdict(mismatch); close() }
+        val data = root.listFiles()!!.single { it.name.endsWith(".partial") }
+        data.writeBytes(ByteArray(50) { 1 }) // same length, different content
+        assertEquals(CrcStatus.NotProvided, retryComplete(50))
+        open().run { setCrcVerdict(mismatch); truncate(25); close() }
+        assertEquals(CrcStatus.NotProvided, retryComplete(25))
+        open().run {
+            setCrcVerdict(mismatch)
+            truncate(0)
+            write(ByteArray(25) { 2 })
+            assertEquals(25L, length()) // checkpoint the replacement before reopening
+            close()
+        }
+        assertEquals(CrcStatus.NotProvided, retryComplete(25))
+        open().run {
+            setCrcVerdict(mismatch)
+            write(byteArrayOf(3))
+            assertEquals(26L, length()) // checkpoint the appended byte before reopening
+            close()
+        }
+        assertEquals(CrcStatus.NotProvided, retryComplete(26))
+    }
 
     @Test fun delete_by_name_removes_the_files_and_only_that_session() {
         open().run { write(ByteArray(10)); length(); setCrcMismatch(true); setReadFailures(1); close() }
