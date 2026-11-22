@@ -423,12 +423,16 @@ class DesktopMicCaptureTest {
 
             val emittedChunks = AtomicInteger(0)
             val chunk = ByteArray(1920) { idx -> ((idx * 7) % 256).toByte() }
+            // The capture thread starts reading at once; hold the audio until the listener is attached, or all 20
+            // chunks can be written before attachPcm runs on a busy machine and no live PCM is seen.
+            val attached = java.util.concurrent.CountDownLatch(1)
 
             val fakeLine = FakeAudioLine(
                 sampleRateHz = 48_000,
                 channels = 2,
                 bufferSizeBytes = 1920,
                 chunkProvider = {
+                    attached.await(5, java.util.concurrent.TimeUnit.SECONDS)
                     if (emittedChunks.getAndIncrement() < 20) chunk else ByteArray(0)
                 },
             )
@@ -441,6 +445,7 @@ class DesktopMicCaptureTest {
             assertTrue(capture.attachPcm(session) { pcm ->
                 livePcmChunks.add(pcm)
             })
+            attached.countDown()
 
             var attempts = 0
             while (emittedChunks.get() < 20 && attempts++ < 40) {
