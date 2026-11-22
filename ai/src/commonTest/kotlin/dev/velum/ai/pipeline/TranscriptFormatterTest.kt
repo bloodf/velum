@@ -47,4 +47,44 @@ class TranscriptFormatterTest {
         assertTrue(md.contains("0:00"))
         assertTrue(md.contains("Bom dia"))
     }
+
+    private fun words(speaker: String?, startMs: Long, vararg w: String) =
+        w.mapIndexed { i, word -> TranscriptSegment(startMs + i * 300L, startMs + i * 300L + 250, word, speakerId = speaker) }
+
+    @Test
+    fun word_level_segments_read_as_lines_not_one_word_per_line() {
+        val md = TranscriptFormatter.toMarkdown(
+            TranscriptionResult(text = "", segments = words("S1", 0, "we", "need", "to", "finish", "the", "report"), engineId = "t", modelId = "m"),
+        )
+        assertEquals("**Speaker 1** · 0:00\nwe need to finish the report", md)
+    }
+
+    @Test
+    fun a_pause_or_a_new_speaker_starts_a_new_line() {
+        val md = TranscriptFormatter.toMarkdown(
+            TranscriptionResult(
+                text = "",
+                segments = words("S1", 0, "first", "thought") + words("S1", 5_000, "after", "a", "pause") + words("S2", 7_000, "reply"),
+                engineId = "t",
+                modelId = "m",
+            ),
+        )
+        assertEquals("**Speaker 1** · 0:00\nfirst thought\nafter a pause\n\n**Speaker 2** · 0:07\nreply", md)
+    }
+
+    @Test
+    fun window_long_segments_keep_a_line_each() {
+        val a = "a".repeat(200)
+        val b = "b".repeat(200)
+        val md = TranscriptFormatter.toMarkdown(
+            TranscriptionResult(
+                text = "",
+                segments = listOf(TranscriptSegment(0, 29_000, a), TranscriptSegment(29_500, 58_000, b)),
+                engineId = "t",
+                modelId = "m",
+            ),
+        )
+        assertEquals("$a\n$b", md)
+    }
 }
+

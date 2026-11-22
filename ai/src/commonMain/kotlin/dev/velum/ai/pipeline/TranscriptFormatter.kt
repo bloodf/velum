@@ -23,9 +23,20 @@ object TranscriptFormatter {
         if (segments.isNotEmpty()) {
             return buildString {
                 var lastSpeaker: String? = null
+                // Consecutive segments of one speaker share a line until a pause or the line gets long. Word-level
+                // engines (Whistle) return one segment per word, which used to become one word per line.
+                val line = StringBuilder()
+                var lineEndMs = 0L
+                fun flush() {
+                    if (line.isNotEmpty()) appendLine(line.toString())
+                    line.clear()
+                }
                 for (seg in segments) {
+                    val text = seg.text.trim()
+                    if (text.isEmpty()) continue
                     val speaker = seg.speakerId?.let { named[it] ?: "Speaker ${it.trimStart('S', 's')}" }
                     if (speaker != null && speaker != lastSpeaker) {
+                        flush()
                         if (isNotEmpty()) appendLine()
                         append("**")
                         append(speaker)
@@ -35,10 +46,18 @@ object TranscriptFormatter {
                         appendLine()
                         lastSpeaker = speaker
                     } else if (speaker == null && lastSpeaker != null) {
+                        flush()
                         lastSpeaker = null
                     }
-                    appendLine(seg.text.trim())
+                    val joins = line.isNotEmpty() &&
+                        seg.startMs - lineEndMs <= LINE_PAUSE_MS &&
+                        line.length + 1 + text.length <= LINE_MAX_CHARS
+                    if (!joins) flush()
+                    if (line.isNotEmpty()) line.append(' ')
+                    line.append(text)
+                    lineEndMs = seg.endMs
                 }
+                flush()
             }.trim()
         }
 
@@ -82,6 +101,12 @@ object TranscriptFormatter {
         fun two(n: Long) = if (n < 10) "0$n" else "$n"
         return if (h > 0) "$h:${two(m)}:${two(s)}" else "$m:${two(s)}"
     }
+
+    /** A longer pause than this between segments starts a new line. */
+    private const val LINE_PAUSE_MS = 1_500L
+
+    /** Lines are joined up to about this many characters (window-long segments are usually longer on their own). */
+    private const val LINE_MAX_CHARS = 280
 
     private val SPEAKER_LINE = Regex("""^(Speaker\s+\d+|Orador\s+\d+|[\w .'-]+):\s*(.*)$""")
 }
