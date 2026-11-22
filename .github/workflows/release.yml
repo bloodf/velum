@@ -1,79 +1,149 @@
 name: Release
 
-# Signed release AAB requires explicit manual dispatch and upload-key secrets.
-# Secrets (repository): VELUM_UPLOAD_KEYSTORE_BASE64, VELUM_UPLOAD_STORE_PASSWORD,
-# VELUM_UPLOAD_KEY_ALIAS, VELUM_UPLOAD_KEY_PASSWORD.
+# Builds a signed release from an existing version tag and attaches it to a GitHub Release (docs/RELEASING.md).
+# Manual only (docs/cloud-ci-cost-control.md): pushing a tag does not start it; the owner dispatches it for the tag.
+#
+# Repository secrets: VELUM_UPLOAD_KEYSTORE_BASE64, VELUM_UPLOAD_STORE_PASSWORD, VELUM_UPLOAD_KEY_ALIAS,
+# VELUM_UPLOAD_KEY_PASSWORD.
+# Repository variable (recommended): VELUM_RELEASE_CERT_SHA256, the SHA-256 of the signing certificate. When set, an
+# APK signed with any other key fails the run: IzzyOnDroid and existing installs reject a changed key.
 
 on:
   workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag to build, e.g. v1.0.0 or v1.0.0-beta.1 (must equal "v" + versionName)
+        required: true
+        type: string
+      draft:
+        description: Create the GitHub Release as a draft (publish it by hand after checking)
+        type: boolean
+        default: true
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: release-${{ inputs.tag }}
   cancel-in-progress: false
 
 jobs:
-  signed-aab:
-    name: Signed release AAB
+  build:
+    name: Signed APKs + AAB
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
+    outputs:
+      version: ${{ steps.preflight.outputs.version }}
+      prerelease: ${{ steps.preflight.outputs.prerelease }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+
+      - name: Preflight (tag, version, changelogs)
+        id: preflight
+        run: bash scripts/release-preflight.sh "${{ inputs.tag }}" build/release-notes.md >> "$GITHUB_OUTPUT"
 
       - name: Require upload-key secrets
-        id: secrets
         env:
           KS: ${{ secrets.VELUM_UPLOAD_KEYSTORE_BASE64 }}
+          SP: ${{ secrets.VELUM_UPLOAD_STORE_PASSWORD }}
+          KA: ${{ secrets.VELUM_UPLOAD_KEY_ALIAS }}
+          KP: ${{ secrets.VELUM_UPLOAD_KEY_PASSWORD }}
         run: |
-          if [ -z "$KS" ]; then
-            echo "configured=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::Upload keystore secrets missing — skipping signed AAB (configure VELUM_UPLOAD_*)."
-          else
-            echo "configured=true" >> "$GITHUB_OUTPUT"
+          if [ -z "$KS" ] || [ -z "$SP" ] || [ -z "$KA" ] || [ -z "$KP" ]; then
+            echo "::error::Release signing secrets missing (VELUM_UPLOAD_*). See docs/RELEASING.md."
+            exit 1
           fi
 
       - name: Set up JDK 17
-        if: steps.secrets.outputs.configured == 'true'
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
 
       - name: Set up Android SDK
-        if: steps.secrets.outputs.configured == 'true'
         uses: android-actions/setup-android@v4
         with:
           packages: "platform-tools platforms;android-35 build-tools;35.0.0 ndk;28.2.13676358"
 
       - name: Setup Gradle
-        if: steps.secrets.outputs.configured == 'true'
         uses: gradle/actions/setup-gradle@v4
 
       - name: Decode upload keystore
-        if: steps.secrets.outputs.configured == 'true'
         env:
           KS: ${{ secrets.VELUM_UPLOAD_KEYSTORE_BASE64 }}
+          SP: ${{ secrets.VELUM_UPLOAD_STORE_PASSWORD }}
+          KA: ${{ secrets.VELUM_UPLOAD_KEY_ALIAS }}
+          KP: ${{ secrets.VELUM_UPLOAD_KEY_PASSWORD }}
         run: |
-          echo "$KS" | base64 -d > /tmp/velum-upload.jks
-          echo "VELUM_UPLOAD_STORE_FILE=/tmp/velum-upload.jks" >> "$GITHUB_ENV"
-          echo "VELUM_UPLOAD_STORE_PASSWORD=${{ secrets.VELUM_UPLOAD_STORE_PASSWORD }}" >> "$GITHUB_ENV"
-          echo "VELUM_UPLOAD_KEY_ALIAS=${{ secrets.VELUM_UPLOAD_KEY_ALIAS }}" >> "$GITHUB_ENV"
-          echo "VELUM_UPLOAD_KEY_PASSWORD=${{ secrets.VELUM_UPLOAD_KEY_PASSWORD }}" >> "$GITHUB_ENV"
+          echo "$KS" | base64 -d > "$RUNNER_TEMP/velum-upload.jks"
+          {
+            echo "VELUM_UPLOAD_STORE_FILE=$RUNNER_TEMP/velum-upload.jks"
+            echo "VELUM_UPLOAD_STORE_PASSWORD=$SP"
+            echo "VELUM_UPLOAD_KEY_ALIAS=$KA"
+            echo "VELUM_UPLOAD_KEY_PASSWORD=$KP"
+          } >> "$GITHUB_ENV"
 
-      - name: Assemble signed release bundle
-        if: steps.secrets.outputs.configured == 'true'
+      - name: Release unit tests
+        run: ./gradlew :core:validateAutoflowTemplates :plaud-protocol:jvmTest :ble:jvmTest :core:jvmTest :ai:jvmTest :recorder:jvmTest --stacktrace
+
+      # ABI splits and the App Bundle must be separate invocations (composeApp/build.gradle.kts).
+      - name: Assemble signed APKs (universal + per ABI)
+        run: ./gradlew :composeApp:assembleRelease -Pvelum.abiSplits=true --stacktrace
+
+      - name: Assemble signed App Bundle (Play)
         run: ./gradlew :composeApp:bundleRelease --stacktrace
 
-      - name: Upload AAB
-        if: steps.secrets.outputs.configured == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: velum-release-aab
-          path: composeApp/build/outputs/bundle/release/*.aab
-          if-no-files-found: error
+      - name: Verify signatures, collect and checksum
+        env:
+          EXPECTED_CERT_SHA256: ${{ vars.VELUM_RELEASE_CERT_SHA256 }}
+        run: bash scripts/release-collect.sh "${{ steps.preflight.outputs.version }}" build/release-assets
 
       - name: Scrub keystore
-        if: always() && steps.secrets.outputs.configured == 'true'
-        run: rm -f /tmp/velum-upload.jks
+        if: always()
+        run: rm -f "$RUNNER_TEMP/velum-upload.jks"
+
+      - name: Upload release assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: velum-${{ steps.preflight.outputs.version }}
+          path: |
+            build/release-assets/
+            build/release-notes.md
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    name: GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: velum-${{ needs.build.outputs.version }}
+          path: dist
+
+      - name: Create or update the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag }}
+          VERSION: ${{ needs.build.outputs.version }}
+          PRERELEASE: ${{ needs.build.outputs.prerelease }}
+          DRAFT: ${{ inputs.draft }}
+        run: |
+          # The AAB is for the Play Console upload, not for sideloading: it stays a workflow artifact.
+          assets=$(find dist/release-assets -maxdepth 1 -type f ! -name '*.aab' | sort)
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            # Re-running for an existing release replaces its assets; notes and state are left as edited.
+            gh release upload "$TAG" $assets --clobber
+          else
+            flags=(--verify-tag --title "Velum $VERSION" --notes-file dist/release-notes.md)
+            [ "$PRERELEASE" = "true" ] && flags+=(--prerelease)
+            [ "$DRAFT" = "true" ] && flags+=(--draft)
+            gh release create "$TAG" "${flags[@]}" $assets
+          fi

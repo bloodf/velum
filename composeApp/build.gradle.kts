@@ -287,6 +287,12 @@ android {
             isUniversalApk = true
         }
     }
+    dependenciesInfo {
+        // AGP otherwise writes the dependency list into the APK signing block, encrypted with a Google key that only
+        // Play can read; F-Droid / IzzyOnDroid scanners flag that block. Play still gets it from the App Bundle.
+        includeInApk = false
+        includeInBundle = true
+    }
     packaging {
         jniLibs {
             // AGP 8.5.1+: uncompressed native libs so zipalign -P 16 applies (16 KB pages).

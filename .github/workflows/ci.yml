@@ -44,6 +44,9 @@ jobs:
       - name: Validate AutoFlow automation templates
         run: ./gradlew :core:validateAutoflowTemplates --stacktrace
 
+      - name: Release script self-test
+        run: bash scripts/test-release-scripts.sh
+
       - name: Protocol + BLE + AI + core unit tests (JVM)
         run: ./gradlew :plaud-protocol:jvmTest :ble:jvmTest :core:jvmTest :ai:jvmTest :recorder:jvmTest --stacktrace
 

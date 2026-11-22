@@ -8,7 +8,7 @@ Fastlane supply / F-Droid-compatible layout.
 - `*/images/phoneScreenshots/` — Roborazzi phone captures (also mirrored under `docs/screenshots/`)
 - Privacy policy: [`docs/PRIVACY.md`](../../../docs/PRIVACY.md)
 - F-Droid draft: [`metadata/dev.velum.app.yml`](../../../metadata/dev.velum.app.yml)
-- Signed AAB: tag `v*` → `.github/workflows/release.yml` (needs `VELUM_UPLOAD_*` secrets)
+- Signed APKs + AAB for a version tag: `.github/workflows/release.yml` (manual, needs `VELUM_UPLOAD_*` secrets); see [`docs/RELEASING.md`](../../../docs/RELEASING.md)
 
 ```bash
 ./gradlew :composeApp:recordRoborazziDebug
