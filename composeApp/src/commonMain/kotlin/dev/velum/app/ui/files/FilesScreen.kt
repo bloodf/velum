@@ -135,7 +135,11 @@ fun FilesScreen(
         ftsIds = if (match != null) {
             try {
                 container.repository.searchRecordingIdsFts(match)
-            } catch (_: Throwable) {
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                // The next keystroke restarted this effect: a cancelled search must not report an error over the
+                // search that replaced it.
+                throw cancelled
+            } catch (_: Exception) {
                 searchError = true
                 null
             }
