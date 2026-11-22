@@ -17,9 +17,9 @@ actual object WebhookCrypto {
                 digest.usePinned { d ->
                     CCHmac(
                         kCCHmacAlgSHA256,
-                        s.addressOf(0),
+                        if (secret.isEmpty()) null else s.addressOf(0),
                         secret.size.convert(),
-                        b.addressOf(0),
+                        if (body.isEmpty()) null else b.addressOf(0),
                         body.size.convert(),
                         d.addressOf(0),
                     )
