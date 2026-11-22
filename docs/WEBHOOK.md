@@ -11,7 +11,9 @@ No Velum cloud account — the user pastes a URL (and optional HMAC secret) unde
 | URL | Android Keystore / secure store | `https://…` required; `http://localhost` / `127.0.0.1` allowed for local n8n |
 | HMAC secret | Android Keystore / secure store | Optional; never logged |
 
-AutoFlow post-action **Post webhook** appears only after a URL is saved.
+AutoFlow post-action **Post webhook** appears only after a URL is saved. It is sent as soon as the note is ready,
+also when processing finished in the background with no Velum screen open; the result snackbar is shown the next
+time a screen is open.
 
 ## Payload schema (`schema_version`: 1)
 

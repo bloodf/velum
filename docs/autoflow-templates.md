@@ -8,7 +8,7 @@ Each template is a concrete AutoFlow definition using only capabilities that wor
 |---|---|
 | Trigger | New recording appears after AutoFlow starts |
 | Conditions | Source (`note_pro` / `phone` / `import` / `all`), duration range, optional wake phrase in title/transcript |
-| Actions | Always transcribe + summarize with a note `template_id`; optional single post-action: none / share / calendar / folder export / webhook |
+| Actions | Always transcribe + summarize with a note `template_id`; optional single post-action: none / share / calendar / folder export / webhook. Folder export and webhook run as soon as the note is ready, even with no screen open; share and calendar need a screen and wait for the app to be open. |
 
 ## Layout
 
