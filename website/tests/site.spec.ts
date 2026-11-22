@@ -22,7 +22,7 @@ test('desktop marketing, workflow, and devices render correctly', async ({ page 
   await expect(page.locator('.desktop-screenshot')).toBeVisible()
   expect(await page.locator('.desktop-screenshot').evaluate((img) => (img as HTMLImageElement).naturalWidth)).toBeGreaterThan(0)
   await page.getByRole('button', { name: 'AI note', exact: true }).click()
-  await expect(page.locator('.phone-screenshot')).toHaveAttribute('src', '/screenshots/07b-mobile-note.png')
+  await expect(page.locator('.phone-screenshot')).toHaveAttribute('src', '/screenshots/07b-mobile-note.webp')
   await page.getByRole('button', { name: 'library', exact: true }).click()
   await page.waitForTimeout(400)
   await page.screenshot({ path: 'artifacts/devices-desktop.png' })

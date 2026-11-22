@@ -45,6 +45,12 @@ function createShader(gl: WebGLRenderingContext, type: number, source: string) {
   return shader
 }
 
+function isSoftwareRenderer(gl: WebGLRenderingContext): boolean {
+  const info = gl.getExtension('WEBGL_debug_renderer_info')
+  const renderer = String(gl.getParameter(info ? info.UNMASKED_RENDERER_WEBGL : gl.RENDERER) ?? '')
+  return /swiftshader|llvmpipe|softpipe|software/i.test(renderer)
+}
+
 export default function WaveField() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   useEffect(() => {
@@ -82,7 +88,11 @@ export default function WaveField() {
     let frame = 0
     let start = performance.now()
     const pointer = { x: 0, y: 0 }
-    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    // Animate only with reduced motion off, on a hardware GPU, while the canvas is on screen and the tab is visible.
+    // A software renderer (SwiftShader, llvmpipe) draws these points on the CPU at a cost of whole frames.
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches || isSoftwareRenderer(gl)
+    let visible = true
+    let onScreen = true
     const resize = () => {
       const dpr = Math.min(window.devicePixelRatio || 1, 2)
       canvas.width = canvas.clientWidth * dpr
@@ -100,14 +110,29 @@ export default function WaveField() {
       gl.uniform1f(timeLocation, reduced ? 1.5 : (now - start) / 1000)
       gl.uniform2f(mouseLocation, pointer.x, pointer.y)
       gl.drawArrays(gl.POINTS, 0, columns * rows)
-      if (!reduced) frame = requestAnimationFrame(render)
+      frame = !reduced && visible && onScreen ? requestAnimationFrame(render) : 0
     }
+    const resume = () => {
+      if (!reduced && visible && onScreen && frame === 0) frame = requestAnimationFrame(render)
+    }
+    const onVisibility = () => {
+      visible = document.visibilityState === 'visible'
+      resume()
+    }
+    const observer = new IntersectionObserver(([entry]) => {
+      onScreen = entry.isIntersecting
+      resume()
+    })
+    observer.observe(canvas)
     resize()
     window.addEventListener('resize', resize)
     window.addEventListener('pointermove', onPointer, { passive: true })
+    document.addEventListener('visibilitychange', onVisibility)
     frame = requestAnimationFrame(render)
     return () => {
       cancelAnimationFrame(frame)
+      observer.disconnect()
+      document.removeEventListener('visibilitychange', onVisibility)
       window.removeEventListener('resize', resize)
       window.removeEventListener('pointermove', onPointer)
       gl.deleteBuffer(buffer)

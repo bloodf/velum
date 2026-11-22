@@ -63,6 +63,8 @@ test('documentation accessibility passes WCAG AA checks', async ({ page }) => {
 
 test('documentation search accessibility passes WCAG AA checks', async ({ page }) => {
   await page.goto('/docs/introduction')
+  // The docs are a lazily loaded chunk: wait for them before using their shortcut.
+  await expect(page.getByRole('heading', { name: 'Meet Velum', level: 1 })).toBeVisible()
   await page.keyboard.press('Control+k')
   await page.getByRole('searchbox', { name: 'Search documentation' }).fill('recorder')
   await page.waitForTimeout(250)

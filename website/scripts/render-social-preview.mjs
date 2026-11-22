@@ -9,11 +9,20 @@ import { fileURLToPath } from 'node:url'
 
 const site = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const dataUrl = (path, type) => `data:${type};base64,${readFileSync(resolve(site, path)).toString('base64')}`
-const desktop = dataUrl('public/screenshots/01-desktop-library.png', 'image/png')
+const desktop = dataUrl('public/screenshots/03-desktop-transcript.png', 'image/png')
 const note = dataUrl('public/screenshots/07b-mobile-note.png', 'image/png')
 const mark = readFileSync(resolve(site, 'public/brand/velum-v.svg'), 'utf8')
+// The site's own self-hosted fonts (@fontsource), so the image matches the website's typography.
+const font = (pkg, file) => dataUrl(`node_modules/@fontsource/${pkg}/files/${file}`, 'font/woff2')
+const fontFaces = [
+  ['Inter Tight', 'normal', 500, font('inter-tight', 'inter-tight-latin-500-normal.woff2')],
+  ['Inter Tight', 'normal', 400, font('inter-tight', 'inter-tight-latin-400-normal.woff2')],
+  ['Instrument Serif', 'italic', 400, font('instrument-serif', 'instrument-serif-latin-400-italic.woff2')],
+  ['IBM Plex Mono', 'normal', 500, font('ibm-plex-mono', 'ibm-plex-mono-latin-500-normal.woff2')],
+].map(([family, style, weight, src]) => `@font-face { font-family: '${family}'; font-style: ${style}; font-weight: ${weight}; src: url(${src}) format('woff2'); }`).join('\n')
 
 const html = `<!doctype html><html><head><meta charset="utf-8"><style>
+  ${fontFaces}
   * { box-sizing: border-box; margin: 0; }
   body { width: 1280px; height: 640px; overflow: hidden; font-family: 'Inter Tight', 'Helvetica Neue', Arial, sans-serif; color: #151515;
     background: radial-gradient(ellipse 70% 60% at 10% 0%, #ffffff, transparent 70%), radial-gradient(ellipse 60% 60% at 95% 90%, #d9d9d4, transparent 70%), #efefeb; }

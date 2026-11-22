@@ -4,10 +4,11 @@ import { ArrowDown, ArrowRight, ArrowUp, ArrowUpRight, ChevronDown, Circle, Gith
 import { Link } from 'react-router-dom'
 import WaveField from './WaveField'
 import { transitions } from './motion'
-import { ArrowLink, SiteHeader, useDocumentTitle, Waveform } from './Shared'
+import { ArrowLink, screenshotProps, SiteHeader, useDocumentTitle, Waveform } from './Shared'
 
 const github = 'https://github.com/bloodf/velum'
 
+// Slides words through a clipped line (no fade): text is never drawn at a low contrast mid-transition.
 function RotatingThought() {
   const words = ['a decision', 'an idea', 'a follow-up', 'your next move']
   const [index, setIndex] = useState(0)
@@ -19,7 +20,7 @@ function RotatingThought() {
   return (
     <span className="rotating-thought">
       <AnimatePresence mode="wait">
-        <motion.span key={words[index]} initial={{ y: 18, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -18, opacity: 0 }} transition={transitions.slow}>
+        <motion.span key={words[index]} initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '-100%' }} transition={transitions.slow}>
           {words[index]}
         </motion.span>
       </AnimatePresence>
@@ -45,8 +46,9 @@ function Hero() {
       <motion.div className="hero-content" style={{ opacity, y, scale }}>
         <div className="hero-kicker hero-enter"><span className="live-dot" /> Open-source AI notetaker <span className="kicker-divider" /> Desktop + mobile</div>
         <h1 className="hero-title" aria-label="Every word has a place">
-          <span className="title-mask"><motion.span initial={{ y: '110%' }} animate={{ y: 0 }} transition={{ ...transitions.hero, delay: .12 }}>EVERY WORD</motion.span></span>
-          <span className="title-mask"><motion.span className="title-outline" initial={{ y: '110%' }} animate={{ y: 0 }} transition={{ ...transitions.hero, delay: .24 }}>HAS A PLACE.</motion.span></span>
+          {/* CSS, not JS: the prerendered page shows the title on its first paint (largest contentful paint). */}
+          <span className="title-mask"><span className="title-rise">EVERY WORD</span></span>
+          <span className="title-mask"><span className="title-outline title-rise title-rise-late">HAS A PLACE.</span></span>
         </h1>
         <div className="hero-bottom hero-enter">
           <div className="hero-intro">
@@ -65,7 +67,7 @@ function Hero() {
         <Waveform count={26} active />
         <span className="transmission-time">00:04:12</span>
       </div>
-      <a href="#manifesto" className="scroll-cue" aria-label="Scroll to discover"><span>SCROLL TO LISTEN</span><ArrowDown size={14} /></a>
+      <a href="#manifesto" className="scroll-cue" aria-label="Scroll to listen"><span>SCROLL TO LISTEN</span><ArrowDown size={14} /></a>
     </section>
   )
 }
@@ -117,7 +119,7 @@ function ConversationScene({ scene, index, progress }: { scene: Scene; index: nu
   const screenshot = sceneScreenshots[scene.kind]
   return (
     <motion.div className={`conversation-scene scene-${scene.kind} product-scene`} style={{ opacity, x }}>
-      <img className="workflow-screenshot" src={screenshot.src} alt={screenshot.alt} loading="lazy" width="2880" height="1800" />
+      <img className="workflow-screenshot" {...screenshotProps(screenshot.src, 2880, '(max-width: 700px) 92vw, 62vw')} alt={screenshot.alt} loading="lazy" height="1800" />
     </motion.div>
   )
 }
@@ -156,7 +158,7 @@ function Workflow() {
 }
 
 function DesktopUI() {
-  return <div className="desktop-ui"><img className="desktop-screenshot" src="/screenshots/01-desktop-library.png" alt="Velum desktop library with recordings and transcript detail" loading="lazy" width="2880" height="1800" /></div>
+  return <div className="desktop-ui"><img className="desktop-screenshot" {...screenshotProps('/screenshots/01-desktop-library.png', 2880, '(max-width: 900px) 85vw, 56vw')} alt="Velum desktop library with ten recordings beside the note of a customer interview" loading="lazy" height="1800" /></div>
 }
 
 const mobileScreenshots = {
@@ -172,7 +174,7 @@ function PhoneUI({ view }: { view: MobileView }) {
   return (
     <div className="phone-ui">
       <AnimatePresence mode="wait">
-        <motion.img key={view} className="phone-screenshot" src={screenshot.src} alt={screenshot.alt} loading="lazy" width="1080" height="2400" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={transitions.base} />
+        <motion.img key={view} className="phone-screenshot" {...screenshotProps(screenshot.src, 1080, '260px')} alt={screenshot.alt} loading="lazy" height="2400" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={transitions.base} />
       </AnimatePresence>
     </div>
   )
@@ -244,7 +246,7 @@ function Integrations() {
           <AnimatePresence mode="wait">
             {source.preview ? (
               <motion.div className="import-phone-preview" key="external-import" initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={transitions.slow}>
-                <img src="/screenshots/08-plaud-import.png" alt="Velum external recorder audio import with file, USB, SD, and watched-folder options" loading="lazy" width="1080" height="2400" />
+                <img {...screenshotProps('/screenshots/08-plaud-import.png', 1080, '220px')} alt="Velum external recorder audio import with file, USB, SD, and watched-folder options" loading="lazy" height="2400" />
               </motion.div>
             ) : (
               <motion.div className="import-path" key={source.name} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={transitions.base}>
@@ -357,7 +359,7 @@ function FinalCTA() {
         <WaveField />
         <div className="final-cta-inner reveal"><span className="micro-label"><span className="live-dot" /> YOUR NEXT CONVERSATION STARTS HERE</span><h2>MAKE IT<br /><span>REMEMBERABLE.</span></h2><p>Less digging. More context. A second memory you can help build.</p><div className="final-actions"><a className="button button-accent" href={github} target="_blank" rel="noreferrer">Build Velum with us <Github size={18} /></a><Link className="button button-ghost" to="/docs/quick-start">Read the quick start <ArrowUpRight size={17} /></Link></div></div>
       </section>
-      <footer className="site-footer"><div className="footer-top"><Link to="/" className="footer-wordmark">velum<span>®</span></Link><RotatingThought /></div><div className="footer-bottom"><span>OPEN-SOURCE AI NOTETAKER</span><div><Link to="/docs/introduction">Docs</Link><a href="#download">Download</a><a href={`${github}/blob/main/docs/PRIVACY.md`} target="_blank" rel="noreferrer">Privacy</a><a href={github} target="_blank" rel="noreferrer">GitHub</a><a href="#top">Back to top <ArrowUp size={13} aria-hidden="true" /></a></div><span>© 2026 VELUM</span></div></footer>
+      <footer className="site-footer"><div className="footer-top"><Link to="/" className="footer-wordmark">velum</Link><RotatingThought /></div><div className="footer-bottom"><span>OPEN-SOURCE AI NOTETAKER</span><div><Link to="/docs/introduction">Docs</Link><a href="#download">Download</a><a href={`${github}/blob/main/docs/PRIVACY.md`} target="_blank" rel="noreferrer">Privacy</a><a href={github} target="_blank" rel="noreferrer">GitHub</a><a href="#top">Back to top <ArrowUp size={13} aria-hidden="true" /></a></div><span>© 2026 VELUM CONTRIBUTORS · MIT</span></div></footer>
     </>
   )
 }

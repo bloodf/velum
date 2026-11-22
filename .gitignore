@@ -109,3 +109,4 @@ website/.astro/
 website/artifacts/
 website/playwright-report/
 website/*.tsbuildinfo
+website/dist-ssr/

@@ -104,3 +104,18 @@ export function useDocumentTitle(title: string) {
     document.title = title
   }, [title])
 }
+
+/**
+ * An app screenshot from /screenshots as WebP: `<name>-sm.webp` (half width) and `<name>.webp` (full), picked by
+ * [sizes]. The PNG originals stay in the folder for the README; scripts/site-screenshot-variants.py writes the WebP files.
+ */
+export function screenshotProps(png: string, width: number, sizes: string) {
+  const base = png.replace(/\.png$/, '')
+  return {
+    src: `${base}.webp`,
+    srcSet: `${base}-sm.webp ${Math.round(width / 2)}w, ${base}.webp ${width}w`,
+    sizes,
+    width,
+    decoding: 'async' as const,
+  }
+}
