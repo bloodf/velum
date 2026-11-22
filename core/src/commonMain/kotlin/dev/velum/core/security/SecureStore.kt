@@ -52,6 +52,9 @@ object SecureKeys {
     const val DEVICE_IDENTITY_BUNDLE = "device.identity_bundle_v1"
     const val WEBHOOK_URL = "integrations.webhook.url"
     const val WEBHOOK_SECRET = "integrations.webhook.secret"
+    const val SLACK_WEBHOOK_URL = "integrations.slack.webhook_url"
+    const val NOTION_TOKEN = "integrations.notion.token"
+    const val NOTION_DATABASE_ID = "integrations.notion.database_id"
 }
 
 /**

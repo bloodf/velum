@@ -37,6 +37,15 @@ object VelumDateTime {
         return "${local.day} $month, ${two(local.hour)}:${two(local.minute)}"
     }
 
+    /** `yyyy-MM-dd HH:mm` in the device timezone (shared notes, exports). */
+    fun formatDateTime(
+        epochSeconds: Long,
+        timeZone: TimeZone = TimeZone.currentSystemDefault(),
+    ): String {
+        val local = localDateTime(epochSeconds, timeZone)
+        return "${local.year}-${two(local.month.ordinal + 1)}-${two(local.day)} ${two(local.hour)}:${two(local.minute)}"
+    }
+
     fun monthAbbrev(monthNumber: Int, localeTag: String): String {
         val pt = localeTag.startsWith("pt", ignoreCase = true)
         val months = if (pt) {
