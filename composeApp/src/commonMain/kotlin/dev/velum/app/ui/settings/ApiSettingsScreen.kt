@@ -301,12 +301,7 @@ fun ApiSettingsScreen(
                     )
                 }
                 ui.error != null -> {
-                    val mapped = when (ui.errorStatus) {
-                        401, 403 -> strings.settingsUi.modelsErrorUnauthorized
-                        404 -> strings.settingsUi.modelsErrorNotFound
-                        -1 -> strings.settingsUi.modelsErrorBadUrl
-                        else -> strings.settingsUi.modelsErrorGeneric
-                    }
+                    val mapped = modelsRefreshErrorText(ui.errorStatus, strings)
                     Text(
                         mapped,
                         color = VelumOnWarningContainer,
@@ -497,3 +492,13 @@ private fun ManualModelField(
         enabled = value.isNotBlank(),
     )
 }
+
+/** Localized text for a failed model refresh; the raw error (English, or a provider's) is never shown. */
+internal fun modelsRefreshErrorText(errorStatus: Int?, strings: dev.velum.app.i18n.Strings): String = when (errorStatus) {
+    401, 403 -> strings.settingsUi.modelsErrorUnauthorized
+    404 -> strings.settingsUi.modelsErrorNotFound
+    -1 -> strings.settingsUi.modelsErrorBadUrl
+    dev.velum.app.ui.MISSING_API_KEY_STATUS -> strings.added.processingFailedApiKey
+    else -> strings.settingsUi.modelsErrorGeneric
+}
+

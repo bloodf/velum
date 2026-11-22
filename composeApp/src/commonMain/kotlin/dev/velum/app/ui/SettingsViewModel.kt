@@ -18,6 +18,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
+/** [SettingsUiState.errorStatus] when models were refreshed before an API key was saved. */
+internal const val MISSING_API_KEY_STATUS = -2
+
 data class SettingsUiState(
     val refreshing: Boolean = false,
     val message: String? = null,
@@ -116,6 +119,7 @@ class SettingsViewModel(
                 _ui.value = SettingsUiState(
                     refreshing = false,
                     error = t.message,
+                    errorStatus = MISSING_API_KEY_STATUS,
                 )
             } catch (t: AiApiException) {
                 _ui.value = SettingsUiState(
