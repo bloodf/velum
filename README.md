@@ -95,7 +95,7 @@ Velum is an independent project, not affiliated with, endorsed by, or sponsored 
 ### More room for your notes
 
 <p align="center">
-  <img src="website/public/screenshots/01-desktop-library.png" alt="Velum shared desktop interface with a recording list beside its transcript" width="100%" />
+  <img src="website/public/screenshots/01-desktop-library.png" alt="Velum shared desktop interface with the recording list beside a note" width="100%" />
 </p>
 
 <sub>Real Compose Desktop UI rendered by ImageComposeScene with demo data. This shows the adaptive layout, not completed macOS capture or hardware validation.</sub>
