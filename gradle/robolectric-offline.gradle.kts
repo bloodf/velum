@@ -6,11 +6,15 @@
 // them (no dependency-verification file), so the sync pins SHA-256 values published by Maven Central
 // itself (<jar>.sha256 on repo.maven.apache.org and repo1.maven.org) and fails on a mismatch.
 //
-// The two jars are Robolectric 4.14.1's SDK 34 and 35. Change them together with libs.versions.robolectric.
-// A missing jar fails offline with its name.
+// The jars are Robolectric 4.14.1's SDK 26, 28, 29, 34 and 35: every SDK an @Config(sdk = [...]) in these
+// modules asks for (AndroidWifiSoftApJoinerTest runs on 26/28/29). Change them together with
+// libs.versions.robolectric. A missing jar fails offline with its name.
 import java.security.MessageDigest
 
 val androidAllSha256 = mapOf(
+    "8.0.0_r4-robolectric-r1-i7" to "712196356bf61fbcb186f41135c33e6d3416be31543d7be120a33bc898cc1208",
+    "9-robolectric-4913185-2-i7" to "dbb1c88987b54cef3132695a1b4d2f4851ba06286a6fa7d15772f98fd1f0cdf7",
+    "10-robolectric-5803371-i7" to "700fb3bb88ff346969b955241b86d2f55d395488bf5df1e8eddfbd003980c78a",
     "14-robolectric-10818077-i7" to "3fdac2d463f431c6b8d83b9d0ca739e795de75fffedee648c6761bd4bd864701",
     "15-robolectric-12650502-i7" to "33c2d7cc4186d4605269d5d411fa1818972c5b30a9f70bfbbd3d430b076af52f",
 )

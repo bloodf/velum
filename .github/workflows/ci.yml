@@ -47,6 +47,10 @@ jobs:
       - name: Protocol + BLE + AI + core unit tests (JVM)
         run: ./gradlew :plaud-protocol:jvmTest :ble:jvmTest :core:jvmTest :ai:jvmTest :recorder:jvmTest --stacktrace
 
+      - name: Android library unit tests (Robolectric)
+        # Not covered by the JVM step above; :ble's Wi-Fi joiner tests also run on SDK 26/28/29.
+        run: ./gradlew :core:testDebugUnitTest :ble:testDebugUnitTest :ai:testDebugUnitTest :recorder:testDebugUnitTest --stacktrace
+
       - name: Android lint (AI + BLE + Compose app)
         run: ./gradlew :ai:lintDebug :ble:lintDebug :composeApp:lintDebug --stacktrace
 
