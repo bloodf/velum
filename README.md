@@ -49,7 +49,7 @@ Velum is an open-source app for recordings, transcripts, and AI notes. Capture a
 - **Bring the audio you already have.** Import files, share audio into the Android app, or sync a watched folder. A matching recording in Trash gets a warning rather than an automatic restore.
 - **Find answers in your library.** Search recordings and use Ask across recordings to explore transcript content with source references.
 - **Cut down repeat work.** AutoFlow rules connect recording conditions with processing and follow-up actions. See the [AutoFlow guide](docs/autoflow-templates.md).
-- **Take your notes with you.** Share or export your results instead of keeping them tied to a proprietary cloud account.
+- **Take your notes with you.** Share or export your results, post a summary to Slack or create a Notion page ([setup](docs/SLACK_NOTION.md)), instead of keeping them tied to a proprietary cloud account.
 
 These flows are implemented in the project; platform coverage and remaining validation are described below. AI output still needs your review.
 

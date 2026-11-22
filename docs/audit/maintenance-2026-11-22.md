@@ -111,6 +111,69 @@ an owner decision or an external service. Status as of this pass:
 - `speaker.recording_id` and `summary_version.recording_id` have no index (needs migration `6.sqm` + snapshot).
 - Diarization of spilled audio covers the first 30 minutes (documented memory bound).
 
+## 5. Work session 2026-11-22: features, release, website
+
+Picked from the plan for one working session: the two integrations with no owner dependency, the release pipeline
+for a public beta, and the website issues that can be finished without a domain.
+
+### Slack (#61) and Notion (#59)
+
+- `core`: `SlackSettingsStore` / `SlackWebhookUrl` (https, `hooks.slack.com`, `services|triggers|workflows` paths),
+  `NotionSettingsStore` / `NotionIds` (token prefix check, database id from a link or id), `SlackMessage` (Block Kit:
+  header, date/duration/speakers context, summary in `mrkdwn` sections within Slack's limits) and `NotionBlocks`
+  (Markdown to Notion blocks with annotations and links, 2000-character split, 100-block requests).
+- `ai`: `SlackPoster` and `NotionExporter` (wipe-gated, per-call results, 429/5xx retries honouring Retry-After,
+  4xx not retried, failures reported as `HTTP <n>` or a connection code and never with URLs, tokens or bodies).
+- AutoFlow: `slack` / `notion` post-actions in the model, schema, validator, runner and the headless
+  `AutoFlowActionRouter`; a rule or template cannot be saved until its destination is set up; templates
+  `meetings.standup-slack` and `meetings.meeting-notion`.
+- App: Integrations cards (save with validation, test, remove with confirmation; saved secrets are never shown
+  again), "Post to Slack" / "Export to Notion" in a recording's export sheet after a consent dialog (runs in the app
+  scope so leaving the screen does not cut an export half way), snackbars for AutoFlow results, EN/PT-BR copy with
+  specific messages for revoked webhooks, unshared databases and rejected tokens, and Delete all data clears both.
+- Docs: `docs/SLACK_NOTION.md`, `docs/PRIVACY.md`, `docs/STATUS.md`.
+- Tests: 11 core (payloads, validators), 9 ai (mock HTTP: retries, Retry-After, 4xx, page + appended blocks, not a
+  database), 2 runner, 1 registry, 1 template catalog, 2 router, 4 copy, 1 wipe.
+
+### Release pipeline (#26 groundwork, IzzyOnDroid)
+
+- `.github/workflows/release.yml`: manual dispatch for an existing tag (cost policy unchanged). Preflight, JVM tests,
+  split APKs + AAB, verification, draft GitHub Release (pre-release for `-suffix` tags) with `SHA256SUMS` and
+  `SIGNING-CERT.txt`; the AAB stays a workflow artifact for Play.
+- `scripts/release-preflight.sh` (tag = `v` + versionName, versionCode multiple of 10, changelogs in every locale
+  within 500 characters, F-Droid metadata for finals, bilingual release notes), `scripts/release-collect.sh`
+  (v2 signature, one signer, not the committed debug key, same key for every APK, optional pinned certificate, no
+  dependency-metadata block), `scripts/apk-signing-blocks.py`, `scripts/test-release-scripts.sh` (13 checks, added to
+  manual CI).
+- `dependenciesInfo.includeInApk = false`: AGP's encrypted dependency block is what F-Droid / IzzyOnDroid scanners
+  flag; Play still gets it from the bundle.
+- Verified here: split release APKs built with a disposable key (`-x` for the lint-based tasks the sandbox cannot
+  resolve), `release-collect.sh` accepted them (signing blocks: v2 + verity padding only) and rejected an APK re-signed
+  with the debug key, a wrong pinned certificate and a missing split.
+- `docs/RELEASING.md`: key creation, the Play App Signing caveat (GitHub/IzzyOnDroid and Play installs only update
+  each other if Play uses the same key), secrets, per-release steps, the IzzyOnDroid request.
+
+### Website (#24, #25)
+
+- The supported-devices section, FAQ and docs claimed support for Bee, Limitless, Omi, Soundcore Work and iFLYTEK
+  devices, which the app does not have (README and `DEVICES_ROADMAP.md`: Plaud Note Pro with hardware validation
+  open; Omi/Pocket drivers not usable yet). Replaced by the four real sources, each with a status.
+- New Privacy section (and it discloses the site's own Vercel Web Analytics, which the privacy copy did not) and
+  Download section (says no listing is live yet), nav and footer links, corrected docs pages and meta description.
+- `website/scripts/render-social-preview.mjs` renders the 1280x640 preview from app screenshots (Playwright).
+- `pnpm build` and all 9 Playwright tests pass (axe WCAG 2.1 AA on the new sections, 5-viewport overflow check);
+  Node 22 was used here, the site pins 24.22.2 (not available from this sandbox's registry).
+
+### Not done / open
+
+- Slack and Notion were not called for real (no workspace from this sandbox); the owner should post one test
+  message and export one note before announcing them.
+- Compose UI tests for the new cards and dialogs would need `ui-test-junit4`, which this sandbox lacks.
+- Release: key, secrets, the first tag and publishing are owner steps; lint-based release tasks did not run here.
+- Website: domain, deployment, Lighthouse, absolute `og:image` URL; the desktop screenshot in the preview still
+  shows the filtered "1 result(s)" list that #23 is about. The footer's "velum®" implies a registered trademark;
+  remove the ® unless one is registered.
+
 ## Validation
 
 - JVM tests, Android (Robolectric) unit tests of every module, composeApp desktop tests, `validateAutoflowTemplates`,
