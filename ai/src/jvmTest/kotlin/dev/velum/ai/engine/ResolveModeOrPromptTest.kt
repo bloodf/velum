@@ -76,6 +76,37 @@ class ResolveModeOrPromptTest {
         }
     }
 
+    @Test
+    fun switching_from_api_to_local_without_a_model_prompts_for_download() = kotlinx.coroutines.test.runTest {
+        val manager = emptyManager()
+        for (task in listOf(AiTask.Transcription, AiTask.Summary)) {
+            val saved = AiProviderSettings(transcriptionMode = ComputeMode.Api, summaryMode = ComputeMode.Api)
+            // The saved mode alone says "proceed with API", which is how Local used to be saved without a model.
+            assertEquals(ModeResolution.Proceed(ComputeMode.Api), resolveModeOrPrompt(task, saved, manager))
+            assertIs<ModeResolution.NeedLocalModel>(resolveLocalSelection(task, { saved }, manager))
+        }
+    }
+
+    @Test
+    fun switching_to_local_with_the_model_installed_proceeds_locally() = kotlinx.coroutines.test.runTest {
+        val root = ModelStoreDir(java.nio.file.Files.createTempDirectory("velum-local-switch").toString())
+        val bytes = "verified weights".encodeToByteArray()
+        val spec = LocalModelSpec(
+            "gemma-4-e4b", "Gemma", LocalModelKind.Llm, bytes.size.toLong(), "test", "", "en",
+            "https://example.test/model.litertlm", dev.velum.ai.local.sha256Hex(bytes), "model.litertlm",
+        )
+        root.resolve(spec.id).resolve(spec.archiveFileName).writeBytes(bytes)
+        val client = HttpClient(MockEngine { error("must stay offline") })
+        try {
+            val manager = LocalModelManager(root, client, listOf(spec))
+            val saved = AiProviderSettings(summaryMode = ComputeMode.Api)
+            assertEquals(ModeResolution.Proceed(ComputeMode.Local), resolveLocalSelection(AiTask.Summary, { saved }, manager))
+        } finally {
+            client.close()
+            root.deleteRecursively()
+        }
+    }
+
     private fun emptyManager(): LocalModelManager {
         val root = ModelStoreDir(
             File.createTempFile("velum-resolve-mode", "").also {

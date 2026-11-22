@@ -108,3 +108,25 @@ suspend fun resolveModeAfterInitialization(
     modelManager.awaitInitialization()
     return resolveModeOrPrompt(task, settings(), modelManager)
 }
+
+/**
+ * The user is switching [task] to Local: check that mode, not the one currently saved. Reading the saved mode
+ * (for example Api) returned Proceed(Api) without looking at the model, so Local was saved with no model
+ * installed and the download prompt never appeared. Waits for model verification like other actions.
+ */
+suspend fun resolveLocalSelection(
+    task: AiTask,
+    settings: () -> AiProviderSettings,
+    modelManager: LocalModelManager,
+): ModeResolution {
+    modelManager.awaitInitialization()
+    val local = settings().let {
+        when (task) {
+            AiTask.Transcription -> it.copy(transcriptionMode = ComputeMode.Local)
+            AiTask.Diarization -> it.copy(diarizationMode = ComputeMode.Local)
+            AiTask.Summary -> it.copy(summaryMode = ComputeMode.Local)
+        }
+    }
+    return resolveModeOrPrompt(task, local, modelManager)
+}
+
