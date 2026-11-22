@@ -27,7 +27,7 @@ object ModelReadiness {
                 }
                 val expected = spec.sha256?.trim()?.takeIf { it.isNotEmpty() }
                     ?: return listOf("checksum not pinned")
-                return if (runCatching { modelFileSha256(archive).equals(expected, ignoreCase = true) }.getOrDefault(false)) {
+                return if (verifiedSingleFile(archive, modelDir.resolve(spec.archiveFileName + VERIFIED_SUFFIX), expected)) {
                     emptyList()
                 } else listOf("checksum mismatch for ${spec.archiveFileName}")
             }
@@ -84,6 +84,29 @@ object ModelReadiness {
             LocalModelKind.Llm -> ModelLayout.LlmWeights
         }
     }
+}
+
+/** Sidecar recording that `<file>` matched its pinned SHA-256 at a given size and modification time. */
+internal const val VERIFIED_SUFFIX = ".verified"
+
+/**
+ * Single-file models are several GB (Gemma 2.5-3.6 GB) and readiness runs on every start-up scan, so hash the
+ * file only when it changed since it was last verified: the sidecar stores `size:mtime:sha256`. A replaced or
+ * truncated file changes size or mtime and is hashed again; a mismatch removes the sidecar.
+ */
+internal fun verifiedSingleFile(file: ModelStoreDir, marker: ModelStoreDir, expectedSha256: String): Boolean {
+    val expected = expectedSha256.lowercase()
+    fun stamp() = "${file.length()}:${file.lastModifiedMillis()}:$expected"
+    val before = stamp()
+    val recorded = runCatching { if (marker.exists() && !marker.isDirectory()) marker.readBytes().decodeToString() else null }.getOrNull()
+    if (recorded == before) return true
+    val matches = runCatching { modelFileSha256(file).equals(expected, ignoreCase = true) }.getOrDefault(false)
+    if (matches && stamp() == before) {
+        runCatching { marker.writeBytes(before.encodeToByteArray()) }
+    } else {
+        runCatching { if (marker.exists()) marker.deleteFile() }
+    }
+    return matches
 }
 
 internal fun modelFileSha256(file: ModelStoreDir): String {
