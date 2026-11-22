@@ -385,6 +385,12 @@ class AutoFlowRunner internal constructor(
             AutoFlowPostAction.Webhook -> {
                 _actions.emit(AutoFlowUiAction.PostWebhook(recordingId))
             }
+            AutoFlowPostAction.Slack -> {
+                _actions.emit(AutoFlowUiAction.PostSlack(recordingId))
+            }
+            AutoFlowPostAction.Notion -> {
+                _actions.emit(AutoFlowUiAction.ExportNotion(recordingId))
+            }
         }
     }
 
@@ -454,6 +460,8 @@ sealed class AutoFlowUiAction {
     data class InsertCalendarEvent(val recordingId: String) : AutoFlowUiAction()
     data class ExportMarkdownToFolder(val recordingId: String) : AutoFlowUiAction()
     data class PostWebhook(val recordingId: String) : AutoFlowUiAction()
+    data class PostSlack(val recordingId: String) : AutoFlowUiAction()
+    data class ExportNotion(val recordingId: String) : AutoFlowUiAction()
     data class BlockedOnPermission(val permission: String, val message: String) : AutoFlowUiAction()
 }
 

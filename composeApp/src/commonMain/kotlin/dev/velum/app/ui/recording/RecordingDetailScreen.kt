@@ -83,6 +83,9 @@ import dev.velum.app.export.RecordingExport
 import dev.velum.app.export.copyToClipboard
 import dev.velum.app.export.shareBytes
 import dev.velum.app.i18n.LocalStrings
+import dev.velum.app.i18n.NoteDestination
+import dev.velum.app.i18n.destinationResultText
+import dev.velum.app.ui.integrations.guarded
 import dev.velum.app.i18n.formatFixed
 import dev.velum.app.i18n.processingFailureText
 import dev.velum.app.platform.AudioPlayer
@@ -181,6 +184,11 @@ fun RecordingDetailScreen(
     var showRename by remember { mutableStateOf(false) }
     var renameDraft by remember { mutableStateOf("") }
     var exportStatus by remember { mutableStateOf<String?>(null) }
+    var slackReady by remember { mutableStateOf(false) }
+    var notionReady by remember { mutableStateOf(false) }
+    // Slack / Notion send note text off the device: each send is confirmed first. Null when no dialog is open.
+    var confirmDestination by remember { mutableStateOf<NoteDestination?>(null) }
+    var sendingDestination by remember { mutableStateOf(false) }
     var askDraft by remember { mutableStateOf("") }
     var askAnswer by remember { mutableStateOf<String?>(null) }
     var askBusy by remember { mutableStateOf(false) }
@@ -543,6 +551,47 @@ fun RecordingDetailScreen(
         }
     }
 
+    LaunchedEffect(showExport) {
+        if (!showExport) return@LaunchedEffect
+        // Secure-store reads: a locked store just hides the two options.
+        suspend fun ready(check: suspend () -> Boolean) = try {
+            check()
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            false
+        }
+        slackReady = ready { container.slackSettings.isConfigured() }
+        notionReady = ready { container.notionSettings.isConfigured() }
+    }
+
+    confirmDestination?.let { destination ->
+        val d = strings.added.destinations
+        AlertDialog(
+            onDismissRequest = { confirmDestination = null },
+            title = { Text(if (destination == NoteDestination.Slack) d.postToSlackConfirmTitle else d.exportToNotionConfirmTitle) },
+            text = { Text(if (destination == NoteDestination.Slack) d.postToSlackConfirmBody else d.exportToNotionConfirmBody) },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmDestination = null
+                    if (sendingDestination) return@TextButton
+                    sendingDestination = true
+                    exportStatus = "…"
+                    val pending = container.sendNoteAsync(toNotion = destination == NoteDestination.Notion, recordingId = recordingId)
+                    scope.launch {
+                        try {
+                            val result = guarded { pending.await() }
+                            exportStatus = strings.destinationResultText(destination, result)
+                        } finally {
+                            sendingDestination = false
+                        }
+                    }
+                }) { Text(strings.confirm) }
+            },
+            dismissButton = { TextButton(onClick = { confirmDestination = null }) { Text(strings.cancel) } },
+        )
+    }
+
     if (showExport) {
         ModalBottomSheet(
             onDismissRequest = { showExport = false },
@@ -595,6 +644,18 @@ fun RecordingDetailScreen(
                     showExport = false
                     copyToClipboard(RecordingExport.plainText(transcript.ifBlank { md }))
                     exportStatus = strings.ux.copiedToClipboard
+                }
+                if (slackReady) {
+                    ExportOption(strings.added.destinations.postToSlack) {
+                        showExport = false
+                        confirmDestination = NoteDestination.Slack
+                    }
+                }
+                if (notionReady) {
+                    ExportOption(strings.added.destinations.exportToNotion) {
+                        showExport = false
+                        confirmDestination = NoteDestination.Notion
+                    }
                 }
                 Spacer(Modifier.height(24.dp))
             }

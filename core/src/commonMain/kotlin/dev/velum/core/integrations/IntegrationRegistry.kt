@@ -13,6 +13,8 @@ enum class IntegrationId(val stored: String) {
     LocalCalendar("local_calendar"),
     FolderExport("folder_export"),
     Webhook("webhook"),
+    Slack("slack"),
+    Notion("notion"),
 }
 
 data class IntegrationEntry(
@@ -26,6 +28,8 @@ class IntegrationRegistry(
     private val webhook: WebhookSettingsStore,
     private val exportFolderConfigured: () -> Boolean,
     private val googleCalendarClientConfigured: Boolean = false,
+    private val slack: SlackSettingsStore? = null,
+    private val notion: NotionSettingsStore? = null,
 ) {
     // The configured-checks read SharedPreferences / the secure store: never run them on the caller's (main) thread.
     /**
@@ -55,6 +59,24 @@ class IntegrationRegistry(
                 capabilities = setOf("webhook_post"),
             ),
         )
+        if (slack != null) {
+            add(
+                IntegrationEntry(
+                    id = IntegrationId.Slack,
+                    configured = slack.isConfigured(),
+                    capabilities = setOf("slack_post"),
+                ),
+            )
+        }
+        if (notion != null) {
+            add(
+                IntegrationEntry(
+                    id = IntegrationId.Notion,
+                    configured = notion.isConfigured(),
+                    capabilities = setOf("notion_page"),
+                ),
+            )
+        }
         // OAuth providers intentionally absent when client ID missing — no placeholder rows.
         if (googleCalendarClientConfigured) {
             // Skeleton only; Connect UI ships with AppAuth in a follow-up once registered.
@@ -68,5 +90,7 @@ class IntegrationRegistry(
         add(AutoFlowPostAction.CalendarInsert)
         if (exportFolderConfigured()) add(AutoFlowPostAction.FolderExport)
         if (webhook.isConfigured()) add(AutoFlowPostAction.Webhook)
+        if (slack?.isConfigured() == true) add(AutoFlowPostAction.Slack)
+        if (notion?.isConfigured() == true) add(AutoFlowPostAction.Notion)
     } }
 }

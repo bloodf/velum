@@ -30,4 +30,6 @@ data class MoreStrings(
     val syncInTrashFormat: String,
     val searchTags: String,
     val noMatchingTags: String,
+    /** Slack / Notion note destinations, grouped so this class keeps room. */
+    val destinations: NoteDestinationStrings,
 )

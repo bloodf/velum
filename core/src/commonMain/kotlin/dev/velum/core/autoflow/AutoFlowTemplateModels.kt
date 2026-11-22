@@ -52,6 +52,8 @@ data class AutoFlowTemplateDefinition(
     fun requiredSetup(): AutoFlowTemplateSetup? = when (AutoFlowPostAction.fromStored(normalizedPostAction())) {
         AutoFlowPostAction.FolderExport -> AutoFlowTemplateSetup.ExportFolder
         AutoFlowPostAction.Webhook -> AutoFlowTemplateSetup.WebhookUrl
+        AutoFlowPostAction.Slack -> AutoFlowTemplateSetup.SlackWebhook
+        AutoFlowPostAction.Notion -> AutoFlowTemplateSetup.NotionDatabase
         AutoFlowPostAction.None,
         AutoFlowPostAction.ShareMarkdown,
         AutoFlowPostAction.CalendarInsert,
@@ -62,6 +64,8 @@ data class AutoFlowTemplateDefinition(
 enum class AutoFlowTemplateSetup {
     ExportFolder,
     WebhookUrl,
+    SlackWebhook,
+    NotionDatabase,
 }
 
 @Serializable

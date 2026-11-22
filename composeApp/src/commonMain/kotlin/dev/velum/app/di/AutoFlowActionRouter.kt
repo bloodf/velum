@@ -1,5 +1,6 @@
 package dev.velum.app.di
 
+import dev.velum.ai.integrations.DestinationResult
 import dev.velum.ai.integrations.WebhookFailure
 import dev.velum.ai.pipeline.AutoFlowUiAction
 import dev.velum.app.platform.ExportFolderResult
@@ -23,6 +24,12 @@ sealed class AutoFlowUiEvent {
 
     /** The note was already exported; null when the recording is gone. */
     data class FolderExported(val result: ExportFolderResult?) : AutoFlowUiEvent()
+
+    /** The summary was already posted to Slack (or could not be). */
+    data class SlackPosted(val result: DestinationResult) : AutoFlowUiEvent()
+
+    /** The note was already exported to Notion (or could not be). */
+    data class NotionExported(val result: DestinationResult) : AutoFlowUiEvent()
 }
 
 /**
@@ -30,13 +37,15 @@ sealed class AutoFlowUiEvent {
  *
  * AutoFlow runs for the life of the process, so a WorkManager job can finish a recording while no screen exists. The
  * runner's SharedFlow drops what nobody collects, and only a screen used to collect it: a configured webhook or folder
- * export then silently never happened. Those two need no screen and run here as soon as the action arrives; everything
+ * export then silently never happened. Those (and Slack / Notion) need no screen and run here as soon as the action arrives; everything
  * else (and the outcome of those two, for the snackbar) waits in a bounded queue until a screen drains [uiEvents].
  * A queue, not a replayed flow: each event reaches one screen once, not again after every recreation.
  */
 class AutoFlowActionRouter(
     private val postWebhook: suspend (recordingId: String) -> String?,
     private val exportToFolder: suspend (recordingId: String) -> ExportFolderResult?,
+    private val postSlack: suspend (recordingId: String) -> DestinationResult = { DestinationResult.NotConfigured },
+    private val exportNotion: suspend (recordingId: String) -> DestinationResult = { DestinationResult.NotConfigured },
     capacity: Int = 32,
 ) {
     private val pending = Channel<AutoFlowUiEvent>(capacity, BufferOverflow.DROP_OLDEST)
@@ -54,7 +63,11 @@ class AutoFlowActionRouter(
                 when (action) {
                     // Network / storage work runs beside the collector: a webhook that takes its full timeout must not
                     // hold back the next recording's post-action.
-                    is AutoFlowUiAction.PostWebhook, is AutoFlowUiAction.ExportMarkdownToFolder -> launch { handle(action) }
+                    is AutoFlowUiAction.PostWebhook,
+                    is AutoFlowUiAction.ExportMarkdownToFolder,
+                    is AutoFlowUiAction.PostSlack,
+                    is AutoFlowUiAction.ExportNotion,
+                    -> launch { handle(action) }
                     else -> handle(action)
                 }
             }
@@ -67,6 +80,12 @@ class AutoFlowActionRouter(
             )
             is AutoFlowUiAction.ExportMarkdownToFolder -> AutoFlowUiEvent.FolderExported(
                 failSafe(ExportFolderResult.Failed("export failed")) { exportToFolder(action.recordingId) },
+            )
+            is AutoFlowUiAction.PostSlack -> AutoFlowUiEvent.SlackPosted(
+                failSafe(DestinationResult.Failed(WebhookFailure.CONNECTION)) { postSlack(action.recordingId) },
+            )
+            is AutoFlowUiAction.ExportNotion -> AutoFlowUiEvent.NotionExported(
+                failSafe(DestinationResult.Failed(WebhookFailure.CONNECTION)) { exportNotion(action.recordingId) },
             )
             else -> AutoFlowUiEvent.Launch(action)
         }

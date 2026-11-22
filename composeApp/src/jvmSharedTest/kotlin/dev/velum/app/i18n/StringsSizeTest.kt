@@ -23,6 +23,7 @@ class StringsSizeTest {
         FirstRunStrings::class.java,
         UxStrings::class.java,
         MoreStrings::class.java,
+        NoteDestinationStrings::class.java,
     )
 
     private fun fieldCount(c: Class<*>) = c.constructors.maxOf { it.parameterCount }

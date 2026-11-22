@@ -12,6 +12,10 @@ enum class AutoFlowPostAction(val stored: String) {
     FolderExport("folder_export"),
     /** POST JSON to a user-configured webhook URL (HMAC optional). */
     Webhook("webhook"),
+    /** Post the summary to a Slack channel through a user-configured Incoming Webhook. */
+    Slack("slack"),
+    /** Create a page with summary + transcript in a user-chosen Notion database. */
+    Notion("notion"),
     ;
 
     companion object {

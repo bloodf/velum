@@ -98,6 +98,7 @@ class AutoFlowDoSheetReachabilityTest {
             reach(En.autoSpeakerLabel)
             listOf(En.automatic, En.languagePtBr, En.languageEn, En.postActionNone, En.postActionShare,
                 En.postActionCalendar, En.postActionFolderExport, En.postActionWebhook,
+                En.added.destinations.postActionSlack, En.added.destinations.postActionNotion,
                 En.settingsUi.modelForAutoFlow, En.settingsUi.endpointProfile).forEach(::reach)
             choose(En.languageEn)
             action(En.cancel)

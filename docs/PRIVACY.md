@@ -1,6 +1,6 @@
 # Velum privacy policy
 
-**Last updated:** 2026-10-27
+**Last updated:** 2026-11-22
 
 Velum is a **local-first** open-source companion for personal recorders (including Plaud Note Pro) and phone microphones. There is **no Velum cloud account**, **no telemetry**, and **no crash reporting**.
 
@@ -11,7 +11,7 @@ This document is the privacy policy referenced by Play / F-Droid listings. Hoste
 
 - Recordings, transcripts, summaries, templates, AutoFlow rules, voice profiles
 - Device identity material (serial signature, bind token, optional RSA keys) in the Android Keystore–backed store
-- Optional BYO API key and webhook HMAC secret (Keystore)
+- Optional BYO API key, webhook HMAC secret, Slack webhook URL and Notion integration token (Keystore)
 - Optional export folder URI (Storage Access Framework)
 
 Velum does **not** upload your audio or notes to a Velum server (there is none).
@@ -31,12 +31,13 @@ Velum does **not** upload your audio or notes to a Velum server (there is none).
 - **Optional** HTTPS calls to an OpenAI-compatible API **you** configure (base URL + key)
 - **Optional** model catalog downloads over HTTPS (SHA-256 verified)
 - **Optional** user-configured webhook POST (Zapier / n8n / Make)
+- **Optional** Slack Incoming Webhook (note title, date, speakers, summary) and Notion API (`api.notion.com`: title, date, summary, transcript), only to the channel / database you set up, and only when you send a note or an AutoFlow rule you created does
 - BLE to your hardware; SoftAP Wi‑Fi transfer stays on the local SoftAP — no Plaud cloud hosts
 
 ## Data safety (Play Console summary)
 
 - Collected: none by Velum servers
-- Shared: only if you enable a BYO API, webhook, or share/export yourself
+- Shared: only if you enable a BYO API, webhook, Slack or Notion, or share/export yourself
 - Sensitive: voice may be processed as biometric-like data for optional speaker profiles — stays on device; opt-in flows only
 
 ## Children

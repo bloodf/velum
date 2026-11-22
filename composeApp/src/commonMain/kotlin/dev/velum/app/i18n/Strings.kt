@@ -1263,6 +1263,7 @@ val PtBr = Strings(
         syncInTrashFormat = "%d na lixeira (sem nova importação)",
         searchTags = "Buscar tags",
         noMatchingTags = "Nenhuma tag encontrada.",
+        destinations = PtBrDestinations,
     ),
 )
 
@@ -1896,6 +1897,7 @@ val En = Strings(
         syncInTrashFormat = "%d in Trash (not imported)",
         searchTags = "Search tags",
         noMatchingTags = "No matching tags.",
+        destinations = EnDestinations,
     ),
 )
 

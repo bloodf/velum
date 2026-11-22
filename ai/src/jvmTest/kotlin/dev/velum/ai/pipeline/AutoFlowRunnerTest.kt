@@ -82,6 +82,24 @@ class AutoFlowRunnerTest {
     }
 
     @Test
+    fun slackAndNotionPostActions_emitTheirOwnUiActions() = runTest {
+        val slack = Fixture(this, rule = rule(postAction = AutoFlowPostAction.Slack))
+        slack.start()
+        slack.publish(recording("rec-slack"))
+        assertEquals(listOf("rec-slack"), slack.actions.filterIsInstance<AutoFlowUiAction.PostSlack>().map { it.recordingId })
+        assertTrue(slack.actions.none { it is AutoFlowUiAction.PostWebhook || it is AutoFlowUiAction.ExportNotion })
+    }
+
+    @Test
+    fun notionPostAction_emitsExportNotionOnce() = runTest {
+        val notion = Fixture(this, rule = rule(postAction = AutoFlowPostAction.Notion))
+        notion.start()
+        notion.publish(recording("rec-notion"))
+        assertEquals(listOf("rec-notion"), notion.actions.filterIsInstance<AutoFlowUiAction.ExportNotion>().map { it.recordingId })
+        assertTrue(notion.actions.none { it is AutoFlowUiAction.PostSlack })
+    }
+
+    @Test
     fun aStalePassDuringAWipe_touchesNothing() = runTest {
         val f = Fixture(this)
         f.start()

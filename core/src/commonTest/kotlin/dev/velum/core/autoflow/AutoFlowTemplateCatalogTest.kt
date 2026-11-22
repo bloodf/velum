@@ -19,7 +19,7 @@ class AutoFlowTemplateCatalogTest {
     @Test
     fun everyTemplateMatchesSchemaInvariants() {
         val noteIds = BuiltinTemplateCatalog.All.map { it.id }.toSet()
-        val allowedPosts = setOf(null, "", "share", "calendar_insert", "folder_export", "webhook")
+        val allowedPosts = setOf<String?>(null, "") + AutoFlowPostAction.entries.map { it.stored }
         val allowedSources = setOf("note_pro", "phone", "import", "all")
         val allowedLangs = setOf("auto", "pt-BR", "en")
         val allowedIcons = setOf(
@@ -102,5 +102,14 @@ class AutoFlowTemplateCatalogTest {
         }
         val parsed = AutoFlowTemplateCatalog.parseJsonl(jsonl)
         assertEquals(sample.map { it.id }, parsed.map { it.id })
+    }
+
+    @Test
+    fun slackAndNotionTemplatesAskForTheirOwnSetup() {
+        val byId = AutoFlowTemplateCatalog.All.associateBy { it.id }
+        assertEquals(AutoFlowTemplateSetup.SlackWebhook, assertNotNull(byId["meetings.standup-slack"]).definition.requiredSetup())
+        assertEquals(AutoFlowTemplateSetup.NotionDatabase, assertNotNull(byId["meetings.meeting-notion"]).definition.requiredSetup())
+        assertEquals(AutoFlowPostAction.Slack, AutoFlowPostAction.fromStored("slack"))
+        assertEquals(AutoFlowPostAction.Notion, AutoFlowPostAction.fromStored(" notion "))
     }
 }

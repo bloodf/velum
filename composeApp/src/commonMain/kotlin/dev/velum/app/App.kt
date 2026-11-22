@@ -38,6 +38,7 @@ import androidx.navigation.navArgument
 import androidx.savedstate.read
 import dev.velum.ai.pipeline.AutoFlowUiAction
 import dev.velum.app.di.AppContainer
+import dev.velum.app.i18n.destinationResultText
 import dev.velum.app.i18n.En
 import dev.velum.app.i18n.LocalStrings
 import dev.velum.app.i18n.ModelCatalogUi
@@ -373,6 +374,12 @@ private fun VelumRoot(container: AppContainer) {
                         },
                     )
                 }
+                is dev.velum.app.di.AutoFlowUiEvent.SlackPosted -> snackbar.showSnackbar(
+                    strings.destinationResultText(dev.velum.app.i18n.NoteDestination.Slack, event.result),
+                )
+                is dev.velum.app.di.AutoFlowUiEvent.NotionExported -> snackbar.showSnackbar(
+                    strings.destinationResultText(dev.velum.app.i18n.NoteDestination.Notion, event.result),
+                )
                 is dev.velum.app.di.AutoFlowUiEvent.Launch -> when (val action = event.action) {
                     AutoFlowUiAction.ProcessingFailed -> snackbar.showSnackbar(strings.ux.genericError)
                     is AutoFlowUiAction.ShareMarkdown -> container.noteToShare(action.recordingId)
@@ -386,8 +393,12 @@ private fun VelumRoot(container: AppContainer) {
                             snackbar.showSnackbar(action.message)
                         }
                     }
-                    // The router runs these itself and reports them as WebhookPosted / FolderExported.
-                    is AutoFlowUiAction.ExportMarkdownToFolder, is AutoFlowUiAction.PostWebhook -> Unit
+                    // The router runs these itself and reports them as their own events.
+                    is AutoFlowUiAction.ExportMarkdownToFolder,
+                    is AutoFlowUiAction.PostWebhook,
+                    is AutoFlowUiAction.PostSlack,
+                    is AutoFlowUiAction.ExportNotion,
+                    -> Unit
                 }
             }
         }

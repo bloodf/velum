@@ -141,7 +141,7 @@
         "notify": { "type": "boolean" },
         "post_action": {
           "type": ["string", "null"],
-          "enum": [null, "", "share", "calendar_insert", "folder_export", "webhook"]
+          "enum": [null, "", "share", "calendar_insert", "folder_export", "webhook", "slack", "notion"]
         }
       }
     }

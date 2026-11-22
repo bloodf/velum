@@ -1,5 +1,6 @@
 package dev.velum.app.di
 
+import dev.velum.ai.integrations.DestinationResult
 import dev.velum.ai.integrations.WebhookFailure
 import dev.velum.ai.pipeline.AutoFlowUiAction
 import dev.velum.app.platform.ExportFolderResult
@@ -133,5 +134,44 @@ class AutoFlowActionRouterTest {
         runCurrent()
         assertEquals(AutoFlowUiEvent.WebhookPosted("HTTP 200"), router.uiEvents.first())
     }
-}
 
+    @Test fun slack_and_notion_run_headless_and_report_their_outcome_once() = runTest {
+        val slack = mutableListOf<String>()
+        val notion = mutableListOf<String>()
+        val router = AutoFlowActionRouter(
+            postWebhook = { error("unused") },
+            exportToFolder = { error("unused") },
+            postSlack = { slack += it; DestinationResult.Sent() },
+            exportNotion = { notion += it; if (it == "bad") error("boom") else DestinationResult.Sent("https://notion.so/p") },
+        )
+        val actions = runnerActions()
+        router.start(backgroundScope, actions)
+        actions.emit(AutoFlowUiAction.PostSlack("s1"))
+        actions.emit(AutoFlowUiAction.ExportNotion("bad"))
+        actions.emit(AutoFlowUiAction.ExportNotion("n1"))
+        runCurrent()
+        assertEquals(listOf("s1"), slack)
+        assertEquals(listOf("bad", "n1"), notion)
+        assertEquals(
+            setOf(
+                AutoFlowUiEvent.SlackPosted(DestinationResult.Sent()),
+                AutoFlowUiEvent.NotionExported(DestinationResult.Failed(WebhookFailure.CONNECTION)),
+                AutoFlowUiEvent.NotionExported(DestinationResult.Sent("https://notion.so/p")),
+            ),
+            router.uiEvents.take(3).toList().toSet(),
+        )
+    }
+
+    @Test fun slack_and_notion_default_to_not_configured_when_not_wired() = runTest {
+        val router = AutoFlowActionRouter(postWebhook = { null }, exportToFolder = { null })
+        router.handle(AutoFlowUiAction.PostSlack("r"))
+        router.handle(AutoFlowUiAction.ExportNotion("r"))
+        assertEquals(
+            listOf<AutoFlowUiEvent>(
+                AutoFlowUiEvent.SlackPosted(DestinationResult.NotConfigured),
+                AutoFlowUiEvent.NotionExported(DestinationResult.NotConfigured),
+            ),
+            router.uiEvents.take(2).toList(),
+        )
+    }
+}

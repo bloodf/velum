@@ -20,7 +20,7 @@ allowed_categories = set(schema["properties"]["category"]["enum"])
 allowed_icons = set(schema["properties"]["icon"]["enum"])
 allowed_sources = set(schema["properties"]["definition"]["properties"]["source_filter"]["enum"])
 allowed_langs = set(schema["properties"]["definition"]["properties"]["language"]["enum"])
-allowed_posts = {None, "", "share", "calendar_insert", "folder_export", "webhook"}
+allowed_posts = set(schema["properties"]["definition"]["properties"]["post_action"]["enum"])
 velum_note_ids = {
     "velum.general", "velum.meeting", "velum.call", "velum.sales", "velum.interview",
     "velum.consulting", "velum.education", "velum.speech", "velum.medical", "velum.legal",

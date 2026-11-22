@@ -81,7 +81,7 @@ Phone-only / external (no Plaud required):
 - [x] Dark theme + TalkBack labels + 48 dp chrome targets + secondary ink contrast; player disabled without local audio
 - [x] Generate sheet + retranscribe launch processor
 - [x] AutoFlow matcher + runner on matching recordings
-- [x] AutoFlow post-actions: share Markdown intent / calendar ACTION_INSERT / folder export / webhook (gated on configuration)
+- [x] AutoFlow post-actions: share Markdown intent / calendar ACTION_INSERT / folder export / webhook / Slack / Notion (gated on configuration)
 - [x] WorkManager (`RecordingProcessWorker`) + `ThermalMonitor` pause/resume + DB checkpoints (`paused_thermal`)
 - [x] First-run UX guiding model downloads (or Use API / Skip) → Model manager / Account
 - [x] CI E2E: Fake BLE → mock API ASR/LLM → Markdown in DB (`DeviceToSummaryE2ETest`)
@@ -100,6 +100,7 @@ Phone-only / external (no Plaud required):
 - [x] Framework: `IntegrationRegistry` + Keystore `IntegrationAuthStore` / `WebhookSettingsStore`; OAuth providers omitted until client ID registered
 - [x] Obsidian / local folder: SAF picker + persistable URI; Markdown + YAML frontmatter (`MarkdownNoteExport`); AutoFlow `folder_export`
 - [x] Webhook: HTTPS URL + optional HMAC-SHA256 (`X-Velum-Signature`); schema v1 + retries; docs in `docs/WEBHOOK.md`; AutoFlow `webhook`
+- [x] Slack (Incoming Webhook) + Notion (internal integration token): manual send from a recording and AutoFlow `slack` / `notion`; docs in `docs/SLACK_NOTION.md` (#59, #61)
 - [ ] Google / Notion / Slack / Microsoft OAuth — blocked on owner client registration (#49/#50)
 
 ### App surfaces
@@ -110,7 +111,7 @@ Phone-only / external (no Plaud required):
 - [x] Find/replace on transcript
 - [x] Preferences / personalization / languages persist
 - [x] Key import UI (Settings → paste fields and/or Plaud JSON v1 → Keystore; optional templates as `plaud-import-*`) — see `docs/PLAUD_IMPORT.md`
-- [x] Integrations screen: device calendar + folder export + webhook (working paths only; no placeholder OAuth rows)
+- [x] Integrations screen: device calendar + folder export + webhook + Slack + Notion (working paths only; no placeholder OAuth rows)
 - [x] Roborazzi phone screenshots (~1080×2400) in CI artifacts
 - [x] Instrumented Compose UI smoke tests (`MainFlowUiTest`)
 - [x] Signed debug APK as CI artifact — fixed `composeApp/debug.keystore` (android/androiddebugkey) so every CI debug build shares one signature (`adb install -r` without wipe)

@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "meetings.standup-slack",
+  "category": "meetings",
+  "icon": "meeting",
+  "name": {
+    "en": "Standup → Slack",
+    "pt-BR": "Standup → Slack"
+  },
+  "description": {
+    "en": "Post each standup's wins, blockers and plans to your team channel.",
+    "pt-BR": "Publica conquistas, bloqueios e planos de cada standup no canal do time."
+  },
+  "preview": {
+    "en": "When a short recording (1–20 min) titled with “standup” arrives, extract key items and post the summary to your Slack channel.",
+    "pt-BR": "Quando uma gravação curta (1–20 min) com “standup” no título chegar, extrair itens-chave e publicar o resumo no seu canal do Slack."
+  },
+  "definition": {
+    "wake_phrase": "standup",
+    "source_filter": "all",
+    "duration_min_seconds": 60,
+    "duration_max_seconds": 1200,
+    "template_id": "velum.extractive",
+    "auto_label_voice": true,
+    "language": "auto",
+    "notify": true,
+    "post_action": "slack"
+  }
+}

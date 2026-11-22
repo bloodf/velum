@@ -342,6 +342,8 @@ private fun AutoFlowEditContent(
     var editDo by remember { mutableStateOf(false) }
     var exportFolderReady by remember { mutableStateOf(false) }
     var webhookReady by remember { mutableStateOf(false) }
+    var slackReady by remember { mutableStateOf(false) }
+    var notionReady by remember { mutableStateOf(false) }
     val postActionChoices = remember(strings, exportFolderReady, webhookReady, postAction) {
         buildList {
             add("" to strings.postActionNone)
@@ -349,6 +351,8 @@ private fun AutoFlowEditContent(
             add("calendar_insert" to strings.postActionCalendar)
             add("folder_export" to strings.postActionFolderExport)
             add("webhook" to strings.postActionWebhook)
+            add("slack" to strings.added.destinations.postActionSlack)
+            add("notion" to strings.added.destinations.postActionNotion)
         }
     }
     val scope = rememberCoroutineScope()
@@ -357,6 +361,8 @@ private fun AutoFlowEditContent(
         val listed = container.integrationRegistry.listed()
         exportFolderReady = listed.any { it.id == IntegrationId.FolderExport && it.configured }
         webhookReady = listed.any { it.id == IntegrationId.Webhook && it.configured }
+        slackReady = listed.any { it.id == IntegrationId.Slack && it.configured }
+        notionReady = listed.any { it.id == IntegrationId.Notion && it.configured }
     }
 
     fun markDirty() {
@@ -374,6 +380,10 @@ private fun AutoFlowEditContent(
             if (exportFolderReady) null else AutoFlowTemplateSetup.ExportFolder
         AutoFlowPostAction.Webhook ->
             if (webhookReady) null else AutoFlowTemplateSetup.WebhookUrl
+        AutoFlowPostAction.Slack ->
+            if (slackReady) null else AutoFlowTemplateSetup.SlackWebhook
+        AutoFlowPostAction.Notion ->
+            if (notionReady) null else AutoFlowTemplateSetup.NotionDatabase
         AutoFlowPostAction.None,
         AutoFlowPostAction.ShareMarkdown,
         AutoFlowPostAction.CalendarInsert,
@@ -839,6 +849,8 @@ private fun AutoFlowEditContent(
         val message = when (missing) {
             AutoFlowTemplateSetup.ExportFolder -> strings.ux.autoFlowNeedExportFolder
             AutoFlowTemplateSetup.WebhookUrl -> strings.ux.autoFlowNeedWebhook
+            AutoFlowTemplateSetup.SlackWebhook -> strings.added.destinations.autoFlowNeedSlack
+            AutoFlowTemplateSetup.NotionDatabase -> strings.added.destinations.autoFlowNeedNotion
         }
         AlertDialog(
             onDismissRequest = { setupMissing = null },

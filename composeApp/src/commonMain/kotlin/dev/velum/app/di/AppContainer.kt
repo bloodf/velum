@@ -22,6 +22,8 @@ import dev.velum.ai.pipeline.RecordingJobScheduler
 import dev.velum.ai.pipeline.RecordingProcessor
 import dev.velum.ai.pipeline.ThermalPolicy
 import dev.velum.ai.pipeline.createCoroutineRecordingJobScheduler
+import dev.velum.ai.integrations.NotionExporter
+import dev.velum.ai.integrations.SlackPoster
 import dev.velum.ai.integrations.WebhookDispatcher
 import dev.velum.app.devicewalk.DeviceWalkDiarizer
 import dev.velum.app.devicewalk.DeviceWalkLlm
@@ -70,6 +72,8 @@ import dev.velum.core.data.epochSecondsNow
 import dev.velum.core.integrations.IntegrationAuthStore
 import dev.velum.core.integrations.IntegrationConfig
 import dev.velum.core.integrations.IntegrationRegistry
+import dev.velum.core.integrations.NotionSettingsStore
+import dev.velum.core.integrations.SlackSettingsStore
 import dev.velum.core.integrations.WebhookSettingsStore
 import dev.velum.core.security.DeviceKeyImporter
 import dev.velum.core.security.SecureDeviceKeyImporter
@@ -186,16 +190,38 @@ class AppContainer(
     )
     val integrationAuth = IntegrationAuthStore(secureStore, integrationConfig)
     val webhookSettings = WebhookSettingsStore(secureStore)
+    val slackSettings = SlackSettingsStore(secureStore)
+    val notionSettings = NotionSettingsStore(secureStore)
     val integrationRegistry = IntegrationRegistry(
         webhook = webhookSettings,
         exportFolderConfigured = { !ExportFolderStore.currentUri().isNullOrBlank() },
         googleCalendarClientConfigured = integrationConfig.googleCalendarReady(),
+        slack = slackSettings,
+        notion = notionSettings,
     )
     val webhookDispatcher = WebhookDispatcher(
         repository = repository,
         settings = webhookSettings,
         wipeGate = wipeGate,
     )
+    val slackPoster = SlackPoster(repository = repository, settings = slackSettings, wipeGate = wipeGate)
+    val notionExporter = NotionExporter(repository = repository, settings = notionSettings, wipeGate = wipeGate)
+
+    /**
+     * Sends a note to Slack or Notion from a screen. Runs in the app scope, so leaving the screen does not cut a
+     * Notion export between creating the page and appending its remaining blocks; the screen awaits the result.
+     */
+    fun sendNoteAsync(toNotion: Boolean, recordingId: String): kotlinx.coroutines.Deferred<dev.velum.ai.integrations.DestinationResult> =
+        appScope.async {
+            if (toNotion) notionExporter.export(recordingId, destinationLabels()) else slackPoster.post(recordingId, destinationLabels())
+        }
+
+    /** Page headings for Slack / Notion in the app's language (AutoFlow runs with no screen to ask). */
+    fun destinationLabels(): dev.velum.ai.integrations.DestinationLabels {
+        val tag = resolveLanguageTag(settingsRepository.preferences.value.appLanguage, systemLanguageTag())
+        return (if (tag.lowercase().startsWith("pt")) dev.velum.app.i18n.PtBr else dev.velum.app.i18n.En)
+            .added.destinations.labels
+    }
 
     val localModelManager = createLocalModelManager(storeRoot = modelStoreRoot)
     val voiceProfileStore = VoiceProfileStore(modelStoreRoot, secureStore = secureStore)
@@ -271,10 +297,12 @@ class AppContainer(
     }
     val activeMicRecordingId: String? get() = micRecordings.owner.value?.recordingId
 
-    /** Runs AutoFlow's webhook / folder-export post-actions without a screen and queues the rest for one. */
+    /** Runs AutoFlow's webhook / folder-export / Slack / Notion post-actions without a screen and queues the rest for one. */
     val autoFlowActions = AutoFlowActionRouter(
         postWebhook = { webhookDispatcher.dispatch(it) },
         exportToFolder = { exportRecordingToFolder(it) },
+        postSlack = { slackPoster.post(it, destinationLabels()) },
+        exportNotion = { notionExporter.export(it, destinationLabels()) },
     )
 
     init {
@@ -587,6 +615,8 @@ class AppContainer(
                     true
                 }
                 step("webhook") { webhookSettings.clear(); true }
+                step("slack") { slackSettings.clear(); true }
+                step("notion") { notionSettings.clear(); true }
                 step("integrations") { integrationAuth.clearTokens(); true }
                 // Last: every step above that deletes rows has run, and VACUUM rewrites the file without them.
                 step("database") { (compactDatabaseForTest ?: repository::compactAfterWipe)() }

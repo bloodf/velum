@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "meetings.meeting-notion",
+  "category": "meetings",
+  "icon": "meeting",
+  "name": {
+    "en": "Meeting minutes → Notion",
+    "pt-BR": "Ata de reunião → Notion"
+  },
+  "description": {
+    "en": "Every meeting becomes a page in your Notion database.",
+    "pt-BR": "Cada reunião vira uma página no seu banco de dados do Notion."
+  },
+  "preview": {
+    "en": "When a meeting recording (10 min–3 h) arrives, write meeting minutes and create a Notion page with the summary and transcript.",
+    "pt-BR": "Quando uma gravação de reunião (10 min–3 h) chegar, escrever a ata e criar uma página no Notion com o resumo e a transcrição."
+  },
+  "definition": {
+    "wake_phrase": null,
+    "source_filter": "all",
+    "duration_min_seconds": 600,
+    "duration_max_seconds": 10800,
+    "template_id": "velum.meeting",
+    "auto_label_voice": true,
+    "language": "auto",
+    "notify": true,
+    "post_action": "notion"
+  }
+}

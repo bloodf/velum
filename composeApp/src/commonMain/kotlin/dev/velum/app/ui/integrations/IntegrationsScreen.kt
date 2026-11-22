@@ -397,13 +397,19 @@ fun IntegrationsScreen(
                     )
                 }
             }
+
+            Spacer(Modifier.height(12.dp))
+            SlackCard(container)
+
+            Spacer(Modifier.height(12.dp))
+            NotionCard(container)
             Spacer(Modifier.height(24.dp))
         }
     }
 }
 
 @Composable
-private fun IntegrationCard(
+internal fun IntegrationCard(
     icon: ImageVector,
     iconTint: Color,
     title: String,
