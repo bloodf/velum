@@ -209,6 +209,41 @@ class AudioNormalizeDesktopTest {
     }
 
     @Test
+    fun data_chunk_longer_than_the_file_keeps_the_bytes_that_exist_like_android() = runBlocking {
+        withTempRoots { inputDir, outputDir ->
+            // A recorder that died mid-write: the header promises 2 s but only 0.5 s of PCM reached the disk.
+            val present = 8_000
+            val pcm = ByteBuffer.allocate(present * 2).order(ByteOrder.LITTLE_ENDIAN).apply {
+                for (i in 0 until present) putShort((i % 500).toShort())
+            }.array()
+            val src = writePcmWav(File(inputDir, "cut.wav"), pcm = pcm)
+            RandomAccessFile(src, "rw").use { raf ->
+                raf.seek(40)
+                raf.write(ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN).putInt(32_000 * 2).array())
+            }
+            assertEquals(present * 2L, readWavInfo(src).dataSize)
+
+            val result = AudioNormalizer(outputDir).normalizeToWav(src.absolutePath, targetSampleRateHz = 16_000)
+            assertEquals(500L, result.durationMs)
+            val out = File(result.wavPath).readBytes()
+            assertContentEquals(pcm, out.copyOfRange(44, out.size))
+        }
+    }
+
+    @Test
+    fun a_truncated_chunk_before_the_data_is_still_rejected() {
+        withTempRoots { inputDir, _ ->
+            val src = writePcmWav(File(inputDir, "list.wav"), pcm = ByteArray(4), extraChunksBefore = listOf("LIST" to ByteArray(6)))
+            // Make the LIST chunk claim more bytes than the whole file.
+            RandomAccessFile(src, "rw").use { raf ->
+                raf.seek(40)
+                raf.write(ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN).putInt(1_000_000).array())
+            }
+            assertFailsWith<IOException> { readWavInfo(src) }
+        }
+    }
+
+    @Test
     fun stereo_downmixes_channels_and_resamples_rate_accurately() = runBlocking {
         withTempRoots { inputDir, outputDir ->
             // Stereo 44.1 kHz, 44,100 frames = 1 second.

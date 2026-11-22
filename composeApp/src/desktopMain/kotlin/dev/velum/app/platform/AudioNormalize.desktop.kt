@@ -184,6 +184,13 @@ internal fun readWavInfo(file: File, checkCancelled: () -> Unit = {}): WavInfo =
         val chunkSize = ByteBuffer.wrap(chunkHeader, 4, 4).order(ByteOrder.LITTLE_ENDIAN).int.toLong() and 0xFFFF_FFFFL
         val chunkDataOffset = offset + 8
         if (chunkDataOffset + chunkSize > length) {
+            // Same as Android's readWavHeader: a recorder that died (or streamed with a placeholder size) leaves a
+            // data chunk longer than the file. Keep the bytes that are there instead of refusing the recording.
+            if (id == "data") {
+                dataOffset = chunkDataOffset
+                dataSize = length - chunkDataOffset
+                break
+            }
             throw IOException("Truncated WAV: chunk '$id' claims size $chunkSize but file ends at $length")
         }
 
