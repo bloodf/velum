@@ -20,6 +20,18 @@ class AiBaseUrlTest {
             "http://127.0.0.1/v1",
             AiBaseUrl.normalizeAndValidate("http://127.0.0.1/v1"),
         )
+        // The emulator's host alias, which network_security_config also allows in cleartext.
+        assertEquals(
+            "http://10.0.2.2:11434/v1",
+            AiBaseUrl.normalizeAndValidate("http://10.0.2.2:11434/v1"),
+        )
+    }
+
+    @Test
+    fun otherPrivateAddressesStillNeedHttps() {
+        for (url in listOf("http://10.0.2.3/v1", "http://192.168.1.20:11434/v1", "http://10.0.2.2.evil.example/v1")) {
+            assertFailsWith<IllegalArgumentException>(url) { AiBaseUrl.normalizeAndValidate(url) }
+        }
     }
 
     @Test

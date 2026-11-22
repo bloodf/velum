@@ -7,6 +7,9 @@ package dev.velum.core.settings
  * Cloud metadata endpoints (e.g. `169.254.169.254`) are always rejected.
  */
 object AiBaseUrl {
+    /** The Android emulator's alias for the host's loopback (allowed for cleartext in network_security_config). */
+    const val EMULATOR_HOST = "10.0.2.2"
+
     private val metadataHosts = setOf(
         "169.254.169.254",
         "metadata.google.internal",
@@ -31,11 +34,13 @@ object AiBaseUrl {
             "Base URL host '$host' is blocked (link-local / metadata range)"
         }
 
-        val loopback = host == "localhost" || host == "127.0.0.1" || host == "::1"
+        // Same hosts as the Android network security config's cleartext exception: 10.0.2.2 is the emulator's
+        // address for the host machine, where a developer's local model server (Ollama, LM Studio) runs.
+        val loopback = host == "localhost" || host == "127.0.0.1" || host == "::1" || host == EMULATOR_HOST
         when (scheme) {
             "https" -> Unit
             "http" -> require(loopback) {
-                "HTTP base URLs are only allowed for localhost/127.0.0.1 (got host=$host)"
+                "HTTP base URLs are only allowed for localhost/127.0.0.1/10.0.2.2 (got host=$host)"
             }
             else -> error("Base URL scheme must be https (or http for localhost), got '$scheme'")
         }
