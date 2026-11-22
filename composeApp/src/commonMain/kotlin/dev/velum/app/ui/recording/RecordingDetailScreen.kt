@@ -214,7 +214,7 @@ fun RecordingDetailScreen(
                 ok = ok,
                 seekMs = seekSeconds * 1000L,
                 seekTo = audioPlayer::seekTo,
-                onUnavailable = { processError = "playback:" + strings.ux.playbackUnavailable },
+                onUnavailable = { processError = PLAYBACK_ERROR_PREFIX + strings.ux.playbackUnavailable },
             )
         }
     }
@@ -506,7 +506,7 @@ fun RecordingDetailScreen(
                 durationSeconds = recording?.duration_seconds ?: 0,
                 hasLocalAudio = !recording?.local_path.isNullOrBlank(),
                 generating = generating && dev.velum.core.data.TranscriptMarkers.spoken(recording?.transcript).isNullOrBlank(),
-                transportMessage = processError?.takeIf { it.startsWith("playback:") }?.removePrefix("playback:"),
+                transportMessage = processError?.takeIf { it.startsWith(PLAYBACK_ERROR_PREFIX) }?.removePrefix(PLAYBACK_ERROR_PREFIX),
                 onGenerate = { showGenerate = true },
                 onAskAi = { showAskAi = true },
                 onSeekSeconds = { seconds ->
@@ -518,7 +518,8 @@ fun RecordingDetailScreen(
             NotesPane(
                 summary = recording?.summary_markdown,
                 generating = generating,
-                processError = processError,
+                // Playback problems belong to the Sources transport, not to the note (they carried a raw "playback:" prefix here).
+                processError = processError?.takeUnless { it.startsWith(PLAYBACK_ERROR_PREFIX) },
                 onAskAi = { showAskAi = true },
                 onGenerate = { showGenerate = true },
                 onChangeTemplate = { showChangeTemplate = true },
@@ -1070,6 +1071,9 @@ private fun TabLabel(text: String, selected: Boolean, onClick: () -> Unit) {
         )
     }
 }
+
+/** Marks a [RecordingDetailScreen] error that belongs to the audio player, shown only on the Sources tab. */
+private const val PLAYBACK_ERROR_PREFIX = "playback:"
 
 @Composable
 private fun ExportOption(label: String, onClick: () -> Unit) {
