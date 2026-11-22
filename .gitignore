@@ -101,3 +101,11 @@ docs/templates/plaud_templates_full.jsonl
 __pycache__/
 *.py[cod]
 *.xcodeproj/
+
+# Website
+node_modules/
+website/dist/
+website/.astro/
+website/artifacts/
+website/playwright-report/
+website/*.tsbuildinfo

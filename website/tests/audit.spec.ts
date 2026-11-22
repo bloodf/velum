@@ -10,6 +10,8 @@ const viewports = [
 ]
 
 test('marketing layout and images survive the viewport matrix', async ({ page }) => {
+  // Five viewports, each loading and scrolling the whole page: more than the default 45 s on a busy machine.
+  test.setTimeout(150_000)
   const runtimeErrors: string[] = []
   page.on('pageerror', (error) => runtimeErrors.push(error.message))
   for (const viewport of viewports) {

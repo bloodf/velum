@@ -28,15 +28,38 @@ test('desktop marketing, workflow, and devices render correctly', async ({ page 
   await page.screenshot({ path: 'artifacts/devices-desktop.png' })
 
   await page.locator('#supported-devices').scrollIntoViewIfNeeded()
-  for (const device of ['Plaud', 'Bee', 'Limitless', 'Omi', 'Soundcore Work', 'iFLYTEK', 'External recorders']) {
+  // Only sources the app handles today, each with an honest status (README / docs/DEVICES_ROADMAP.md).
+  for (const device of ['Plaud Note Pro', 'Any recorder with audio files', 'Phone microphone', 'Omi and Pocket']) {
     await expect(page.getByRole('tab', { name: new RegExp(device, 'i') })).toBeVisible()
   }
+  for (const unsupported of ['Bee', 'Limitless', 'Soundcore', 'iFLYTEK']) {
+    await expect(page.getByRole('tab', { name: new RegExp(unsupported, 'i') })).toHaveCount(0)
+  }
+  await expect(page.getByRole('tab', { name: /Plaud Note Pro/i })).toContainText('Hardware validation in progress')
+  await expect(page.getByRole('tab', { name: /Omi and Pocket/i })).toContainText('Not usable yet')
   await page.getByRole('tab', { name: /Plaud/i }).focus()
   await page.keyboard.press('End')
-  await expect(page.getByRole('tab', { name: /External recorders/i })).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByRole('tab', { name: /Omi and Pocket/i })).toHaveAttribute('aria-selected', 'true')
+  await page.getByRole('tab', { name: /Any recorder with audio files/i }).click()
   await expect(page.locator('.import-phone-preview img')).toBeVisible()
   await page.waitForTimeout(500)
   await page.screenshot({ path: 'artifacts/supported-devices.png' })
+
+  await page.locator('#privacy').scrollIntoViewIfNeeded()
+  await page.waitForTimeout(500)
+  for (const fact of ['No account', 'No telemetry', 'Your choice of AI', 'Sharing is opt-in']) {
+    await expect(page.locator('#privacy').getByRole('heading', { name: fact })).toBeVisible()
+  }
+  await expect(page.getByRole('link', { name: /Read the privacy policy/ })).toHaveAttribute('href', 'https://github.com/bloodf/velum/blob/main/docs/PRIVACY.md')
+  await expect(page.locator('#privacy')).toContainText('Vercel Web Analytics')
+  await page.screenshot({ path: 'artifacts/privacy-desktop.png' })
+
+  await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('link', { name: 'Download' }).click()
+  await page.waitForTimeout(700)
+  await expect(page.locator('#download').getByRole('heading', { name: 'GitHub Releases' })).toBeInViewport()
+  await expect(page.locator('#download').getByRole('link', { name: /Open releases/ })).toHaveAttribute('href', 'https://github.com/bloodf/velum/releases')
+  await expect(page.locator('#download')).toContainText('No store listing is live yet')
+  await page.screenshot({ path: 'artifacts/download-desktop.png' })
   expect(errors).toEqual([])
 })
 

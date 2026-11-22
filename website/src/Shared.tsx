@@ -59,7 +59,9 @@ export function SiteHeader({ docs = false }: { docs?: boolean }) {
       <nav className="desktop-nav" aria-label="Main navigation">
         <a href={docs ? '/#workflow' : '#workflow'}>Workflow</a>
         <a href={docs ? '/#everywhere' : '#everywhere'}>Apps</a>
-        <a href={docs ? '/#open-source' : '#open-source'}>Open source</a>
+        <a className="nav-secondary" href={docs ? '/#privacy' : '#privacy'}>Privacy</a>
+        <a className="nav-secondary" href={docs ? '/#open-source' : '#open-source'}>Open source</a>
+        <a href={docs ? '/#download' : '#download'}>Download</a>
         <Link to="/docs/introduction" className={docs ? 'active' : ''}>Docs</Link>
       </nav>
       <div className="header-actions">
@@ -71,8 +73,10 @@ export function SiteHeader({ docs = false }: { docs?: boolean }) {
       <nav id="mobile-navigation" className={`mobile-menu ${open ? 'is-open' : ''}`} aria-label="Mobile navigation" aria-hidden={!open}>
         <a href={docs ? '/#workflow' : '#workflow'}>Workflow <span>01</span></a>
         <a href={docs ? '/#everywhere' : '#everywhere'}>Apps <span>02</span></a>
-        <a href={docs ? '/#open-source' : '#open-source'}>Open source <span>03</span></a>
-        <Link to="/docs/introduction">Documentation <span>04</span></Link>
+        <a href={docs ? '/#privacy' : '#privacy'}>Privacy <span>03</span></a>
+        <a href={docs ? '/#open-source' : '#open-source'}>Open source <span>04</span></a>
+        <a href={docs ? '/#download' : '#download'}>Download <span>05</span></a>
+        <Link to="/docs/introduction">Documentation <span>06</span></Link>
         <a href="https://github.com/bloodf/velum" target="_blank" rel="noreferrer">GitHub <ArrowUpRight /></a>
       </nav>
     </header>

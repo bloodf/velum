@@ -28,7 +28,8 @@ Black & white 3D brand kit matching the chosen app icon. **Keep originals**; web
 
 | File | Spec |
 |------|------|
-| `github-social-preview-1280x640.{png,webp,jpg}` | GitHub Open Graph (**upload manually** in repo Settings → Social preview) |
+| `github-social-preview-1280x640.png` | GitHub Open Graph (**upload manually** in repo Settings → Social preview). Rendered from real app screenshots by `website/scripts/render-social-preview.mjs`, which also writes the site's `og:image` (`website/public/brand/social-preview.png`) (#25) |
+| `github-social-preview-1280x640.{webp,jpg}` | Earlier logo-only version of the social preview |
 | `play-feature-graphic-1024x500.{png,webp,jpg}` | Google Play feature graphic |
 | `readme-banner-1600.{png,webp,jpg}` | README banner (~1600 px wide) |
 | `splash-{light,dark}-icon-1024.png` | Center crop of splash art for splash icon tooling |

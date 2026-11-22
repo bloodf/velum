@@ -345,3 +345,33 @@ a, button { touch-action: manipulation; }
 @media (prefers-reduced-motion: reduce) {
   .hero-brand-mark { animation: none; }
 }
+
+/* Source status, privacy and download (#24) */
+.source-list em.source-status { display: inline-block; margin-top: 8px; font-style: normal; font-family: var(--mono); font-size: 9px; letter-spacing: .08em; text-transform: uppercase; padding: 3px 7px; border-radius: 999px; border: 1px solid currentColor; color: #4b4b47; }
+.source-list button.active em.source-status { color: #e9e9e4; }
+.source-list em.status-available::before { content: '● '; }
+.privacy, .download { padding: 40px 5.4vw 110px; color: #151515; background: transparent; }
+.privacy-grid, .download-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; }
+.privacy-fact, .download-card { position: relative; padding: 28px 24px 30px; border-radius: 22px; background: rgba(255,255,255,.38); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); box-shadow: inset 0 0 0 1px rgba(17,17,17,.08), inset 0 1px 1px #fff, 0 18px 45px rgba(55,55,50,.06); }
+.privacy-fact .row-number { font-family: var(--mono); font-size: 10px; color: #66665f; }
+.privacy-fact h3, .download-card h3 { font-size: clamp(22px, 1.9vw, 30px); font-weight: 400; letter-spacing: -.035em; margin: 22px 0 12px; }
+.privacy-fact p, .download-card p { font-size: 14px; line-height: 1.55; color: #54544f; }
+.privacy-links { display: flex; flex-wrap: wrap; gap: 18px 42px; margin-top: 46px; }
+.privacy-site-note { margin-top: 22px; font-size: 13px; line-height: 1.5; color: #5f5f5a; max-width: 640px; }
+.download-card { display: flex; flex-direction: column; }
+.download-card .micro-label { color: #55554f; }
+.download-card p { flex: 1; }
+.download-link { margin-top: 22px; display: inline-flex; align-items: center; gap: 8px; align-self: flex-start; font-size: 14px; font-weight: 500; border-bottom: 1px solid currentColor; padding-bottom: 4px; }
+.download-link:hover { color: #000; }
+
+@media (max-width: 1180px) {
+  .privacy-grid, .download-grid { grid-template-columns: repeat(2, 1fr); }
+  .nav-secondary { display: none; }
+}
+
+@media (max-width: 700px) {
+  .privacy, .download { padding: 25px 24px 70px; }
+  .privacy-grid, .download-grid { grid-template-columns: 1fr; gap: 14px; }
+  .privacy-fact, .download-card { padding: 22px 20px 24px; border-radius: 18px; }
+  .privacy-links { flex-direction: column; gap: 18px; margin-top: 34px; }
+}

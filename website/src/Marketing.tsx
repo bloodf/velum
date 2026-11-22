@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion, MotionValue, useMotionValueEvent, useScroll, useTransform } from 'framer-motion'
-import { ArrowDown, ArrowRight, ArrowUp, ArrowUpRight, ChevronDown, Circle, Github, Headphones, Mic, Monitor, Search, Smartphone, Upload, Waves } from 'lucide-react'
+import { ArrowDown, ArrowRight, ArrowUp, ArrowUpRight, ChevronDown, Circle, Github, Headphones, Lock, Mic, Monitor, Search, Smartphone, Upload, Waves } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import WaveField from './WaveField'
 import { transitions } from './motion'
@@ -203,14 +203,18 @@ function Everywhere() {
   )
 }
 
-const sources = [
-  { name: 'Plaud', type: 'AI notetaker', detail: 'Bring conversations from your Plaud AI notetaker into one connected Velum workspace.', icon: Headphones },
-  { name: 'Bee', type: 'AI notetaker', detail: 'Keep conversations captured with Bee connected to transcripts and useful notes in Velum.', icon: Headphones },
-  { name: 'Limitless', type: 'AI notetaker', detail: 'Give conversations from your Limitless device one open home for audio, context, and notes.', icon: Headphones },
-  { name: 'Omi', type: 'AI notetaker', detail: 'Bring Omi conversations into the same searchable Velum library as the rest of your recordings.', icon: Headphones },
-  { name: 'Soundcore Work', type: 'AI notetaker', detail: 'Connect your Soundcore Work recording workflow to Velum’s transcript and note experience.', icon: Headphones },
-  { name: 'iFLYTEK', type: 'AI notetaker', detail: 'Organize conversations from supported iFLYTEK devices alongside the rest of your Velum knowledge.', icon: Headphones },
-  { name: 'External recorders', type: 'External audio recorders', detail: 'Velum supports external audio recorders too, giving your recordings a transcript, structured note, and searchable home.', icon: Mic },
+type SourceStatus = 'available' | 'validating' | 'not-yet'
+const statusLabel: Record<SourceStatus, string> = {
+  available: 'Available',
+  validating: 'Hardware validation in progress',
+  'not-yet': 'Not usable yet',
+}
+// Keep in step with README "Using a Plaud recorder" and docs/DEVICES_ROADMAP.md: claim only what the app does today.
+const sources: { name: string; type: string; detail: string; icon: typeof Mic; status: SourceStatus; preview?: boolean }[] = [
+  { name: 'Plaud Note Pro', type: 'Direct Bluetooth + local Wi-Fi sync', detail: 'Velum talks to the recorder directly over Bluetooth, with local Wi-Fi transfer for long files and no Plaud cloud in the path. You import your device identity from your own account once. Real-hardware validation is still open, so check the hardware checklist before relying on it.', icon: Headphones, status: 'validating' },
+  { name: 'Any recorder with audio files', type: 'Import', detail: 'Bring audio from any recorder or app: pick files, share into Velum, read a USB or SD folder, or sync a watched folder. MP3, M4A/AAC, WAV, Ogg/Opus, FLAC, AMR, WebM and MP4 audio go through the same local pipeline.', icon: Upload, status: 'available', preview: true },
+  { name: 'Phone microphone', type: 'Record in the app', detail: 'Record meetings and voice notes on your Android phone, with markers while you record, then transcribe and summarize on the device or with your own API.', icon: Mic, status: 'available' },
+  { name: 'Omi and Pocket', type: 'Open wearables', detail: 'Drivers for these open-protocol wearables are in the code base but not usable in the app yet, and are untested on real hardware. Until then, import their audio files.', icon: Waves, status: 'not-yet' },
 ]
 
 function Integrations() {
@@ -229,22 +233,22 @@ function Integrations() {
   }
   return (
     <section className="integrations light-section" id="supported-devices">
-      <div className="section-rule reveal"><span className="micro-label">04 / SUPPORTED DEVICES + RECORDERS</span><span className="micro-label">OPEN MEANS OPEN</span></div>
-      <div className="integrations-heading reveal"><h2>Your recorder.<br /><span>Your notes. One place.</span></h2><p>Velum supports dedicated AI notetakers and external audio recorders, bringing conversations from the devices you already use into one open workspace.</p></div>
+      <div className="section-rule reveal"><span className="micro-label">04 / SUPPORTED DEVICES + RECORDERS</span><span className="micro-label">WHAT WORKS TODAY</span></div>
+      <div className="integrations-heading reveal"><h2>Your recorder.<br /><span>Your notes. One place.</span></h2><p>Record on your phone, import audio from any recorder, or sync a Plaud Note Pro directly. Each source below says how far its support has come.</p></div>
       <div className="integration-lab reveal">
         <div className="source-list" role="tablist" aria-label="Supported AI notetakers and external audio recorders">
-          {sources.map((item, i) => <button key={item.name} id={`source-tab-${i}`} role="tab" aria-selected={selected === i} aria-controls="source-panel" tabIndex={selected === i ? 0 : -1} className={selected === i ? 'active' : ''} onClick={() => setSelected(i)} onKeyDown={(event) => onSourceKeyDown(event, i)}><span className="source-index">0{i + 1}</span><item.icon size={21} strokeWidth={1.5} /><span><strong>{item.name}</strong><small>{item.type}</small></span><ArrowRight size={18} /></button>)}
+          {sources.map((item, i) => <button key={item.name} id={`source-tab-${i}`} role="tab" aria-selected={selected === i} aria-controls="source-panel" tabIndex={selected === i ? 0 : -1} className={selected === i ? 'active' : ''} onClick={() => setSelected(i)} onKeyDown={(event) => onSourceKeyDown(event, i)}><span className="source-index">0{i + 1}</span><item.icon size={21} strokeWidth={1.5} /><span><strong>{item.name}</strong><small>{item.type}</small><em className={`source-status status-${item.status}`}>{statusLabel[item.status]}</em></span><ArrowRight size={18} /></button>)}
         </div>
         <div className="import-visual" id="source-panel" role="tabpanel" aria-labelledby={`source-tab-${selected}`}>
           <div className="import-grid" aria-hidden="true" />
           <AnimatePresence mode="wait">
-            {source.name === 'External recorders' ? (
+            {source.preview ? (
               <motion.div className="import-phone-preview" key="external-import" initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={transitions.slow}>
                 <img src="/screenshots/08-plaud-import.png" alt="Velum external recorder audio import with file, USB, SD, and watched-folder options" loading="lazy" width="1080" height="2400" />
               </motion.div>
             ) : (
               <motion.div className="import-path" key={source.name} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={transitions.base}>
-                <div className="import-source"><source.icon size={32} strokeWidth={1.2} /><span>{source.name}</span><small>SUPPORTED SOURCE</small></div>
+                <div className="import-source"><source.icon size={32} strokeWidth={1.2} /><span>{source.name}</span><small>{statusLabel[source.status].toUpperCase()}</small></div>
                 <div className="import-connector"><i /><span><Upload size={16} /></span><i /></div>
                 <div className="import-destination"><div className="mini-brand">v<span>·</span></div><span>One conversation</span><small>AUDIO + TRANSCRIPT + NOTE</small></div>
               </motion.div>
@@ -262,7 +266,7 @@ function OpenSource() {
   return (
     <section className="open-source" id="open-source">
       <div className="open-source-grid" aria-hidden="true" />
-      <div className="section-rule reveal"><span className="micro-label">05 / OPEN BY DESIGN</span><Github size={18} /></div>
+      <div className="section-rule reveal"><span className="micro-label">06 / OPEN BY DESIGN</span><Github size={18} /></div>
       <div className="open-source-main">
         <h2 className="reveal">NO<br /><span>BLACK</span><br />BOXES.</h2>
         <div className="open-source-copy reveal"><p>A notetaker holds some of your most meaningful context. You should be able to see how it works, question how it works, and help make it work better.</p><ArrowLink to={github} external>Explore the repository</ArrowLink></div>
@@ -278,18 +282,69 @@ function OpenSource() {
 }
 
 const faqs = [
-  ['What is Velum?', 'Velum is an open-source AI notetaker for desktop and mobile. It is designed to connect recordings, transcripts, structured notes, and rediscovery in one coherent workspace.'],
-  ['Which AI notetakers and recorders does Velum support?', 'Velum supports Plaud, Bee, Limitless, Omi, Soundcore Work, and iFLYTEK devices, as well as external audio recorders. Your recordings, available transcripts, and generated notes can stay connected in one workspace.'],
-  ['Which platforms will Velum support?', 'Velum is being built as a cross-platform product for desktop and mobile. Follow the repository and releases for the current platform availability.'],
-  ['Can I inspect or contribute to the code?', 'Yes. Velum is open source. Explore the GitHub repository, open a focused issue, improve the documentation, or pick up a scoped contribution.'],
+  ['What is Velum?', 'Velum is an open-source app for recordings, transcripts, and AI notes. Record on your phone or import audio, get a transcript with speakers, and turn it into a note shaped by a template. Your library stays on your device.'],
+  ['Which recorders does Velum support?', 'Any recorder or app that gives you audio files, through import. Plaud Note Pro has a direct Bluetooth and Wi-Fi integration whose real-hardware validation is still open. Drivers for open wearables such as Omi are in the code base but not usable in the app yet.'],
+  ['Which platforms does Velum run on?', 'Android first: it is the development and acceptance target. A macOS desktop app is in development. iOS comes after Android acceptance; Windows and Linux are not planned for now.'],
+  ['Does my audio leave my device?', 'Only if you choose so. Local models run on the device. If you configure your own OpenAI-compatible API, that provider receives what it needs to process a recording. Webhooks, Slack and Notion send a note only after you set them up.'],
+  ['Can I inspect or contribute to the code?', 'Yes. Velum is MIT-licensed. Explore the GitHub repository, open a focused issue, improve the documentation, or pick up a scoped contribution.'],
   ['Is AI-generated content always accurate?', 'No. Transcripts and generated notes can miss context or misinterpret speech. Velum keeps the source close so you can verify important names, decisions, and action items.'],
 ]
+
+const privacyFacts = [
+  { title: 'No account', text: 'There is no Velum account, server, or subscription. Recordings, transcripts, and notes live in a local database on your device.' },
+  { title: 'No telemetry', text: 'The app has no analytics, tracking, or crash reporting. It makes network requests only for the features you turn on.' },
+  { title: 'Your choice of AI', text: 'Run supported models on the device, or bring an OpenAI-compatible API. Keys stay in the Android Keystore-backed store.' },
+  { title: 'Sharing is opt-in', text: 'Exports, webhooks, Slack, and Notion send a note only when you set them up and use them, or when an AutoFlow rule you created does.' },
+]
+
+function Privacy() {
+  return (
+    <section className="privacy light-section" id="privacy">
+      <div className="section-rule reveal"><span className="micro-label">05 / LOCAL-FIRST</span><Lock size={16} aria-hidden="true" /></div>
+      <div className="integrations-heading reveal"><h2>Private by default.<br /><span>Shared on your terms.</span></h2><p>Velum is built so the conversation stays with you. What leaves your device is what you configure, and the code that does it is open to read.</p></div>
+      <div className="privacy-grid">
+        {privacyFacts.map((fact, i) => <div className="privacy-fact reveal" key={fact.title}><span className="row-number">0{i + 1}</span><h3>{fact.title}</h3><p>{fact.text}</p></div>)}
+      </div>
+      <div className="privacy-links reveal">
+        <ArrowLink to={`${github}/blob/main/docs/PRIVACY.md`} external>Read the privacy policy</ArrowLink>
+        <ArrowLink to="/docs/privacy">Privacy &amp; data guide</ArrowLink>
+      </div>
+      <p className="privacy-site-note reveal">This website counts page views with Vercel Web Analytics, which sets no cookies. The app itself has no analytics.</p>
+    </section>
+  )
+}
+
+const channels: { name: string; detail: string; status: string; href?: string; cta?: string }[] = [
+  { name: 'GitHub Releases', detail: 'Signed Android APKs for arm64, 32-bit ARM, and a universal build, with checksums and the signing certificate.', status: 'First public beta in preparation', href: `${github}/releases`, cta: 'Open releases' },
+  { name: 'F-Droid + IzzyOnDroid', detail: 'Listings for the open-source Android stores, built from the same source and metadata as the GitHub releases.', status: 'After the first beta' },
+  { name: 'Google Play', detail: 'An internal testing track comes first, then an open listing.', status: 'After the first beta' },
+  { name: 'Build from source', detail: 'Clone the repository and build the Android app with the included Gradle wrapper, JDK 17, and the Android SDK.', status: 'Available now', href: `${github}#build-from-source`, cta: 'Build instructions' },
+]
+
+function Download() {
+  return (
+    <section className="download light-section" id="download">
+      <div className="section-rule reveal"><span className="micro-label">07 / GET VELUM</span><span className="micro-label">ANDROID FIRST</span></div>
+      <div className="integrations-heading reveal"><h2>Get the app.<br /><span>Android first.</span></h2><p>Velum is in active development. macOS is in progress; iOS follows once Android is accepted. No store listing is live yet.</p></div>
+      <div className="download-grid">
+        {channels.map((channel) => (
+          <div className="download-card reveal" key={channel.name}>
+            <span className="micro-label">{channel.status.toUpperCase()}</span>
+            <h3>{channel.name}</h3>
+            <p>{channel.detail}</p>
+            {channel.href && <a className="download-link" href={channel.href} target="_blank" rel="noreferrer">{channel.cta} <ArrowUpRight size={16} aria-hidden="true" /></a>}
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
 
 function FAQ() {
   const [open, setOpen] = useState(0)
   return (
     <section className="faq light-section">
-      <div className="section-rule reveal"><span className="micro-label">06 / THE SHORT ANSWERS</span><span className="micro-label">STILL CURIOUS?</span></div>
+      <div className="section-rule reveal"><span className="micro-label">08 / THE SHORT ANSWERS</span><span className="micro-label">STILL CURIOUS?</span></div>
       <div className="faq-layout"><h2 className="reveal">BEFORE<br />YOU ASK.</h2><div className="faq-list reveal">{faqs.map(([question, answer], i) => <div className={`faq-item ${open === i ? 'open' : ''}`} key={question}><button onClick={() => setOpen(open === i ? -1 : i)} aria-expanded={open === i}><span>0{i + 1}</span><strong>{question}</strong><ChevronDown size={20} /></button><AnimatePresence initial={false}>{open === i && <motion.div className="faq-answer" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={transitions.slow}><p>{answer}</p></motion.div>}</AnimatePresence></div>)}</div></div>
     </section>
   )
@@ -302,7 +357,7 @@ function FinalCTA() {
         <WaveField />
         <div className="final-cta-inner reveal"><span className="micro-label"><span className="live-dot" /> YOUR NEXT CONVERSATION STARTS HERE</span><h2>MAKE IT<br /><span>REMEMBERABLE.</span></h2><p>Less digging. More context. A second memory you can help build.</p><div className="final-actions"><a className="button button-accent" href={github} target="_blank" rel="noreferrer">Build Velum with us <Github size={18} /></a><Link className="button button-ghost" to="/docs/quick-start">Read the quick start <ArrowUpRight size={17} /></Link></div></div>
       </section>
-      <footer className="site-footer"><div className="footer-top"><Link to="/" className="footer-wordmark">velum<span>®</span></Link><RotatingThought /></div><div className="footer-bottom"><span>OPEN-SOURCE AI NOTETAKER</span><div><Link to="/docs/introduction">Docs</Link><a href={github} target="_blank" rel="noreferrer">GitHub</a><a href="#top">Back to top <ArrowUp size={13} aria-hidden="true" /></a></div><span>© 2026 VELUM</span></div></footer>
+      <footer className="site-footer"><div className="footer-top"><Link to="/" className="footer-wordmark">velum<span>®</span></Link><RotatingThought /></div><div className="footer-bottom"><span>OPEN-SOURCE AI NOTETAKER</span><div><Link to="/docs/introduction">Docs</Link><a href="#download">Download</a><a href={`${github}/blob/main/docs/PRIVACY.md`} target="_blank" rel="noreferrer">Privacy</a><a href={github} target="_blank" rel="noreferrer">GitHub</a><a href="#top">Back to top <ArrowUp size={13} aria-hidden="true" /></a></div><span>© 2026 VELUM</span></div></footer>
     </>
   )
 }
@@ -323,7 +378,9 @@ export default function Marketing() {
         <Workflow />
         <Everywhere />
         <Integrations />
+        <Privacy />
         <OpenSource />
+        <Download />
         <FAQ />
         <FinalCTA />
       </main>
