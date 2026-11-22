@@ -348,26 +348,21 @@ private fun VelumRoot(container: AppContainer) {
       }
     }
 
+    // AutoFlow post-actions: the container already ran the webhook / folder export (they need no screen); events that
+    // arrived while no screen existed wait in its queue and are shown here once.
     LaunchedEffect(container) {
-        container.autoFlowRunner.actions.collect { action ->
-            when (action) {
-                AutoFlowUiAction.ProcessingFailed -> snackbar.showSnackbar(strings.ux.genericError)
-                is AutoFlowUiAction.ShareMarkdown -> container.noteToShare(action.recordingId)
-                    ?.let { shareText(it.title, it.markdown) }
-                is AutoFlowUiAction.InsertCalendarEvent -> container.noteToShare(action.recordingId)
-                    ?.let { openCalendarInsert(it.title, it.summary) }
-                is AutoFlowUiAction.ExportMarkdownToFolder -> {
-                    when (val result = container.exportRecordingToFolder(action.recordingId)) {
-                        null -> snackbar.showSnackbar(strings.ux.recordingMissing)
-                        is ExportFolderResult.Ok ->
-                            snackbar.showSnackbar(strings.ux.folderExportOkFormat.replace("%s", result.displayPath))
-                        is ExportFolderResult.Failed -> snackbar.showSnackbar(strings.ux.genericError)
-                    }
+        container.autoFlowActions.uiEvents.collect { event ->
+            when (event) {
+                is dev.velum.app.di.AutoFlowUiEvent.FolderExported -> when (val result = event.result) {
+                    null -> snackbar.showSnackbar(strings.ux.recordingMissing)
+                    is ExportFolderResult.Ok ->
+                        snackbar.showSnackbar(strings.ux.folderExportOkFormat.replace("%s", result.displayPath))
+                    is ExportFolderResult.Failed -> snackbar.showSnackbar(strings.ux.genericError)
                 }
-                is AutoFlowUiAction.PostWebhook -> {
-                    val msg = container.webhookDispatcher.dispatch(action.recordingId)
+                is dev.velum.app.di.AutoFlowUiEvent.WebhookPosted -> {
+                    val msg = event.detail
                     snackbar.showSnackbar(
-                        if (msg != null && msg.startsWith("HTTP 2")) {
+                        if (msg != null && dev.velum.app.ui.integrations.WebhookTestResult.isHttpSuccess(msg)) {
                             strings.ux.webhookPostedFormat.replace("%s", msg)
                         } else {
                             strings.ux.webhookFailedFormat.replace(
@@ -378,12 +373,21 @@ private fun VelumRoot(container: AppContainer) {
                         },
                     )
                 }
-                is AutoFlowUiAction.BlockedOnPermission -> {
-                    if (action.permission.contains("calendar", ignoreCase = true)) {
-                        requestCalendar { }
-                    } else {
-                        snackbar.showSnackbar(action.message)
+                is dev.velum.app.di.AutoFlowUiEvent.Launch -> when (val action = event.action) {
+                    AutoFlowUiAction.ProcessingFailed -> snackbar.showSnackbar(strings.ux.genericError)
+                    is AutoFlowUiAction.ShareMarkdown -> container.noteToShare(action.recordingId)
+                        ?.let { shareText(it.title, it.markdown) }
+                    is AutoFlowUiAction.InsertCalendarEvent -> container.noteToShare(action.recordingId)
+                        ?.let { openCalendarInsert(it.title, it.summary) }
+                    is AutoFlowUiAction.BlockedOnPermission -> {
+                        if (action.permission.contains("calendar", ignoreCase = true)) {
+                            requestCalendar { }
+                        } else {
+                            snackbar.showSnackbar(action.message)
+                        }
                     }
+                    // The router runs these itself and reports them as WebhookPosted / FolderExported.
+                    is AutoFlowUiAction.ExportMarkdownToFolder, is AutoFlowUiAction.PostWebhook -> Unit
                 }
             }
         }

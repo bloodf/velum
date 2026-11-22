@@ -271,6 +271,12 @@ class AppContainer(
     }
     val activeMicRecordingId: String? get() = micRecordings.owner.value?.recordingId
 
+    /** Runs AutoFlow's webhook / folder-export post-actions without a screen and queues the rest for one. */
+    val autoFlowActions = AutoFlowActionRouter(
+        postWebhook = { webhookDispatcher.dispatch(it) },
+        exportToFolder = { exportRecordingToFolder(it) },
+    )
+
     init {
         // Earlier versions also kept every speaker embedding in plaintext, and a recording deleted while its
         // diarization ran can leave its embeddings behind (#320).
@@ -298,6 +304,8 @@ class AppContainer(
             runCatching { dev.velum.core.autoflow.AutoFlowTemplateCatalog.All }
                 .onFailure { println("VelumStartup: AutoFlow template warm-up failed: ${it::class.simpleName}") }
         }
+        // Subscribed before the runner can start, so no post-action is emitted into an empty SharedFlow.
+        autoFlowActions.start(appScope, autoFlowRunner.actions)
         appScope.launch {
             settingsRepository.loadState.collect { state ->
                 when (state) {
