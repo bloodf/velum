@@ -69,7 +69,8 @@ an owner decision or an external service. Status as of this pass:
 1. **AutoFlow webhook / folder export silently dropped** when a recording finished with no screen open (WorkManager
    after the activity was gone): the runner emits into a SharedFlow without replay and only the composition collected
    it. New `AutoFlowActionRouter` is the process-lifetime collector: it runs those two actions itself and queues the
-   rest for the next screen. (`AutoFlowActionRouterTest`, mutation-checked)
+   rest for the next screen; a slow webhook does not hold back later actions. (`AutoFlowActionRouterTest`,
+   mutation-checked)
 2. **Ask AI overflowed the on-device model's context**: the whole transcript and the whole chat history went into the
    prompt. Now excerpts chosen for the question within a budget (small for local, large for API). (`AskAiChatContextTest`)
 3. **Duplicated words at every 28 s ASR window boundary** (2 s overlap transcribed twice and concatenated).
@@ -85,6 +86,10 @@ an owner decision or an external service. Status as of this pass:
 9. **Spurious errors from cancelled coroutines**: leaving Discover during the full catalog import showed "import
    failed"; a search cancelled by the next keystroke could leave a false error state. (`FullCatalogImportRunTest`)
 10. `http://10.0.2.2` (emulator host) rejected although the cleartext network config allows it. (`AiBaseUrlTest`)
+11. **Two speakers could be given the same person's name**: each speaker was matched to its best voice profile on its
+    own. Now best-scoring pairs first, one profile per speaker. (`VoiceProfileStoreTest`, mutation-checked)
+12. Refreshing the model list before saving an API key said "Could not list models" instead of asking for the key.
+    (`ModelsRefreshErrorTextTest`)
 
 ### 3.2 Performance
 - Start-up no longer re-hashes multi-GB single-file models (see #502 above). (`ModelVerificationStampTest`)
