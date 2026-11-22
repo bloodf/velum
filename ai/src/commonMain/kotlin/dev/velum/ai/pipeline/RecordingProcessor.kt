@@ -698,17 +698,20 @@ class RecordingProcessor(
         val windows = WindowedAsr.windows(total, sampleRate)
         if (windows.size <= 1) {
             val bytes = pcm.asFullArrayOrNull() ?: pcm.slice(0, total)
-            return asr.transcribe(
-                AudioInput(
-                    filename = filename,
-                    bytes = bytes,
-                    sampleRateHz = sampleRate,
-                    languageHint = languageHint,
-                    recordingId = recordingId,
-                    initialPrompt = initialPrompt,
-                    apiOverride = apiOverride,
+            return withWindowSegment(
+                asr.transcribe(
+                    AudioInput(
+                        filename = filename,
+                        bytes = bytes,
+                        sampleRateHz = sampleRate,
+                        languageHint = languageHint,
+                        recordingId = recordingId,
+                        initialPrompt = initialPrompt,
+                        apiOverride = apiOverride,
+                    ),
+                    asrModel,
                 ),
-                asrModel,
+                pcmDurationMs(bytes.size, sampleRate),
             )
         }
         val parts = ArrayList<TranscriptionResult>(windows.size)
@@ -716,22 +719,41 @@ class RecordingProcessor(
         for (w in windows) {
             thermal.awaitCool { }
             val slice = pcm.slice(w.startByte, w.endByte)
-            parts += asr.transcribe(
-                AudioInput(
-                    filename = filename,
-                    bytes = slice,
-                    sampleRateHz = sampleRate,
-                    languageHint = languageHint,
-                    recordingId = recordingId,
-                    initialPrompt = if (parts.isEmpty()) initialPrompt else null,
-                    apiOverride = apiOverride,
+            parts += withWindowSegment(
+                asr.transcribe(
+                    AudioInput(
+                        filename = filename,
+                        bytes = slice,
+                        sampleRateHz = sampleRate,
+                        languageHint = languageHint,
+                        recordingId = recordingId,
+                        initialPrompt = if (parts.isEmpty()) initialPrompt else null,
+                        apiOverride = apiOverride,
+                    ),
+                    asrModel,
                 ),
-                asrModel,
+                pcmDurationMs(slice.size, sampleRate),
             )
             starts += w.startMs
         }
         return WindowedAsr.mergeWindowResults(parts, starts)
     }
+
+    /**
+     * API transcription returns text only. Without a segment the diarization could not be applied and the transcript
+     * had no timestamps (Ask's citations all said 0:00); one window-long segment gives it what the local engines'
+     * window results already have.
+     */
+    private fun withWindowSegment(result: TranscriptionResult, durationMs: Long): TranscriptionResult =
+        // A provider that labelled speakers itself ("Speaker 1: ...") keeps its text path and labels.
+        if (result.segments.isNotEmpty() || result.text.isBlank() || PROVIDER_SPEAKER_LINE.containsMatchIn(result.text)) {
+            result
+        } else {
+            result.copy(segments = listOf(dev.velum.ai.engine.TranscriptSegment(0L, durationMs, result.text.trim())))
+        }
+
+    private fun pcmDurationMs(bytes: Int, sampleRate: Int): Long =
+        if (sampleRate <= 0) 0L else (bytes / 2L) * 1000L / sampleRate
 
     private fun looksLikeOgg(bytes: ByteArray): Boolean =
         bytes.size >= 4 &&
@@ -921,6 +943,9 @@ const val WAV_NO_DATA_MESSAGE =
  * would let a 48 kHz recording ask for 172.8 MB.
  */
 internal const val DIARIZATION_MAX_BYTES: Int = 30 * 60 * 16_000 * 2
+
+/** A transcript line the provider already attributed to a speaker, e.g. "Speaker 2: ..." or "Orador 1: ...". */
+private val PROVIDER_SPEAKER_LINE = Regex("""^\s*(Speaker|Orador)\s+\d+\s*:""", RegexOption.MULTILINE)
 
 private const val WAVE_FORMAT_PCM = 1
 private const val WAVE_FORMAT_EXTENSIBLE = 0xFFFE
