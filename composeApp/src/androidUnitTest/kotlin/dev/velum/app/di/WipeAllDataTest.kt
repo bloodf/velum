@@ -512,6 +512,14 @@ class WipeAllDataTest {
         assertEquals(DownloadWipeResult.Clean, container.wipeAllData())
     }
 
+    @Test fun a_wipe_forgets_the_slack_and_notion_credentials() = withContainer { container, _ ->
+        container.slackSettings.save("https://hooks.slack.com/services/T0/B0/synthetic")
+        container.notionSettings.save("ntn_syntheticsyntheticsynthetic", "0123456789abcdef0123456789abcdef")
+        assertEquals(DownloadWipeResult.Clean, container.wipeAllData())
+        assertEquals(false, container.slackSettings.isConfigured())
+        assertEquals(false, container.notionSettings.isConfigured())
+    }
+
     @Test fun a_wipe_deletes_decoded_audio() = withContainer { container, _ ->
         assertEquals(root().absolutePath, container.recordingProcessor.pcmSpillRoot.absolutePath, "the processor spills elsewhere")
         val spill = container.recordingProcessor.pcmSpillRoot.resolve("tmp").resolve("pcm-rec")
