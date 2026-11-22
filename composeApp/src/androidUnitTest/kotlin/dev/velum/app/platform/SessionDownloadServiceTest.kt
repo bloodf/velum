@@ -12,7 +12,6 @@ import androidx.core.app.NotificationCompat
 import androidx.test.core.app.ApplicationProvider
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import org.junit.After
@@ -167,9 +166,9 @@ class SessionDownloadServiceTest {
         }
         startCommand()
 
-        assertFailsWith<IllegalStateException> {
-            service.onTimeout(startId, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
-        }
+        // Must not escape onTimeout: an exception there would crash the app on the main thread.
+        service.onTimeout(startId, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+        assertEquals(1, cancelled)
         assertFalse(SessionDownloadService.wanted)
         assertTrue(shadowOf(service).isStoppedBySelf)
         service.onTimeout(startId, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)

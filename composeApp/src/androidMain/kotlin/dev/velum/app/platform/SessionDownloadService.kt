@@ -49,6 +49,9 @@ class SessionDownloadService : Service() {
             wanted = false
             try {
                 DownloadProgressNotifier.cancelDeviceSession()
+            } catch (e: Exception) {
+                // Thrown out of onTimeout on the main thread it would crash the process; the service must stop anyway.
+                Log.w(TAG, "Cancelling the download on timeout failed: ${e::class.simpleName}")
             } finally {
                 stopNow()
             }
