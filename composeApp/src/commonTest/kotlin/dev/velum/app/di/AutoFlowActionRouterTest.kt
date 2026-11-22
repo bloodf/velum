@@ -108,4 +108,30 @@ class AutoFlowActionRouterTest {
             router.uiEvents.take(2).toList().map { ((it as AutoFlowUiEvent.Launch).action as AutoFlowUiAction.ShareMarkdown).recordingId },
         )
     }
+
+    @Test fun a_slow_webhook_does_not_hold_back_the_next_action() = runTest {
+        val release = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val router = AutoFlowActionRouter(
+            postWebhook = { release.await(); "HTTP 200" },
+            exportToFolder = { ExportFolderResult.Ok("Vault/b.md") },
+        )
+        val actions = runnerActions()
+        router.start(backgroundScope, actions)
+        actions.emit(AutoFlowUiAction.PostWebhook("slow"))
+        actions.emit(AutoFlowUiAction.ExportMarkdownToFolder("b"))
+        actions.emit(AutoFlowUiAction.ShareMarkdown("c"))
+        runCurrent()
+        // Both arrive while the webhook is still waiting (their order between themselves does not matter).
+        assertEquals(
+            setOf(
+                AutoFlowUiEvent.FolderExported(ExportFolderResult.Ok("Vault/b.md")),
+                AutoFlowUiEvent.Launch(AutoFlowUiAction.ShareMarkdown("c")),
+            ),
+            router.uiEvents.take(2).toList().toSet(),
+        )
+        release.complete(Unit)
+        runCurrent()
+        assertEquals(AutoFlowUiEvent.WebhookPosted("HTTP 200"), router.uiEvents.first())
+    }
 }
+

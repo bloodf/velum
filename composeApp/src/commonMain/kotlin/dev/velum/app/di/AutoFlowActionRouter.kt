@@ -49,7 +49,16 @@ class AutoFlowActionRouter(
      * dropped for lack of a collector. Start it before the runner.
      */
     fun start(scope: CoroutineScope, actions: Flow<AutoFlowUiAction>): Job =
-        scope.launch(start = CoroutineStart.UNDISPATCHED) { actions.collect { handle(it) } }
+        scope.launch(start = CoroutineStart.UNDISPATCHED) {
+            actions.collect { action ->
+                when (action) {
+                    // Network / storage work runs beside the collector: a webhook that takes its full timeout must not
+                    // hold back the next recording's post-action.
+                    is AutoFlowUiAction.PostWebhook, is AutoFlowUiAction.ExportMarkdownToFolder -> launch { handle(action) }
+                    else -> handle(action)
+                }
+            }
+        }
 
     suspend fun handle(action: AutoFlowUiAction) {
         val event = when (action) {
