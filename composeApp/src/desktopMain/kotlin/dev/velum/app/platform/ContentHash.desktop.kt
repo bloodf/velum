@@ -3,11 +3,14 @@ package dev.velum.app.platform
 import java.io.FileInputStream
 import java.security.MessageDigest
 
-actual fun sha256File(absolutePath: String): String {
+actual fun sha256File(absolutePath: String): String = sha256FileWithCancellation(absolutePath) {}
+
+internal fun sha256FileWithCancellation(absolutePath: String, checkCancelled: () -> Unit): String {
     val digest = MessageDigest.getInstance("SHA-256")
     FileInputStream(absolutePath).use { input ->
         val buf = ByteArray(64 * 1024)
         while (true) {
+            checkCancelled()
             val n = input.read(buf)
             if (n <= 0) break
             digest.update(buf, 0, n)
