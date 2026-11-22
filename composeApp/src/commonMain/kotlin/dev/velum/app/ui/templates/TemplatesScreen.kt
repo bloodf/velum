@@ -133,12 +133,11 @@ internal fun TemplatesScreen(
 
     LaunchedEffect(tab, discoverFeaturedOnly) {
         if (tab != 1 || discoverFeaturedOnly) return@LaunchedEffect
-        fullImportRunning = true
-        val result = runCatching { container.repository.ensureFullTemplatesImported() }
-        fullImportRunning = false
-        result.onFailure {
-            importStatus = strings.templatesImportFailed
-        }
+        runFullCatalogImport(
+            import = { container.repository.ensureFullTemplatesImported() },
+            onRunning = { fullImportRunning = it },
+            onFailed = { importStatus = strings.templatesImportFailed },
+        )
     }
     val importJson = rememberJsonFileImporter { jsonText ->
         scope.launch {
@@ -157,6 +156,7 @@ internal fun TemplatesScreen(
                 }
                 importStatus = countText(specs.size, strings.templatesImportOkFormatOne, strings.templatesImportOkFormat)
             }.onFailure {
+                if (it is kotlinx.coroutines.CancellationException) throw it
                 importStatus = strings.templatesImportFailed
             }
         }
@@ -1065,3 +1065,25 @@ fun TemplateDetailScreen(
         }
     }
 }
+
+/**
+ * Imports the full template catalog for the Discover "All" tier. Leaving the tab (or the screen) cancels the effect:
+ * that is not a failure, so it must not show "import failed"; the running flag is cleared either way.
+ */
+internal suspend fun runFullCatalogImport(
+    import: suspend () -> Unit,
+    onRunning: (Boolean) -> Unit,
+    onFailed: () -> Unit,
+) {
+    onRunning(true)
+    try {
+        import()
+    } catch (cancelled: kotlinx.coroutines.CancellationException) {
+        throw cancelled
+    } catch (_: Exception) {
+        onFailed()
+    } finally {
+        onRunning(false)
+    }
+}
+
