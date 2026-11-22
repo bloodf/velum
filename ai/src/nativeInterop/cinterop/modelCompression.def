@@ -1,0 +1,8 @@
+package = dev.velum.ai.compression
+linkerOpts = -lbz2
+---
+#include <bzlib.h>
+
+static inline void* velum_bzopen(const char* path) { return BZ2_bzopen(path, "rb"); }
+static inline int velum_bzread(void* stream, void* buffer, int length) { return BZ2_bzread(stream, buffer, length); }
+static inline void velum_bzclose(void* stream) { BZ2_bzclose(stream); }
