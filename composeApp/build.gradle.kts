@@ -240,6 +240,8 @@ kotlin {
                 implementation(compose.desktop.currentOs)
                 implementation(libs.kotlinx.coroutines.swing)
                 implementation(libs.kotlinx.coroutines.test)
+                // jvmSharedTest (also compiled here) uses the BLE fakes, e.g. PartialTransferFileStoreTest (#542).
+                implementation(project(":ble-testing"))
             }
         }
     }
