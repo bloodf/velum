@@ -580,8 +580,12 @@ fun RecordingDetailScreen(
                     val pending = container.sendNoteAsync(toNotion = destination == NoteDestination.Notion, recordingId = recordingId)
                     scope.launch {
                         try {
-                            val result = guarded { pending.await() }
-                            exportStatus = strings.destinationResultText(destination, result)
+                            exportStatus = try {
+                                strings.destinationResultText(destination, guarded { pending.await() })
+                            } catch (locked: dev.velum.core.security.SecureStoreUnavailableException) {
+                                // guarded() passes a locked store on for settings screens; here it is only a message.
+                                strings.ux.secureStorageUnavailable
+                            }
                         } finally {
                             sendingDestination = false
                         }
