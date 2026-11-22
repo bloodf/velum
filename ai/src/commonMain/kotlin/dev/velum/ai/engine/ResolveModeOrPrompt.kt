@@ -9,6 +9,7 @@ import dev.velum.core.model.ComputeMode
 
 /** Outcome of checking whether Local is ready for a task, else prompt the user. */
 sealed class ModeResolution {
+    data object Initializing : ModeResolution()
     data class Proceed(val mode: ComputeMode) : ModeResolution()
     data class NeedLocalModel(
         val task: AiTask,
@@ -76,6 +77,8 @@ fun resolveModeOrPrompt(
     }
     if (mode == ComputeMode.Api) return ModeResolution.Proceed(ComputeMode.Api)
 
+    if (!modelManager.initialized.value) return ModeResolution.Initializing
+
     val modelId = requiredLocalModelId(task, settings, modelManager)
     if (!modelManager.isReady(modelId)) {
         val name = modelManager.stateFor(modelId)?.spec?.displayName ?: modelId
@@ -95,3 +98,35 @@ fun resolveModeOrPrompt(
     }
     return ModeResolution.Proceed(ComputeMode.Local)
 }
+
+/** Action callers wait for verification before selecting a model or prompting for a download. */
+suspend fun resolveModeAfterInitialization(
+    task: AiTask,
+    settings: () -> AiProviderSettings,
+    modelManager: LocalModelManager,
+): ModeResolution {
+    modelManager.awaitInitialization()
+    return resolveModeOrPrompt(task, settings(), modelManager)
+}
+
+/**
+ * The user is switching [task] to Local: check that mode, not the one currently saved. Reading the saved mode
+ * (for example Api) returned Proceed(Api) without looking at the model, so Local was saved with no model
+ * installed and the download prompt never appeared. Waits for model verification like other actions.
+ */
+suspend fun resolveLocalSelection(
+    task: AiTask,
+    settings: () -> AiProviderSettings,
+    modelManager: LocalModelManager,
+): ModeResolution {
+    modelManager.awaitInitialization()
+    val local = settings().let {
+        when (task) {
+            AiTask.Transcription -> it.copy(transcriptionMode = ComputeMode.Local)
+            AiTask.Diarization -> it.copy(diarizationMode = ComputeMode.Local)
+            AiTask.Summary -> it.copy(summaryMode = ComputeMode.Local)
+        }
+    }
+    return resolveModeOrPrompt(task, local, modelManager)
+}
+

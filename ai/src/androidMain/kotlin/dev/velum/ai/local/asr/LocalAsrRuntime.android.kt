@@ -6,6 +6,8 @@ import com.google.ai.edge.litertlm.Contents
 import com.google.ai.edge.litertlm.ConversationConfig
 import com.google.ai.edge.litertlm.Engine
 import com.google.ai.edge.litertlm.EngineConfig
+import com.google.ai.edge.litertlm.Message
+import com.google.ai.edge.litertlm.MessageCallback
 import com.k2fsa.sherpa.onnx.FeatureConfig
 import com.k2fsa.sherpa.onnx.OfflineModelConfig
 import com.k2fsa.sherpa.onnx.OfflineRecognizer
@@ -36,6 +38,10 @@ import dev.velum.ai.local.sliceFloats
 import dev.velum.ai.needle.NeedleWhistleEngine
 import dev.velum.ai.pipeline.SummaryLocalization
 import java.io.File
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withContext
 
 /**
  * Android sherpa-onnx OfflineRecognizer + Needle/Whistle JNI + OfflineSpeakerDiarization + LiteRT-LM.
@@ -179,7 +185,7 @@ actual class LocalAsrRuntime actual constructor() {
         request: LlmRequest,
         modelId: String,
         modelPath: String,
-    ): LlmResult {
+    ): LlmResult = withContext(Dispatchers.IO) {
         val weights = findLlmWeights(File(modelPath))
             ?: throw IllegalStateException(
                 "Local LLM weights missing under $modelPath for modelId=$modelId. " +
@@ -192,8 +198,9 @@ actual class LocalAsrRuntime actual constructor() {
                 backend = Backend.CPU(),
             ),
         )
-        engine.initialize()
         try {
+            engine.initialize()
+            currentCoroutineContext().ensureActive()
             val system = buildString {
                 append(request.systemPrompt)
                 val lang = request.outputLanguage.trim().lowercase()
@@ -209,17 +216,24 @@ actual class LocalAsrRuntime actual constructor() {
                 ),
             )
             try {
-                val response = conversation.sendMessage(request.userPrompt)
-                val text = response.contents.contents
-                    .mapNotNull { (it as? Content.Text)?.text }
-                    .joinToString("")
-                    .trim()
+                val text = awaitLocalText(
+                    start = { onText, onDone, onError ->
+                        conversation.sendMessageAsync(request.userPrompt, object : MessageCallback {
+                            override fun onMessage(message: Message) {
+                                message.contents.contents.filterIsInstance<Content.Text>().forEach { onText(it.text) }
+                            }
+                            override fun onDone() = onDone.invoke()
+                            override fun onError(throwable: Throwable) = onError.invoke(throwable)
+                        })
+                    },
+                    cancel = conversation::cancelProcess,
+                )
                 if (text.isEmpty()) {
                     throw IllegalStateException(
                         "LiteRT-LM returned empty text for modelId=$modelId path=${weights.absolutePath}",
                     )
                 }
-                return LlmResult(
+                LlmResult(
                     text = text,
                     engineId = "local-llm",
                     modelId = modelId,
@@ -228,7 +242,7 @@ actual class LocalAsrRuntime actual constructor() {
                 conversation.close()
             }
         } finally {
-            engine.close()
+            if (engine.isInitialized()) engine.close()
         }
     }
 

@@ -28,6 +28,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -37,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.velum.ai.engine.AiTask
 import dev.velum.ai.engine.ModeResolution
+import dev.velum.ai.engine.resolveLocalSelection
 import dev.velum.app.di.AppContainer
 import dev.velum.app.i18n.LocalStrings
 import dev.velum.app.ui.components.BlackButton
@@ -55,6 +57,7 @@ import dev.velum.app.ui.theme.VelumOnWarningContainer
 import dev.velum.app.ui.theme.VelumSurface
 import dev.velum.app.ui.theme.VelumWarningContainer
 import dev.velum.core.model.ComputeMode
+import kotlinx.coroutines.launch
 
 internal data class LangOption(val code: String, val label: String)
 
@@ -68,9 +71,22 @@ fun AiProcessingScreen(
     val strings = LocalStrings.current
     val settings by container.settingsRepository.settings.collectAsState()
     val modelStates by container.localModelManager.states.collectAsState()
+    val modelsInitialized by container.localModelManager.initialized.collectAsState()
     var pickAudio by remember { mutableStateOf(false) }
     var pickOutput by remember { mutableStateOf(false) }
     var modelPrompt by remember { mutableStateOf<ModeResolution.NeedLocalModel?>(null) }
+    val selectionScope = rememberCoroutineScope()
+
+    /** Switching a task to Local: wait for model verification, then save it or offer the missing model. */
+    fun selectLocal(task: AiTask, save: () -> Unit) {
+        selectionScope.launch {
+            when (val r = resolveLocalSelection(task, { container.settingsRepository.settings.value }, container.localModelManager)) {
+                is ModeResolution.NeedLocalModel -> modelPrompt = r
+                ModeResolution.Initializing -> Unit // resolveLocalSelection waits, so this is not returned
+                is ModeResolution.Proceed -> save()
+            }
+        }
+    }
 
     val languages = listOf(
         LangOption("auto", strings.languageAuto),
@@ -81,10 +97,11 @@ fun AiProcessingScreen(
     fun labelFor(code: String): String =
         languages.firstOrNull { it.code == code }?.label ?: code
 
-    val missingLocal = remember(settings, modelStates) {
+    val missingLocal = remember(settings, modelStates, modelsInitialized) {
         listOf(AiTask.Transcription, AiTask.Diarization, AiTask.Summary).mapNotNull { task ->
             when (val r = container.aiRouter.resolveModeOrPrompt(task, container.localModelManager)) {
                 is ModeResolution.NeedLocalModel -> r
+                ModeResolution.Initializing -> null
                 is ModeResolution.Proceed -> null
             }
         }
@@ -109,6 +126,9 @@ fun AiProcessingScreen(
                 lineHeight = 20.sp,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
             )
+            if (!modelsInitialized) {
+                androidx.compose.material3.CircularProgressIndicator(Modifier.padding(20.dp))
+            }
             if (missingLocal.isNotEmpty()) {
                 val first = missingLocal.first()
                 Column(
@@ -158,21 +178,8 @@ fun AiProcessingScreen(
             ModePicker(
                 selected = settings.transcriptionMode,
                 onSelect = { mode ->
-                    if (mode == ComputeMode.Local) {
-                        when (
-                            val r = container.aiRouter.resolveModeOrPrompt(
-                                AiTask.Transcription,
-                                container.localModelManager,
-                            )
-                        ) {
-                            is ModeResolution.NeedLocalModel -> {
-                                modelPrompt = r
-                                return@ModePicker
-                            }
-                            is ModeResolution.Proceed -> Unit
-                        }
-                    }
-                    container.settingsViewModel.runStorageAction { container.settingsRepository.setTranscriptionMode(mode) }
+                    val save = { container.settingsViewModel.runStorageAction { container.settingsRepository.setTranscriptionMode(mode) } }
+                    if (mode == ComputeMode.Local) selectLocal(AiTask.Transcription) { save() } else save()
                 },
             )
             Spacer(Modifier.height(16.dp))
@@ -189,19 +196,9 @@ fun AiProcessingScreen(
                 selected = ComputeMode.Local,
                 onSelect = { mode ->
                     if (mode != ComputeMode.Local) return@ModePicker
-                    when (
-                        val r = container.aiRouter.resolveModeOrPrompt(
-                            AiTask.Diarization,
-                            container.localModelManager,
-                        )
-                    ) {
-                        is ModeResolution.NeedLocalModel -> {
-                            modelPrompt = r
-                            return@ModePicker
-                        }
-                        is ModeResolution.Proceed -> Unit
+                    selectLocal(AiTask.Diarization) {
+                        container.settingsViewModel.runStorageAction { container.settingsRepository.setDiarizationMode(ComputeMode.Local) }
                     }
-                    container.settingsViewModel.runStorageAction { container.settingsRepository.setDiarizationMode(ComputeMode.Local) }
                 },
                 allowApi = false,
             )
@@ -210,21 +207,8 @@ fun AiProcessingScreen(
             ModePicker(
                 selected = settings.summaryMode,
                 onSelect = { mode ->
-                    if (mode == ComputeMode.Local) {
-                        when (
-                            val r = container.aiRouter.resolveModeOrPrompt(
-                                AiTask.Summary,
-                                container.localModelManager,
-                            )
-                        ) {
-                            is ModeResolution.NeedLocalModel -> {
-                                modelPrompt = r
-                                return@ModePicker
-                            }
-                            is ModeResolution.Proceed -> Unit
-                        }
-                    }
-                    container.settingsViewModel.runStorageAction { container.settingsRepository.setSummaryMode(mode) }
+                    val save = { container.settingsViewModel.runStorageAction { container.settingsRepository.setSummaryMode(mode) } }
+                    if (mode == ComputeMode.Local) selectLocal(AiTask.Summary) { save() } else save()
                 },
             )
             Spacer(Modifier.height(20.dp))

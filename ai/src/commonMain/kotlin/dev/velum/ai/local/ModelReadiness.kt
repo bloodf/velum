@@ -22,11 +22,14 @@ object ModelReadiness {
             is ModelLayout.SingleLlmFile,
             is ModelLayout.SingleCactFile,
             -> {
-                return if (archive.exists() && archive.length() > 0L) {
-                    emptyList()
-                } else {
-                    listOf("expected file ${spec.archiveFileName}")
+                if (!archive.exists() || archive.isDirectory() || archive.length() <= 0L) {
+                    return listOf("expected file ${spec.archiveFileName}")
                 }
+                val expected = spec.sha256?.trim()?.takeIf { it.isNotEmpty() }
+                    ?: return listOf("checksum not pinned")
+                return if (verifiedSingleFile(archive, modelDir.resolve(spec.archiveFileName + VERIFIED_SUFFIX), expected)) {
+                    emptyList()
+                } else listOf("checksum mismatch for ${spec.archiveFileName}")
             }
             else -> Unit
         }
@@ -81,6 +84,43 @@ object ModelReadiness {
             LocalModelKind.Llm -> ModelLayout.LlmWeights
         }
     }
+}
+
+/** Sidecar recording that `<file>` matched its pinned SHA-256 at a given size and modification time. */
+internal const val VERIFIED_SUFFIX = ".verified"
+
+/**
+ * Single-file models are several GB (Gemma 2.5-3.6 GB) and readiness runs on every start-up scan, so hash the
+ * file only when it changed since it was last verified: the sidecar stores `size:mtime:sha256`. A replaced or
+ * truncated file changes size or mtime and is hashed again; a mismatch removes the sidecar.
+ */
+internal fun verifiedSingleFile(file: ModelStoreDir, marker: ModelStoreDir, expectedSha256: String): Boolean {
+    val expected = expectedSha256.lowercase()
+    fun stamp() = "${file.length()}:${file.lastModifiedMillis()}:$expected"
+    val before = stamp()
+    val recorded = runCatching { if (marker.exists() && !marker.isDirectory()) marker.readBytes().decodeToString() else null }.getOrNull()
+    if (recorded == before) return true
+    val matches = runCatching { modelFileSha256(file).equals(expected, ignoreCase = true) }.getOrDefault(false)
+    if (matches && stamp() == before) {
+        runCatching { marker.writeBytes(before.encodeToByteArray()) }
+    } else {
+        runCatching { if (marker.exists()) marker.deleteFile() }
+    }
+    return matches
+}
+
+internal fun modelFileSha256(file: ModelStoreDir): String {
+    val digest = createSha256Digest()
+    val size = file.length()
+    var offset = 0L
+    while (offset < size) {
+        val bytes = file.readRange(offset, minOf(1024 * 1024L, size - offset).toInt())
+        check(bytes.isNotEmpty()) { "Model file truncated during verification" }
+        digest.update(bytes)
+        offset += bytes.size
+    }
+    check(file.length() == size) { "Model file changed during verification" }
+    return digest.digestHex()
 }
 
 sealed class ModelLayout {

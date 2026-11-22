@@ -60,6 +60,7 @@ class LocalModelBenchmarkDeviceTest {
         val audioPath = requireNotNull(args.getString("bench.audio")) { "bench.audio (device path to a 16 kHz mono PCM16 speech WAV) is required" }
         val clip = readWavPcm16Mono16k(File(audioPath))
         val manager = createLocalModelManager(ModelStoreDir(File(instrumentation.targetContext.filesDir, "models").absolutePath))
+        manager.awaitInitialization()
         val results = models.map { id ->
             val kind = requireNotNull(manager.stateFor(id)) { "unknown benchmark model '$id'" }.spec.kind
             check(manager.isReady(id)) { "benchmark model '$id' is not Ready (status=${manager.stateFor(id)?.status}); download it first" }
