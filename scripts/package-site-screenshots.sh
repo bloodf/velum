@@ -33,6 +33,16 @@ copy_if "$DESK/03-desktop-transcript.png" "03-desktop-transcript.png"
 copy_if "$DESK/04-desktop-ai-note.png" "04-desktop-ai-note.png"
 copy_if "$DESK/05-desktop-search-ask.png" "05-desktop-search-ask.png"
 
+# The website and the README use the same files; the site serves WebP variants of them (#24).
+SITE="$ROOT/website/public/screenshots"
+mkdir -p "$SITE"
+cp "$OUT"/*.png "$SITE"/
+if python3 -c 'import PIL' 2>/dev/null; then
+  python3 "$ROOT/scripts/site-screenshot-variants.py" "$SITE"
+else
+  echo "Pillow missing: run 'pip install pillow' and python3 scripts/site-screenshot-variants.py" >&2
+fi
+
 # Zip of whatever is present
 (
   cd "$ROOT/docs"

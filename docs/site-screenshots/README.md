@@ -1,6 +1,6 @@
 # Site screenshots
 
-Marketing captures for the Velum website, rendered from the **real shared Compose UI** with rich English demo data (`MarketingDemoData`). No Plaud logos or branding. No stub / fake static screens.
+Marketing captures for the Velum website, rendered from the **real shared Compose UI** with rich English demo data (`MarketingDemoData`: ten finished recordings from ordinary work and study plus one in progress, no product or engineering jargon; each gets a quiet demo WAV so the players look real). No Plaud logos or branding. No stub / fake static screens.
 
 ## Generate
 
@@ -11,14 +11,14 @@ Marketing captures for the Velum website, rendered from the **real shared Compos
 # Desktop adaptive (1440×900 @2x → 2880×1800)
 ./gradlew :composeApp:desktopTest --tests '*SiteDesktopScreenshotsTest'
 
-./scripts/package-site-screenshots.sh
+./scripts/package-site-screenshots.sh   # also copies them to website/public/screenshots and writes the WebP variants
 ```
 
 ## Files
 
 | File | Description |
 |------|-------------|
-| `01-desktop-library.png` | Wide library: nav rail + filtered list (search) + selected recording detail |
+| `01-desktop-library.png` | Wide library: nav rail + the full, unfiltered list + the note of the selected recording |
 | `01-desktop-library-dark.png` | Dark variant of desktop library |
 | `02-desktop-recording.png` | Live waveform, timer, Pause/Mark/Stop controls |
 | `03-desktop-transcript.png` | Speakers, timestamps, playback bar, multi-paragraph transcript |

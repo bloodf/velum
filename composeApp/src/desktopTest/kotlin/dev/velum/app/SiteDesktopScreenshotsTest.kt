@@ -12,6 +12,7 @@ import androidx.compose.ui.use
 import dev.velum.app.di.AppContainer
 import dev.velum.app.i18n.En
 import dev.velum.app.i18n.LocalStrings
+import dev.velum.app.marketing.DemoAudio
 import dev.velum.app.marketing.MarketingDemoData
 import dev.velum.app.ui.library.LibraryAdaptiveScreen
 import dev.velum.app.ui.library.LibraryRailDestination
@@ -42,36 +43,36 @@ class SiteDesktopScreenshotsTest {
 
     @BeforeTest
     fun setUp() {
+        // Clock times in the captures must not depend on the machine that renders them.
+        java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("UTC"))
         container = AppContainer(
             secureStore = InMemorySecureStore(),
             driverFactory = DriverFactory(),
         )
         runBlocking {
             container.settingsRepository.load()
-            MarketingDemoData.seed(container)
+            MarketingDemoData.seed(container) { id, seconds -> DemoAudio.write(File("build/tmp/site-desktop-audio"), seconds, "$id.wav").absolutePath }
             val n = container.repository.getAllRecordings().size
-            assertTrue(n >= 5, "expected marketing seed recordings, got $n")
+            assertTrue(n >= 10, "expected marketing seed recordings, got $n")
         }
     }
 
+    // The full, unfiltered library (#23) beside a different recording than the transcript / note shots.
     @Test
     fun desktopLibrary() = capture("01-desktop-library") {
         LibraryShell(
-            selectedId = MarketingDemoData.LIBRARY_SELECTED_ID,
+            selectedId = MarketingDemoData.IMPORT_HINT_ID,
             rail = LibraryRailDestination.Library,
-            detailTab = 0,
-            // Distinct from transcript shot: filtered list + result count.
-            listSearch = "sprint",
+            detailTab = 1,
         )
     }
 
     @Test
     fun desktopLibraryDark() = capture("01-desktop-library-dark", dark = true) {
         LibraryShell(
-            selectedId = MarketingDemoData.LIBRARY_SELECTED_ID,
+            selectedId = MarketingDemoData.IMPORT_HINT_ID,
             rail = LibraryRailDestination.Library,
-            detailTab = 0,
-            listSearch = "sprint",
+            detailTab = 1,
         )
     }
 
