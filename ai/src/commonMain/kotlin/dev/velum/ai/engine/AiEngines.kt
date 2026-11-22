@@ -97,15 +97,17 @@ interface Transcriber {
  */
 interface StreamingTranscriber {
     val engineId: String
-    fun start(
+    suspend fun start(
         sampleRateHz: Int,
         languageHint: String? = "auto",
         initialPrompt: String? = null,
     )
-    /** Push interleaved PCM16 LE. May emit partial Markdown via [onPartial]. */
-    fun pushPcm(pcm16Le: ByteArray)
+    /** Push mono PCM16 LE. May emit partial Markdown via [onPartial]. */
+    suspend fun pushPcm(pcm16Le: ByteArray)
     /** Flush remaining audio and emit a final Markdown transcript. */
-    fun finish(): String
+    suspend fun finish(): String
+    /** Release resources without decoding or emitting. Calls must be serialized with the lifecycle. */
+    suspend fun cancel()
     var onPartial: (markdown: String) -> Unit
 }
 
