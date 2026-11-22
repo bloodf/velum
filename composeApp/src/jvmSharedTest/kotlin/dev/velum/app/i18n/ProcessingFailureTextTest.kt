@@ -37,6 +37,7 @@ class ProcessingFailureTextTest {
         "Local LLM weights missing under /data/models/x for modelId=gemma. Expected *.litertlm." to { s -> s.ux.processingFailedModelFiles },
         "Sherpa OfflineRecognizer returned empty text for modelId=parakeet. Check audio." to { s -> s.ux.processingFailedNoText },
         "Whistle returned empty transcript (silence/noise or unsupported language)." to { s -> s.ux.processingFailedNoText },
+        dev.velum.ai.EMPTY_CHAT_COMPLETION_MESSAGE to { s -> s.ux.processingFailedNoText },
         "Needle whistle transcription failed: native error" to { s -> s.ux.processingFailedLocalEngine },
         "Whistle/Needle requires 16 kHz mono PCM (got 8000 Hz). Normalize audio before Local ASR." to { s -> s.ux.processingFailedLocalEngine },
         PROCESSING_STOPPED_MESSAGE to { s -> s.ux.processingStoppedByAndroid },

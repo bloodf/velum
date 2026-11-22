@@ -114,6 +114,71 @@ class OpenAiCompatibleClientTest {
         assertEquals("audio/wav", dev.velum.ai.audio.PcmWav.contentTypeForFilename("window.wav"))
     }
 
+    private fun requestBody(data: io.ktor.client.request.HttpRequestData): String =
+        (data.body as io.ktor.http.content.TextContent).text
+
+    @Test
+    fun chatCompletion_sendsTheDefaultTemperature() = runTest {
+        val bodies = mutableListOf<String>()
+        val engine = MockEngine { request ->
+            bodies += requestBody(request)
+            respond("""{"choices":[{"message":{"content":"ok"}}]}""", HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+        }
+        OpenAiCompatibleClient(mockClient(engine)).chatCompletion("http://localhost/v1", "k", "gpt-4o-mini", listOf(ChatMessage("user", "x")))
+        assertTrue(bodies.single().contains("\"temperature\":0.3"), bodies.single())
+    }
+
+    @Test
+    fun chatCompletion_retriesWithoutTemperatureWhenTheModelRejectsIt() = runTest {
+        val bodies = mutableListOf<String>()
+        val engine = MockEngine { request ->
+            bodies += requestBody(request)
+            if (bodies.size == 1) {
+                respond(
+                    """{"error":{"message":"Unsupported value: 'temperature' does not support 0.3 with this model. Only the default (1) value is supported.","param":"temperature","code":"unsupported_value"}}""",
+                    HttpStatusCode.BadRequest,
+                    headersOf(HttpHeaders.ContentType, "application/json"),
+                )
+            } else {
+                respond("""{"choices":[{"message":{"role":"assistant","content":"Reasoned notes"}}]}""", HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+            }
+        }
+        val text = OpenAiCompatibleClient(mockClient(engine)).chatCompletion("http://localhost/v1", "k", "o3-mini", listOf(ChatMessage("user", "x")))
+        assertEquals("Reasoned notes", text)
+        assertEquals(2, bodies.size)
+        assertTrue(!bodies[1].contains("temperature"), bodies[1])
+    }
+
+    @Test
+    fun chatCompletion_doesNotRetryAnUnrelatedBadRequest() = runTest {
+        var calls = 0
+        val engine = MockEngine {
+            calls++
+            respond("""{"error":{"message":"context_length_exceeded"}}""", HttpStatusCode.BadRequest, headersOf(HttpHeaders.ContentType, "application/json"))
+        }
+        val error = runCatching {
+            OpenAiCompatibleClient(mockClient(engine)).chatCompletion("http://localhost/v1", "k", "m", listOf(ChatMessage("user", "x")))
+        }.exceptionOrNull()
+        assertEquals(1, calls)
+        assertEquals(400, (error as AiApiException).status)
+    }
+
+    @Test
+    fun chatCompletion_nullOrBlankContentIsAnExplicitFailure() = runTest {
+        for (reply in listOf(
+            """{"choices":[{"message":{"role":"assistant","content":null,"refusal":"I can't help with that."}}]}""",
+            """{"choices":[{"message":{"role":"assistant","content":"   "}}]}""",
+            """{"choices":[]}""",
+        )) {
+            val engine = MockEngine { respond(reply, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json")) }
+            val error = runCatching {
+                OpenAiCompatibleClient(mockClient(engine)).chatCompletion("http://localhost/v1", "k", "m", listOf(ChatMessage("user", "x")))
+            }.exceptionOrNull()
+            assertTrue(error is AiApiException, "$reply -> $error")
+            assertEquals(EMPTY_CHAT_COMPLETION_MESSAGE, error.message)
+        }
+    }
+
     private fun mockClient(engine: MockEngine) = HttpClient(engine) {
         install(ContentNegotiation) { json(OpenAiCompatibleClient.defaultJson) }
     }
