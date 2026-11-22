@@ -59,8 +59,23 @@ open (`AutoFlowActionRouter`); the result snackbar appears the next time a scree
 - `ai/…/integrations/NoteDestinations.kt` — `SlackPoster`, `NotionExporter`, `DestinationResult`
 - `composeApp/…/ui/integrations/NoteDestinationCards.kt` — Integrations cards; `i18n/NoteDestinationStrings.kt` — copy (EN / PT-BR)
 
+## Check against the real services
+
+The unit tests use mocked HTTP. `NoteDestinationsLiveTest` runs the production clients against the real APIs when
+throwaway credentials are given (it is skipped otherwise, so CI never needs them):
+
+```sh
+VELUM_LIVE_SLACK_WEBHOOK=https://hooks.slack.com/services/... \
+VELUM_LIVE_NOTION_TOKEN=ntn_... VELUM_LIVE_NOTION_DATABASE=https://www.notion.so/<workspace>/<database>?v=... \
+  ./gradlew :ai:jvmTest --tests '*NoteDestinationsLiveTest*'
+```
+
+It posts a test message and one note summary to the channel, and creates one "Velum live check" page with 140
+transcript paragraphs (so the more-than-100-blocks append path runs). Delete them afterwards. Set only the Slack or only
+the Notion variables to check one service.
+
 ## Not done
 
 - OAuth ("Add to Slack" / public Notion integration) — needs an owner-registered client and a redirect handler.
 - Choosing a Slack channel per AutoFlow rule (one webhook = one channel), or a Notion database per rule.
-- Verified against the real Slack / Notion APIs: the clients are tested against mocked HTTP responses only.
+- Run against the real Slack / Notion APIs: needs the owner's credentials (see the live check above); not run from the development sandbox.

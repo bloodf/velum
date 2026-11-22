@@ -118,6 +118,8 @@ class AppContainer(
     val micCapture: MicCapture = createMicCapture(),
     thermalPolicy: ThermalPolicy = NoOpThermalPolicy,
     injectedAiClient: OpenAiCompatibleClient? = null,
+    /** HTTP client for Slack / Notion; tests pass a mock engine. Null: the shared AI client factory. */
+    noteDestinationHttpClient: io.ktor.client.HttpClient? = null,
 ) {
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -204,8 +206,9 @@ class AppContainer(
         settings = webhookSettings,
         wipeGate = wipeGate,
     )
-    val slackPoster = SlackPoster(repository = repository, settings = slackSettings, wipeGate = wipeGate)
-    val notionExporter = NotionExporter(repository = repository, settings = notionSettings, wipeGate = wipeGate)
+    private val destinationHttp = noteDestinationHttpClient ?: dev.velum.ai.createAiHttpClient()
+    val slackPoster = SlackPoster(repository = repository, settings = slackSettings, httpClient = destinationHttp, wipeGate = wipeGate)
+    val notionExporter = NotionExporter(repository = repository, settings = notionSettings, httpClient = destinationHttp, wipeGate = wipeGate)
 
     /**
      * Sends a note to Slack or Notion from a screen. Runs in the app scope, so leaving the screen does not cut a

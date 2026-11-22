@@ -160,6 +160,8 @@ kotlin {
             implementation(project(":ble"))
             implementation(project(":plaud-protocol"))
             implementation(project(":recorder"))
+            // AppContainer takes an optional HttpClient for Slack / Notion (tests inject a mock engine).
+            implementation(libs.ktor.client.core)
             implementation(compose.runtime)
             implementation(compose.foundation)
             implementation(compose.material3)
