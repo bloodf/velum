@@ -38,6 +38,9 @@ private fun openOutput(format: AudioFormat): DesktopAudioOutput {
 }
 
 internal class DesktopAudioPlayer(
+    /** Runs on IO before the file is probed; tests use it to hold a preparation in flight. */
+    private val beforeProbe: () -> Unit = {},
+    // Last, so existing `DesktopAudioPlayer { format -> ... }` calls keep meaning the output factory.
     private val outputFactory: (AudioFormat) -> DesktopAudioOutput = ::openOutput,
 ) : AudioPlayer {
     private val lock = Any()
@@ -82,6 +85,7 @@ internal class DesktopAudioPlayer(
         }
         val metadata = withContext(Dispatchers.IO) {
             runCatching {
+                beforeProbe()
                 val source = File(path)
                 AudioSystem.getAudioInputStream(source).use { stream ->
                     val audio = stream.format

@@ -12,7 +12,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
-import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 
@@ -128,10 +128,22 @@ class DesktopAudioPlayerTest {
 
     @Test fun releaseInvalidatesPendingPreparation() = runBlocking {
         val file = wav()
-        val player = DesktopAudioPlayer { error("No output expected") }
+        // Hold the probe until release() has run: with an unheld probe on a tiny file, withContext(IO) can
+        // return without suspending, and prepare() then legitimately finishes (true) before release().
+        val probing = CountDownLatch(1)
+        val released = CountDownLatch(1)
+        val player = DesktopAudioPlayer(
+            beforeProbe = {
+                probing.countDown()
+                check(released.await(5, TimeUnit.SECONDS)) { "release() never ran" }
+            },
+            outputFactory = { error("No output expected") },
+        )
         try {
-            val pending = async(start = CoroutineStart.UNDISPATCHED) { player.prepare(file.path) }
+            val pending = async(Dispatchers.Default) { player.prepare(file.path) }
+            assertTrue(probing.await(5, TimeUnit.SECONDS))
             player.release()
+            released.countDown()
             assertFalse(pending.await())
             assertEquals(0L, player.durationMs.value)
             assertFalse(player.isPlaying.value)
