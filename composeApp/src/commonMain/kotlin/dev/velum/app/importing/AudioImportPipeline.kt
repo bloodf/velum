@@ -38,6 +38,7 @@ class AudioImportPipeline(
     private val normalizer: AudioNormalizer = AudioNormalizer(),
     /** The normalize step; tests replace it. */
     private val normalize: suspend (String) -> NormalizedAudio = { normalizer.normalizeToWav(it) },
+    private val markAttempt: (String) -> Unit = { dev.velum.app.platform.markShareAttempt(it) },
 ) {
     suspend fun importFile(
         absolutePath: String,
@@ -103,7 +104,13 @@ class AudioImportPipeline(
             try {
                 container.shareImportMutex.withLock {
                     // Counted before any work, durably: a native decoder crash or a kill never reaches the finally below.
-                    dev.velum.app.platform.markShareAttempt(copyPath)
+                    try {
+                        markAttempt(copyPath)
+                    } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                        throw cancelled
+                    } catch (unavailable: Exception) {
+                        return@withLock ImportResult.Failed(unavailable.message ?: "incoming_share_unavailable")
+                    }
                     importShared(copyPath, recoveredAtMs)
                 }
             } finally {
