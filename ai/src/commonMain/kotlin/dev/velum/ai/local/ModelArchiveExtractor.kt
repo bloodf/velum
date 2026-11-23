@@ -2,7 +2,7 @@ package dev.velum.ai.local
 
 /**
  * Extract downloaded model archives into [destDir].
- * Android/JVM use Apache commons-compress; iOS is unsupported.
+ * Android/JVM use Apache commons-compress; iOS streams catalog tar archives through system bzip2/zlib.
  */
 expect object ModelArchiveExtractor {
     fun isArchive(fileName: String): Boolean
