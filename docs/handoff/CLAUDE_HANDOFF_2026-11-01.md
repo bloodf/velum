@@ -81,8 +81,8 @@ Issues closed with evidence during this task: **90, 112, 108, 109, 110, 105, 89*
 
 | Path | State at closeout | Use |
 |---|---|---|
-| `/Users/heitor/Developer/github.com/bloodf/velum` | `main` at `1f30a0f`; only website4 dirty | User's original. Do not reset/clean/rebase or publish those edits. |
-| `/Users/heitor/Documents/Codex/2026-10-31/task-2/publication-velum` | clean, `codex/identity-import-atomicity` at `48b2a02` | Current unfinished source. Both #130/#131 branches share this Git object store. |
+| `$HOME/Developer/github.com/bloodf/velum` | `main` at `1f30a0f`; only website4 dirty | User's original. Do not reset/clean/rebase or publish those edits. |
+| `$HOME/Documents/Codex/2026-10-31/task-2/publication-velum` | clean, `codex/identity-import-atomicity` at `48b2a02` | Current unfinished source. Both #130/#131 branches share this Git object store. |
 | `…/task-2/publication-identity-persistence` | clean, `codex/identity-keystore-persistence` at `5b51572` | Merged #129 test baseline. |
 | `…/task-2/publication-docs` | `codex/claude-handoff` | This documentation-only publication. |
 | `…/task-2/velum` | main `16a77cb`,87 historical dirty files | Frozen archive. All87 nonwebsite file blobs exist in published main history. Do not reapply this older diff. |
@@ -116,7 +116,7 @@ Device walks use synthetic audio/processing. R8 remains enabled; minifiedTest is
 
 ## Reproduce locally
 
-Set `JAVA_HOME=/Library/Java/JavaVirtualMachines/jdk-17.0.1.jdk/Contents/Home` and `ANDROID_HOME=/Users/heitor/Library/Android/sdk` on this Mac. Check these paths before use. `/opt/homebrew/bin/python3.14` has Pillow; the unversioned Python differs by shell and may lack it. Use no production `VELUM_UPLOAD_*` values during tests.
+Set `JAVA_HOME=/Library/Java/JavaVirtualMachines/jdk-17.0.1.jdk/Contents/Home` and `ANDROID_HOME=$HOME/Library/Android/sdk` on this Mac. Check these paths before use. `/opt/homebrew/bin/python3.14` has Pillow; the unversioned Python differs by shell and may lack it. Use no production `VELUM_UPLOAD_*` values during tests.
 
 For #131, rebuild the core JVM source first, then rerun focused tests and the actual UI import tests:
 
@@ -140,7 +140,7 @@ For each variant `debug`/`minifiedTest`, install its app and Android test APK wi
 
 ## Local-only evidence inventory
 
-Root: `/Users/heitor/Documents/Codex/2026-10-31/task-2/verification-logs/`. Raw logs and machine-specific drivers were deliberately not committed. The following are retained locally; do not publish them indiscriminately.
+Root: `$HOME/Documents/Codex/2026-10-31/task-2/verification-logs/`. Raw logs and machine-specific drivers were deliberately not committed. The following are retained locally; do not publish them indiscriminately.
 
 - `final-integrated/`: old frozen-source hashes, full matrix/validation and website preservation.
 - `publication/pr1-*` through `pr4-*`: per-PR tests, builds, signing, matrices, source/tree/merge receipts. `pr4-matrix/` is the eight-cell #126 matrix; `pr4-supplemental/` has settled destination captures.
