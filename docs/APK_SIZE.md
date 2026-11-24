@@ -68,7 +68,7 @@ measurements above remain historical; they were not reproduced in this investiga
 The retained artifact is **debug**, so these numbers cannot establish the current R8 release
 size or an arm64 release baseline:
 
-- Path: `/Users/heitor/.t3/worktrees/velum/t3-45db0fb4/composeApp/build/outputs/apk/debug/composeApp-debug.apk`.
+- Path: `$HOME/.t3/worktrees/velum/t3-45db0fb4/composeApp/build/outputs/apk/debug/composeApp-debug.apk`.
 - File size: 229,189,132 bytes; 407 ZIP entries. The producing commit is unverified.
 - Sum of ZIP compressed entry sizes: 228,818,128 bytes. The remaining 371,004 bytes
   cover ZIP headers, alignment, signing and other container overhead.
